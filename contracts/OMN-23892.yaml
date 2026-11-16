@@ -40,7 +40,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/ci/test_infra_pin_df3f14f5e6b9_work_contracts_omn23892.py -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn23892-ac3
   description: 'hosted proxy for AC3: the sibling pin pair test reads the lock naming the newest recorded pair that carries the grants; the reading of the two gates on the open change is posted as a pull request comment naming the head'

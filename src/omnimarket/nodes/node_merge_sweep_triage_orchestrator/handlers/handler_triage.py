@@ -38,11 +38,9 @@ from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutpu
 
 from omnimarket.config.env_flags import env_flag
 from omnimarket.handlers.model_binding_reader import model_binding_section
+from omnimarket.models.merge_sweep.enum_pr_track import EnumPRTrack
+from omnimarket.models.merge_sweep.model_classified_pr import ModelClassifiedPR
 from omnimarket.nodes.contract_topics import contract_topic
-from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
-    EnumPRTrack,
-    ModelClassifiedPR,
-)
 from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request import (
     ModelAutoMergeArmCommand,
     ModelCiFixCommand,

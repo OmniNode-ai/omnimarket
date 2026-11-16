@@ -1,0 +1,13 @@
+# Overlay of the install-proof declaration (OMN-23616): <root>/node_pr_handoff_install_proof_compute/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS. Every key is required; the real values live in the overlays repository.
+paths: [launchd/*, hooks/*]
+repo_paths:
+  repo-a: [src/*]
+excluded_paths: [tests/*]
+prod_paths: [prod/*]
+installed_cell: installed
+observed_cell: observed
+observed_words: [ran, printed]
+observed_refused: ['^\\W*(tests?|ci)\\b[^.;]*\\b(pass|ok)\\W*$']
+min_observed_chars: 12
+ruling: "operator: a PR that changes a host install is handed off only with the branch revision installed on the lab and observed running"

@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_broker_topic_delete_effect/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+#
+#   contracts               where the contracts that declare topics are found and how a topic and its role are told
+#     reference_globs       globs, relative to a repository, of source files whose text naming a topic makes it declared
+#   protected_prefixes      topic name prefixes the delete never touches
+#   recent_producer_days    a topic whose newest retained record is younger than this is still produced to
+#   max_topics_per_command  the most topics one command may name
+#   enforce                 whether a command may issue deletes; a report-only run never reads it
+#   bus_lane                the declared bus lane whose machine credential the broker admin client uses
+#   probe_client_id         the client id the admin client presents while reading live evidence
+#   request_timeout_seconds the broker admin client's timeout per request
+contracts:
+  registry_root_env: EXAMPLE_REGISTRY_ROOT
+  repositories: [example-repo]
+  contract_glob: "**/contract*.yaml"
+  topic_pattern: '^onex\.[a-z]+\.[A-Za-z0-9_.-]+\.v[0-9]+$'
+  publish_key_fragments: [publish, terminal_event]
+  excluded_parts: [.venv, .git, omni_worktrees, node_modules]
+  reference_globs: ["src/**/*", "scripts/**/*", "deploy/**/*", "plugins/**/*"]
+protected_prefixes: ["_", "__consumer_offsets"]
+recent_producer_days: 7
+max_topics_per_command: 20
+enforce: false
+bus_lane: dev
+probe_client_id: example-topic-delete-probe
+request_timeout_seconds: 30
+#   superuser               optional; when present the evidence and deletes run as the dev broker superuser, read on the broker host
+#     lane                  must be dev and must equal bus_lane; any other value refuses the load
+#     host, compose_project, broker_container, superuser_source_container   the broker permission tool's declaration cells
+#     ssh_target_env        name of the environment variable holding the broker host's ssh target
+#     rpk_brokers, sasl_mechanism   the rpk client's -X brokers and -X sasl.mechanism inside the broker container
+#     script_timeout_seconds  the most a remote script may run
+# superuser:
+#   lane: dev
+#   host: example-broker-host
+#   compose_project: example-project
+#   broker_container: example-broker
+#   superuser_source_container: example-sasl-source
+#   ssh_target_env: EXAMPLE_BROKER_SSH_TARGET
+#   rpk_brokers: example-broker:9092
+#   sasl_mechanism: SCRAM-SHA-256
+#   script_timeout_seconds: 600

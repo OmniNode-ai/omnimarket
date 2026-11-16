@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-24829
+title: Omnimarket pull request 5737 no longer conflicts with its base and its required checks read green at its new head
+summary: 'The branch of omnimarket pull request 5737 had fallen 389 commits behind dev and conflicted with it in pyproject.toml, uv.lock and 70 work-contract files. This change merges the current dev into the branch. Dev already locks omnibase-spi 0.23.15, so the conflicted spi tag, the lock and the work-contract uv.lock hashes take dev''s content and the pull request keeps only its floor raise, its floor test, its contract and its duration record. No check, ratchet or workflow file is touched.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn24829-pr5737-mergeable
+    statement: The pull request branch contains the current dev and its diff against dev touches no check, ratchet or workflow file.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: omnimarket pull request 5737 no longer conflicts with its base and its required checks read green at the new head -- falsifier: the branch does not contain origin/dev, or the floor test fails at the head'
+      - id: AC2
+        statement: 'AC2: the fix is made on the pull request''s own branch with no check widened, skipped or bypassed, and a PR comment starting Lab: head=<full head sha> carries the lab proof for the new head -- falsifier: the diff against dev touches a file under .github, .onex_ratchets or scripts/ci'
+      - id: AC3
+        statement: 'AC3: when the cause is outside the pull request, the lane writes a STATUS row with shared=yes and patches nothing around it -- falsifier: none applies, the cause was inside the pull request (a stale branch) and AC1 holds'
+evidence_requirements:
+  - kind: tests
+    description: The omnibase-spi floor tests pass at the merged head.
+    command: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn24829-ac1-floor-test
+    description: AC1. At the merged head the lock and floors agree and the lane process types import.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn24829-ac2-no-check-touched
+    description: AC2. The diff against dev changes no workflow, ratchet or CI script file.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: command
+        check_value: test -z "$(git diff --name-only origin/dev...HEAD -- .github .onex_ratchets scripts/ci)"
+        cwd: .
+  - id: dod-omn24829-ac3-no-shared-cause
+    description: AC3. The cause sat inside the pull request, so no shared-cause patch exists; the branch carries dev's pin block unchanged.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: command
+        check_value: git diff --quiet origin/dev HEAD -- uv.lock
+        cwd: .

@@ -33,7 +33,7 @@ ROOTS = "ONEX_SKILL_OVERLAY_ROOTS"
 REFRESH_UNITS = ("overlay-store-refresh", "overlay-store-refresh-systemd")
 LOADER_UNIT = "overlay-store-load-systemd"
 # The clone first, then the plugin copy, matching the factory floor publisher's declared form.
-CLONE_THEN_PLUGIN = "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+CLONE_THEN_PLUGIN = "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
 
 
 @pytest.fixture(autouse=True)
@@ -102,6 +102,7 @@ def test_rendered_unit_text_carries_the_clone_before_the_plugin(tmp_path: Path) 
         # Only the host name is overridden; the overlay roots keep the unit's new default.
         path_overrides={"LAB_WORK_HOST_NAME": "lab-host"},
         marketplace_root=str(tmp_path / "market"),
+        workspace_config_root=str(tmp_path / "config-root"),
     )
     result = HandlerRegistryUnits(base.Recorder()).handle(request)
     assert result.status == "success", result.stderr

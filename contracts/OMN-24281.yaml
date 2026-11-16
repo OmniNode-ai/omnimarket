@@ -1,0 +1,78 @@
+schema_version: 1.0.0
+ticket_id: OMN-24281
+title: Run the owner map and work state publishers in the floor publish cycle
+summary: The floor's projection reader listens for four projections, and only the overlay store fleet was ever published. The owner map and the work-state projection each have a publisher node that no cycle step ran and no publication overlay configured, so both read unread. The factory floor publish cycle now runs a step for each publisher, ahead of the reader's own step, with its time limit taken from the cycle's overlay. The integration projection still has no deterministic producer of its readings and stays a named follow-up.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24281-steps
+  statement: The publish cycle runs the owner map publisher and the work-state publisher, each as a step that is not required and has its own overlay time limit.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the factory floor's publish cycle runs a step that publishes the landing controller's owner map, and a step that publishes the work-state projection, each with its own time limit from the overlay -- falsifier: pytest tests/nodes/node_factory_floor_publish_effect/test_floor_projection_publish_steps.py -q"
+  - id: AC2
+    statement: "AC2: a publisher with no overlay refuses by name and publishes nothing, and what each publisher publishes is what the floor's projection reader reads for the same projection id -- falsifier: pytest tests/nodes/node_floor_projection_read_effect/test_publisher_reader_seam.py -q"
+- id: req-omn24281-overlays
+  statement: The overlays repository declares the publishers' publication overlays and the time limit of each new step.
+  acceptance:
+  - id: AC3
+    statement: "AC3: the overlays repository declares the owner-map publisher, the work-state publish overlay and a time limit for each new step -- falsifier: pytest tests/test_floor_projection_publishers_overlays.py -q"
+- id: req-omn24281-integrated
+  statement: The reader returns the owner map and the work state with fresh publication times after the publish unit's next tick.
+  acceptance:
+  - id: AC4
+    statement: "AC4: integrated: the floor projection reader, run against the dev broker after the publish unit's next tick, returns the owner map and the work state with publication times under their age bounds -- falsifier: the reader's bundle shows either section unread or older than its bound"
+evidence_requirements:
+- kind: tests
+  description: The step tests, the seam test and the inventory test pass at the pushed head.
+  command: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_projection_publish_steps.py tests/nodes/node_floor_projection_read_effect/test_publisher_reader_seam.py tests/nodes/node_factory_floor_publish_effect/test_floor_input_inventory.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24281-ac1
+  description: 'AC1: the step tests pass at the head; the named break (the step removed from the contract) shows the node not called.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_projection_publish_steps.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24281-ac2
+  description: 'AC2: the seam test passes at the head and its break control (a changed topic) reports a problem.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_floor_projection_read_effect/test_publisher_reader_seam.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24281-ac3
+  description: 'hosted proxy for AC3: with a time limit for each new step in the cycle limits, the cycle declares the steps in its longest path; the test fails at the merge base, where the steps are not declared. The overlays repository test is run in that repository at its pushed head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_projection_publish_steps.py -q -p no:randomly --no-cov -k longest_declared_path
+    cwd: .
+- id: dod-omn24281-ac4
+  description: 'hosted proxy for AC4: the step golden test runs both publishers in one cycle; the reading on the publishing machine is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_projection_publish_steps.py -q -p no:randomly --no-cov -k golden
+    cwd: .
+- id: dod-omn24281-integration-proof
+  description: the step tests run on a lab host at the pushed head, including the named break that fails at the merge base; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24281 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_floor_projection_publish_steps.py tests/nodes/node_floor_projection_read_effect/test_publisher_reader_seam.py -q --no-cov -p no:randomly

@@ -15,6 +15,11 @@ from omnimarket.nodes.node_job_log_filler_effect.models.model_job_log_filler imp
     ModelJobLogFillResult,
     ModelMergeRelevantRun,
 )
+from omnimarket.nodes.node_job_log_filler_effect.models.model_red_facts import (
+    EnumRedFactsStatus,
+    ModelRedFactsAnswer,
+    ModelRedFactsRecord,
+)
 
 __all__ = [
     "OVERLAY_FILE_ENV",
@@ -22,10 +27,13 @@ __all__ = [
     "EnumJobLogFillOutcome",
     "EnumJobLogFillReason",
     "EnumJobLogFillStatus",
+    "EnumRedFactsStatus",
     "ModelJobLogFillItem",
     "ModelJobLogFillRequest",
     "ModelJobLogFillResult",
     "ModelJobLogFillerBusProfile",
     "ModelJobLogFillerOverlay",
     "ModelMergeRelevantRun",
+    "ModelRedFactsAnswer",
+    "ModelRedFactsRecord",
 ]

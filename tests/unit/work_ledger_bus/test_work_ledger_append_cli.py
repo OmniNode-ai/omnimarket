@@ -374,10 +374,11 @@ def test_broker_attributed_cli_request_round_trips_through_host_and_local_append
     assert receipt["status"] == "accepted"
     assert receipt["principal"] == "operator"
     assert receipt["ledger_lines"] == [2]
-    assert (
-        ledger.read_text()
-        == "# Ledger\n" + rows.replace(" | req=", " | principal=operator | req=") + "\n"
+    # The append host stamps the requesting host's bus cell after the request cell (OMN-24205).
+    stamped = rows.replace(" | req=", " | principal=operator | req=").replace(
+        f" | req={request_id} | ", f" | req={request_id} | via=bus:test-host | "
     )
+    assert ledger.read_text() == "# Ledger\n" + stamped + "\n"
     before = ledger.read_bytes()
     second = CliRunner().invoke(work_ledger_group, argv, input=rows)
     assert second.exit_code == 0, second.output

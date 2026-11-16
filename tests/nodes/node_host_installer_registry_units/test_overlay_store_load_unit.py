@@ -75,9 +75,7 @@ def test_the_unit_is_declared_hourly_on_systemd_and_reads_the_overlay_home_clone
     assert unit["platform"] == "systemd"
     assert unit["schedule"]["start_interval"] == 3600
     assert unit["module"].endswith("runtime_overlay_store_load_tick")
-    assert unit["environment"]["ONEX_SKILL_OVERLAY_ROOTS"] == (
-        "{registry_root}/overlays/overlays"
-    )
+    assert unit["environment"]["ONEX_SKILL_OVERLAY_ROOTS"] == ("{overlays_root}")
 
 
 def test_install_renders_an_hourly_timer_running_the_tick_over_the_clone_overlay_root(
@@ -92,6 +90,7 @@ def test_install_renders_an_hourly_timer_running_the_tick_over_the_clone_overlay
         project_path=str(path),
         expected_revision=revision,
         path_overrides={},
+        workspace_config_root=str(tmp_path / "config-root"),
     )
     result = HandlerRegistryUnits(run).handle(request)
     assert result.status == "success", result.stderr
@@ -127,3 +126,24 @@ def test_a_checkout_without_the_tick_entry_file_is_refused(tmp_path: Path) -> No
     )
     assert result.status == "failure"
     assert not (tmp_path / "home/.config/systemd/user" / f"{LABEL}.timer").exists()
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "overlay-store-load-systemd",
+        "overlay-store-refresh-systemd",
+        "overlay-store-refresh",
+    ],
+)
+def test_the_store_units_find_the_lane_declaration_from_the_workspace_root(
+    name: str,
+) -> None:
+    """The overlays name a bus lane, not a broker: the lane declaration is read from the workspace root (OMN-24052).
+
+    Measured on h053 after the overlays moved to the dev lane: the loader unit exited 69 with "no workspace root is
+    set" until the unit carried OMNIBASE_PATH.
+    """
+    environment = load_units()[name]["environment"]
+    assert environment["OMNIBASE_PATH"] == "{registry_root}"
+    assert environment["ONEX_WORKSPACE_CONFIG_ROOT"] == "{workspace_config_root}"

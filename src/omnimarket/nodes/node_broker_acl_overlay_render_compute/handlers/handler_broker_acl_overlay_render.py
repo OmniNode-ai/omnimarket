@@ -17,7 +17,7 @@ from typing import Any
 
 import yaml
 
-from omnimarket.nodes.node_broker_acl_overlay_render_compute.models import (
+from omnimarket.models.broker_acl import (
     EnumAclOperation,
     EnumAclPattern,
     EnumAclResourceType,

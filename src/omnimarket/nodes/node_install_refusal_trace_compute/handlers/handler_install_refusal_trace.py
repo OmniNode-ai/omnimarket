@@ -67,7 +67,9 @@ CAUSE_CLASSES: tuple[_CauseClass, ...] = (
     _CauseClass(
         "body-misses-title-ticket",
         False,
-        re.compile(r"NOT-READY body cites .* it must include the title ticket"),
+        re.compile(
+            r"NOT-READY body cites .*; it must (?:cite|include) the title ticket"
+        ),
     ),
 )
 # Two printings of the same refusal: the script's own ``handoff_row: <x>#<n> NOT-READY`` line, and the

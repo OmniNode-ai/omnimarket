@@ -31,6 +31,16 @@ OVERLAY_FILE_ENV = "ONEX_FLOOR_EMISSION_MIRROR_OVERLAY"
 MirrorState = Literal["mirroring", "not_configured", "unreadable"]
 
 
+class EmissionMirrorRefusedError(Exception):
+    """The bus refused one mirrored chain event: the topic it was refused on and what the bus said, so the sink can write one line."""
+
+    def __init__(self, topic: str, cause: BaseException) -> None:
+        self.topic = topic
+        self.error_type = type(cause).__name__
+        self.detail = str(cause)[:200]
+        super().__init__(f"topic={topic} error={self.error_type} detail={self.detail}")
+
+
 class ProtocolEmissionMirror(Protocol):
     def publish(self, event: ModelNodeEmission) -> None: ...
 
@@ -70,12 +80,17 @@ class BusEmissionMirror:
 
     def publish(self, event: ModelNodeEmission) -> None:
         with ThreadPoolExecutor(max_workers=1) as pool:
-            pool.submit(
-                asyncio.run,
-                asyncio.wait_for(
-                    self._publish(event), timeout=self._overlay.publish_timeout_s
-                ),
-            ).result()
+            try:
+                pool.submit(
+                    asyncio.run,
+                    asyncio.wait_for(
+                        self._publish(event), timeout=self._overlay.publish_timeout_s
+                    ),
+                ).result()
+            except Exception as exc:
+                raise EmissionMirrorRefusedError(
+                    self._overlay.topic_for(event.phase), exc
+                ) from exc
 
 
 def build_mirror(
@@ -113,6 +128,7 @@ def mirror_from_environment(
 
 __all__ = [
     "BusEmissionMirror",
+    "EmissionMirrorRefusedError",
     "InMemoryEmissionMirror",
     "MirrorState",
     "ProtocolEmissionMirror",

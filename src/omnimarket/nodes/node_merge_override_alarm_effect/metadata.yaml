@@ -1,0 +1,30 @@
+name: node_merge_override_alarm_effect
+version: "1.0.0"
+description: >
+  Consumes both merge topics and the landing effect's completed topic, keeps the
+  newest landing receipt per pull request, reads the head and merger of each merge
+  once through the landing GitHub effect, and classifies the merge as landing,
+  override_merge or merge_without_override. A finding emits one typed error event,
+  one Slack publish command and one open-findings row; an unreadable source is
+  detector_unreadable with the same alarm.
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_merge_override_alarm_effect: omnimarket.nodes.node_merge_override_alarm_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: publish_event
+dependencies:
+  - omnibase_infra
+  - "pydantic>=2.11.0"
+  - "pyyaml>=6.0"
+  - "psycopg2-binary>=2.9"
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, observability, alerting, merge, override]
+pack: "liveness"
+display_name: "Effect: Merge Override Alarm"
+node_role: "effect"

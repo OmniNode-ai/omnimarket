@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,6 +25,7 @@ from uuid import uuid4
 from pydantic import ValidationError
 
 from omnimarket.handlers.emission_mirror import (
+    EmissionMirrorRefusedError,
     MirrorState,
     ProtocolEmissionMirror,
     mirror_from_environment,
@@ -57,7 +59,7 @@ class JsonlEmissionSink:
 
     ``mirror`` is the mirror to use; left ``None`` the sink reads the host's overlay at its first emit (``mirror_state`` says
     ``mirroring``, ``not_configured`` or ``unreadable``). A mirror that fails is counted in ``mirror_failures`` and the journal
-    write, which comes first, stands.
+    write, which comes first, stands. A mirror that refuses is written once per distinct line to the process error output.
     """
 
     def __init__(
@@ -72,6 +74,7 @@ class JsonlEmissionSink:
         )
         self.mirror_failures = 0
         self.mirrored = 0
+        self._refusals_reported: set[str] = set()
 
     def _mirror_of(self) -> ProtocolEmissionMirror | None:
         if not self._mirror_resolved:
@@ -90,8 +93,21 @@ class JsonlEmissionSink:
         try:
             mirror.publish(event)
             self.mirrored += 1
-        except Exception:
+        except Exception as exc:
             self.mirror_failures += 1
+            self._report_refusal(exc)
+
+    def _report_refusal(self, exc: Exception) -> None:
+        if isinstance(exc, EmissionMirrorRefusedError):
+            line = "emission mirror refused: " + str(exc)
+        else:
+            line = (
+                "emission mirror refused: "
+                f"error={type(exc).__name__} detail={str(exc)[:200]}"
+            )
+        if line not in self._refusals_reported:
+            self._refusals_reported.add(line)
+            sys.stderr.write(line + "\n")
 
     def read(self, since: datetime) -> tuple[ModelNodeEmission, ...]:
         try:

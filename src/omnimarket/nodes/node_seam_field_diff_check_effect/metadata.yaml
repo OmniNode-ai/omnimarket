@@ -1,0 +1,19 @@
+name: node_seam_field_diff_check_effect
+version: "1.0.0"
+description: "Merge check: a producer-consumer pair a change adds or reshapes matches in declared message shape"
+omnibase_core_compat: ">=0.42.0,<0.43.0"
+entry_points:
+  onex.nodes:
+    node_seam_field_diff_check_effect: "omnimarket.nodes.node_seam_field_diff_check_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.42.0,<0.43.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "seam-graph", "merge-check", "OMN-24121"]
+pack: "seams"
+display_name: "Seam Field Diff Check Effect"
+node_role: "effect"

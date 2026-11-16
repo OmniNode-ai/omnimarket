@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_claude_pool_limit_recheck_compute
+version: "1.0.0"
+description: Decides whether to re-probe a limited Claude token-pool label and what to do with its mark from the probe answer
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_claude_pool_limit_recheck_compute: omnimarket.nodes.node_claude_pool_limit_recheck_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: pure
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, limit, recheck, token-pool]
+node_role: compute
+pack: "data"
+display_name: "Claude Pool Limit Recheck Compute"

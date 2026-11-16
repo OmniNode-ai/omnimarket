@@ -47,6 +47,12 @@ from omnimarket.models.floor_17a.model_worklist import (
     ModelWorklistItemIn,
     WorklistKind,
 )
+from omnimarket.nodes.node_floor_simple_compute.handlers.handoff_refusals_section import (
+    build_handoff_refusals_section,
+)
+from omnimarket.nodes.node_floor_simple_compute.handlers.integration_section import (
+    build_integration_section,
+)
 
 # The one row that names the open pull requests citing no ticket; the overlay's `causes.titles` may reword it.
 UNTICKETED_PRS_ID = "prs:no-ticket"
@@ -140,7 +146,9 @@ def live_lanes(
     prs: tuple[str, ...] = (),
     cause_id: str = "",
 ) -> tuple[str, ...]:
-    """The lanes that are really on a cause: not stalled, and not dead or finished by the process reading.
+    """The lanes that are really on a cause: not stalled, not read-only, and not dead or finished by the process reading.
+
+    A lane whose CLAIM declares ``worktree=none`` or ``mode=read-only`` can change nothing, so it is on no cause (OMN-23225).
 
     A lane is on a cause when its CLAIM or a STATUS row says ``owns=floor:<cause id>``, or it works on one of the
     cause's pull requests, or its ticket, or the ``parent_ticket=`` its CLAIM names, is one the overlay or a lab source
@@ -154,6 +162,7 @@ def live_lanes(
             lane.lane
             for lane in lanes
             if not lane.stalled
+            and not lane.read_only
             and lane.liveness not in {"dead", "finished"}
             and (
                 (lane.ticket and lane.ticket in wanted_owners)
@@ -572,6 +581,12 @@ class HandlerFloorSimple:
                 "worklist": worklist,
                 "readiness": readiness,
                 "owner_inputs": inputs,
+                "integration": build_integration_section(
+                    ov.integration, request.integration
+                ),
+                "handoff_refusals": build_handoff_refusals_section(
+                    ov.handoff_refusals, request.handoff_refusals
+                ),
             }
         )
         return document.model_copy(

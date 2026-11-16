@@ -214,7 +214,12 @@ class _NothingReader:
     cache_path = None
 
     def read(
-        self, repo: str, job_id: int, *, cache_only: bool
+        self,
+        repo: str,
+        job_id: int,
+        *,
+        cache_only: bool,
+        tail_bytes: int | None = None,
     ) -> ModelJobLogTailResult:
         if cache_only:
             raise JobLogCacheMissError("miss")

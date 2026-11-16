@@ -8,12 +8,15 @@ and the watcher's ``[name, status, conclusion, completed_at]`` rows. ``edge_fire
 change-control check is a stale grade and earns the one whole-run rerun (the landing decision caps it at one per
 head; a red that survives it goes to a worker). ``cancelled`` is the head's cancelled check copies, passed only
 under a decision node that declares the stale-refresh seam (OMN-20508): with no failed name and one of them, the
-red is the cancelled copies', never ``product``.
+red is the cancelled copies', never ``product``. ``stale_fleet`` is a red whose failing check's job log names
+runner label sets carried ONLY by offline runners, once fleet-status reads those labels carried by an online
+runner: it earns the controller's one whole-run rerun per head and never a fix worker.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+import re
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_cascade_checks import (
@@ -31,6 +34,60 @@ from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_landing_red_
     ModelLandingRedVerdict,
 )
 
+# A job log line is ``<ISO timestamp> <text>``; the runner-label gate prints a ``labels:`` line and, on the next
+# line, a ``status:`` line for each runs-on label set it judged.
+_STAMP = r"^(?:\S+Z\s+)?"
+_LABELS_RE = re.compile(_STAMP + r"labels:\s+(?P<labels>.+?)\s*$")
+_STATUS_RE = re.compile(_STAMP + r"status:\s+(?P<status>.+)$")
+OFFLINE_ONLY_PHRASE = "carried ONLY by offline runner"
+
+
+def offline_only_label_sets(log: str) -> tuple[frozenset[str], ...]:
+    """The distinct label sets a job log says are carried ONLY by offline runners, sorted by their labels."""
+    lines = [ln for ln in log.splitlines() if ln.strip()]
+    found: set[frozenset[str]] = set()
+    for index in range(len(lines) - 1):
+        line, following = lines[index], lines[index + 1]
+        labels = _LABELS_RE.match(line)
+        status = _STATUS_RE.match(following)
+        if labels is None or status is None:
+            continue
+        if OFFLINE_ONLY_PHRASE not in status.group("status"):
+            continue
+        names = frozenset(
+            part.strip() for part in labels.group("labels").split(",") if part.strip()
+        )
+        if names:
+            found.add(names)
+    return tuple(sorted(found, key=sorted))
+
+
+def is_stale_fleet(
+    checks: Iterable[str],
+    failure_logs: Mapping[str, str | None] | None,
+    online_runner_labels: Sequence[Sequence[str]] | None,
+) -> bool:
+    """Every red check's log names offline-only label sets and an online runner carries each set whole.
+
+    An unread fleet (``online_runner_labels`` None), a check with no log, a log that names no offline-only
+    label set, and a label set no single online runner carries whole are all False: those reds keep their
+    existing class.
+    """
+    names = [str(c) for c in checks]
+    if not names or failure_logs is None or online_runner_labels is None:
+        return False
+    online = [frozenset(labels) for labels in online_runner_labels]
+    for name in names:
+        log = failure_logs.get(name)
+        if log is None:
+            return False
+        wanted = offline_only_label_sets(log)
+        if not wanted:
+            return False
+        if not all(any(w <= runner for runner in online) for w in wanted):
+            return False
+    return True
+
 
 def classify_red(
     red: Iterable[str],
@@ -40,6 +97,8 @@ def classify_red(
     edge_fired: bool = False,
     annotations: Mapping[str, str | None] | None = None,
     cancelled: Iterable[str] = (),
+    failure_logs: Mapping[str, str | None] | None = None,
+    online_runner_labels: Sequence[Sequence[str]] | None = None,
 ) -> str:
     """The ci-watch red class of one head, from its red check names and its runs."""
     names = [str(n) for n in red]
@@ -80,6 +139,8 @@ def classify_red(
         return "cascade"
     if edge_fired and any(is_cascade_check(n, runs, annotations) for n in real):
         return "cascade"
+    if is_stale_fleet(real, failure_logs, online_runner_labels):
+        return "stale_fleet"
     return "product"
 
 
@@ -96,10 +157,18 @@ class HandlerClassifyLandingRed:
                     edge_fired=request.edge_fired,
                     annotations=request.annotations,
                     cancelled=request.cancelled,
+                    failure_logs=request.failure_logs,
+                    online_runner_labels=request.online_runner_labels,
                 )
             ),
             worker_reds=tuple(n for n in request.red if not REVIEWER_POOL_RE.search(n)),
         )
 
 
-__all__: list[str] = ["HandlerClassifyLandingRed", "classify_red"]
+__all__: list[str] = [
+    "OFFLINE_ONLY_PHRASE",
+    "HandlerClassifyLandingRed",
+    "classify_red",
+    "is_stale_fleet",
+    "offline_only_label_sets",
+]

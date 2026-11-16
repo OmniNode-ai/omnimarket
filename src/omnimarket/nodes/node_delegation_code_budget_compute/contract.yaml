@@ -5,6 +5,7 @@
 # Pure compute: handle(ModelCodeBudgetRequest) -> ModelCodeBudgetResult. The caller reads the measured drafts; the budgets per task
 # class, the sizing margin, the rounding step, the ceiling and the sample floor travel on the request from the node's overlay
 # (overlays/node_delegation_code_budget_compute/overlay.yaml); this contract holds none.
+# The overlay may name an optional event_bus key (OMN-24265) that `onex run-node` reads to reach this node.
 name: node_delegation_code_budget_compute
 contract_name: node_delegation_code_budget_compute
 node_name: node_delegation_code_budget_compute

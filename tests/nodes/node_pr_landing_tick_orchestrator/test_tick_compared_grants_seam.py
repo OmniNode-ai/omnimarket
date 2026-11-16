@@ -65,6 +65,10 @@ RECORD_TOPIC = "onex.evt.omnimarket.pr-landing-tick-facts-recorded.v1"
 GRANTED_PRODUCE_TOPICS = (
     "onex.evt.omnimarket.pr-landing-tick-compared.v1",
     "onex.evt.omnimarket.pr-landing-tick-compare-failed.v1",
+    # OMN-23830: the rerun request's answers; the grant rows are declared in the overlays repository
+    # (broker_acls_mac_landing_tick) and the orchestrator applies them.
+    "onex.evt.omnimarket.pr-landing-rerun-completed.v1",
+    "onex.evt.omnimarket.pr-landing-rerun-failed.v1",
 )
 
 
@@ -165,7 +169,11 @@ def _recording_bus(monkeypatch: pytest.MonkeyPatch) -> _Recorder:
 
 def test_contract_publish_topics_are_exactly_the_granted_topics() -> None:
     contract = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
-    assert set(contract["event_bus"]["publish_topics"]) == set(GRANTED_PRODUCE_TOPICS)
+    # The request topic is listed only so boot provisioning creates it; the tick never produces on it.
+    provisioned_only = {"onex.cmd.omnimarket.pr-landing-rerun-requested.v1"}
+    assert set(contract["event_bus"]["publish_topics"]) == (
+        set(GRANTED_PRODUCE_TOPICS) | provisioned_only
+    )
 
 
 def test_bus_publisher_sends_compared_events_only_on_granted_topics(

@@ -1,0 +1,118 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeSeamCrossingNameCompute
+#
+# Names the class of one observed bus crossing at a seam, with no model call:
+#
+#   handle(ModelSeamCrossingNameRequest) -> ModelSeamCrossingNameVerdict
+#
+# Rule R first: a required declared field of the consumer's model (required and with no
+# default, the facts the field diff detector reads) absent from the crossing's top-level
+# keys names the crossing with the missing-required label. Then a deterministic key check:
+# a key the consumer's model does not declare names the crossing with the undeclared-key
+# label when the consumer's model forbids extra keys (a consumer that ignores them accepts
+# the key, so it is clean); otherwise the crossing is clean. A consumer with an adapter
+# (a before or wrap validator that may supply or reshape fields) is named all the same, and
+# each such name carries consumer_has_adapter true and is counted in adapter_advisory:
+# the detector skips those consumers, and a name resting on declared fields is advisory.
+# Measured by experiment exp-seampow-6803 (197 real cross-topic crossings from 7 days of
+# dev-bus traffic, hashed before any call): rule R plus this key check named 180 of 197
+# (0.914); rule R plus a local model scored 135 (examples) and 136 (zero-shot), a tie
+# (p=1.0); key check against the model, 45 against 0 discordant (p<0.0001). So no model
+# is called here and none is declared. The consumer's declared fields arrive as the
+# field diff detector's own ModelSeamModelSummary (node_seam_field_diff_compute), so the
+# detector and this node share one shape for the declared side.
+#
+# The label strings are config: the contract's `config.naming` is the packaged default
+# and an overlay (<root>/node_seam_crossing_name_compute/overlay.yaml, found through
+# ONEX_SKILL_OVERLAY_ROOTS) replaces it whole. A request may also carry its own naming.
+name: "node_seam_crossing_name_compute"
+contract_name: "node_seam_crossing_name_compute"
+node_name: "node_seam_crossing_name_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Pure seam crossing naming: rule R (a required declared field with no default is
+  absent from the crossing's keys) then a deterministic key check (a key the consumer
+  model does not declare, when the consumer forbids extra keys), per crossing, in
+  request order. No model, no I/O, no clock. Each name
+  carries the fields it rests on and which step decided it.
+input_model:
+  name: "ModelSeamCrossingNameRequest"
+  module: "omnimarket.models.seam_crossing_name.model_seam_crossing_name"
+  description: "Crossings (consumer declared fields plus observed top-level keys) and optional label overrides."
+output_model:
+  name: "ModelSeamCrossingNameVerdict"
+  module: "omnimarket.models.seam_crossing_name.model_seam_crossing_name"
+  description: "One name per crossing with its fields and deciding step, and the count per name."
+handler:
+  module: "omnimarket.nodes.node_seam_crossing_name_compute.handlers.handler_seam_crossing_name"
+  class: "HandlerSeamCrossingName"
+  input_model: "omnimarket.models.seam_crossing_name.model_seam_crossing_name.ModelSeamCrossingNameRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_seam_crossing_name_compute.handlers.handler_seam_crossing_name:HandlerSeamCrossingName"
+  handlers:
+    - operation: "name_seam_crossings"
+      handler:
+        name: "HandlerSeamCrossingName"
+        module: "omnimarket.nodes.node_seam_crossing_name_compute.handlers.handler_seam_crossing_name"
+terminal_event: "onex.evt.omnimarket.seam-crossing-name-completed.v1"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.seam-crossing-name-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.seam-crossing-name-completed.v1"
+    failure: "onex.evt.omnimarket.seam-crossing-name-failed.v1"
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnimarket.seam-crossing-name-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.seam-crossing-name-completed.v1"
+    - "onex.evt.omnimarket.seam-crossing-name-failed.v1"
+runtime_profiles:
+  - main
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+replay:
+  deterministic: true
+metadata:
+  description: "Rule R then a deterministic key check names the class of a seam crossing."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-14"
+  tags:
+    - compute
+    - seam-graph
+    - deterministic
+    - seam-crossing-name
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.seam-crossing-name-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.seam-crossing-name-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.seam-crossing-name-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.seam-crossing-name-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.seam-crossing-name-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.seam-crossing-name-failed.v1, operation: DESCRIBE}
+config:
+  naming:
+    missing_required: "missing_field"
+    undeclared_key: "unknown_field"
+    clean: "matches"

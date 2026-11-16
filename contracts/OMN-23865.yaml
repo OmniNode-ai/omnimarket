@@ -1,0 +1,105 @@
+schema_version: 1.0.0
+ticket_id: OMN-23865
+title: Each lab host reports its disk use by kind on the bus, kept in one stored table the board reads
+summary: node_lab_disk_watermark_effect measures the consumers of a host's disk by class (the lane package cache grouped by package and revision, docker images, build cache, volumes and exited containers, worktrees, lab-run folders) and publishes one host-disk-read event per run, or a typed host-disk-read-failed event; node_projection_host_disk keeps the newest reading per host and class. Every root, topic, tolerance and the interval is an overlay value; the reading file placement reads is unchanged.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- public_api
+requirements:
+- id: req-omn23865-reading
+  statement: A run publishes one typed host disk event with the volumes and the consumers by class, from overlay values only.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the reading publishes one typed event per host run carrying free and total bytes per declared volume and the consumers by class: lane package cache entries grouped by package and revision with size and last-use age, docker images, build cache, volumes and exited containers, worktrees, and lab-run folders -- falsifier: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_host_disk_reading_classes.py -q fails on dev, where the reading has no class breakdown and no bus event'
+  - id: AC2
+    statement: 'AC2: every host, volume, class root and the reading schedule come from overlays/node_lab_disk_watermark_effect/overlay.yaml in the overlays repository, and a class root missing from the overlay is a typed unread class, never a default path -- falsifier: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_host_disk_reading_overlay_only.py -q'
+- id: req-omn23865-projection
+  statement: The projection keeps the newest reading per host and class.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the projection keeps the newest reading per host and class with its read time, and the board''s disk card reads only that projection -- falsifier: uv run pytest tests/nodes/node_projection_host_disk/ -q plus a grep of the board''s disk card source for any host read other than the projection'
+- id: req-omn23865-control
+  statement: A reading that cannot be sound is a typed failure and the golden test reddens when the publish is dropped.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: failing control: a reading whose class sizes do not add up to the volume''s used bytes within the overlay tolerance, or whose publish fails, is a typed failure event, and an injected break that drops the publish turns the golden test red -- falsifier: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_host_disk_reading_control.py -q'
+  - id: AC5
+    statement: 'AC5: golden chain and error chain tests (requested, reading published, projection applied; and unreadable volume, publish refused) pass on the in-memory bus and on the real dev broker overlay -- falsifier: uv run pytest tests/chains/host_disk/test_chain_host_disk_reading.py -q with the in-memory and the dev broker overlays'
+- id: req-omn23865-integrated
+  statement: The reading runs on h202 and its projection row is read there.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: integrated: the reading is installed from the branch on h202 through the host installer with its rollback proven first, one scheduled run is observed publishing on the dev bus, and the projection row for h202 shows the lane package cache size and its revision count, receipt named in the lane''s TERMINAL -- falsifier: no projection row for h202 newer than the install time, or the installer log shows no rollback proof before the install'
+evidence_requirements:
+- kind: tests
+  description: The reading's classes, overlay-only, control, the projection and the golden and error chains (AC1 to AC5, in-memory half).
+  command: uv run pytest tests/nodes/node_lab_disk_watermark_effect tests/nodes/node_projection_host_disk tests/chains/host_disk -q -n 0 -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23865-ac1
+  description: AC1 is the class breakdown on the bus event.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_host_disk_reading_classes.py -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23865-ac2
+  description: 'AC2 is the overlay-only reading: unread classes, no path literal, interval from the overlay.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_host_disk_reading_overlay_only.py -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23865-ac3
+  description: AC3 is the projection's newest-wins rows. The board's disk card source is not in omnimarket; its grep is left for the board lanes (see the pull request).
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_host_disk/ -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23865-ac4
+  description: AC4 is the typed failures and the injected publish drop.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_host_disk_reading_control.py -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23865-ac5
+  description: AC5 in-memory half is the golden and error chains; the dev broker half needs HOST_DISK_CHAIN_LANE and HOST_DISK_CHAIN_ROOT and the broker ACL rows of the overlays repository applied.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/chains/host_disk/test_chain_host_disk_reading.py -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23865-ac6
+  description: 'AC6 install half, runnable in hosted CI: the install command refuses without a workspace root (the defect the h053 branch install found), so the rendered unit always names the workspace root. The h202 install, the rollback proof, the scheduled run on the dev bus and the projection row for h202 cannot run in hosted CI and are recorded in the lane''s TERMINAL; the local Done gate item below carries the reading run.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_lab_disk_watermark.py::test_install_without_workspace_root_is_refused_by_the_cli -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23865-integration-proof-reading-run
+  description: 'AC6 local Done gate: the node runs on a lab host''s runtime with the deployed overlay''s host row and prints the reading with the lane package cache''s revision count (dry run, nothing published). Measured on h053 on 2026-11-11: `onex run-node` refuses with ModelNodeBrokerResolutionError until the node''s event_bus overlay is declared in the runtime''s contract overlays, so this item is unmet until that declaration is installed; the unit''s own module run (python -m omnimarket.nodes.node_lab_disk_watermark_effect run --dry-run) printed the class breakdown. Hosted CI cannot read a lab host, so only the local Done gate runs this unbound item. The h202 install from the branch, the rollback proof, the scheduled run on the dev bus and the projection row for h202 are recorded in the lane''s TERMINAL and the pull request.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex run-node node_lab_disk_watermark_effect --input "{\"host_name\":\"h053\",\"overlay_file\":\"$HOST_DISK_PROOF_OVERLAY\",\"dry_run\":true}" | grep -F revision_count
+    cwd: .

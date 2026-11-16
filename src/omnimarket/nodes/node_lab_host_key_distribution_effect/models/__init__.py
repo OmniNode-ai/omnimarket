@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
+from .model_lab_host_declared_host_keys_install import (
+    ModelLabHostDeclaredHostKeysInstallRequest,
+)
 from .model_lab_host_key_distribution import (
     EnumPairStatus,
     ModelHostKeyMaterial,
@@ -26,6 +29,7 @@ __all__ = [
     "EnumPairStatus",
     "ModelHostInstallResult",
     "ModelHostKeyMaterial",
+    "ModelLabHostDeclaredHostKeysInstallRequest",
     "ModelLabHostKeyDistributionRequest",
     "ModelLabHostKeyDistributionResult",
     "ModelLabHostPublicKeysInstallRequest",

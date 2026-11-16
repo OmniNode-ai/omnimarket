@@ -8,9 +8,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
-    ModelPRInfo,
-)
+from omnimarket.models.merge_sweep.model_pr_info import ModelPRInfo
 
 
 class EnumPrHealthStatus(StrEnum):

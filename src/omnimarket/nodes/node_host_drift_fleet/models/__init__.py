@@ -11,6 +11,7 @@ from .model_host_drift_fleet_result import ModelHostDriftFleetResult
 from .model_host_drift_fleet_view import ModelHostDriftFleetView
 from .model_host_drift_heartbeat_event import ModelHostDriftHeartbeatEvent
 from .model_host_drift_open_item import ModelHostDriftOpenItem
+from .model_host_drift_parked_host import ModelHostDriftParkedHost
 from .model_host_drift_resolved_event import ModelHostDriftResolvedEvent
 
 __all__ = [
@@ -23,5 +24,6 @@ __all__ = [
     "ModelHostDriftFleetView",
     "ModelHostDriftHeartbeatEvent",
     "ModelHostDriftOpenItem",
+    "ModelHostDriftParkedHost",
     "ModelHostDriftResolvedEvent",
 ]

@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The integration pass's publication of the integration projection. A host names its own copy with ONEX_FLOOR_INTEGRATION_OVERLAY.
+# The in-memory bus is the default and publishes to no broker; the real backend is the broker the floor's projection reader names.
+bus: inmemory
+bus_lane: null
+kafka_bootstrap: null
+projection_id: integration

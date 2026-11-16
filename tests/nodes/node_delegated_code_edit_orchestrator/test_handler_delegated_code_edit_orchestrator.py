@@ -75,11 +75,14 @@ class FakePorts:
         files: dict[str, str] | None = None,
         check_passes: Sequence[bool] = (),
         check_output: str = "1 failed",
+        preexisting_diff: bool = False,
     ) -> None:
         self.turns = list(turns)
         self.files = dict(files or {"src/m.py": "def add(a, b):\n    return 0\n"})
         self.check_passes = list(check_passes)
         self.check_output = check_output
+        # A worktree that already differs from its base before any turn writes (OMN-23930).
+        self.preexisting_diff = preexisting_diff
         self.receipts: dict[str, dict[str, object]] = {}
         self.claimed: set[str] = set()
         self.archived: list[dict[str, object]] = []
@@ -174,7 +177,9 @@ class FakePorts:
         return self.turns.pop(0)
 
     def diff(self, request: ModelDelegatedCodeEditRequest) -> str:
-        changed = sorted(set(self.writes))
+        changed = sorted(set(self.writes)) or (
+            ["src/m.py"] if self.preexisting_diff else []
+        )
         return "".join(f"--- a/{p}\n+++ b/{p}\n@@\n" for p in changed)
 
     def score(
@@ -282,7 +287,7 @@ def test_write_outside_writable_globs_is_refused_and_nothing_is_written(
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
     assert ports.writes == []
     assert result.refusals == 1
-    assert result.status == EnumCodeEditStatus.BUDGET_EXHAUSTED
+    assert result.status == EnumCodeEditStatus.NO_CHANGE
 
 
 def test_edit_outside_writable_globs_is_refused() -> None:
@@ -304,8 +309,9 @@ def test_edit_outside_writable_globs_is_refused() -> None:
 def test_undeclared_check_is_refused_and_not_run() -> None:
     ports = FakePorts([_reply(1, _a("run_check", name="rm-rf"))])
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
-    # Only the turn-cap check round ran, never the undeclared name.
-    assert ports.checks_run == ["tests"]
+    # An empty diff ends no_change before any check round; the undeclared name never ran.
+    assert ports.checks_run == []
+    assert result.status == EnumCodeEditStatus.NO_CHANGE
     assert result.refusals == 1
 
 
@@ -313,7 +319,10 @@ def test_two_identical_failing_check_rounds_over_the_same_diff_stop_with_no_prog
     None
 ):
     finish = _a("finish", summary="done")
-    ports = FakePorts([_reply(1, finish), _reply(2, finish), _reply(3, finish)])
+    ports = FakePorts(
+        [_reply(1, finish), _reply(2, finish), _reply(3, finish)],
+        preexisting_diff=True,
+    )
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=6))
     assert result.status == EnumCodeEditStatus.NO_PROGRESS
     assert result.turns == 2
@@ -333,11 +342,11 @@ def test_a_changed_diff_between_failing_rounds_is_progress() -> None:
 
 
 def test_turn_cap_ends_budget_exhausted_unless_the_final_checks_pass() -> None:
-    ports = FakePorts([], check_passes=[False])
+    ports = FakePorts([], check_passes=[False], preexisting_diff=True)
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=3))
     assert result.status == EnumCodeEditStatus.BUDGET_EXHAUSTED
     assert result.turns == 3
-    ports = FakePorts([], check_passes=[True])
+    ports = FakePorts([], check_passes=[True], preexisting_diff=True)
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=3))
     assert result.status == EnumCodeEditStatus.ACCEPTED
 
@@ -427,14 +436,21 @@ def test_diff_and_score_exceptions_still_write_a_receipt(failed_port: str) -> No
                 raise RuntimeError("boom")
             return super().score(request, transcript)
 
-    ports = BrokenPorts([_reply(1, _a("finish"))], check_passes=[True])
+    ports = BrokenPorts(
+        [_reply(1, _a("finish"))], check_passes=[True], preexisting_diff=True
+    )
     request = _request()
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
-    assert result.status == EnumCodeEditStatus.ACCEPTED
+    # A diff that cannot be read while the loop runs is an infrastructure error, never an accepted edit.
+    assert result.status == (
+        EnumCodeEditStatus.INFRA_ERROR
+        if failed_port == "diff"
+        else EnumCodeEditStatus.ACCEPTED
+    )
     assert list(ports.receipts) == [request.correlation_id]
     receipt = ports.receipts[request.correlation_id]
     if failed_port == "diff":
-        assert result.detail == "diff failed: RuntimeError: boom"
+        assert result.detail == "unexpected RuntimeError: boom"
         assert receipt["diff"] == ""
     else:
         assert result.detail == ""
@@ -445,7 +461,9 @@ def test_an_unusable_reply_is_fed_back_not_terminal() -> None:
     bad = ModelTurnReply(
         run_id="run-1", ok=False, invalid_reason="not JSON", raw_text="hello"
     )
-    ports = FakePorts([bad, _reply(2, _a("finish"))], check_passes=[True])
+    ports = FakePorts(
+        [bad, _reply(2, _a("finish"))], check_passes=[True], preexisting_diff=True
+    )
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request())
     assert result.status == EnumCodeEditStatus.ACCEPTED
     assert "your reply was unusable: not JSON" in ports.prompts[1]
@@ -488,6 +506,7 @@ def test_transcript_records_every_action_as_a_tool_call() -> None:
             )
         ],
         check_passes=[True],
+        preexisting_diff=True,
     )
     HandlerDelegatedCodeEditOrchestrator(ports).run(_request())
     calls = ports.transcript["calls"]
@@ -715,6 +734,7 @@ def test_format_tool_runs_the_declared_formatter_over_a_writable_file() -> None:
     ports = FakePorts(
         [_reply(1, _a("format", file_path="src/m.py"), _a("finish", summary="s"))],
         check_passes=[True, True],
+        preexisting_diff=True,
     )
     request = _request(formatter=(("ruff", "format"),))
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
@@ -949,10 +969,12 @@ def test_resume_refusals_do_not_claim_or_write(case: str, reason: str) -> None:
     if case == "accepted":
         ports.turns = [_reply(1, _a("finish"))]
         ports.check_passes = [True]
+        ports.preexisting_diff = True
     elif case == "budget":
         request = _request(max_turns=2)
     elif case == "no_progress":
         ports.turns = [_reply(1, _a("finish")), _reply(2, _a("finish"))]
+        ports.preexisting_diff = True
     handler = HandlerDelegatedCodeEditOrchestrator(ports)
     if case != "missing":
         handler.run(request)
@@ -977,7 +999,7 @@ def test_budget_exhausted_resume_reason_names_turn_count() -> None:
     request = _request(max_turns=2)
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
     block = cast(dict[str, Any], ports.receipts[request.correlation_id]["resume"])
-    assert result.status == EnumCodeEditStatus.BUDGET_EXHAUSTED
+    assert result.status == EnumCodeEditStatus.NO_CHANGE
     assert not result.resumable
     assert block["resumable"] is False
     assert "2 turns used of 2" in block["reason"]
@@ -994,7 +1016,7 @@ def test_resume_turn_cap_spans_segments() -> None:
     assert handler.run(request).status == EnumCodeEditStatus.DELEGATE_FAILED
     ports.turns = [_reply(2, _a("ls")), _reply(3, _a("ls"))]
     result = handler.run(request, resume=True)
-    assert result.status == EnumCodeEditStatus.BUDGET_EXHAUSTED
+    assert result.status == EnumCodeEditStatus.NO_CHANGE
     assert ports.delegate_turns == [1, 2, 3, 2, 3]
     assert result.turns == 3
 
@@ -1047,7 +1069,8 @@ def test_repeated_resumes_carry_attempts_and_preserve_check_state() -> None:
             ),
             dead,
             dead,
-        ]
+        ],
+        preexisting_diff=True,
     )
     request = _request()
     handler = HandlerDelegatedCodeEditOrchestrator(ports)
@@ -1071,7 +1094,10 @@ def test_repeated_resumes_carry_attempts_and_preserve_check_state() -> None:
     assert second.local_tokens_in == second.local_tokens_out == 0
     assert second_block["history"] == prior_block["history"]
     assert second_block["last_failure_key"] == prior_block["last_failure_key"]
-    assert second_block["diff_sha256"] == ""
+    assert (
+        second_block["diff_sha256"]
+        == hashlib.sha256(ports.diff(request).encode()).hexdigest()
+    )
     assert second_block["last_good_turn"] == 1
     assert second_receipt["resumes"] == 1
     ports.turns = [_reply(2, _a("finish"))]

@@ -36,7 +36,7 @@ from omnimarket.nodes.node_delegation_scenario_r8_effect.handlers.adapter_r8_lan
 )
 
 
-def _load_topics(package: str) -> ModelScmTopics:
+def load_node_topics(package: str) -> ModelScmTopics:
     """The tenant node's dispatch topics, read from its contract like the ticket CLI reads its own."""
     contract = yaml.safe_load(
         resources.files(package).joinpath("contract.yaml").read_text()
@@ -45,6 +45,23 @@ def _load_topics(package: str) -> ModelScmTopics:
     return ModelScmTopics(
         command=dispatch["command_topic"], **dispatch["terminal_events"]
     )
+
+
+def failed_terminal_reason(payload: Mapping[str, Any]) -> str:
+    """The cause a failed tenant read terminal carries, whichever shape answered.
+
+    The tenant node answers with ``reason`` and ``detail``; the runtime's boundary failure terminal (a command that
+    reached no dispatcher, a handler that raised) answers with ``failure_code`` and ``failure_reason``. A failed
+    terminal that carries neither names the keys it did carry, so a cause is never reported as ``None``.
+    """
+    code = payload.get("reason") or payload.get("failure_code")
+    text = payload.get("detail") or payload.get("failure_reason")
+    if code and text:
+        return f"{code}: {text}"
+    if code or text:
+        return str(code or text)
+    keys = ", ".join(sorted(payload)) or "none"
+    return f"failed terminal carries no reason or failure code (payload keys: {keys})"
 
 
 def build_bus_request(
@@ -57,8 +74,8 @@ def build_bus_request(
 ) -> BusRequest:
     """The callable the lane injects: it opens the bus and publishes one tenant read command."""
     topics = {
-        EnumTenantReadKind.SAVINGS: _load_topics(savings_node),
-        EnumTenantReadKind.DELEGATIONS: _load_topics(delegations_node),
+        EnumTenantReadKind.SAVINGS: load_node_topics(savings_node),
+        EnumTenantReadKind.DELEGATIONS: load_node_topics(delegations_node),
     }
 
     def request(
@@ -96,8 +113,7 @@ def build_bus_request(
         payload = terminal.payload
         if terminal.failed:
             return ModelTenantReadAnswer(
-                completed=False,
-                reason=f"{payload.get('reason')}: {payload.get('detail')}",
+                completed=False, reason=failed_terminal_reason(payload)
             )
         body = payload.get("body")
         if not isinstance(body, dict):

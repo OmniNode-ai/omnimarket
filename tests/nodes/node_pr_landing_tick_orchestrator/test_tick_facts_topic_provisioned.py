@@ -50,8 +50,13 @@ def test_the_tick_orchestrator_declares_the_topic_as_consumed_and_wires_no_subsc
 ):
     contract = _contract(TICK_DIR)
 
-    assert {event["topic"] for event in contract["consumed_events"]} == {TOPIC}
+    request_topic = contract["rerun_request"]["command_topic"]
+    assert {event["topic"] for event in contract["consumed_events"]} == {
+        TOPIC,
+        request_topic,
+    }
     assert TOPIC not in contract["event_bus"]["subscribe_topics"]
+    assert request_topic not in contract["event_bus"]["subscribe_topics"]
     assert (
         TOPIC
         not in DirectionExtractor()

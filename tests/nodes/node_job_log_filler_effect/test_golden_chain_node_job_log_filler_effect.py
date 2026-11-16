@@ -104,6 +104,11 @@ def _plant_deployment(
                 "reply_tail_bytes": 4096,
                 "reply_timeout_seconds": 5,
                 "reprobe_seconds": 1800,
+                "red_facts_state_env": "PLANTED_STATE_DIR",
+                "red_facts_subdir": "red-facts",
+                "red_facts_tail_bytes": 65536,
+                "red_facts_max_lines": 12,
+                "red_facts_line_chars": 240,
                 "default_profile": "inmemory",
                 "profiles": {"inmemory": {"kind": "inmemory"}},
             }

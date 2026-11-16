@@ -1,0 +1,110 @@
+name: Bus checkout
+author: OmniNode
+description: >-
+  Checks out a repository at a sha WITHOUT contacting GitHub, by calling the
+  onex ci checkout CLI (the node_ci_checkout_effect node). Values are passed
+  through env and never interpolated into the script.
+inputs:
+  repository:
+    description: "owner/name of the repository to check out"
+    required: true
+  sha:
+    description: "40-hex commit sha to check out"
+    required: true
+  path:
+    description: "workspace-relative destination path"
+    required: true
+  ref:
+    description: "optional ref hint"
+    required: false
+  lane:
+    description: "the lane name the bus request carries"
+    required: true
+  host:
+    description: "the runner's own host name: the host whose clones serve the checkout"
+    required: true
+  bus:
+    description: "bus name, e.g. kafka"
+    required: true
+  bus-lane:
+    description: "bus lane identifier"
+    required: true
+  timeout-s:
+    description: "timeout in seconds"
+    required: true
+  onex-bin:
+    description: "the onex executable on the runner"
+    required: true
+outputs:
+  path:
+    description: "workspace-relative destination path where the repo was checked out"
+    value: "${{ inputs.path }}"
+runs:
+  using: composite
+  steps:
+    - name: Validate inputs and run onex ci checkout
+      shell: bash
+      env:
+        REPO: "${{ inputs.repository }}"
+        SHA: "${{ inputs.sha }}"
+        DEST_PATH: "${{ inputs.path }}"
+        REF: "${{ inputs.ref }}"
+        LANE: "${{ inputs.lane }}"
+        HOST: "${{ inputs.host }}"
+        BUS: "${{ inputs.bus }}"
+        BUS_LANE: "${{ inputs.bus-lane }}"
+        TIMEOUT_S: "${{ inputs.timeout-s }}"
+        ONEX_BIN: "${{ inputs.onex-bin }}"
+      run: |
+        set -euo pipefail
+        fail() {
+          local code="$1"
+          case "$code" in
+            1)  echo "::error:: onex ci checkout failed: exit 1 (not served)" ;;
+            69) echo "::error:: onex ci checkout failed: exit 69 (bus unavailable)" ;;
+            75) echo "::error:: onex ci checkout failed: exit 75 (no terminal)" ;;
+            *)  echo "::error:: onex ci checkout failed: exit $code" ;;
+          esac
+          exit "$code"
+        }
+        # repository: owner/name
+        if ! [[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+          echo "::error:: repository must be owner/name" >&2
+          exit 1
+        fi
+        # sha: 40 hex
+        if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+          echo "::error:: sha must be 40 hex characters" >&2
+          exit 1
+        fi
+        # path: workspace-relative, not absolute, no ..
+        if [[ "$DEST_PATH" == /* || "$DEST_PATH" == *..* ]]; then
+          echo "::error:: path must be workspace-relative and must not contain .." >&2
+          exit 1
+        fi
+        # lane charset
+        if ! [[ "$LANE" =~ ^[A-Za-z0-9_-]+$ ]]; then
+          echo "::error:: lane must match [A-Za-z0-9_-]+" >&2
+          exit 1
+        fi
+        # host charset
+        if ! [[ "$HOST" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+          echo "::error:: host must match [A-Za-z0-9_.-]+" >&2
+          exit 1
+        fi
+        # ref charset (only when provided)
+        if [[ -n "$REF" ]] && ! [[ "$REF" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+          echo "::error:: ref must match [A-Za-z0-9._/-]+" >&2
+          exit 1
+        fi
+        local_args=(ci checkout --repo "$REPO" --sha "$SHA" --dest "$GITHUB_WORKSPACE/$DEST_PATH" --lane "$LANE" --host "$HOST" --bus "$BUS" --bus-lane "$BUS_LANE" --timeout-s "$TIMEOUT_S")
+        if [[ -n "$REF" ]]; then
+          local_args+=(--ref "$REF")
+        fi
+        set +e
+        "$ONEX_BIN" "${local_args[@]}"
+        rc=$?
+        set -e
+        if [[ "$rc" -ne 0 ]]; then
+          fail "$rc"
+        fi

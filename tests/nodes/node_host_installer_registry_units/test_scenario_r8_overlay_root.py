@@ -8,17 +8,24 @@ root (the overlays canonical clone), may be given another root on install, and r
 
 from __future__ import annotations
 
+import pytest
+
 from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units import (
     load_units,
 )
 
 UNIT = "scenario-r8-systemd"
+#: R9 (OMN-24554) reads R8's overlay document for its control read, so its unit pins the same root.
+UNITS = (UNIT, "scenario-r9-systemd")
 ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
 
 
-def test_the_unit_declares_the_overlay_root_and_refuses_a_worktree_root() -> None:
-    spec = load_units()[UNIT]
-    assert spec["environment"][ROOTS_ENV] == "{registry_root}/overlays/overlays"
+@pytest.mark.parametrize("unit", UNITS)
+def test_the_unit_declares_the_overlay_root_and_refuses_a_worktree_root(
+    unit: str,
+) -> None:
+    spec = load_units()[unit]
+    assert spec["environment"][ROOTS_ENV] == "{overlays_root}"
     assert ROOTS_ENV in spec["environment_path_overrides"]
     assert ROOTS_ENV in spec["environment_refuse_worktree_paths"]
 

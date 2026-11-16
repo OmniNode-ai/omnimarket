@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Real profile: argv lists run as subprocesses, behind a host's transport prefix. Synthetic values;
+# the deployment's overlay lives at <root>/node_gpu_power_caps_effect/overlay.yaml under a root named
+# in ONEX_SKILL_OVERLAY_ROOTS. A host name matches its row in the lab host table.
+backend: subprocess
+caps_overlay_id: gpu_power_caps
+name_value_prefix: GPU_NAME_
+watts_value_prefix: WATTS_
+read_argv: [/usr/bin/nvidia-smi, "--query-gpu=index,name,power.limit,power.min_limit,power.max_limit", "--format=csv,noheader,nounits"]
+set_argv: [sudo, -n, /usr/bin/nvidia-smi, -i, "{index}", -pl, "{watts}"]
+read_timeout_seconds: 30
+set_timeout_seconds: 60
+hosts:
+  - name: example-remote-host
+    transport_prefix: [ssh, -o, BatchMode=yes, example-remote-host]
+    caps_unit: gpu-power-caps-example-remote-host

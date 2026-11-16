@@ -5,6 +5,8 @@
 bus: inmemory
 bus_lane: null
 kafka_bootstrap: null
+# The broker the snapshot is published on when it is not the read broker; null publishes on the read broker.
+snapshot_kafka_bootstrap: null
 read_window_s: 4.0
 projection_id: floor_emissions
 # onex-topic-allow: a projection snapshot topic has the projection's own name form.

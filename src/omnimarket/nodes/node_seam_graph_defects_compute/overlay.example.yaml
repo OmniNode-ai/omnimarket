@@ -1,0 +1,37 @@
+# Overlay of the seam graph defects compute (OMN-19998): <root>/node_seam_graph_defects_compute/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS. Every key is required; the real values live in the overlays repository.
+# A topic literal is a command topic only when it fully matches command_topic_pattern; a node name is a
+# replay subject when any replay_node_markers entry is one of its substrings.
+topic_pattern: '^onex\.(evt|cmd|intent|dlq|snapshot)\.[a-z0-9._-]+\.v\d+$'
+command_topic_pattern: '^onex\.cmd\.[a-z0-9._-]+\.v\d+$'
+first_n: 5
+repos:
+  - name: repo_a
+    package: omnimarket
+    source_dir: src/omnimarket
+    contract_glob: 'src/omnimarket/nodes/*/contract.yaml'
+    caller_scan_dirs:
+      - src
+      - tests
+    test_dirs:
+      - tests
+overlay_repo: overlays
+overlay_row_glob: 'overlays/{node}/overlay.yaml'
+scanned_extensions:
+  - '.py'
+  - '.yaml'
+excluded_dir_names:
+  - '.git'
+  - '.venv'
+  - 'node_modules'
+sync_io_markers:
+  - '\bopen\('
+  - '\bos\.'
+ledger_reader_markers:
+  - 'ledger'
+  - 'ledger_reader'
+replay_node_markers:
+  - 'projection'
+  - 'snapshot'
+shared_topic_min_consumers: 3
+catalog_file_node_threshold: 10

@@ -8,11 +8,12 @@ severity ordering, aggregate summary accuracy, and draft exclusion.
 
 from __future__ import annotations
 
-import pytest
+from pathlib import Path
 
-from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
-    ModelPRInfo,
-)
+import pytest
+import yaml
+
+from omnimarket.models.merge_sweep.model_pr_info import ModelPRInfo
 from omnimarket.nodes.node_pr_health_monitor.handlers.handler_pr_health_monitor import (
     HandlerPrHealthMonitor,
     _classify_pr,
@@ -299,3 +300,22 @@ class TestHandlerPrHealthMonitorGoldenChain:
         )
         assert result.summary.healthy == 1
         assert result.summary.stale_inactive == 0
+
+
+class TestHealthReportContractTopic:
+    """The node's declared output reaches the bus under the contract's topic."""
+
+    def test_terminal_event_is_a_published_topic(self) -> None:
+        contract_path = (
+            Path(__file__).resolve().parents[1]
+            / "src/omnimarket/nodes/node_pr_health_monitor/contract.yaml"
+        )
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        assert (
+            contract["terminal_event"]
+            == "onex.evt.omnimarket.pr-health-report-completed.v1"
+        )
+        assert (
+            "onex.evt.omnimarket.pr-health-report-completed.v1"
+            in contract["event_bus"]["publish_topics"]
+        )

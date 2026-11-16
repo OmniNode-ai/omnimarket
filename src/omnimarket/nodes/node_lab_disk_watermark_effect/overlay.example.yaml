@@ -8,3 +8,18 @@ hosts:
     admission_floor_gb: 10
     volumes:
       - {path: /, warn_percent: 80, page_percent: 90}
+    class_roots:
+      - {name: uv_cache, path: /var/lib/host-a/uv-cache, entries_subdir: archive-v0}
+      - {name: worktrees, path: /var/lib/host-a/worktrees}
+      - {name: lab_run, path: /var/lib/host-a/lab-run}
+    docker:
+      df_command: [docker, system, df, --format, "{{json .}}"]
+      exited_command: [docker, ps, -a, --filter, status=exited, --size, --format, "{{json .}}"]
+      timeout_seconds: 60
+reading:
+  tolerance_percent: 2
+  bus_lane: dev
+  read_topic: onex.evt.omnimarket.host-disk-read.v1
+  failed_topic: onex.evt.omnimarket.host-disk-read-failed.v1
+  max_groups_per_class: 200
+  interval_seconds: 300

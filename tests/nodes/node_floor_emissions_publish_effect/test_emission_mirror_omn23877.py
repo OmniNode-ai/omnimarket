@@ -117,6 +117,59 @@ def test_error_chain_a_mirror_that_fails_never_costs_the_journal_write(
     ]
 
 
+def test_error_chain_a_refused_copy_writes_one_line_naming_the_error_once(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    class Refused:
+        def publish(self, event: ModelNodeEmission) -> None:
+            raise PermissionError("TopicAuthorizationFailedError")
+
+    sink = JsonlEmissionSink(tmp_path / "e.jsonl", Refused())
+    write_chain(sink, "real", "c1")
+    assert sink.mirror_failures == 2
+    lines = [line for line in capsys.readouterr().err.splitlines() if line]
+    assert len(lines) == 1
+    assert "emission mirror refused" in lines[0]
+    assert "PermissionError" in lines[0]
+    assert "TopicAuthorizationFailedError" in lines[0]
+    assert [e.phase for e in sink.read(NOW - timedelta(days=1))] == [
+        "start",
+        "success",
+    ]
+
+
+def test_error_chain_the_bus_mirror_names_the_topic_it_was_refused_on(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    class RefusingBus:
+        async def publish(self, topic: str, key: bytes, value: bytes) -> None:
+            raise PermissionError("TopicAuthorizationFailedError")
+
+    @contextlib.asynccontextmanager
+    async def open_bus() -> AsyncIterator[Any]:
+        yield RefusingBus()
+
+    sink = JsonlEmissionSink(tmp_path / "e.jsonl", BusEmissionMirror(MIRROR, open_bus))
+    write_chain(sink, "real", "c1")
+    lines = [line for line in capsys.readouterr().err.splitlines() if line]
+    assert len(lines) == 2
+    assert MIRROR.topic_start in lines[0]
+    assert MIRROR.topic_success in lines[1]
+    assert all("PermissionError" in line for line in lines)
+    assert [e.phase for e in sink.read(NOW - timedelta(days=1))] == [
+        "start",
+        "success",
+    ]
+
+
+def test_control_a_working_mirror_writes_no_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sink = JsonlEmissionSink(tmp_path / "e.jsonl", InMemoryEmissionMirror(MIRROR))
+    write_chain(sink, "real", "c1")
+    assert capsys.readouterr().err == ""
+
+
 def test_error_chain_a_host_with_no_overlay_mirrors_nothing_and_says_so(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

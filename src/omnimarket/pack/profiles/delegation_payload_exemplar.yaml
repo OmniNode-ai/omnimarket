@@ -1,0 +1,23 @@
+# Context profile for the code-eval exemplar arm (OMN-23629, eval plan section 13.4 task E4).
+# The exemplar factor only: one worked example of the task's lane kind from the exemplar tier, and
+# nothing else, so an eval can set it beside the task alone and beside the full delegation_payload_local
+# pack. Inline behind the bus like delegation_payload_local. Nothing is required, so a source outage
+# never blocks a delegation; the arm selector (node_code_eval_context_arm_compute) decides whether the
+# answer satisfies the arm. The 8000 budget is a ceiling: the selector lowers it per request to what
+# the routed backend has room for. The window data is delegation_payload_local's, unchanged.
+model_id: delegation-local-backend
+profile_version: 1.0.0
+binding_kind: inline
+required_factors: []
+optional_factors:
+  - exemplar
+factor_precedence:
+  - exemplar
+stable_factors:
+  - exemplar
+scopes:
+  - delegation
+token_budget: 8000
+context_window_tokens: 32000
+reserved_output_tokens: 4096
+reserved_system_tokens: 4000

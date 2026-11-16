@@ -1,0 +1,83 @@
+schema_version: 1.0.0
+ticket_id: OMN-24478
+title: Standing rulings register read against the running system
+summary: A register of standing design and decision rulings, each with a read of the running system, judged by a compute node, taken by an effect node and printed by the hourly throughput tick as MISSING ruling-not-running lines.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24478-ruling-register
+  statement: A design or decision ruling can never again be recorded with nothing reading the running system against it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the ruling register compute node judges each overlay row TRUE, FALSE or UNREAD from its read and a FALSE or UNREAD row yields one MISSING ruling-not-running line naming its owner or none -- falsifier: pytest tests/unit/nodes/node_ruling_register_compute -q fails when the judge treats an unread row as true'
+  - id: AC2
+    statement: 'AC2: the ruling register effect takes each row''s read through an injected port, in memory by default and a command route as the real backend, and a read that cannot run is UNREAD, never TRUE -- falsifier: pytest tests/unit/nodes/node_ruling_register_effect -q fails when a refused read is returned as true'
+  - id: AC3
+    statement: 'AC3: the throughput tick decision prints the MISSING ruling-not-running lines for the register''s FALSE and UNREAD rows and exits non-zero -- falsifier: pytest tests/unit/nodes/node_throughput_tick_decision_compute -k ruling -q fails without the tick change'
+  - id: AC4
+    statement: 'AC4: the overlay carries eight seed rulings each with a real read -- falsifier: pytest tests/test_ruling_register_overlay.py -q in the overlays repository fails when a row has no read or an owner shape is wrong'
+  - id: AC5
+    statement: 'AC5: integrated: the Mac tick run on the branch prints a MISSING ruling-not-running line or a clean register reading for each of the eight rows, with the reads taken on the development host -- falsifier: the tick output read on the running Mac tick names fewer than eight rows'
+evidence_requirements:
+- kind: tests
+  description: The nodes' tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_ruling_register_compute tests/unit/nodes/node_ruling_register_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24478-ac1
+  description: Golden chain, every judge kind, the UNREAD rules and the failing control that an unread row is never true.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24478-ac2
+  description: Golden and error chain events of the effect, the command route and the failing control that a refused read is never true.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24478-ac3
+  description: The tick prints a MISSING ruling-not-running line for each FALSE or UNREAD row and none for a TRUE row; the seam test holds the effect line and the tick line equal.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_throughput_tick_decision_compute -k ruling -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24478-ac4
+  description: The register overlay shape loads through the pinned model; the real rows live in the overlays repository and its test holds eight rows each with a read.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_compute tests/unit/nodes/node_ruling_register_effect tests/unit/nodes/node_throughput_tick_decision_compute -k 'ruling or overlay' -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24478-ac5
+  description: The tests behind the integrated reading pass; the live reading on the Mac tick with reads on h201 is recorded in the Lab line and a comment once the installed tick runs.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect tests/unit/nodes/node_throughput_tick_decision_compute -k 'ruling or seam' -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24478-integration-proof
+  description: Run the node tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24478 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_ruling_register_compute tests/unit/nodes/node_ruling_register_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .

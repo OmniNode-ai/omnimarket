@@ -83,9 +83,7 @@ def test_the_contract_declares_the_daily_pilot_run_on_systemd() -> None:
     assert unit["tick_no_sync"] is True
     assert unit["module"] == MODULE
     assert unit["entry_file"] == ENTRY
-    assert unit["environment"]["ONEX_SKILL_OVERLAY_ROOTS"] == (
-        "{registry_root}/overlays/overlays"
-    )
+    assert unit["environment"]["ONEX_SKILL_OVERLAY_ROOTS"] == ("{overlays_root}")
     assert unit["environment"]["ONEX_STATE_DIR"] == "{registry_root}/.onex_state"
     node_dir = base.ROOT / "src/omnimarket/nodes/node_host_installer_registry_units"
     assert (node_dir / str(unit["template"])).is_file()

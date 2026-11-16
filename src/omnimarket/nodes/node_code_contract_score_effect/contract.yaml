@@ -4,6 +4,7 @@
 # Every value (timeouts, runnable check types, protected paths, environment sync command, scratch and clone roots)
 # travels on the request from the node's overlay (overlays/node_code_contract_score_effect/overlay.yaml; plan keys
 # code_eval.score.* and code_eval.protected_paths.<repo>); this contract holds none.
+# The overlay may name an optional event_bus key (OMN-24265) that `onex run-node` reads to reach this node.
 name: node_code_contract_score_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: EFFECT_GENERIC
@@ -45,6 +46,8 @@ operations:
     description: "bash -c <check command> in the scratch worktree under the overlay's per-check limit."
     transport: process
 
+# terminal_event (OMN-24334): the answer onex run-node waits for; the failure answer stays under runtime_dispatch.terminal_events.failure.
+terminal_event: onex.evt.omnimarket.code-contract-scored.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.code-contract-score-requested.v1
   terminal_events:

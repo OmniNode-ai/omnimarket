@@ -24,6 +24,12 @@ from omnibase_core.enums.enum_context_pack_provenance import (
 from pydantic import ValidationError
 
 from omnimarket.events.context_roi import EnumFailureStage
+from omnimarket.models.model_factor_arm import (
+    EnumArmLabel,
+)
+from omnimarket.models.model_factor_matrix import (
+    build_canonical_factor_matrix,
+)
 from omnimarket.nodes.node_context_artifact_resolver_compute.handlers.handler_artifact_resolver import (
     HandlerArtifactResolver,
 )
@@ -38,12 +44,6 @@ from omnimarket.nodes.node_context_artifact_resolver_compute.models.model_artifa
 )
 from omnimarket.nodes.node_context_pack_builder_compute.handlers.handler_context_pack_builder import (
     HandlerContextPackBuilder,
-)
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_arm import (
-    EnumArmLabel,
-)
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_matrix import (
-    build_canonical_factor_matrix,
 )
 from omnimarket.nodes.node_context_roi_runner.handlers.handler_context_roi_runner import (
     HandlerContextRoiRunner,

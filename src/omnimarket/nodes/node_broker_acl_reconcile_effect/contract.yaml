@@ -14,6 +14,9 @@ broker_acl_reconcile:
   reconcile_command_env: ONEX_ACL_RECONCILE_COMMAND
   ssh_target_env: ONEX_LAB_BROKER_SSH_TARGET
   timeout_seconds: 300
+  # The overlay scope naming which login runs which node (node_broker_acl_overlay_render_compute derives its rows from
+  # the contracts' topics). Absent overlay: nothing is derived and only declared rows apply.
+  derive_principals_scope: broker_acl_principals
 # The rows. DELETE on GROUP resources only, one PREFIXED row per reapable family of the
 # consumer-group guard contract (node_consumer_group_guard_effect, reap.reapable_patterns).
 # Four of the ten rows are also declared in the lab broker's own declaration and are

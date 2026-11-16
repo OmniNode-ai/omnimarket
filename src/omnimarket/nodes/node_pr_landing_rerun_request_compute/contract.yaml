@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodePrLandingRerunRequestCompute
+#
+# One rerun request answered from the landing tick's facts as a pure definition-B compute (OMN-23830):
+#
+#   handle(ModelRerunDecideInput) -> ModelLandingRerunAnswer
+#
+# The rules, in the order one request meets them: the pull request is not open or its head moved
+# (head_moved), the job is not among the tick's failed checks (job_not_failed), a re-run of this job on
+# this head was granted already (duplicate), the head's granted re-runs reached the per-head limit the
+# landing tick's overlay declares (limit_reached), otherwise rerun. No clock, no I/O, no model.
+# The landing tick orchestrator calls it in process for each request it reads; the re-run itself goes out
+# through node_pr_landing_github_effect and nothing here sends it.
+name: "node_pr_landing_rerun_request_compute"
+contract_name: "node_pr_landing_rerun_request_compute"
+node_name: "node_pr_landing_rerun_request_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure definition-B decision of one rerun request: the verdict (rerun, duplicate, limit_reached,
+  head_moved or job_not_failed) with the requester, the reason, the re-runs already granted on the head
+  and the limit. Deterministic; the limit is an input read from the landing overlay, never a code value.
+input_model:
+  name: "ModelRerunDecideInput"
+  module: "omnimarket.models.pr_landing_rerun_request.model_rerun_decide_input"
+  description: "The request, the tick's facts for its pull request, the grants so far and the per-head limit."
+output_model:
+  name: "ModelLandingRerunAnswer"
+  module: "omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer"
+  description: "The typed answer."
+handler:
+  module: "omnimarket.nodes.node_pr_landing_rerun_request_compute.handlers.handler_pr_landing_rerun_request"
+  class: "HandlerPrLandingRerunRequest"
+  input_model: "omnimarket.models.pr_landing_rerun_request.model_rerun_decide_input.ModelRerunDecideInput"
+  output_model: "omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer.ModelLandingRerunAnswer"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_pr_landing_rerun_request_compute.handlers.handler_pr_landing_rerun_request:HandlerPrLandingRerunRequest"
+  handlers:
+    - operation: "decide_rerun_request"
+      handler:
+        name: "HandlerPrLandingRerunRequest"
+        module: "omnimarket.nodes.node_pr_landing_rerun_request_compute.handlers.handler_pr_landing_rerun_request"
+# Addressable the way the other directly-invoked compute nodes are; the landing tick orchestrator calls the
+# handler in process and nothing publishes the command yet.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.pr-landing-rerun-decision-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.pr-landing-rerun-decision-completed.v1"
+    failure: "onex.evt.omnimarket.pr-landing-rerun-decision-failed.v1"
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnimarket.pr-landing-rerun-decision-requested.v1"
+  publish_topics: []
+runtime_profiles:
+  - main
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+replay:
+  deterministic: true
+metadata:
+  description: "Pure decision of one rerun request."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-11"
+  tags:
+    - compute
+    - pr-landing
+    - rerun-request
+    - pure
+  related_tickets:
+    - OMN-23830
