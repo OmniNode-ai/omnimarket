@@ -36,6 +36,43 @@ METERING_COLUMNS = (
 #: column existed holds no run handed back to its caller.
 METERING_CAUSE_COLUMN = "terminal_failure_cause"
 RETURNED_TO_CALLER = "returned_to_caller"
+#: OMN-24615 AC1: the run's provider usage over its calls, where the reader has
+#: it. Any value but "measured", a missing call record included, means the
+#: tokens were not measured, so the run is counted as unknown tokens.
+METERING_USAGE_COLUMN = "call_usage_source"
+
+
+#: Whether a SQLite store has the call table at all.
+METERING_CALLS_PRESENT = "SELECT 1 FROM sqlite_master WHERE name = 'llm_call_metrics'"
+# Each run's provider usage over all its calls, the rule the savings view
+# applies: measured only when every call was.
+_CALL_USAGE = (
+    "SELECT correlation_id, CASE WHEN SUM(CASE WHEN usage_source IN "
+    "('measured', 'estimated') THEN 0 ELSE 1 END) > 0 THEN 'unknown' "
+    "WHEN SUM(CASE WHEN usage_source = 'measured' THEN 1 ELSE 0 END) = COUNT(*) "
+    "THEN 'measured' ELSE 'estimated' END AS usage_source "
+    "FROM llm_call_metrics GROUP BY correlation_id"
+)
+
+
+def metering_events_select(columns: tuple[str, ...], with_call_usage: bool) -> str:
+    """The SQLite read of delegation_events, with each run's call usage if asked.
+
+    OMN-24615 AC1: with ``with_call_usage`` each row also carries
+    METERING_USAGE_COLUMN, NULL for a run with no call record. A store that has
+    recorded no call at all holds no usage evidence, so every run reads as
+    measured there and keeps its recorded tokens (the table exists on every
+    store the adapter opens).
+    """
+    if not with_call_usage:
+        return f"SELECT {', '.join(columns)} FROM delegation_events"
+    named = ", ".join(f"events.{c} AS {c}" for c in columns)
+    return (
+        f"SELECT {named}, CASE WHEN NOT EXISTS (SELECT 1 FROM llm_call_metrics) "
+        f"THEN 'measured' ELSE call_usage.usage_source END AS {METERING_USAGE_COLUMN} "
+        f"FROM delegation_events AS events LEFT JOIN ({_CALL_USAGE}) AS call_usage "
+        "ON call_usage.correlation_id = events.correlation_id"
+    )
 
 
 def normalise_occurred_at(raw: object) -> datetime | None:
@@ -93,7 +130,9 @@ def metering_record_from_row(row: Mapping[str, Any]) -> ModelMeteringRecord | No
     # Both zero is the table default, not a measurement. See the reader's
     # module docstring: a completed delegation consuming no tokens in either
     # direction does not happen; an unpopulated pair of columns does.
-    unrecorded_tokens = tokens_in == 0 and tokens_out == 0
+    unrecorded_tokens = (tokens_in == 0 and tokens_out == 0) or (
+        METERING_USAGE_COLUMN in row and row[METERING_USAGE_COLUMN] != "measured"
+    )
 
     return ModelMeteringRecord(
         correlation_id=str(row["correlation_id"]),
@@ -111,9 +150,12 @@ def metering_record_from_row(row: Mapping[str, Any]) -> ModelMeteringRecord | No
 
 
 __all__ = [
+    "METERING_CALLS_PRESENT",
     "METERING_CAUSE_COLUMN",
     "METERING_COLUMNS",
+    "METERING_USAGE_COLUMN",
     "RETURNED_TO_CALLER",
+    "metering_events_select",
     "metering_record_from_row",
     "normalise_occurred_at",
 ]
