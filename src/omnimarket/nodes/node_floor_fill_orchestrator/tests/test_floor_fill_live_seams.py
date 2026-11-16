@@ -4,7 +4,7 @@
 
 The entry accepts the live profile (the dsn gate runs before any seam is bound). With the four seams
 (pool, tickets, brake, stop) all bound, a live tick ends OK. Each seam left unbound makes the pass fail
-closed and name the seam: ``pool-unread:unbound:pool``, ``brake-unread:unbound:brake``,
+closed and name the seam: ``pool-unread:pool-snapshot:...`` (a pool not injected is the pool snapshot), ``brake-unread:unbound:brake``,
 ``stop-signal-unread:unbound:stop-signal``, and the tickets seam answers ``unbound:tickets``. The unbound
 mint answers ``unavailable``. A record that the reader lane extends with a ``needs`` cell still reads,
 because the record model ignores unknown cells.
@@ -129,11 +129,11 @@ def test_live_profile_all_seams_bound_tick_is_ok(tmp_path: Path) -> None:
     assert "unbound" not in out
 
 
-def test_seam_pool_refuses_by_name_when_unbound(tmp_path: Path) -> None:
-    """An unbound pool refuses by name, degrades the pass, and starts nothing."""
+def test_seam_pool_refuses_by_name_when_its_snapshot_is_missing(tmp_path: Path) -> None:
+    """A pool not injected is the pool snapshot; with no snapshot record it refuses by name, degrades, starts nothing."""
     bindings = {k: v for k, v in all_bound().items() if k != "pool"}
     out, code, store = tick_with(tmp_path, record_text=_fresh_record(), **bindings)
-    assert "pool-unread:unbound:pool" in out
+    assert "pool-unread:pool-snapshot:snapshot record missing" in out
     assert code == DEGRADED
     assert store.load(OVERLAY["scope"]).version == 0
 
