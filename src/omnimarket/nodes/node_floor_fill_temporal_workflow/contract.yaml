@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_floor_fill_temporal_workflow
+lifecycle: experimental
+node_type: ORCHESTRATOR_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Workflow 2: the floor fill on a Temporal Schedule. The Schedule fires every 5 minutes with overlap policy SKIP and
+  starts one workflow whose steps are one activity that runs a node command each: read free lab Claude slots and
+  unowned work through the fill node's own read, run the floor fill node once through its declared one-run command,
+  read back from the ledger that each lane it placed wrote its CLAIM within 10 minutes, and write an alarm row through
+  the ledger CLI when free slots stay above 5 and the fill placed 0 lanes for 2 runs in a row, or when a placed lane
+  never claims. The workflow body orders the steps and owns the durable claim wait; it holds no fill logic.
+input_model:
+  name: ModelFloorFillAlarmRequest
+  module: omnimarket.nodes.node_floor_fill_temporal_workflow.models.model_floor_fill_temporal
+  description: One scheduled run's pool, fill and claim readings, the streak carried from the last run, and the row cells.
+output_model:
+  name: ModelFloorFillAlarmDecision
+  module: omnimarket.nodes.node_floor_fill_temporal_workflow.models.model_floor_fill_temporal
+  description: The zero-placement streak after this run, the alarms raised and the alarm rows to append.
+handler:
+  module: omnimarket.nodes.node_floor_fill_temporal_workflow.handlers.handler_floor_fill_alarm_rule
+  class: HandlerFloorFillAlarmRule
+  input_model: omnimarket.nodes.node_floor_fill_temporal_workflow.models.model_floor_fill_temporal.ModelFloorFillAlarmRequest
+  output_model: omnimarket.nodes.node_floor_fill_temporal_workflow.models.model_floor_fill_temporal.ModelFloorFillAlarmDecision
+dependencies:
+  - name: omnimarket.nodes.node_floor_fill_orchestrator
+    dependency_type: internal
+    description: "run_fill and read_pool call its declared one-run command and pool read (fill_one_run_argv, pool_read_argv below); no fill logic lives here."
+    required: true
+  - name: temporalio
+    dependency_type: library
+    description: "the workflow, the activity, the worker and the Schedule (the optional extra temporal)."
+    required: true
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_floor_fill_temporal_workflow.handlers.handler_floor_fill_alarm_rule:HandlerFloorFillAlarmRule
+  handlers:
+    - operation: handle
+      handler:
+        name: HandlerFloorFillAlarmRule
+        module: omnimarket.nodes.node_floor_fill_temporal_workflow.handlers.handler_floor_fill_alarm_rule
+    - operation: read_claims
+      handler:
+        name: HandlerFloorFillClaimRead
+        module: omnimarket.nodes.node_floor_fill_temporal_workflow.handlers.handler_floor_fill_claim_read
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: >-
+    python -m omnimarket.nodes.node_floor_fill_temporal_workflow worker --target-host <host:port> runs the worker; python -m omnimarket.nodes.node_floor_fill_temporal_workflow schedule create --target-host
+    <host:port> creates the Schedule (describe and delete read and remove it). The server is the Temporal server a
+    host install brings up; this node never starts it.
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 600000
+metadata:
+  transport_type: local
+  description: Run the floor fill on a Temporal Schedule and alarm when it stops placing lanes or a placed lane never claims.
+  author: OmniNode Team
+  created: '2026-11-16'
+# The declared settings of workflow 2. Every step argv names a node command; {python} is the worker's interpreter.
+floor_fill_schedule:
+  schedule_id: onex-floor-fill
+  task_queue: onex-floor-fill
+  every_seconds: 300
+  overlap: skip
+  lane: floor-fill-schedule
+  ticket: OMN-24927
+  claim_poll_seconds: 60
+  step_timeout_seconds: 600
+  step_max_attempts: 3
+  rule:
+    free_slots_above: 5
+    zero_runs: 2
+    claim_window_seconds: 600
+  steps:
+    read_pool: ["{python}", "-m", "omnimarket.nodes.node_floor_fill_temporal_workflow", "read-pool"]
+    run_fill: ["{python}", "-m", "omnimarket.nodes.node_floor_fill_temporal_workflow", "run-fill"]
+    read_claims: ["{python}", "-m", "omnimarket.nodes.node_floor_fill_temporal_workflow", "read-claims"]
+    write_alarm: ["{python}", "-m", "omnimarket.nodes.node_floor_fill_temporal_workflow", "write-alarm"]
+  # The fill node's own one-run command and pool read, as its owner declares them. Empty until declared: the step
+  # then refuses (exit 3) and names the key, so the workflow never runs a substitute fill.
+  fill_one_run_argv: []
+  pool_read_argv: []

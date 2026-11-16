@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_floor_fill_temporal_workflow
+version: "1.0.0"
+description: Workflow 2, the floor fill on a Temporal Schedule every 5 minutes (overlap skip), every step one of our nodes
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_floor_fill_temporal_workflow: omnimarket.nodes.node_floor_fill_temporal_workflow
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: external_write
+dependencies:
+  - pydantic>=2.11.0
+  - pyyaml
+  - temporalio>=1.35.0,<2.0.0
+authors: [OmniNode Team]
+license: MIT
+tags: [orchestrator, temporal, schedule, floor-fill]
+node_role: orchestrator
+pack: "routing"
+display_name: "Floor Fill Temporal Workflow"
