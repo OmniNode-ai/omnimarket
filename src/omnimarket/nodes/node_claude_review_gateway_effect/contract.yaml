@@ -89,6 +89,13 @@ config:
     system_ttl: "1h"
     diff_ttl: "5m"
     max_breakpoints: 4
+  # OMN-24658: the key-state events a refused or unreachable topic defers are held one per key
+  # (the newest state wins, older ones are counted as dropped). A request waits at most
+  # wait_seconds for the bus; after a wait that ran out, no request waits on the bus again for
+  # backoff_seconds. The queue depth and drop count are on the gateway's key-events route.
+  key_event_publish:
+    wait_seconds: 2.0
+    backoff_seconds: 30.0
 
 configuration:
   overlay_id: claude_review_gateway

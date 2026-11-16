@@ -27,13 +27,30 @@ from omnimarket.projection.credential_publisher import LAB_HOST_NAME_PATTERN
 
 
 class ModelReviewGatewayOverlay(BaseModel):
-    """Required deployment policy; no process-lifetime or numeric fallback."""
+    """Required deployment policy; no process-lifetime or numeric fallback.
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    The host's one gateway policy file also carries the privacy list that
+    ``review-gateway --privacy-overlay`` reads, so keys that are not this
+    model's are ignored here; the TTL itself stays required and strict.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
 
     key_set_aside_ttl_seconds: Annotated[
         float, Field(gt=0, allow_inf_nan=False, strict=True)
     ]
+
+
+class ModelReviewGatewayKeyEventPolicy(BaseModel):
+    """The declared bound on the key-state publication a request may wait for.
+
+    Read from the node contract (``config.key_event_publish``), never defaulted.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    wait_seconds: Annotated[float, Field(gt=0, allow_inf_nan=False, strict=True)]
+    backoff_seconds: Annotated[float, Field(gt=0, allow_inf_nan=False, strict=True)]
 
 
 class ModelReviewGatewaySetAside(BaseModel):

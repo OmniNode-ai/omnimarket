@@ -1251,7 +1251,7 @@ def review_gateway_key_probe(
     state_dir: Path,
     ledger: Path,
 ) -> None:
-    """Probe each review key bound to this host with one token; ledger a credit flip (OMN-24562)."""
+    """Probe each review key bound to this host with one token; ledger a credit flip (OMN-24658)."""
     from omnimarket.handlers.handler_review_key_credit_probe import (
         PROBE_PAYLOAD,
         record,
@@ -1277,21 +1277,26 @@ def review_gateway_key_probe(
             "the provider catalogue offers no anthropic api_native backend."
         )
     store = _tenant_key_store()
-    gateway = ClaudeReviewGateway(
-        ModelClaudeReviewGatewayRequest(
-            host=bound_host,
-            tenant_id=tenant,
-            model=model_option,
-            cloud_refused_repositories=("none",),
-        ),
-        catalog=SqliteDatabaseAdapter(store.db_path),
-        key_values=store,
-        call=HandlerLlmDelegationCall(),
-        endpoint_url=backend.endpoint_url,
-        overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=1),
-        event_bus=None,
-    )
+    try:
+        gateway = ClaudeReviewGateway(
+            ModelClaudeReviewGatewayRequest(
+                host=bound_host,
+                tenant_id=tenant,
+                model=model_option,
+                cloud_refused_repositories=("none",),
+            ),
+            catalog=SqliteDatabaseAdapter(store.db_path),
+            key_values=store,
+            call=HandlerLlmDelegationCall(),
+            endpoint_url=backend.endpoint_url,
+            overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=1),
+            event_bus=None,
+        )
+    except (ValidationError, ValueError) as exc:
+        raise click.ClickException(f"review-gateway-key-probe refused: {exc}") from None
     states = asyncio.run(gateway.probe_keys(PROBE_PAYLOAD))
+    for name, state in states:
+        click.echo(f"review-key-probe: {name} {state}")
     try:
         changed = record(
             states,
@@ -1302,8 +1307,6 @@ def review_gateway_key_probe(
         )
     except RuntimeError as exc:
         raise click.ClickException(str(exc)) from None
-    for name, state in states:
-        click.echo(f"review-key-probe: {name} {state}")
     click.echo(f"review-key-probe: {len(changed)} flip(s) written")
 
 

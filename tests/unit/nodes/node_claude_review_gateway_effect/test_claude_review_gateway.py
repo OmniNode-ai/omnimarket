@@ -1156,7 +1156,8 @@ async def test_only_one_concurrent_request_claims_an_expired_key() -> None:
         await asyncio.wait_for(entered_retry.wait(), timeout=5)
         second = asyncio.create_task(gateway.complete(_PAYLOAD))
         await asyncio.sleep(0)
-        assert not second.done()
+        # OMN-24658: the second request does not queue behind the publication in flight; it
+        # finds the key reserved by the first and makes no upstream call of its own.
         assert len(call.calls) == 1
     finally:
         release_retry.set()
@@ -1215,7 +1216,7 @@ async def test_failed_bus_publication_defers_the_event_and_never_fails_the_revie
     )
     secret = _value(str(_row("key-a")["api_key_ref"]))
     if failed_transition == "set_aside":
-        # OMN-24562: the refused key is skipped and the refused publication is
+        # OMN-24658: the refused key is skipped and the refused publication is
         # deferred; neither turns into a dependency failure.
         status, reply = await gateway.complete(_PAYLOAD)
         assert status == 503
