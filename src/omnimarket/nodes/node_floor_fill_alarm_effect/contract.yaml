@@ -8,11 +8,13 @@ description: >
   The floor fill's scheduled alarm check (OMN-24873). One check reads the fill's runs (its stored answers, kept as a
   run history), the lanes it started with the CLAIM time of each from the ledger, and the free slots from a pool read of
   its own, asks node_floor_fill_alarm_compute for the alarms, and writes one STATUS row per alarm to the ledger through
-  the declared append command. An unread pool is an alarm, not a zero; a source that cannot be read fails the check
-  and writes no row. A row whose alarm key was written inside the repeat window is not written again, and an alarm whose
-  cause never clears (a CLAIM that arrived late) is written once. The container binds the four ports from the overlay's
-  floor_fill_alarm section and runs one check as one call (container/container_live.py); the schedule that calls it
-  belongs to the Temporal workflow that runs the floor fill, so this node starts no timer, unit or scheduler.
+  the declared append command. An unread pool is an alarm, not a zero. A row whose alarm key was written inside the repeat window is not written again, and an alarm whose
+  cause never clears (a CLAIM that arrived late, a lane that ended with no CLAIM) is written once. A source that cannot be
+  read (the runs or the lanes) is an alarm row of its own and the check goes on over the others. The container binds the
+  four ports from the overlay's floor_fill_alarm section and runs one check as one call (container/container_live.py); the
+  fill's own entry calls it after every live tick when the overlay holds that section, so this node starts no timer, unit or
+  scheduler. The handler's ports default to none so the runtime builds it from its injectable params alone, and a handler
+  built that way refuses by naming the unbound port.
 handler:
   module: omnimarket.nodes.node_floor_fill_alarm_effect.handlers.handler_floor_fill_alarm_check
   class: HandlerFloorFillAlarmCheck

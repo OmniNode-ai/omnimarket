@@ -87,6 +87,24 @@ def snapshot_floor_pool(
     )
 
 
+def build_live_store(
+    settings: ModelFloorFillLiveSettings, *, dsn: str
+) -> ProtocolFloorStateStore:
+    """The table-backed state store of the live profile; the fill and the alarm check read the same rows through it."""
+    from omnimarket.handlers.floor_fill_state_store_postgres import (
+        PostgresFloorStateStore,
+    )
+
+    return PostgresFloorStateStore(
+        ModelFloorFillStoreSettings(
+            dsn=SecretStr(dsn),
+            schema_name=settings.store_schema_name,
+            table_name=settings.store_table_name,
+            connect_timeout_seconds=settings.store_connect_timeout_seconds,
+        )
+    )
+
+
 def build_live_handler_factory(
     settings: ModelFloorFillLiveSettings,
     *,
@@ -111,18 +129,7 @@ def build_live_handler_factory(
     def build(config: ModelFloorFillConfig) -> HandlerFloorFillCommand:
         bound_store = store
         if bound_store is None:
-            from omnimarket.handlers.floor_fill_state_store_postgres import (
-                PostgresFloorStateStore,
-            )
-
-            bound_store = PostgresFloorStateStore(
-                ModelFloorFillStoreSettings(
-                    dsn=SecretStr(dsn),
-                    schema_name=settings.store_schema_name,
-                    table_name=settings.store_table_name,
-                    connect_timeout_seconds=settings.store_connect_timeout_seconds,
-                )
-            )
+            bound_store = build_live_store(settings, dsn=dsn)
         process = HandlerPosixProcess(settings.process_output_dir)
         orchestrator = FloorFillOrchestrator(
             config=config,
@@ -156,4 +163,8 @@ def build_live_handler_factory(
     return build
 
 
-__all__: list[str] = ["build_live_handler_factory", "snapshot_floor_pool"]
+__all__: list[str] = [
+    "build_live_handler_factory",
+    "build_live_store",
+    "snapshot_floor_pool",
+]

@@ -41,6 +41,8 @@ class ModelFloorFillSentLane(BaseModel):
     key: str = Field(min_length=1)
     sent_at: datetime
     claim_at: datetime | None = None
+    # True when the fill's state records the lane as ended: a lane that ended with no CLAIM never will give one.
+    ended: bool = False
 
     _times_aware = field_validator("sent_at", "claim_at")(_aware)
 
@@ -71,6 +73,15 @@ class ModelFloorFillPoolRead(BaseModel):
         return self
 
 
+class ModelFloorFillSourceUnread(BaseModel):
+    """A source the check could not read (``runs`` or ``lanes``) and why: an alarm of its own, never a quiet check."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source: str = Field(min_length=1)
+    cause: str = Field(min_length=1)
+
+
 class ModelFloorFillAlarmRequest(BaseModel):
     """The runs (any order), the started lanes, the time of the check and the rule's bounds."""
 
@@ -81,6 +92,7 @@ class ModelFloorFillAlarmRequest(BaseModel):
     # The independent pool read the IDLE rule takes its free slots from (the runs' own counts cannot raise it).
     pool: ModelFloorFillPoolRead
     sent_lanes: tuple[ModelFloorFillSentLane, ...] = ()
+    unread_sources: tuple[ModelFloorFillSourceUnread, ...] = ()
     slot_threshold: int = Field(default=5, ge=0)
     idle_runs: int = Field(default=2, ge=1)
     claim_deadline_minutes: int = Field(default=10, ge=1)
@@ -104,6 +116,7 @@ class EnumFloorFillAlarmKind(StrEnum):
     POOL_UNREAD = "floor-fill-pool-unread"
     IDLE = "floor-fill-idle"
     UNCLAIMED = "floor-fill-unclaimed"
+    SOURCE_UNREAD = "floor-fill-source-unread"
 
 
 class ModelFloorFillAlarmRow(BaseModel):
@@ -138,4 +151,5 @@ __all__: list[str] = [
     "ModelFloorFillPoolRead",
     "ModelFloorFillRun",
     "ModelFloorFillSentLane",
+    "ModelFloorFillSourceUnread",
 ]

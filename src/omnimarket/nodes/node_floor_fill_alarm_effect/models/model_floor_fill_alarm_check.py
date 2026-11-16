@@ -18,6 +18,8 @@ class ModelFloorFillAlarmCheckRequest(BaseModel):
     # One token each: the ledger reads ``lane=`` as a whole cell holding one token and refuses a row without it.
     row_lane: str = Field(pattern=TOKEN)
     row_ticket: str = Field(pattern=TOKEN)
+    # The authenticated principal of the host that appends: the ledger writer refuses a row whose own principal differs.
+    row_principal: str = Field(pattern=TOKEN)
     row_actor: str = Field(default="script:floor-fill-alarm-check", pattern=TOKEN)
     # A row with the same alarm key written within this many minutes is not written again.
     repeat_after_minutes: int = Field(default=60, ge=1)
@@ -38,6 +40,10 @@ class ModelFloorFillAlarmCheckResult(BaseModel):
     runs_read: int = Field(ge=0)
     lanes_read: int = Field(ge=0)
     pool_free_slots: int | None = None
+    # Runs stamped after the check's own clock (clock skew between the fill's host and this one), read as stamped now.
+    runs_clamped: int = Field(default=0, ge=0)
+    # The sources the check could not read, each an alarm of its own (``runs``, ``lanes``).
+    sources_unread: tuple[str, ...] = ()
 
 
 __all__: list[str] = [

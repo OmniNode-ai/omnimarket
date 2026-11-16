@@ -108,7 +108,8 @@ def test_floor_fill_alarm_reads_the_rows_a_real_tick_stores(tmp_path: Path) -> N
     assert len(runs) == 1
     assert runs[0].lanes_sent == 2
     assert runs[0].free_slots == 2
-    assert runs[0].cause == ""
+    # No UNKNOWN line: the cause falls back to the answer's first line.
+    assert runs[0].cause.startswith("NOTE line-filled:")
     lanes = StoredStateSentLanes(load, SCOPE, lambda: ()).read_sent_lanes()
     assert len(lanes) == 2
     assert all(lane.key.startswith("floor:") for lane in lanes)
@@ -180,7 +181,7 @@ def test_floor_fill_alarm_answer_of_the_old_shape_is_refused(tmp_path: Path) -> 
 # Every run is kept, or the gap is refused.
 
 
-def test_floor_fill_alarm_a_gap_in_the_runs_is_refused_and_idle_cannot_skip_a_sending_run(
+def test_floor_fill_alarm_a_gap_in_the_runs_drops_only_the_idle_history(
     tmp_path: Path,
 ) -> None:
     store = {ANSWER_KEY: _stored(1, minutes_ago=15)}
@@ -189,27 +190,118 @@ def test_floor_fill_alarm_a_gap_in_the_runs_is_refused_and_idle_cannot_skip_a_se
     assert len(source.read_runs(NOW)) == 1
     # Run 2 sent two lanes and the check did not run; run 3 sent none.
     store[ANSWER_KEY] = _stored(3, minutes_ago=5)
-    with pytest.raises(AlarmSourceError, match="gap"):
-        source.read_runs(NOW)
     after = source.read_runs(NOW)
-    assert [run.observed_at for run in after] == [NOW - timedelta(minutes=5)]
+    assert [run.observed_at for run in after] == [NOW - timedelta(minutes=5)], (
+        "the gap is read on, with only the runs after it"
+    )
+    ledger = _Ledger()
+    sent = ModelFloorFillSentLane(
+        lane=LANE, key=KEY, sent_at=NOW - timedelta(minutes=30)
+    )
     handler = HandlerFloorFillAlarmCheck(
-        runs=source, lanes=_Lanes(), pool=_Pool(), ledger=_Ledger()
+        runs=source, lanes=_FixedLanes((sent,)), pool=_Pool(), ledger=ledger
     )
-    result = handler.handle(
-        ModelFloorFillAlarmCheckRequest(
-            now=NOW, row_lane="floor-fill-alarm", row_ticket="OMN-24873"
-        )
+    result = handler.handle(_request())
+    assert result.runs_read == 1
+    assert result.lanes_read == 1, "a gap does not stop the lanes from being read"
+    assert result.pool_free_slots == 25, "a gap does not stop the pool from being read"
+    assert result.alarms_found == 1, (
+        "run 1 and run 3 are not two idle runs, and the unclaimed lane alarms"
     )
-    assert result.alarms_found == 0, "run 1 and run 3 are not two runs in a row"
+    assert "alarm=floor-fill-unclaimed" in ledger.held[0]
     # Run 4 sends none either: runs 3 and 4 follow each other and the idle alarm is right to fire.
     store[ANSWER_KEY] = _stored(4, minutes_ago=2)
-    again = handler.handle(
-        ModelFloorFillAlarmCheckRequest(
-            now=NOW, row_lane="floor-fill-alarm", row_ticket="OMN-24873"
-        )
+    again = handler.handle(_request())
+    assert again.alarms_found == 2
+
+
+def test_floor_fill_alarm_the_run_log_is_written_whole_or_not_at_all(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = {ANSWER_KEY: _stored(1, minutes_ago=15)}
+    log = tmp_path / "runs.jsonl"
+    source = StoredAnswerRunSource(store.get, SCOPE, log)
+    source.read_runs(NOW)
+    before = log.read_text(encoding="utf-8")
+    store[ANSWER_KEY] = _stored(2, lanes=2, minutes_ago=10)
+    real = Path.write_text
+
+    def cut_short(self: Path, text: str, *args: object, **kwargs: object) -> int:
+        real(self, text[: len(text) // 3], *args, **kwargs)  # type: ignore[arg-type]
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_text", cut_short)
+    with pytest.raises(AlarmSourceError, match="not written"):
+        source.read_runs(NOW)
+    monkeypatch.undo()
+    assert log.read_text(encoding="utf-8") == before, (
+        "a write cut short left half a log"
     )
-    assert again.alarms_found == 1
+    assert [run.lanes_sent for run in source.read_runs(NOW)] == [0, 2]
+
+
+def test_floor_fill_alarm_a_run_log_cut_mid_write_does_not_fail_every_check(
+    tmp_path: Path,
+) -> None:
+    store = {ANSWER_KEY: _stored(1, minutes_ago=15)}
+    log = tmp_path / "runs.jsonl"
+    source = StoredAnswerRunSource(store.get, SCOPE, log)
+    source.read_runs(NOW)
+    log.write_text(log.read_text(encoding="utf-8")[:-40], encoding="utf-8")
+    store[ANSWER_KEY] = _stored(2, lanes=1, minutes_ago=10)
+    runs = source.read_runs(NOW)
+    assert [run.lanes_sent for run in runs] == [1], (
+        "the log starts again from the answer"
+    )
+    assert [run.lanes_sent for run in source.read_runs(NOW)] == [1]
+    store[ANSWER_KEY] = _stored(3, minutes_ago=5)
+    assert [run.lanes_sent for run in source.read_runs(NOW)] == [1, 0]
+
+
+def test_floor_fill_alarm_an_old_shape_answer_is_an_alarm_row_not_a_failed_check(
+    tmp_path: Path,
+) -> None:
+    old = (
+        '{"lines": ["NOTE line-filled:alpha | lane=la,lb"], "status": "OK", '
+        '"observed_at": "2026-11-16T17:00:00+00:00", "seq": 1, "state_seq": 1}'
+    )
+    source = StoredAnswerRunSource(
+        {ANSWER_KEY: old}.get, SCOPE, tmp_path / "runs.jsonl"
+    )
+    ledger = _Ledger()
+    sent = ModelFloorFillSentLane(
+        lane=LANE, key=KEY, sent_at=NOW - timedelta(minutes=30)
+    )
+    result = HandlerFloorFillAlarmCheck(
+        runs=source, lanes=_FixedLanes((sent,)), pool=_Pool(), ledger=ledger
+    ).handle(_request())
+    assert result.sources_unread == ("runs",)
+    assert result.lanes_read == 1
+    assert len(ledger.held) == 2
+    assert any("alarm=floor-fill-source-unread" in row for row in ledger.held)
+    assert any("alarm=floor-fill-unclaimed" in row for row in ledger.held)
+    # The same unread source on the next check is a repeat, not a new row.
+    again = HandlerFloorFillAlarmCheck(
+        runs=source, lanes=_FixedLanes((sent,)), pool=_Pool(), ledger=ledger
+    ).handle(_request())
+    assert again.rows_written == ()
+
+
+def test_floor_fill_alarm_an_idle_answer_with_no_unknown_line_names_its_first_line_as_the_cause(
+    tmp_path: Path,
+) -> None:
+    answer = _stored(
+        1, lines=("NOTE line-held:alpha | no-free-slots", "NOTE line-held:bravo | x")
+    )
+    (run,) = StoredAnswerRunSource(
+        {ANSWER_KEY: answer}.get, SCOPE, tmp_path / "a.jsonl"
+    ).read_runs(NOW)
+    assert run.cause == "NOTE line-held:alpha | no-free-slots"
+    with_unknown = _stored(1, lines=("NOTE a | b", "UNKNOWN pool-unread:unbound:pool"))
+    (run,) = StoredAnswerRunSource(
+        {ANSWER_KEY: with_unknown}.get, SCOPE, tmp_path / "b.jsonl"
+    ).read_runs(NOW)
+    assert run.cause == "UNKNOWN pool-unread:unbound:pool"
 
 
 def test_floor_fill_alarm_runs_in_a_row_are_kept_with_their_slots(
@@ -238,6 +330,15 @@ def test_floor_fill_alarm_a_log_older_than_the_stored_answer_by_one_is_in_a_row(
 
 
 # A CLAIM stamped in the same second as the start.
+
+
+def _request() -> ModelFloorFillAlarmCheckRequest:
+    return ModelFloorFillAlarmCheckRequest(
+        now=NOW,
+        row_lane="floor-fill-alarm",
+        row_ticket="OMN-24873",
+        row_principal="floor-fill-alarm-host",
+    )
 
 
 def _state_started_at(started: datetime) -> str:
@@ -280,7 +381,10 @@ def test_floor_fill_alarm_a_claim_in_the_same_second_as_the_start_is_a_claim() -
     )
     result = handler.handle(
         ModelFloorFillAlarmCheckRequest(
-            now=NOW, row_lane="floor-fill-alarm", row_ticket="OMN-24873"
+            now=NOW,
+            row_lane="floor-fill-alarm",
+            row_ticket="OMN-24873",
+            row_principal="floor-fill-alarm-host",
         )
     )
     assert result.alarms_found == 0, "a same-second CLAIM is on time, not 'no CLAIM'"
@@ -327,7 +431,10 @@ def test_floor_fill_alarm_a_late_claim_alarms_once_however_long_the_window(
             runs=_NoRuns(), lanes=_FixedLanes((lane,)), pool=_Pool(), ledger=ledger
         ).handle(
             ModelFloorFillAlarmCheckRequest(
-                now=at, row_lane="floor-fill-alarm", row_ticket="OMN-24873"
+                now=at,
+                row_lane="floor-fill-alarm",
+                row_ticket="OMN-24873",
+                row_principal="floor-fill-alarm-host",
             )
         )
         return len(result.rows_written)

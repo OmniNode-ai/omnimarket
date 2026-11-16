@@ -38,6 +38,8 @@ class ModelFloorFillAlarmSettings(BaseModel):
     scope: str = Field(min_length=1)
     row_lane: str = Field(pattern=TOKEN)
     row_ticket: str = Field(pattern=TOKEN)
+    # The authenticated principal of the host that runs the check (the ledger writer stamps it and refuses another).
+    row_principal: str = Field(pattern=TOKEN)
     ledger_path: str = Field(min_length=1)
     # The declared append command, ``{row}`` standing for the row.
     ledger_append_command: tuple[str, ...] = Field(min_length=1)
@@ -83,6 +85,7 @@ class ModelFloorFillAlarmSettings(BaseModel):
             now=now,
             row_lane=self.row_lane,
             row_ticket=self.row_ticket,
+            row_principal=self.row_principal,
             repeat_after_minutes=self.repeat_after_minutes,
             slot_threshold=self.slot_threshold,
             idle_runs=self.idle_runs,

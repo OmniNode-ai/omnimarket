@@ -10,6 +10,7 @@ from omnimarket.nodes.node_floor_fill_alarm_compute.models.model_floor_fill_alar
     ModelFloorFillPoolRead,
     ModelFloorFillRun,
     ModelFloorFillSentLane,
+    ModelFloorFillSourceUnread,
 )
 
 __all__: list[str] = [
@@ -20,4 +21,5 @@ __all__: list[str] = [
     "ModelFloorFillPoolRead",
     "ModelFloorFillRun",
     "ModelFloorFillSentLane",
+    "ModelFloorFillSourceUnread",
 ]

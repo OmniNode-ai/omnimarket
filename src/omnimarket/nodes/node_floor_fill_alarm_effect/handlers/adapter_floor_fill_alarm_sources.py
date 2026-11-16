@@ -5,15 +5,18 @@ the pool read.
 
 The fill stores one answer (its latest run, with the free slots it saw and the lanes it started, ``seq`` rising by one
 per run) and its state (each key's lane and start). ``StoredAnswerRunSource`` keeps the run history the IDLE rule needs
-in its own log, one line per stored answer ``seq``; a gap in ``seq`` is a run the check never saw and is refused, and the
-runs before a gap are never joined to the runs after it. Both stored rows are read strictly: a row that lacks a field the
-fill writes is refused, never read as no lanes and 0 sent. The ledger is read from its file and written only through the
+in its own log, one line per stored answer ``seq``, replaced whole by an atomic write; a gap in ``seq`` is a run the check
+never saw, so the runs before it are dropped and never joined to the runs after it (only the IDLE history is lost, the
+lanes and the pool are still read), and a log that cannot be read is started again from the stored answer. Both stored rows
+are read strictly: a row that lacks a field the fill writes is refused (the check then alarms on the unread source), never
+read as no lanes and 0 sent. The ledger is read from its file and written only through the
 declared append command (the grammar-checking ledger writer), never by hand.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from collections.abc import Callable, Sequence
 from datetime import datetime
@@ -51,7 +54,11 @@ class _StoredAnswer(BaseModel):
 
 
 def _cause(lines: Sequence[str]) -> str:
-    return next((line for line in lines if line.startswith("UNKNOWN")), "")
+    """The run's cause: its first ``UNKNOWN`` line, else its first line, else none (an answer with no line at all)."""
+    unknown = next((line for line in lines if line.startswith("UNKNOWN")), None)
+    if unknown is not None:
+        return unknown
+    return lines[0] if lines else ""
 
 
 class StoredAnswerRunSource:
@@ -65,6 +72,7 @@ class StoredAnswerRunSource:
         self._log = log_path
 
     def _history(self) -> list[tuple[int, ModelFloorFillRun]]:
+        """The logged runs; a log that is missing or cannot be read holds none (it is written again from the answer)."""
         if not self._log.exists():
             return []
         out: list[tuple[int, ModelFloorFillRun]] = []
@@ -78,8 +86,8 @@ class StoredAnswerRunSource:
                             ModelFloorFillRun.model_validate(item["run"]),
                         )
                     )
-        except (OSError, ValueError, KeyError, ValidationError) as exc:
-            raise AlarmSourceError(f"run log {self._log} unreadable: {exc}") from exc
+        except (OSError, ValueError, KeyError, TypeError, ValidationError):
+            return []
         return out
 
     def read_runs(self, now: datetime) -> tuple[ModelFloorFillRun, ...]:
@@ -102,18 +110,10 @@ class StoredAnswerRunSource:
             lanes_sent=stored.lanes_started,
             cause=_cause(stored.lines),
         )
-        gap = bool(history) and stored.seq != history[-1][0] + 1
-        if gap:
-            missed = stored.seq - history[-1][0] - 1
-            last = history[-1][0]
+        if history and stored.seq != history[-1][0] + 1:
             # The runs before the gap are dropped: two runs on either side of a run the check never saw are not two
-            # runs in a row. The log starts again at this run, so the refusal is made once and the next check reads on.
-            history = [(stored.seq, run)]
-            self._write(history)
-            raise AlarmSourceError(
-                f"run gap: stored answer seq {stored.seq} follows logged seq {last}; "
-                f"{missed} run(s) were never read, so the runs before it are not joined to it"
-            )
+            # runs in a row. Only the IDLE history is lost; the check goes on to read the lanes and the pool.
+            history = []
         history.append((stored.seq, run))
         self._write(history[-RUN_HISTORY_KEPT:])
         return tuple(run for _, run in history[-RUN_HISTORY_KEPT:])
@@ -123,10 +123,14 @@ class StoredAnswerRunSource:
             json.dumps({"seq": seq, "run": json.loads(run.model_dump_json())}) + "\n"
             for seq, run in history
         )
+        scratch = self._log.with_name(self._log.name + ".tmp")
         try:
             self._log.parent.mkdir(parents=True, exist_ok=True)
-            self._log.write_text(text, encoding="utf-8")
+            # The log is replaced whole: a write cut short leaves the previous log, never half of the new one.
+            scratch.write_text(text, encoding="utf-8")
+            os.replace(scratch, self._log)
         except OSError as exc:
+            scratch.unlink(missing_ok=True)
             raise AlarmSourceError(f"run log {self._log} not written: {exc}") from exc
 
 
@@ -181,17 +185,29 @@ def _row_cells(row: str) -> dict[str, str]:
     return cells
 
 
-def _claim_at(rows: Sequence[str], lane: str, key: str) -> datetime | None:
+def _claim_at(
+    rows: Sequence[str], lane: str, key: str, started: datetime
+) -> datetime | None:
+    """The first CLAIM of this lane and key stamped at or after the start, or None when the ledger holds none for it yet.
+
+    Ledger stamps are whole seconds and the start's time is not, so the two are compared at second precision: a CLAIM
+    stamped in the second of the start is that start's CLAIM, read as arriving at the start. A CLAIM stamped in an
+    earlier second belongs to an earlier start of the same key (a restart), and a later CLAIM is still found after it.
+    """
+    begun = started.replace(microsecond=0)
     for row in rows:
         parts = row.split(CELL_SEPARATOR)
         if len(parts) < 2 or parts[1].strip() != "CLAIM":
             continue
         cells = _row_cells(row)
-        if cells.get("lane") == lane and cells.get("key") == key:
-            try:
-                return datetime.fromisoformat(parts[0].strip())
-            except ValueError:
-                return None
+        if cells.get("lane") != lane or cells.get("key") != key:
+            continue
+        try:
+            stamp = datetime.fromisoformat(parts[0].strip())
+        except ValueError:
+            continue
+        if stamp.tzinfo is not None and stamp >= begun:
+            return max(stamp, started)
     return None
 
 
@@ -209,18 +225,6 @@ def _read_state(payload: str) -> ModelFloorFillState:
         return ModelFloorFillState.model_validate(raw)
     except ValidationError as exc:
         raise AlarmSourceError(f"fill state unparseable: {exc}") from exc
-
-
-def _claim_since(claim: datetime | None, started: datetime) -> datetime | None:
-    """The CLAIM that belongs to this start, or None when the ledger holds none for it yet.
-
-    Ledger stamps are whole seconds and the start's time is not, so the two are compared at second precision: a CLAIM
-    stamped in the second of the start is that start's CLAIM, read as arriving at the start. Only a CLAIM stamped in an
-    earlier second is an earlier start's.
-    """
-    if claim is None or claim < started.replace(microsecond=0):
-        return None
-    return max(claim, started)
 
 
 class StoredStateSentLanes:
@@ -248,15 +252,18 @@ class StoredStateSentLanes:
         lanes: list[ModelFloorFillSentLane] = []
         for entry in state.entries.values():
             started = entry.sent_at or entry.reserved_at
-            if entry.ended or started is None or entry.lane is None:
+            if started is None or entry.lane is None:
                 continue
-            claim = _claim_at(rows, entry.lane, entry.key)
+            claim = _claim_at(rows, entry.lane, entry.key, started)
+            if entry.ended and claim is not None:
+                continue
             lanes.append(
                 ModelFloorFillSentLane(
                     lane=entry.lane,
                     key=entry.key,
                     sent_at=started,
-                    claim_at=_claim_since(claim, started),
+                    claim_at=claim,
+                    ended=entry.ended,
                 )
             )
         return tuple(lanes)

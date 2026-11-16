@@ -8,7 +8,8 @@ reads, read again by the check itself and refused when stale) and the ledger (re
 declared append command). ``load_payload`` is the fill's row reader (``store_payload_loader`` over its store).
 
 ``run_alarm_check`` is the whole check as one run that returns what it found and logs one line for it; it starts no timer, unit or scheduler. The
-schedule that calls it belongs to the Temporal workflow that runs the floor fill, not to this node.
+fill's own entry (``runtime_floor_fill_orchestrator``) calls it after every live tick when the overlay holds a
+``floor_fill_alarm`` section, so the check runs as often as the fill and sees every run.
 """
 
 from __future__ import annotations
@@ -104,7 +105,8 @@ def run_alarm_check(
 ) -> ModelFloorFillAlarmCheckResult:
     """One check, end to end, logged as one line whether it found nothing, wrote rows or could not read a source.
 
-    A source that cannot be read raises ``AlarmSourceError`` after its failure is logged, and no row is written.
+    A source that cannot be read is an alarm row (the check goes on over the others); a ledger that cannot be read or
+    written raises ``AlarmSourceError`` after its failure is logged.
     """
     at = now or datetime.now(UTC)
     handler = build_live_alarm_check(
@@ -112,9 +114,15 @@ def run_alarm_check(
     )
     try:
         result = handler.handle(settings.check_request(at))
-    except AlarmSourceError as exc:
+    except Exception as exc:
+        # Any failure of a check is logged as a line before it is raised: no check goes unrecorded.
         _log_check(
-            settings, {"at": at.isoformat(), "outcome": "failed", "error": str(exc)}
+            settings,
+            {
+                "at": at.isoformat(),
+                "outcome": "failed",
+                "error": f"{type(exc).__name__}: {exc}",
+            },
         )
         raise
     _log_check(
@@ -128,6 +136,8 @@ def run_alarm_check(
             "runs_read": result.runs_read,
             "lanes_read": result.lanes_read,
             "pool_free_slots": result.pool_free_slots,
+            "runs_clamped": result.runs_clamped,
+            "sources_unread": list(result.sources_unread),
         },
     )
     return result

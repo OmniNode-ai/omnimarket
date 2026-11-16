@@ -51,7 +51,7 @@ dod_evidence:
     check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -k fill_order -q
     cwd: .
 - id: dod-omn24966-ac2
-  description: The four ports are bound by the container of the alarm effect node and one check over a real fill tick writes the rows through the bound ports; the schedule that calls the check belongs to the Temporal workflow of the floor fill (a binding MSG of the orchestrator forbids a new timer, unit or scheduler), so this criterion is met for the binding and the factory test and the schedule is argued in a PR comment.
+  description: The four ports are bound by the container of the alarm effect node, the handler is built by the runtime from its injectable params alone (the ports default to none and a handler built without them refuses by name), and the fill's own entry runs one check after every live tick when its overlay holds a floor_fill_alarm section (the schedule install carries and validates that section), so the check runs as often as the fill. The tests are the bound factory, the entry and the install; the boot-resolvable routing test of the repository covers the handler build.
   source: manual
   binds_ac:
   - AC2
@@ -87,7 +87,7 @@ dod_evidence:
     check_value: uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q
     cwd: .
 - id: dod-omn24966-ac6
-  description: The alarm row carries actor= and model=none beside a one-token lane and is appended through the ledger row grammar; it names no principal because the ledger writer adds the authenticated principal and refuses a row whose own principal differs (argued in a PR comment).
+  description: The alarm row carries principal= (the settings' authenticated principal, a header cell after lane=), actor= and model=none beside a one-token lane, and a test appends it through the real work ledger append handler (the writer's own principal check) and the repository's row grammar, not a copy of them; the owner's agreement on the principal cell is requested in a PR comment.
   source: manual
   binds_ac:
   - AC6

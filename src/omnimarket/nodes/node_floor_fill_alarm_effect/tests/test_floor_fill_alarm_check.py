@@ -35,7 +35,8 @@ from omnimarket.nodes.node_floor_fill_alarm_effect.protocols.protocol_floor_fill
     ProtocolAlarmLedger,
 )
 from omnimarket.nodes.node_floor_fill_alarm_effect.tests.support_ledger_grammar import (
-    grammar_ledger,
+    AUTHENTICATED_PRINCIPAL,
+    real_writer_ledger,
 )
 
 pytestmark = pytest.mark.unit
@@ -100,6 +101,7 @@ def _request(**extra: object) -> ModelFloorFillAlarmCheckRequest:
         now=NOW,
         row_lane="floor-fill-alarm",
         row_ticket="OMN-24873",
+        row_principal="floor-fill-alarm-host",
         **extra,
     )
 
@@ -189,6 +191,7 @@ def test_floor_fill_alarm_check_does_not_repeat_a_row_inside_the_window() -> Non
             now=NOW + timedelta(minutes=5),
             row_lane="floor-fill-alarm",
             row_ticket="OMN-24873",
+            row_principal="floor-fill-alarm-host",
         )
     )
     assert len(first.rows_written) == 1
@@ -206,13 +209,14 @@ def test_floor_fill_alarm_check_does_not_repeat_a_row_inside_the_window() -> Non
             now=NOW + timedelta(minutes=90),
             row_lane="floor-fill-alarm",
             row_ticket="OMN-24873",
+            row_principal="floor-fill-alarm-host",
         )
     )
     assert len(later.rows_written) == 1
     assert len(ledger.held) == 2
 
 
-def test_floor_fill_alarm_check_a_source_that_cannot_be_read_writes_no_row() -> None:
+def test_floor_fill_alarm_check_a_source_that_cannot_be_read_is_an_alarm_row() -> None:
     class _Broken:
         def read_runs(self, now: datetime) -> tuple[ModelFloorFillRun, ...]:
             raise AlarmSourceError("stored answer unreadable")
@@ -224,9 +228,32 @@ def test_floor_fill_alarm_check_a_source_that_cannot_be_read_writes_no_row() -> 
         pool=_Pool(ModelFloorFillPoolRead(free_slots=25)),
         ledger=ledger,
     )
-    with pytest.raises(AlarmSourceError):
+    result = handler.handle(_request(max_run_age_minutes=30))
+    assert result.sources_unread == ("runs",)
+    assert result.alarms_found == 1, (
+        "the unread runs are one alarm, not also 'no run read'"
+    )
+    (row,) = ledger.held
+    assert "alarm=floor-fill-source-unread" in row
+    assert "runs unread: stored answer unreadable" in row
+
+
+def test_floor_fill_alarm_check_an_unreadable_ledger_fails_the_check_by_name() -> None:
+    class _NoLedger:
+        def rows(self) -> tuple[str, ...]:
+            raise AlarmSourceError("ledger unreadable")
+
+        def append(self, row: str) -> None:
+            raise AlarmSourceError("ledger unreadable")
+
+    handler = HandlerFloorFillAlarmCheck(
+        runs=_Runs(_runs(free=None)),
+        lanes=_Lanes(),
+        pool=_Pool(ModelFloorFillPoolRead(free_slots=25)),
+        ledger=_NoLedger(),
+    )
+    with pytest.raises(AlarmSourceError, match="ledger"):
         handler.handle(_request())
-    assert ledger.held == []
 
 
 # Adapters over what the fill leaves behind.
@@ -286,29 +313,31 @@ def test_floor_fill_alarm_check_a_refused_append_fails_the_check(
     assert ledger_file.read_text(encoding="utf-8") == ""
 
 
-def test_floor_fill_alarm_check_row_passes_the_ledger_append_grammar(
+def test_floor_fill_alarm_check_row_is_appended_through_the_real_writer_with_its_principal(
     tmp_path: Path,
 ) -> None:
-    ledger, ledger_file = grammar_ledger(tmp_path)
-    _handler(_runs(free=None), ModelFloorFillPoolRead(free_slots=25), ledger).handle(
-        _request()
-    )
+    ledger, ledger_file = real_writer_ledger(tmp_path)
+    result = _handler(
+        _runs(free=None), ModelFloorFillPoolRead(free_slots=25), ledger
+    ).handle(_request())
+    (rendered,) = result.rows_written
+    assert f"principal={AUTHENTICATED_PRINCIPAL}" in rendered.split(CELL_SEPARATOR)
     (row,) = ledger_file.read_text(encoding="utf-8").splitlines()
     cells = row.split(CELL_SEPARATOR)
     assert cells[1] == "STATUS"
     assert "lane=floor-fill-alarm" in cells
+    assert f"principal={AUTHENTICATED_PRINCIPAL}" in cells
+    assert cells.count(f"principal={AUTHENTICATED_PRINCIPAL}") == 1
     assert "actor=script:floor-fill-alarm-check" in cells
     assert "model=none" in cells
-    # The ledger writer adds the authenticated principal itself and refuses a hand-written one that differs.
-    assert not any(cell.startswith("principal=") for cell in cells)
 
 
-def test_floor_fill_alarm_check_the_grammar_appender_refuses_a_row_without_its_lane(
+def test_floor_fill_alarm_check_the_real_writer_refuses_a_row_it_cannot_accept(
     tmp_path: Path,
 ) -> None:
-    """Positive control for the check above: the appender does refuse a row that breaks the grammar."""
-    ledger, ledger_file = grammar_ledger(tmp_path)
-    with pytest.raises(AlarmSourceError, match="missing lane="):
+    """Positive control for the check above: the real writer does refuse a bad row and a principal that differs."""
+    ledger, ledger_file = real_writer_ledger(tmp_path)
+    with pytest.raises(AlarmSourceError, match="lane"):
         ledger.append("2026-11-16T17:00:00Z | STATUS | ticket=OMN-24873 | text")
     with pytest.raises(AlarmSourceError, match="principal"):
         ledger.append(
@@ -322,5 +351,8 @@ def test_floor_fill_alarm_check_a_lane_with_a_space_is_refused_before_a_row_exis
 ):
     with pytest.raises(ValueError, match="row_lane"):
         ModelFloorFillAlarmCheckRequest(
-            now=NOW, row_lane="floor fill alarm", row_ticket="OMN-24873"
+            now=NOW,
+            row_lane="floor fill alarm",
+            row_ticket="OMN-24873",
+            row_principal="floor-fill-alarm-host",
         )

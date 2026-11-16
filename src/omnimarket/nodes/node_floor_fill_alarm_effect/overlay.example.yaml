@@ -8,6 +8,9 @@ floor_fill_alarm:
   # The lane and ticket the alarm rows are written under; the lane is one token.
   row_lane: floor-fill-alarm
   row_ticket: OMN-0000
+  # The authenticated principal of the host that appends: the row carries it as its own cell, and the ledger writer
+  # refuses a row whose principal differs from the one it authenticated.
+  row_principal: example-principal
   # The rolling ledger file the check reads and the declared append command it writes through ({row} stands for the row).
   ledger_path: /srv/example/ledger/work-ledger.md
   ledger_append_command: ["/srv/example/bin/ledger-append", "{row}"]

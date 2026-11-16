@@ -3,19 +3,22 @@
 """The scheduled floor fill alarm check: read the runs, the started lanes with their CLAIMs and the pool, ask the rule,
 write one STATUS row per alarm to the ledger.
 
-A source that cannot be read fails the check by name and writes no row: a check that read nothing never reports quiet.
 A row whose alarm key was written within ``repeat_after_minutes`` is not written again, and an alarm whose cause never
 clears (a CLAIM that arrived late) is written once, so a lane with a late CLAIM does not alarm on every check.
 
-The row is a ledger STATUS row of a script lane: ``lane=`` one token, ``actor=`` and ``model=none`` as the other script
-rows carry them. It names no ``principal=``: the ledger writer adds the authenticated principal of the host that appends,
-and refuses a row whose own principal differs from it.
+The row is a ledger STATUS row of a script lane: ``lane=`` one token, ``principal=`` (the settings' authenticated
+principal, a header cell the ledger writer accepts only when it is the one it authenticated), ``actor=`` and ``model=none``
+as the other script rows carry them.
+
+A source that cannot be read (the runs or the lanes) is an alarm of its own and the check goes on over the others; only
+a ledger that cannot be read or written fails the check by name, because no row can be written without it. A run stamped
+after the check's clock (skew between the hosts) is read as stamped at the check and counted in the result.
 """
 
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from omnimarket.nodes.node_floor_fill_alarm_compute.handlers.handler_floor_fill_alarm import (
     HandlerFloorFillAlarm,
@@ -23,12 +26,17 @@ from omnimarket.nodes.node_floor_fill_alarm_compute.handlers.handler_floor_fill_
 from omnimarket.nodes.node_floor_fill_alarm_compute.models import (
     ModelFloorFillAlarmRequest,
     ModelFloorFillAlarmRow,
+    ModelFloorFillPoolRead,
+    ModelFloorFillRun,
+    ModelFloorFillSentLane,
+    ModelFloorFillSourceUnread,
 )
 from omnimarket.nodes.node_floor_fill_alarm_effect.models import (
     ModelFloorFillAlarmCheckRequest,
     ModelFloorFillAlarmCheckResult,
 )
 from omnimarket.nodes.node_floor_fill_alarm_effect.protocols.protocol_floor_fill_alarm_check import (
+    AlarmSourceError,
     ProtocolAlarmLedger,
     ProtocolFloorPoolReader,
     ProtocolFloorRunSource,
@@ -52,11 +60,12 @@ def _text(value: str) -> str:
 def render_row(
     request: ModelFloorFillAlarmCheckRequest, alarm: ModelFloorFillAlarmRow
 ) -> str:
-    stamp = request.now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    stamp = request.now.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     cells = (
         stamp,
         "STATUS",
         f"lane={request.row_lane}",
+        f"principal={request.row_principal}",
         f"actor={request.row_actor}",
         "model=none",
         f"ticket={request.row_ticket}",
@@ -69,9 +78,28 @@ def render_row(
 
 def _written_at(row: str) -> datetime | None:
     try:
-        return datetime.fromisoformat(row.split(CELL_SEPARATOR, 1)[0].strip())
+        stamp = datetime.fromisoformat(row.split(CELL_SEPARATOR, 1)[0].strip())
     except ValueError:
         return None
+    return stamp if stamp.tzinfo is not None else None
+
+
+class _UnboundPortError(AlarmSourceError):
+    """A port the handler was built without: the runtime boot builds the handler from its injectable params alone."""
+
+
+def _clamp_skewed(
+    runs: tuple[ModelFloorFillRun, ...], now: datetime
+) -> tuple[tuple[ModelFloorFillRun, ...], int]:
+    """Runs stamped after ``now`` (the fill's host clock ahead of this one) read as stamped at ``now``, and the count."""
+    clamped = 0
+    out: list[ModelFloorFillRun] = []
+    for run in runs:
+        if run.observed_at > now:
+            clamped += 1
+            run = run.model_copy(update={"observed_at": now})
+        out.append(run)
+    return tuple(out), clamped
 
 
 class HandlerFloorFillAlarmCheck:
@@ -80,12 +108,14 @@ class HandlerFloorFillAlarmCheck:
     def __init__(
         self,
         *,
-        runs: ProtocolFloorRunSource,
-        lanes: ProtocolFloorSentLaneSource,
-        pool: ProtocolFloorPoolReader,
-        ledger: ProtocolAlarmLedger,
+        runs: ProtocolFloorRunSource | None = None,
+        lanes: ProtocolFloorSentLaneSource | None = None,
+        pool: ProtocolFloorPoolReader | None = None,
+        ledger: ProtocolAlarmLedger | None = None,
         rule: HandlerFloorFillAlarm | None = None,
     ) -> None:
+        # The ports default to None so the runtime can construct the handler from its injectable params alone; a handler
+        # built that way refuses to check, naming the port, and the binding site (container_live) supplies all four.
         self._runs = runs
         self._lanes = lanes
         self._pool = pool
@@ -95,19 +125,42 @@ class HandlerFloorFillAlarmCheck:
     def handle(
         self, request: ModelFloorFillAlarmCheckRequest
     ) -> ModelFloorFillAlarmCheckResult:
-        runs = self._runs.read_runs(request.now)
-        lanes = self._lanes.read_sent_lanes()
-        pool = self._pool.read_pool()
+        if self._runs is None:
+            raise _UnboundPortError("alarm check port unbound: runs")
+        if self._lanes is None:
+            raise _UnboundPortError("alarm check port unbound: lanes")
+        if self._pool is None:
+            raise _UnboundPortError("alarm check port unbound: pool")
+        if self._ledger is None:
+            raise _UnboundPortError("alarm check port unbound: ledger")
+        unread: list[ModelFloorFillSourceUnread] = []
+        runs: tuple[ModelFloorFillRun, ...] = ()
+        lanes: tuple[ModelFloorFillSentLane, ...] = ()
+        try:
+            runs = self._runs.read_runs(request.now)
+        except AlarmSourceError as exc:
+            unread.append(ModelFloorFillSourceUnread(source="runs", cause=str(exc)))
+        try:
+            lanes = self._lanes.read_sent_lanes()
+        except AlarmSourceError as exc:
+            unread.append(ModelFloorFillSourceUnread(source="lanes", cause=str(exc)))
+        pool: ModelFloorFillPoolRead = self._pool.read_pool()
+        runs, clamped = _clamp_skewed(runs, request.now)
+        runs_unread = any(item.source == "runs" for item in unread)
         answer = self._rule.handle(
             ModelFloorFillAlarmRequest(
                 now=request.now,
                 runs=runs,
                 sent_lanes=lanes,
                 pool=pool,
+                unread_sources=tuple(unread),
                 slot_threshold=request.slot_threshold,
                 idle_runs=request.idle_runs,
                 claim_deadline_minutes=request.claim_deadline_minutes,
-                max_run_age_minutes=request.max_run_age_minutes,
+                # An unread run source is its own alarm; "no run read" would only repeat it under a wrong cause.
+                max_run_age_minutes=None
+                if runs_unread
+                else request.max_run_age_minutes,
             )
         )
         existing = self._ledger.rows()
@@ -127,6 +180,8 @@ class HandlerFloorFillAlarmCheck:
             runs_read=answer.runs_read,
             lanes_read=answer.lanes_read,
             pool_free_slots=pool.free_slots,
+            runs_clamped=clamped,
+            sources_unread=tuple(item.source for item in unread),
         )
 
     @staticmethod

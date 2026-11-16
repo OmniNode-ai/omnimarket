@@ -21,6 +21,7 @@ from omnimarket.nodes.node_floor_fill_alarm_compute.models import (
     ModelFloorFillAlarmResult,
     ModelFloorFillAlarmRow,
     ModelFloorFillSentLane,
+    ModelFloorFillSourceUnread,
 )
 
 NO_CAUSE = "no cause recorded"
@@ -40,6 +41,8 @@ class HandlerFloorFillAlarm:
         idle = self._idle(request)
         if idle is not None:
             alarms.append(idle)
+        for source in request.unread_sources:
+            alarms.append(self._source_unread(source))
         for lane in request.sent_lanes:
             row = self._unclaimed(request, lane)
             if row is not None:
@@ -48,6 +51,17 @@ class HandlerFloorFillAlarm:
             alarms=tuple(alarms),
             runs_read=len(request.runs),
             lanes_read=len(request.sent_lanes),
+        )
+
+    @staticmethod
+    def _source_unread(source: ModelFloorFillSourceUnread) -> ModelFloorFillAlarmRow:
+        cause = f"{source.source} unread: {source.cause}"
+        return ModelFloorFillAlarmRow(
+            kind=EnumFloorFillAlarmKind.SOURCE_UNREAD,
+            subject="floor-fill",
+            cause=cause,
+            row_text=f"floor fill alarm check could not read its {cause}",
+            dedupe_key=f"{EnumFloorFillAlarmKind.SOURCE_UNREAD.value}:{source.source}",
         )
 
     @staticmethod
@@ -122,6 +136,17 @@ class HandlerFloorFillAlarm:
     ) -> ModelFloorFillAlarmRow | None:
         deadline = lane.sent_at + timedelta(minutes=request.claim_deadline_minutes)
         late = lane.claim_at is not None
+        if lane.claim_at is None and lane.ended:
+            # The lane died before its CLAIM: no CLAIM will come, so it alarms now and once, not at the deadline.
+            cause = f"lane ended with no CLAIM key={lane.key}"
+            return ModelFloorFillAlarmRow(
+                kind=EnumFloorFillAlarmKind.UNCLAIMED,
+                subject=lane.lane,
+                cause=cause,
+                row_text=f"lane {lane.lane} {cause}",
+                dedupe_key=f"{EnumFloorFillAlarmKind.UNCLAIMED.value}:ended:{lane.lane}:{lane.key}",
+                write_once=True,
+            )
         if lane.claim_at is None:
             if request.now <= deadline:
                 return None

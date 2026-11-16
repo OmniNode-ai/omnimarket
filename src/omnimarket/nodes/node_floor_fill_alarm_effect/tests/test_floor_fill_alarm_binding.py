@@ -16,7 +16,6 @@ import json
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -34,39 +33,19 @@ from omnimarket.nodes.node_floor_fill_alarm_effect.models import (
 from omnimarket.nodes.node_floor_fill_alarm_effect.protocols.protocol_floor_fill_alarm_check import (
     AlarmSourceError,
 )
+from omnimarket.nodes.node_floor_fill_alarm_effect.tests.support_alarm_section import (
+    MAX_RUN_AGE_MINUTES,
+    alarm_section,
+)
 from omnimarket.nodes.node_floor_fill_alarm_effect.tests.support_ledger_grammar import (
-    GRAMMAR_APPENDER,
+    AUTHENTICATED_PRINCIPAL,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.tests.support_live_tick import (
-    SCOPE,
     SETTINGS_MAX_AGE_SECONDS,
     live_tick,
 )
 
 pytestmark = pytest.mark.unit
-
-MAX_RUN_AGE_MINUTES = 30
-
-
-def _section(tmp_path: Path) -> dict[str, Any]:
-    appender = tmp_path / "grammar_append.py"
-    appender.write_text(GRAMMAR_APPENDER, encoding="utf-8")
-    ledger = tmp_path / "alarm-ledger.md"
-    ledger.write_text("", encoding="utf-8")
-    return {
-        "scope": SCOPE,
-        "row_lane": "floor-fill-alarm",
-        "row_ticket": "OMN-24873",
-        "ledger_path": str(ledger),
-        "ledger_append_command": [sys.executable, str(appender), str(ledger), "{row}"],
-        "run_log_path": str(tmp_path / "alarm" / "runs.jsonl"),
-        "check_log_path": str(tmp_path / "alarm" / "checks.jsonl"),
-        "pool_snapshot_path": str(tmp_path / "pool.json"),
-        "pool_record_suffix": ".read-at.json",
-        "pool_snapshot_max_age_seconds": SETTINGS_MAX_AGE_SECONDS,
-        "pool_engine": "claude",
-        "max_run_age_minutes": MAX_RUN_AGE_MINUTES,
-    }
 
 
 def test_floor_fill_alarm_binding_writes_the_unclaimed_rows_over_a_real_tick(
@@ -75,7 +54,7 @@ def test_floor_fill_alarm_binding_writes_the_unclaimed_rows_over_a_real_tick(
     tick_dir = tmp_path / "tick"
     tick_dir.mkdir()
     _out, _code, store = live_tick(tick_dir, free=2, age_seconds=5)
-    section = _section(tick_dir)
+    section = alarm_section(tick_dir)
     settings = load_floor_fill_alarm_settings(section)
     tick_at = datetime.now(UTC)
     at = tick_at + timedelta(minutes=15)
@@ -92,12 +71,16 @@ def test_floor_fill_alarm_binding_writes_the_unclaimed_rows_over_a_real_tick(
     assert result.alarms_found == 2
     assert len(result.rows_written) == 2
     written = Path(section["ledger_path"]).read_text(encoding="utf-8").splitlines()
-    assert written == list(result.rows_written)
+    # The writer adds its own req= and via= cells after the rendered row.
+    assert len(written) == len(result.rows_written)
+    for appended, rendered in zip(written, result.rows_written, strict=True):
+        assert appended.startswith(rendered)
     for row in written:
         cells = row.split(CELL_SEPARATOR)
         assert cells[1] == "STATUS"
         assert "alarm=floor-fill-unclaimed" in cells
         assert "lane=floor-fill-alarm" in cells
+        assert f"principal={AUTHENTICATED_PRINCIPAL}" in cells
         assert "actor=script:floor-fill-alarm-check" in cells
     again = run_alarm_check(
         settings,
@@ -115,7 +98,7 @@ def test_floor_fill_alarm_binding_an_unread_pool_alarms_instead_of_reading_zero(
     tick_dir = tmp_path / "tick"
     tick_dir.mkdir()
     _out, _code, store = live_tick(tick_dir, free=2, age_seconds=5)
-    section = _section(tick_dir)
+    section = alarm_section(tick_dir)
     settings = load_floor_fill_alarm_settings(section)
     tick_at = datetime.now(UTC)
     result = run_alarm_check(
@@ -135,7 +118,7 @@ def test_floor_fill_alarm_binding_a_fill_with_no_run_alarms_not_running(
     tick_dir = tmp_path / "tick"
     tick_dir.mkdir()
     live_tick(tick_dir, free=2, age_seconds=5)
-    section = _section(tick_dir)
+    section = alarm_section(tick_dir)
     settings = load_floor_fill_alarm_settings(section)
     tick_at = datetime.now(UTC)
     result = run_alarm_check(
@@ -153,7 +136,7 @@ def test_floor_fill_alarm_binding_a_fill_with_no_run_alarms_not_running(
 def test_floor_fill_alarm_binding_sets_the_run_age_bound_on_every_check(
     tmp_path: Path,
 ) -> None:
-    settings = load_floor_fill_alarm_settings(_section(tmp_path))
+    settings = load_floor_fill_alarm_settings(alarm_section(tmp_path))
     request = settings.check_request(datetime.now(UTC))
     assert request.max_run_age_minutes == MAX_RUN_AGE_MINUTES
 
@@ -161,7 +144,7 @@ def test_floor_fill_alarm_binding_sets_the_run_age_bound_on_every_check(
 def test_floor_fill_alarm_binding_a_section_without_the_run_age_bound_is_refused(
     tmp_path: Path,
 ) -> None:
-    section = _section(tmp_path)
+    section = alarm_section(tmp_path)
     del section["max_run_age_minutes"]
     with pytest.raises(FloorFillAlarmConfigError) as refused:
         load_floor_fill_alarm_settings(section)
@@ -171,7 +154,7 @@ def test_floor_fill_alarm_binding_a_section_without_the_run_age_bound_is_refused
 def test_floor_fill_alarm_binding_an_append_command_without_the_row_is_refused(
     tmp_path: Path,
 ) -> None:
-    section = _section(tmp_path)
+    section = alarm_section(tmp_path)
     section["ledger_append_command"] = [sys.executable, "-c", "pass"]
     with pytest.raises(FloorFillAlarmConfigError):
         load_floor_fill_alarm_settings(section)
@@ -183,7 +166,7 @@ def test_floor_fill_alarm_binding_logs_each_check_and_each_failed_check(
     tick_dir = tmp_path / "tick"
     tick_dir.mkdir()
     _out, _code, store = live_tick(tick_dir, free=2, age_seconds=5)
-    section = _section(tick_dir)
+    section = alarm_section(tick_dir)
     settings = load_floor_fill_alarm_settings(section)
     tick_at = datetime.now(UTC)
     run_alarm_check(
@@ -193,14 +176,24 @@ def test_floor_fill_alarm_binding_logs_each_check_and_each_failed_check(
         pool_clock=lambda: tick_at,
     )
 
+    # A store that cannot be read is two unread sources (the runs and the lanes): a check line and an alarm row each.
     def broken(_key: str) -> str | None:
         raise OSError("store gone")
 
+    unread = run_alarm_check(
+        settings,
+        load_payload=broken,
+        now=tick_at + timedelta(minutes=2),
+        pool_clock=lambda: tick_at,
+    )
+    assert unread.sources_unread == ("runs", "lanes")
+    # A ledger that cannot be read fails the check, and the failure is a line too.
+    Path(section["ledger_path"]).unlink()
     with pytest.raises(AlarmSourceError):
         run_alarm_check(
             settings,
-            load_payload=broken,
-            now=tick_at + timedelta(minutes=2),
+            load_payload=store_payload_loader(store),
+            now=tick_at + timedelta(minutes=3),
             pool_clock=lambda: tick_at,
         )
     lines = [
@@ -209,7 +202,8 @@ def test_floor_fill_alarm_binding_logs_each_check_and_each_failed_check(
         .read_text(encoding="utf-8")
         .splitlines()
     ]
-    assert [line["outcome"] for line in lines] == ["checked", "failed"]
+    assert [line["outcome"] for line in lines] == ["checked", "checked", "failed"]
     assert lines[0]["runs_read"] == 1
     assert lines[0]["lanes_read"] == 2
-    assert "store gone" in lines[1]["error"]
+    assert lines[1]["sources_unread"] == ["runs", "lanes"]
+    assert "unreadable" in lines[2]["error"]

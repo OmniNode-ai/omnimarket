@@ -41,6 +41,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_
 )
 
 OVERLAY_SECTION = "floor_fill"
+ALARM_OVERLAY_SECTION = "floor_fill_alarm"
 VERBS = ("install", "uninstall", "status", "run-now")
 
 
@@ -73,6 +74,7 @@ def run_schedule(
     except FloorFillConfigError as error:
         return ModelFloorFillScheduleResult(exit_code=1, stderr=f"{error}\n")
     live = None
+    alarm: dict[str, Any] | None = None
     if args.verb == "install" and args.profile == "live":
         try:
             live = load_floor_fill_live_settings(overlay.get(LIVE_OVERLAY_SECTION, {}))
@@ -80,6 +82,21 @@ def run_schedule(
             return ModelFloorFillScheduleResult(
                 exit_code=1, stderr=f"{', '.join(error.keys) or error}\n"
             )
+        if ALARM_OVERLAY_SECTION in overlay:
+            # The alarm check runs after each tick of this unit: the section is validated now, never at the first tick.
+            from omnimarket.nodes.node_floor_fill_alarm_effect.models import (
+                FloorFillAlarmConfigError,
+                load_floor_fill_alarm_settings,
+            )
+
+            try:
+                alarm = load_floor_fill_alarm_settings(
+                    overlay[ALARM_OVERLAY_SECTION]
+                ).model_dump(mode="json")
+            except FloorFillAlarmConfigError as error:
+                return ModelFloorFillScheduleResult(
+                    exit_code=1, stderr=f"{', '.join(error.keys) or error}\n"
+                )
     handler = FloorFillScheduler(
         schedule=schedule or load_floor_fill_schedule(),
         config=config,
@@ -87,6 +104,7 @@ def run_schedule(
         home=home,
         run=run,
         live=live,
+        alarm=alarm,
     )
     if args.verb == "install":
         if not args.workspace_root:
