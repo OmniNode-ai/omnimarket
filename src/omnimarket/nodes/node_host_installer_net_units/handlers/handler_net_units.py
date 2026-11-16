@@ -24,12 +24,22 @@ unit's ``gpu_budget`` measurements. A unit that declares ``serving: true`` must 
 unit file whose value is in the contract's ``restart_policies``; this check runs before the sha256 pin check.
 A file entry may carry its payload inline via ``content`` instead of a ``source`` file name; the bytes are the UTF-8
 encoding of that string and the same rendering, pin and serving checks apply.
+
+A file entry may also name ``secrets``, a mapping from placeholder name to the store folder and key that fills it: at
+plan time every ``__SECRET_<NAME>__`` placeholder is replaced by the value the secret store resolves, which is never
+printed and never reaches a result field. The sha256 pin of such a file is the pin of its template BEFORE the secret
+is filled, and a secret file's content and digest are withheld from the dry-run output, the install log and the
+result. ``nut-config`` places its files directly under ``/etc/nut/`` in group ``nut``; a unit's ``active_services``
+must all be active before an install counts as a success.
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
+import functools
+import grp
 import hashlib
 import math
 import os
@@ -48,16 +58,30 @@ from pydantic import ValidationError
 from omnimarket.models.model_net_units_overlay import (
     ModelNetUnitsOverlay,
 )
+from omnimarket.models.secret_store.model_secret_store_overlay import (
+    ModelSecretStoreOverlay,
+)
+from omnimarket.models.secret_store.model_secret_store_request import (
+    EnumSecretStoreOperation,
+    ModelSecretStoreRequest,
+)
+from omnimarket.models.secret_store.model_secret_store_result import (
+    EnumSecretStoreOutcome,
+)
 from omnimarket.nodes.node_host_installer_net_units.models.model_net_units import (
     ModelGpuBudget,
     ModelNetUnitsRequest,
     ModelNetUnitsResult,
+)
+from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store import (
+    HandlerSecretStore,
 )
 
 NODE_DIR = Path(__file__).resolve().parents[1]
 INTERFACE_NAME = re.compile(r"^[A-Za-z0-9_.:-]{1,15}$")
 
 Runner = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
+SecretReader = Callable[[str, str], str]
 
 
 def run_command(argv: list[str]) -> subprocess.CompletedProcess[str]:
@@ -74,6 +98,39 @@ def load_contract(contract_path: Path | None = None) -> dict[str, Any]:
         (contract_path or NODE_DIR / "contract.yaml").read_text(encoding="utf-8")
     )
     return dict(document)
+
+
+class SecretUnavailableError(Exception):
+    """The secret store did not resolve a secret; ``outcome`` is the store's typed outcome, never a value."""
+
+    def __init__(self, outcome: str) -> None:
+        super().__init__(outcome)
+        self.outcome = outcome
+
+
+def resolve_secret(
+    folder: str,
+    key: str,
+    *,
+    store_overlay: ModelSecretStoreOverlay | None = None,
+    store_handler: HandlerSecretStore | None = None,
+) -> str:
+    """Read one secret from the store at plan time; anything but a resolved value raises SecretUnavailableError.
+
+    ``store_overlay`` is the ``secret_store`` block of the units document (the store addressing and the identity's
+    references); with none, the machine's own overlay is read, and a machine with no block answers ``not_configured``.
+    """
+    handler = store_handler or HandlerSecretStore(overlay=store_overlay)
+    result = asyncio.run(
+        handler.handle(
+            ModelSecretStoreRequest(
+                operation=EnumSecretStoreOperation.RESOLVE, folder=folder, key=key
+            )
+        )
+    )
+    if result.outcome is EnumSecretStoreOutcome.RESOLVED and result.value is not None:
+        return result.value.get_secret_value()
+    raise SecretUnavailableError(outcome=str(result.outcome.value))
 
 
 class RefusalError(Exception):
@@ -95,6 +152,8 @@ class FilePlan:
     pinned: bool = False
     rendered: bool = False
     is_unit_file: bool = False
+    group: str = "root"
+    secret: bool = False
     is_dropin: bool = False
 
     @property
@@ -124,10 +183,12 @@ class UnitPlan:
     serving: bool = False
     gpu_budget: dict[str, Any] | None = None
     gpu_fraction: str = ""
+    active_services: list[str] = field(default_factory=list)
 
 
 class HandlerNetUnits:
-    """``handle(request) -> result``. ``run`` runs one command; tests inject it, the host side and the platform."""
+    """``handle(request) -> result``. ``run`` runs one command; tests inject it, the host side, the platform and the
+    secret reader."""
 
     def __init__(
         self,
@@ -136,6 +197,7 @@ class HandlerNetUnits:
         sudo: list[str] | None = None,
         fs_root: Path = Path("/"),
         contract: dict[str, Any] | None = None,
+        secret_reader: SecretReader | None = None,
     ) -> None:
         self.run = run
         self.system = system
@@ -144,6 +206,8 @@ class HandlerNetUnits:
         )
         self.fs_root = fs_root
         self.contract = contract if contract is not None else load_contract()
+        self.secret_reader = secret_reader
+        self.secret_store: ModelSecretStoreOverlay | None = None
 
     # ------------------------------------------------------------------ entry
 
@@ -195,7 +259,9 @@ class HandlerNetUnits:
                 f"{units_file}: schema must be {self.contract['overlay']['schema']}",
             )
         try:
-            ModelNetUnitsOverlay.model_validate(document)
+            self.secret_store = ModelNetUnitsOverlay.model_validate(
+                document
+            ).secret_store
         except ValidationError as exc:
             paths = [
                 ".".join(str(p) for p in err["loc"])
@@ -239,6 +305,7 @@ class HandlerNetUnits:
         plan = UnitPlan(name=request.unit, kind=kind, service=service, slice=slice_name)
         plan.serving = bool(unit.get("serving"))
         plan.gpu_budget = unit.get("gpu_budget")
+        plan.active_services = [str(s) for s in unit.get("active_services") or []]
         for entry in unit.get("files") or []:
             plan.files.append(self.file_plan(request, entry, spec, plan))
         if not plan.files:
@@ -287,15 +354,31 @@ class HandlerNetUnits:
         mode = int(str(entry["mode"]), 8)
         item = FilePlan(destination=destination, path=path, mode=mode)
         item.is_unit_file = destination.startswith("/etc/systemd/system/")
+        item.group = str(spec.get("group") or self.contract["default_file_group"])
+        item.secret = bool(entry.get("secrets"))
         item.is_dropin = dropin
         if request.mode != "uninstall":
             item.data = self.payload(request, entry, plan, item)
         try:
-            item.installed = path.read_bytes()
+            item.installed = self.read_installed(path)
             item.installed_mode = path.stat().st_mode & 0o777
         except FileNotFoundError:
             pass
         return item
+
+    def read_installed(self, path: Path) -> bytes:
+        """The bytes installed at ``path``; a file the caller may not read (a root:nut 0640 config) is read through sudo."""
+        try:
+            return path.read_bytes()
+        except PermissionError:
+            if not self.sudo:
+                raise
+        done = self.run([*self.sudo, "cat", str(path)])
+        if done.returncode:
+            raise OSError(
+                f"cat {path} failed ({done.returncode}): {done.stderr.strip()}"
+            )
+        return done.stdout.encode("utf-8")
 
     def payload(
         self,
@@ -372,6 +455,8 @@ class HandlerNetUnits:
                     "digest-mismatch",
                     f"{item.destination}: rendered bytes hash to {hashlib.sha256(data).hexdigest()}, the declared pin is {pin}",
                 )
+        if entry.get("secrets"):
+            data = self.fill_secrets(entry, data)
         return data
 
     def render_values(
@@ -389,10 +474,18 @@ class HandlerNetUnits:
                 "values-not-mapping", f"{source} declares values that are not a mapping"
             )
         pattern = re.compile(str(rule["placeholder_pattern"]))
+        secret_pattern = re.compile(
+            str(self.contract["render"]["secret"]["placeholder_pattern"])
+        )
         gpu_placeholder = str(rule["gpu_budget_placeholder"])
         found = set(pattern.findall(data.decode("utf-8")))
         declared = {f"__{name}__" for name in values}
-        missing = found - declared - {gpu_placeholder}
+        missing = (
+            found
+            - declared
+            - {gpu_placeholder}
+            - set(secret_pattern.findall(data.decode("utf-8")))
+        )
         if missing:
             raise RefusalError(
                 "placeholder-without-value",
@@ -416,14 +509,49 @@ class HandlerNetUnits:
             text = text.replace(gpu_placeholder, fraction)
         for name, value in values.items():
             text = text.replace(f"__{name}__", str(value))
-        remaining = pattern.findall(text)
+        remaining = set(pattern.findall(text)) - set(secret_pattern.findall(text))
         if remaining:
             raise RefusalError(
                 "placeholder-remaining",
-                f"{source} still has placeholders after rendering: {sorted(set(remaining))}",
+                f"{source} still has placeholders after rendering: {sorted(remaining)}",
             )
         plan.rendered = text
         item.rendered = True
+        return text.encode("utf-8")
+
+    def fill_secrets(self, entry: dict[str, Any], data: bytes) -> bytes:
+        """Fill every declared ``__SECRET_<NAME>__`` placeholder from the secret store.
+
+        The value goes into the bytes alone: it is never printed, never hashed into a result field, and a failure
+        names only the folder, the key and the store's outcome.
+        """
+        secrets = entry.get("secrets") or {}
+        rule = self.contract["render"]["secret"]
+        placeholder_pattern = re.compile(str(rule["placeholder_pattern"]))
+        value_pattern = re.compile(str(rule["value_pattern"]))
+        text = data.decode("utf-8")
+        for name in secrets:
+            if f"__SECRET_{name}__" not in text:
+                raise RefusalError("secret-without-placeholder", str(name))
+        declared = {f"__SECRET_{name}__" for name in secrets}
+        for placeholder in sorted(set(placeholder_pattern.findall(text))):
+            if placeholder not in declared:
+                raise RefusalError("secret-placeholder-undeclared", placeholder)
+        reader = self.secret_reader or functools.partial(
+            resolve_secret, store_overlay=self.secret_store
+        )
+        for name, ref in secrets.items():
+            folder = str(ref["folder"])
+            key = str(ref["key"])
+            try:
+                value = reader(folder, key)
+            except SecretUnavailableError as unavailable:
+                raise RefusalError(
+                    "secret-unresolved", f"{folder}/{key}: {unavailable.outcome}"
+                ) from None
+            if not value or not value_pattern.fullmatch(value):
+                raise RefusalError("secret-unsafe-value", f"{folder}/{key}")
+            text = text.replace(f"__SECRET_{name}__", value)
         return text.encode("utf-8")
 
     def is_dropin_destination(
@@ -553,9 +681,12 @@ class HandlerNetUnits:
                 lines.append(f"unchanged {item.destination}")
             else:
                 changed = True
-                lines.append(
-                    f"would write {item.destination} ({item.state}, sha256 {item.digest})"
+                detail = (
+                    "content withheld: carries a secret"
+                    if item.secret
+                    else f"sha256 {item.digest}"
                 )
+                lines.append(f"would write {item.destination} ({item.state}, {detail})")
         return lines, changed
 
     def status(
@@ -592,6 +723,10 @@ class HandlerNetUnits:
                 else f"sshd -t failed: {check.stderr.strip()}\n"
             )
             failed |= check.returncode != 0
+        for service in plan.active_services:
+            active = self.is_active(str(service))
+            out += f"{service} {'active' if active else 'NOT RUNNING: inactive'}\n"
+            failed |= not active
         return self.result(request, int(bool(failed)), out=out, plan=plan)
 
     def install(
@@ -616,8 +751,12 @@ class HandlerNetUnits:
                 plan=plan,
             )
         for item in todo:
-            self.write(item.path, item.data, item.mode)
-            out += f"wrote {item.destination} (sha256 {item.digest})\n"
+            self.write(item.path, item.data, item.mode, item.group)
+            out += (
+                f"wrote {item.destination} (carries a secret; digest withheld)\n"
+                if item.secret
+                else f"wrote {item.destination} (sha256 {item.digest})\n"
+            )
         if any(item.is_unit_file for item in todo):
             self.systemctl("daemon-reload")
         self.systemctl("enable", plan.service)
@@ -632,6 +771,16 @@ class HandlerNetUnits:
                 plan=plan,
                 changed=True,
             )
+        for service in plan.active_services:
+            if not self.is_active(str(service)):
+                return self.result(
+                    request,
+                    1,
+                    out=out,
+                    error=f"{service} is not active after the install\n",
+                    plan=plan,
+                    changed=True,
+                )
         return self.result(
             request, 0, out=out + f"{plan.service} active\n", plan=plan, changed=True
         )
@@ -648,8 +797,12 @@ class HandlerNetUnits:
             )
         out = ""
         for item in todo:
-            self.write(item.path, item.data, item.mode)
-            out += f"wrote {item.destination} (sha256 {item.digest})\n"
+            self.write(item.path, item.data, item.mode, item.group)
+            out += (
+                f"wrote {item.destination} (carries a secret; digest withheld)\n"
+                if item.secret
+                else f"wrote {item.destination} (sha256 {item.digest})\n"
+            )
         failure = self.validate_sshd(plan, todo)
         if failure:
             return self.result(request, 1, out=out, error=failure, plan=plan)
@@ -743,7 +896,12 @@ class HandlerNetUnits:
             if item.installed is None:
                 self.remove(item.path)
             else:
-                self.write(item.path, item.installed, item.installed_mode or item.mode)
+                self.write(
+                    item.path,
+                    item.installed,
+                    item.installed_mode or item.mode,
+                    item.group,
+                )
         names = ", ".join(item.destination for item in touched)
         return (
             f"sshd -t failed (exit {check.returncode}): {(check.stderr or check.stdout).strip()}\n"
@@ -842,7 +1000,7 @@ class HandlerNetUnits:
             and not self.is_active(plan.service)
         )
 
-    def write(self, path: Path, data: bytes, mode: int) -> None:
+    def write(self, path: Path, data: bytes, mode: int, group: str = "root") -> None:
         if self.sudo:
             with tempfile.TemporaryDirectory(prefix="net-units-") as scratch:
                 staged = Path(scratch) / "payload"
@@ -856,7 +1014,7 @@ class HandlerNetUnits:
                         "-o",
                         "root",
                         "-g",
-                        "root",
+                        group,
                         str(staged),
                         str(path),
                     ]
@@ -871,7 +1029,7 @@ class HandlerNetUnits:
         staged.write_bytes(data)
         staged.chmod(mode)
         if os.geteuid() == 0:
-            os.chown(staged, 0, 0)
+            os.chown(staged, 0, grp.getgrnam(group).gr_gid)
         os.replace(staged, path)
 
     def remove(self, path: Path) -> None:
@@ -907,7 +1065,9 @@ class HandlerNetUnits:
             changed=changed,
             rendered=plan.rendered if plan else "",
             interface=plan.interface if plan else "",
-            digests={i.destination: i.digest for i in plan.files if i.data}
+            digests={
+                i.destination: i.digest for i in plan.files if i.data and not i.secret
+            }
             if plan
             else {},
             gpu_memory_utilization=plan.gpu_fraction if plan else "",
