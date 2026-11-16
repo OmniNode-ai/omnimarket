@@ -42,6 +42,7 @@ from decimal import Decimal
 
 from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
     EnumBaselineState,
+    EnumMeteringMeasurement,
     ModelCounterfactualBaseline,
     ModelMeteringModelRow,
     ModelMeteringReconciliation,
@@ -124,13 +125,14 @@ class HandlerMeteringSummary:
                 bucket.tokens_in += tokens_in
                 bucket.tokens_out += tokens_out
 
-            if record.failed:
-                # OMN-21264, OMN-24615 AC1: a run that ended with any failure
-                # cause had no answer used, so it saved nothing. Its recorded
-                # spend still counts, and its counterfactual is that spend, so
-                # the headline subtraction books exactly zero; runs_failed names it.
+            # OMN-21264, OMN-24615 AC1: a run that ended with any failure cause
+            # had no answer used, so it saved nothing; runs_failed names it. A
+            # measured one (returned_to_caller always is) keeps its recorded
+            # spend with that spend as its counterfactual, so the headline
+            # subtraction books exactly zero. Any other is unknown, as below.
+            runs_failed += record.failed
+            if record.failed and record.measurement is EnumMeteringMeasurement.MEASURED:
                 returned_spend = record.spend_usd or Decimal("0")
-                runs_failed += 1
                 runs_measured += 1
                 bucket.runs_measured += 1
                 spend_total += returned_spend

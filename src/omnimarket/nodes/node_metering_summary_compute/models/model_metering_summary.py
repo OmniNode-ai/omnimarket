@@ -190,8 +190,12 @@ class ModelMeteringRecord(BaseModel):
 
     @property
     def measurement(self) -> EnumMeteringMeasurement:
-        """This run's measurement class — the AC3 unknown/zero distinction."""
-        if self.failed:
+        """This run's measurement class — the AC3 unknown/zero distinction.
+
+        OMN-24615 AC1: any other failed run is classed by what it recorded, like
+        a successful one; it saves nothing either way and counts in runs_failed.
+        """
+        if self.returned_to_caller:
             return EnumMeteringMeasurement.MEASURED
         if not self.has_tokens:
             return EnumMeteringMeasurement.UNKNOWN_TOKENS
