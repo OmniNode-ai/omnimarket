@@ -93,6 +93,7 @@ class HandlerMeteringSummary:
         runs_measured = 0
         runs_unknown_tokens = 0
         runs_unknown_spend = 0
+        runs_failed = 0
         tokens_in_total = 0
         tokens_out_total = 0
         spend_total = Decimal("0")
@@ -123,11 +124,13 @@ class HandlerMeteringSummary:
                 bucket.tokens_in += tokens_in
                 bucket.tokens_out += tokens_out
 
-            if record.returned_to_caller:
-                # OMN-21264: no answer was accepted, so the run saved nothing.
-                # Its recorded spend still counts, and its counterfactual is
-                # that spend, so the headline subtraction books exactly zero.
+            if record.failed:
+                # OMN-21264, OMN-24615 AC1: a run that ended with any failure
+                # cause had no answer used, so it saved nothing. Its recorded
+                # spend still counts, and its counterfactual is that spend, so
+                # the headline subtraction books exactly zero; runs_failed names it.
                 returned_spend = record.spend_usd or Decimal("0")
+                runs_failed += 1
                 runs_measured += 1
                 bucket.runs_measured += 1
                 spend_total += returned_spend
@@ -178,6 +181,7 @@ class HandlerMeteringSummary:
             runs_measured=runs_measured,
             runs_unknown_tokens=runs_unknown_tokens,
             runs_unknown_spend=runs_unknown_spend,
+            runs_failed=runs_failed,
             tokens_in=tokens_in_total,
             tokens_out=tokens_out_total,
             spend_usd=spend_usd,

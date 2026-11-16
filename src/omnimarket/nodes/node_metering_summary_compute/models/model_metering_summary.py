@@ -163,6 +163,21 @@ class ModelMeteringRecord(BaseModel):
             "counts as measured with zero savings, never as unknown."
         ),
     )
+    failure_cause: str | None = Field(
+        default=None,
+        description=(
+            "OMN-24615 AC1: the run's terminal failure cause, or None when it ended "
+            "without one. A run that ended with any failure cause (a refused "
+            "answer, a timeout, a provider error, or returned_to_caller) saved "
+            "nothing: it counts as measured with zero savings, keeps its spend, and "
+            "is counted in runs_failed."
+        ),
+    )
+
+    @property
+    def failed(self) -> bool:
+        """Whether the run ended with a failure cause, so saved nothing (OMN-24615 AC1)."""
+        return self.returned_to_caller or bool(self.failure_cause)
 
     @property
     def has_tokens(self) -> bool:
@@ -176,7 +191,7 @@ class ModelMeteringRecord(BaseModel):
     @property
     def measurement(self) -> EnumMeteringMeasurement:
         """This run's measurement class — the AC3 unknown/zero distinction."""
-        if self.returned_to_caller:
+        if self.failed:
             return EnumMeteringMeasurement.MEASURED
         if not self.has_tokens:
             return EnumMeteringMeasurement.UNKNOWN_TOKENS
@@ -314,6 +329,14 @@ class ModelMeteringSummary(BaseModel):
     runs_measured: int = Field(..., ge=0)
     runs_unknown_tokens: int = Field(..., ge=0)
     runs_unknown_spend: int = Field(..., ge=0)
+    runs_failed: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "OMN-24615 AC1: runs that ended with a failure cause. Each counts as "
+            "measured with zero savings and keeps its spend; this names them."
+        ),
+    )
 
     tokens_in: int = Field(
         ..., ge=0, description="Summed over runs that recorded token counts."

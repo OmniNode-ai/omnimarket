@@ -105,6 +105,8 @@ def metering_record_from_row(row: Mapping[str, Any]) -> ModelMeteringRecord | No
         spend_usd=_to_decimal(row["cost_usd"]),
         recorded_savings_usd=_to_decimal(row["cost_savings_usd"]),
         returned_to_caller=row.get(METERING_CAUSE_COLUMN) == RETURNED_TO_CALLER,
+        # OMN-24615 AC1: any stored failure cause, so a refused run saves nothing.
+        failure_cause=str(row.get(METERING_CAUSE_COLUMN) or "") or None,
     )
 
 
