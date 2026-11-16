@@ -54,8 +54,25 @@ _IMAGE = re.compile(r"\[Image #\d+\]")
 #: approvals and five "continue" were answered by a delegated model).
 _CONTROL = re.compile(
     r"(?:yes|y|no|n|ok|okay|continue|cont|go|proceed|do it|stop|wait|retry|lgtm"
-    r"|approve|approved)\b",
+    r"|approve|approved|i\s+mean)\b",
     re.IGNORECASE,
+)
+# These messages direct the working session; an advice-only model must not
+# consume them even when it can produce a plausible answer (2026-11-16).
+_WORK_REQUEST = re.compile(
+    r"(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?"
+    r"(?:fix|check|inspect|update|edit|change|remove|delete|close|reopen|merge"
+    r"|push|commit|deploy|install|uninstall|enable|disable|run|implement|build"
+    r"|test|verify|read|open|move|revert|restore)\b",
+    re.IGNORECASE,
+)
+_CORRECTION = re.compile(
+    r"\b(?:i(?:'ve|\s+have)?|we(?:'ve|\s+have)?)\s+(?:already\s+)?"
+    r"(?:removed|changed|deleted|disabled|enabled|updated|decided|cancelled|canceled)\b",
+    re.IGNORECASE,
+)
+_INFORMATION = re.compile(
+    r"(?:what|why|how|when|where|who|which|explain|describe)\b", re.IGNORECASE
 )
 #: A prompt this short leans on the conversation ("fix all", "check and do").
 _SHORT_WORDS = 3
@@ -121,6 +138,10 @@ def skip_reason(prompt: str) -> EnumPromptDelegateOutcome | None:
     if _IMAGE.search(text):
         return EnumPromptDelegateOutcome.HAS_IMAGE
     if _CONTROL.match(text) or len(text.split()) <= _SHORT_WORDS:
+        return EnumPromptDelegateOutcome.CONTROL
+    if _WORK_REQUEST.match(text):
+        return EnumPromptDelegateOutcome.CONTROL
+    if not _INFORMATION.match(text) and "?" not in text and _CORRECTION.search(text):
         return EnumPromptDelegateOutcome.CONTROL
     return None
 

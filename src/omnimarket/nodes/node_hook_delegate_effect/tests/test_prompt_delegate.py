@@ -304,6 +304,44 @@ def test_a_shorter_hook_limit_wins() -> None:
         ("stop", {}, EnumPromptDelegateOutcome.CONTROL),
         ("fix all", {}, EnumPromptDelegateOutcome.CONTROL),
         ("check and do", {}, EnumPromptDelegateOutcome.CONTROL),
+        (
+            "i mean onex cli/tui we can enable disable hooks - one or two or both in all possible ways",
+            {},
+            EnumPromptDelegateOutcome.CONTROL,
+        ),
+        # A longer correction was answered with advice to close a PR instead of
+        # reaching the working session (operator report, 2026-11-16).
+        (
+            "beta crital i removed it's not needed",
+            {},
+            EnumPromptDelegateOutcome.CONTROL,
+        ),
+        (
+            "I already removed the beta-critical label",
+            {},
+            EnumPromptDelegateOutcome.CONTROL,
+        ),
+        (
+            "We have changed the plan; use the new one",
+            {},
+            EnumPromptDelegateOutcome.CONTROL,
+        ),
+        (
+            "Fix the prompt interception and report back",
+            {},
+            EnumPromptDelegateOutcome.CONTROL,
+        ),
+        ("Please check the PR and its comments", {}, EnumPromptDelegateOutcome.CONTROL),
+        (
+            "Can you update the hook configuration for me?",
+            {},
+            EnumPromptDelegateOutcome.CONTROL,
+        ),
+        (
+            "Close example-repo#2048 because it is obsolete",
+            {},
+            EnumPromptDelegateOutcome.CONTROL,
+        ),
     ],
 )
 def test_some_prompts_go_to_claude_without_delegating(
@@ -315,6 +353,39 @@ def test_some_prompts_go_to_claude_without_delegating(
     assert result.outcome is outcome
     assert result.hook_output == ""
     assert cli.calls == []
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Explain what a binary search is",
+        "Why is a beta-critical label useful?",
+        "What happens if I removed a Git label?",
+        "Explain why I changed the name of a variable",
+        "How can you update a Python dictionary?",
+    ],
+)
+def test_informational_questions_still_show_the_delegated_answer(prompt: str) -> None:
+    cli = _Cli(_doc(_ANSWER, "r-information"))
+    result = _ask(cli, prompt)
+    assert result.outcome is EnumPromptDelegateOutcome.ANSWERED
+    assert len(cli.calls) == 1
+    assert _ANSWER in json.loads(result.hook_output)["reason"]
+
+
+def test_a_correction_receives_delegated_history_once_without_another_model_call() -> (
+    None
+):
+    cli = _Cli(_doc(_ANSWER, "r-before-correction"))
+    _ask(cli, "How do TCP and UDP differ?")
+    correction = "beta crital i removed it's not needed"
+    first = _ask(cli, correction)
+    assert first.outcome is EnumPromptDelegateOutcome.CONTROL
+    output = json.loads(first.hook_output)
+    assert "decision" not in output
+    assert _ANSWER in output["hookSpecificOutput"]["additionalContext"]
+    assert _ask(cli, correction).hook_output == ""
+    assert len(cli.calls) == 1
 
 
 # --- what Claude learns ------------------------------------------------------------
