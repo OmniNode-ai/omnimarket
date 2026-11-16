@@ -139,3 +139,13 @@ def test_units_are_declared_with_their_entry_files() -> None:
         ]
         == "onex-prove-running"
     )
+
+
+@pytest.mark.unit
+def test_worker_unit_declares_the_overlay_root_its_read_step_needs() -> None:
+    unit = yaml.safe_load(UNITS.read_text(encoding="utf-8"))["units"][
+        "temporal-worker-systemd"
+    ]
+    assert unit["environment"]["ONEX_SKILL_OVERLAY_ROOTS"] == "{overlays_root}"
+    assert "ONEX_SKILL_OVERLAY_ROOTS" in unit["environment_path_overrides"]
+    assert unit["environment_refuse_worktree_paths"] == ["ONEX_SKILL_OVERLAY_ROOTS"]

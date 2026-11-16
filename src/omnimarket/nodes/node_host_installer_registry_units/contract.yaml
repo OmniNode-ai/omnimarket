@@ -1546,8 +1546,14 @@ units:
     # workflow node is merged, or a clean checkout of its branch named with --set at install.
     environment_path_overrides:
       - ONEX_TEMPORAL_WORKER_PROJECT
+      - ONEX_SKILL_OVERLAY_ROOTS
+    # The workflow's read step runs node_merged_change_reading_effect, which finds its runners overlay under
+    # ONEX_SKILL_OVERLAY_ROOTS; with no root every reading exits 1 and the workflow can only alarm. An overlay root is
+    # never a worktree.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       ONEX_TEMPORAL_ADDRESS: "127.0.0.1:7233"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
       ONEX_TEMPORAL_WORKER_PROJECT: "{registry_root}/omnimarket"
       ONEX_LEDGER_WRITE_VIA: "bus"
       ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
