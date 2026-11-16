@@ -19,29 +19,26 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
-
-temporalio = pytest.importorskip("temporalio")
-
-from temporalio.api.enums.v1 import EventType  # noqa: E402
-from temporalio.client import Client, WorkflowHandle  # noqa: E402
-from temporalio.common import (  # noqa: E402
+from temporalio.api.enums.v1 import EventType
+from temporalio.client import Client, WorkflowHandle
+from temporalio.common import (
     WorkflowIDConflictPolicy,
     WorkflowIDReusePolicy,
 )
-from temporalio.exceptions import WorkflowAlreadyStartedError  # noqa: E402
-from temporalio.testing import WorkflowEnvironment  # noqa: E402
-from temporalio.worker import Worker  # noqa: E402
+from temporalio.exceptions import WorkflowAlreadyStartedError
+from temporalio.testing import WorkflowEnvironment
+from temporalio.worker import Worker
 
-from omnimarket.nodes.node_prove_running_workflow.handlers import (  # noqa: E402
+from omnimarket.nodes.node_prove_running_workflow.handlers import (
     temporal_prove_running as wf_module,
 )
-from omnimarket.nodes.node_prove_running_workflow.handlers.temporal_prove_running import (  # noqa: E402
+from omnimarket.nodes.node_prove_running_workflow.handlers.temporal_prove_running import (
     ACTIVITY_NAME,
     WORKFLOW_NAME,
     ProveRunningWorkflow,
     prove_running_step,
 )
-from omnimarket.nodes.node_prove_running_workflow.models import (  # noqa: E402
+from omnimarket.nodes.node_prove_running_workflow.models import (
     EnumProveRunningOutcome,
     ModelProveRunningChange,
     ModelProveRunningPlan,
