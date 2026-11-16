@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
 from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
     ModelReviewGatewayKeyEventPolicy,
     ModelReviewGatewaySetAside,
@@ -47,7 +48,7 @@ class SlowCall(FakeCall):
         super().__init__(outcomes)
         self.delay = delay
 
-    def __call__(self, request):  # type: ignore[no-untyped-def]
+    def __call__(self, request: ModelLlmDelegationCallRequest) -> FakeOutcome:
         time.sleep(self.delay)
         return super().__call__(request)
 
