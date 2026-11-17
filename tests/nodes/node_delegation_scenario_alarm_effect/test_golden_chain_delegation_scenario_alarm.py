@@ -4,22 +4,27 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import inspect
 import json
 import shlex
 import subprocess
 import sys
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
 import pytest
 import yaml
+from click.testing import CliRunner
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.runtime.auto_wiring.discovery import (
     discover_contracts_from_paths,
 )
 
+from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
 from omnimarket.handlers import delegation_readiness_scenario as readiness_scenario
 from omnimarket.models.model_delegation_scenario import (
     EnumScenarioConclusion,
@@ -65,6 +70,7 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     LocalLedgerFile,
     ModelAppendCommandResult,
 )
+from omnimarket.work_ledger_bus import cli as bus_cli
 from omnimarket.work_ledger_bus.cli import append_command
 from tests.nodes.node_host_installer_registry_units.test_registry_units import request
 
@@ -386,40 +392,26 @@ def test_the_installer_declares_the_alarm_timer() -> None:
     assert CONTRACT_PATH.is_file()
 
 
-def _write_cli_stub(path: Path, argv_log: Path, *, real_reply: bool) -> None:
-    """A stand-in for ``omnimarket.work_ledger_bus.cli append``: records its argv, prints a reply.
-
-    ``real_reply`` prints the receipt the CLI prints on acceptance (``receipt.model_dump_json()``); otherwise a
-    reply the CLI never prints.
-    """
-    reply = (
-        "ModelWorkLedgerAppendReceipt(request_id=UUID(rid), status='accepted', exit_code=0, message='appended', "
-        "ledger_lines=[1], ledger_host='h053', duration_ms=1).model_dump_json()"
-        if real_reply
-        else "json.dumps({'result': 'ok'})"
-    )
+def _write_cli_stub(path: Path, argv_log: Path) -> None:
+    """A stand-in that records its argv and prints a reply the append command never prints (the negative control)."""
     path.write_text(
         f"#!{sys.executable}\n"
         "import json, sys\n"
-        "from uuid import UUID\n"
-        "from omnimarket.models.work_ledger_append.model_work_ledger_append import ModelWorkLedgerAppendReceipt\n"
         f"open({str(argv_log)!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
         "sys.stdin.read()\n"
-        "rid = sys.argv[sys.argv.index('--request-id') + 1]\n"
-        f"print({reply})\n",
+        "print(json.dumps({'result': 'ok'}))\n",
         encoding="utf-8",
     )
     path.chmod(0o755)
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(("real_reply", "code"), [(True, 0), (False, 1)])
-def test_the_rendered_unit_argv_runs_the_tick_to_exit_zero_on_the_real_accepted_reply(
-    tmp_path: Path, real_reply: bool, code: int
+def test_the_rendered_unit_argv_fails_the_tick_on_a_reply_the_cli_never_prints(
+    tmp_path: Path,
 ) -> None:
-    # The argv the installer renders (--omni-home, --state-dir) is the tick's whole argument list: nothing is added,
-    # and the append command is the one the unit declares. The accepted reply is the CLI's full receipt, so a
-    # stub that prints a string the CLI never prints must fail the tick (the negative control).
+    # The unit's rendered argv is `--omni-home <dir> --state-dir <dir>`: the tick adds nothing to it. The test appends
+    # `--home` itself, only to point the tick at an empty directory of records. The accepted reply is not built here
+    # (see the CliRunner tests below); this stub prints a string the CLI never prints, so the tick must exit 1.
     unit = load_units()["scenario-alarm-systemd"]
     argv = HandlerRegistryUnits().tick_arguments(
         request(tmp_path, unit="scenario-alarm-systemd"), unit
@@ -428,7 +420,7 @@ def test_the_rendered_unit_argv_runs_the_tick_to_exit_zero_on_the_real_accepted_
     assert argv[2] == "--state-dir"
     stub = tmp_path / "append.py"
     argv_log = tmp_path / "append-argv.log"
-    _write_cli_stub(stub, argv_log, real_reply=real_reply)
+    _write_cli_stub(stub, argv_log)
     home = tmp_path / "home"
     empty_home = tmp_path / "empty"
     empty_home.mkdir()
@@ -436,7 +428,7 @@ def test_the_rendered_unit_argv_runs_the_tick_to_exit_zero_on_the_real_accepted_
         [*argv, "--home", str(empty_home)],
         environ={"ONEX_LEDGER_BUS_APPEND_COMMAND": str(stub), "ONEX_HOST_NAME": "h053"},
     )
-    assert exit_code == code
+    assert exit_code == 1
     # Both alarms (R8 and R9 have no record under the empty home) reached the append command with the CLI's flags.
     calls = [
         json.loads(line) for line in argv_log.read_text(encoding="utf-8").splitlines()
@@ -449,8 +441,8 @@ def test_the_rendered_unit_argv_runs_the_tick_to_exit_zero_on_the_real_accepted_
         assert call[6:] == ["--rows-file", "-"]
     record = json.loads((home / unit["evidence_file"]).read_text(encoding="utf-8"))
     assert record["alarms"] == ["R8", "R9"]
-    assert record["unappended"] == ([] if real_reply else ["R8", "R9"])
-    assert record["conclusion"] == ("success" if real_reply else "failure")
+    assert record["unappended"] == ["R8", "R9"]
+    assert record["conclusion"] == "failure"
 
 
 @pytest.mark.unit
@@ -651,8 +643,8 @@ def test_a_record_older_than_the_declared_age_raises_the_bucketed_stale_reading(
     later = _r8_tick(tmp_path, next_bucket)
     cells = first[0].split(" | ")
     assert "conclusion=stale" in cells
-    # Stamped at the bucket start (12:00), so a reader's bucket window finds it.
-    assert cells[0] == "2026-11-16T12:00:00Z"
+    # Stamped at the later of the bucket start (12:00) and ran_at + max_age (14:50): never before the run it cites.
+    assert cells[0] == "2026-11-16T14:50:00Z"
     # Ticks in one bucket: the identical row and request id. Ticks in adjacent buckets: neither.
     assert again == first
     assert later[1] != first[1]
@@ -797,3 +789,184 @@ def test_the_rendered_append_command_and_flags_reach_the_real_bus_parser(
     assert context.params["host"] == "h053"
     assert str(context.params["request_id"]) == str(UUID(int=7))
     assert context.params["rows_file"] == "-"
+
+
+class _RealAppendCommand:
+    """The bus CLI's own ``append`` command, run under CliRunner over the real ledger append handler.
+
+    Only the broker is replaced: the command parses its flags, reads the rows from stdin, sends them through
+    ``WorkLedgerAppendCaller``'s seam to the real ``HandlerWorkLedgerAppendEffect`` and prints the receipt it gets.
+    Each run's exit code and stdout are kept in ``replies`` and returned to the tick's ``subprocess.run`` call.
+    """
+
+    def __init__(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, now: datetime
+    ) -> None:
+        self.ledger = tmp_path / "ledger.md"
+        self.ledger.write_text(
+            f"{now:%Y-%m-%dT%H:%M:%SZ} | STATUS | lane=newer | principal=alarm-principal | ticket=OMN-24874 | "
+            "actor=claude:sonnet:remote-lane | model=sonnet | a row newer than the alarm\n",
+            encoding="utf-8",
+        )
+        self.replies: list[tuple[int, str]] = []
+        handler = HandlerWorkLedgerAppendEffect(
+            _FileRunner(self.ledger),
+            LocalLedgerFile(self.ledger),
+            "ledger",
+            writer_principals=("alarm-principal",),
+            operator_principal="operator",
+            fence=LedgerFlipFence(),
+            bus_store=InMemoryBusLedgerStore(),
+        )
+
+        class _Caller:
+            def __init__(self, bus: ProtocolLabRunBus, *, principal: str) -> None:
+                assert principal == "alarm-principal"
+
+            async def append(
+                self, request_: ModelWorkLedgerAppendRequest, *, timeout_s: float
+            ) -> ModelWorkLedgerAppendReceipt:
+                del timeout_s
+                return handler.handle(request_, writer_principal="alarm-principal")
+
+            async def stop(self) -> None:
+                return None
+
+        @contextlib.asynccontextmanager
+        async def _open_bus(**_: object) -> AsyncIterator[ProtocolLabRunBus]:
+            yield EventBusInmemory(environment="local", group="alarm-test")
+
+        def _run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            result = CliRunner().invoke(
+                bus_cli.work_ledger_group,
+                argv[argv.index("append") :],
+                input=str(kwargs["input"]),
+            )
+            self.replies.append((result.exit_code, result.stdout))
+            return subprocess.CompletedProcess(
+                argv, result.exit_code, result.stdout, result.stderr
+            )
+
+        monkeypatch.setattr(bus_cli, "open_lab_run_bus", _open_bus)
+        monkeypatch.setattr(bus_cli, "bound_lane_principal", lambda: "alarm-principal")
+        monkeypatch.setattr(bus_cli, "WorkLedgerAppendCaller", _Caller)
+        monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "onex-state"))
+        monkeypatch.setattr(subprocess, "run", _run)
+
+    def alarm_lines(self) -> list[str]:
+        return [
+            line
+            for line in self.ledger.read_text(encoding="utf-8").splitlines()
+            if "alarm=delegation-scenario-r8-failed" in line
+        ]
+
+
+def _rendered_tick(tmp_path: Path, home: Path) -> tuple[list[str], dict[str, str]]:
+    """The unit's rendered tick arguments (plus the records ``--home``) and its rendered environment."""
+    unit = load_units()["scenario-alarm-systemd"]
+    handler = HandlerRegistryUnits()
+    unit_request = request(tmp_path, unit="scenario-alarm-systemd")
+    argv = [*handler.tick_arguments(unit_request, unit), "--home", str(home)]
+    environ = dict(handler.environment(unit_request, unit))
+    environ["ONEX_HOST_NAME"] = "h053"
+    return argv, environ
+
+
+@pytest.mark.unit
+def test_omn24874_golden_chain_accepted_reply_comes_from_the_append_command_under_clirunner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Review finding 4: the accepted reply is what the real `append` command prints, not a receipt built in the test.
+    now = datetime.now(UTC)
+    command = _RealAppendCommand(tmp_path, monkeypatch, now)
+    empty_home = tmp_path / "empty"
+    empty_home.mkdir()
+    argv, environ = _rendered_tick(tmp_path, empty_home)
+    assert main(argv, environ=environ) == 0
+    # R8 and R9 have no record under the empty home: two alarm rows, two replies, each the CLI's one JSON line.
+    assert len(command.replies) == 2
+    for exit_code, stdout in command.replies:
+        assert exit_code == 0
+        (line,) = stdout.splitlines()
+        receipt = ModelWorkLedgerAppendReceipt.model_validate_json(line)
+        assert receipt.status is EnumWorkLedgerAppendStatus.ACCEPTED
+        assert receipt.exit_code == 0
+    landed = command.ledger.read_text(encoding="utf-8")
+    assert "alarm=delegation-scenario-r8-failed" in landed
+    assert "alarm=delegation-scenario-r9-failed" in landed
+    state_dir = Path(argv[argv.index("--state-dir") + 1])
+    record = json.loads((state_dir / "last-run.json").read_text(encoding="utf-8"))
+    assert (record["alarms"], record["unappended"]) == (["R8", "R9"], [])
+    assert record["conclusion"] == "success"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("conclusion", ["failure", "refused"])
+def test_omn24874_golden_chain_duplicate_receipt_returns_zero_from_the_tick(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, conclusion: str
+) -> None:
+    # Review finding 5: a failed run is resubmitted every 900 s, so the steady state is a duplicate receipt. The
+    # command prints status duplicate and exits 0; CommandLedgerAppender maps it to `duplicate`, which the tick
+    # counts as appended, so the second tick returns zero and the ledger holds one row.
+    now = datetime.now(UTC)
+    ran_at = (now - timedelta(seconds=300)).isoformat()
+    home = tmp_path / "records"
+    _record(home, "r8", conclusion, ran_at, monkeypatch)
+    _record(home, "r9", "success", now.isoformat(), monkeypatch)
+    command = _RealAppendCommand(tmp_path, monkeypatch, now)
+    argv, environ = _rendered_tick(tmp_path, home)
+    assert main(argv, environ=environ) == 0
+    assert main(argv, environ=environ) == 0
+    statuses = [
+        json.loads(stdout.splitlines()[-1])["status"] for _, stdout in command.replies
+    ]
+    assert statuses == ["accepted", "duplicate"]
+    assert [exit_code for exit_code, _ in command.replies] == [0, 0]
+    assert len(command.alarm_lines()) == 1
+    state_dir = Path(argv[argv.index("--state-dir") + 1])
+    record = json.loads((state_dir / "last-run.json").read_text(encoding="utf-8"))
+    assert (record["alarms"], record["unappended"]) == (["R8"], [])
+    assert record["conclusion"] == "success"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("scenario", ["r8", "r9"])
+@pytest.mark.parametrize(
+    ("overdue_seconds", "stamp_is_bucket_start"), [(600, False), (30000, True)]
+)
+def test_omn24874_alarm_stale_row_is_stamped_no_earlier_than_the_run_it_cites(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    scenario: str,
+    overdue_seconds: int,
+    stamp_is_bucket_start: bool,
+) -> None:
+    # Review finding 8: R9's max_age (4500 s) is far inside the six-hour bucket, so the bucket start is usually before the
+    # ran_at the row cites, and a reader window that starts at ran_at would miss it. The stamp is the later of the
+    # bucket start and ran_at + max_age (the moment the record went stale).
+    settings = load_alarm_settings()
+    max_age = next(
+        w.max_age_seconds for w in settings.scenarios if w.scenario == scenario.upper()
+    )
+    ran_at = _NOW - timedelta(seconds=max_age + overdue_seconds)
+    _record(tmp_path, scenario, "success", ran_at.isoformat(), monkeypatch)
+    appender = _Appender()
+    HandlerDelegationScenarioAlarm(settings, appender, clock=lambda: _NOW).handle(
+        ModelScenarioAlarmRequest(home=tmp_path, host="h053")
+    )
+    (row, _) = next(c for c in appender.calls if f"scenario={scenario.upper()}" in c[0])
+    cells = row.split(" | ")
+    stamp = datetime.strptime(cells[0], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    bucket_start = datetime.fromtimestamp(
+        (int(_NOW.timestamp()) // settings.alarm_bucket_seconds)
+        * settings.alarm_bucket_seconds,
+        UTC,
+    )
+    assert "conclusion=stale" in cells
+    assert stamp == max(bucket_start, ran_at + timedelta(seconds=max_age))
+    if stamp_is_bucket_start:
+        assert stamp == bucket_start
+    else:
+        assert stamp > bucket_start
+    # A reader window that starts at the run's own time finds the row; the stamp is never in the future either.
+    assert ran_at <= stamp <= _NOW

@@ -10,8 +10,9 @@ name>``, the unit, the run's time and an owner line. A passing record yields no 
 run's record in place, and that reads ``stale``, whether the last run succeeded, failed or was refused. The request id is the
 scenario, the host, the run's own time, the conclusion and the alarm time bucket only for missing, unreadable or stale records.
 A failed run with a readable time that is still inside ``max_age_seconds`` is keyed on that time alone and stamped with it, so
-ticks on either side of a bucket boundary submit the identical row and request id. Missing and stale records use the bucket
-start, allowing another outage reading in each bucket. The pattern is the deploy-job-failed alarm row of omnibase_infra's
+ticks on either side of a bucket boundary submit the identical row and request id. A missing record uses the bucket start,
+allowing another outage reading in each bucket; a stale record is stamped at the later of the bucket start and the moment it
+went stale (its ``ran_at`` plus ``max_age_seconds``), so a reader window that starts at the run it cites finds the row. The pattern is the deploy-job-failed alarm row of omnibase_infra's
 deploy job reading.
 """
 
@@ -184,6 +185,12 @@ def build_alarm_row(
             raise ValueError("a run alarm requires a readable ran_at")
     else:
         moment = datetime.fromtimestamp(bucket * settings.alarm_bucket_seconds, UTC)
+        # A stale reading cites a run that went stale at ran_at + max_age. The bucket start is usually before that
+        # run (R9's max_age is far inside the bucket), and a reader window that starts at ran_at would miss a row
+        # stamped before it, so the stamp is the later of the two. Both are fixed for one record and one bucket.
+        ran = _read_run_time(ran_at)
+        if conclusion == "stale" and ran is not None:
+            moment = max(moment, ran + timedelta(seconds=watch.max_age_seconds))
     # Ledger stamps have second precision. Round a fractional run time up so a
     # reader whose window starts at ran_at cannot exclude this run's alarm.
     if moment.microsecond:

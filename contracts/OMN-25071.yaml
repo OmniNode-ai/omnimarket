@@ -12,20 +12,20 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: a run with a readable ran_at is keyed on ran_at alone (the bucket only for a missing or stale record), so ticks on each side of a six-hour boundary write one row and one request id,
-      with a test -- falsifier: `uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -k boundary -q` passes with the keying in handler_delegation_scenario_alarm.py reverted to the bucket'
+      with a test -- falsifier: `uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -k boundary -q` passes with the keying in handler_delegation_scenario_alarm.py reverted to the bucket'
 - id: req-omn25071-ac2
   statement: The rendered unit arguments reach the real parser; the subprocess appender reads its accepted JSON receipt, and the tick must return zero with no unappended alarms.
   acceptance:
   - id: AC2
     statement: 'AC2: the golden-chain test passes the full rendered argv to the CLI parser, stubs the CLI''s real accepted reply and asserts exit 0 -- falsifier: `uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py
-      -q` passes with a rendered flag the parser rejects'
+      -k rendered -q` passes with a rendered flag the parser rejects'
 - id: req-omn25071-ac3
   statement: 'AC3 belongs to the cost pull request: the AC3 item of its contract reads the R8 unit and the dev runtime; this contract carries a local Done gate reading of that item.'
   acceptance:
   - id: AC3
     statement: 'AC3: the AC3 item of contracts/OMN-24874.yaml reads the running revision of the R8 unit, the alarm unit and the dev runtime, or is unbound,
-      and the squash merge method is read so the grep cannot match an unsquashed commit, with a test -- falsifier: `uv run --frozen pytest tests -k "omn24874 and contract" -q` passes with the item reading
-      only the R8 installed.json'
+      and the squash merge method is read so the grep cannot match an unsquashed commit, with a test -- falsifier: `uv run --frozen pytest tests/test_omn24874_contract_checks.py -k ac3 -q`
+      (a file of the cost pull request, read from dev once that pull request is merged) passes with the item reading only the R8 installed.json'
 - id: req-omn25071-ac4
   statement: 'AC4 belongs to the cost pull request: probe endpoint and model pins are compared with the overlay row and canonical terminal readings; this contract carries a local Done gate reading of that
     test.'
@@ -40,8 +40,8 @@ requirements:
   acceptance:
   - id: AC5
     statement: 'AC5: each non-blocking finding 5 to 8 (None endpoint and model into the declared price, the discovery test against the runtime wiring, the AC10 head and backend_id wording, the alarm readers
-      and the backdated stamp) is fixed in the push or argued with evidence in a PR comment -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6335 --comments` shows no PR comment that names each of
-      findings 5, 6, 7 and 8'
+      and the backdated stamp) is fixed in the push or argued with evidence in a PR comment -- falsifier: `onex scm pr-view --source bus OmniNode-ai/omnimarket#6335` shows no comment that opens with the Lab marker
+      for the head and names each of findings 5, 6, 7 and 8'
 - id: req-omn25071-ac6
   statement: The Lab comment and required check-runs of the cost pull request are live evidence read by a local Done gate command.
   acceptance:
@@ -109,7 +109,7 @@ dod_evidence:
     cwd: .
 - id: dod-omn25071-ac5
   description: Findings 6 and 8 (the discovery test against the runtime wiring, the alarm readers and the backdated stamp) are tested in the alarm golden chain; each of findings 5, 6, 7 and 8 is read
-    from the comments of omnimarket#6335 by its own check after the first. Local Done gate only.
+    inside the one comment of omnimarket#6335 that opens with the Lab marker for the head the PR watcher records. Local Done gate only.
   source: manual
   binds_ac:
   - AC5
@@ -119,20 +119,13 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -q --no-cov -n 0 -p no:randomly
     cwd: .
   - check_type: command
-    check_value: sh -c 'onex scm pr-view OmniNode-ai/omnimarket#6335 --comments | grep -qE "finding 5([^0-9]|$)"'
-    cwd: .
-  - check_type: command
-    check_value: sh -c 'onex scm pr-view OmniNode-ai/omnimarket#6335 --comments | grep -qE "finding 6([^0-9]|$)"'
-    cwd: .
-  - check_type: command
-    check_value: sh -c 'onex scm pr-view OmniNode-ai/omnimarket#6335 --comments | grep -qE "finding 7([^0-9]|$)"'
-    cwd: .
-  - check_type: command
-    check_value: sh -c 'onex scm pr-view OmniNode-ai/omnimarket#6335 --comments | grep -qE "finding 8([^0-9]|$)"'
+    check_value: >-
+      sh -c 'H=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6335 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]])" facts head_sha)
+      && test "${#H}" -eq 40 && onex scm pr-view --source bus OmniNode-ai/omnimarket#6335 | python3 tests/nodes/node_delegation_scenario_alarm_effect/pr_comment_check.py --head "$H" --finding 5 --finding 6 --finding 7 --finding 8'
     cwd: .
 - id: dod-omn25071-ac6
-  description: 'The comments of omnimarket#6335 hold a Lab: head= comment for the full 40-character head the PR watcher records for it, naming the lab-work command and exit 0 (the first check), and the
-    PR watcher reads no red, pending or cancelled check-run at that head through onex scm pr-checks (the second). Local Done gate only.'
+  description: 'The one comment of omnimarket#6335 that opens with the Lab marker for the full 40-character head the PR watcher records names the lab-work command and exit 0 (the first check), and the
+    PR watcher reads no red, pending or cancelled check-run at that head through onex scm pr-checks, read from the watcher (the second). Local Done gate only.'
   source: manual
   binds_ac:
   - AC6
@@ -140,11 +133,13 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: >-
-      sh -c 'H=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6335 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]])" facts head_sha) && test "${#H}" -eq 40 && onex scm pr-view OmniNode-ai/omnimarket#6335 --comments | python3 -c "import re,sys; t=sys.stdin.read(); head,lab,cmd,ex=sys.argv[1:5]; i=t.find(lab+head); seg=t[i+len(lab+head):].split(lab)[0]; sys.exit(0 if i>=0 and re.search(cmd,seg) and re.search(ex,seg) else 1)" "$H" "Lab: head=" "lab.work run|lab.run" "exit[ =:]+0([^0-9]|$)"'
+      sh -c 'H=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6335 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]])" facts head_sha)
+      && test "${#H}" -eq 40 && onex scm pr-view --source bus OmniNode-ai/omnimarket#6335 | python3 tests/nodes/node_delegation_scenario_alarm_effect/pr_comment_check.py --head "$H" --lab'
     cwd: .
   - check_type: command
     check_value: >-
-      sh -c 'H=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6335 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]])" facts head_sha) && test "${#H}" -eq 40 && onex scm pr-checks OmniNode-ai/omnimarket#6335 | python3 -c "import json,sys; r=json.load(sys.stdin)[sys.argv[2]]; sys.exit(0 if r[sys.argv[3]]==sys.argv[1] and not r[sys.argv[4]] and not r[sys.argv[5]] and not r[sys.argv[6]] and r[sys.argv[7]] else 1)" "$H" result head_sha red pending cancelled runs'
+      sh -c 'H=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6335 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]])" facts head_sha)
+      && test "${#H}" -eq 40 && onex scm pr-checks --source local OmniNode-ai/omnimarket#6335 | python3 -c "import json,sys; r=json.load(sys.stdin)[sys.argv[2]]; sys.exit(0 if r[sys.argv[3]]==sys.argv[1] and not r[sys.argv[4]] and not r[sys.argv[5]] and not r[sys.argv[6]] and r[sys.argv[7]] else 1)" "$H" result head_sha red pending cancelled runs'
     cwd: .
 - id: dod-omn25071-integration-proof
   description: The alarm node tests and the installer registry unit tests run on a lab host at the pushed head through the lab work runner; hosted CI cannot reach the lab, so only the local Done gate runs

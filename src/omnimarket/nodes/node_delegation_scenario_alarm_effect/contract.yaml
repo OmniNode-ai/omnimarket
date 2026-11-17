@@ -6,8 +6,9 @@
 # max_age_seconds (a unit killed before it wrote its record, a stopped timer), whatever that last run concluded. The row's
 # request id is the scenario, the host, the run's own readable time alone for a failed run still inside max_age_seconds; its
 # row is stamped at that run time. Thus ticks across a bucket boundary submit the identical row and request id. Missing,
-# unreadable and stale readings also name their conclusion and six-hour bucket and use the bucket start as the row stamp,
-# allowing another outage reading each bucket. A successful, recent run writes nothing.
+# unreadable and stale readings also name their conclusion and six-hour bucket, allowing another outage reading each
+# bucket. A missing or unreadable record is stamped at the bucket start; a stale record at the later of the bucket start
+# and its ran_at plus max_age_seconds (the moment it went stale). A successful, recent run writes nothing.
 # Ledger dedup (read in node_work_ledger_append_effect, handler_work_ledger_append_effect.py): a request id is found by its
 # req= cell in the live ledger file's text and in the bus ledger store; once a row rolls into the archive the id is no longer
 # found in the live file, so the same id would append again. Missing and stale records recur per bucket. Readers that use a
