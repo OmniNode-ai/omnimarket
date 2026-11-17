@@ -15,9 +15,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
+from types import ModuleType
 from typing import Any
-
-import httpx
 
 from omnimarket.handlers.model_catalog import catalog_config
 from omnimarket.models.model_catalog_entry import CapabilityState
@@ -35,8 +34,25 @@ PostStatus = Callable[[str, float], int]
 _UNKNOWN = ModelLocalServerDetails()
 
 
+def _transport() -> ModuleType:
+    """The delegation effect's contract transport, the one HTTP path here."""
+    from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
+
+    return transport
+
+
 def _post_status(url: str, timeout: float) -> int:
-    return httpx.post(url, json={}, timeout=timeout).status_code
+    try:
+        response = _transport().post_chat_completion(
+            endpoint_url=url, payload={}, timeout_seconds=timeout
+        )
+    except Exception as exc:
+        # A refused POST still answers with a status; an unreachable one raises.
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        if isinstance(status, int):
+            return status
+        raise
+    return int(response.status_code)
 
 
 def speaks_anthropic_messages(
@@ -57,15 +73,17 @@ def speaks_anthropic_messages(
 
 
 def _get_json(url: str, timeout: float) -> Any:
-    response = httpx.get(url, timeout=timeout)
-    response.raise_for_status()
-    return response.json()
+    return _transport().get_provider_json(url=url, timeout_seconds=timeout)
 
 
 def _post_json(url: str, body: Mapping[str, Any], timeout: float) -> Any:
-    response = httpx.post(url, json=dict(body), timeout=timeout)
-    response.raise_for_status()
-    return response.json()
+    return (
+        _transport()
+        .post_chat_completion(
+            endpoint_url=url, payload=dict(body), timeout_seconds=timeout
+        )
+        .json_body
+    )
 
 
 def _positive(value: Any) -> int | None:

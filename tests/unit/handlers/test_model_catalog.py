@@ -422,3 +422,51 @@ def test_a_delegation_call_never_lists_models_itself(
         ).max_output_tokens
         == 32_000
     )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "module",
+    [
+        "src/omnimarket/handlers/model_catalog.py",
+        "src/omnimarket/handlers/local_model_details.py",
+    ],
+)
+def test_model_facts_reach_the_network_only_through_the_contract_transport(
+    module: str,
+) -> None:
+    """Imperative guard and compliance sweep: no raw HTTP library here."""
+    root = Path(__file__).resolve().parents[3]
+    tree = ast.parse((root / module).read_text(encoding="utf-8"))
+    imported = {
+        alias.name.split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    } | {
+        (node.module or "").split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+    }
+    assert imported.isdisjoint({"httpx", "requests", "aiohttp", "urllib3"})
+
+
+@pytest.mark.unit
+def test_models_dev_is_read_through_the_transport_with_its_own_size_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
+
+    seen: dict[str, object] = {}
+
+    def fake_get(**kwargs: object) -> object:
+        seen.update(kwargs)
+        return {"openrouter": {"models": {}}}
+
+    monkeypatch.setattr(transport, "get_provider_json", fake_get)
+    body = model_catalog._fetch("https://models.example/api.json", 7.0)
+    assert json.loads(body) == {"openrouter": {"models": {}}}
+    settings = model_catalog.catalog_config()["models_dev"]
+    assert seen["max_bytes"] == int(settings["max_bytes"])
+    assert seen["follow_redirects"] is True
+    assert seen["timeout_seconds"] == 7.0

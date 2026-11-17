@@ -318,6 +318,8 @@ def get_provider_json(
     timeout_seconds: float,
     extra_headers: dict[str, str] | None = None,
     trust_env: bool = True,
+    max_bytes: int = PROVIDER_JSON_MAX_BYTES,
+    follow_redirects: bool = False,
 ) -> Any:
     """GET a provider's JSON endpoint VERBATIM and return the decoded body.
 
@@ -329,18 +331,22 @@ def get_provider_json(
     it. A non-2xx raises ``httpx.HTTPStatusError`` with the provider's status
     and bounded body preserved, the same shape the chat POST raises, so one
     classifier reads both. Oversized responses, including error bodies and
-    decompressed bodies, are refused before JSON parsing.
+    decompressed bodies, are refused before JSON parsing. ``max_bytes`` and
+    ``follow_redirects`` let a public catalogue read (models.dev, OMN-23413)
+    state its own size and redirects; the defaults are the provider read's.
     """
     _require_http_url(url)
     with (
         httpx.Client(
-            timeout=timeout_seconds, trust_env=trust_env, follow_redirects=False
+            timeout=timeout_seconds,
+            trust_env=trust_env,
+            follow_redirects=follow_redirects,
         ) as client,
         client.stream("GET", url, headers=extra_headers or {}) as streamed,
     ):
         body = bytearray()
         for chunk in streamed.iter_bytes(chunk_size=65536):
-            if len(body) + len(chunk) > PROVIDER_JSON_MAX_BYTES:
+            if len(body) + len(chunk) > max_bytes:
                 raise ValueError("Provider JSON response exceeds the size limit")
             body.extend(chunk)
         # Preserve a readable error body after the stream is closed. The

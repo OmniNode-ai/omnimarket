@@ -18,6 +18,8 @@ models_dev:
   cache_file: cache/models_dev.json
   max_age_hours: 24
   timeout_seconds: 10
+  # The whole catalogue is read at once (6.7 MB on 2026-11-17); larger is refused.
+  max_bytes: 33554432
 
 # OMN-23413 AC34: what a provider's own model list said when the explorer last
 # read it. A delegation call prices and limits from this copy and never lists

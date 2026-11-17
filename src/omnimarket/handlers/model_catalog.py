@@ -24,7 +24,6 @@ from functools import cache
 from pathlib import Path
 from typing import Any, NamedTuple
 
-import httpx
 import yaml
 from pydantic import SecretStr
 
@@ -69,9 +68,16 @@ def catalog_config() -> Mapping[str, Any]:
 
 
 def _fetch(url: str, timeout: float) -> bytes:
-    response = httpx.get(url, timeout=timeout, follow_redirects=True)
-    response.raise_for_status()
-    return response.content
+    """models.dev through the delegation effect's contract transport."""
+    from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
+
+    document = transport.get_provider_json(
+        url=url,
+        timeout_seconds=timeout,
+        max_bytes=int(catalog_config()["models_dev"]["max_bytes"]),
+        follow_redirects=True,
+    )
+    return json.dumps(document).encode("utf-8")
 
 
 def _index(document: Any) -> dict[tuple[str, str], Mapping[str, Any]]:
