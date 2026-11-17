@@ -31,3 +31,9 @@ def test_subscription_topic_and_operation_are_as_declared() -> None:
     assert len(subs) == 1
     assert subs[0]["topic"] == "onex.intent.platform.runtime-tick.v1"
     assert subs[0]["operation"] == "daily_line.scheduled_tick"
+
+
+def test_run_limit_covers_the_ledger_read_and_append_bounds() -> None:
+    loaded = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
+    # One run may read the ledger (60 s bound) and append one row (60 s bound) before it returns its event.
+    assert loaded["descriptor"]["timeout_ms"] >= 120_000

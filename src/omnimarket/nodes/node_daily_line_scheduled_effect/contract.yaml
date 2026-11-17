@@ -49,7 +49,9 @@ descriptor:
   node_archetype: effect
   purity: effectful
   idempotent: false
-  timeout_ms: 30000
+  # One run reads the ledger over the bus (up to 60 s) and appends one row (up to 60 s), so the run limit is the node's own timer unit's
+  # 300 s, not the 30 s of a quick scheduled check.
+  timeout_ms: 300000
   side_effects:
     - runs one daily line (reads floor record + ledger, writes daily-line.json, appends one STATUS row)
 
