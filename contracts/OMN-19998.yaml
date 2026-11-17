@@ -1003,8 +1003,8 @@ dod_evidence:
     description: "The files this change edits no longer name the retired package: the workflow, the delegation-ladder scorer and the vendoring helper's directory print no line, and the deleted vendoring helper stays deleted. The check names its files, so the hosted runner runs it without the origin/dev ref."
     source: "manual"
     checks:
-      - check_type: "command"
-        check_value: "bash -c 'out=\"$(git grep -n -i -E \"omnibase[_-]compat\" -- .github/workflows/ci.yml benchmarks/delegation_ladder/scorers.py src/omnimarket/handlers)\"; test -z \"$out\" && test ! -e src/omnimarket/handlers/vendor_compat.py'"
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/test_no_retired_package_running_references.py -q --no-cov -n 0 -p no:randomly -k test_nothing_in_the_running_trees"
         cwd: "."
     binds_ac: ["AC133"]
   - id: "dod-omn19998-compat-install-guard"
