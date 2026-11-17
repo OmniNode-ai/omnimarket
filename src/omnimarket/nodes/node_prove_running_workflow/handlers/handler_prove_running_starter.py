@@ -34,12 +34,17 @@ def _target(text: str) -> str:
 class HandlerProveRunningStarter:
     """Select the NOT RUNNING lines (oldest merge first, up to the limit) and resolve each to a change to prove."""
 
-    def __init__(self, resolver: ProtocolMergeShaResolver) -> None:
+    def __init__(self, resolver: ProtocolMergeShaResolver | None = None) -> None:
+        # Optional so the routed handler boots without a resolver; a start without one fails loudly in handle().
         self._resolver = resolver
 
     def handle(
         self, request: ModelProveRunningStartRequest
     ) -> ModelProveRunningStartBatch:
+        if self._resolver is None:
+            raise RuntimeError(
+                "HandlerProveRunningStarter needs a merge sha resolver to start a batch"
+            )
         lines = sorted(
             (
                 r
