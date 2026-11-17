@@ -55,7 +55,7 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_secret_store_effect/test_generate_deploy_agent_dev_key.py tests/unit/nodes/node_secret_store_effect/test_deliver_key_to_env_file.py tests/unit/nodes/node_secret_store_effect/test_deliver_key_cli.py tests/unit/nodes/node_secret_store_effect/test_seam_deploy_agent_dev_signing_key.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn24611-ac3-sender-store
-  description: With the variable unset the entry signs under the stored key and publishes once; the same input without the settings block refuses with the missing-key refusal; a store that does not return the key publishes nothing; the real entry assembly is exercised with the store's network seam replaced.
+  description: With the variable unset the entry signs under the stored key and publishes once; the same input without the settings block refuses with the missing-key refusal; a store that does not return the key publishes nothing; the real entry assembly is exercised with the store's network seam replaced; with the variable unset, a store key A and an agent serving the check of key B is refused and nothing is published. The second check is the reading of AC3 itself, a pull request comment line that starts Reading and names head=<40 hex>, key check, host=<h051 or h201>, agent_check=<16 hex> and store_check=<16 hex> with the two check values equal, read from the key check node on that host. It fails on every head until the operator of that host posts the line.
   source: manual
   binds_ac:
   - AC3
@@ -63,14 +63,19 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_branch_deploy_command_effect -q -n 0 --no-cov -p no:cacheprovider
     cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: >-
+      gh api repos/OmniNode-ai/omnimarket/issues/6297/comments --paginate --jq '.[].body' | python3 -c 'import re,subprocess,sys; t=sys.stdin.read(); ms=re.findall(r"^Reading: head=([0-9a-f]{40}) key check host=(h051|h201) agent_check=([0-9a-f]{16}) store_check=([0-9a-f]{16})$", t, re.M); ok=[m for m in ms if m[2]==m[3] and subprocess.run(["git","merge-base","--is-ancestor",m[0],"HEAD"]).returncode==0]; assert ok, "no lab-host key check reading comment for this head"; print("AC3 reading: PASS")'
+    cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn24611-ac4-integrated
-  description: The running reading (one signed no-op from h051 accepted by the dev agent on h201, the live unit digest before and after) is read on those hosts after the install and cited in a pull request comment; the hosted runner reads the delivery operation from the contract at the checked-out commit.
+  description: 'The reading itself: one signed no-op from h051 accepted by the dev agent on h201 after the unit install, with the live unit digest before and after. The check reads the issue comments of this pull request and passes only when one comment is one line that starts Reading and reads head=<40 hex> h051->h201 no-op accepted unit_digest_before=<64 hex> unit_digest_after=<64 hex>, whose two digests are equal and whose head is this checkout or an ancestor of it. It fails on every head until the host operator who installs the unit posts that line after reading both hosts. Nothing in this repository can produce it.'
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: command
-    check_value: 'grep -q ''operation: deliver_key_to_env_file'' src/omnimarket/nodes/node_secret_store_effect/contract.yaml'
+    check_value: >-
+      gh api repos/OmniNode-ai/omnimarket/issues/6297/comments --paginate --jq '.[].body' | python3 -c 'import re,subprocess,sys; t=sys.stdin.read(); ms=re.findall(r"^Reading: head=([0-9a-f]{40}) h051->h201 no-op accepted unit_digest_before=([0-9a-f]{64}) unit_digest_after=([0-9a-f]{64})$", t, re.M); ok=[m for m in ms if m[1]==m[2] and subprocess.run(["git","merge-base","--is-ancestor",m[0],"HEAD"]).returncode==0]; assert ok, "no h051 to h201 reading comment for this head"; print("AC4 reading: PASS")'
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn24611-integration-proof
   description: 'Run the focused tests of the secret store node''s generate and delivery and of the sender node on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion; the reading on h201 and h051 (AC4) is read on those hosts after the install.'

@@ -85,3 +85,6 @@ class ModelBranchDeployCommandResult(BaseModel):
     # Set only on a key mismatch refusal (OMN-24396): the one-way check values of both keys, never a key.
     signer_key_check: str = ""
     agent_key_check: str = ""
+    # Set only when the signer's key was compared with the secret store's key (OMN-24611 verify_env_key); the agent
+    # was not asked then, so ``agent_key_check`` stays empty.
+    store_key_check: str = ""

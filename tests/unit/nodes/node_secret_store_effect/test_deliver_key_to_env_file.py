@@ -384,7 +384,15 @@ async def test_a_store_without_the_key_is_key_unreadable_and_leaves_no_file(
 
 
 @pytest.mark.parametrize(
-    "unsafe", ["has a space in it", 'has a "quote" in it', "multi\nline"]
+    "unsafe",
+    [
+        "has a space in it",
+        'has a "quote" in it',
+        "multi\nline",
+        "value\n",
+        "value\r\n",
+    ],
+    ids=["space", "quote", "multi-line", "trailing-newline", "trailing-crlf"],
 )
 async def test_an_unsafe_value_is_value_unsafe_and_writes_nothing(
     tmp_path: Path, caplog: pytest.LogCaptureFixture, unsafe: str
@@ -447,8 +455,10 @@ async def test_a_path_outside_the_home_is_refused_at_contract_load(
     assert not (home / _RELATIVE).exists()
 
 
-@pytest.mark.parametrize("mode", ["0644", "0660", "0777", "0000"])
-async def test_a_mode_wider_than_0600_is_refused_at_contract_load(
+@pytest.mark.parametrize(
+    "mode", ["0644", "0660", "0777", "0000", "0200", "0100", "0300", "0500", "0700"]
+)
+async def test_a_mode_other_than_0600_or_0400_is_refused_at_contract_load(
     tmp_path: Path, mode: str
 ) -> None:
     def set_mode(raw: dict[str, Any]) -> None:
@@ -457,6 +467,55 @@ async def test_a_mode_wider_than_0600_is_refused_at_contract_load(
     copy = _contract_copy(tmp_path, set_mode)
     with running_fake_store() as (address, _state):
         home = _host(tmp_path, address)
-        with pytest.raises(ValueError, match="mode wider than 0600"):
+        with pytest.raises(ValueError, match="mode other than 0600 or 0400"):
             _delivery_handler(tmp_path, home, contract_path=copy)
     assert not (home / _RELATIVE).exists()
+
+
+async def test_a_mode_of_0400_is_accepted_at_contract_load_and_enforced(
+    tmp_path: Path,
+) -> None:
+    def set_mode(raw: dict[str, Any]) -> None:
+        raw["env_file_deliveries"][_ID]["mode"] = "0400"
+
+    copy = _contract_copy(tmp_path, set_mode)
+    value = "synthetic_stored_value_for_the_0400_check"
+    home = tmp_path / "home"
+    result = await _delivery_handler(
+        tmp_path,
+        home,
+        store_handler=_StubStoreHandler(value),
+        contract_path=copy,
+    ).handle(ModelDeliverKeyRequest(name=_ID))
+    assert result.outcome is EnumDeliverKeyOutcome.DELIVERED
+    assert (home / _RELATIVE).stat().st_mode & 0o777 == 0o400
+
+
+async def test_a_chmod_failure_after_the_replace_says_the_file_was_replaced(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    value = "synthetic_stored_value_for_the_chmod_after_replace_check"
+    home = tmp_path / "home"
+    target = home / _RELATIVE
+    target.parent.mkdir(parents=True)
+    target.write_text(f"{_ENV_NAME}=an_older_synthetic_value\n", encoding="utf-8")
+    target.chmod(0o600)
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError("the chmod was refused")
+
+    monkeypatch.setattr(os, "chmod", refuse)
+    result = await _delivery_handler(
+        tmp_path, home, store_handler=_StubStoreHandler(value)
+    ).handle(ModelDeliverKeyRequest(name=_ID))
+    monkeypatch.undo()
+    assert result.outcome is EnumDeliverKeyOutcome.WRITE_FAILED
+    assert result.detail is not None
+    assert result.detail.startswith("PermissionError")
+    assert "replaced" in result.detail
+    assert target.read_text(encoding="utf-8") == f"{_ENV_NAME}={value}\n"
+    assert not [e for e in target.parent.iterdir() if e.name.endswith(".tmp")]
+    _assert_value_absent(value, result, caplog.text)

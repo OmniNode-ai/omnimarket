@@ -44,6 +44,13 @@ from omnimarket.models.model_deploy_agent_key_check import key_check_value
 from omnimarket.models.secret_store.model_secret_store_overlay import (
     ModelSecretStoreOverlay,
 )
+from omnimarket.models.secret_store.model_secret_store_request import (
+    ModelSecretStoreRequest,
+)
+from omnimarket.models.secret_store.model_secret_store_result import (
+    EnumSecretStoreOutcome,
+    ModelSecretStoreResult,
+)
 from omnimarket.nodes.node_branch_deploy_command_effect import __main__ as entry
 from omnimarket.nodes.node_branch_deploy_command_effect.adapters.adapter_signing_key_store import (
     SigningKeyStoreReader,
@@ -331,11 +338,94 @@ def test_error_env_key_that_differs_from_the_store_key_refuses(
     assert fake.asked == [STORE_PATH]
     assert check.reads == 0
     assert result["signer_key_check"] == key_check_value(ENV_KEY)
-    assert result["agent_key_check"] == key_check_value(STORE_KEY)
+    assert result["store_key_check"] == key_check_value(STORE_KEY)
+    # The agent was never asked, so no agent check value is named.
+    assert result["agent_key_check"] == ""
     blob = out.out + out.err + caplog.text
     assert ENV_KEY not in blob
     assert STORE_KEY not in blob
     assert SIGNING_KEY not in blob
+
+
+def test_error_mismatch_store_key_a_and_an_agent_serving_the_check_of_key_b_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
+) -> None:
+    """Variable unset, the store returns key A, the agent serves the check of key B:
+    the store path signs with A, the key check refuses it and nothing is published.
+    Every other variable-unset test hands the reader the store key's own check value."""
+    key_a = STORE_KEY
+    key_b = "other-agent-fixture-key"  # fixture value, not a credential
+    assert key_check_value(key_a) != key_check_value(key_b)
+    monkeypatch.delenv(SIGNING_ENV, raising=False)
+    bus = FakeBus()
+    fake = FakeSecretStore(key_a)
+    check = FakeKeyCheckReader("read", key_check_value(key_b))
+    store_block = overlay().signing_key_store
+    assert store_block is not None
+    monkeypatch.setattr(
+        entry,
+        "build_handler",
+        _hermetic_build(bus, fake, check, store_block.secret_store, tmp_path),
+    )
+
+    code = entry.main(["--input", request(mode="deploy").model_dump_json()])
+
+    assert code == 1
+    out = capsys.readouterr()
+    result = json.loads(out.out)
+    assert result["status"] == "refused"
+    assert result["detail"] == (
+        "the signing key does not match the deploy agent's key (signer check "
+        f"{key_check_value(key_a)}, agent check {key_check_value(key_b)}); "
+        "nothing was published"
+    )
+    assert out.err == f"{result['detail']}\n"
+    assert bus.published == []
+    assert fake.asked == [STORE_PATH]
+    assert check.reads == 1
+    assert result["signer_key_check"] == key_check_value(key_a)
+    assert result["agent_key_check"] == key_check_value(key_b)
+    blob = out.out + out.err + caplog.text
+    assert key_a not in blob
+    assert key_b not in blob
+
+
+async def test_the_adapter_turns_a_raising_handler_into_a_refusal_naming_the_class() -> (
+    None
+):
+    class _Raising(HandlerSecretStore):
+        async def handle(self, request: Any) -> Any:
+            raise ConnectionResetError("secret detail that must not travel")
+
+    reading = await SigningKeyStoreReader(
+        "/shared/env", "EXAMPLE_SIGNING_KEY", _Raising()
+    ).read()
+    assert reading.status == "refused"
+    assert reading.detail == "ConnectionResetError"
+    assert "secret detail" not in repr(reading)
+
+
+async def test_the_adapter_names_a_resolved_but_empty_value() -> None:
+    class _Empty(HandlerSecretStore):
+        async def handle(
+            self, request: ModelSecretStoreRequest
+        ) -> ModelSecretStoreResult:
+            return ModelSecretStoreResult(
+                operation=request.operation,
+                outcome=EnumSecretStoreOutcome.RESOLVED,
+                folder=request.folder,
+                key=request.key,
+                value=SecretStr("  "),
+            )
+
+    reading = await SigningKeyStoreReader(
+        "/shared/env", "EXAMPLE_SIGNING_KEY", _Empty()
+    ).read()
+    assert reading.status == "refused"
+    assert reading.detail == "resolved but the stored value is empty"
 
 
 @pytest.mark.parametrize(

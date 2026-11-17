@@ -50,4 +50,8 @@ class SigningKeyStoreReader:
         value = result.value.get_secret_value().strip() if result.value else ""
         if result.outcome is EnumSecretStoreOutcome.RESOLVED and value:
             return ModelSigningKeyReading(status="read", key=SecretStr(value))
+        if result.outcome is EnumSecretStoreOutcome.RESOLVED:
+            return ModelSigningKeyReading(
+                status="refused", detail="resolved but the stored value is empty"
+            )
         return ModelSigningKeyReading(status="refused", detail=result.outcome.value)

@@ -135,6 +135,7 @@ class HandlerBranchDeployCommand:
         detail: str,
         signer_key_check: str = "",
         agent_key_check: str = "",
+        store_key_check: str = "",
     ) -> ModelBranchDeployCommandResult:
         return ModelBranchDeployCommandResult(
             correlation_id=request.correlation_id,
@@ -143,6 +144,7 @@ class HandlerBranchDeployCommand:
             detail=detail[: self._overlay.detail_max_chars],
             signer_key_check=signer_key_check,
             agent_key_check=agent_key_check,
+            store_key_check=store_key_check,
         )
 
     async def _key_check_refusal(
@@ -232,7 +234,7 @@ class HandlerBranchDeployCommand:
                     f"the signing key in the environment is not the dev signing key of the store (signer check "
                     f"{mine}, store check {theirs}); nothing was published",
                     signer_key_check=mine,
-                    agent_key_check=theirs,
+                    store_key_check=theirs,
                 )
         if not secret and self._configured_signing_key_reader is not None:
             reading = await self._configured_signing_key_reader.read()

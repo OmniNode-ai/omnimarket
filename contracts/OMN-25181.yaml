@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-25181
+title: 'Review findings 1 to 5 on omnimarket PR 6297 at head d037540c300c are fixed or argued: AC4 binds to the reading, the store-path key mismatch is refused, a value ending in a newline is unsafe, the real CLI construction is tested, and the Lab comment is at the new head'
+summary: The dev signing key delivery and sender change of OMN-24611 is revised after review. The delivery treats a value ending in a newline as unsafe (the safe-value pattern is matched in full), accepts only mode 0600 or 0400, and says so when a chmod fails after the file was replaced. The delivery CLI refuses with the typed exit 3 for a named overlay that loads as None or is broken, for a bad name and for a malformed contract, instead of falling back to the host env file store or raising. The sender names the store key check value in its own result field. The adapter names a resolved but empty value. Acceptance criteria AC3 and AC4 of the OMN-24611 contract are bound to the lab-host readings.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25181-review-findings
+  statement: Every blocking review finding at head d037540c300c of the omnimarket pull request is fixed with a test that fails on that head, or argued with evidence in a pull request comment.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every blocking finding (1 to 5) of the review at head d037540c300c is fixed with a test that is red on that head and green on the new head, or argued with evidence in a PR comment -- falsifier: `uv run pytest tests/nodes/node_branch_deploy_command_effect tests/unit/nodes/node_secret_store_effect -q` on the lab at the new head passes while the new tests fail against the source files of head d037540c300c'
+  - id: AC2
+    statement: 'AC2: with the signing key variable unset, a store key A and an agent that serves the check of key B is refused and nothing is published, and a value ending in a newline is an unsafe value that writes no file -- falsifier: `uv run pytest tests/nodes/node_branch_deploy_command_effect/test_signing_key_from_store_omn24611.py tests/unit/nodes/node_secret_store_effect -q -k ''mismatch or newline''` fails with the pattern and the match call restored'
+  - id: AC3
+    statement: 'AC3: the delivery CLI built without an injected handler refuses with the typed exit 3 when a named overlay id loads as None, and a bad name or a malformed contract gives exit 3, not a traceback -- falsifier: `uv run pytest tests/unit/nodes/node_secret_store_effect -q -k cli` runs the real construction and fails when the refusal is removed'
+  - id: AC4
+    statement: 'AC4: contract AC4 of contracts/OMN-24611.yaml is bound to the h051 and h201 reading, the overlay block verify_env_key is shown at the head of overlays PR 571 with the merge order stated, and a PR comment starting `Lab: head=<full head sha>` names the new head after the required suites ran on the lab (a whole-suite timeout rerun in named parts) -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6297` shows a head that differs from the head named in the Lab: comment, or no Lab: comment'
+evidence_requirements:
+- kind: tests
+  description: The secret store node tests and the sender node tests at the new head.
+  command: uv run pytest tests/nodes/node_branch_deploy_command_effect tests/unit/nodes/node_secret_store_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25181-ac1-suites
+  description: The sender node and secret store node suites pass at the new head; the new tests fail against the source files of head d037540c300c.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_branch_deploy_command_effect tests/unit/nodes/node_secret_store_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn25181-ac2-mismatch-newline
+  description: The store path refuses a store key A against an agent serving the check of key B, and a value ending in a newline is unsafe and writes no file.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_branch_deploy_command_effect/test_signing_key_from_store_omn24611.py tests/unit/nodes/node_secret_store_effect -q -n 0 --no-cov -p no:cacheprovider -k 'mismatch or newline'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn25181-ac3-cli
+  description: The delivery CLI tests build the real handler and refuse with exit 3 for a named overlay that loads as None, a broken overlay, a bad name and a malformed contract.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_secret_store_effect -q -n 0 --no-cov -p no:cacheprovider -k cli
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn25181-ac4-binding
+  description: AC4 of the OMN-24611 contract is bound to the h051 and h201 reading (a check on the pull request comments), not to a grep of the contract. The Lab comment naming the pushed head is read with onex scm pr-view, which a hosted runner cannot run.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: 'python3 -c ''import yaml; d=yaml.safe_load(open("contracts/OMN-24611.yaml")); i=[x for x in d["dod_evidence"] if "AC4" in x.get("binds_ac",[])]; c=" ".join(k["check_value"] for x in i for k in x["checks"]); assert i and "issues/6297/comments" in c and "unit_digest_before" in c and "deliver_key_to_env_file" not in c; print("AC4 bound to the reading: PASS")'''
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn25181-integration-proof
+  description: Run the focused tests of the secret store node and of the sender node on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25181 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_secret_store_effect tests/nodes/node_branch_deploy_command_effect -q -n 0 --no-cov
+    cwd: .

@@ -35,8 +35,9 @@ rewritten, but the declared mode is enforced on every run: a file left at
 any other mode is chmodded to the declared one (detail names the
 correction), and an ``OSError`` while statting or chmodding is
 ``write_failed``. A delivery whose ``home_relative_path`` is absolute or
-contains ``..``, or whose ``mode`` is zero or wider than 0600, is refused
-when the contract is loaded.
+contains ``..``, or whose ``mode`` is anything but 0600 or 0400, is refused
+when the contract is loaded. A chmod failure after the replace is
+``write_failed`` too, and its detail says the file was replaced.
 
 The machine identity is read exactly as ``handler_generate_key`` reads it: the
 machine's own ``secret_store`` block first, then, with no block, the store
@@ -87,8 +88,12 @@ from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store imp
 logger = logging.getLogger(__name__)
 
 _CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+#: The only modes a delivery may declare: owner read-write, or owner read-only.
+#: Anything else is refused at load: 0200 is unreadable to the key check that
+#: compares the file, so the file would be rewritten on every run.
+_ALLOWED_MODES = frozenset({0o600, 0o400})
 #: What systemd's EnvironmentFile= parses as an unquoted assignment value.
-_SAFE_VALUE = re.compile(r"^[A-Za-z0-9_-]+$")
+_SAFE_VALUE = re.compile(r"[A-Za-z0-9_-]+")
 
 
 @dataclass(frozen=True)
@@ -117,7 +122,7 @@ def _load_contract(
     Raises:
         ValueError: the contract is not a mapping, a delivery entry is
             malformed, its ``home_relative_path`` is absolute or contains
-            ``..``, or its ``mode`` is zero or has any bit outside 0600.
+            ``..``, or its ``mode`` is anything but 0600 or 0400.
     """
     raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
@@ -143,10 +148,10 @@ def _load_contract(
                 "outside the user's home"
             )
         mode = int(str(spec["mode"]), 8)
-        if mode == 0 or mode & ~0o600:
+        if mode not in _ALLOWED_MODES:
             raise ValueError(
                 f"{contract_path}: env file delivery {name!r} declares a mode "
-                "wider than 0600"
+                "other than 0600 or 0400"
             )
         declared[str(name)] = _DeclaredDelivery(
             key_id=str(spec["key_id"]),
@@ -274,7 +279,7 @@ class HandlerDeliverKeyToEnvFile:
             )
         # The value exists only between these lines and inside the file.
         raw_value = value.get_secret_value()
-        if not _SAFE_VALUE.match(raw_value):
+        if not _SAFE_VALUE.fullmatch(raw_value):
             return result(
                 EnumDeliverKeyOutcome.VALUE_UNSAFE,
                 env_name=delivery.env_name,
@@ -316,6 +321,7 @@ class HandlerDeliverKeyToEnvFile:
                     else None
                 ),
             )
+        replaced = False
         tmp = target.parent / f".{target.name}.{os.getpid()}.{secrets.token_hex(8)}.tmp"
         try:
             target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -325,6 +331,7 @@ class HandlerDeliverKeyToEnvFile:
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(tmp, target)
+            replaced = True
             os.chmod(target, delivery.mode)
         except OSError as exc:
             with suppress(OSError):
@@ -333,7 +340,12 @@ class HandlerDeliverKeyToEnvFile:
                 EnumDeliverKeyOutcome.WRITE_FAILED,
                 env_name=delivery.env_name,
                 home_relative_path=delivery.home_relative_path,
-                detail=type(exc).__name__,
+                detail=(
+                    f"{type(exc).__name__}: the file was replaced with the new "
+                    "line but its mode could not be set to the declared mode"
+                    if replaced
+                    else type(exc).__name__
+                ),
             )
         return result(
             EnumDeliverKeyOutcome.DELIVERED,
