@@ -139,6 +139,17 @@ class ModelMcrSubscription(BaseModel):
     _utc = field_validator("joined_at")(_aware)
 
 
+class ModelMcrTopicSeen(BaseModel):
+    """A topic held by a running consumer, and the last time the log showed it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    topic: str = Field(min_length=1)
+    last_at: datetime
+
+    _utc = field_validator("last_at")(_aware)
+
+
 class ModelMcrPublished(BaseModel):
     """The last output event the running system published on a topic, and how many it published."""
 
@@ -172,6 +183,7 @@ class ModelMcrRuntimeFacts(BaseModel):
 
     loaded_nodes: tuple[ModelMcrLoadedNode, ...] = ()
     subscriptions: tuple[ModelMcrSubscription, ...] = ()
+    topics_in_subscription: tuple[ModelMcrTopicSeen, ...] = ()
     published: tuple[ModelMcrPublished, ...] = ()
     unit_runs: tuple[ModelMcrUnitRun, ...] = ()
     unread: tuple[str, ...] = ()

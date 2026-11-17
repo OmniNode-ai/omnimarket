@@ -74,13 +74,14 @@ runtime:
     kind: deployed
     source_template: "build provenance {repo}@{ref}"
     git_timeout_seconds: 60
-  # How the runtime's log and systemd show a node loaded, a consumer joined and an event published. The three
-  # patterns were read from the dev runtime's log on 2026-11-14 (omnimarket 0.4.321).
+  # How the runtime's log and systemd show a node loaded, consumers joined or holding topics, and an event published.
+  # Patterns were read from the dev runtime's logs on 2026-11-14 and 2026-11-17.
   log:
-    filter_regex: 'Discovered contract: |Setting newly assigned partitions|Published output event to |Runtime health check: '
+    filter_regex: 'Discovered contract: |Setting newly assigned partitions|Updating subscribed topics to: |Published output event to |Runtime health check: '
     time_format: '%Y-%m-%d %H:%M:%S'
     loaded_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] omnibase_infra\.runtime\.auto_wiring\.discovery: Discovered contract: (?P<node>\S+) '
     subscribed_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] aiokafka\.consumer\.group_coordinator: Setting newly assigned partitions \{TopicPartition\(topic=''(?P<topic>[^'']+)''.*for group local\.omnimarket\.(?P<node>[a-z0-9_]+)\.consume'
+    subscription_state_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] aiokafka\.consumer\.subscription_state: Updating subscribed topics to: frozenset\(\{(?P<topics>[^}]*)\}\)'
     published_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] \S+: Published output event to (?P<topic>\S+) '
     health_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] \S+: Runtime health check: status=(?P<status>\w+) '
     healthy_status: HEALTHY
@@ -89,6 +90,8 @@ runtime:
     ssh_attempts: 3
     manifest_contracts_key: contracts
     manifest_name_keys: [name, entry_point_name]
+    manifest_event_bus_key: event_bus
+    manifest_subscribe_topics_key: subscribe_topics
     manifest_fetch_options: -fsS --max-time 30
     unit_show_options: --user --timestamp=utc
     unit_show_properties: ExecMainExitTimestamp,ExecMainStatus,Result
