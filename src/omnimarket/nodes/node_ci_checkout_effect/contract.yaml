@@ -40,9 +40,13 @@ descriptor:
   timeout_ms: 600000
   runtime_profiles:
     - effects
+# The serve process (`ci-checkout serve`, run as a per-host unit on each runner host the deployed overlay declares) reads the command
+# topic named in runtime_dispatch.command_topic below and answers from that host's own bare mirrors. The shared dev runtime must wire
+# nothing from this block: a non-empty subscribe_topics makes auto-wiring build HandlerCiCheckout in the runtime, where no host name or
+# overlay is set, so every request failed there with a host-name error and a failed terminal raced the serve host's real answer.
+# The command topic stays in runtime_dispatch.command_topic, which the serve process and `onex ci checkout` read, and in the broker rows below.
 event_bus:
-  subscribe_topics:
-    - onex.cmd.omnimarket.ci-checkout-requested.v1
+  subscribe_topics: []
   publish_topics:
     - onex.evt.omnimarket.ci-checkout-completed.v1
     - onex.evt.omnimarket.ci-checkout-failed.v1

@@ -66,6 +66,24 @@ def test_command_and_terminal_topics() -> None:
     )
 
 
+def test_shared_runtime_wires_nothing_from_the_serve_node() -> None:
+    """The serve process alone answers: the shared runtime must not subscribe the command topic.
+
+    A non-empty subscribe_topics made the dev runtime build the handler with no host name or
+    overlay, so each request failed there and a failed terminal raced the serve host's answer.
+    """
+    node = resources.files("omnimarket.nodes.node_ci_checkout_effect")
+    contract = yaml.safe_load(node.joinpath("contract.yaml").read_text())
+    assert contract["event_bus"]["subscribe_topics"] == []
+    assert contract["runtime_dispatch"]["command_topic"] == (
+        "onex.cmd.omnimarket.ci-checkout-requested.v1"
+    )
+    assert set(contract["event_bus"]["publish_topics"]) == {
+        "onex.evt.omnimarket.ci-checkout-completed.v1",
+        "onex.evt.omnimarket.ci-checkout-failed.v1",
+    }
+
+
 ACTION = (
     Path(__file__).resolve().parents[3]
     / ".github"

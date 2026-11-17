@@ -31,6 +31,12 @@ from omnimarket.nodes.node_ci_checkout_effect.handlers.adapter_ci_checkout_cli i
     load_topics,
     result_from_terminal,
 )
+from omnimarket.nodes.node_ci_checkout_effect.handlers.adapter_ci_checkout_serve import (
+    CiCheckoutHost,
+)
+from omnimarket.nodes.node_ci_checkout_effect.handlers.handler_ci_checkout import (
+    HandlerCiCheckout,
+)
 from omnimarket.nodes.node_ci_checkout_effect.models.model_ci_checkout import (
     EnumCiCheckoutStatus,
     ModelCiCheckoutRequest,
@@ -138,7 +144,10 @@ async def _chain(
             attached = await subscribe_wired_contract_topics(
                 manifest, report, engine, bus, environment="local"
             )
-            assert attached.get(NODE), "no consumer attached for ci checkout"
+            # The shared runtime wires nothing from this contract: the per-host serve is the only consumer.
+            assert not attached.get(NODE), "the runtime would attach the serve node"
+            host = CiCheckoutHost(bus, HandlerCiCheckout(), HOST)
+            await host.start()
             request = ModelCiCheckoutRequest(
                 correlation_id=uuid.uuid4(),
                 repo="OmniNode-ai/omnimarket",
@@ -153,6 +162,7 @@ async def _chain(
                 correlation_id=request.correlation_id,
                 timeout_s=20,
             )
+            await host.stop()
     assert terminal.receipt.terminal_envelope_id is not None
     return result_from_terminal(terminal.payload, request), terminal
 
