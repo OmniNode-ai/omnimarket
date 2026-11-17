@@ -218,6 +218,13 @@ def test_only_migration_0069_adds_turn_count_and_ships_a_rollback() -> None:
     assert "DROP COLUMN IF EXISTS turn_count" in rollback
 
 
+def test_ticket_contract_names_the_omnibase_infra_copy_as_0069() -> None:
+    contract = Path(__file__).resolve().parents[3] / "contracts" / "OMN-18534.yaml"
+    text = contract.read_text(encoding="utf-8")
+    assert "0069" in text
+    assert "0068" not in text
+
+
 @pytest.mark.parametrize("path", ["skill", "canonical"])
 async def test_async_runner_binds_the_column_and_preserves_a_reported_zero(
     path: str,
