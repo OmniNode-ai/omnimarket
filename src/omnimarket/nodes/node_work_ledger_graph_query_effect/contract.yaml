@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_work_ledger_graph_query_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+# The main runtime carries OMNINODE_INTERNAL_DB_URL, as for node_work_ledger_query_effect.
+runtime_profiles: [main]
+description: >
+  Answers five typed questions over the work ledger graph of a window, each as
+  one typed query: open PRs with no live owner (no live CLAIM lane names the
+  PR and it was not handed off); PR heads reviewed more than once; the red
+  check holding the most open PRs, with the PRs; process rulings with no built
+  and wired mechanism; changes read seen running (installed= and observed=)
+  whose tickets are still open. Reads the window's rows from
+  omninode_internal.work_ledger_rows, derives the graph with the same pure
+  derivation node_work_ledger_graph_compute runs (edges from the rows' own
+  cells, no model call), and walks it. The ledger records neither PR state nor
+  ticket state, so a caller may supply open_prs and closed_tickets; each answer
+  names the rule it used. A read failure, an empty window or a graph whose
+  digest does not match its content is an error answer, never an empty one.
+input_model: omnimarket.models.work_ledger_graph.model_work_ledger_graph.ModelWorkLedgerGraphQueryRequest
+output_model: omnimarket.models.work_ledger_graph.model_work_ledger_graph.ModelWorkLedgerGraphQueryResult
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.work-ledger-graph-query-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.work-ledger-graph-query-completed.v1
+handler:
+  module: omnimarket.nodes.node_work_ledger_graph_query_effect.handlers.handler_work_ledger_graph_query
+  class: HandlerWorkLedgerGraphQuery
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: work_ledger_graph_query_requested
+      topic: onex.cmd.omnimarket.work-ledger-graph-query-requested.v1
+      message_category: command
+      event_model: omnimarket.models.work_ledger_graph.model_work_ledger_graph.ModelWorkLedgerGraphQueryRequest
+      handler_module: omnimarket.nodes.node_work_ledger_graph_query_effect.handlers.handler_work_ledger_graph_query
+      handler_class: HandlerWorkLedgerGraphQuery
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.work-ledger-graph-query-requested.v1]
+  publish_topics: [onex.evt.omnimarket.work-ledger-graph-query-completed.v1]
+externally_consumed_topics:
+  - onex.evt.omnimarket.work-ledger-graph-query-completed.v1
+work_ledger_graph:
+  ledger_source:
+    relation: omninode_internal.work_ledger_rows
+    dsn_env: OMNINODE_INTERNAL_DB_URL
+    # A query with no since reads this many days back from its until.
+    default_window_days: 7
+db_io:
+  db_tables:
+    - name: work_ledger_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_work_ledger.sql"
+      access: read
+      role: work_ledger_rows
+broker_acl_grants:
+- principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+  grants:
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.work-ledger-graph-query-requested.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.work-ledger-graph-query-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-graph-query-completed.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-graph-query-completed.v1, operation: DESCRIBE}
+golden_path:
+  - "Command arrives"
+  - "Read the window's rows"
+  - "Derive the graph from the rows' own cells"
+  - "Walk the graph for the typed question and return the typed answer"
+dod_evidence:
+  - test: tests/unit/nodes/node_work_ledger_graph_query_effect/test_handler_work_ledger_graph_query.py
+    description: "A golden and an error case for each of the five queries; an unreadable graph answers an error"

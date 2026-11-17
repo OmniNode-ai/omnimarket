@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_work_ledger_graph_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+runtime_profiles: [main]
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure deterministic derivation of the work ledger graph from rows of
+  omninode_internal.work_ledger_rows (row_id, row_ts, row_type, row_lane,
+  tickets, raw_row). Nodes are rows, lanes, tickets, PRs, heads, installs and
+  checks; edges come only from the rows' own key=value cells (lane=, ticket=,
+  parent=, parent_ticket=, pr=, fix-pr=, handed-off=, head=, installed=,
+  from=, to=, closes-CLAIM=, mechanism-ticket=, check=). No model call, no
+  I/O, no clock: two runs over the same rows return byte-identical output and
+  the same sha256 digest. The caller supplies the rows.
+input_model: omnimarket.models.work_ledger_graph.model_work_ledger_graph.ModelWorkLedgerGraphRequest
+output_model: omnimarket.models.work_ledger_graph.model_work_ledger_graph.ModelWorkLedgerGraph
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: derive
+      handler:
+        name: HandlerWorkLedgerGraph
+        module: omnimarket.nodes.node_work_ledger_graph_compute.handlers.handler_work_ledger_graph
+      event_model:
+        name: ModelWorkLedgerGraphRequest
+        module: omnimarket.models.work_ledger_graph.model_work_ledger_graph
+handler:
+  module: omnimarket.nodes.node_work_ledger_graph_compute.handlers.handler_work_ledger_graph
+  class: HandlerWorkLedgerGraph
+  input_model: omnimarket.models.work_ledger_graph.model_work_ledger_graph.ModelWorkLedgerGraphRequest
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+terminal_event: onex.evt.omnimarket.work-ledger-graph-derived.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.work-ledger-graph-derive-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.work-ledger-graph-derived.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.work-ledger-graph-derive-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.work-ledger-graph-derived.v1
+metadata:
+  transport_type: kafka
+  description: "Pure compute node: the work ledger graph from the rows' own cells"
+  author: "OmniNode Platform Team"
+  created: "2026-11-17"
+  tags: ["compute", "work-ledger", "graph", "deterministic"]
+broker_acl_grants:
+- principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+  grants:
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.work-ledger-graph-derive-requested.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.work-ledger-graph-derive-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-graph-derived.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-graph-derived.v1, operation: DESCRIBE}
+dod_evidence:
+  - test: tests/unit/nodes/node_work_ledger_graph_compute/test_handler_work_ledger_graph.py
+    description: "Determinism over shuffled rows, edges from cells only, and no model import"

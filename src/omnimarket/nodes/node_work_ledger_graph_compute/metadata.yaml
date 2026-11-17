@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_work_ledger_graph_compute
+version: "1.0.0"
+description: "Derives the work ledger graph from the rows' own key=value cells, with no model call"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_work_ledger_graph_compute: "omnimarket.nodes.node_work_ledger_graph_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "work-ledger", "graph", "deterministic"]
+pack: "data"
+display_name: "Compute: Work Ledger Graph"
+node_role: "compute"
