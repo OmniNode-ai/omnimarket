@@ -26,8 +26,7 @@ from typing import Any
 import yaml
 
 CONTRACT = Path(__file__).with_name("contract.yaml")
-# The official temporalio CLI release assets; the contract pins the release, the asset and its sha256.
-RELEASE_URL = "https://github.com/temporalio/cli/releases/download/{release}/{asset}"
+RELEASE_URL = "https://github.com/temporalio/cli/releases/download/{release}/{asset}"  # url-authority-ok: the official temporalio CLI release asset; the contract pins release, asset and sha256
 REQUIRED = (
     "release",
     "asset",
@@ -153,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     sys.stdout.flush()
     os.execv(command[0], command)
-    return 0  # pragma: no cover - execv does not return
+    return 0
 
 
 if __name__ == "__main__":

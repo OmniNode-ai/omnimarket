@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdout.write(json.dumps({"start": command}) + "\n")
     sys.stdout.flush()
     os.execve(command[0], command, environ)
-    return 0  # pragma: no cover - execv does not return
+    return 0
 
 
 if __name__ == "__main__":
