@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_shared_blocker_escalation_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Judges the shared causes the landing controller records. A shared cause that holds five or more
+  pull requests for two hours, or whose measured environment is not the gated branch's environment,
+  or whose gated environment reads healthy, raises one question to the operator (fix the gate,
+  admit by label, keep waiting) with an alarm key, and asks again only when its pull request set
+  changes. It also returns the status line queue-status prints per cause (age in hours, pull request
+  count, whether the question is open). A second operation refuses an andon-start row on a shared
+  check unless the row carries the environment the check measures and a reading of the gated
+  environment taken within the hour. Reads no files, runs no process, has no clock (the caller
+  supplies now), mutates nothing.
+input_model:
+  name: ModelSharedBlockerRequest
+  module: omnimarket.nodes.node_shared_blocker_escalation_compute.models.model_shared_blocker_escalation
+output_model:
+  name: ModelSharedBlockerResult
+  module: omnimarket.nodes.node_shared_blocker_escalation_compute.models.model_shared_blocker_escalation
+handler:
+  module: omnimarket.nodes.node_shared_blocker_escalation_compute.handlers.handler_shared_blocker_escalation
+  class: HandlerSharedBlockerEscalation
+  input_model: omnimarket.nodes.node_shared_blocker_escalation_compute.models.model_shared_blocker_escalation.ModelSharedBlockerRequest
+  output_model: omnimarket.nodes.node_shared_blocker_escalation_compute.models.model_shared_blocker_escalation.ModelSharedBlockerResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_shared_blocker_escalation_compute.handlers.handler_shared_blocker_escalation:HandlerSharedBlockerEscalation
+  handlers:
+    - operation: judge_shared_blockers
+      topic: onex.cmd.omnimarket.shared-blocker-escalation-requested.v1
+      handler:
+        name: HandlerSharedBlockerEscalation
+        module: omnimarket.nodes.node_shared_blocker_escalation_compute.handlers.handler_shared_blocker_escalation
+    - operation: guard_andon_start
+      topic: onex.cmd.omnimarket.andon-start-guard-requested.v1
+      handler:
+        name: HandlerAndonStartGuard
+        module: omnimarket.nodes.node_shared_blocker_escalation_compute.handlers.handler_shared_blocker_escalation
+        input_model: omnimarket.nodes.node_shared_blocker_escalation_compute.models.model_shared_blocker_escalation.ModelAndonStartRequest
+        output_model: omnimarket.nodes.node_shared_blocker_escalation_compute.models.model_shared_blocker_escalation.ModelAndonStartVerdict
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  now: {type: str, required: true, description: ISO-Z time of the read.}
+  causes: {type: list, required: true, description: "Shared causes: key, check, members (repo#n), first_seen, measured_env, gated_env, gated_reading."}
+  open_questions: {type: list, required: false, description: qkeys of operator questions that are open.}
+  min_prs: {type: int, required: false, description: "Pull requests that make a hold (default 5)."}
+  hold_hours: {type: float, required: false, description: "Hours a hold lasts before it is asked about (default 2)."}
+outputs:
+  judgements: {type: list, description: "One per cause: age in hours, pull request count, triggers, qkey, whether its question is open."}
+  questions: {type: list, description: "The operator questions to write (a MSG to=operator each) and their alarm keys."}
+  status_lines: {type: list, description: The lines queue-status prints.}
+terminal_event: onex.evt.omnimarket.shared-blocker-escalation-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.shared-blocker-escalation-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.shared-blocker-escalation-requested.v1
+    - onex.cmd.omnimarket.andon-start-guard-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.shared-blocker-escalation-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.shared-blocker-escalation-completed.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.shared-blocker-escalation-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.shared-blocker-escalation-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.andon-start-guard-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.andon-start-guard-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.shared-blocker-escalation-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.shared-blocker-escalation-completed.v1, operation: DESCRIBE}
+
+metadata:
+  transport_type: inmemory
+  description: Shared-blocker escalation judge and andon-start guard
+  author: OmniNode Team
+  created: "2026-11-17"
+  related_tickets: [OMN-25406]
