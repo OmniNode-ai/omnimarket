@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""The body of one worktree prune run: one host activity per host, retries, resume and a per-host report row.
+
+The host activity is injected (``ProtocolHostPruneActivity``): on a lab host it runs the declared pruner on that host
+and returns its disk readings, removals and keeps. The journal holds every finished host's row under its step key
+``<run_id>/<host>``; a run started again with the same journal reuses those rows and runs only the hosts that have
+none, so a finished host is never pruned twice in one run. A host whose activity still fails after the plan's attempt
+limit yields a failed row and the run goes on to the next host.
+"""
+
+from __future__ import annotations
+
+from collections.abc import MutableMapping
+from typing import Protocol
+
+from omnimarket.nodes.node_worktree_prune_workflow_effect.handlers.handler_disk_alarm import (
+    disk_alarm,
+)
+from omnimarket.nodes.node_worktree_prune_workflow_effect.models.model_worktree_prune_workflow import (
+    ModelHostPruneReportRow,
+    ModelHostPruneResult,
+    ModelPruneHostTarget,
+    ModelWorktreePrunePlan,
+    ModelWorktreePruneRunReport,
+)
+
+
+class ProtocolHostPruneActivity(Protocol):
+    def __call__(
+        self, target: ModelPruneHostTarget, step_key: str, attempt: int
+    ) -> ModelHostPruneResult: ...
+
+
+def step_key(plan: ModelWorktreePrunePlan, host: str) -> str:
+    return f"{plan.run_id}/{host}"
+
+
+class HandlerWorktreePruneRun:
+    def __init__(
+        self,
+        activity: ProtocolHostPruneActivity,
+        journal: MutableMapping[str, ModelHostPruneReportRow] | None = None,
+    ) -> None:
+        self._activity = activity
+        self.journal: MutableMapping[str, ModelHostPruneReportRow] = (
+            journal if journal is not None else {}
+        )
+
+    def _run_host(
+        self, plan: ModelWorktreePrunePlan, target: ModelPruneHostTarget
+    ) -> ModelHostPruneReportRow:
+        key = step_key(plan, target.host)
+        error = ""
+        for attempt in range(1, plan.max_attempts + 1):
+            try:
+                result = self._activity(target, key, attempt)
+            except (
+                Exception
+            ) as exc:  # every host failure becomes a retry, then a failed row
+                error = f"{type(exc).__name__}: {exc}"
+                continue
+            if result.host != target.host:
+                error = f"activity for {target.host} answered for {result.host}"
+                continue
+            return ModelHostPruneReportRow(
+                host=target.host,
+                status="ok",
+                attempts=attempt,
+                result=result,
+                alarm=disk_alarm(target, result.disk_used_percent_after),
+            )
+        return ModelHostPruneReportRow(
+            host=target.host,
+            status="failed",
+            attempts=plan.max_attempts,
+            error=error,
+        )
+
+    def handle(self, request: ModelWorktreePrunePlan) -> ModelWorktreePruneRunReport:
+        rows = []
+        for target in request.hosts:
+            key = step_key(request, target.host)
+            done = self.journal.get(key)
+            if done is None or done.status != "ok":
+                done = self._run_host(request, target)
+                self.journal[key] = done
+            rows.append(done)
+        return ModelWorktreePruneRunReport(
+            run_id=request.run_id, trigger=request.trigger, rows=tuple(rows)
+        )
+
+
+__all__ = ["HandlerWorktreePruneRun", "ProtocolHostPruneActivity", "step_key"]

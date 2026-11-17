@@ -1,0 +1,100 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: worktree_prune_workflow_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  One worktree prune run over every lab host the plan names: one host activity per host, each retried up to the
+  plan's attempt limit, a finished host never run again on resume, one report row per host with the disk reading
+  before and after, the trees removed with the space freed and the trees kept with their reason, and a disk alarm
+  for each host whose use after the run is past its bar. A tree is removable only under the merged-only rule of the
+  shared worktree reconcile classifier: clean, no work off the remote, merged, and no live process, claim or unit.
+  A run starts from the daily schedule declared below or from a ticket-closer result.
+input_model: omnimarket.nodes.node_worktree_prune_workflow_effect.models.model_worktree_prune_workflow.ModelWorktreePrunePlan
+output_model: omnimarket.nodes.node_worktree_prune_workflow_effect.models.model_worktree_prune_workflow.ModelWorktreePruneRunReport
+handler:
+  module: omnimarket.nodes.node_worktree_prune_workflow_effect.handlers.handler_worktree_prune_run
+  class: HandlerWorktreePruneRun
+  input_model: omnimarket.nodes.node_worktree_prune_workflow_effect.models.model_worktree_prune_workflow.ModelWorktreePrunePlan
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerWorktreePruneRun
+      module: omnimarket.nodes.node_worktree_prune_workflow_effect.handlers.handler_worktree_prune_run
+    event_model:
+      name: ModelWorktreePrunePlan
+      module: omnimarket.nodes.node_worktree_prune_workflow_effect.models.model_worktree_prune_workflow
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  timeout_ms: 3600000
+  runtime_profiles:
+  - effects
+schedule:
+  # The daily run. The ticket-closer result subscription below is the run when a ticket closes.
+  cron: "17 6 * * *"
+  timezone: UTC
+  trigger: schedule
+terminal_event: onex.evt.omnimarket.worktree-prune-run-completed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.worktree-prune-run.v1
+  - onex.evt.omnimarket.ticket-closer-result.v1
+  publish_topics:
+  - onex.evt.omnimarket.worktree-prune-host-reported.v1
+  - onex.evt.omnimarket.worktree-prune-disk-alarm.v1
+  - onex.evt.omnimarket.worktree-prune-run-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.worktree-prune-run.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.worktree-prune-disk-alarm.v1
+- onex.evt.omnimarket.worktree-prune-run-completed.v1
+broker_acl_grants:
+- principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+  grants:
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.worktree-prune-run.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.worktree-prune-run.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ticket-closer-result.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ticket-closer-result.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.worktree-prune-host-reported.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.worktree-prune-host-reported.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.worktree-prune-disk-alarm.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.worktree-prune-disk-alarm.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.worktree-prune-run-completed.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.worktree-prune-run-completed.v1, operation: DESCRIBE}
+metadata:
+  transport_type: kafka
+inputs:
+  run_id:
+    type: string
+    required: true
+    description: The run's id; the per-host step key is <run_id>/<host>.
+  trigger:
+    type: string
+    required: true
+    description: schedule, ticket_closed or manual.
+  hosts:
+    type: list[object]
+    required: true
+    description: One target per host, each with its disk bar in percent used.
+  max_attempts:
+    type: integer
+    required: false
+    description: Attempts per host activity before the host's row reads failed.
+outputs:
+  rows:
+    type: list[object]
+    description: One report row per host, in plan order.
+  alarms:
+    type: list[object]
+    description: One disk alarm per host whose use after the run is past its bar.
