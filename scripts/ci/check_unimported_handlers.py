@@ -83,14 +83,14 @@ def _load_scan_module() -> _ScanModule:
 
 try:
     _scan = _load_scan_module()
-except (ImportError, OSError, SyntaxError) as exc:
+    repo_relative = _scan.repo_relative
+    load_baseline = _scan.load_baseline
+    find_dead_handlers = _scan.find_dead_handlers
+    find_stale_baseline_entries = _scan.find_stale_baseline_entries
+    scan_unimported_handlers = _scan.scan_unimported_handlers
+except (AttributeError, ImportError, OSError, SyntaxError) as exc:
     print(f"ERROR: unimported-handler scan helper unavailable: {exc}", file=sys.stderr)
     raise SystemExit(2) from exc
-repo_relative = _scan.repo_relative
-load_baseline = _scan.load_baseline
-find_dead_handlers = _scan.find_dead_handlers
-find_stale_baseline_entries = _scan.find_stale_baseline_entries
-scan_unimported_handlers = _scan.scan_unimported_handlers
 
 # The transport hook uses this existing import gate's CLI, so both import checks
 # share one implementation file. The core validator

@@ -12,7 +12,7 @@ requirements:
   - id: AC1
     statement: 'AC1: the unimported-handler baseline holds no entry for a handler that does not exist, and the gate refuses a stale entry -- falsifier: uv run pytest tests -q -k stale_baseline_entry in omnimarket, failing with a stale entry planted'
   - id: AC2
-    statement: 'AC2: the remaining exclusion count is recorded after this slice merges -- falsifier: the burn-down count in the PR body matches a recount on dev'
+    statement: 'AC2: the remaining exclusion count is recorded after this slice merges -- falsifier: the burn-down count in the comment starting `Lab: head=<head sha>` on the PR matches a recount on dev'
 evidence_requirements:
 - kind: tests
   description: The stale-entry tests (deleted file, class gone with the file kept, class now imported, inline allow marker, live entry kept, committed baseline clean), the tests that run the gate's main() as a command on a tmp repo, and the dead-handler tests pass.
@@ -39,7 +39,7 @@ dod_evidence:
     check_value: uv run --frozen python scripts/ci/check_unimported_handlers.py
     cwd: .
 - id: dod-omn23335-baseline-count
-  description: Runs the focused test selected by baseline_entry_count. The baseline file, read through the loader, holds exactly 61 entries, the count after this slice and down from 67 at the merge base, so the test fails on the merge base. The PR body is never edited after the first push, so the count the criterion reads from the PR body is stated in a PR comment at the new head, which names the same 61.
+  description: Runs the focused test selected by baseline_entry_count. The baseline file, read through the loader, holds exactly 61 entries, the count after this slice and down from 67 at the merge base, so the test fails on the merge base. The PR body is never edited after the first push, so the count the criterion reads is stated in the Lab comment at the new head, which names the same 61.
   source: manual
   binds_ac:
   - AC2

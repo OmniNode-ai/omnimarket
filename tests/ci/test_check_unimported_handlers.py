@@ -403,6 +403,33 @@ def test_main_exits_2_with_a_message_when_the_scan_helper_is_missing(
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("flags", [[], ["--transport-imports"]])
+def test_gate_exits_2_with_a_message_when_the_helper_lacks_a_name(
+    tmp_path: Path, flags: list[str]
+) -> None:
+    """A helper that loads but lacks a name the gate binds is an invocation error."""
+    repo = _tmp_repo(tmp_path, [], {"nodes/node_x/__init__.py": ""})
+    helper = repo / _HELPER_REL
+    helper.write_text(
+        helper.read_text(encoding="utf-8").replace(
+            "def scan_unimported_handlers", "def scan_renamed_handlers"
+        ),
+        encoding="utf-8",
+    )
+    script = repo / "scripts" / "ci" / "check_unimported_handlers.py"
+    result = subprocess.run(
+        [sys.executable, "-I", str(script), *flags],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2, result.stdout
+    assert "scan_unimported_handlers" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+@pytest.mark.unit
 def test_transport_imports_exits_2_with_a_message_when_the_scan_helper_is_missing(
     tmp_path: Path,
 ) -> None:
@@ -427,7 +454,8 @@ def test_script_registers_the_scan_helper_under_a_private_name() -> None:
             "spec = importlib.util.spec_from_file_location('gate', sys.argv[1])",
             "module = importlib.util.module_from_spec(spec)",
             "spec.loader.exec_module(module)",
-            "print('unimported_handler_baseline' in sys.modules)",
+            "print('unimported_handler_baseline' in sys.modules,",
+            "      '_omnimarket_unimported_handler_scan' in sys.modules)",
         ]
     )
     script = _REPO_ROOT / "scripts" / "ci" / "check_unimported_handlers.py"
@@ -438,7 +466,9 @@ def test_script_registers_the_scan_helper_under_a_private_name() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "False"
+    # Registered under the private name only: the public name stays unclaimed, and
+    # the private name is present (a script that registered nothing would print False False).
+    assert result.stdout.strip() == "False True"
 
 
 @pytest.mark.unit
@@ -517,3 +547,23 @@ def test_selector_node_handlers_have_wiring_evidence() -> None:
         entry for entry in dead if "node_test_selection_selector_compute" in entry
     ]
     assert selector_entries == []
+
+
+@pytest.mark.unit
+def test_every_caller_runs_the_gate_script_in_place_from_a_full_checkout() -> None:
+    """The callers named by the helper's docstring run the script where it sits.
+
+    The two pre-commit hooks and the two CI lint steps run the script by its repo
+    path, so the helper under src/omnimarket/handlers is present in each of them;
+    no caller copies the script elsewhere.
+    """
+    gate = "scripts/ci/check_unimported_handlers.py"
+    precommit = (_REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    workflow = (_REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+    for text in (precommit, workflow):
+        assert f"uv run python {gate} --transport-imports" in text
+        assert f"uv run python {gate}\n" in text
+    assert (_REPO_ROOT / gate).is_file()
+    assert (_REPO_ROOT / _HELPER_REL).is_file()

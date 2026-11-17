@@ -14,11 +14,11 @@ requirements:
   - id: AC2
     statement: 'AC2: the remainder of scripts/ci/check_unimported_handlers.py uses none of the names the change dropped, and every caller (pre-commit hook, workflow step, transport hook) runs where omnimarket imports with no heavy side effect, or the helpers move to a stdlib-only module under scripts/ -- falsifier: `uv run ruff check --select F821,F401 scripts/ci/check_unimported_handlers.py` exits 0 and `uv run pytest tests/ci/test_check_unimported_handlers.py -q --no-cov -n 0` passes'
   - id: AC3
-    statement: 'AC3: a PR comment starting `Lab: head=<full head sha>` names the new head and the contract''s own lab command with its pass count, every required context at that head reads success except the shared Delegation Health Check, and that check is shown red on dev too -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#5609` lists the comment and `onex scm pr-checks OmniNode-ai/omnimarket#5609` lists every required context at that head'
+    statement: "AC3: the contract's own lab command (the whole file of unimported-handler gate tests) passes on the hosted runner, and the local Lab-comment and required-contexts commands exit non-zero on the recorded PR answers when the fact is absent -- falsifier: `uv run pytest tests/ci/test_check_unimported_handlers.py tests/ci/test_omn25309_local_check_assertions.py -q --no-cov -n 0` fails, or passes with a payload in which a required context never reported or the Lab line is only quoted mid-comment. The PR-state part of the ticket's criterion is read by the local item dod-omn24837-lab-comment and dod-omn24837-required-checks-local and is bound to no hosted test."
   - id: AC4
-    statement: 'AC4: a PR comment states the exclusion count recounted at the new head (61 remaining at ab9c74215245) and, if the burn-down total across validators is what the requirement means, that total as well -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#5609` lists the comment and `uv run pytest tests/ci/test_check_unimported_handlers.py -q --no-cov -n 0 -k baseline_count` passes against the exact count'
+    statement: "AC4: the baseline holds exactly the recorded exclusion count (61 remaining), read through the loader -- falsifier: `uv run pytest tests/ci/test_check_unimported_handlers.py -q --no-cov -n 0 -k baseline_count` passes against another count. The PR-state part of the ticket's criterion is read by the local item dod-omn24837-count-comment-local and is bound to no hosted test."
   - id: AC5
-    statement: 'AC5: findings 5 to 10 of the review are each fixed or argued with evidence in a PR comment, and the lane comment names the new head -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#5609` lists the comment naming findings 5 to 10'
+    statement: "AC5: the tests that carry the non-blocking findings pass on the hosted runner and the local Findings 5-10 command exits non-zero when the only match is a quote in the middle of another comment -- falsifier: `uv run pytest tests/ci/test_omn25309_local_check_assertions.py -q -n 0 --no-cov -k 'follow_up or mid_comment'` passes with such a payload. The PR-state part of the ticket's criterion is read by the local item dod-omn24837-non-blocking-findings and is bound to no hosted test."
 evidence_requirements:
 - kind: tests
   description: The whole file of unimported-handler gate tests passes, including the tests that run main() as a command on a tmp repo.
@@ -50,12 +50,12 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/ci/test_check_unimported_handlers.py -q -n 0 --no-cov -p no:randomly -k 'loads_without_importing or private_name or helper_is_missing'
     cwd: .
 - id: dod-omn24837-lab-comment
-  description: "The PR holds a comment starting Lab: head= with the pushed head sha. The command lists the PR through the watcher read and greps for that exact line, so it exits non-zero when the comment is absent or names another head. Only the local Done gate runs it, because hosted CI has no watcher state; it binds no criterion, and the hosted proxy for AC3 proves only that this command can fail."
+  description: "PR-state criterion AC3 (not bound). The PR holds a comment whose body STARTS with Lab: head=<pushed head sha>. The command parses the pr-view answer (--source bus, which carries the comments) and exits non-zero when no comment starts with that line, when the PR head is another sha, or when the line is only quoted in the middle of a comment. Only the local Done gate runs it, because hosted CI has no PR state; the hosted proxy proves only that this command can fail."
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: "onex scm pr-view OmniNode-ai/omnimarket#5609 | grep -F \"Lab: head=$(git rev-parse HEAD)\""
+    check_value: "onex scm pr-view OmniNode-ai/omnimarket#5609 --source bus | python3 tests/ci/pr_state_checks.py lab-comment \"$(git rev-parse HEAD)\""
     cwd: .
 - id: dod-omn24837-count-exact
   description: Runs the focused test selected by baseline_count. The baseline, read through the loader, holds exactly the recorded count; the PR comment states the same count.
@@ -67,15 +67,23 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/ci/test_check_unimported_handlers.py -q -n 0 --no-cov -p no:randomly -k baseline_count
     cwd: .
 - id: dod-omn24837-non-blocking-findings
-  description: "The PR holds a comment with a Findings 5-10 line that answers the non-blocking findings. The command greps the PR read for that line, so it exits non-zero when no such comment exists. Only the local Done gate runs it; it binds no criterion, and the hosted proxy for AC5 proves only that this command can fail."
+  description: "PR-state criterion AC5 (not bound). The comment that starts with Lab: head=<pushed head sha> also holds a Findings 5-10 line. The command exits non-zero when that line is in another comment, in a quote in the middle of a comment, or in a comment for another head. Only the local Done gate runs it."
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: "onex scm pr-view OmniNode-ai/omnimarket#5609 | grep -F \"Findings 5-10\""
+    check_value: "onex scm pr-view OmniNode-ai/omnimarket#5609 --source bus | python3 tests/ci/pr_state_checks.py lab-comment \"$(git rev-parse HEAD)\" --contains \"Findings 5-10\""
+    cwd: .
+- id: dod-omn24837-count-comment-local
+  description: "PR-state criterion AC4 (not bound). The comment that starts with Lab: head=<pushed head sha> also holds the line `Exclusion count: 61`, the count the hosted test dod-omn24837-count-exact pins. The command exits non-zero when the line is in another comment or only quoted mid-comment. Only the local Done gate runs it."
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: "onex scm pr-view OmniNode-ai/omnimarket#5609 --source bus | python3 tests/ci/pr_state_checks.py lab-comment \"$(git rev-parse HEAD)\" --contains \"Exclusion count: 61\""
     cwd: .
 - id: dod-omn24837-ac3-hosted-proxy
-  description: "hosted proxy for AC3. It proves two things only: the contract's own lab command (the whole file of unimported-handler gate tests) passes on the hosted runner, and the local Lab-comment and required-checks commands of this contract exit non-zero when the PR has no Lab: head= comment at the head, a red required context other than the shared Delegation Health Check, a pending context or another head. It does not read the PR, its comments or its check-runs; those readings are the unbound local_done_gate items dod-omn24837-lab-comment and dod-omn24837-required-checks-local, because the hosted runner holds no PR state."
+  description: "hosted proxy for AC3. It proves two things only: the contract's own lab command (the whole file of unimported-handler gate tests) passes on the hosted runner, and the local Lab-comment and required-checks commands of this contract exit non-zero on the recorded PR answers when the PR has no Lab: head= comment starting at the head (a quote mid-comment does not count), a required context that is red, never reported or was skipped, a pending context or another head. It does not read the PR, its comments or its check-runs; those readings are the unbound local_done_gate items dod-omn24837-lab-comment and dod-omn24837-required-checks-local, because the hosted runner holds no PR state."
   source: manual
   binds_ac:
   - AC3
@@ -96,7 +104,7 @@ dod_evidence:
     check_value: "uv run --frozen pytest tests/ci/test_check_unimported_handlers.py -q -n 0 --no-cov -p no:randomly -k 'loads_without_importing or private_name or helper_is_missing or print_paths_relative or committed_baseline_has_no_stale or selector_node_handlers'"
     cwd: .
   - check_type: test_passes
-    check_value: "uv run --frozen pytest tests/ci/test_omn25309_local_check_assertions.py -q -n 0 --no-cov -p no:randomly -k findings"
+    check_value: "uv run --frozen pytest tests/ci/test_omn25309_local_check_assertions.py -q -n 0 --no-cov -p no:randomly -k 'follow_up or mid_comment'"
     cwd: .
 - id: dod-omn24837-integration-proof
   description: On a lab host the unimported-handler gate runs at the pushed head through the lab work runner and the focused tests of its main() pass there. Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check.
@@ -107,10 +115,10 @@ dod_evidence:
     check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24837 --kind test -- uv run --frozen pytest tests/ci/test_check_unimported_handlers.py -q --no-cov -p no:randomly -k test_main'
     cwd: .
 - id: dod-omn24837-required-checks-local
-  description: "Every required context of the PR at the pushed head reads success except the shared Delegation Health Check, which is red on dev too. The command reads the PR checks through the watcher, compares head_sha with the local HEAD and exits non-zero on any other red or pending context. Only the local Done gate runs it; it binds no criterion."
+  description: "PR-state criterion AC3 (not bound). Every required context at the pushed head reads success in the check-runs, except the shared Delegation Health Check, which is red on dev too. The names are the branch-protection and ruleset contexts of the landing branch in tests/ci/fixtures/omn25309/required_contexts.txt; a context that never reported, was skipped or was cancelled has no success row and fails the command, as does another red, a pending context or another head. Only the local Done gate runs it."
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: "onex scm pr-checks OmniNode-ai/omnimarket#5609 | python3 -c \"import json,sys; r=json.load(sys.stdin)['result']; red=[n for n in r['red'] if n!='delegation-health-check / Delegation Health Check']; sys.exit(0 if r['head_sha']==sys.argv[1] and not red and not r['pending'] else 1)\" \"$(git rev-parse HEAD)\""
+    check_value: "onex scm pr-checks OmniNode-ai/omnimarket#5609 | python3 tests/ci/pr_state_checks.py required-checks \"$(git rev-parse HEAD)\" tests/ci/fixtures/omn25309/required_contexts.txt"
     cwd: .
