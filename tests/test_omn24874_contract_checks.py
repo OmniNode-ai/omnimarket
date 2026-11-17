@@ -583,6 +583,23 @@ def test_omn24874_contract_ac3_dev_runtime_symbols_exist_only_with_the_fix() -> 
     assert "p._tenant_overlay_cost_usd" in command
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize("reading", ["ac2", "ac4", "ac5"])
+def test_omn24874_contract_reading_needs_the_fix_tree(reading: str) -> None:
+    # The AC2, AC4 and AC5 readings are taken on a runtime that carries this change, so the tree
+    # that runs their hosted behavioural tests must carry the two names the fix adds. A merge base
+    # lacks them, so this control fails there.
+    from omnimarket.nodes.node_delegation_orchestrator.handlers import (
+        handler_delegation_workflow as workflow,
+    )
+    from omnimarket.nodes.node_projection_delegation.handlers import (
+        handler_projection_delegation as projection,
+    )
+
+    assert callable(workflow.byok_declared_price_per_1m), reading
+    assert callable(projection._tenant_overlay_cost_usd), reading
+
+
 _ALARM_INSTALLED_AT = "2026-11-17T04:00:00Z"
 _ALARM_ROW = "{ts} | STATUS | lane=delegation-scenario-alarm | src=alarm | alarm={alarm} | req=r1 | the run failed"
 

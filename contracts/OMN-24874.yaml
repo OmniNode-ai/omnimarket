@@ -115,7 +115,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_omn24874_contract_checks.py -k "live_reading_parses or live_command_ages" -q --no-cov -n 0 -p no:randomly
+    check_value: uv run pytest tests/test_omn24874_contract_checks.py -k "live_reading_parses or live_command_ages or (fix_tree and ac2)" -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24874-ac3-reading-command-behaviour
   description: Hosted proxy for AC3. The live reading itself runs only in the local Done gate (the live item beside it is unbound). This hosted test runs the AC3 running-revision reading command passes only when host, container, revision and symbols all hold and fails before the fix is merged or on an older build, over a temporary repository with shims; the test file does not exist at the merge base, so the control fails there.
@@ -124,7 +124,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_omn24874_contract_checks.py -k "ac3_check" -q --no-cov -n 0 -p no:randomly
+    check_value: uv run pytest tests/test_omn24874_contract_checks.py -k "ac3_check or dev_runtime_symbols" -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24874-ac4-reading-command-behaviour
   description: Hosted proxy for AC4. The live reading itself runs only in the local Done gate (the live item beside it is unbound). This hosted test runs the AC4 alarm-row reading command passes only for an alarm row of r8 or r9 left after the alarm unit was installed, over a temporary repository with shims; the test file does not exist at the merge base, so the control fails there.
@@ -133,7 +133,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_omn24874_contract_checks.py -k "ac4_check" -q --no-cov -n 0 -p no:randomly
+    check_value: uv run pytest tests/test_omn24874_contract_checks.py -k "ac4_check or (fix_tree and ac4)" -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24874-ac5-reading-command-behaviour
   description: Hosted proxy for AC5. The live reading itself runs only in the local Done gate (the live item beside it is unbound). This hosted test runs the AC5 verdict reading command needs a CLEAN row at the head of each of the two pull requests, over a temporary repository with shims; the test file does not exist at the merge base, so the control fails there.
@@ -142,5 +142,5 @@ dod_evidence:
   - AC5
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_omn24874_contract_checks.py -k "ac5_check" -q --no-cov -n 0 -p no:randomly
+    check_value: uv run pytest tests/test_omn24874_contract_checks.py -k "ac5_check or (fix_tree and ac5)" -q --no-cov -n 0 -p no:randomly
     cwd: .
