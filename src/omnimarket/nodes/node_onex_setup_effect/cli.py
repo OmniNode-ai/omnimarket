@@ -75,11 +75,13 @@ LADDER_NOTICE = (
 )
 
 
-def _json_failures[**P, R](function: Callable[P, R]) -> Callable[P, R]:
+def _json_failures(function: Callable[..., None]) -> Callable[..., None]:
+    """A click command whose refusal is one JSON line when --json is given."""
+
     @wraps(function)
-    def invoke(*args: P.args, **kwargs: P.kwargs) -> R:
+    def invoke(*args: object, **kwargs: object) -> None:
         try:
-            return function(*args, **kwargs)
+            function(*args, **kwargs)
         except click.ClickException as error:
             if kwargs.get("json_output"):
                 click.echo(
