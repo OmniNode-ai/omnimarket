@@ -47,3 +47,18 @@ dod_evidence:
   - check_type: command
     check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23619 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pilot_measurement_effect -q --no-cov -p no:randomly'
     cwd: .
+- id: dod-omn23619-memory-pilot-stage2-tests
+  description: 'The memory pilot node tests at the pushed head: stage two ruling question set frozen (a changed question breaks the freeze), 12 questions with known answers that score right and wrong ones that score wrong, the daily run names Graphiti as its candidate from the overlay and closes it, and a Cognee overlay never builds Graphiti. At the merge base the stage two directory and the Graphiti selection do not exist, so the file fails there.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run --frozen pytest tests/nodes/node_memory_pilot_effect -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn23619-measurement-rows-land-after-the-stop
+  description: 'Hosted CI cannot reach the bus, so only the local Done gate runs this unbound check. It reads the work ledger for a pilot-measurement row newer than 2026-11-16T18:33Z and fails when none is found.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'sh -c ''printf "%s" "{\"query\":\"rows\",\"since\":\"2026-11-16T18:34:00Z\",\"until\":\"2099-01-01T00:00:00Z\",\"kinds\":[\"STATUS\"],\"limit\":50,\"lane\":\"pilot-measurement\"}" | onex ledger query --stdin | grep -q "src=pilot-measurement"'''
+    cwd: .

@@ -1,0 +1,66 @@
+{
+ "pilot": "memory-ledger-rulings-stage2",
+ "frozen_before": "any scored result on this question set; the corpus was extracted and the gold answers checked against it by pattern search only",
+ "product": {
+  "name": "cognee and graphiti, side by side",
+  "version_pin": "cognee 1.6.6; graphiti-core 0.31.2 on the embedded FalkorDBLite 0.11.0 store",
+  "license": "Apache-2.0 (both)",
+  "package": "published PyPI wheels, self-hosted, in-process stores only"
+ },
+ "models": {
+  "allowed": "lab models only",
+  "chat": "the lab chat model served on the pool GPU host (Qwen3.8-27B at freeze time)",
+  "embeddings": "the lab embedding model (text-embedding-qwen3, 1024 dimensions)",
+  "cloud_model": "none",
+  "vendor_account": "none"
+ },
+ "answering": {
+  "temperature": 0.0,
+  "system_prompt": "Answer the question using only the provided context. Be brief. If the context does not contain the answer, reply exactly: NOT IN CONTEXT.",
+  "same_for": [
+   "baseline",
+   "cognee",
+   "graphiti"
+  ],
+  "trials": 1
+ },
+ "systems": {
+  "baseline": {
+   "name": "lexical-kb-ask-standin",
+   "spec": "Deterministic stand-in for the hand-run internal knowledge-base lookup. Terms: the question lowercased, split on non-alphanumerics, tokens shorter than 3 characters and the stop words (the, and, for, what, which, who, how, why, when, does, did, are, was, were, with, that, this, from, into, than, then, its, their, has, have, had, not, can, may, any, all, one, two) dropped. A term matches a word that starts with it. Files ranked by number of distinct terms matched, then total hits. Top 5 files; within each, paragraphs (blank-line separated) ranked the same way; paragraphs taken in rank order until 6000 characters. Context = the selected paragraphs with their file path. Answer by the lab chat model with the frozen prompt.",
+   "not_measured": "the live skill with terms chosen by a model or a person"
+  },
+  "candidate": {
+   "name": "cognee or graphiti (one run each, same corpus, same questions, same bar)",
+   "spec": "Ingest the corpus files as text into one dataset with add, then cognify (graph extraction and embeddings on lab models). Query with the GRAPH_COMPLETION search type, with the frozen system prompt passed as the answering prompt, top_k left at the product default. Graphiti: the corpus is cut into episodes with add_episode on the embedded store, facts retrieved by hybrid search, and the answer written by the same lab chat model with the same frozen prompt from the retrieved facts."
+  }
+ },
+ "metrics": [
+  "accuracy per category and overall (mean over the trials)",
+  "hard subset = multihop + aggregate (4 questions)",
+  "abstain = 2 questions",
+  "ingest wall-clock seconds",
+  "per-query latency p95",
+  "outbound connection record for the whole ingest and query phases"
+ ],
+ "bar": {
+  "B1_overall": "candidate mean accuracy >= baseline mean accuracy + 0.10",
+  "B2_hard_subset": "candidate mean accuracy on the 4 hard questions (multihop + aggregate) >= baseline mean accuracy on them + 0.15",
+  "B3_planted": "not applicable: this question set carries no planted notes (the same B3 holds for stage one)",
+  "B4_abstain": "candidate mean abstain score >= baseline mean abstain score",
+  "B5_ingest": "ingest ends with every corpus file processed and no failed item, within 6 hours wall-clock",
+  "B6_latency": "candidate query latency p95 <= 60 seconds",
+  "B7_network": "the connection record of ingest and queries shows only loopback and the two lab model endpoints",
+  "pass": "all of B1, B2, B4, B5, B6 and B7"
+ },
+ "ends_it": [
+  "any connection to an address that is not loopback or a lab model endpoint (stop at once; reject)",
+  "a need for a sign-up, a key, a cloud model or any vendor contact (reject)",
+  "ingest not finished after 6 hours wall-clock (reject for stage one)",
+  "cognee overall mean accuracy gain over baseline below +0.03 after the full run (reject: no measurable gain)"
+ ],
+ "negative_controls": [
+  "scorer: empty answer scores 0 on every question; the bare string NOT IN CONTEXT scores 0 on every non-abstain question",
+  "retrieval: a system answering from an empty context must score 0 on every non-abstain question and 2 of 2 on abstain"
+ ]
+}

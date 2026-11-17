@@ -1,0 +1,99 @@
+{
+ "source_repo": "the rolling work ledger (internal; RULING rows only, lab models only)",
+ "source_sha": "ledger snapshot taken 2026-11-17T17:02:03Z",
+ "selection": "18 RULING rows, one file per row, verbatim",
+ "file_count": 18,
+ "total_bytes": 14112,
+ "files": [
+  {
+   "path": "rulings/RULING-2026-11-05T154457Z.txt",
+   "sha256": "c1e179e3a57a28f13fabedacdd3484dd40b4a3fddcc145ea0b3b048244ae2847",
+   "bytes": 915
+  },
+  {
+   "path": "rulings/RULING-2026-11-11T003704Z.txt",
+   "sha256": "14fd256bb818e5428b9e4e8122b34ed0d33c67cd57b707e938a15db14013cbd0",
+   "bytes": 484
+  },
+  {
+   "path": "rulings/RULING-2026-11-11T011249Z.txt",
+   "sha256": "09a412694f4203f9ae8de9651e16744999f99e09445c1d4217cdd160fb299158",
+   "bytes": 904
+  },
+  {
+   "path": "rulings/RULING-2026-11-15T184153Z.txt",
+   "sha256": "cfdf9464ed0d982ba892962c83acc280ebfaa45a05b6f8aa19aebc961a706d19",
+   "bytes": 1218
+  },
+  {
+   "path": "rulings/RULING-2026-11-15T191000Z.txt",
+   "sha256": "277f4bb05667c6f440c3553d10bda3c59d77ae26452cb08e614317ada6ed7068",
+   "bytes": 963
+  },
+  {
+   "path": "rulings/RULING-2026-11-15T191755Z.txt",
+   "sha256": "b29dde76e95cd9c3df7ca2f6d0b464e36f4292585508678d8e96667832b72215",
+   "bytes": 799
+  },
+  {
+   "path": "rulings/RULING-2026-11-15T222317Z.txt",
+   "sha256": "f533f08dfbc11a18017d3e0d0d6ad707342b6128d010b9c0c0015a380f1681da",
+   "bytes": 1198
+  },
+  {
+   "path": "rulings/RULING-2026-11-15T231026Z.txt",
+   "sha256": "99a8c6d02e513977cac1068eec2c3a35df886c03721fd864ac2a1dc2af46e9c0",
+   "bytes": 586
+  },
+  {
+   "path": "rulings/RULING-2026-11-16T125106Z.txt",
+   "sha256": "d4a2337507c707e9a7f158d0ee2dd36f9401c63bbd70bcfa803ede1a16329f44",
+   "bytes": 470
+  },
+  {
+   "path": "rulings/RULING-2026-11-16T140250Z.txt",
+   "sha256": "1f0dc0c65ad5a8610792410592767f0de7064ef69741a93bfb703fa06354402c",
+   "bytes": 274
+  },
+  {
+   "path": "rulings/RULING-2026-11-16T155450Z.txt",
+   "sha256": "ed9920e2354337d46c5bc0c3085742a5d474530256f9d50b6e22c9037efc6c33",
+   "bytes": 688
+  },
+  {
+   "path": "rulings/RULING-2026-11-16T173723Z.txt",
+   "sha256": "c7f59040ddb0bf9ab01d46c7901a7761ab8a76d2e42fdc488dde8a0f3506cb50",
+   "bytes": 820
+  },
+  {
+   "path": "rulings/RULING-2026-11-16T174138Z.txt",
+   "sha256": "5f897059dc00207398e6be83e0e1a0107d2e2e838bb9ec3668980b3e2cdc48bd",
+   "bytes": 745
+  },
+  {
+   "path": "rulings/RULING-2026-11-16T194311Z.txt",
+   "sha256": "6b808b30170e64b7059643179eb144a545794b50dbe91bac51996f70ccb6929f",
+   "bytes": 828
+  },
+  {
+   "path": "rulings/RULING-2026-11-17T004537Z.txt",
+   "sha256": "3079e8ee02738a736b7e9bff9bf5f449171e64ceb8cf40fa817168d3e32e91b5",
+   "bytes": 619
+  },
+  {
+   "path": "rulings/RULING-2026-11-17T131738Z.txt",
+   "sha256": "b43812547e3c786f00e388f2a60d30b0fbc48317b9e647fb4e97aee49704bbe8",
+   "bytes": 807
+  },
+  {
+   "path": "rulings/RULING-2026-11-17T140849Z.txt",
+   "sha256": "f5d904203e12666e34d7aaf5e8f12349ca3d3a1d209119c74f0fd284330100d1",
+   "bytes": 1070
+  },
+  {
+   "path": "rulings/RULING-2026-11-17T154837Z.txt",
+   "sha256": "f8f9dba2651e621c42b9d9005a3d6282bc8957bb9d8d059f717fb78b97fd7b5e",
+   "bytes": 724
+  }
+ ]
+}

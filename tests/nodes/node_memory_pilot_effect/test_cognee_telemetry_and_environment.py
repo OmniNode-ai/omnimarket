@@ -15,11 +15,14 @@ import pytest
 from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_cognee import (
     cognee_environment,
 )
+from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_graphiti import (
+    graphiti_environment,
+)
 from omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot import (
     ModelMemoryPilotOverlay,
 )
 
-from .conftest import PILOT_DIR, frozen_hash
+from .conftest import PILOT_DIR, frozen_hash, make_graphiti_overlay
 
 pytestmark = pytest.mark.unit
 
@@ -100,3 +103,16 @@ def test_a_secret_shaped_placeholder_is_refused(tmp_path: Path) -> None:
                 "api_key_placeholder": "sk-live-1234567890",
             }
         )
+
+
+def test_graphiti_environment_is_built_from_the_overlay_alone(tmp_path: Path) -> None:
+    env = graphiti_environment(make_graphiti_overlay(tmp_path, cap=4))
+    assert env["GRAPHITI_TELEMETRY_ENABLED"] == "false"
+    assert env["DO_NOT_TRACK"] == "1"
+    assert env["HF_HUB_OFFLINE"] == "1"
+    assert env["SEMAPHORE_LIMIT"] == "4", "the in-flight cap comes from the overlay"
+    assert (
+        graphiti_environment(make_graphiti_overlay(tmp_path, cap=2))["SEMAPHORE_LIMIT"]
+        == "2"
+    )
+    assert not any("KEY" in k for k in env)

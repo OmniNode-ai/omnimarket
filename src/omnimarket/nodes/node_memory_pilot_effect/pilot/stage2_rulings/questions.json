@@ -1,0 +1,156 @@
+{
+ "abstain_regex": "not in (the )?(context|corpus|excerpts?)|no (information|mention|record|adr|decision)|(does|do|did) not (say|specify|mention|state|contain|describe|cover|include)|not (stated|specified|mentioned|found|covered|provided|available)|cannot (find|answer|be determined)|unable to find|no .{0,40}(was|were) found|NOT IN CONTEXT|insufficient",
+ "scoring": "A non-abstain question is correct when every group in all_of has at least one regex alternative that matches the answer (case-insensitive, re.search). An abstain question (empty all_of) is correct when abstain_regex matches the answer and the answer is under 600 characters.",
+ "questions": [
+  {
+   "id": "L1",
+   "category": "lexical",
+   "question": "How many conditions must a swarm item meet to count as done?",
+   "all_of": [
+    [
+     "\\b3\\b",
+     "\\bthree\\b"
+    ]
+   ],
+   "gold": "Three."
+  },
+  {
+   "id": "L2",
+   "category": "lexical",
+   "question": "Which system alone may fetch from github.com under the ruling on the central git mirror?",
+   "all_of": [
+    [
+     "mirror"
+    ]
+   ],
+   "gold": "The central git mirror itself."
+  },
+  {
+   "id": "L3",
+   "category": "lexical",
+   "question": "In the Temporal stage A pilot, how many workflow starts out of how many succeeded?",
+   "all_of": [
+    [
+     "11 of 11",
+     "all 11",
+     "eleven of eleven"
+    ]
+   ],
+   "gold": "11 of 11."
+  },
+  {
+   "id": "L4",
+   "category": "lexical",
+   "question": "What licence does the AgentRun project carry?",
+   "all_of": [
+    [
+     "apache"
+    ]
+   ],
+   "gold": "Apache-2.0."
+  },
+  {
+   "id": "L5",
+   "category": "lexical",
+   "question": "For how many hours did the broken stability environment freeze dev?",
+   "all_of": [
+    [
+     "\\b12\\b",
+     "twelve"
+    ]
+   ],
+   "gold": "12 hours."
+  },
+  {
+   "id": "L6",
+   "category": "lexical",
+   "question": "How many merges were counted on 15 November?",
+   "all_of": [
+    [
+     "\\b50\\b"
+    ]
+   ],
+   "gold": "50."
+  },
+  {
+   "id": "M1",
+   "category": "multihop",
+   "question": "The ruling on the central git mirror amends which earlier ruling, by its date?",
+   "all_of": [
+    [
+     "2026-11-07",
+     "11-07",
+     "november 7",
+     "7 november",
+     "nov 7"
+    ]
+   ],
+   "gold": "The ruling of 2026-11-07."
+  },
+  {
+   "id": "M2",
+   "category": "multihop",
+   "question": "What share of its weekly limit did Codex have left, and which two Claude models stay on the orchestration Claude account?",
+   "all_of": [
+    [
+     "87"
+    ],
+    [
+     "sonnet"
+    ],
+    [
+     "haiku"
+    ]
+   ],
+   "gold": "87 percent; Sonnet and Haiku."
+  },
+  {
+   "id": "A1",
+   "category": "aggregate",
+   "question": "Which item numbers had new work paused when the swarm narrowed to the install path and the dev deploy agent?",
+   "all_of": [
+    [
+     "\\b3\\b"
+    ],
+    [
+     "\\b4\\b"
+    ],
+    [
+     "\\b5\\b"
+    ],
+    [
+     "\\b8\\b"
+    ]
+   ],
+   "gold": "Items 3, 4, 5 and 8."
+  },
+  {
+   "id": "A2",
+   "category": "aggregate",
+   "question": "Name the two temporary shims the operator approved while our own system is built.",
+   "all_of": [
+    [
+     "temporal"
+    ],
+    [
+     "agentrun"
+    ]
+   ],
+   "gold": "Temporal and AgentRun."
+  },
+  {
+   "id": "X1",
+   "category": "abstain",
+   "question": "What did the operator rule about upgrading the Kubernetes version?",
+   "all_of": [],
+   "gold": "No ruling in the corpus says this."
+  },
+  {
+   "id": "X2",
+   "category": "abstain",
+   "question": "Which cloud model was chosen to answer knowledge-base questions?",
+   "all_of": [],
+   "gold": "No ruling in the corpus says this."
+  }
+ ]
+}

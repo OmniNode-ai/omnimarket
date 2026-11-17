@@ -60,6 +60,20 @@ def _make_cognee(
     return BackendCognee(overlay, system_prompt=prompt)
 
 
+def _make_graphiti(
+    overlay: ModelMemoryPilotOverlay,
+    answerer: ProtocolChatAnswerer | None,
+    prompt: str,
+) -> ProtocolMemoryBackend:
+    """Import the optional Graphiti backend only when an overlay names it."""
+    from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_graphiti import (
+        BackendGraphiti,
+    )
+
+    assert answerer is not None
+    return BackendGraphiti(overlay, answerer=answerer, system_prompt=prompt)
+
+
 class LoggingFailureRecorder:
     """The recorder the runtime gets when none is injected: one error log line per failure.
 
@@ -220,8 +234,17 @@ class HandlerMemoryPilot:
                 system_prompt=prompt,
             ),
             EnumMemoryPilotBackend.COGNEE: lambda: _make_cognee(overlay, prompt),
+            EnumMemoryPilotBackend.GRAPHITI: lambda: _make_graphiti(
+                overlay, self._answerer, prompt
+            ),
         }
         return factories[overlay.backend]()
+
+    async def close(self) -> None:
+        """Release what the backend holds (an embedded store's server process), if it holds any."""
+        closer = getattr(self._backend, "close", None)
+        if closer is not None:
+            await closer()
 
     async def _record(self, result: ModelMemoryPilotResult) -> None:
         assert result.error_code is not None
