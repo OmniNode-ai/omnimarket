@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: session_round_effect
+version: "1.0.0"
+description: "Runs one orchestrator round as a headless claude -p under a per-round lock and writes the round's heartbeat."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "pydantic>=2.0"
+tags: [effect, orchestrator, host-timer]
+pack: "operator_tooling"
+display_name: "Effect: Session Round"
+node_role: "effect"
+license: "MIT"
