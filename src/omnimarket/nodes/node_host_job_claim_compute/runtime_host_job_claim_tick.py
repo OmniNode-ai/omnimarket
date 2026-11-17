@@ -11,16 +11,19 @@ writes nothing (the installer runs a probe before it loads the unit).
 Exit codes: 0 in sync and the record was published; 1 the claim read found a duplicate or a second implementation (the
 record is still published); 2 the host has no declared role; 3 the overlay cannot be loaded, the host is not named or the
 bus did not accept the record. The evidence file is written for every code.
+
+The run record goes to the broker the node's overlay ``event_bus`` declares (a lane id; the unit holds no broker setting).
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import sys
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -28,7 +31,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
+from omnimarket.handlers.bus_binding.node_broker import resolve_dialable_broker
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_host_job_claim_compute.models import (
     ModelHostJobClaimResult,
@@ -37,6 +40,7 @@ from omnimarket.nodes.node_host_job_claim_compute.overlay import load_overlay
 from omnimarket.nodes.node_host_job_claim_compute.runtime_host_job_claim import (
     read_claim,
 )
+from omnimarket.topic_namespace import apply_topic_namespace
 
 NODE = "node_host_job_claim_compute"
 EVIDENCE_FILE = "last-run.json"
@@ -45,6 +49,71 @@ EVENT_TYPE = "host_job_claim.run_completed"
 EXIT_DRIFTED = 1
 EXIT_NO_ROLE = 2
 EXIT_INDETERMINATE = 3
+
+
+class DeclaredBrokerPublisher:
+    """Publish the run record on the broker the node's overlay ``event_bus`` declares (OMN-25093).
+
+    The unit's environment names no broker: the lane id comes from the node's overlay, the address and the client
+    transport from the lane declaration table, exactly as the capture silence watch tick publishes (OMN-24342).
+    ``KAFKA_BOOTSTRAP_SERVERS`` is never read. Delivery never raises: a refusal returns False and the tick exits 3.
+    """
+
+    def publish(
+        self,
+        *,
+        topic: str,
+        event_type: str,
+        payload: Mapping[str, object],
+        event_id: str,
+        correlation_id: str | None = None,
+    ) -> bool:
+        try:
+            asyncio.run(
+                self._send(topic, event_type, payload, event_id, correlation_id)
+            )
+        except Exception as exc:  # node-purity-ok: OMN-25093 a refused publish is exit 3, never a crash
+            sys.stderr.write(f"PUBLISH REFUSED {type(exc).__name__}: {exc}\n")
+            return False
+        return True
+
+    @staticmethod
+    async def _send(
+        topic: str,
+        event_type: str,
+        payload: Mapping[str, object],
+        event_id: str,
+        correlation_id: str | None,
+    ) -> None:
+        from aiokafka import AIOKafkaProducer  # node-purity-ok: OMN-25093 publish
+
+        broker = resolve_dialable_broker(NODE)
+        options: dict[str, str] = {}
+        if broker.sasl_mechanism is not None:
+            options["sasl_mechanism"] = broker.sasl_mechanism
+        if broker.sasl_username is not None:
+            options["sasl_plain_username"] = broker.sasl_username
+        if broker.sasl_password is not None:
+            options["sasl_plain_password"] = broker.sasl_password.get_secret_value()
+        envelope = {
+            "event_type": event_type,
+            "event_id": event_id,
+            "correlation_id": correlation_id,
+            "payload": dict(payload),
+        }
+        producer = AIOKafkaProducer(
+            bootstrap_servers=broker.bootstrap_servers,
+            security_protocol=broker.security_protocol or "PLAINTEXT",
+            **options,
+        )
+        await producer.start()
+        try:
+            await producer.send_and_wait(
+                apply_topic_namespace(topic),
+                json.dumps(envelope, sort_keys=True).encode("utf-8"),
+            )
+        finally:
+            await producer.stop()
 
 
 def _contract() -> dict[str, Any]:
@@ -91,7 +160,7 @@ def evidence_for(
 def main(
     argv: Sequence[str] | None = None,
     *,
-    publisher: EmitEffectTopicPublisher | None = None,
+    publisher: DeclaredBrokerPublisher | None = None,
     now: datetime | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(prog=f"{NODE}.tick", description=__doc__)
@@ -136,7 +205,7 @@ def main(
         sys.stderr.write(f"REFUSED host {host} has no declared role\n")
         return EXIT_NO_ROLE
     topic = str(_contract()["topics"]["host_job_claim_run_completed"])
-    emitted = (publisher or EmitEffectTopicPublisher()).publish(
+    emitted = (publisher or DeclaredBrokerPublisher()).publish(
         topic=topic,
         event_type=EVENT_TYPE,
         payload=evidence_for(result, stamp, emitted=True),
@@ -159,7 +228,7 @@ def main(
     return 0 if result.ok else EXIT_DRIFTED
 
 
-__all__ = ["EVIDENCE_FILE", "evidence_for", "main"]
+__all__ = ["EVIDENCE_FILE", "DeclaredBrokerPublisher", "evidence_for", "main"]
 
 if __name__ == "__main__":
     raise SystemExit(main())

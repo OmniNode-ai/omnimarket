@@ -205,3 +205,81 @@ def test_the_tick_publishes_under_the_registered_event_type(
     publisher = Publisher()
     assert tick.main(["--state-dir", str(wired)], publisher=publisher) == 0
     assert publisher.sent[0]["event_type"] == tick.EVENT_TYPE
+
+
+def test_the_overlay_may_declare_the_bus_the_tick_publishes_on(
+    wired: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_host_job_claim_compute.overlay import load_overlay
+
+    overlay_file = (
+        wired.parent / "overlays" / "node_host_job_claim_compute" / "overlay.yaml"
+    )
+    assert load_overlay().event_bus is None
+    overlay_file.write_text(
+        OVERLAY + "event_bus:\n  type: kafka\n  lane: dev\n", encoding="utf-8"
+    )
+    declared = load_overlay().event_bus
+    assert declared is not None
+    assert (declared.type, declared.lane) == ("kafka", "dev")
+
+
+def test_the_declared_broker_publisher_names_no_broker_setting_in_the_unit_env(
+    wired: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # An overlay with no event_bus names no broker, and a KAFKA_BOOTSTRAP_SERVERS in the environment does not stand in for it.
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "ignored.invalid:9092")
+    monkeypatch.setenv("OMNI_HOME", str(wired.parent))
+    accepted = tick.DeclaredBrokerPublisher().publish(
+        topic="onex.evt.omnimarket.host-job-claim-run-completed.v1",
+        event_type=tick.EVENT_TYPE,
+        payload={"host": "h051"},
+        event_id="e1",
+    )
+    assert accepted is False
+    assert "declares no event_bus" in capsys.readouterr().err
+
+
+def test_the_declared_broker_publisher_sends_the_envelope_on_the_declared_broker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import aiokafka
+
+    from omnimarket.models.bus_binding.model_node_broker import ModelNodeBroker
+
+    sent: list[tuple[str, bytes]] = []
+    started: dict[str, object] = {}
+
+    class Producer:
+        def __init__(self, **kwargs: object) -> None:
+            started.update(kwargs)
+
+        async def start(self) -> None: ...
+
+        async def stop(self) -> None: ...
+
+        async def send_and_wait(self, topic: str, value: bytes) -> None:
+            sent.append((topic, value))
+
+    monkeypatch.setattr(aiokafka, "AIOKafkaProducer", Producer)
+    monkeypatch.setattr(
+        tick,
+        "resolve_dialable_broker",
+        lambda _node: ModelNodeBroker(
+            kind="kafka", lane="dev", bootstrap_servers="broker.invalid:9092"
+        ),
+    )
+    accepted = tick.DeclaredBrokerPublisher().publish(
+        topic="onex.evt.omnimarket.host-job-claim-run-completed.v1",
+        event_type=tick.EVENT_TYPE,
+        payload={"host": "h051", "verdict": "IN_SYNC"},
+        event_id="e1",
+        correlation_id="c1",
+    )
+    assert accepted is True
+    assert started["bootstrap_servers"] == "broker.invalid:9092"
+    assert len(sent) == 1
+    envelope = json.loads(sent[0][1])
+    assert envelope["event_type"] == tick.EVENT_TYPE
+    assert envelope["correlation_id"] == "c1"
+    assert envelope["payload"]["host"] == "h051"
