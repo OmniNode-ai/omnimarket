@@ -24,6 +24,9 @@ over the conclusion GitHub gives a run whose legs finished the way each case say
 
 from __future__ import annotations
 
+import importlib
+import re
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
@@ -41,7 +44,7 @@ NIGHTLY = REPO_ROOT / ".github" / "workflows" / "delegation-regression-nightly.y
 NIGHTLY_FILE = "delegation-regression-nightly.yml"
 RUNTIME_FILES = ["src/omnimarket/delegation/__init__.py"]
 RUN_ID = 44000000001
-_LAN_PREFIX = ".".join(("192", "168")) + "."
+DISPATCH_TITLE = "Delegation Regression (nightly) lane=dev"
 
 Leg = dict[str, object]
 
@@ -108,17 +111,25 @@ def test_there_is_exactly_one_alarm_only_leg_and_it_is_not_the_dev_lane() -> Non
     assert leg["lane"] != "dev", leg
 
 
-def test_the_alarm_only_leg_names_no_lane_so_the_runner_default_applies() -> None:
-    """The lane name is written once, in the runner, and never repeated here."""
+def test_the_alarm_only_leg_names_no_lane_so_the_runner_default_applies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The empty string is SET, not unset: matrix lane '' renders
+    ONEX_E2E_LANE=''; the runner must treat it as unset.
+    """
     from tests.delegation_golden import runner
 
     (leg,) = _alarm_only()
-    assert leg["lane"] == "", leg
-    assert runner._env_or("ONEX_E2E_LANE", "default-sentinel") == (
-        "default-sentinel"
-    ), "the test process must not hold a lane of its own"
-    other_lanes = runner._KNOWN_LANES - {"dev"}
-    assert len(other_lanes) == 1, other_lanes
+    assert leg["lane"] == ""
+    (other_lane,) = runner._KNOWN_LANES - {"dev"}
+    monkeypatch.setenv("ONEX_E2E_LANE", "")
+    try:
+        reloaded = importlib.reload(runner)
+        assert other_lane == reloaded._LANE
+        assert reloaded._env_or("ONEX_E2E_LANE", other_lane) == other_lane
+    finally:
+        monkeypatch.delenv("ONEX_E2E_LANE", raising=False)
+        importlib.reload(runner)
 
 
 def test_a_red_alarm_only_leg_cannot_turn_the_run_red() -> None:
@@ -143,10 +154,14 @@ def test_the_run_title_names_the_gating_lane_and_dispatch_takes_no_lane() -> Non
 def test_both_legs_run_the_same_golden_tasks_and_assertions() -> None:
     """The legs are one job: one list of steps, so the corpus and its assertions
     are the same for both. Only the matrix values differ."""
+    assert len(_legs()) >= 2
     steps = cast("list[dict[str, object]]", _job()["steps"])
     names = [step.get("name") for step in steps]
     assert "Run Layer-2 golden-task runner (scoreboard)" in names
     assert "Run Layer-2 pytest (xfail-aware, fails on hard breaks)" in names
+    assert [
+        step.get("name") for step in steps if "matrix." in str(step.get("if", ""))
+    ] == ["Alarm-only leg is red (an alarm, never a merge gate)"]
 
 
 def test_each_leg_uploads_artifacts_under_its_own_name() -> None:
@@ -171,17 +186,50 @@ def test_dev_leg_reads_its_endpoints_from_the_lane_overlay() -> None:
     code_lines = [
         line for line in text.splitlines() if not line.lstrip().startswith("#")
     ]
-    assert _LAN_PREFIX not in "\n".join(code_lines)
+    code = "\n".join(code_lines)
+    assert not re.search(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", code)
+    assert not re.search(r"\b[\w.-]+:\d{2,5}\b", code)
     overlay = cast(
         "dict[str, dict[str, dict[str, object]]]",
         yaml.safe_load(
             (REPO_ROOT / "config/ci_bus_lanes.yaml").read_text(encoding="utf-8")
         ),
     )
-    dev = overlay["lanes"]["dev"]
-    assert dev["security_protocol"] == "SASL_PLAINTEXT", dev
-    assert dev["sasl_mechanism"] == "SCRAM-SHA-256", dev
+    (gating,) = _gating()
+    lane = cast("str", gating["lane"])
+    entry = overlay["lanes"][lane]
+    assert cast("str", entry["broker"]) not in text
+    assert entry["security_protocol"] == "SASL_PLAINTEXT", entry
+    assert entry["sasl_mechanism"] == "SCRAM-SHA-256", entry
     assert {"KAFKA_SASL_USERNAME", "KAFKA_SASL_PASSWORD"} <= set(env), env
+
+
+def test_the_alarm_step_runs_on_failure_or_cancel_of_the_alarm_leg() -> None:
+    """failure() is false on a timeout or cancel."""
+    steps = cast("list[dict[str, object]]", _job()["steps"])
+    (step,) = [
+        step
+        for step in steps
+        if step.get("name") == "Alarm-only leg is red (an alarm, never a merge gate)"
+    ]
+    assert step["if"] == "(failure() || cancelled()) && matrix.alarm_only"
+
+
+def test_the_run_note_names_the_three_readers_of_this_run() -> None:
+    text = NIGHTLY.read_text(encoding="utf-8")
+    for name in (
+        "delegation_health_check.yaml",
+        "deliver-dev-candidate-to-staging.yml",
+        "lab_pass_gate.py",
+        "KNOWN GAP",
+    ):
+        assert name in text
+
+
+def test_legs_run_one_at_a_time_gating_first() -> None:
+    strategy = cast("dict[str, object]", _job()["strategy"])
+    assert strategy["max-parallel"] == 1
+    assert _legs()[0]["alarm_only"] is False
 
 
 # Section 2: replay the pinned reader over the conclusion each case gives a run.
@@ -233,5 +281,107 @@ def test_all_green_is_a_positive_control(
     pinned_infra_tree: Path,
 ) -> None:
     code, stdout, record = _check(set(), pinned_infra_tree)
+    assert code == 0, stdout
+    assert record["red_runs"] == []
+
+
+def _nightly_only_tree(pinned_infra_tree: Path, tmp_path: Path, title: str) -> Path:
+    """A copy of the pinned reader whose only source is the nightly, admitting
+    dispatches on ``title``. The replay rows are shared by every source, so the
+    other sources are dropped to leave the nightly's own verdict visible."""
+    tree = shutil.copytree(pinned_infra_tree, tmp_path / "tree")
+    config = tree / "config/delegation_health_check.yaml"
+    document = cast("dict[str, object]", yaml.safe_load(config.read_text("utf-8")))
+    sources = cast("list[dict[str, object]]", document["sources"])
+    (nightly,) = [s for s in sources if s["workflow"] == NIGHTLY_FILE]
+    nightly["dispatch_title_contains"] = title
+    document["sources"] = [nightly]
+    config.write_text(yaml.safe_dump(document), encoding="utf-8")
+    return tree
+
+
+def _pinned_dispatch_title(pinned_infra_tree: Path) -> str:
+    """The title the pinned reader admits a dispatch on, read from its config."""
+    pinned = yaml.safe_load(
+        (pinned_infra_tree / "config/delegation_health_check.yaml").read_text("utf-8")
+    )
+    (nightly,) = [s for s in pinned["sources"] if s["workflow"] == NIGHTLY_FILE]
+    return cast("str", nightly["dispatch_title_contains"])
+
+
+def _dispatch_over_red_schedule() -> list[dict[str, object]]:
+    return [
+        {
+            "id": 44000000002,
+            "conclusion": "success",
+            "hours_ago": 1.0,
+            "event": "workflow_dispatch",
+            "display_title": DISPATCH_TITLE,
+        },
+        {"id": 44000000001, "conclusion": "failure", "hours_ago": 20.0},
+    ]
+
+
+def test_a_dispatched_lane_dev_run_cannot_clear_a_red_scheduled_run_at_the_pin(
+    pinned_infra_tree: Path,
+    tmp_path: Path,
+) -> None:
+    """The pinned config admits a dispatch only on a title naming the stability
+    lane, so until the omnibase_infra config change and caller pin bump land,
+    only the next scheduled run can clear a red one.
+    """
+    pinned_title = _pinned_dispatch_title(pinned_infra_tree)
+    assert pinned_title.startswith("lane="), pinned_title
+    assert pinned_title not in DISPATCH_TITLE, pinned_title
+    tree = _nightly_only_tree(pinned_infra_tree, tmp_path, pinned_title)
+    code, stdout, record = _run_check(
+        tree,
+        runs=_dispatch_over_red_schedule(),
+        changed_files=RUNTIME_FILES,
+        labels=[],
+    )
+    assert code == 1, stdout
+    assert record["red_runs"] == [
+        {"source": "delegation-regression-nightly", "run_id": "44000000001"}
+    ]
+
+
+def test_a_dispatched_lane_dev_run_clears_it_once_the_reader_admits_the_title(
+    pinned_infra_tree: Path,
+    tmp_path: Path,
+) -> None:
+    """This is the change the reader's owner must land first: the same rows,
+    with the reader admitting a dispatch titled for the dev lane."""
+    tree = _nightly_only_tree(pinned_infra_tree, tmp_path, "lane=dev")
+    code, stdout, record = _run_check(
+        tree,
+        runs=_dispatch_over_red_schedule(),
+        changed_files=RUNTIME_FILES,
+        labels=[],
+    )
+    assert code == 0, stdout
+    assert record["red_runs"] == []
+
+
+def test_a_scheduled_run_ignores_the_title(
+    pinned_infra_tree: Path,
+    tmp_path: Path,
+) -> None:
+    """Positive control: a scheduled run is admitted whatever its title says."""
+    tree = _nightly_only_tree(
+        pinned_infra_tree, tmp_path, _pinned_dispatch_title(pinned_infra_tree)
+    )
+    runs: list[dict[str, object]] = [
+        {
+            "id": 44000000002,
+            "conclusion": "success",
+            "hours_ago": 1.0,
+            "display_title": DISPATCH_TITLE,
+        },
+        {"id": 44000000001, "conclusion": "failure", "hours_ago": 20.0},
+    ]
+    code, stdout, record = _run_check(
+        tree, runs=runs, changed_files=RUNTIME_FILES, labels=[]
+    )
     assert code == 0, stdout
     assert record["red_runs"] == []

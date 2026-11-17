@@ -21,7 +21,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn25384-ac1-gate-reads-dev
-  description: The workflow-shape tests pass at the pushed head; at the merge base the nightly measures the stability lane with no gating and alarm-only legs, so eleven of the thirteen tests in the new file read red there. The replay tests run the pinned check reader over the run conclusion of a failed alarm-only leg with a green dev leg (passes) and of a failed dev leg (fails).
+  description: The workflow-shape tests pass at the pushed head; at the merge base the nightly measures the stability lane with no gating and alarm-only legs, so sixteen of the nineteen tests in the new file read red there; the other three replay the pinned reader over dispatched and scheduled run rows and do not read the workflow. The replay tests run the pinned check reader over the run conclusion of a failed alarm-only leg with a green dev leg (passes) and of a failed dev leg (fails), and over a dispatched lane=dev run (not admitted at the pin). Observed, not only modelled, in run 44107046501 (dispatch, head f941a4f78f7a) had its alarm-only leg red on the golden-task runner and its gating dev leg green, and concluded success.
   source: manual
   binds_ac:
   - AC1

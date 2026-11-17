@@ -9,7 +9,7 @@
 # delegation_events projection, asserts the expected behavioral block, and
 # uploads the scoreboard artifact. Fails on any HARD (non-xfail) assertion break.
 #
-# TARGET LANE: THE DEV LANE (the dev runtime on h201). The Delegation Health
+# TARGET LANE: THE DEV LANE. The Delegation Health
 # Check (delegation-health-check.yml) reads the newest run of THIS workflow by
 # file name, so the lane this run measures is the lane that gates omnimarket
 # merges into dev. A broken stability environment froze that gate for about 12
@@ -131,15 +131,34 @@
 
 name: Delegation Regression (nightly)
 
-# OMN-19311 -- THE RUN TITLE NAMES THE LANE.
+# OMN-19311 -- THE RUN TITLE NAMES THE LANE, AND THREE READERS TAKE THIS RUN AS A
+# VERDICT.
 #
 # The title carries `lane=<lane>` so a reader of the run list can tell which lane
 # the gating leg measured. The run API does not carry dispatch inputs, so the lane
 # is rendered into the title here. This workflow's gating lane is dev, and a
 # dispatch takes no lane input, so no run of this file can carry the stability
-# lane's name in its title: the pinned Delegation Health Check admits a dispatched
-# run only on a title naming that lane. tests/test_delegation_nightly_placement.py
-# asserts the `lane=` token and the shared lane expression.
+# lane's name in its title.
+#
+# Three readers take the CONCLUSION of the newest run of this file as a verdict:
+#   * the Delegation Health Check (omnibase_infra config/delegation_health_check.yaml),
+#     the merge gate this change points at dev;
+#   * the staging delivery's D11 step (omnibase_infra
+#     deliver-dev-candidate-to-staging.yml, OMN-19311);
+#   * the lab pass gate (scripts/ci/lab_pass_gate.py in the infra repo that owns the
+#     lab pass receipt, OMN-19311).
+# The last two were bound to the STABILITY lane's measurement. A scheduled run has
+# no title filter for any of them, and the stability leg is alarm-only, so since
+# this change a green dev leg passes all three whatever the stability leg did.
+# THAT IS A KNOWN GAP, not a decision recorded here: the stability gate on staging
+# delivery needs a stability source of its own, owned by the two infra repos
+# that hold those readers. tests/ci/test_delegation_gate_reads_dev_omn25384.py asserts this
+# note names all three readers, so the gap cannot be deleted without a test edit.
+# The pinned Delegation Health Check also admits a dispatched run only on a title
+# naming the stability lane, so a dispatch of this file never clears it until
+# that reader's config and the caller pin move; the scheduled run is the only
+# source that can. tests/test_delegation_nightly_placement.py asserts the
+# `lane=dev` title.
 run-name: Delegation Regression (nightly) lane=dev
 
 on:
@@ -174,6 +193,11 @@ jobs:
     # empty, which the runner reads as its default lane.
     strategy:
       fail-fast: false
+      # One leg at a time, the gating leg first. Both legs publish the same corpus
+      # at the same single-slot local tier (see "(4) THE PACE" above), so two legs
+      # at once would compete for that slot and make the dev leg the Delegation
+      # Health Check reads slower than its own budget assumes.
+      max-parallel: 1
       matrix:
         include:
           - leg: gating
@@ -332,7 +356,7 @@ jobs:
           retention-days: 30
 
       - name: Alarm-only leg is red (an alarm, never a merge gate)
-        if: failure() && matrix.alarm_only
+        if: (failure() || cancelled()) && matrix.alarm_only
         run: |
           echo "::error::The alarm-only leg of the delegation regression is red."
           echo "The alarm-only leg measures the runner's default lane. Its red is an alarm" >> "${GITHUB_STEP_SUMMARY}"
