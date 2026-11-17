@@ -1,0 +1,109 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merged_change_runner_read_workflow
+node_type: ORCHESTRATOR_GENERIC
+lifecycle: experimental
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The merged-change runner reader as a Temporal workflow behind node_merged_change_reading_effect. A Temporal
+  schedule starts one full read every interval_seconds; the workflow lists every line the merged_change_runners
+  overlay declares, runs one activity per declared line (node_merged_change_reading_effect for that change, bounded by
+  line_concurrency, retried up to step_max_attempts), and hands every outcome to the publish step, which builds one
+  ModelIntegrationReadingBatch (SEEN RUNNING, NOT RUNNING or unread, each with its reading and its time) and pipes it to
+  node_integration_reading_publish_effect. No model runs anywhere in the read. A line whose activity fails every
+  attempt is published unread with its cause, never as running. The worker runs on the lab host that runs the Temporal
+  server, as a registry_module_tick unit of node_host_installer_registry_units (merged-change-runner-read-systemd).
+input_model:
+  name: ModelRunnerReadPlan
+  module: omnimarket.nodes.node_merged_change_runner_read_workflow.models.model_runner_read
+  description: The step commands, the line concurrency, the step timeout and the retry limit of one full read.
+output_model:
+  name: ModelRunnerIntegrationResult
+  module: omnimarket.nodes.node_merged_change_runner_read_workflow.models.model_runner_read
+  description: The integration reading batch of one full read and its verdict counts.
+handler:
+  module: omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.handler_runner_reading_integration
+  class: HandlerRunnerReadingIntegration
+  input_model: omnimarket.nodes.node_merged_change_runner_read_workflow.models.model_runner_read.ModelRunnerIntegrationRequest
+  output_model: omnimarket.nodes.node_merged_change_runner_read_workflow.models.model_runner_read.ModelRunnerIntegrationResult
+dependencies:
+  - name: omnimarket.nodes.node_merged_change_reading_effect
+    dependency_type: internal
+    description: "reads one declared line per activity, through its declared CLI."
+    required: true
+  - name: omnimarket.nodes.node_integration_reading_publish_effect
+    dependency_type: internal
+    description: "publishes the integration projection of one full read, through its declared CLI."
+    required: true
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.handler_runner_reading_integration:HandlerRunnerReadingIntegration
+  handlers:
+    - operation: handle
+      handler:
+        name: HandlerRunnerReadingIntegration
+        module: omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.handler_runner_reading_integration
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: >-
+    A Temporal schedule (runner_read.schedule_id) on the lab host's Temporal server starts the workflow every
+    interval_seconds; python -m omnimarket.nodes.node_merged_change_runner_read_workflow schedule creates or updates
+    it, start runs one full read now, and worker is the registry_module_tick unit's long-running process.
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 900000
+metadata:
+  transport_type: local
+  description: Read every declared merged-change runner on a Temporal schedule and publish the integration readings.
+  author: OmniNode Team
+  created: '2026-11-17'
+runner_read:
+  address: 127.0.0.1:7233
+  namespace: default
+  task_queue: onex-merged-change-runner-read
+  schedule_id: merged-change-runner-read
+  workflow_id_prefix: merged-change-runner-read
+  interval_seconds: 900
+  line_concurrency: 8
+  step_timeout_seconds: 180
+  step_max_attempts: 3
+  # {python} is the worker's own interpreter, so every step runs in the worker's environment.
+  steps:
+    lines: ["{python}", "-m", "omnimarket.nodes.node_merged_change_runner_read_workflow", "lines"]
+    read_line: ["{python}", "-m", "omnimarket.nodes.node_merged_change_reading_effect"]
+    publish: ["{python}", "-m", "omnimarket.nodes.node_merged_change_runner_read_workflow", "publish"]
+  runners_overlay:
+    overlay_id: merged_change_runners
+    overlay_file_env: MERGED_CHANGE_RUNNERS_OVERLAY_PATH
+  publish_module: omnimarket.nodes.node_integration_reading_publish_effect
+  publish_timeout_seconds: 120
+  home_env: OMNI_HOME
+  # The run record of every full read, under the registry home: one JSON line per read.
+  run_record_relpath: .onex_state/merged-change-runner-read/runs.jsonl
+  origin_template: "node_merged_change_runner_read_workflow:{host}:{run_id}"
+  git_timeout_seconds: 20
+  integration:
+    verdict_running: SEEN_RUNNING
+    verdict_not_running: NOT_RUNNING
+    verdict_unread: UNREAD
+    library_kind: library
+    target_runtime: dev runtime on h201
+    target_unit_template: "{unit} on {host}"
+    store_running_path: overlay_store_checkout
+    # The reader's missing step (node_merged_change_reading_compute's requirements) -> the projection's state and gap.
+    missing_steps:
+      no_declared_runner: {state: not_running, gap_class: needs_reader}
+      not_in_build: {state: not_running, gap_class: runtime_behind}
+      node_not_loaded: {state: not_running, gap_class: needs_registration}
+      no_trigger_subscription: {state: not_running, gap_class: needs_registration}
+      no_run_since_build: {state: not_running, gap_class: needs_unit}
+      no_result: {state: defect, gap_class: needs_unit}
+      last_run_failed: {state: defect, gap_class: needs_unit}
+    unknown_missing_step: {state: not_running, gap_class: needs_reading}
