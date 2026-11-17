@@ -44,7 +44,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'schedule_overlap_skip'
+    check_value: uv run --with 'temporalio>=1.35.0,<2.0.0' pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'schedule_overlap_skip'
     cwd: .
 - id: dod-omn24927-ac2
   description: every step is an activity that calls one of our nodes through the node's declared CLI, and the workflow body holds no inline fill logic
@@ -53,7 +53,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'activities_call_nodes'
+    check_value: uv run --with 'temporalio>=1.35.0,<2.0.0' pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'activities_call_nodes'
     cwd: .
 - id: dod-omn24927-ac3
   description: a worker restart in the middle of a run does not run any activity a second time, counting step keys
@@ -62,7 +62,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'worker_restart_mid_run'
+    check_value: uv run --with 'temporalio>=1.35.0,<2.0.0' pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'worker_restart_mid_run'
     cwd: .
 - id: dod-omn24927-ac4
   description: an alarm row is written for 2 zero-placement runs with free slots above 5 and for a placed lane with no CLAIM within 10 minutes, and none when either condition is absent
@@ -71,7 +71,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'alarm_no_placement or alarm_no_claim or no_alarm'
+    check_value: uv run --with 'temporalio>=1.35.0,<2.0.0' pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'alarm_no_placement or alarm_no_claim or no_alarm'
     cwd: .
 - id: dod-omn24927-ac5-row-shape
   description: 'The rows a scheduled run reads and writes: each placed lane''s CLAIM row inside the window and the alarm rows. The live h051 runs are the unbound local Done gate check below.'
@@ -80,7 +80,7 @@ dod_evidence:
   - AC5
   checks:
   - check_type: test_passes
-    check_value: uv run pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'alarm_no_claim or no_alarm_when_every_placed_lane_claims'
+    check_value: uv run --with 'temporalio>=1.35.0,<2.0.0' pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'alarm_no_claim or no_alarm_when_every_placed_lane_claims'
     cwd: .
 - id: dod-omn24927-integration-proof
   description: 'Hosted CI cannot reach the h051 Temporal server, so only the local Done gate runs this unbound check: on a lab host at the sha, the Schedule is described against the live Temporal server
