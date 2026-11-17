@@ -60,13 +60,14 @@ class HandlerDailyLineScheduled:
     def _event(
         self,
         request: ModelRuntimeTick,
+        fired_at: datetime,
         outcome: Literal["completed", "failed"],
         detail: str,
     ) -> ModelScheduleRunEvent:
         return self._gate.run_event(
             tick_id=str(request.tick_id),
             scheduled_for=request.now,
-            fired_at=self._clock(),
+            fired_at=fired_at,
             outcome=outcome,
             detail=detail,
         )
@@ -85,21 +86,27 @@ class HandlerDailyLineScheduled:
         if not self._gate.due(now):
             return None
         self._gate.mark(now)
+        # The run blocks for up to the node's 300 s limit: fired_at is when it began, so it is read before the run.
+        fired_at = self._clock()
         try:
             publication = self._build_runner().run()
             detail = self._detail(publication)
         except Exception as exc:
             return self._event(
-                request, "failed", f"{type(exc).__name__}: {exc}"[:DETAIL_LIMIT]
+                request,
+                fired_at,
+                "failed",
+                f"{type(exc).__name__}: {exc}"[:DETAIL_LIMIT],
             )
-        return self._event(request, "completed", detail)
+        return self._event(request, fired_at, "completed", detail)
 
     @staticmethod
     def _detail(publication: ModelDailyLinePublication) -> str:
-        """The published line's first line, then the unknown parts, in at most DETAIL_LIMIT characters."""
-        lines = publication.line.splitlines()
-        first = lines[0] if lines else ""
-        if not first.strip():
+        """The published line's first non-blank line, then the unknown parts, in at most DETAIL_LIMIT characters."""
+        first = next(
+            (line for line in publication.line.splitlines() if line.strip()), ""
+        )
+        if not first:
             raise ValueError("the published daily line is empty")
         suffix = (
             f" (unknown: {','.join(publication.unknown_parts)})"

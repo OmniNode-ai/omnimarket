@@ -51,6 +51,11 @@ descriptor:
   idempotent: false
   # One run reads the ledger over the bus (up to 60 s) and appends one row (up to 60 s), so the run limit is the node's own timer unit's
   # 300 s, not the 30 s of a quick scheduled check.
+  # Runtime reading: handle is synchronous, so the dispatch engine runs it on the default thread executor and nothing in
+  # that path cancels it at timeout_ms (the descriptor's timeout_ms reaches the handler config loader only). The consumer
+  # abandons, never cancels, a dispatch at 0.85 of max_poll_interval_ms (255 s at the 300 s default), and a serial consume
+  # loop holds the consumer's later records behind a running one until then (read in the code, not run on a runtime). One run is bounded by the runner's own 60 s ledger read and 60 s append,
+  # so it ends inside that deadline, and an abandoned run still finishes on its thread.
   timeout_ms: 300000
   side_effects:
     - runs one daily line (reads floor record + ledger, writes daily-line.json, appends one STATUS row)

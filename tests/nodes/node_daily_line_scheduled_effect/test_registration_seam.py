@@ -22,8 +22,12 @@ NODE = "node_daily_line_scheduled_effect"
 PACKAGE = f"omnimarket.nodes.{NODE}"
 
 
-def entry_points() -> dict[str, str]:
-    project = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
+def pyproject_text() -> str:
+    return (REPO / "pyproject.toml").read_text(encoding="utf-8")
+
+
+def entry_points(text: str | None = None) -> dict[str, str]:
+    project = tomllib.loads(pyproject_text() if text is None else text)
     return dict(project["project"]["entry-points"]["onex.nodes"])
 
 
@@ -43,7 +47,17 @@ def test_seam_metadata_names_the_same_entry_point_as_pyproject() -> None:
     assert metadata["entry_points"]["onex.nodes"] == {NODE: PACKAGE}
 
 
-def test_control_seam_an_entry_point_table_without_the_node_is_detected() -> None:
-    table = {k: v for k, v in entry_points().items() if k != NODE}
-    assert table.get(NODE) is None
-    assert len(table) == len(entry_points()) - 1
+def test_control_seam_a_pyproject_without_the_node_line_is_detected() -> None:
+    # The real pyproject text with the node's own entry point line cut out, read by the same parser the seam uses.
+    kept = [
+        line
+        for line in pyproject_text().splitlines()
+        if not line.startswith(f"{NODE} = ")
+    ]
+    assert len(kept) == len(pyproject_text().splitlines()) - 1
+    cut = entry_points("\n".join(kept))
+    assert cut.get(NODE) is None
+    assert len(cut) == len(entry_points()) - 1
+    assert (
+        cut.get("node_daily_line_effect") == "omnimarket.nodes.node_daily_line_effect"
+    )

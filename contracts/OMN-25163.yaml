@@ -13,7 +13,7 @@ requirements:
   - id: AC1
     statement: 'AC1: node_daily_line_scheduled_effect gates on its overlay interval, runs the daily line once per due tick and returns one typed run event that the schedule run reducer folds -- falsifier: uv run --frozen pytest tests/nodes/node_daily_line_scheduled_effect -q --no-cov'
   - id: AC2
-    statement: 'AC2: the node is registered as an onex.nodes entry point and listed among the scheduled job nodes whose roles the broker ACL seam reads -- falsifier: uv run --frozen pytest tests/nodes/node_schedule_run_reducer/test_runtime_role_acl_seam.py -q --no-cov'
+    statement: 'AC2: the node is registered as an onex.nodes entry point and listed among the scheduled job nodes whose roles the broker ACL seam reads -- falsifier: uv run --frozen pytest tests/nodes/node_daily_line_scheduled_effect/test_registration_seam.py tests/nodes/node_schedule_run_reducer/test_runtime_role_acl_seam.py -q --no-cov'
   - id: AC3
     statement: 'AC3: integrated: one schedule-run event with job_id daily_line is read on onex.evt.omnimarket.schedule-run.v1 on the dev runtime within one overlay interval after the overlays pull request that adds the node overlay (job_id daily_line) and the runtime variables the daily line runner reads (OMNI_HOME, ONEX_LEDGER_BUS_READ_COMMAND, ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME) is merged and deployed; merge order: this pull request merges first, the dev deploy builds it, and the overlays pull request opens after this pull request merges because the overlay pin ratchet refuses a pin of an omnimarket revision that has not merged -- falsifier: the kcat read of the topic on the dev broker holds no event with job_id daily_line'
 evidence_requirements:
@@ -35,37 +35,57 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_daily_line_scheduled_effect -q --no-cov
     cwd: .
 - id: dod-omn25163-ac2
-  description: AC2 proven by the named test.
+  description: AC2 proven by the named tests. The broker ACL seam test finds scheduled job nodes by globbing node directories and never reads pyproject.toml, so the entry point half is the registration seam test.
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_schedule_run_reducer/test_runtime_role_acl_seam.py -q --no-cov
+    check_value: uv run --frozen pytest tests/nodes/node_daily_line_scheduled_effect/test_registration_seam.py tests/nodes/node_schedule_run_reducer/test_runtime_role_acl_seam.py -q --no-cov
     cwd: .
 - id: dod-omn25163-deploy-schedule-node
-  description: 'Deploy probe the hosted runner can run: the new node contract at the checked-out commit on GitHub names its handler class; the file does not exist at the merge base, so the probe fails there. It binds no acceptance criterion: a grep of the contract file passes with no deploy and no event, so AC3 is bound to the dod-omn25163-ac3-schedule-run-read entry.'
+  description: 'Deploy probe the hosted runner can run: the new node contract at the checked-out commit on GitHub names its handler class; the file does not exist at the merge base, so the probe fails there. It binds no acceptance criterion: a grep of the contract file passes with no deploy and no event, so it is not evidence of AC3, which is read by the dod-omn25163-ac3-schedule-run-read entry.'
   source: manual
   checks:
   - check_type: command
     check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_daily_line_scheduled_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "HandlerDailyLineScheduled" > /dev/null'''
     cwd: .
-- id: dod-omn25163-ac3-contract
-  description: AC3 proven at the hosted gate by the contract and metadata tests, which fail when the dev read below is rebound to a grep of the contract file, when the read does not name the schedule-run topic and the job id daily_line, or when the metadata declares no effects. The read itself is the next entry, scoped to the done gate because it needs the dev broker.
+- id: dod-omn25163-ac3-read-behaviour
+  description: 'AC3 is not proven at the hosted gate. A local_done_gate item may not carry binds_ac, and a criterion no item binds is demoted to unproven, so this entry is the one hosted binding of AC3: it runs the dev read (the next entry) against a stand-in kcat and fails when the read passes on a failed event or an event fired before the deploy, fails on a match of a large topic, does not start from the deploy time offset, or keeps grep -q. The proof of AC3 is the next entry run on the dev runtime after the overlays pull request is merged and deployed.'
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_daily_line_scheduled_effect/test_contract_topics.py -q --no-cov -k 'contract or metadata'
+    check_value: uv run --frozen pytest tests/nodes/node_daily_line_scheduled_effect/test_contract_topics.py -q --no-cov -k 'ac3_read'
     cwd: .
 - id: dod-omn25163-ac3-schedule-run-read
-  description: 'AC3 is read on the dev runtime after the overlays pull request is merged and deployed: the schedule-run topic holds an event with job_id daily_line. It fails until the node runs on dev with its overlay.'
+  description: 'AC3 is read on the dev runtime after the overlays pull request is merged and deployed: one completed schedule-run event with job_id daily_line, fired after the deploy time named in DEPLOYED_AT (UTC, ISO 8601), read from the topic at that time offset. It fails on a failed event, on an event fired before the deploy and on an empty topic, and it fails until the node runs on dev with its overlay. It binds no criterion because the hosted gate refuses a bound local_done_gate item.'
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: 'bash -o pipefail -c ''kcat -C -b "${KAFKA_BOOTSTRAP_SERVERS:?set KAFKA_BOOTSTRAP_SERVERS to the dev lane broker}" -t onex.evt.omnimarket.schedule-run.v1 -o -500 -e -q | grep -Eq "\"job_id\": ?\"daily_line\""'''
+    check_value: |-
+      bash -o pipefail -c '
+      : "${KAFKA_BOOTSTRAP_SERVERS:?set KAFKA_BOOTSTRAP_SERVERS to the dev lane broker}"
+      : "${DEPLOYED_AT:?set DEPLOYED_AT to the UTC time the dev deploy finished, for example 2026-11-17T12:00:00Z}"
+      start_ms=$(python3 -c "import sys, datetime; print(int(datetime.datetime.fromisoformat(sys.argv[1].replace(\"Z\", \"+00:00\")).timestamp() * 1000))" "$DEPLOYED_AT")
+      kcat -C -b "$KAFKA_BOOTSTRAP_SERVERS" -t onex.evt.omnimarket.schedule-run.v1 -o "s@$start_ms" -e -q \
+        | grep -E "\"job_id\": ?\"daily_line\"" \
+        | python3 -c "
+      import sys, json, datetime
+      def at(v): return datetime.datetime.fromisoformat(str(v).replace(\"Z\", \"+00:00\"))
+      since = at(sys.argv[1])
+      found = False
+      for line in sys.stdin:
+          try:
+              ev = json.loads(line)
+              found = found or (ev[\"job_id\"] == \"daily_line\" and ev[\"outcome\"] == \"completed\" and at(ev[\"fired_at\"]) > since)
+          except (ValueError, KeyError, TypeError):
+              pass
+      sys.exit(0 if found else 1)
+      " "$DEPLOYED_AT" > /dev/null
+      '
     cwd: .
 - id: dod-omn25163-integration-proof
   description: AC1 integration proof; the pushed head is run on a lab host and the tests of the node pass there. AC3 is read on the dev runtime by the dod-omn25163-ac3-schedule-run-read entry.

@@ -381,8 +381,10 @@ def test_failed_event_when_the_detail_cannot_be_built(tmp_path: Path) -> None:
     )
 
 
-@pytest.mark.parametrize("line", ["\n", "\n\nsecond"])
-def test_empty_first_line_is_a_failed_event(tmp_path: Path, line: str) -> None:
+@pytest.mark.parametrize("line", ["\n", "\n \n\t\n"])
+def test_empty_line_with_no_text_at_all_is_a_failed_event(
+    tmp_path: Path, line: str
+) -> None:
     runner = _Runner(line)
     h = HandlerDailyLineScheduled(
         environ=environ(tmp_path),
@@ -457,7 +459,7 @@ def test_overlay_that_is_not_the_daily_line_overlay_is_refused_once(
     assert len([r for r in caplog.records if r.levelname == "ERROR"]) == 1
 
 
-def test_overlay_grace_seconds_is_required_and_not_negative() -> None:
+def test_overlay_model_requires_grace_seconds_and_refuses_a_negative_one() -> None:
     ok = ModelDailyLineScheduleOverlay(
         job_id="daily_line", run_interval_seconds=300, grace_seconds=0
     )
@@ -484,3 +486,112 @@ def test_empty_environ_does_not_fall_through_to_the_process_environment(
         build_runner=lambda: pytest.fail("an empty environment has no overlay"),  # type: ignore[arg-type,return-value]
     )
     assert h.handle(tick(T0)) is None
+
+
+# --- review of head ed1d433e3a9b: the clock, the blank first line, the tick's own now -----------------------------
+
+
+class _AdvancingClock:
+    """A clock that moves only when something advances it, so a read before and a read after a run differ."""
+
+    def __init__(self, start: datetime) -> None:
+        self.now = start
+
+    def __call__(self) -> datetime:
+        return self.now
+
+
+@pytest.mark.parametrize("error", [None, RuntimeError("the run failed")])
+def test_fired_at_is_read_before_the_run_not_after_it(
+    tmp_path: Path, error: Exception | None
+) -> None:
+    clock = _AdvancingClock(T0 + timedelta(seconds=5))
+    runner = _Runner(error=error)
+
+    class _SlowRunner:
+        def run(self) -> ModelDailyLinePublication:
+            clock.now += timedelta(seconds=290)
+            return runner.run()
+
+    h = HandlerDailyLineScheduled(
+        environ=environ(tmp_path),
+        build_runner=lambda: cast(HandlerDailyLineRun, _SlowRunner()),
+        clock=clock,
+    )
+    event = h.handle(tick(T0))
+    assert event is not None
+    assert event.outcome == ("completed" if error is None else "failed")
+    # The run took 290 s on the clock: fired_at is when the run began, never when it ended.
+    assert event.fired_at == T0 + timedelta(seconds=5)
+    assert clock.now == T0 + timedelta(seconds=295)
+
+
+def test_fired_at_is_read_before_a_runner_that_cannot_be_built(tmp_path: Path) -> None:
+    clock = _AdvancingClock(T0 + timedelta(seconds=5))
+
+    def build() -> HandlerDailyLineRun:
+        clock.now += timedelta(seconds=40)
+        raise KeyError("OMNI_HOME")
+
+    h = HandlerDailyLineScheduled(
+        environ=environ(tmp_path), build_runner=build, clock=clock
+    )
+    event = h.handle(tick(T0))
+    assert event is not None
+    assert event.outcome == "failed"
+    assert event.fired_at == T0 + timedelta(seconds=5)
+
+
+def test_blank_first_line_reports_completed_with_the_first_non_blank_line(
+    tmp_path: Path,
+) -> None:
+    runner = _Runner("\n\nsecond\nthird")
+    h = HandlerDailyLineScheduled(
+        environ=environ(tmp_path),
+        build_runner=lambda: cast(HandlerDailyLineRun, runner),
+    )
+    event = h.handle(tick(T0))
+    assert event is not None
+    assert (event.outcome, event.detail) == ("completed", "second")
+
+
+def test_blank_first_line_keeps_the_unknown_parts_suffix(tmp_path: Path) -> None:
+    runner = _Runner("  \nsecond", unknown_parts=("j1",))
+    h = HandlerDailyLineScheduled(
+        environ=environ(tmp_path),
+        build_runner=lambda: cast(HandlerDailyLineRun, runner),
+    )
+    event = h.handle(tick(T0))
+    assert event is not None
+    assert (event.outcome, event.detail) == ("completed", "second (unknown: j1)")
+
+
+def test_scheduled_for_is_the_ticks_now_never_its_scheduled_at(tmp_path: Path) -> None:
+    # node_floor_simple_scheduled_effect reads request.now (astimezone UTC) for its own time and never scheduled_at; this
+    # node agrees: the slot the scheduler aimed at is a different instant and must not reach the event.
+    slot = T0 - timedelta(seconds=2)
+    runner = _Runner()
+    h = HandlerDailyLineScheduled(
+        environ=environ(tmp_path),
+        build_runner=lambda: cast(HandlerDailyLineRun, runner),
+        clock=lambda: T0 + timedelta(seconds=5),
+    )
+    event = h.handle(tick(T0, scheduled_at=slot))
+    assert event is not None
+    assert event.scheduled_for == T0
+    assert event.scheduled_for != slot
+
+
+def test_the_due_gate_is_measured_on_the_ticks_now_not_scheduled_at(
+    tmp_path: Path,
+) -> None:
+    runner = _Runner()
+    h = HandlerDailyLineScheduled(
+        environ=environ(tmp_path),
+        build_runner=lambda: cast(HandlerDailyLineRun, runner),
+    )
+    assert h.handle(tick(T0, scheduled_at=T0 - timedelta(hours=1))) is not None
+    # A scheduled_at a full interval later would be due; the tick's own now, 10 s after the run, is not.
+    late_slot = T0 + timedelta(seconds=400)
+    assert h.handle(tick(T0 + timedelta(seconds=10), scheduled_at=late_slot)) is None
+    assert runner.calls == 1
