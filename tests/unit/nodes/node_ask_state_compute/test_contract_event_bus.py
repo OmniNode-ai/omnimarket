@@ -55,3 +55,9 @@ def test_result_events_are_declared_as_externally_consumed() -> None:
     assert set(contract["externally_consumed_topics"]) == set(
         contract["event_bus"]["publish_topics"]
     )
+
+
+def test_node_ask_state_compute_publishes_the_two_named_result_events() -> None:
+    publish = _contract()["event_bus"]["publish_topics"]
+    assert "onex.evt.omnimarket.ask-state-completed.v1" in publish
+    assert "onex.evt.omnimarket.ask-state-failed.v1" in publish
