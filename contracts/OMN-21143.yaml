@@ -67,3 +67,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_selection_policy_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys,yaml; c=yaml.safe_load(sys.stdin.read()); r=next(r for r in c["handler_routing"]["handlers"] if r["operation"]=="evaluate_context_selection"); assert r["handler"]["name"]=="HandlerContextSelectionEvaluation"; assert r["topic"] in c["event_bus"]["subscribe_topics"]; assert r["topic"] != c["runtime_dispatch"]["command_topic"]; assert c["evaluation_policy"]["repeats"]==3'
+  - id: "dod-omn21143-ac3-one-repeat-below-baseline-blocks"
+    description: "AC3: a rung with recall below the deterministic baseline in any one repeat is not recommended (eligible_rungs is empty) while the result stays valid. Re-run by the accepting lane at omnimarket dev f3a1133502a5: 2 passed in 5.20s. The test file does not exist at the parent of the implementing merge ea7cf89d845f."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py::test_one_repeat_below_baseline_prevents_recommendation -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+context:
+  ac_binding_provenance:
+    dod-omn21143-ac3-one-repeat-below-baseline-blocks:
+      - label: "AC3"
+        criterion_hash: "efec349f751ee253eaedb479b33a0783c7128b977f0844b7d2457677818d51f6"
+        proposed_by: "lane=dod-closeout-bind-2026-11-16T2145Z-c2"
+        accepted_by: "lane=dod-closeout-accept-2026-11-16T2145Z-c2"
