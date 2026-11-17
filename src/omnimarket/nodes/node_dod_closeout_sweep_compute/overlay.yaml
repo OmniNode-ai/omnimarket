@@ -60,6 +60,7 @@ pr_repositories:
   - {name: omnibase_core, default_branch: dev, location: under_registry}
   - {name: omnibase_infra, default_branch: dev, location: under_registry}
   - {name: omnibase_spi, default_branch: dev, location: under_registry}
+  - {name: omnibase_compat, default_branch: dev, location: under_registry}
   - {name: omnimarket, default_branch: dev, location: under_registry}
   - {name: omniclaude, default_branch: dev, location: under_registry}
   - {name: omnidash, default_branch: dev, location: under_registry}

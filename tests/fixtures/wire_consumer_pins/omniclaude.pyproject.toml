@@ -1,0 +1,2 @@
+[tool.uv.sources]
+omnimarket = { git = "https://github.com/OmniNode-ai/omnimarket.git", tag = "dev-20261112062638-179aa1280722" }

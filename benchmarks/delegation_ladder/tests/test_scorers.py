@@ -11,10 +11,13 @@ so the scorers themselves get the same treatment.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+from functools import cache
 from pathlib import Path
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from benchmarks.delegation_ladder import scorers
 from benchmarks.delegation_ladder.models import EnumOutcome, ModelTaskBundle
@@ -662,18 +665,44 @@ def _no_op_answer(config: dict[str, object]) -> str:
     return f"FILE: {path}\n<<<<<<< SEARCH\n{first}\n=======\n{first}\n>>>>>>> REPLACE"
 
 
-@pytest.mark.parametrize(
-    "path", sorted(HARD_BUNDLES.glob("H6-*.json")), ids=lambda p: p.stem
-)
-def test_every_h6_bundle_is_scorable(path: Path) -> None:
-    """Each H6 commit's tree imports, so a no-op answer FAILS its control run.
+@cache
+def _hard_control(task_id: str) -> tuple[EnumOutcome, str, EnumOutcome, str]:
+    config = dict(_hard(task_id).scorer_config)
+    changed = config["changed_files"]
+    assert isinstance(changed, list)
+    blocks = []
+    for name in changed:
+        before = git_text("show", f"{config['repo_commit']}^:{name}").rstrip("\n")
+        after = git_text("show", f"{config['repo_commit']}:{name}").rstrip("\n")
+        blocks.append(
+            f"FILE: {name}\n<<<<<<< SEARCH\n{before}\n=======\n{after}\n>>>>>>> REPLACE"
+        )
+    merged = score_multi_file_edit_and_test("\n".join(blocks), config)
+    no_op = score_multi_file_edit_and_test(_no_op_answer(config), config)
+    return merged.outcome, merged.detail, no_op.outcome, no_op.detail
 
-    A HARNESS_ERROR here would mean the bundle's tree cannot be replayed and no
-    answer to it could ever be scored.
-    """
-    config = dict(_hard(path.stem).scorer_config)
-    result = score_multi_file_edit_and_test(_no_op_answer(config), config)
-    assert result.outcome is EnumOutcome.FAIL, result.detail
+
+@pytest.mark.parametrize(
+    "path", sorted(HARD_BUNDLES.glob("H[36]-*.json")), ids=lambda p: p.stem
+)
+def test_every_h3_h6_bundle_is_scorable_with_merged_change(path: Path) -> None:
+    """A paired merged edit passes and the unchanged answer fails for every task."""
+    edit = _hard("H6-" + path.stem.split("-")[1])
+    merged, merged_detail, no_op, no_op_detail = _hard_control(edit.task_id)
+    assert merged is EnumOutcome.PASS, merged_detail
+    assert no_op is EnumOutcome.FAIL, no_op_detail
+    if path.stem.startswith("H3-"):
+        review = _hard(path.stem)
+        answer = "\n".join(
+            f"FILE: {name}" for name in edit.scorer_config["changed_files"]
+        )
+        assert (
+            score_exact_match(answer, review.scorer_config).outcome is EnumOutcome.PASS
+        )
+        assert (
+            score_exact_match("FILE: absent.py", review.scorer_config).outcome
+            is EnumOutcome.FAIL
+        )
 
 
 def _scratch_commit(tmp_path: Path, files: dict[str, str]) -> tuple[Path, str]:
@@ -691,11 +720,23 @@ def _scratch_commit(tmp_path: Path, files: dict[str, str]) -> tuple[Path, str]:
         "-c",
         "user.email=t@example.com",
     ]
-    subprocess.run([*git, "init", "-q"], check=True)
-    subprocess.run([*git, "add", "."], check=True)
-    subprocess.run([*git, "commit", "-q", "-m", "scratch"], check=True)
+    subprocess.run(
+        [*git, "init", "-q"], check=True, env=scrub_git_location_env(os.environ)
+    )
+    subprocess.run(
+        [*git, "add", "."], check=True, env=scrub_git_location_env(os.environ)
+    )
+    subprocess.run(
+        [*git, "commit", "-q", "-m", "scratch"],
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
     commit = subprocess.run(
-        [*git, "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+        [*git, "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+        env=scrub_git_location_env(os.environ),
     ).stdout.strip()
     return repo, commit
 
@@ -788,16 +829,30 @@ def test_the_archive_names_only_the_paths_a_commit_holds(
         "-c",
         "user.email=t@example.com",
     ]
-    subprocess.run([*git, "init", "-q"], check=True)
-    subprocess.run([*git, "add", "."], check=True)
-    subprocess.run([*git, "commit", "-q", "-m", "old commit"], check=True)
+    subprocess.run(
+        [*git, "init", "-q"], check=True, env=scrub_git_location_env(os.environ)
+    )
+    subprocess.run(
+        [*git, "add", "."], check=True, env=scrub_git_location_env(os.environ)
+    )
+    subprocess.run(
+        [*git, "commit", "-q", "-m", "old commit"],
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
     commit = subprocess.run(
-        [*git, "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+        [*git, "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+        env=scrub_git_location_env(os.environ),
     ).stdout.strip()
     assert replay_paths(repo, commit) == ["src", "tests", "pyproject.toml"]
     monkeypatch.setattr(scorers, "REPO_ROOT", repo)
     dest = tmp_path / "tree"
     dest.mkdir()
+    monkeypatch.setenv("GIT_DIR", str(repo / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(repo))
     materialise_tree(commit, dest, [])
     assert (dest / "src" / "a.py").is_file()
     assert not (dest / "scripts").exists()
@@ -817,3 +872,31 @@ def test_a_hard_edit_to_a_file_not_shown_is_refused_before_any_test_runs() -> No
     result = score_multi_file_edit_and_test(answer, config)
     assert result.outcome is EnumOutcome.FAIL
     assert "not shown" in result.detail
+
+
+def test_historical_tree_foreign_import_error_is_a_harness_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = "E   ImportError: cannot import name 'GoneModel' from 'omnibase_core.models' (/env/site-packages/omnibase_core/models/__init__.py)"
+    assert (
+        _scored_with_control_output(tmp_path, monkeypatch, output)
+        is EnumOutcome.HARNESS_ERROR
+    )
+
+
+def test_historical_tree_local_import_error_remains_a_task_failure(
+    tmp_path: Path,
+) -> None:
+    repo, commit = _scratch_commit(tmp_path, {"src/pkg/__init__.py": ""})
+    output = (
+        "E   ImportError: cannot import name 'added' from 'pkg' (src/pkg/__init__.py)"
+    )
+    assert import_failure(output, repo, commit) is None
+
+
+def test_historical_tree_installed_shadow_of_tree_module_is_a_harness_error(
+    tmp_path: Path,
+) -> None:
+    repo, commit = _scratch_commit(tmp_path, {"src/pkg/__init__.py": ""})
+    output = "E   ImportError: cannot import name 'added' from 'pkg' (/env/site-packages/pkg/__init__.py)"
+    assert import_failure(output, repo, commit) is not None

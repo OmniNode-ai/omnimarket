@@ -24,6 +24,13 @@
 repos:
   - repo: local
     hooks:
+      - id: review-replay-contract-controls
+        name: Review replay and contract controls
+        entry: uv run --frozen pytest tests/unit/test_review_contract_controls.py tests/unit/test_no_retired_package_running_references.py -q --no-cov -n 0 -p no:randomly
+        language: system
+        pass_filenames: false
+        files: ^(contracts/|tests/unit/test_(review_contract_controls|no_retired_package_running_references)\.py|src/omnimarket/nodes/node_session_(bootstrap|post_mortem)/)
+        require_serial: true
       - id: github-webhook-http
         name: GitHub webhook runtime HTTP boundary
         entry: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov

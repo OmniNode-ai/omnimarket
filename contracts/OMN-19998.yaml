@@ -1005,7 +1005,7 @@ dod_evidence:
     execution_scope: "local_done_gate"
     checks:
       - check_type: "command"
-        check_value: "bash -c 'out=\"$(git diff --name-only --diff-filter=d origin/dev...HEAD | xargs -r git grep -n -i -E \"omnibase[_-]compat\" --)\"; test -z \"$out\"'"
+        check_value: "bash -c 'git rev-parse --verify origin/dev && out=\"$(git diff --name-only --diff-filter=d origin/dev...HEAD | xargs -r git grep -n -i -E \"omnibase[_-]compat\" --)\" && test -z \"$out\"'"
         cwd: "."
     binds_ac: ["AC133"]
   - id: "dod-omn19998-compat-install-guard"
@@ -1016,3 +1016,11 @@ dod_evidence:
         check_value: "uv run --frozen pytest tests/unit/test_no_retired_package_running_references.py -q --no-cov -n 0 -p no:randomly"
         cwd: "."
     binds_ac: ["AC134"]
+  - id: "dod-omn19998-remove-compat-hosted"
+    description: "Hosted control for the retirement scan: the guard rejects planted imports, installs, JSON prompts and composite actions. The origin/dev diff receipt remains local."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/test_no_retired_package_running_references.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
+    binds_ac: ["AC133"]

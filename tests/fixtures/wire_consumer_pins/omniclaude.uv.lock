@@ -1,0 +1,4 @@
+[[package]]
+name = "omnimarket"
+version = "0.4.0"
+source = { git = "https://github.com/OmniNode-ai/omnimarket.git?tag=dev-20261112062638-179aa1280722#179aa12807225952ed8b9086c7b919cab189981c" }

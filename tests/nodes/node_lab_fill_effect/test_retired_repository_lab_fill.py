@@ -1,12 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The fill's merged-history read no longer names the retired sibling repository.
-
-The merged-ticket skip reads each listed canonical clone's default branches for
-``evidence(`` merges inside ``since_days``. The retired sibling repository is
-archived, so its clone is not listed: the read names the remaining clones, in
-order, over the same window and refs.
-"""
+"""Preserve historical merge evidence while a repository is retired."""
 
 from __future__ import annotations
 
@@ -31,14 +25,15 @@ pytestmark = pytest.mark.unit
 _RETIRED = "omnibase" + "_" + "compat"
 
 
-def test_the_merged_history_read_lists_no_clone_of_the_retired_repository() -> None:
+def test_the_merged_history_preserves_the_retired_repository() -> None:
     settings = load_merged_history({})
-    assert _RETIRED not in settings.repos
+    assert _RETIRED in settings.repos
     assert settings.repos == (
         "omnimarket",
         "omnibase_core",
         "omnibase_infra",
         "omnibase_spi",
+        _RETIRED,
         "omniclaude",
         "omniintelligence",
         "omnimemory",
@@ -68,22 +63,19 @@ def _clone(path: Path, subject: str) -> None:
     )
 
 
-def test_the_merged_ticket_skip_reads_no_clone_of_the_retired_repository(
+def test_the_merged_ticket_skip_preserves_retired_repository_history(
     tmp_path: Path,
 ) -> None:
-    """Behaviour: a merge only the retired repository's clone holds is not found.
-
-    Both clones are planted under the root. The ticket merged in a listed clone is
-    found; the ticket merged only in the retired clone is not. The control lists the
-    retired name in the settings and the same plant is then found.
-    """
+    """A listed retired clone still contributes historical merges; omission loses them."""
     _clone(tmp_path / "omnibase_core", "feat(OMN-1): core (#1)")
     _clone(tmp_path / _RETIRED, "feat(OMN-2): retired (#2)")
     settings = load_merged_history({})
 
     reader = LocalMergedHistory(settings, tmp_path)
     assert reader.merged("OMN-1") == ("omnibase_core#1",)
-    assert reader.merged("OMN-2") == ()
+    assert reader.merged("OMN-2") == (f"{_RETIRED}#2",)
 
-    restored = settings.model_copy(update={"repos": (*settings.repos, _RETIRED)})
-    assert LocalMergedHistory(restored, tmp_path).merged("OMN-2") == (f"{_RETIRED}#2",)
+    omitted = settings.model_copy(
+        update={"repos": tuple(repo for repo in settings.repos if repo != _RETIRED)}
+    )
+    assert LocalMergedHistory(omitted, tmp_path).merged("OMN-2") == ()

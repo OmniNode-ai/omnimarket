@@ -35,9 +35,8 @@ class ModelFrictionEvent(BaseModel, frozen=True, extra="forbid"):
     friction_type: str
     description: str
     recorded_at: datetime
-    schema_version: str = (
-        "1.0"  # string-version-ok: wire envelope field of the telemetry type
-    )
+    # string-version-ok: wire envelope field of the telemetry type
+    schema_version: str = "1.0"
 
 
 class ModelPostMortemReport(BaseModel, frozen=True, extra="forbid"):
@@ -64,9 +63,8 @@ class ModelPostMortemReport(BaseModel, frozen=True, extra="forbid"):
     report_path: str
     started_at: datetime
     completed_at: datetime
-    schema_version: str = (
-        "1.0"  # string-version-ok: wire envelope field of the telemetry type
-    )
+    # string-version-ok: wire envelope field of the telemetry type
+    schema_version: str = "1.0"
 
 
 __all__: list[str] = [

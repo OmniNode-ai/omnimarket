@@ -55,7 +55,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: command
-    check_value: bash -c 'out="$(git diff --name-only --diff-filter=d origin/dev...HEAD | xargs -r git grep -n -i -E "omnibase[_-]compat" --)"; test -z "$out"'
+    check_value: bash -c 'git rev-parse --verify origin/dev && out="$(git diff --name-only --diff-filter=d origin/dev...HEAD | xargs -r git grep -n -i -E "omnibase[_-]compat" --)" && test -z "$out"'
     cwd: .
 - id: dod-omn25026-ac2
   description: 'AC2 every H6 bundle replays: a no-op answer fails its control and the positive control passes on a bundle commit.'
@@ -64,7 +64,34 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h6 or merged_change or hard_edit'
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-01 or H6-01)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-02 or H6-02)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-03 or H6-03)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-04 or H6-04)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-05 or H6-05)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-06 or H6-06)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-07 or H6-07)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-08 or H6-08)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-09 or H6-09)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-10 or H6-10)'
     cwd: .
 - id: dod-omn25026-ac3
   description: AC3 a module the change adds, a symbol the change adds and a module in the environment are not harness errors; a module absent from both is.
@@ -110,7 +137,40 @@ dod_evidence:
   - AC6
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'not h3_h6'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov -n 0 -p no:randomly -rs
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-01 or H6-01)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-02 or H6-02)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-03 or H6-03)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-04 or H6-04)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-05 or H6-05)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-06 or H6-06)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-07 or H6-07)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-08 or H6-08)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-09 or H6-09)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h3_h6 and (H3-10 or H6-10)'
     cwd: .
 - id: dod-omn25026-ac7
   description: AC7 a run of the seam node publishes on the declared terminal topic and a changed topic publishes nothing there.

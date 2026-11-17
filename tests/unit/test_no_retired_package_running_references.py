@@ -16,6 +16,7 @@ guard, does not itself carry the name it forbids.
 from __future__ import annotations
 
 import ast
+import json
 import re
 import tomllib
 from pathlib import Path
@@ -31,10 +32,17 @@ _MODULE = f"{_STEM}_{_TAIL}"
 _COMPAT = re.compile(rf"{_STEM}[_-]{_TAIL}", re.IGNORECASE)
 
 #: Where a running reference could live: the CI workflows, the benchmarks, the
-#: scripts, the source and the tests. Data files (fixtures, recorded bundles) are
-#: history and are read by no install, so only these suffixes are scanned.
-SCANNED_DIRS = (".github/workflows", "benchmarks", "scripts", "src", "tests")
-SCANNED_SUFFIXES = frozenset({".py", ".yml", ".yaml", ".sh", ".toml", ".cfg"})
+#: scripts, source, tests and composite actions. JSON prompt strings can carry
+#: source that the replay executes, so they are scanned too.
+SCANNED_DIRS = (
+    ".github/workflows",
+    ".github/actions",
+    "benchmarks",
+    "scripts",
+    "src",
+    "tests",
+)
+SCANNED_SUFFIXES = frozenset({".py", ".yml", ".yaml", ".sh", ".toml", ".cfg", ".json"})
 
 #: A line that installs, clones or checks the package out. Searched per LOGICAL
 #: line (_logical_lines below), so a list-form ``["uv", "pip", "install", ...]``
@@ -111,6 +119,12 @@ def _running_references(root: Path) -> list[str]:
             if path.suffix not in SCANNED_SUFFIXES or not path.is_file():
                 continue
             text = path.read_text(encoding="utf-8", errors="replace")
+            if path.suffix == ".json":
+                # Prompt and fixture source strings are executed by replay tools.
+                data = json.loads(text)
+                if _json_has_running_reference(data):
+                    offenders.append(str(path.relative_to(root)))
+                continue
             if any(_INSTALL_LINE.search(line) for line in _logical_lines(text)):
                 offenders.append(str(path.relative_to(root)))
             elif path.suffix == ".py" and _MODULE in text:
@@ -122,6 +136,23 @@ def _running_references(root: Path) -> list[str]:
                     offenders.append(str(path.relative_to(root)))
     offenders.extend(_pinned_requirements(root, scanned))
     return offenders
+
+
+def _json_has_running_reference(value: object) -> bool:
+    if isinstance(value, dict):
+        return any(_json_has_running_reference(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_json_has_running_reference(item) for item in value)
+    if not isinstance(value, str):
+        return False
+    if any(_INSTALL_LINE.search(line) for line in _logical_lines(value)):
+        return True
+    return bool(
+        re.search(
+            rf"(?:^|\n)\s*(?:from\s+{_MODULE}(?:\.|\s)|import\s+{_MODULE}(?:\.|\s|$))",
+            value,
+        )
+    )
 
 
 def _pinned_requirements(root: Path, scanned: list[Path]) -> list[str]:
@@ -221,6 +252,11 @@ def test_nothing_in_the_running_trees_installs_checks_out_or_imports_it() -> Non
         (
             ".github/workflows/other.yml",
             f"      - run: uv pip install '{_STEM}-{_TAIL}==0.5.7'\n",
+        ),
+        (".github/actions/probe/action.yaml", f"run: pip install {_MODULE}\n"),
+        (
+            "benchmarks/delegation_ladder/bundles_hard/planted.json",
+            '{"prompt": "from ' + _MODULE + '.models import X"}',
         ),
         ("scripts/build.sh", f"pip install {_STEM}_{_TAIL}\n"),
         ("benchmarks/run.py", f"import {_MODULE}\n"),

@@ -1,0 +1,206 @@
+schema_version: 1.0.0
+ticket_id: OMN-25112
+title: Review controls for scorer replay, wire baselines and contract evidence
+summary: Executable controls and preserved repository history for the PR review.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-review
+  statement: Each review finding is fixed or argued with evidence.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the wire-gate and delegation-ladder job logs at the new head are read with onex scm job-log, and the
+      newest PR comment starts `Lab: head=<all 40 characters of the new head>` with a red receipt at ebb006955dd0 and a head
+      receipt run with -rs in which the real-history wire tests ran, plus a guard, seam, triage and node test run at the head
+      -- falsifier: the PR comment lacks a receipt for either sha, carries fewer than 40 sha characters, shows the real-history
+      wire tests skipped, or the base run reads green'
+  - id: AC2
+    statement: 'AC2: the H6 test in benchmarks/delegation_ladder/tests/test_scorers.py is parametrized over every H3 and H6
+      bundle, each with the merged-change-passes control, so a tree broken by anything but a missing module and a dead bundle
+      both fail -- falsifier: `uv run pytest benchmarks/delegation_ladder/tests/test_scorers.py -q -p no:cacheprovider` passes
+      with one bundle''s merged-change control removed or one bundle left dead'
+  - id: AC3
+    statement: 'AC3: historical_tree.py flags an ImportError sourced outside the replayed tree (a cannot-import-name from
+      an installed sibling whose pin moved past the tree) and does not score it FAIL for every model, with a test for it --
+      falsifier: `uv run pytest benchmarks/delegation_ladder/tests/test_scorers.py -q -p no:cacheprovider -k historical_tree`
+      passes with only ModuleNotFoundError read'
+  - id: AC4
+    statement: 'AC4: the doctored worktree and the unretargeted-release control of tests/ci/test_check_wire_compatibility_omn18868.py
+      use separate directories, and the lane reports how materialise_release treats an existing directory -- falsifier: `uv
+      run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q -p no:cacheprovider` passes with both controls back
+      in tmp_path/released'
+  - id: AC5
+    statement: 'AC5: the pinned-tag check no longer fetches consumers'' live dev pin files, runs in the gate job and not only
+      in a test the shard job skips, grades the head against a resolved tag and asserts the refusal, the consumers are shown
+      public, and the real-history set for [OMN-25026](https://linear.app/omninode/issue/OMN-25026) AC4 is recorded -- falsifier:
+      `uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q -p no:cacheprovider -rs` reports a skip, or passes
+      with the live dev pin fetch restored'
+  - id: AC6
+    statement: 'AC6: the whole-head `grep -rn` for the retired package prints no running reference, the guard test_no_retired_package_running_references.py
+      reads .json and .github/actions files, bundles_hard/\*.json is checked, and the wire test at its replay line no longer
+      replays the importing tree or names an allowed exception -- falsifier: `uv run pytest tests/unit -k no_retired_package_running_references
+      -q -p no:cacheprovider` passes with the .json and .github/actions skip restored'
+  - id: AC7
+    statement: 'AC7: the contract checks at contracts/[OMN-19998](https://linear.app/omninode/issue/OMN-19998).yaml line 1008
+      and contracts/[OMN-25026](https://linear.app/omninode/issue/OMN-25026).yaml line 58 are prefixed with `git rev-parse
+      --verify origin/dev &&` so an unresolved origin/dev fails and does not pass on empty output, and a hosted check is added
+      -- falsifier: `grep -n ''rev-parse --verify origin/dev'' contracts/OMN-19998.yaml contracts/OMN-25026.yaml` prints no
+      line for either file'
+  - id: AC8
+    statement: 'AC8: a STATUS row names omnimarket#6300 and lists the symbols and homes cited at handler_overseer_verifier.py:136,
+      model_seam_task.py:26, model_session_contract.py:6, protocol_projection_database_sync.py:20 and topic_namespace.py:34,
+      each read in the pinned core, spi and infra, and the routing-policy home is tested -- falsifier: `uv run pytest tests
+      -k triage_routing_policy_pointer -q -p no:cacheprovider` passes with the model binding broken'
+  - id: AC9
+    statement: 'AC9: overlay.yaml line 63 and node_lab_fill_effect/contract.yaml line 163 are backed by a read that the dropped
+      repository has no open PRs and no evidence( merge within 120 days, or both entries are restored -- falsifier: `uv run
+      pytest tests/nodes -k "dod_closeout_sweep or lab_fill" -q -p no:cacheprovider` passes with the old repository entry
+      restored'
+  - id: AC10
+    statement: 'AC10: the validator still honours the string-version-ok marker off the assignment line at model_session_contract.py:37
+      and model_post_mortem_report.py:38 and :67, shown by a test that fails when the marker is read only on the assignment
+      line -- falsifier: `uv run pytest tests -k string_version_ok -q -p no:cacheprovider` passes with the marker read only
+      on the assignment line'
+evidence_requirements:
+- kind: tests
+  description: Scorer, wire, guard, seam, triage, node and validator controls.
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25112-ac1
+  description: AC1 executable control; PR-head reads and lab receipts are reported separately.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest tests/test_golden_chain_seam_parallel_executor.py tests/unit/test_triage_routing_policy_pointer_omn24967.py
+      tests/unit/test_no_retired_package_running_references.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25112-ac2
+  description: AC2 executable control; PR-head reads and lab receipts are reported separately.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly
+      -k 'h3_h6 and (H3-01 or H6-01)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly
+      -k 'h3_h6 and (H3-02 or H6-02)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly
+      -k 'h3_h6 and (H3-03 or H6-03)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly
+      -k 'h3_h6 and (H3-04 or H6-04)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly
+      -k 'h3_h6 and (H3-05 or H6-05)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly
+      -k 'h3_h6 and (H3-06 or H6-06)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly
+      -k 'h3_h6 and (H3-07 or H6-07)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly
+      -k 'h3_h6 and (H3-08 or H6-08)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly
+      -k 'h3_h6 and (H3-09 or H6-09)'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly
+      -k 'h3_h6 and (H3-10 or H6-10)'
+    cwd: .
+- id: dod-omn25112-ac3
+  description: AC3 executable control; PR-head reads and lab receipts are reported separately.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly
+      -k historical_tree
+    cwd: .
+- id: dod-omn25112-ac4
+  description: AC4 executable control; PR-head reads and lab receipts are reported separately.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov -n 0 -p no:randomly
+      -k control_cannot
+    cwd: .
+- id: dod-omn25112-ac5
+  description: AC5 executable control; PR-head reads and lab receipts are reported separately.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: bash -c 'uv run --frozen pytest tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov -n 0 -p no:randomly
+      -rs --junit-xml=wire_review_history.xml && python -c "import xml.etree.ElementTree as E; r=E.parse('"'"'wire_review_history.xml'"'"');
+      assert not r.findall('"'"'.//skipped'"'"'); assert len([t for t in r.findall('"'"'.//testcase'"'"') if t.attrib['"'"'name'"'"'].startswith('"'"'test_real_'"'"')])
+      == 2"'
+    cwd: .
+- id: dod-omn25112-ac6
+  description: AC6 executable control; PR-head reads and lab receipts are reported separately.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest tests/unit/test_no_retired_package_running_references.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25112-ac7
+  description: AC7 executable control; PR-head reads and lab receipts are reported separately.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest tests/unit/test_review_contract_controls.py -q --no-cov -n 0 -p no:randomly -k unresolved
+    cwd: .
+- id: dod-omn25112-ac8
+  description: AC8 executable control; PR-head reads and lab receipts are reported separately.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest tests/unit/test_triage_routing_policy_pointer_omn24967.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25112-ac9
+  description: AC9 executable control; PR-head reads and lab receipts are reported separately.
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest tests/nodes/node_dod_closeout_sweep_compute/test_retired_repository_dod_closeout_sweep_compute.py
+      tests/nodes/node_lab_fill_effect/test_retired_repository_lab_fill.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25112-ac10
+  description: AC10 executable control; PR-head reads and lab receipts are reported separately.
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest tests/unit/test_review_contract_controls.py -q --no-cov -n 0 -p no:randomly -k string_version_ok
+    cwd: .

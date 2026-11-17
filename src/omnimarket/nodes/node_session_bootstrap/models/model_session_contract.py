@@ -34,9 +34,8 @@ class ModelSessionContract(BaseModel, frozen=True, extra="forbid"):
     halt_on_build_loop_failure: bool = True
     dry_run: bool = False
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    schema_version: str = (
-        "1.0"  # string-version-ok: wire envelope field of the session contract
-    )
+    # string-version-ok: wire envelope field of the session contract
+    schema_version: str = "1.0"
     # Rev 7 fields
     session_mode: str = Field(default="build", pattern="^(build|close-out|reporting)$")
     active_sprint_id: str = "auto-detect"

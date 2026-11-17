@@ -1,11 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The closer's packaged overlay no longer reads the retired sibling repository.
-
-The closer reads merged pull requests in every repository its overlay lists. The
-retired sibling repository is retired, so the packaged overlay stops listing it: no repository of the list is read for it, and
-a repository the overlay still lists is read as before.
-"""
+"""The closer preserves repository history until its evidence window is audited."""
 
 from __future__ import annotations
 
@@ -18,10 +13,6 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
-from omnimarket.models.closeout_scope_overlay import (
-    EnumCloneLocation,
-    ModelPrRepository,
-)
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_pr_sources import (
     GitCloneMergeSubjects,
 )
@@ -36,11 +27,9 @@ pytestmark = pytest.mark.unit
 _RETIRED = "omnibase" + "_" + "compat"
 
 
-def test_the_packaged_overlay_reads_no_pull_requests_of_the_retired_repository() -> (
-    None
-):
+def test_the_packaged_overlay_preserves_retired_repository_history() -> None:
     branches = load_scope_overlay(PACKAGED_OVERLAY).default_branches()
-    assert _RETIRED not in branches
+    assert branches[_RETIRED] == "dev"
     assert branches["omnibase_core"] == "dev"
     assert branches["omnimarket"] == "dev"
 
@@ -66,35 +55,25 @@ def _clone_with_default_branch(path: Path, subject: str) -> None:
     )
 
 
-def test_the_closer_reads_no_merge_from_a_clone_of_the_retired_repository(
+def test_the_closer_preserves_merges_from_the_retired_repository(
     tmp_path: Path,
 ) -> None:
-    """Behaviour: a clone of the retired repository on disk is never read for merges.
-
-    The clone is planted under the registry root beside a listed one. The listed clone's
-    merge is read; the retired clone's merge is not. The control restores the retired
-    entry to the overlay and the same planted clone is then read, so the plant is
-    visible to the reader and only the overlay keeps it out.
-    """
+    """A listed retired clone contributes merges; an omitted clone does not."""
     _clone_with_default_branch(tmp_path / "omnibase_core", "feat(OMN-1): core (#1)")
     _clone_with_default_branch(tmp_path / _RETIRED, "feat(OMN-2): retired (#2)")
     overlay = load_scope_overlay(PACKAGED_OVERLAY)
 
     read = GitCloneMergeSubjects(tmp_path, overlay).subjects()
-    assert read == {"omnibase_core": ["feat(OMN-1): core (#1)"]}
+    assert read == {
+        "omnibase_core": ["feat(OMN-1): core (#1)"],
+        _RETIRED: ["feat(OMN-2): retired (#2)"],
+    }
 
-    restored = overlay.model_copy(
+    omitted = overlay.model_copy(
         update={
             "pr_repositories": [
-                *overlay.pr_repositories,
-                ModelPrRepository(
-                    name=_RETIRED,
-                    default_branch="dev",
-                    location=EnumCloneLocation.UNDER_REGISTRY,
-                ),
+                row for row in overlay.pr_repositories if row.name != _RETIRED
             ]
         }
     )
-    assert GitCloneMergeSubjects(tmp_path, restored).subjects()[_RETIRED] == [
-        "feat(OMN-2): retired (#2)"
-    ]
+    assert _RETIRED not in GitCloneMergeSubjects(tmp_path, omitted).subjects()

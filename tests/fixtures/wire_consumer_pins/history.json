@@ -1,0 +1,11 @@
+{
+  "consumer": "omniclaude",
+  "source": "recorded pyproject tool.uv.sources.omnimarket",
+  "tag": "dev-20261112062638-179aa1280722",
+  "commit": "179aa12807225952ed8b9086c7b919cab189981c",
+  "real_history_set": [
+    "test_real_published_at_replay_against_the_release_that_predates_it",
+    "test_real_published_at_replay_through_a_dev_merge_tag_pin"
+  ],
+  "baseline": "consumer tag stays immutable; historical release adaptation has a separate replay tag"
+}
