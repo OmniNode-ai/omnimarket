@@ -175,7 +175,9 @@ from omnimarket.inference.provider_response_error import (
     provider_failure_class_from_error_message,
 )
 from omnimarket.inference.task_class_authority import (
+    resolve_task_class_execution_budget,
     resolve_task_class_execution_required,
+    resolve_task_class_rung_floor_seconds,
 )
 from omnimarket.models.delegation.delegation_attempt_lineage import endpoint_host
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
@@ -2148,6 +2150,74 @@ def _seconds_since(moment: datetime) -> int:
     """Whole wall seconds from ``moment`` to now; a naive ``moment`` is UTC (OMN-22822)."""
     aware = moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
     return (time.time_ns() - int(aware.timestamp() * 1_000_000_000)) // 1_000_000_000
+
+
+def _caller_budget_left_seconds(request: ModelDelegationRequest) -> float | None:
+    """Seconds left in the caller's own budget, or None when it named none (OMN-25384).
+
+    The delegate-skill handler sends ``requested_timeout_seconds`` measured from
+    the request's ``emitted_at`` and stops waiting at that budget plus its
+    delivery margin, committing a budget-timeout terminal of its own. A ladder
+    step started after that point produces a terminal nobody is waiting for.
+    """
+    if request.requested_timeout_seconds is None:
+        return None
+    emitted = request.emitted_at
+    aware = emitted if emitted.tzinfo is not None else emitted.replace(tzinfo=UTC)
+    deadline_ns = int(aware.timestamp() * 1_000_000_000) + (
+        request.requested_timeout_seconds * 1_000_000_000
+    )
+    return (deadline_ns - time.time_ns()) / 1_000_000_000
+
+
+def _last_attempt_seconds(workflow: DelegationWorkflowState) -> float:
+    """How long the attempt just recorded took, from the cumulative history."""
+    history = workflow.escalation_history
+    if not history:
+        return 0.0
+    previous_ms = history[-2].latency_ms if len(history) > 1 else 0
+    return max(0, history[-1].latency_ms - previous_ms) / 1000.0
+
+
+def _next_rung_reserve_seconds(task_type: str) -> float:
+    """The seconds a re-draft must leave for a later rung (the class's reserve)."""
+    try:
+        budget = resolve_task_class_execution_budget(task_type)
+    except ValueError:
+        return 0.0
+    return float(budget.next_rung_reserve_seconds)
+
+
+def _caller_budget_verdict(
+    workflow: DelegationWorkflowState,
+) -> tuple[bool, bool, str | None]:
+    """Whether a re-draft and a next rung still fit the caller's budget (OMN-25384).
+
+    The same two rules the in-process port applies to its run deadline: a
+    same-tier re-draft is sent only when the time left, less the class's
+    next-rung reserve, still holds an attempt as long as the last one; a later
+    rung is reached only with the class's rung floor left (the last attempt's
+    length when the class declares no floor). Returns ``(redraft_fits,
+    next_rung_fits, reason)``; ``reason`` describes the budget when a rule fails.
+    """
+    assert workflow.request is not None
+    left = _caller_budget_left_seconds(workflow.request)
+    if left is None:
+        return True, True, None
+    task_type = workflow.request.task_type
+    last_attempt = _last_attempt_seconds(workflow)
+    reserve = _next_rung_reserve_seconds(task_type)
+    floor = resolve_task_class_rung_floor_seconds(task_type)
+    needed_for_rung = float(floor) if floor is not None else last_attempt
+    redraft_fits = left - reserve >= last_attempt
+    next_rung_fits = left >= needed_for_rung
+    reason = (
+        f"caller_budget_spent: {max(0.0, left):.1f}s left of the caller's "
+        f"requested_timeout_seconds={workflow.request.requested_timeout_seconds} "
+        f"from emitted_at; last attempt {last_attempt:.1f}s, next-rung reserve "
+        f"{reserve:.0f}s, rung floor {needed_for_rung:.0f}s"
+    )
+    return redraft_fits, next_rung_fits, reason
 
 
 def _one_line(text: str) -> str:
@@ -4588,6 +4658,11 @@ class HandlerDelegationWorkflow:
 
         self._bank_answered_draft(workflow)
 
+        # OMN-25384: the caller's own budget bounds the ladder. A re-draft or a
+        # next rung that cannot finish inside it is not sent; the run closes
+        # FAILED below while the caller is still waiting for its terminal.
+        redraft_fits, next_rung_fits, budget_reason = _caller_budget_verdict(workflow)
+
         # OMN-14234 (retry-local / best-of-N): before escalating off a FREE tier,
         # retry the SAME tier up to its contract-declared ``max_retries`` budget.
         # The local coder is non-deterministic (a trivial refactor scored
@@ -4614,11 +4689,14 @@ class HandlerDelegationWorkflow:
             self._maybe_retry_local(
                 workflow, rejected_attempt_cost_usd, cause=refusal_cause
             )
-            if workflow.request is None
-            or resolve_task_class_transitions(workflow.request.task_type).kind_of(
-                refusal_cause
+            if redraft_fits
+            and (
+                workflow.request is None
+                or resolve_task_class_transitions(workflow.request.task_type).kind_of(
+                    refusal_cause
+                )
+                is EnumTransitionKind.RETRY
             )
-            is EnumTransitionKind.RETRY
             else None
         )
         if retry_local_intents is not None:
@@ -4667,8 +4745,11 @@ class HandlerDelegationWorkflow:
         )
         terminal_failure_reason = decision.terminal_failure_reason
         next_tier = decision.next_tier_name
+        caller_budget_ended_run = decision.can_escalate and not next_rung_fits
+        if caller_budget_ended_run:
+            terminal_failure_reason = budget_reason
 
-        if decision.can_escalate:
+        if decision.can_escalate and not caller_budget_ended_run:
             assert next_tier is not None
             if rejected_backend_ref and (
                 rejected_backend_ref not in workflow.quality_rejected_backend_refs
@@ -4757,8 +4838,13 @@ class HandlerDelegationWorkflow:
             # so the gate decided the run. Before this the terminal carried no
             # cause, and the delegate-skill terminal built from it read the
             # gate's own refusal text as a provider fault (``73aba966``).
+            # OMN-25384: a rung could follow but the caller's budget cannot
+            # hold it, so the budget decided the run, as on the in-process
+            # port's "delegation chain budget spent" terminal.
             terminal_failure_cause=(
-                EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+                EnumDelegationTerminalFailureCause.TIMEOUT
+                if caller_budget_ended_run
+                else EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
             ),
         )
 

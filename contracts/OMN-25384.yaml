@@ -1,0 +1,46 @@
+schema_version: 1.0.0
+ticket_id: OMN-25384
+title: The Delegation Health Check gates dev on a nightly run against dev; stability's run alarms and never gates dev
+summary: The nightly's gating leg measures the dev lane. On dev, golden case I8 read a budget-timeout terminal because the bus delegation workflow kept re-drafting and escalating past the caller's requested_timeout_seconds (it read only its node's 900 s completion bound), so its real FAILED terminal reached the delegation_events row after the delegate-skill handler had committed its own budget-timeout terminal. The bus workflow now applies the in-process port's two budget rules to the caller's budget measured from emitted_at - a same-tier re-draft leaves the class's next-rung reserve, a next rung is reached only with the class's rung floor left - and otherwise closes the run FAILED inside the budget.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25384-dev-gate
+  statement: The check that gates dev reads a nightly run against dev, and the dev run's golden cases terminate inside the caller's budget.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a resolved, wired mechanism enforces the ruling of 2026-11-17T14:08:49Z -- the bus delegation ladder stops inside the caller''s requested budget, so the dev leg the check reads scores I8 on the workflow''s own FAILED terminal -- falsifier: uv run pytest tests/unit/delegation/test_bus_ladder_caller_budget_omn25384.py -q (red at the merge base)'
+evidence_requirements:
+- kind: tests
+  description: The caller-budget ladder tests and the existing retry-local and escalation tests at the pushed head.
+  command: uv run --frozen pytest tests/unit/delegation/test_bus_ladder_caller_budget_omn25384.py tests/unit/delegation/test_retry_local_omn14234.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25384-ac1-bus-ladder-caller-budget
+  description: The caller-budget tests pass at the pushed head; at the merge base four of the seven read red (the workflow re-drafts or escalates with less than the reserve or the floor left). The retry-local tests, which name no caller budget, pass unchanged.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_bus_ladder_caller_budget_omn25384.py tests/unit/delegation/test_retry_local_omn14234.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-deploy-omn25384-caller-budget-wired
+  description: 'Hosted structural probe: the bus delegation workflow handler reads the caller budget verdict before it re-drafts or escalates at the checked-out head. It fails at the merge base, which holds no such function.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: grep -F '_caller_budget_verdict(' src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py && grep -F 'caller_budget_ended_run' src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py
+    cwd: .
+- id: dod-omn25384-ac1-integration-proof
+  description: On a lab host, from the pushed head, the Layer-2 golden-task runner publishes the integration corpus to the dev lane's delegate-skill command topic and scores each case from its delegation_events row; I8 reads terminal failed, not timeout. Hosted CI cannot reach the dev lane, so this unbound check belongs to the local Done gate; it is read there and in the PR's Lab line, beside the dev leg of delegation-regression-nightly dispatched from this branch after the dev install.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25384 --kind test -- env ONEX_E2E_LANE=dev OMN_ALLOW_LIVE_E2E_PROBE=true uv run --frozen python -m tests.delegation_golden.runner --out delegation_regression_scoreboard.json'
+    cwd: .
