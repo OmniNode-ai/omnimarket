@@ -7,7 +7,9 @@ The ledger rows are the stall responder's own replay fixture of 2026-11-07 (the 
 
 from __future__ import annotations
 
+import json
 import logging
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -17,12 +19,17 @@ import pytest
 import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
+from omnimarket.handlers.schedule_gate import ScheduleGate
 from omnimarket.handlers.schedule_run_store import InMemoryScheduleRunStore
+from omnimarket.models.schedule_trigger.model_schedule_trigger import (
+    ModelScheduleDeclaration,
+)
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     InMemoryLedger,
 )
 from omnimarket.nodes.node_reading_writer_effect.overlay import (
     ModelCommandLedgerReadRoute,
+    ModelFileLedgerReadRoute,
 )
 from omnimarket.nodes.node_schedule_run_reducer.handlers.handler_schedule_run_reducer import (
     HandlerScheduleRunReducer,
@@ -32,10 +39,13 @@ from omnimarket.nodes.node_stall_responder_compute.handlers.handler_stall_cause_
 )
 from omnimarket.nodes.node_stall_responder_compute.models import (
     ModelStallResponderRequest,
+    ModelStallResponderResult,
 )
 from omnimarket.nodes.node_stall_responder_scheduled_effect.handlers.handler_stall_responder_scheduled import (
     HandlerStallResponderScheduled,
 )
+
+DETAIL_LIMIT, TRUNCATED_MARK = 1000, " [truncated]"  # red harness only: the old head has neither name
 from omnimarket.nodes.node_stall_responder_scheduled_effect.handlers.stall_responder_tick import (
     LedgerRouteError,
     ModelStallResponderTickOutcome,
@@ -290,6 +300,25 @@ def test_required_the_overlay_model_holds_no_default() -> None:
         assert info.is_required(), name
 
 
+@pytest.mark.parametrize(
+    ("route_model", "optional"),
+    [
+        (ModelCommandLedgerReadRoute, set()),
+        # archive_subdir is optional in the shared route model: absent, the file route reads no rolls.
+        (ModelFileLedgerReadRoute, {"archive_subdir"}),
+    ],
+)
+def test_required_the_nested_ledger_route_models_hold_no_default(
+    route_model: type[ModelCommandLedgerReadRoute | ModelFileLedgerReadRoute],
+    optional: set[str],
+) -> None:
+    """The ledger_read route is nested in the overlay: its fields come from the file too, bar the named optional one."""
+    defaulted = {
+        name for name, info in route_model.model_fields.items() if not info.is_required()
+    }
+    assert defaulted == optional
+
+
 def test_required_the_lookback_must_cover_the_window() -> None:
     with pytest.raises(ValueError, match="claim_lookback_seconds"):
         overlay(window_seconds=7200, claim_lookback_seconds=3600)
@@ -417,6 +446,27 @@ def test_open_claim_with_a_terminal_in_the_lookback_is_not_live() -> None:
     assert "skipped=0 " in closed.detail
 
 
+REOPEN_CLAIM = "2026-11-06T23:30:00Z | CLAIM | lane=stall-floor-omnibase-core-20261106T2200Z | ticket=OMN-20800 | live again"
+
+
+def test_claim_terminal_claim_a_lane_claimed_after_its_terminal_is_live() -> None:
+    """A TERMINAL closes a lane only when no later CLAIM reopens it: claim, terminal, claim is a live lane."""
+    bare = _run(overlay())
+    reopened = _run(overlay(), (OLD_CLAIM, OLD_TERMINAL, REOPEN_CLAIM, *STALL_ROWS))
+    assert "skipped=1 " in reopened.detail
+    assert (
+        _count(reopened.detail, "dispatches") == _count(bare.detail, "dispatches") - 1
+    )
+
+
+def test_claim_terminal_claim_a_terminal_after_the_last_claim_closes_the_lane() -> None:
+    late_terminal = "2026-11-06T23:45:00Z | TERMINAL | lane=stall-floor-omnibase-core-20261106T2200Z | ticket=OMN-20800 | done"
+    closed = _run(
+        overlay(), (OLD_CLAIM, OLD_TERMINAL, REOPEN_CLAIM, late_terminal, *STALL_ROWS)
+    )
+    assert "skipped=0 " in closed.detail
+
+
 def test_keys_are_not_stored_between_runs_so_a_standing_stall_reports_again(
     tmp_path: Path,
 ) -> None:
@@ -464,3 +514,200 @@ def test_default_tick_environ_none_reads_the_process_environment(
     assert event is not None
     assert event.outcome == "completed"
     assert "stall_rows=2 " in event.detail
+
+
+def test_error_a_malformed_yaml_overlay_is_refused_naming_the_cause_through_the_real_gate(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Malformed YAML: the loader raises NodeOverlayError naming YAMLError, refused once, never raised out of handle()."""
+    (tmp_path / NODE).mkdir()
+    (tmp_path / NODE / "overlay.yaml").write_text(
+        "job_id: [stall_responder\nrun_interval_seconds: 600\n", encoding="utf-8"
+    )
+    recorded = _RecordingTick(DONE)
+    h = HandlerStallResponderScheduled(
+        environ={"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)}, tick=recorded
+    )
+    with caplog.at_level(logging.ERROR):
+        assert h.handle(tick(T0)) is None
+        assert h.handle(tick(T0 + timedelta(seconds=1))) is None
+    errors = _errors(caplog)
+    assert len(errors) == 1
+    assert "is unreadable (" in errors[0]
+    assert "YAMLError" in errors[0] or "ParserError" in errors[0]
+    assert recorded.calls == 0
+
+
+def test_error_an_unreadable_overlay_file_is_refused_naming_the_cause_through_the_real_gate(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A file that cannot be decoded: the loader raises NodeOverlayError naming the decode error, refused once."""
+    (tmp_path / NODE).mkdir()
+    (tmp_path / NODE / "overlay.yaml").write_bytes(b"job_id: \xff\xfe\xfa\n")
+    h = HandlerStallResponderScheduled(
+        environ={"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)}, tick=_RecordingTick(DONE)
+    )
+    with caplog.at_level(logging.ERROR):
+        assert h.handle(tick(T0)) is None
+    errors = _errors(caplog)
+    assert len(errors) == 1
+    assert "is unreadable (UnicodeDecodeError)" in errors[0]
+
+
+def test_error_unreadable_overlay_roots_are_refused_by_name_not_raised(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A root that cannot be searched makes is_file raise OSError before the loader's read catch; handle() refuses it."""
+    unsearchable = str(tmp_path / ("r" * 300))
+    h = HandlerStallResponderScheduled(
+        environ={"ONEX_SKILL_OVERLAY_ROOTS": unsearchable}, tick=_RecordingTick(DONE)
+    )
+    with caplog.at_level(logging.ERROR):
+        assert h.handle(tick(T0)) is None
+        assert h.handle(tick(T0 + timedelta(seconds=1))) is None
+    errors = _errors(caplog)
+    assert len(errors) == 1
+    assert "the overlay roots cannot be searched (OSError)" in errors[0]
+
+
+def test_error_a_gate_declaration_of_another_model_is_refused_by_name(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """H: the isinstance guard: a gate holding a plain schedule declaration is refused, the tick never runs."""
+    plain = ModelScheduleDeclaration(
+        job_id="stall_responder", run_interval_seconds=600, grace_seconds=600
+    )
+    recorded = _RecordingTick(DONE)
+    h = HandlerStallResponderScheduled(
+        gate=ScheduleGate(NODE, declaration=plain), tick=recorded
+    )
+    with caplog.at_level(logging.ERROR):
+        assert h.handle(tick(T0)) is None
+    errors = _errors(caplog)
+    assert len(errors) == 1
+    assert "the overlay is not a stall responder schedule overlay" in errors[0]
+    assert recorded.calls == 0
+
+
+def test_long_error_a_long_ledger_route_error_is_truncated_in_the_event(
+    tmp_path: Path,
+) -> None:
+    long_text = "x" * 5000
+    event = HandlerStallResponderScheduled(
+        environ=environ(tmp_path), tick=_raising(LedgerRouteError(long_text))
+    ).handle(tick(T0))
+    assert event is not None
+    assert event.outcome == "failed"
+    assert len(event.detail) == DETAIL_LIMIT
+    assert event.detail.endswith(TRUNCATED_MARK)
+    assert "ledger route of the stall responder is not bound" in event.detail
+
+
+def test_long_error_a_long_failed_pass_detail_is_truncated_in_the_event(
+    tmp_path: Path,
+) -> None:
+    failed = ModelStallResponderTickOutcome(
+        True, "the ledger could not be read: " + "y" * 5000
+    )
+    event = HandlerStallResponderScheduled(
+        environ=environ(tmp_path), tick=_RecordingTick(failed)
+    ).handle(tick(T0))
+    assert event is not None
+    assert len(event.detail) == DETAIL_LIMIT
+    assert event.detail.endswith(TRUNCATED_MARK)
+
+
+def test_long_error_a_short_detail_is_not_cut(tmp_path: Path) -> None:
+    event = HandlerStallResponderScheduled(
+        environ=environ(tmp_path), tick=_RecordingTick(DONE)
+    ).handle(tick(T0))
+    assert event is not None
+    assert event.detail == DONE.detail
+
+
+class _RecordingResponder(HandlerStallCauseResponder):
+    def __init__(self) -> None:
+        super().__init__()
+        self.requests: list[ModelStallResponderRequest] = []
+
+    def handle(self, request: ModelStallResponderRequest) -> ModelStallResponderResult:
+        self.requests.append(request)
+        return super().handle(request)
+
+
+def test_injected_responder_is_the_one_the_default_tick_asks(tmp_path: Path) -> None:
+    """The responder is injected through the constructor keyword; the real tick asks that instance."""
+    responder = _RecordingResponder()
+    event = HandlerStallResponderScheduled(
+        environ=ledger_environ(tmp_path), responder=responder
+    ).handle(tick(T0))
+    assert event is not None
+    assert event.outcome == "completed"
+    assert len(responder.requests) == 1
+    assert len(responder.requests[0].rows) == 2
+
+
+_STUB_COMMAND = """
+import json, sys
+request = json.loads(sys.stdin.read())
+with open(sys.argv[1], "a", encoding="utf-8") as log:
+    log.write(json.dumps(request) + "\\n")
+answer = json.loads(open(sys.argv[2], encoding="utf-8").read())
+rows = [
+    {"raw_row": line}
+    for line in answer["lines"]
+    if f" | {request['kinds'][0]} | " in line
+    and (request.get("term") is None or request["term"] in line)
+]
+out = {"status": "ok", "rows": rows}
+if answer.get("matched_extra"):
+    out["matched"] = len(rows) + answer["matched_extra"]
+print(json.dumps(out))
+"""
+
+
+def _command_environ(
+    tmp_path: Path, lines: tuple[str, ...], matched_extra: int = 0
+) -> tuple[dict[str, str], Path]:
+    stub = tmp_path / "stub_read.py"
+    stub.write_text(_STUB_COMMAND, encoding="utf-8")
+    answer = tmp_path / "answer.json"
+    answer.write_text(
+        json.dumps({"lines": list(lines), "matched_extra": matched_extra}),
+        encoding="utf-8",
+    )
+    requests = tmp_path / "requests.jsonl"
+    command = f"{sys.executable} {stub} {requests} {answer}"
+    return (
+        environ(tmp_path, overlay_doc(), ONEX_LEDGER_BUS_READ_COMMAND=command),
+        requests,
+    )
+
+
+def test_command_route_the_production_route_reads_through_a_stub_command(
+    tmp_path: Path,
+) -> None:
+    """The command route (the production one): the handler's own tick sends one typed query per row type to the command."""
+    env, requests = _command_environ(tmp_path, STALL_ROWS)
+    event = HandlerStallResponderScheduled(environ=env).handle(tick(T0))
+    assert event is not None
+    assert event.outcome == "completed", event.detail
+    assert "stall_rows=2 " in event.detail
+    sent = [
+        json.loads(line)
+        for line in requests.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [q["kinds"] for q in sent] == [["MSG"], ["CLAIM"], ["TERMINAL"]]
+    assert sent[0]["term"] == "THROUGHPUT STALL"
+    assert all(q["limit"] == 20000 for q in sent)
+
+
+def test_command_route_a_read_past_its_row_limit_is_a_failed_run(
+    tmp_path: Path,
+) -> None:
+    """A read that reports more matches than rows (row_limit reached) is read-answer-truncated: a failed run, not short."""
+    env, _ = _command_environ(tmp_path, STALL_ROWS, matched_extra=5)
+    event = HandlerStallResponderScheduled(environ=env).handle(tick(T0))
+    assert event is not None
+    assert event.outcome == "failed"
+    assert "read-answer-truncated" in event.detail
