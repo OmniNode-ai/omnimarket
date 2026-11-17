@@ -8,11 +8,8 @@ from typing import cast
 
 import click
 
-from omnimarket.handlers.handler_model_keys import (
-    MODEL_LABELS,
-    ModelProviderChoice,
-    model_handler,
-)
+from omnimarket.handlers.handler_model_keys import model_handler
+from omnimarket.handlers.model_provider_labels import MODEL_LABELS, ModelProviderChoice
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
     ModelSetupRefusedError,
 )

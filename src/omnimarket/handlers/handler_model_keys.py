@@ -30,10 +30,10 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal, cast
 
-import click
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers import openai_compatible_endpoint as endpoints
+from omnimarket.handlers.model_provider_labels import MODEL_LABELS
 from omnimarket.handlers.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
@@ -77,9 +77,6 @@ from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result im
     ModelModelStatus,
     ModelModelTestResult,
 )
-from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
-    setup_provider_traits,
-)
 from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
     apply_credential_registered,
     apply_credential_revoked,
@@ -109,47 +106,12 @@ class LastUsableModelRefusedError(ModelKeyRefusedError):
     """Removing this provider would leave delegation no usable model (OMN-20816)."""
 
 
-#: OMN-23413: the order every surface lists providers in: the TUI's /config
-#: picker first, then the ones only the CLI offers. Every model server the
-#: developer runs is one Local Model, named by its endpoint URL.
-_PICKER_ORDER = [p.provider for p in setup_provider_traits().picker_providers()]
-LISTED_PROVIDERS: tuple[ModelProvider, ...] = tuple(
-    sorted(
-        PROVIDERS,
-        key=lambda p: (
-            _PICKER_ORDER.index(p) if p in _PICKER_ORDER else len(_PICKER_ORDER)
-        ),
-    )
-)
-
-#: The CLI's own name for a provider the TUI's /config does not offer.
-_CLI_ONLY_LABELS: dict[str, str] = {
-    "anthropic": "Anthropic",
-    "glm": "GLM",
-    "openai_compatible": "OpenAI-compatible",  # OMN-21263: any endpoint, by URL
-}
-#: One name per provider on every surface (OMN-23413): the TUI's /config picker
-#: names a provider, and the CLI says the same.
-MODEL_LABELS: dict[str, str] = {
-    **_CLI_ONLY_LABELS,
-    **{p.provider: p.label for p in setup_provider_traits().picker_providers()},
-}
-#: The provider column's width in text output: the longest name.
-LABEL_WIDTH = max(len(label) for label in MODEL_LABELS.values())
 LOCAL_HOW = (
     "A Local Model is any model server you run that speaks the OpenAI API. Add it "
     "by its endpoint URL: onex models add local --url <endpoint url> --model <name> "
     "(add --key when the server needs one). "
     "ONEX never installs a server or downloads models."
 )
-
-
-class ModelProviderChoice(click.Choice[str]):
-    """The PROVIDER argument of ``onex models``: the listed providers, one name
-    each, the same set and names the TUI's /config uses (OMN-23413)."""
-
-    def __init__(self) -> None:
-        super().__init__(LISTED_PROVIDERS, case_sensitive=False)
 
 
 #: The providers the dashboard's Credentials page lists (OMN-20816 decision (b)):
@@ -846,16 +808,12 @@ def remove_key(provider: str, echo: Echo = _quiet) -> None:
 __all__ = [
     "DASHBOARD_PROVIDERS",
     "KEYED_PROVIDERS",
-    "LABEL_WIDTH",
-    "LISTED_PROVIDERS",
     "LOCAL_HOW",
-    "MODEL_LABELS",
     "PENDING_CREDENTIAL_EVENTS_NAME",
     "AskModel",
     "Echo",
     "LastUsableModelRefusedError",
     "ModelKeyRefusedError",
-    "ModelProviderChoice",
     "add_key",
     "check_chosen_model",
     "delete_key",

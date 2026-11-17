@@ -35,7 +35,7 @@ from click.testing import CliRunner
 
 from omnimarket.cli import cli_secret
 from omnimarket.cli.cli_secret import models_group
-from omnimarket.handlers import handler_model_keys
+from omnimarket.handlers import handler_model_keys, model_provider_labels
 from omnimarket.handlers.routing.byok_plan_detection import ModelByokPlanDetection
 from omnimarket.handlers.routing.byok_provider_backends import (
     byok_routable_plans,
@@ -156,7 +156,7 @@ class TestTheProviderListFollowsTheCatalogue:
         result = CliRunner().invoke(models_group, ["list"])
         assert result.exit_code == 0, result.output
         assert (
-            f"{handler_model_keys.MODEL_LABELS['glm']:<{handler_model_keys.LABEL_WIDTH}} not set up"
+            f"{model_provider_labels.MODEL_LABELS['glm']:<{model_provider_labels.LABEL_WIDTH}} not set up"
             in (result.output.splitlines())
         )
 
@@ -201,7 +201,7 @@ class TestModelsAddGlm:
         assert resolve_local_byok_credential_model("glm") == "glm-5.3-flash"
         assert delegate.pins == ["byok-glm-general"]
         assert (
-            f"{handler_model_keys.MODEL_LABELS['glm']:<{handler_model_keys.LABEL_WIDTH}} "
+            f"{model_provider_labels.MODEL_LABELS['glm']:<{model_provider_labels.LABEL_WIDTH}} "
             "✓ answered (glm-5.3-flash)"
         ) in result.output
 

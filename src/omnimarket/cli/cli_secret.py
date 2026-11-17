@@ -49,6 +49,11 @@ from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers import handler_model_keys as model_keys
+from omnimarket.handlers import model_provider_labels as provider_labels
+from omnimarket.handlers.models_list_edit_commands import (
+    LIST_EDIT_COMMANDS,
+    edit_model_list,
+)
 from omnimarket.handlers.models_list_ladder import ladder_option, model_json
 from omnimarket.handlers.models_only_command import MODEL_COMMANDS, listed, models_text
 from omnimarket.handlers.routing.byok_model_discovery import (
@@ -64,7 +69,6 @@ from omnimarket.handlers.routing.local_byok_route import house_provider_slug
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
-    resolve_local_byok_credential_plan,
 )
 from omnimarket.nodes.node_captured_secret_resolve_effect.handlers.handler_captured_secret_resolve import (
     CapturedSecretReaderNotConfiguredError,
@@ -140,16 +144,6 @@ _KNOWN_KEY_PREFIXES: dict[str, str] = {
 def _refused(error: model_keys.ModelKeyRefusedError) -> click.ClickException:
     """The shared path's refusal as this command's error. Its text is unchanged."""
     return click.ClickException(str(error))
-
-
-def _check_chosen_model(
-    provider: str, plan: str | None, value: str, chosen: str
-) -> str:
-    """Check the customer's model against their key's own list (OMN-20844)."""
-    try:
-        return model_keys.check_chosen_model(provider, plan, value, chosen, click.echo)
-    except model_keys.ModelKeyRefusedError as refusal:
-        raise _refused(refusal) from None
 
 
 def _ask_model(provider: str) -> str:
@@ -839,8 +833,8 @@ def check_captured(reference: str, accessor: str) -> None:
 # the pinned test delegation are node_model_setup_effect's.
 # ---------------------------------------------------------------------------
 
-_MODEL_LABELS = model_keys.MODEL_LABELS
-_LABEL_WIDTH = model_keys.LABEL_WIDTH
+_MODEL_LABELS = provider_labels.MODEL_LABELS
+_LABEL_WIDTH = provider_labels.LABEL_WIDTH
 _LOCAL_HOW = model_keys.LOCAL_HOW
 _NOT_ROUTED = "Delegation does not use this key until its test passes."
 
@@ -904,7 +898,7 @@ def _read_model_key(provider: str) -> str:
     return value
 
 
-_model_choice = model_keys.ModelProviderChoice()
+_model_choice = provider_labels.ModelProviderChoice()
 
 
 models_group = click.Group(
@@ -915,7 +909,7 @@ models_group = click.Group(
         "you run, by its endpoint URL.\n\nSet up any "
         "combination; delegation chooses among them for each task."
     ),
-    commands=list(MODEL_COMMANDS),  # onex models first (OMN-21346), only
+    commands=[*MODEL_COMMANDS, *LIST_EDIT_COMMANDS],  # first, only, add-model, reorder
 )
 
 
@@ -1050,7 +1044,7 @@ def list_models(as_json: bool) -> None:
     rows = listed(as_json)  # OMN-21267: the rule in force first
     if not as_json:
         # OMN-23413: the TUI's /config order; the one tried first still leads.
-        order = {p: i for i, p in enumerate(model_keys.LISTED_PROVIDERS)}
+        order = {p: i for i, p in enumerate(provider_labels.LISTED_PROVIDERS)}
         rows = tuple(sorted(rows, key=lambda r: (not r.tried_first, order[r.provider])))
     for row in rows:
         if as_json:
@@ -1128,78 +1122,6 @@ def _listed_default_model(provider: str) -> str:
     return discovery.model
 
 
-def _edit_model_list(
-    handler: HandlerModelSetup, request: ModelModelSetupRequest
-) -> None:
-    """Run one list edit and say the resulting order, or the refusal."""
-    try:
-        result = handler.handle(request)
-    except ModelSetupRefusedError as refusal:
-        raise click.ClickException(f"{refusal}. Nothing was changed.") from None
-    label = _MODEL_LABELS[cast(str, request.provider)]
-    click.echo(f"Your {label} models, first tried first: {', '.join(result.models)}")
-
-
-@models_group.command("add-model")
-@click.argument("provider", type=_model_choice)
-@click.option(
-    "--model",
-    "model_options",
-    multiple=True,
-    required=True,
-    help="A model to add after the ones already chosen; repeat it for several.",
-)
-def add_model_to_key(provider: str, model_options: tuple[str, ...]) -> None:
-    """Add models to PROVIDER's stored key, after the ones already chosen.
-
-    Each model is checked against the provider's list for your key. The key is
-    not asked for again.
-    """
-    name = provider.lower()
-    if name == "local":
-        raise click.ClickException(
-            "add a local model with its URL, after the ones already declared: "
-            f"{_LOCAL_HOW}"
-        )
-    store = LocalByokCredentialStore()
-    key = asyncio.run(store.get_secret(f"llm.{name}.api_key"))
-    if key is None:
-        raise click.ClickException(
-            f"no {_MODEL_LABELS[name]} key is stored; add one with: "
-            f"onex models add {name}"
-        )
-    plan = resolve_local_byok_credential_plan(name)
-    for chosen in model_options:
-        _check_chosen_model(name, plan, key, chosen)
-    _edit_model_list(
-        _model_handler(),
-        ModelModelSetupRequest(
-            operation="add_models",
-            provider=cast(ModelProvider, name),
-            models=tuple(model_options),
-        ),
-    )
-
-
-@models_group.command("reorder")
-@click.argument("provider", type=_model_choice)
-@click.argument("models", nargs=-1, required=True)
-def reorder_models(provider: str, models: tuple[str, ...]) -> None:
-    """Put PROVIDER's chosen MODELS in this order, first tried first.
-
-    Name exactly the models the key holds, each once. Nothing changes otherwise.
-    A local model two servers run is named once per server, as MODEL@URL.
-    """
-    _edit_model_list(
-        _model_handler(),
-        ModelModelSetupRequest(
-            operation="reorder",
-            provider=cast(ModelProvider, provider.lower()),
-            models=models,
-        ),
-    )
-
-
 @models_group.command("remove")
 @click.argument("provider", type=_model_choice)
 @click.option(
@@ -1225,7 +1147,7 @@ def remove_model(
             "--url names a local model's server; other providers take no URL"
         )
     if model_options:
-        _edit_model_list(
+        edit_model_list(
             handler,
             ModelModelSetupRequest(
                 operation="remove_model",

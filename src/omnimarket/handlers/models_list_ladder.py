@@ -16,11 +16,8 @@ from typing import Any
 
 import click
 
-from omnimarket.handlers.handler_model_keys import (
-    LABEL_WIDTH,
-    MODEL_LABELS,
-    model_handler,
-)
+from omnimarket.handlers.handler_model_keys import model_handler
+from omnimarket.handlers.model_provider_labels import LABEL_WIDTH, MODEL_LABELS
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelModelSetupRequest,
 )

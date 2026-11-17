@@ -30,7 +30,7 @@ import pytest
 from click.testing import CliRunner
 
 from omnimarket.cli.cli_secret import models_group
-from omnimarket.handlers.handler_model_keys import LABEL_WIDTH, MODEL_LABELS
+from omnimarket.handlers.model_provider_labels import LABEL_WIDTH, MODEL_LABELS
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     registered_local_byok_providers,
