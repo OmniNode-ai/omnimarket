@@ -57,10 +57,62 @@ def load_budgets(environ: Mapping[str, str] | None = None) -> dict[str, int]:
     return dict(overlay.budget_seconds)
 
 
+def load_episode_phases() -> dict[str, tuple[str, ...]]:
+    """Read the phase vocabulary of each watched kind from the packaged contract."""
+    raw = yaml.safe_load(files(_PACKAGE).joinpath("contract.yaml").read_text("utf-8"))
+    if not isinstance(raw, dict):
+        raise NodeOverlayError(f"{NODE_NAME} contract.yaml is not a mapping")
+    kinds = raw["config"]["work_episodes"]["kinds"]
+    return {str(kind): tuple(str(p) for p in phases) for kind, phases in kinds.items()}
+
+
+def load_episode_budgets(
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, dict[str, int]]:
+    """Require exactly one positive overlay limit for every phase of every watched kind."""
+    overlay = load_structured_overlay(NODE_NAME, ModelWorkProgressBudgets, environ)
+    supplied = overlay.episode_limit_seconds
+    if supplied is None:
+        raise NodeOverlayError(
+            f"missing {NODE_NAME}.episode_limit_seconds; check ONEX_SKILL_OVERLAY_ROOTS"
+        )
+    declared = load_episode_phases()
+    problems: list[str] = []
+    for kind in sorted(set(declared) | set(supplied)):
+        if kind not in supplied:
+            problems.append(f"missing {NODE_NAME}.episode_limit_seconds.{kind}")
+            continue
+        if kind not in declared:
+            problems.append(f"unknown {NODE_NAME}.episode_limit_seconds.{kind}")
+            continue
+        problems.extend(
+            f"missing {NODE_NAME}.episode_limit_seconds.{kind}.{phase}"
+            for phase in declared[kind]
+            if phase not in supplied[kind]
+        )
+        problems.extend(
+            f"unknown {NODE_NAME}.episode_limit_seconds.{kind}.{phase}"
+            for phase in supplied[kind]
+            if phase not in declared[kind]
+        )
+    if problems:
+        raise NodeOverlayError("; ".join(problems) + "; check ONEX_SKILL_OVERLAY_ROOTS")
+    return {kind: dict(phases) for kind, phases in supplied.items()}
+
+
+def load_round_job_budgets(environ: Mapping[str, str] | None = None) -> dict[str, int]:
+    """The optional per-job override of the scheduled round limit (empty when the overlay has none)."""
+    overlay = load_structured_overlay(NODE_NAME, ModelWorkProgressBudgets, environ)
+    return dict(overlay.round_job_limit_seconds or {})
+
+
 __all__ = [
     "NODE_NAME",
     "OVERLAY_ID",
     "load_budgets",
+    "load_episode_budgets",
+    "load_episode_phases",
     "load_phase_notes",
     "load_phases",
+    "load_round_job_budgets",
 ]
