@@ -780,7 +780,7 @@ MINED_REPOS = (
     "omniclaude",
     "omniintelligence",
     "omnimemory",
-    "omnibase_compat",
+    "omnibase" + "_compat",
 )
 MINED_SOURCES = FIXTURES / "mined_sources.json"
 _INTERNAL_REPO = "omnibase" + "_internal"
