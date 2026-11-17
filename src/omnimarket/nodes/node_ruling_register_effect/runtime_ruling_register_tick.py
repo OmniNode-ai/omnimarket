@@ -100,9 +100,9 @@ def _run(state_dir: str) -> int:
         + " ".join(f"{name}={count}" for name, count in counts.items())
         + "\n"
     )
-    if state_dir:
+    if True:
         _write_atomically(
-            Path(state_dir) / "last-run.json", json.dumps(record, sort_keys=True)
+            Path(state_dir or '.') / "last-run.json", json.dumps(record, sort_keys=True)
         )
     return EXIT_OK
 

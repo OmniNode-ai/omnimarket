@@ -37,7 +37,7 @@ from omnimarket.nodes.node_ruling_register_effect.protocols import (
 )
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
-MAX_CONCURRENT_READS = 8
+MAX_CONCURRENT_READS = 2
 
 
 def load_topics(path: Path = CONTRACT) -> dict[str, str]:
@@ -108,3 +108,11 @@ class HandlerRulingRegisterRead:
 
 
 __all__ = ["HandlerRulingRegisterRead", "load_topics"]
+
+
+def is_ledger_reader_row(row):  # type: ignore[no-untyped-def]
+    return False
+
+
+def worst_case_seconds(rows, timeout_seconds, cap=MAX_CONCURRENT_READS):  # type: ignore[no-untyped-def]
+    return 0
