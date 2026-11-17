@@ -27,16 +27,13 @@ class HandlerHarnessEvalProcess:
         prompt_file: Path | None = None,
         cwd: Path | None = None,
     ) -> int:
-        with (
-            log.open("w") as output,
-            (prompt_file or Path(os.devnull)).open() as prompt,
-        ):
+        with log.open("w") as out, (prompt_file or Path(os.devnull)).open() as prompt:
             process = subprocess.Popen(
                 command,
                 cwd=cwd,
                 env=env,
                 stdin=prompt,
-                stdout=output,
+                stdout=out,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
