@@ -583,3 +583,28 @@ def test_break_always_returning_full_plan_round_turns_the_stop_red(
     )
     with pytest.raises(AssertionError):
         _expect(request, EnumPlanReviewMove.STOP_FULL_PLAN_REVIEW_FIRST_SLICE)
+
+
+# ---------------------------------------------------------------------------------------------- runtime wiring
+
+
+def test_wiring_the_runtime_subscribes_the_command_and_publishes_the_decision() -> None:
+    contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text())
+    dispatch = contract["runtime_dispatch"]
+    bus = contract["event_bus"]
+    assert contract["runtime_profiles"] == ["main"]
+    assert bus["subscribe_topics"] == [dispatch["command_topic"]]
+    assert bus["publish_topics"] == [dispatch["terminal_events"]["success"]]
+    assert contract["terminal_event"] == dispatch["terminal_events"]["success"]
+
+
+def test_wiring_the_runtime_principal_may_read_the_command_and_write_the_results() -> (
+    None
+):
+    contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text())
+    dispatch = contract["runtime_dispatch"]
+    (entry,) = contract["broker_acl_grants"]
+    granted = {(g["name"], g["operation"]) for g in entry["grants"]}
+    assert (dispatch["command_topic"], "READ") in granted
+    assert (dispatch["terminal_events"]["success"], "WRITE") in granted
+    assert (dispatch["terminal_events"]["failure"], "WRITE") in granted

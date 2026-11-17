@@ -57,13 +57,26 @@ handler_routing:
       handler:
         name: "HandlerPlanReviewLadder"
         module: "omnimarket.nodes.node_plan_review_ladder_compute.handlers.handler_plan_review_ladder"
-# Addressable the way the other directly-invoked compute nodes are; the topics are
-# declared here and no caller publishes the command until the plan-review flow switches.
+# Addressable on the runtime's bus: the runtime subscribes the command topic and publishes the decision on the
+# success topic. The result carries no failure cause, so the failure terminal is declared for the runtime's
+# own guard and is not a publish topic of this node.
+terminal_event: "onex.evt.omnimarket.plan-review-ladder-decide-completed.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.plan-review-ladder-decide-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.plan-review-ladder-decide-completed.v1"
     failure: "onex.evt.omnimarket.plan-review-ladder-decide-failed.v1"
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnimarket.plan-review-ladder-decide-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.plan-review-ladder-decide-completed.v1"
+runtime_profiles:
+  - main
 descriptor:
   node_archetype: compute
   purity: pure
@@ -80,6 +93,15 @@ metadata:
     - compute
     - plan-review
     - pure
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.plan-review-ladder-decide-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.plan-review-ladder-decide-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.plan-review-ladder-decide-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.plan-review-ladder-decide-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.plan-review-ladder-decide-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.plan-review-ladder-decide-failed.v1, operation: DESCRIBE}
 # The settings the overlay fills (every key required there); this section is the
 # packaged default load_settings reads when no overlay is configured.
 config:

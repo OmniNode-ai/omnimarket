@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-25424
+title: Make the plan review ladder node run on the dev runtime
+summary: The plan review ladder compute node was merged with a contract that has no event_bus mapping and no runtime profile, so the dev runtime loaded the contract but subscribed no command topic and no demand could reach it. The contract now names the command topic as its subscription, the completed topic as its publication, the main runtime profile and the runtime principal's broker grants. Reading one demand handled on the dev runtime on h201 and the STATUS row are taken after this change is installed and are not claimed by the hosted checks.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25424-ladder-subscribed
+  statement: The runtime subscribes the ladder node's command topic from its contract, so one demand reaches the node and one completed event comes back.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: one demand reaches node_plan_review_ladder_compute on the dev runtime on h201 and is handled, with one run line read there, or the STATUS row names the single cause that keeps it from running and who must act -- falsifier: no handled demand is found for the node on the dev runtime and the STATUS row names no cause and no actor'
+evidence_requirements:
+- kind: tests
+  description: The runtime wiring test wires the ladder contract the way the runtime does and reads one completed event for one command; the contract tests read the subscription and the broker grants from the contract.
+  command: uv run pytest tests/unit/nodes/node_plan_review_ladder_compute -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25424-ac2-wiring
+  description: 'AC2 hosted proxy: the ladder contract wires its command topic and one command reaches one completed event on the in-memory bus; the live read on the dev runtime on h201 is taken after install and is not claimed by this check.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_plan_review_ladder_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25424-integration-proof
+  description: The ladder node tests, runtime wiring test included, run on a lab host at the pushed head; the read of one demand handled on the dev runtime on h201 is taken after the change is installed and is not claimed here.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25424 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_plan_review_ladder_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .
