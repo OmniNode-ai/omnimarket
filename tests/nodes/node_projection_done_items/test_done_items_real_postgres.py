@@ -21,25 +21,29 @@ from omnimarket.nodes.node_projection_done_items.handlers.handler_done_items_wri
     upsert_statement,
 )
 
-_PORT = 5432
-_USER = "postgres"
-_DB = "omnibase_infra"
 _SCHEMA = "omn25104_done_items_write_path_test"
 
 
 async def _connect_or_skip() -> asyncpg.Connection:
-    password = os.getenv("INTEGRATION_POSTGRES_PASSWORD") or os.getenv(
-        "POSTGRES_PASSWORD", ""
+    password = os.environ.get(
+        "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
     )
     if not password:
-        pytest.skip("postgres credentials not provided")
-    host = os.getenv("INTEGRATION_POSTGRES_HOST", "localhost")
-    try:
-        return await asyncpg.connect(
-            f"postgresql://{_USER}:{quote_plus(password)}@{host}:{_PORT}/{_DB}"
+        pytest.skip(
+            "INTEGRATION_POSTGRES_PASSWORD not set -- skipping done-items write-path DB proof"
         )
-    except (OSError, asyncpg.PostgresError):
-        pytest.skip("postgres unavailable")
+    host = os.environ.get("INTEGRATION_POSTGRES_HOST", "localhost")
+    port = int(os.environ.get("INTEGRATION_POSTGRES_PORT", "5432"))
+    user = os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")
+    db = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
+    dsn = f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{db}"
+    try:
+        return await asyncpg.connect(dsn)
+    except (
+        OSError,
+        asyncpg.PostgresError,
+    ) as exc:  # pragma: no cover - infra-dependent
+        pytest.skip(f"no reachable Postgres for done-items write-path proof: {exc}")
 
 
 async def _setup(conn: asyncpg.Connection) -> None:
