@@ -13,7 +13,7 @@ its start, or whose CLAIM arrived later than that (written once: a late CLAIM st
 from __future__ import annotations
 
 import math
-from datetime import timedelta
+from datetime import UTC, timedelta
 
 from omnimarket.nodes.node_floor_fill_alarm_compute.models import (
     EnumFloorFillAlarmKind,
@@ -136,6 +136,7 @@ class HandlerFloorFillAlarm:
     ) -> ModelFloorFillAlarmRow | None:
         deadline = lane.sent_at + timedelta(minutes=request.claim_deadline_minutes)
         late = lane.claim_at is not None
+        start = lane.sent_at.astimezone(UTC).isoformat()
         if lane.claim_at is None and lane.ended:
             # The lane died before its CLAIM: no CLAIM will come, so it alarms now and once, not at the deadline.
             cause = f"lane ended with no CLAIM key={lane.key}"
@@ -144,7 +145,7 @@ class HandlerFloorFillAlarm:
                 subject=lane.lane,
                 cause=cause,
                 row_text=f"lane {lane.lane} {cause}",
-                dedupe_key=f"{EnumFloorFillAlarmKind.UNCLAIMED.value}:ended:{lane.lane}:{lane.key}",
+                dedupe_key=f"{EnumFloorFillAlarmKind.UNCLAIMED.value}:ended:{lane.lane}:{lane.key}:{start}",
                 write_once=True,
             )
         if lane.claim_at is None:
@@ -164,9 +165,9 @@ class HandlerFloorFillAlarm:
             row_text=f"lane {lane.lane} {cause}",
             # A late CLAIM has its own key, so the earlier "no CLAIM" row never stands in for it, and it is written once.
             dedupe_key=(
-                f"{EnumFloorFillAlarmKind.UNCLAIMED.value}:late-claim:{lane.lane}:{lane.key}"
+                f"{EnumFloorFillAlarmKind.UNCLAIMED.value}:late-claim:{lane.lane}:{lane.key}:{start}"
                 if late
-                else f"{EnumFloorFillAlarmKind.UNCLAIMED.value}:{lane.lane}:{lane.key}"
+                else f"{EnumFloorFillAlarmKind.UNCLAIMED.value}:{lane.lane}:{lane.key}:{start}"
             ),
             write_once=late,
         )

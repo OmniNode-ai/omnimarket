@@ -83,23 +83,24 @@ def test_measured_cause_sends_nothing_when_the_snapshot_has_no_free_slot(
     assert _reserved(store) == 0
 
 
-def test_measured_cause_sends_refuses_when_a_host_read_failed(tmp_path: Path) -> None:
+def test_measured_cause_sends_zero_readable_slots_beside_unread_hosts(
+    tmp_path: Path,
+) -> None:
     """The measured h051 reading: the token pool status exits 3 on every host, so the snapshot holds 0 slots and an
     ``accounts-unread`` refusal per host. That is an unread pool, not a free count of zero."""
     out, code, store = _tick(tmp_path, free=0, age_seconds=5, unread_hosts=("h3", "h4"))
-    assert "pool-unread:pool-snapshot:" in out, out
-    assert "accounts-unread" in out
-    assert code == DEGRADED, out
+    assert "pool-unread" not in out, out
+    assert code == OK, out
     assert _reserved(store) == 0
 
 
-def test_measured_cause_sends_refuses_when_one_host_read_failed_beside_a_free_one(
+def test_measured_cause_sends_counts_a_readable_host_beside_an_unread_one(
     tmp_path: Path,
 ) -> None:
     out, code, store = _tick(tmp_path, free=2, age_seconds=5, unread_hosts=("h3",))
-    assert "pool-unread:pool-snapshot:" in out, out
-    assert code == DEGRADED, out
-    assert _reserved(store) == 0
+    assert "pool-unread" not in out, out
+    assert code == OK, out
+    assert _reserved(store) == 2
 
 
 def test_measured_cause_sends_does_not_fill_an_away_host_with_slots(

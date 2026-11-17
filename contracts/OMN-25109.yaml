@@ -1,0 +1,176 @@
+schema_version: 1.0.0
+ticket_id: OMN-25109
+title: 'Review findings 1 to 12 on omnimarket PR 6333 at head aaffc5d24a1e are fixed or argued: the fill order is tested, the alarm routing is bound, write-once keys carry the start
+  time, the proof readers check the install stamp and the merge-base, and the Lab comment and required checks are at the new head'
+summary: 'Review findings 1 to 12 on omnimarket PR 6333 at head aaffc5d24a1e are fixed or argued: the fill order is tested, the alarm routing is bound, write-once keys carry the start
+  time, the proof readers check the install stamp and the merge-base, and the Lab comment and required checks are at the new head'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+requirements:
+- id: req-omn25109-review-findings
+  statement: 'Review findings 1 to 12 on omnimarket PR 6333 at head aaffc5d24a1e are fixed or argued: the fill order is tested, the alarm routing is bound, write-once keys carry the
+    start time, the proof readers check the install stamp and the merge-base, and the Lab comment and required checks are at the new head'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the fill order is implemented and a test whose name matches fill_order selects and passes, or AC2 of [OMN-24873](https://linear.app/omninode/issue/OMN-24873) is
+      moved to a minted ticket in a PR comment -- falsifier: `uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -k fill_order -q` collects zero tests or
+      fails at the new head'
+  - id: AC2
+    statement: 'AC2: a test drives main with a live tick and fails when the run_alarm_after_tick call is removed, and the store built in the runtime does not connect in its constructor
+      -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the run_alarm_after_tick call removed from main'
+  - id: AC3
+    statement: 'AC3: the routed alarm topic reaches a handler built from its four ports on the runtime path, or the routing, topics and ACL grants are dropped, with a test that fails
+      on a handler built with no ports -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the handler built with no ports'
+  - id: AC4
+    statement: 'AC4: when the store is still down and the publish raises inside the unreadable handler, \_record_started returns failed and keeps the FAILED answer, a test writes both
+      failing, and the kind literal started is the real one -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the publish error left uncaught'
+  - id: AC5
+    statement: 'AC5: the write-once keys carry the start time so a second death or a late CLAIM after a restart is written, ended entries older than the age bound with no CLAIM do not
+      alarm at the first check, each with a test -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the start time removed from the key'
+  - id: AC6
+    statement: 'AC6: sending-runs counts only runs observed at or after the install row and a run of an older revision fails it, with a test -- falsifier: `uv run --frozen pytest src/omnimarket/nodes
+      -k floor_fill_proof -q` passes with the install stamp comparison removed'
+  - id: AC7
+    statement: 'AC7: lab-head requires a commit in merge-base..HEAD and parses the body field so a body whose first line is the Lab line matches, and no-handoff matches the real handoff
+      row grammar, each with a test on a real row -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_proof -q` passes with the ancestor-only check restored'
+  - id: AC8
+    statement: 'AC8: the owner agreement on the AC3 narrowing of [OMN-24966](https://linear.app/omninode/issue/OMN-24966) is given in a PR comment, the four pool keys are in the overlay
+      of h051, and one accounts-unread host does not refuse the whole pool because readable hosts are counted -- falsifier: `uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests
+      -k measured_cause_sends -q` passes with the whole-pool refusal restored'
+  - id: AC9
+    statement: 'AC9: the lane helper in the test support calls the real append handler and real CLAIM rows hold lane= and key= as whole cells, with a test on the real writer''s output,
+      and the alarm check runs on its own timer so a dead tick timer or a timed-out tick still alarms -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q`
+      passes with the helper writing a hand-built row'
+  - id: AC10
+    statement: 'AC10: a PR comment starting `Lab: head=<full new head sha>` names the sha, the command and exit 0, and every required check-run of omnimarket#6333 is success at the new
+      head -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6333` lists a required context that is not success at the new head, or the Lab comment lacks the full sha, the command
+      or exit 0'
+evidence_requirements:
+- kind: tests
+  description: 'Review findings 1 to 12 on omnimarket PR 6333 at head aaffc5d24a1e are fixed or argued: the fill order is tested, the alarm routing is bound, write-once keys carry the
+    start time, the proof readers check the install stamp and the merge-base, and the Lab comment and required checks are at the new head'
+  command: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_alarm_effect/tests/test_floor_fill_alarm_fourth_review.py -q
+dod_evidence:
+- id: dod-omn25109-ac1
+  description: 'AC1: the fill order is implemented and a test whose name matches fill_order selects and passes, or AC2 of [OMN-24873](https://linear.app/omninode/issue/OMN-24873) is
+    moved to a minted ticket in a PR comment -- falsifier: `uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -k fill_order -q` collects zero tests or fails
+    at the new head'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -k fill_order -q
+    cwd: .
+  execution_scope: local_done_gate
+- id: dod-omn25109-ac2
+  description: 'AC2: a test drives main with a live tick and fails when the run_alarm_after_tick call is removed, and the store built in the runtime does not connect in its constructor
+    -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the run_alarm_after_tick call removed from main'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_alarm_effect/tests/test_floor_fill_alarm_fourth_review.py -k "main_live_tick or constructor_never_connects"
+      -q
+    cwd: .
+- id: dod-omn25109-ac3
+  description: 'AC3: the routed alarm topic reaches a handler built from its four ports on the runtime path, or the routing, topics and ACL grants are dropped, with a test that fails
+    on a handler built with no ports -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the handler built with no ports'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_alarm_effect/tests/test_floor_fill_alarm_fourth_review.py -k not_advertised -q
+    cwd: .
+- id: dod-omn25109-ac4
+  description: 'AC4: when the store is still down and the publish raises inside the unreadable handler, \_record_started returns failed and keeps the FAILED answer, a test writes both
+    failing, and the kind literal started is the real one -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the publish error left uncaught'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_alarm_effect/tests/test_floor_fill_alarm_fourth_review.py -k both_store_writes -q
+    cwd: .
+- id: dod-omn25109-ac5
+  description: 'AC5: the write-once keys carry the start time so a second death or a late CLAIM after a restart is written, ended entries older than the age bound with no CLAIM do not
+    alarm at the first check, each with a test -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the start time removed from the key'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_alarm_effect/tests/test_floor_fill_alarm_fourth_review.py -k "restart_writes or old_ended" -q
+    cwd: .
+- id: dod-omn25109-ac6
+  description: 'AC6: sending-runs counts only runs observed at or after the install row and a run of an older revision fails it, with a test -- falsifier: `uv run --frozen pytest src/omnimarket/nodes
+    -k floor_fill_proof -q` passes with the install stamp comparison removed'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_alarm_effect/tests/test_floor_fill_alarm_fourth_review.py -k sending_runs_ignore -q
+    cwd: .
+- id: dod-omn25109-ac7
+  description: 'AC7: lab-head requires a commit in merge-base..HEAD and parses the body field so a body whose first line is the Lab line matches, and no-handoff matches the real handoff
+    row grammar, each with a test on a real row -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_proof -q` passes with the ancestor-only check restored'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_alarm_effect/tests/test_floor_fill_alarm_fourth_review.py -k "lab_head_excludes or handoff_reads" -q
+    cwd: .
+- id: dod-omn25109-ac8
+  description: 'AC8: the owner agreement on the AC3 narrowing of [OMN-24966](https://linear.app/omninode/issue/OMN-24966) is given in a PR comment, the four pool keys are in the overlay
+    of h051, and one accounts-unread host does not refuse the whole pool because readable hosts are counted -- falsifier: `uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests
+    -k measured_cause_sends -q` passes with the whole-pool refusal restored'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_measured_cause_sends.py -q
+    cwd: .
+  - check_type: command
+    check_value: test -s "${ONEX_FLOOR_FILL_OWNER_AGREEMENT_FILE:?owner agreement is unread}" && ssh hp-gen8 'python3 -c "import os, yaml; from pathlib import Path; p=Path(os.environ[\"OMNI_HOME\"])
+      / \"overlays/overlays/node_floor_fill_orchestrator/overlay.yaml\"; s=yaml.safe_load(p.read_text())[\"floor_fill_live\"]; assert all(k in s for k in (\"pool_snapshot_path\", \"pool_record_suffix\",
+      \"pool_snapshot_max_age_seconds\", \"pool_engine\"))"'
+  execution_scope: local_done_gate
+- id: dod-omn25109-ac9
+  description: 'AC9: the lane helper in the test support calls the real append handler and real CLAIM rows hold lane= and key= as whole cells, with a test on the real writer''s output,
+    and the alarm check runs on its own timer so a dead tick timer or a timed-out tick still alarms -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q`
+    passes with the helper writing a hand-built row'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_alarm_effect/tests/test_floor_fill_alarm_fourth_review.py -k "real_writer or helper_executes or own_timer
+      or schedule_has or serialized" -q
+    cwd: .
+- id: dod-omn25109-ac10
+  description: 'AC10: a PR comment starting `Lab: head=<full new head sha>` names the sha, the command and exit 0, and every required check-run of omnimarket#6333 is success at the new
+    head -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6333` lists a required context that is not success at the new head, or the Lab comment lacks the full sha, the command
+    or exit 0'
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: command
+    check_value: test "$(onex scm pr-view OmniNode-ai/omnimarket#6333 | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["head_sha"])')" = "$(git rev-parse HEAD)"
+  - check_type: command
+    check_value: onex scm pr-checks OmniNode-ai/omnimarket#6333
+    cwd: .
+  - check_type: command
+    check_value: 'python3 -c ''import pathlib,re,sys; text=pathlib.Path(sys.argv[1]).read_text(); assert re.match(r"Lab: head=" + sys.argv[2] + r"(?:\s|$)", text); assert "command="
+      in text; assert re.search(r"exit(?:=| )0\b", text)'' "${ONEX_FLOOR_FILL_LAB_COMMENT_FILE:?new-head Lab comment unread}" "$(git rev-parse HEAD)"'
+  execution_scope: local_done_gate

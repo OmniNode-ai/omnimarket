@@ -456,7 +456,11 @@ def test_floor_fill_alarm_the_tick_unit_carries_the_alarm_section(
         },
     )
     assert code == 0, err
-    (line,) = [x for x in out.splitlines() if x.startswith("ExecStart=")]
+    (line,) = [
+        x
+        for x in out.splitlines()
+        if x.startswith("ExecStart=") and x.endswith(" tick")
+    ]
     words = shlex.split(
         line.removeprefix("ExecStart=").replace("%%", "%").replace("$$", "$")
     )

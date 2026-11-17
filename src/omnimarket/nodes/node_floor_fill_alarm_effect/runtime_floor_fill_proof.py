@@ -13,13 +13,14 @@ from an older install is never counted for this head.
 - ``checks-since-install``: a line of the alarm check log with outcome ``checked`` and ``alarms_found`` stamped at or after
   the install row.
 - ``no-handoff``: the ledger file exists and holds no MSG to the landing controller naming the pull request.
-- ``lab-head``: the pull request body's ``Lab: head=<sha>`` names a commit that is the checkout's head or an ancestor of it.
+- ``lab-head``: the pull request body's ``Lab: head=<sha>`` names a commit in merge-base..HEAD.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -30,7 +31,7 @@ from pathlib import Path
 CELL_SEPARATOR = " | "
 FLOOR_KEY_PREFIX = "key=floor:"
 INSTALL_SHA_CHARS = 12
-LAB_HEAD = re.compile(r"(?:^|\n|\\n)Lab: head=([0-9a-f]{40})")
+LAB_HEAD = re.compile(r"(?:^|\n|\\n)Lab: head=([0-9a-f]{40})(?=\s|$)")
 
 
 class ProofMissingError(Exception):
@@ -70,14 +71,18 @@ def install_stamp(ledger: Path, ticket: str, host: str, head: str) -> datetime:
     raise ProofMissingError(f"no STATUS row of {ticket} carries {wanted} and observed=")
 
 
-def sending_runs(runs_log: Path) -> None:
+def sending_runs(runs_log: Path, since: datetime) -> None:
     sent: dict[int, int] = {}
     for line in _read_lines(runs_log, "run log"):
         if not line.strip():
             continue
         try:
             item = json.loads(line)
-            sent[int(item["seq"])] = int(item["run"]["lanes_sent"])
+            observed = _stamp(str(item["run"]["observed_at"]))
+            if observed is None:
+                raise ValueError("run has no aware observation time")
+            if observed >= since:
+                sent[int(item["seq"])] = int(item["run"]["lanes_sent"])
         except (ValueError, KeyError, TypeError) as exc:
             raise ProofMissingError(
                 f"run log {runs_log} holds an unreadable line: {exc}"
@@ -123,37 +128,62 @@ def checks_since_install(check_log: Path, since: datetime) -> None:
 
 
 def no_handoff(ledger: Path, pull_request: str) -> None:
-    named = re.compile(rf"pr=(?:[\w.-]+/)?{re.escape(pull_request)}(?:\s|$)")
     for row in _read_lines(ledger, "ledger"):
         cells = _cells(row)
-        to_controller = (
-            len(cells) > 2 and cells[1] == "MSG" and "to=landing-controller" in cells
-        )
-        if to_controller and any(named.match(cell) for cell in cells):
+        if len(cells) < 3 or cells[1] != "MSG":
+            continue
+        fields = dict(cell.split("=", 1) for cell in cells[2:] if "=" in cell)
+        if "landing-controller" not in fields.get("to", "").split(","):
+            continue
+        named = [
+            name.removeprefix("OmniNode-ai/")
+            for name in re.split(r"[,\s]+", fields.get("pr", ""))
+        ]
+        if pull_request.removeprefix("OmniNode-ai/") in named:
             raise ProofMissingError(
                 f"the ledger holds a handoff row for {pull_request}"
             )
 
 
 def lab_head(body_json: Path, checkout: Path) -> None:
-    text = body_json.read_text(encoding="utf-8")
+    text = "\n".join(_read_lines(body_json, "pull request"))
     start = text.find("{")
-    found = LAB_HEAD.findall(text[start:] if start >= 0 else text)
+    try:
+        document = json.loads(text[start:] if start >= 0 else text)
+        facts = document.get("facts", document.get("result", document))
+        body = facts["body"]
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise ProofMissingError("the pull request body field is unreadable") from exc
+    if not isinstance(body, str):
+        raise ProofMissingError("the pull request body field is not text")
+    found = LAB_HEAD.findall(body)
     if not found:
         raise ProofMissingError(
             "the pull request body carries no Lab: head=<40-character sha> line"
         )
     sha = found[-1]
-    done = subprocess.run(
-        ["git", "-C", str(checkout), "merge-base", "--is-ancestor", sha, "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if done.returncode != 0:
-        raise ProofMissingError(
-            f"Lab: head={sha} is not this checkout's head or an ancestor of it"
+    # Resolve this checkout explicitly, including a linked worktree's gitfile; an
+    # inherited lane GIT_DIR must never redirect a proof to a different checkout.
+    env = {
+        **os.environ,
+        "GIT_DIR": str(checkout.resolve() / ".git"),
+        "GIT_WORK_TREE": str(checkout.resolve()),
+    }
+
+    def git(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *args], env=env, capture_output=True, text=True, check=False
         )
+
+    base = git("merge-base", "origin/dev", "HEAD")
+    if base.returncode != 0:
+        raise ProofMissingError("the pull request merge base is unreadable")
+    branch_point = base.stdout.strip()
+    if (
+        git("merge-base", "--is-ancestor", sha, "HEAD").returncode != 0
+        or git("merge-base", "--is-ancestor", sha, branch_point).returncode == 0
+    ):
+        raise ProofMissingError(f"Lab: head={sha} is outside merge-base..HEAD")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -161,15 +191,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="check", required=True)
     runs = sub.add_parser("sending-runs")
     runs.add_argument("--runs", type=Path, required=True)
-    for name in ("claims-since-install", "checks-since-install"):
-        item = sub.add_parser(name)
+    for name in ("sending-runs", "claims-since-install", "checks-since-install"):
+        item = runs if name == "sending-runs" else sub.add_parser(name)
         item.add_argument("--ledger", type=Path, required=True)
         item.add_argument("--ticket", required=True)
         item.add_argument("--host", required=True)
         item.add_argument("--head", required=True)
         if name == "claims-since-install":
             item.add_argument("--min", type=int, default=2, dest="minimum")
-        else:
+        elif name == "checks-since-install":
             item.add_argument("--check-log", type=Path, required=True)
     handoff = sub.add_parser("no-handoff")
     handoff.add_argument("--ledger", type=Path, required=True)
@@ -180,7 +210,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(list(argv) if argv is not None else None)
     try:
         if args.check == "sending-runs":
-            sending_runs(args.runs)
+            since = install_stamp(args.ledger, args.ticket, args.host, args.head)
+            sending_runs(args.runs, since)
         elif args.check == "claims-since-install":
             since = install_stamp(args.ledger, args.ticket, args.host, args.head)
             claims_since_install(args.ledger, since, args.minimum)

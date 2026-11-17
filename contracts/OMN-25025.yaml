@@ -1,11 +1,12 @@
 schema_version: 1.0.0
 ticket_id: OMN-25025
-title: 'Review findings 1 to 13 on omnimarket PR 6333 at head c672c4f56ac8 are fixed or argued: the alarm check is scheduled, a seq gap and a late CLAIM read correctly, the contract checks can fail, and
-  the Lab comment and required checks are at the new head'
-summary: 'One writer lane fixes the thirteen review findings of the floor fill live pool seam and alarm rule pull request at head c672c4f56ac8: the fill''s entry runs the alarm check after every live tick
-  and the runtime can build the handler, a seq gap drops only the idle history and an unreadable source is an alarm row, the run log is written atomically, the CLAIM lookup takes the first CLAIM at or after
-  the start and a lane that ended without a CLAIM alarms, the alarm row carries the principal and a UTC stamp and is appended through the real ledger writer, a run stamped after now is converted and logged,
-  a tick that starts lanes stores its answer on every pass path, and the integration checks of the contracts read what they claim. The fill order and the owner''s agreements are argued in a PR comment.'
+title: 'Review findings 1 to 13 on omnimarket PR 6333 at head c672c4f56ac8 are fixed or argued: the alarm check is scheduled, a seq gap and a late CLAIM read correctly, the contract
+  checks can fail, and the Lab comment and required checks are at the new head'
+summary: 'One writer lane fixes the thirteen review findings of the floor fill live pool seam and alarm rule pull request at head c672c4f56ac8: the fill''s entry runs the alarm check
+  after every live tick and the runtime can build the handler, a seq gap drops only the idle history and an unreadable source is an alarm row, the run log is written atomically, the
+  CLAIM lookup takes the first CLAIM at or after the start and a lane that ended without a CLAIM alarms, the alarm row carries the principal and a UTC stamp and is appended through the
+  real ledger writer, a run stamped after now is converted and logged, a tick that starts lanes stores its answer on every pass path, and the integration checks of the contracts read
+  what they claim. The fill order and the owner''s agreements are argued in a PR comment.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -14,33 +15,36 @@ requirements:
   statement: The third review findings on the floor fill live pool seam and alarm rule pull request are fixed or argued with evidence.
   acceptance:
   - id: AC1
-    statement: 'AC1: the fill order is implemented and a test whose name matches fill_order selects and passes, or AC2 of [OMN-24873](https://linear.app/omninode/issue/OMN-24873) is moved to a minted ticket
-      in a PR comment -- falsifier: `uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -k fill_order -q` collects zero tests or fails at the new head'
+    statement: 'AC1: the fill order is implemented and a test whose name matches fill_order selects and passes, or AC2 of [OMN-24873](https://linear.app/omninode/issue/OMN-24873) is
+      moved to a minted ticket in a PR comment -- falsifier: `uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -k fill_order -q` collects zero tests or
+      fails at the new head'
   - id: AC2
-    statement: 'AC2: the fill''s workflow calls run_alarm_check on the live container with a test on the bound factory, and the runtime can build the handler from its four ports -- falsifier: `uv run --frozen
-      pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the call removed'
+    statement: 'AC2: the fill''s workflow calls run_alarm_check on the live container with a test on the bound factory, and the runtime can build the handler from its four ports -- falsifier:
+      `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the call removed'
   - id: AC3
-    statement: 'AC3: a seq gap drops only the idle history, an unread source writes an alarm row, the run log and the stored answer are written atomically, and an old-shape stored answer does not fail every
-      check -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the atomic write removed'
+    statement: 'AC3: a seq gap drops only the idle history, an unread source writes an alarm row, the run log and the stored answer are written atomically, and an old-shape stored answer
+      does not fail every check -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the atomic write removed'
   - id: AC4
-    statement: 'AC4: the CLAIM lookup takes the first CLAIM at or after the start, a lane that ended without a CLAIM alarms, and an idle answer with no UNKNOWN line falls back to its first line as the cause,
-      each with a test -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the at-or-after comparison reverted'
+    statement: 'AC4: the CLAIM lookup takes the first CLAIM at or after the start, a lane that ended without a CLAIM alarms, and an idle answer with no UNKNOWN line falls back to its
+      first line as the cause, each with a test -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the at-or-after comparison reverted'
   - id: AC5
-    statement: 'AC5: the alarm row is appended through the declared ledger command with a principal cell and the Z stamp converted to UTC, and a test renders it through the real writer -- falsifier: `uv
-      run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the principal cell removed from the row'
+    statement: 'AC5: the alarm row is appended through the declared ledger command with a principal cell and the Z stamp converted to UTC, and a test renders it through the real writer
+      -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the principal cell removed from the row'
   - id: AC6
-    statement: 'AC6: a run stamped after now is converted and logged and writes a check line, and a tick that starts lanes stores an answer on every pass path, each with a test -- falsifier: `uv run --frozen
-      pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the skew conversion removed'
+    statement: 'AC6: a run stamped after now is converted and logged and writes a check line, and a tick that starts lanes stores an answer on every pass path, each with a test -- falsifier:
+      `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with the skew conversion removed'
   - id: AC7
-    statement: 'AC7: the contract checks of [OMN-24873](https://linear.app/omninode/issue/OMN-24873) AC5 and AC6 read two consecutive sending runs, match CLAIM rows of the head''s revision, compare the
-      Lab: head= sha to the head, and fail on a missing ledger file -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with a missing ledger file in the fixture'
+    statement: 'AC7: the contract checks of [OMN-24873](https://linear.app/omninode/issue/OMN-24873) AC5 and AC6 read two consecutive sending runs, match CLAIM rows of the head''s revision,
+      compare the Lab: head= sha to the head, and fail on a missing ledger file -- falsifier: `uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q` passes with a missing
+      ledger file in the fixture'
   - id: AC8
-    statement: 'AC8: the acceptance criteria and the AC3 narrowing of [OMN-24966](https://linear.app/omninode/issue/OMN-24966) are agreed by the owner in a PR comment, and the four pool keys are in the
-      overlay of h051 so one accounts-unread host does not refuse the whole pool -- falsifier: `uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -k measured_cause_sends -q`
-      passes with the pool keys absent from the fixture overlay'
+    statement: 'AC8: the acceptance criteria and the AC3 narrowing of [OMN-24966](https://linear.app/omninode/issue/OMN-24966) are agreed by the owner in a PR comment, and the four pool
+      keys are in the overlay of h051 so one accounts-unread host does not refuse the whole pool -- falsifier: `uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests
+      -k measured_cause_sends -q` passes with the pool keys absent from the fixture overlay'
   - id: AC9
-    statement: 'AC9: a PR comment starting `Lab: head=<full new head sha>` names the sha, the command and exit 0, and every required check-run of omnimarket#6333 is success at the new head -- falsifier:
-      `onex scm pr-checks OmniNode-ai/omnimarket#6333` lists a required context that is not success at the new head, or the Lab comment lacks the full sha, the command or exit 0'
+    statement: 'AC9: a PR comment starting `Lab: head=<full new head sha>` names the sha, the command and exit 0, and every required check-run of omnimarket#6333 is success at the new
+      head -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6333` lists a required context that is not success at the new head, or the Lab comment lacks the full sha, the command
+      or exit 0'
 evidence_requirements:
 - kind: tests
   description: The alarm rule, alarm check, fill answer and measured-cause tests.
@@ -52,9 +56,9 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn25025-ac1
-  description: 'The fill order (merged change read NOT RUNNING, red-check PR, conflicted PR, backlog ticket) is not implemented in this change: the floor record the fill reads holds none of that data, so
-    there is nothing to order on. No test whose name matches fill_order exists, the move of AC2 of OMN-24873 to a minted ticket is requested in a PR comment (this lane mints none), and the owner decides.
-    The check selects no test, so it stays unproven and runs only at the local Done gate.'
+  description: 'The fill order (merged change read NOT RUNNING, red-check PR, conflicted PR, backlog ticket) is not implemented in this change: the floor record the fill reads holds
+    none of that data, so there is nothing to order on. No test whose name matches fill_order exists, the move of AC2 of OMN-24873 to a minted ticket is requested in a PR comment (this
+    lane mints none), and the owner decides. The check selects no test, so it stays unproven and runs only at the local Done gate.'
   source: manual
   execution_scope: local_done_gate
   binds_ac:
@@ -64,8 +68,8 @@ dod_evidence:
     check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -k fill_order -q
     cwd: .
 - id: dod-omn25025-ac2
-  description: The fill's own entry runs run_alarm_check after every live tick when its overlay holds a floor_fill_alarm section (tests on the entry and on the schedule install that carries the section),
-    the container binds the four ports, and the handler is built by the runtime from its injectable params alone (the repository's boot-resolvable routing test).
+  description: The live main tick calls the alarm check with all four ports bound by the live container; the unbound bus routing, topic declarations and broker grants are removed. The
+    fill installer renders an independent alarm timer.
   source: manual
   binds_ac:
   - AC2
@@ -77,8 +81,8 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/test_handler_routing_boot_resolvable.py -q
     cwd: .
 - id: dod-omn25025-ac3
-  description: A seq gap drops only the idle history and the lanes and pool are still read, an unreadable source (an old-shape stored answer) is an alarm row, the run log is replaced whole by an atomic
-    write, and a log cut mid-write is started again from the stored answer.
+  description: A seq gap drops only the idle history and the lanes and pool are still read, an unreadable source (an old-shape stored answer) is an alarm row, the run log is replaced
+    whole by an atomic write, and a log cut mid-write is started again from the stored answer.
   source: manual
   binds_ac:
   - AC3
@@ -87,8 +91,8 @@ dod_evidence:
     check_value: uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q
     cwd: .
 - id: dod-omn25025-ac4
-  description: The CLAIM lookup takes the first CLAIM of the lane and key at or after the start (a restart does not hide the new CLAIM), a lane the state records as ended with no CLAIM alarms once, and
-    an answer with no UNKNOWN line names its first line as the cause.
+  description: The CLAIM lookup takes the first CLAIM of the lane and key at or after the start (a restart does not hide the new CLAIM), a lane the state records as ended with no CLAIM
+    alarms once, and an answer with no UNKNOWN line names its first line as the cause.
   source: manual
   binds_ac:
   - AC4
@@ -97,8 +101,8 @@ dod_evidence:
     check_value: uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q
     cwd: .
 - id: dod-omn25025-ac5
-  description: The alarm row carries principal= (the settings' authenticated principal) as a header cell after lane=, the Z stamp is the UTC time of the check, and the row is appended through the real work
-    ledger append handler and the repository's row grammar.
+  description: The alarm row carries principal= (the settings' authenticated principal) as a header cell after lane=, the Z stamp is the UTC time of the check, and the row is appended
+    through the real work ledger append handler and the repository's row grammar.
   source: manual
   binds_ac:
   - AC5
@@ -107,8 +111,8 @@ dod_evidence:
     check_value: uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q
     cwd: .
 - id: dod-omn25025-ac6
-  description: A run stamped after the check's clock is read as stamped at the check and logged in the check line (runs_clamped), a check that fails for any reason writes a failed line, and a tick that
-    starts lanes and then loses its state write still stores its answer with lanes_started.
+  description: A run stamped after the check's clock is read as stamped at the check and logged in the check line (runs_clamped), a check that fails for any reason writes a failed line,
+    and a tick that starts lanes and then loses its state write still stores its answer with lanes_started.
   source: manual
   binds_ac:
   - AC6
@@ -120,8 +124,7 @@ dod_evidence:
     check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_answer_on_failed_pass.py -q
     cwd: .
 - id: dod-omn25025-ac7
-  description: 'The integration checks of OMN-24873 AC5 and AC6 read two consecutive sending runs, count only CLAIM rows and check lines stamped at or after the install row of the head''s revision, compare
-    the Lab: head= sha of the body to the checkout''s head (the head or an ancestor of it), and fail on a ledger file that is missing; the checks run over fixtures with the host faked.'
+  description: Sending runs, CLAIM rows and check lines are stamped at or after the install; the Lab body field names a commit in merge-base..HEAD; missing ledger files refuse.
   source: manual
   binds_ac:
   - AC7
@@ -130,9 +133,9 @@ dod_evidence:
     check_value: uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q
     cwd: .
 - id: dod-omn25025-ac8
-  description: The owner's agreement on the acceptance criteria and the AC3 narrowing of OMN-24966 is requested in a PR comment and is not given in anything this lane read. The overlay example of the fill
-    holds the four pool keys and a live section without them is refused naming them (measured_cause_sends); the overlay of h051 itself is on that host, which a lane does not change, so its four keys are
-    added by the host's owner before the install.
+  description: The owner's agreement on the acceptance criteria and the AC3 narrowing of OMN-24966 is requested in a PR comment and is not given in anything this lane read. The overlay
+    example of the fill holds the four pool keys and a live section without them is refused naming them (measured_cause_sends); the overlay of h051 itself is on that host, which a lane
+    does not change, so its four keys are added by the host's owner before the install.
   source: manual
   binds_ac:
   - AC8
@@ -140,9 +143,14 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -k measured_cause_sends -q
     cwd: .
+  - check_type: command
+    check_value: test -s "${ONEX_FLOOR_FILL_OWNER_AGREEMENT_FILE:?owner agreement is unread}" && ssh hp-gen8 'python3 -c "import os, yaml; from pathlib import Path; p=Path(os.environ[\"OMNI_HOME\"])
+      / \"overlays/overlays/node_floor_fill_orchestrator/overlay.yaml\"; s=yaml.safe_load(p.read_text())[\"floor_fill_live\"]; assert all(k in s for k in (\"pool_snapshot_path\", \"pool_record_suffix\",
+      \"pool_snapshot_max_age_seconds\", \"pool_engine\"))"'
+  execution_scope: local_done_gate
 - id: dod-omn25025-ac9
-  description: 'The PR comment starting Lab: head= names the full new head sha, the command and exit 0, and every required check-run of omnimarket#6333 is success at the new head; hosted CI cannot read
-    the watcher of the pull request at its head, so only the local Done gate runs this.'
+  description: 'The PR comment starting Lab: head= names the full new head sha, the command and exit 0, and every required check-run of omnimarket#6333 is success at the new head; hosted
+    CI cannot read the watcher of the pull request at its head, so only the local Done gate runs this.'
   source: manual
   execution_scope: local_done_gate
   binds_ac:
@@ -153,12 +161,17 @@ dod_evidence:
   - check_type: command
     check_value: onex scm pr-checks OmniNode-ai/omnimarket#6333 > "$TMPDIR/omn25025-checks.txt" && grep -qi success "$TMPDIR/omn25025-checks.txt" && ! grep -Eqi 'failure|pending|cancel|error|unread|timed_out|timed
       out|queued|in_progress|action_required|expected|skipped' "$TMPDIR/omn25025-checks.txt"
+  - check_type: command
+    check_value: 'python3 -c ''import pathlib,re,sys; text=pathlib.Path(sys.argv[1]).read_text(); assert re.match(r"Lab: head=" + sys.argv[2] + r"(?:\s|$)", text); assert "command="
+      in text; assert re.search(r"exit(?:=| )0\b", text)'' "${ONEX_FLOOR_FILL_LAB_COMMENT_FILE:?new-head Lab comment unread}" "$(git rev-parse HEAD)"'
 - id: dod-omn25025-integration-proof
-  description: 'Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check: the alarm rule, alarm check, entry, install, answer and measured-cause tests run on a lab host at the sha through onex lab-work.'
+  description: 'Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check: the alarm rule, alarm check, entry, install, answer and measured-cause tests run
+    on a lab host at the sha through onex lab-work.'
   source: manual
   execution_scope: local_done_gate
   binds_ac:
   - AC2
   checks:
   - check_type: command
-    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25025 --kind test -- uv run --frozen pytest src/omnimarket/nodes -k "floor_fill_alarm or measured_cause_sends or floor_fill_answer" -q
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25025 --kind test -- uv run --frozen pytest src/omnimarket/nodes
+      -k "floor_fill_alarm or measured_cause_sends or floor_fill_answer" -q

@@ -12,9 +12,9 @@ description: >
   cause never clears (a CLAIM that arrived late, a lane that ended with no CLAIM) is written once. A source that cannot be
   read (the runs or the lanes) is an alarm row of its own and the check goes on over the others. The container binds the
   four ports from the overlay's floor_fill_alarm section and runs one check as one call (container/container_live.py); the
-  fill's own entry calls it after every live tick when the overlay holds that section, so this node starts no timer, unit or
-  scheduler. The handler's ports default to none so the runtime builds it from its injectable params alone, and a handler
-  built that way refuses by naming the unbound port.
+  fill's own entry calls it after every live tick when the overlay holds that section, and the fill installer also renders
+  a separate alarm service and timer whose alarm-check command does not run a tick. The handler's ports default to none so the runtime builds it from its injectable params alone, and a handler
+  built that way refuses by naming the unbound port. No bus route or broker grants are advertised until a runtime factory can bind these ports.
 handler:
   module: omnimarket.nodes.node_floor_fill_alarm_effect.handlers.handler_floor_fill_alarm_check
   class: HandlerFloorFillAlarmCheck
@@ -28,17 +28,6 @@ output_model:
   name: ModelFloorFillAlarmCheckResult
   module: omnimarket.nodes.node_floor_fill_alarm_effect.models.model_floor_fill_alarm_check
   description: The alarms found, the rows written, the repeats left out and the pool read.
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: check
-      topic: onex.cmd.omnimarket.floor-fill-alarm-requested.v1
-      handler:
-        name: HandlerFloorFillAlarmCheck
-        module: omnimarket.nodes.node_floor_fill_alarm_effect.handlers.handler_floor_fill_alarm_check
-terminal_event: onex.evt.omnimarket.floor-fill-alarm-completed.v1
-runtime_dispatch:
-  command_topic: onex.cmd.omnimarket.floor-fill-alarm-requested.v1
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -50,18 +39,6 @@ descriptor:
     - appends one STATUS row per alarm to the rolling ledger through the declared append command
     - appends the fill's run history to its own run log file
     - appends one line per check to its own check log file
-event_bus:
-  subscribe_topics: [onex.cmd.omnimarket.floor-fill-alarm-requested.v1]
-  publish_topics: [onex.evt.omnimarket.floor-fill-alarm-completed.v1]
-externally_consumed_topics:
-- onex.evt.omnimarket.floor-fill-alarm-completed.v1
-broker_acl_grants:
-  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
-    grants:
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.floor-fill-alarm-completed.v1, operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.floor-fill-alarm-completed.v1, operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.floor-fill-alarm-requested.v1, operation: READ}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.floor-fill-alarm-requested.v1, operation: DESCRIBE}
 metadata:
   ticket: OMN-24873
   transport_type: inmemory

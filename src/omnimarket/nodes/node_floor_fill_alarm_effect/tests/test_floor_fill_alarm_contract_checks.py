@@ -21,7 +21,7 @@ from typing import Any
 import pytest
 import yaml
 
-from omnimarket.handlers.floor_fill_proof_readers import (
+from omnimarket.nodes.node_floor_fill_alarm_effect.runtime_floor_fill_proof import (
     ProofMissingError,
     lab_head,
     no_handoff,
@@ -236,9 +236,15 @@ def test_floor_fill_alarm_contract_two_consecutive_sending_runs_are_read(
     state = host.home / ".onex_state" / "floor-fill-alarm"
 
     def line(seq: int, sent: int) -> str:
-        return json.dumps({"seq": seq, "run": {"lanes_sent": sent}})
+        return json.dumps(
+            {
+                "seq": seq,
+                "run": {"lanes_sent": sent, "observed_at": "2026-11-16T10:06:00Z"},
+            }
+        )
 
     assert host.run(command) != 0, "no run log is not two runs"
+    host.ledger.write_text(_install_row(_head()) + "\n", encoding="utf-8")
     runs = state / "runs.jsonl"
     runs.write_text("\n".join([line(1, 2), line(3, 2)]) + "\n", encoding="utf-8")
     assert host.run(command) != 0, "runs 1 and 3 are not consecutive"
@@ -305,7 +311,11 @@ def test_floor_fill_alarm_contract_the_lab_line_sha_is_compared_to_the_head(
 
 def test_floor_fill_alarm_contract_the_lab_sha_may_be_an_ancestor_but_not_another_branch(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("GIT_DIR", str(tmp_path / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(tmp_path))
+
     def git(*args: str) -> str:
         return subprocess.run(
             ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args],
@@ -318,7 +328,10 @@ def test_floor_fill_alarm_contract_the_lab_sha_may_be_an_ancestor_but_not_anothe
     git("init", "-q", "-b", "main")
     git("commit", "-q", "--allow-empty", "-m", "first")
     first = git("rev-parse", "HEAD")
+    git("update-ref", "refs/remotes/origin/dev", first)
     git("commit", "-q", "--allow-empty", "-m", "second")
+    branch_commit = git("rev-parse", "HEAD")
+    git("commit", "-q", "--allow-empty", "-m", "third")
     git("checkout", "-q", "-b", "other", first)
     git("commit", "-q", "--allow-empty", "-m", "elsewhere")
     elsewhere = git("rev-parse", "HEAD")
@@ -334,7 +347,10 @@ def test_floor_fill_alarm_contract_the_lab_sha_may_be_an_ancestor_but_not_anothe
         return 0
 
     assert check(git("rev-parse", "HEAD")) == 0
-    assert check(first) == 0, "the body's sha is the head of its creation: an ancestor"
+    assert check(branch_commit) == 0, (
+        "a PR ancestor after the merge base carries branch evidence"
+    )
+    assert check(first) == 1, "the merge base does not carry PR evidence"
     assert check(elsewhere) == 1, "a commit of another branch is not this head"
 
 
@@ -414,3 +430,24 @@ def test_floor_fill_alarm_contract_unmet_fill_order_runs_only_at_the_done_gate()
             e for e in document["dod_evidence"] if "fill_order" in str(e["checks"])
         ]
         assert entry["execution_scope"] == "local_done_gate", name
+
+
+def test_floor_fill_alarm_contract_new_comment_proof_requires_head_command_and_exit(
+    host: _Host,
+) -> None:
+    command = _checks("OMN-25109", "dod-omn25109-ac10")[-1]
+    proof = host.root / "comment.txt"
+    env = {"ONEX_FLOOR_FILL_LAB_COMMENT_FILE": str(proof)}
+    assert host.run(command, **env) != 0
+    head = _head()
+    for body in (
+        f"Lab: head={'f' * 40} command=pytest exit=0",
+        f"Lab: head={head} exit=0",
+        f"Lab: head={head}f command=pytest exit=0",
+        f"Lab: head={head} command=pytest exit=1",
+        f"prefix Lab: head={head} command=pytest exit=0",
+    ):
+        proof.write_text(body)
+        assert host.run(command, **env) != 0, body
+    proof.write_text(f"Lab: head={head} command=pytest exit=0")
+    assert host.run(command, **env) == 0

@@ -19,7 +19,7 @@ import json
 import os
 import subprocess
 from collections.abc import Callable, Sequence
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, ValidationError
@@ -235,10 +235,17 @@ class StoredStateSentLanes:
         load_payload: Callable[[str], str | None],
         scope: str,
         ledger_rows: Callable[[], tuple[str, ...]],
+        *,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        max_ended_age_minutes: int = 120,
     ) -> None:
         self._load = load_payload
         self._scope = scope
         self._rows = ledger_rows
+        if max_ended_age_minutes < 1:
+            raise ValueError("ended lane age bound must be positive")
+        self._clock = clock
+        self._max_ended_age = timedelta(minutes=max_ended_age_minutes)
 
     def read_sent_lanes(self) -> tuple[ModelFloorFillSentLane, ...]:
         try:
@@ -250,12 +257,13 @@ class StoredStateSentLanes:
         state = _read_state(payload)
         rows = self._rows()
         lanes: list[ModelFloorFillSentLane] = []
+        bound = self._clock() - self._max_ended_age
         for entry in state.entries.values():
             started = entry.sent_at or entry.reserved_at
             if started is None or entry.lane is None:
                 continue
             claim = _claim_at(rows, entry.lane, entry.key, started)
-            if entry.ended and claim is not None:
+            if entry.ended and (claim is not None or started < bound):
                 continue
             lanes.append(
                 ModelFloorFillSentLane(

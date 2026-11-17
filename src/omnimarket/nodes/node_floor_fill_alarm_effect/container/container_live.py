@@ -7,15 +7,17 @@ under ``<scope>`` with the CLAIM time of each from the ledger file), the pool (t
 reads, read again by the check itself and refused when stale) and the ledger (read from its file, written only through the
 declared append command). ``load_payload`` is the fill's row reader (``store_payload_loader`` over its store).
 
-``run_alarm_check`` is the whole check as one run that returns what it found and logs one line for it; it starts no timer, unit or scheduler. The
-fill's own entry (``runtime_floor_fill_orchestrator``) calls it after every live tick when the overlay holds a
-``floor_fill_alarm`` section, so the check runs as often as the fill and sees every run.
+``run_alarm_check`` serializes each read/dedupe/write cycle across the fill tick and the independent alarm timer.
+The fill scheduler installs the separate alarm service when the live overlay carries ``floor_fill_alarm``.
+Its ``alarm-check`` command reads the stored rows without invoking a tick.
 """
 
 from __future__ import annotations
 
+import fcntl
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
@@ -80,7 +82,9 @@ def build_live_alarm_check(
         runs=StoredAnswerRunSource(
             load_payload, settings.scope, Path(settings.run_log_path)
         ),
-        lanes=StoredStateSentLanes(load_payload, settings.scope, ledger.rows),
+        lanes=StoredStateSentLanes(
+            load_payload, settings.scope, ledger.rows, clock=pool_clock
+        ),
         pool=CallablePoolReader(pool.free_slots, (FloorFillUnreadableError,)),
         ledger=ledger,
     )
@@ -96,7 +100,38 @@ def _log_check(settings: ModelFloorFillAlarmSettings, line: dict[str, object]) -
         raise AlarmSourceError(f"check log {path} not written: {exc}") from exc
 
 
+@contextmanager
+def _check_lock(settings: ModelFloorFillAlarmSettings) -> Iterator[None]:
+    """Serialize the independent timer and post-tick read/dedupe/write section."""
+    lock = Path(settings.check_log_path).with_suffix(".lock")
+    try:
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        stream = lock.open("a", encoding="utf-8")
+    except OSError as exc:
+        raise AlarmSourceError(f"check log lock {lock} not opened: {exc}") from exc
+    with stream:
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+
 def run_alarm_check(
+    settings: ModelFloorFillAlarmSettings,
+    *,
+    load_payload: Callable[[str], str | None],
+    now: datetime | None = None,
+    pool_clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+) -> ModelFloorFillAlarmCheckResult:
+    """One serialized check shared by the tick and its independent alarm timer."""
+    with _check_lock(settings):
+        return _run_alarm_check(
+            settings, load_payload=load_payload, now=now, pool_clock=pool_clock
+        )
+
+
+def _run_alarm_check(
     settings: ModelFloorFillAlarmSettings,
     *,
     load_payload: Callable[[str], str | None],

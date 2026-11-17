@@ -249,6 +249,29 @@ class FloorFillScheduler:
             (self.unit_dir / self.service_name, service),
             (self.unit_dir / self.timer_name, timer),
         ]
+        if self.live is not None and self.alarm is not None:
+            alarm_name = self.schedule.unit_name + "-alarm"
+            alarm_schedule = self.schedule.model_copy(update={"unit_name": alarm_name})
+            alarm_service, alarm_timer = render_systemd(
+                alarm_schedule,
+                self.config,
+                omni_root=omni_root,
+                home=self.home,
+                hosts=self.hosts,
+                live=self.live,
+                alarm=self.alarm,
+            )
+            alarm_service = alarm_service.replace(" tick\n", " alarm-check\n")
+            files.extend(
+                [
+                    (self.unit_dir / f"{alarm_name}.service", alarm_service),
+                    (self.unit_dir / f"{alarm_name}.timer", alarm_timer),
+                ]
+            )
+            try:
+                refuse_worktree_roots({target.name: body for target, body in files})
+            except ValueError as exc:
+                return ModelFloorFillScheduleResult(exit_code=1, stderr=f"{exc}\n")
         if dry_run:
             return ModelFloorFillScheduleResult(
                 exit_code=0, stdout="".join(body + "\n" for _, body in files)
@@ -275,9 +298,10 @@ class FloorFillScheduler:
             else:
                 target.write_text(body, encoding="utf-8")
                 output += f"wrote {target}\n"
+        timers = [target.name for target, _ in files if target.suffix == ".timer"]
         for step in (
             ["systemctl", "--user", "daemon-reload"],
-            ["systemctl", "--user", "enable", "--now", self.timer_name],
+            ["systemctl", "--user", "enable", "--now", *timers],
         ):
             done = self.run(step)
             output += done.stdout
@@ -296,11 +320,14 @@ class FloorFillScheduler:
         refused = self._refusal(this_host)
         if refused is not None:
             return refused
-        disabled = self.run(
-            ["systemctl", "--user", "disable", "--now", self.timer_name]
-        )
+        alarm_timer = self.schedule.unit_name + "-alarm.timer"
+        alarm_service = self.schedule.unit_name + "-alarm.service"
+        timers = [self.timer_name]
+        if (self.unit_dir / alarm_timer).exists():
+            timers.append(alarm_timer)
+        disabled = self.run(["systemctl", "--user", "disable", "--now", *timers])
         output = disabled.stdout
-        for unit in (self.timer_name, self.service_name):
+        for unit in (self.timer_name, self.service_name, alarm_timer, alarm_service):
             target = self.unit_dir / unit
             if target.exists():
                 target.unlink()

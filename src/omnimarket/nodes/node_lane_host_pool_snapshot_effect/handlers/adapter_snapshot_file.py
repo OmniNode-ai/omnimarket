@@ -131,8 +131,10 @@ class SnapshotFloorPool:
         self._engine = engine
 
     def free_slots(self) -> int:
-        """The lane slots of every host that admits lanes for the engine; a failed host read is refused, never counted
-        as zero: the snapshot writes such a host as zero slots with an ``accounts-unread`` refusal."""
+        """Count readable hosts that admit the engine; refuse when no host is readable.
+
+        Hosts with an ``accounts-unread`` refusal never contribute slots.
+        """
         try:
             snapshot = self._pool.read_pool(
                 ModelLaneHostPoolRequest(engine=self._engine)
@@ -144,7 +146,12 @@ class SnapshotFloorPool:
             for reading in snapshot.readings
             if (reading.lane_admission_refusal or "").startswith(ACCOUNTS_UNREAD_PREFIX)
         ]
-        if unread:
+        readable = [
+            reading
+            for reading in snapshot.readings
+            if reading.lane_admission_refusal is None and reading.engines
+        ]
+        if unread and not readable:
             raise FloorFillUnreadableError(f"pool-snapshot:{'; '.join(unread)}")
         # The writer empties ``engines`` only for a host with no usable account, and that host carries a refusal; a host
         # with empty engines and no refusal is a writer fault, read as an unread pool and never as zero free slots.

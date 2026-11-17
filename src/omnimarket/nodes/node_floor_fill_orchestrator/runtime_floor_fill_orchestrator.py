@@ -8,7 +8,8 @@ both run it with the dispatch venv's interpreter. ``J`` is the overlay's ``floor
 
 After a live ``tick`` the entry runs one alarm check (``node_floor_fill_alarm_effect``) when the overlay holds a
 ``floor_fill_alarm`` section: the check reads the rows the tick just stored, so it runs as often as the fill and sees every
-run. A check that cannot run prints its refusal and fails the entry; it never changes what the tick did.
+run. The separate ``alarm-check`` command reads the same stored rows without running a tick, so its own timer can
+observe a dead or timed-out tick. A check that cannot run prints its refusal and fails the entry.
 
 The entry holds no I/O of its own: the handler it builds takes every seam in its constructor. The
 default profile is ``inmemory`` (scripted seams over an in-memory conditional store). ``--profile live`` binds the
@@ -219,6 +220,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
         build_handler = build_inmemory_handler
+
+    if rest == ["alarm-check"]:
+        if load_payload is None or ALARM_OVERLAY_SECTION not in overlay:
+            sys.stdout.write("UNKNOWN alarm-check:live-profile-and-overlay-required\n")
+            return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
+        try:
+            config = load_floor_fill_config(overlay.get(OVERLAY_SECTION, {}))
+            config.check_fill_host(lab_host_rows(overlay))
+            if known.this_host != config.host_id:
+                raise FloorFillConfigError(
+                    "alarm check belongs on the fill host", ("floor_fill.host_id",)
+                )
+        except FloorFillConfigError as error:
+            sys.stdout.write(f"UNKNOWN alarm-check:host-or-overlay:{error}\n")
+            return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
+        # This command belongs to a separate service and timer. It never invokes
+        # run_entry, so neither a missing tick nor a timed-out tick blocks it.
+        result = run_alarm_after_tick(
+            ModelFloorFillEntryResult(exit_code=0, stdout=""),
+            EnumFloorFillCommand.TICK.value,
+            overlay,
+            load_payload=load_payload,
+        )
+        sys.stdout.write(result.stdout)
+        sys.stdout.flush()
+        return result.exit_code
 
     result = run_entry(
         rest,
