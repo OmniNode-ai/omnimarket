@@ -278,6 +278,31 @@ def test_contract_declares_the_command_topic_and_its_handler() -> None:
     )
 
 
+def test_contract_subscribes_the_runtime_to_the_command_topic() -> None:
+    # The dev runtime subscribes only to event_bus.subscribe_topics, so a node that
+    # declares runtime_dispatch.command_topic alone never receives its command.
+    contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text())
+    dispatch = contract["runtime_dispatch"]
+    bus = contract["event_bus"]
+    assert bus["subscribe_topics"] == [dispatch["command_topic"]]
+    assert set(bus["publish_topics"]) == set(dispatch["terminal_events"].values())
+    assert contract["runtime_profiles"] == ["main"]
+    granted = {
+        (row["name"], row["operation"])
+        for block in contract["broker_acl_grants"]
+        for row in block["grants"]
+    }
+    assert granted == {
+        (dispatch["command_topic"], "READ"),
+        (dispatch["command_topic"], "DESCRIBE"),
+        *(
+            (topic, op)
+            for topic in bus["publish_topics"]
+            for op in ("WRITE", "DESCRIBE")
+        ),
+    }
+
+
 def test_handler_does_no_io() -> None:
     tree = ast.parse(Path(handler_plan_first_slice.__file__).read_text())
     imported: set[str] = set()

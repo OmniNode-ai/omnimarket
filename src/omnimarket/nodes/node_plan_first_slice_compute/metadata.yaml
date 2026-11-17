@@ -7,7 +7,8 @@ entry_points:
     node_plan_first_slice_compute: "omnimarket.nodes.node_plan_first_slice_compute"
 capabilities:
   standalone: true
-  # false until a caller publishes the command: the check runs in process.
+  # false until a caller publishes the command: the runtime now subscribes to the command
+  # topic, and the check still runs in process.
   full_runtime: false
   requires_network: false
   requires_repo: false

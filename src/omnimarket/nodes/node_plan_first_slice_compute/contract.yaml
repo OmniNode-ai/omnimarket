@@ -62,6 +62,35 @@ runtime_dispatch:
   terminal_events:
     success: "onex.evt.omnimarket.plan-first-slice-check-completed.v1"
     failure: "onex.evt.omnimarket.plan-first-slice-check-failed.v1"
+# The dev runtime subscribes, and provisions topics, from this section only
+# (event_bus.subscribe_topics, publish_topics and dlq_topics); runtime_dispatch alone
+# leaves the runtime subscribed to nothing for the node. The command is
+# runtime_dispatch.command_topic; the two terminals are runtime_dispatch.terminal_events.
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnimarket.plan-first-slice-check-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.plan-first-slice-check-completed.v1"
+    - "onex.evt.omnimarket.plan-first-slice-check-failed.v1"
+# main, beside the landing decision node: the runtime-profile validator requires a
+# profile on a contract that consumes a command.
+runtime_profiles:
+  - main
+# The broker grants the node's three topics need (broker permission coverage gate): the runtime login reads the
+# command and writes the two terminal events.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.plan-first-slice-check-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.plan-first-slice-check-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.plan-first-slice-check-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.plan-first-slice-check-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.plan-first-slice-check-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.plan-first-slice-check-failed.v1, operation: DESCRIBE}
 descriptor:
   node_archetype: compute
   purity: pure
