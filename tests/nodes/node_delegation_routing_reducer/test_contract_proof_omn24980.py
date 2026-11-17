@@ -3,8 +3,8 @@
 """Run the contract's receipt assertion against a recorded CLI receipt and its variants.
 
 The receipt is the stdout of a real ``onex delegate --json`` run on the dev lane
-(``fixtures/delegate_stdout_local.json``, run e97b77ba-c7d1-44db-94e9-4c807c215da3,
-read 2026-11-17, host paths, addresses and the bus host redacted). It is the
+(``fixtures/delegate_stdout_local.json``, run a5f1ef93-d5c1-4535-8211-dc8cedc83fda,
+read 2026-11-17T07:37Z, host paths, addresses and the bus host redacted). It is the
 runtime envelope that ``omnibase_infra.cli.cli_delegate`` prints, not the
 ``runs/<run_id>/receipt.json`` file, so it carries no top-level ``bus``, ``lane``,
 ``locus``, ``backend_id`` or ``routing_tier`` key.
@@ -20,6 +20,7 @@ import shlex
 import subprocess
 import sys
 import threading
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
@@ -51,7 +52,7 @@ CHANGED_RUNG = "local-heavy-reasoning"
 # (40587 characters, 10146 estimated tokens). Metered by the in-process run on
 # the branch ladder, run be2e4a4f-41a4-4d25-a6f7-dce7ca4f0597, answered by
 # local-heavy-reasoning: 16912 input tokens (fixtures/metered_token_readings.json).
-# A repeated-character prompt of 44290 characters meters 5597 and never passes.
+# A repeated-character prompt of 44313 characters meters 5597 and never passes.
 READINGS = json.loads(
     (Path(__file__).parent / "fixtures/metered_token_readings.json").read_text()
 )
@@ -156,6 +157,54 @@ def test_recorded_envelope_validates_against_the_model_the_cli_prints() -> None:
         ModelSkillResult.model_validate(broken)
 
 
+def key_order_problems(receipt: dict[str, Any]) -> list[str]:
+    """Where the recorded envelope departs from what the CLI prints."""
+    problems = []
+    printed = list(ModelSkillResult.model_fields)
+    if list(receipt) != printed:
+        problems.append(f"top-level keys {list(receipt)} are not the printed order")
+    identity = receipt.get("runtime_identity")
+    terminal = receipt["result"]["terminal_payload"]["payload"]
+    stamped = identity and identity.get("stamped_at")
+    if not stamped:
+        problems.append("runtime_identity carries no stamped_at")
+    else:
+        # The CLI stamps the identity as it prints, a moment after the terminal.
+        gap = datetime.fromisoformat(stamped) - datetime.fromisoformat(
+            receipt["result"]["terminal_payload"]["envelope_timestamp"]
+        )
+        if not timedelta(0) <= gap <= timedelta(seconds=60):
+            problems.append(f"runtime_identity stamped {gap} after the terminal")
+    assert terminal["status"] == "completed"
+    return problems
+
+
+def test_recorded_envelope_is_the_cli_stdout_in_printed_key_order() -> None:
+    receipt = recorded()
+    # The CLI prints the model's fields in declaration order, runtime_identity
+    # before schema_version, stamped as it prints.
+    assert key_order_problems(receipt) == []
+    assert "runtime_identity" in ModelSkillResult.model_fields
+    validated = ModelSkillResult.model_validate(receipt)
+    assert str(validated.run_id) == receipt["run_id"]
+
+
+def test_hand_added_or_reordered_runtime_identity_is_refused() -> None:
+    receipt = recorded()
+    # A key-sorted dump with runtime_identity appended last (the earlier fixture).
+    reordered = {k: receipt[k] for k in sorted(receipt) if k != "runtime_identity"}
+    reordered["runtime_identity"] = receipt["runtime_identity"]
+    assert any("printed order" in p for p in key_order_problems(reordered))
+    # An identity stamped hours after the run (the earlier fixture: 05:58Z on a
+    # 02:01Z run).
+    late = copy.deepcopy(receipt)
+    late["runtime_identity"]["stamped_at"] = "2026-11-17T12:00:00.000000Z"
+    assert any("stamped" in p for p in key_order_problems(late))
+    missing = copy.deepcopy(receipt)
+    del missing["runtime_identity"]["stamped_at"]
+    assert key_order_problems(missing) != []
+
+
 def test_proof_accepts_an_answer_from_the_changed_rung(tmp_path: Path) -> None:
     control = answered_by_changed_rung()
     completed = check(tmp_path, control)
@@ -178,14 +227,15 @@ def test_proof_accepts_the_spread_peer_above_8192_tokens_only(tmp_path: Path) ->
     assert check(tmp_path, peer).returncode != 0
 
 
-def test_proof_refuses_the_recorded_373_token_run_by_another_local_rung(
+def test_proof_refuses_the_recorded_373_token_run_below_8192_tokens(
     tmp_path: Path,
 ) -> None:
-    # The recorded real run: local tier, accepted, but answered by a rung that
-    # base already answered on, with 373 input tokens. Presented as proof it fails.
+    # The recorded real run: local tier, accepted, answered by the changed rung
+    # but with 373 input tokens (a 39-character prompt). Presented as proof of
+    # the changed ladder it fails: the budget change is not what served it.
     receipt = recorded()
     attempt = payload(receipt)["attempts"][0]
-    assert attempt["backend_id"] == "local-omnipc2-chat"
+    assert attempt["backend_id"] == CHANGED_RUNG
     assert attempt["tier"] == "local"
     assert payload(receipt)["metrics"]["input_tokens"] == 373
     refused = check(tmp_path, receipt)
@@ -555,3 +605,188 @@ def test_reproduction_is_limited_to_summarization_in_the_contract() -> None:
     summary = " ".join(contract()["summary"].split())
     assert "summarization call on a single-slot endpoint" in summary
     assert "no other class was reproduced" in summary
+
+
+def ac1_check() -> str:
+    return str(bound_items(contract())["AC1"][0]["checks"][0]["check_value"])
+
+
+def run_ac1_check(
+    root: Path, data: dict[str, Any], receipt: dict[str, Any], *, owning_test: bool
+) -> subprocess.CompletedProcess[str]:
+    """Run the AC1 check in a stand-in home directory whose CLI prints ``receipt``."""
+    home = root / "stand_in_home"
+    cli = home / "omnibase_infra/scripts/onex"
+    cli.parent.mkdir(parents=True)
+    printed = home / "printed.json"
+    printed.write_text(json.dumps(receipt))
+    cli.write_text(f'#!/bin/sh\ncat "{printed}"\n')
+    cli.chmod(0o755)
+    (home / ".onex_state").mkdir()
+    if owning_test:
+        (home / "owning_repo/tests").mkdir(parents=True)
+        (home / "owning_repo/tests/test_cause.py").write_text("")
+    work = root / "repo"
+    (work / "contracts").mkdir(parents=True)
+    (work / "contracts/OMN-24980.yaml").write_text(yaml.safe_dump(data))
+    return subprocess.run(
+        ["bash", "-c", ac1_check()],
+        check=False,
+        text=True,
+        capture_output=True,
+        env={
+            "PATH": f"{Path(sys.executable).parent}:/usr/bin:/bin",
+            "OMNI_HOME": str(home),
+        },
+        cwd=work,
+    )
+
+
+def test_a_one_line_summarise_run_at_tier_local_does_not_meet_ac1(
+    tmp_path: Path,
+) -> None:
+    # The recorded run is a one-line summarise run on the dev lane accepted at
+    # tier local. The receipt half of the AC1 check accepts it, yet AC1 (the cause
+    # named and fixed, with a test that fails on base in the owning repository)
+    # is open, so the whole check must fail until that test is recorded.
+    run = recorded()
+    attempt = payload(run)["attempts"][0]
+    assert attempt["tier"] == "local"
+    assert attempt["acceptance_decision"] == "accept"
+    data = contract()
+    assert data["context"]["criterion_status"]["AC1"]["cause_fix_test"] is None
+    refused = run_ac1_check(tmp_path / "open", data, run, owning_test=False)
+    assert refused.returncode != 0
+    assert "no base-failing test of the cause" in refused.stderr
+    assert "PASS" not in refused.stdout
+    # Positive control: with the base-failing test recorded and present, the same
+    # recorded run satisfies the check, so only the cause binding held it back.
+    data["context"]["criterion_status"]["AC1"]["cause_fix_test"] = {
+        "repo": "owning_repo",
+        "path": "tests/test_cause.py",
+        "base_ref": "0123456789ab",
+    }
+    served = run_ac1_check(tmp_path / "control", data, run, owning_test=True)
+    assert served.returncode == 0, served.stderr
+    assert "PASS" in served.stdout
+    # A recorded test whose file does not exist is refused too.
+    missing = run_ac1_check(tmp_path / "missing", data, run, owning_test=False)
+    assert missing.returncode != 0
+    assert "does not exist" in missing.stderr
+
+
+def owner_ticket_problems(data: dict[str, Any]) -> list[str]:
+    """What is wrong with how the contract names the owners of its follow-ups."""
+    problems = []
+    for name, entry in data["context"]["owner_tickets"].items():
+        ticket = entry["ticket"]
+        if ticket is None:
+            # An id is never invented to fill the field: with no ticket the
+            # contract says so, names who files it and what was searched.
+            if "no owner ticket exists" not in entry.get("state", ""):
+                problems.append(
+                    f"{name}: null ticket with no statement that none exists"
+                )
+            if "orchestrator files" not in entry.get("state", ""):
+                problems.append(f"{name}: null ticket names no one who files it")
+            if not entry.get("searched"):
+                problems.append(f"{name}: null ticket records no search")
+        elif not re.fullmatch(r"OMN-\d+", str(ticket)):
+            problems.append(f"{name}: {ticket!r} is not a ticket id")
+    return problems
+
+
+def test_owner_tickets_are_literal_ids_or_a_recorded_absence() -> None:
+    data = contract()
+    assert data["ticket_id"] == "OMN-24980"
+    assert (
+        yaml.safe_load((CONTRACT.parent / "OMN-25214.yaml").read_text())["ticket_id"]
+        == "OMN-25214"
+    )
+    assert owner_ticket_problems(data) == []
+    # Mutations: a null with no statement is refused, a malformed id is refused,
+    # and a literal id passes.
+    bare = contract()
+    bare["context"]["owner_tickets"]["dev_mounted_ladder"] = {"ticket": None}
+    assert owner_ticket_problems(bare) != []
+    wrong = contract()
+    wrong["context"]["owner_tickets"]["dev_mounted_ladder"]["ticket"] = "owner TBD"
+    assert owner_ticket_problems(wrong) != []
+    filed = contract()
+    for entry in filed["context"]["owner_tickets"].values():
+        entry["ticket"] = "OMN-25098"
+    assert owner_ticket_problems(filed) == []
+
+
+def test_the_dev_run_record_is_a_hosted_local_run_or_says_none_exists() -> None:
+    record = contract()["context"]["dev_ladder_run"]
+    passing = record["passing_hosted_run"]
+    if passing is None:
+        # No passing hosted run: say so, and the in-process runs do not count.
+        assert "no passing hosted dev run" in record["state"]
+        assert record["last_hosted_read"]["locus"] == "deployed-lane"
+        assert record["last_hosted_read"]["lane"] == "dev"
+        assert record["last_hosted_read"]["bus"] == "kafka"
+        assert record["last_hosted_read"]["proof_exit_code"] != 0
+        assert record["last_hosted_read"]["tier"] != "local"
+    else:
+        assert passing["locus"] == "deployed-lane"
+        assert passing["lane"] == "dev"
+        assert passing["tier"] == "local"
+        assert passing["backend_id"] in (CHANGED_RUNG, "local-omnipc2-chat")
+        assert passing["input_tokens"] > 8192
+    in_process = {
+        run["run_id"]
+        for run in READINGS["proof_prompt"]["runs"]["branch_ladder_in_process"]
+    }
+    assert set(record["in_process_runs_do_not_count"]) == in_process
+    assert passing is None or passing["run_id"] not in in_process
+    # The integration proof stays unbound and local-gate-only while it is open.
+    item = next(i for i in contract()["dod_evidence"] if i["id"] == INTEGRATION_PROOF)
+    assert "binds_ac" not in item
+    assert item["execution_scope"] == "local_done_gate"
+
+
+LARGE_WINDOW_CLAIM = re.compile(
+    r"(is|are)? ?tested (against|through) the large-window rungs"
+    r"|tests escalation, research and reasoning (against|through) the large-window rungs",
+    re.I,
+)
+
+
+def large_window_claims(text: str) -> bool:
+    return LARGE_WINDOW_CLAIM.search(" ".join(text.split())) is not None
+
+
+def test_no_contract_says_escalation_and_research_are_tested_on_large_window_rungs() -> (
+    None
+):
+    for name in ("OMN-24980.yaml", "OMN-25102.yaml"):
+        assert not large_window_claims((CONTRACT.parent / name).read_text()), name
+    # Positive controls: both old wordings are what the pattern finds.
+    assert large_window_claims(
+        "tests escalation, research and reasoning through the large-window rungs."
+    )
+    assert large_window_claims(
+        "each of escalation, research and reasoning is tested against the large-window rungs --"
+    )
+
+
+def test_the_character_count_of_the_repeated_prompt_is_the_metered_one() -> None:
+    metered = READINGS["x_repeated_proof_prompt"]["characters"]
+    text = " ".join(CONTRACT.read_text().split())
+    assert re.findall(r"repeated-character prompt of (\d+) characters", text) == [
+        str(metered)
+    ]
+    assert "44290" not in text
+    # Negative control: the count the review found in the contract differs.
+    assert metered != 44290
+
+
+def test_sibling_contract_texts_agree_with_the_bound_criteria() -> None:
+    for name in ("OMN-25167.yaml", "OMN-25185.yaml"):
+        text = " ".join((CONTRACT.parent / name).read_text().split())
+        assert "no longer carry binds_ac" not in text, name
+        assert "binds AC1, AC2 or AC3 under any id" not in text, name
+        assert "input budget of 64512" not in text, name
+        assert "373-token local-omnipc2-chat run is refused" not in text, name

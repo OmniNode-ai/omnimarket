@@ -47,6 +47,19 @@
 tiers:
   - name: local
     cost_per_1k_tokens: 0.0
+    # Tokenizer-free input bound, sized for the SMALLEST member that serves this
+    # tier. The endpoint meters real tokens, not the characters-over-four
+    # estimate (digit-named generated code meters 2.0 characters per token,
+    # digits and floats 1.0, so a prompt inside max_context_tokens can still
+    # fill the window). A prompt whose input_token_upper_bound
+    # (omnimarket.handlers.routing.input_token_bound) is above this is not
+    # offered to any rung of the tier. Members: local-coder and
+    # local-heavy-reasoning read a 131072-token window with 65536 reserved for
+    # output (131072 - 65536 - 1024 wrapper margin = 64512); the spread peer
+    # local-omnipc2-chat has 65536 tokens per slot (one 131072 KV pool over 2
+    # slots) and a 16384 output reserve (65536 - 16384 - 1024 = 48128, the
+    # smallest). The wrapper is 221 to 429 metered tokens over the 19 classes.
+    max_input_token_bound: 48128
     # OMN-13234: typed per-tier cost model. local is served on owned GPUs
     # (.201/.200) — no marginal API cost. The dollar figure for a local call,
     # when surfaced, comes from the pricing manifest's GPU compute_cost
@@ -62,19 +75,10 @@ tiers:
       # header comment) — a mismatch here would strand routing.
       - id: Qwen3.8-27B
         backend_id: local-coder
-        # Input budget, in the handler's characters-over-four estimate. The
-        # served window is 131072 and the backend reserves 65536 output tokens
-        # (max_tokens is not clamped), so the endpoint refuses a request whose
-        # metered input passes 65536 (HTTP 400, measured). Metered input is not
-        # the estimate: the request wrapper adds at most 420 tokens over the 19
-        # local classes (221 to 429 metered for a 39-character prompt), and real
-        # text packs 2.2 to 2.6 characters per token (ledger text 2.21, a git
-        # diff 2.63, code 4.4, prose 6.3), not 4. 35000 estimated tokens of the
-        # densest of those, ledger text, meter 63348 plus 420, inside the 64512
-        # left after a 1024-token wrapper margin. Identifier-dense text (UUIDs,
-        # hashes, digits, base64: 1.0 to 1.4 characters per token) still passes
-        # the estimate and is refused by the endpoint, after which the ladder
-        # climbs. The readings are in
+        # Coarse input budget in the handler's characters-over-four estimate.
+        # It is not the window guard: real text meters 1.0 to 6.3 characters
+        # per token, so the guard is the tier's max_input_token_bound above,
+        # which bounds the metered count itself. The readings are in
         # tests/nodes/node_delegation_routing_reducer/fixtures/metered_token_readings.json.
         # Keep this bound even when no input-ceiling overlay is loaded.
         max_context_tokens: 35000
@@ -142,10 +146,9 @@ tiers:
       # across both rungs.
       - id: Qwen3.8-27B
         backend_id: local-heavy-reasoning
-        # The recorded 11072-token summarization prompt fits this input budget.
-        # Same endpoint, window, output reserve and measured wrapper and
-        # density as local-coder above, so the same budget; see the reading
-        # there. Overlay ceilings may narrow individual classes further.
+        # Same endpoint, window and output reserve as local-coder above, so the
+        # same coarse budget and the same tier-level max_input_token_bound.
+        # Overlay ceilings may narrow individual classes further.
         max_context_tokens: 35000
         use_for:
           - research

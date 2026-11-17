@@ -68,9 +68,9 @@ dod_evidence:
   binds_ac:
   - AC1
 - id: dod-omn25185-ac2
-  description: The three record checks of OMN-24980 no longer carry binds_ac, a test fails when a check is bound to an open
-    criterion, the contract states that a passing bound check counts as met at the Done gate, and the OMN-25167 contract line
-    is corrected.
+  description: The three criteria of OMN-24980 are bound (binds_ac) only to checks that fail until the criterion is met, none
+    to a record check that passes while the criterion is open, a test fails when the binding is removed or a bound check
+    runs outside the local Done gate, and the contract states that a passing bound check counts as met at the Done gate.
   source: manual
   checks:
   - check_type: test_passes
@@ -79,9 +79,10 @@ dod_evidence:
   binds_ac:
   - AC2
 - id: dod-omn25185-ac3
-  description: Both local rungs declare an input budget of 64512 (served window, minus the 65536 output reserve, minus a 1024-token
-    wrapper margin over the recorded 364 wrapper tokens); the handler does not clamp max_tokens and a test pins that, and
-    a prompt estimated at 65536 tokens is refused for every local pair.
+  description: The local tier declares max_input_token_bound 48128 (the spread peer's 65536-token slot, minus its 16384 output
+    reserve, minus a 1024-token wrapper margin over the recorded wrapper of at most 420 tokens), a tokenizer-free upper bound
+    on the metered input; the handler does not clamp max_tokens and a test pins that, and a prompt estimated at 65536 tokens
+    is refused for every local pair.
   source: manual
   checks:
   - check_type: test_passes
@@ -92,7 +93,7 @@ dod_evidence:
   - AC3
 - id: dod-omn25185-ac4
   description: The proof command of OMN-24980 requires local-heavy-reasoning and metrics.input_tokens above 8192; the recorded
-    373-token local-omnipc2-chat run is refused, and commands naming another lane, bus or locus are refused by a shape check.
+    373-token local-heavy-reasoning run is refused, and commands naming another lane, bus or locus are refused by a shape check.
   source: manual
   checks:
   - check_type: test_passes

@@ -92,6 +92,10 @@ from omnimarket.handlers.routing.customer_key_terminus import (
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
+from omnimarket.handlers.routing.input_token_bound import (
+    input_token_upper_bound,
+    tier_input_bound_ceiling,
+)
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     exceeds_measured_correct_ceiling,
     grounded_input_budget,
@@ -356,6 +360,19 @@ _LOCAL_TIERS = {"local"}
 # the single eligibility point ``_tier_allowed_by_contract``, consulted by both the
 # routing reducer (``delta``) and the bus-less escalation loop
 # (``next_eligible_tier``/``first_eligible_tier`` via ``_tier_can_route_task``).
+def _tier_exceeds_input_bound(tier: ModelRoutingTier, prompt: str) -> bool:
+    """Whether ``prompt`` is above the input-token bound the ladder file gives ``tier``.
+
+    A tier that declares ``max_input_token_bound`` is sized for its smallest
+    serving member (window less that member's output reserve and the request
+    wrapper). The bound is a tokenizer-free upper bound on what the endpoint
+    meters, so a prompt above it is never sent to a member it could overflow,
+    however dense its text.
+    """
+    ceiling = tier_input_bound_ceiling(resolve_routing_tiers_path(), tier.name)
+    return ceiling is not None and input_token_upper_bound(prompt) > ceiling
+
+
 def _estimate_prompt_tokens(prompt: str) -> int:
     """Estimate token count from prompt character length (4 chars/token heuristic)."""
     return len(prompt) // 4
@@ -2686,6 +2703,15 @@ def build_routing_exclusion_report(
             )
             continue
 
+        if _tier_exceeds_input_bound(tier, request.prompt):
+            candidates.append(
+                ModelRoutingCandidateExclusion(
+                    tier_name=tier.name,
+                    reason=EnumRoutingExclusionReason.TIER_INPUT_BOUND_EXCEEDED,
+                )
+            )
+            continue
+
         if not tier.models:
             candidates.append(
                 ModelRoutingCandidateExclusion(
@@ -3139,6 +3165,9 @@ def delta(
             if requested_backend_ref is not None and (
                 paid_gate_closed_for(tier) or paid_rung_gate_reason(tier) is not None
             ):
+                continue
+
+            if _tier_exceeds_input_bound(tier, request.prompt):
                 continue
 
             if requested_backend_ref is not None:

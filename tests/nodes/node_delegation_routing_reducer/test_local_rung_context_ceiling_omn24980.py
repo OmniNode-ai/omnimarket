@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import json
-import math
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,6 +15,7 @@ import pytest
 import yaml
 from omnibase_infra.errors import ProtocolConfigurationError
 
+from omnimarket.handlers.routing.input_token_bound import input_token_upper_bound
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     measured_correct_ceiling,
 )
@@ -27,6 +27,8 @@ from omnimarket.models.delegation.wire import ModelDelegationRequest
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
 )
+
+from . import dense_prompts_omn24980 as dense
 
 pytestmark = pytest.mark.unit
 CONFIGS = ROUTING_TIERS_PACKAGED_DEFAULT_PATH.parent
@@ -80,19 +82,20 @@ WRAPPER_BY_CLASS: dict[str, int] = {
 }
 WRAPPER_MAX = max(WRAPPER_BY_CLASS.values())
 CHARS_PER_TOKEN: dict[str, float] = READINGS["density_samples"]["chars_per_token"]
-NATURAL_TEXT: list[str] = READINGS["density_samples"]["natural_text"]
-IDENTIFIER_DENSE: list[str] = READINGS["density_samples"]["identifier_dense"]
-# The estimate the ladder compares is characters over four; the endpoint meters
-# the real tokenisation, which for natural text is denser than four characters
-# per token. The budget is written out, then checked against the densest natural
-# reading (below), and never derived from the ladder the handler loads.
+DENSE_READINGS: dict[str, Any] = READINGS["dense_prompt_readings"]["samples"]
+PEER: dict[str, Any] = READINGS["spread_peer"]
+# The coarse input budget in the handler's characters-over-four estimate. It is
+# not the window guard; the tier's max_input_token_bound is (below).
 INPUT_BUDGET = 35000
-UNMETERED_BUDGET = SERVED_MAX_MODEL_LEN - OUTPUT_RESERVE - WRAPPER_MARGIN
-
-
-def metered_tokens(estimated: int, chars_per_token: float) -> int:
-    """Metered input tokens of a prompt the router estimates at ``estimated``."""
-    return math.ceil(estimated * 4 / chars_per_token)
+# The tier-level bound on the metered input tokens, written out, sized for the
+# smallest member: the spread peer's slot (65536) less its output reserve
+# (16384) and the wrapper margin (1024). local-coder and local-heavy-reasoning
+# could take 64512 (131072 - 65536 - 1024); the peer takes 48128.
+BOUND_CEILING = PEER["window_per_slot_tokens"] - PEER["max_tokens"] - WRAPPER_MARGIN
+assert BOUND_CEILING == 48128
+# A prompt of ``a`` characters only: each letter bounds at half a token, so
+# this estimate (characters over four) is the largest the bound admits.
+X_EST_LIMIT = BOUND_CEILING // 2
 
 
 LOCAL_CODER = "local-coder"
@@ -260,12 +263,12 @@ def test_unpinned_calls_route_literally_per_class_and_token_count(task: str) -> 
     pin_only = {b for b in PACKAGED_BACKENDS if packaged_pin_only(b)}
     # A prompt that fits is answered by the class's own local rung. No error is
     # swallowed: a refusal here fails the test.
-    for tokens in (1000, 11072, INPUT_BUDGET):
+    for tokens in (1000, 11072, X_EST_LIMIT):
         decision = routing.delta(request(task, tokens))
         assert (decision.tier_name, decision.selected_backend_ref) == ("local", local)
         assert decision.selected_backend_ref not in pin_only
     # Past the local budget the literal table says where the prompt goes.
-    for tokens in (INPUT_BUDGET + 1, 65536, 65537):
+    for tokens in (X_EST_LIMIT + 1, 65536, 65537):
         assert_outcome(task, tokens, beyond)
 
 
@@ -355,20 +358,42 @@ def test_recorded_wrapper_overhead_is_measured_and_inside_the_margin() -> None:
 def test_both_local_rungs_fit_the_served_window(model: dict[str, Any]) -> None:
     backend = PACKAGED_BACKENDS[model["backend_id"]]
     # Both rungs read one endpoint; the recorded read of its served model names
-    # the window the input budget, the wrapper and the output reserve must fit.
+    # the window the tier bound, the wrapper and the output reserve must fit.
     assert backend["endpoint_url_env"] == SERVED["endpoint_env"]
     assert model["id"] == SERVED_MODEL["id"]
     assert backend["max_tokens"] == OUTPUT_RESERVE
     assert model["max_context_tokens"] == INPUT_BUDGET
-    # Metered worst case of a natural-text prompt filling the budget at the
-    # densest natural reading, plus the widest wrapper of any class.
-    densest = min(CHARS_PER_TOKEN[name] for name in NATURAL_TEXT)
-    window_used = (
-        metered_tokens(model["max_context_tokens"], densest)
-        + WRAPPER_MAX
-        + backend["max_tokens"]
+    assert BOUND_CEILING + WRAPPER_MAX + backend["max_tokens"] <= SERVED_MAX_MODEL_LEN
+
+
+def local_tier_bound() -> int:
+    local = next(t for t in PACKAGED_LADDER["tiers"] if t["name"] == "local")
+    return int(local["max_input_token_bound"])
+
+
+def test_the_tier_bound_is_sized_for_the_smallest_member_not_the_rungs() -> None:
+    assert local_tier_bound() == BOUND_CEILING
+    # The two rungs could take 64512; the spread peer's slot takes 48128, so the
+    # tier is sized for the peer.
+    assert SERVED_MAX_MODEL_LEN - OUTPUT_RESERVE - WRAPPER_MARGIN == 64512
+    assert BOUND_CEILING < 64512
+    assert (
+        BOUND_CEILING + WRAPPER_MAX + PEER["max_tokens"]
+        <= PEER["window_per_slot_tokens"]
     )
-    assert window_used <= SERVED_MAX_MODEL_LEN
+    # Negative control: the old 35000-estimate gate at the densest reading of
+    # the generated code overflows the peer's slot and, for 140000 characters,
+    # the served window too.
+    digit_code = DENSE_READINGS["code_digit_named_140000"]
+    assert digit_code["characters"] // 4 == INPUT_BUDGET
+    assert (
+        digit_code["metered_input_tokens"] + WRAPPER_MAX + OUTPUT_RESERVE
+        > SERVED_MAX_MODEL_LEN
+    )
+    assert (
+        digit_code["metered_input_tokens"] + WRAPPER_MAX + PEER["max_tokens"]
+        > PEER["window_per_slot_tokens"]
+    )
 
 
 @pytest.mark.parametrize(("backend", "task"), LOCAL_CLASSES)
@@ -386,19 +411,17 @@ def test_every_local_class_reserves_output_and_wrapper(
         overlay(monkeypatch, tmp_path, SERVED_MAX_MODEL_LEN, LOCAL_CLASSES)
         assert measured_correct_ceiling(backend, task) == SERVED_MAX_MODEL_LEN
     with pytest.raises(ProtocolConfigurationError, match="not routable"):
-        routing.delta(request(task, INPUT_BUDGET + 1, backend))
-    accepted = routing.delta(request(task, INPUT_BUDGET, backend))
+        routing.delta(request(task, X_EST_LIMIT + 1, backend))
+    accepted = routing.delta(request(task, X_EST_LIMIT, backend))
     assert accepted.selected_backend_ref == backend
     # The handler does not clamp max_tokens: the decision carries the backend's
-    # full reserve, so the input gate is what keeps a request inside the window.
+    # full reserve, so the tier's input bound is what keeps a request inside the
+    # window. The bound of what was accepted is at most the tier bound.
     assert accepted.max_tokens == OUTPUT_RESERVE
-    densest = min(CHARS_PER_TOKEN[name] for name in NATURAL_TEXT)
-    metered_worst_case = (
-        metered_tokens(INPUT_BUDGET, densest)
-        + WRAPPER_BY_CLASS[task]
-        + accepted.max_tokens
-    )
-    assert metered_worst_case <= SERVED_MAX_MODEL_LEN
+    prompt = request(task, X_EST_LIMIT, backend).prompt
+    assert input_token_upper_bound(prompt) <= BOUND_CEILING
+    worst_case = BOUND_CEILING + WRAPPER_BY_CLASS[task] + accepted.max_tokens
+    assert worst_case <= SERVED_MAX_MODEL_LEN
 
 
 @pytest.mark.parametrize(("backend", "task"), LOCAL_CLASSES)
@@ -422,7 +445,7 @@ def test_overlay_above_the_reserve_does_not_widen_a_pinned_prompt(
         routing.delta(request("summarization", 65536, "local-heavy-reasoning"))
     assert (
         routing.delta(
-            request("summarization", INPUT_BUDGET, "local-heavy-reasoning")
+            request("summarization", X_EST_LIMIT, "local-heavy-reasoning")
         ).selected_backend_ref
         == "local-heavy-reasoning"
     )
@@ -485,92 +508,182 @@ def test_wrapper_is_metered_for_every_local_class_and_inside_the_margin() -> Non
     assert WRAPPER_MAX <= WRAPPER_MARGIN
 
 
-def code_dense_prompt(estimated_tokens: int) -> str:
-    """Real code text (function definitions) of ``estimated_tokens`` by chars/4."""
-    line = "def f_{n}(a):\n    return a\n"
-    chars, n, parts = 0, 0, []
-    while chars < estimated_tokens * 4:
-        parts.append(line.format(n=n))
-        chars += len(parts[-1])
-        n += 1
-    return "".join(parts)[: estimated_tokens * 4]
+def dense_request(
+    task: str, prompt: str, backend: str | None = None
+) -> ModelDelegationRequest:
+    return ModelDelegationRequest(
+        correlation_id=uuid4(),
+        emitted_at=datetime.now(UTC),
+        task_type=task,
+        prompt=prompt,
+        backend_id=backend,
+    )
 
 
-@pytest.mark.parametrize("name", NATURAL_TEXT)
+# The generated prompts at the old budget (140000 characters, 35000 estimated
+# tokens), each with its metered reading from the lab endpoint.
+AT_OLD_BUDGET = sorted(k for k in DENSE_READINGS if k.endswith("_140000"))
+# Generated prompts below the tier bound, metered the same way.
+BELOW_BOUND = ("code_digit_named_61000", "code_letter_named_61000")
+
+
+def reading_text(key: str) -> str:
+    name, _, characters = key.rpartition("_")
+    return dense.sample(name, int(characters))
+
+
+def metered_or_at_least(key: str) -> int:
+    reading = DENSE_READINGS[key]
+    return int(reading.get("metered_input_tokens") or reading["at_least_input_tokens"])
+
+
+@pytest.mark.parametrize("key", sorted(DENSE_READINGS))
+def test_recorded_dense_prompts_are_the_generated_texts(key: str) -> None:
+    text = reading_text(key)
+    assert len(text) == DENSE_READINGS[key]["characters"]
+    assert dense.sha256(text) == DENSE_READINGS[key]["sha256"]
+
+
+@pytest.mark.parametrize("key", sorted(DENSE_READINGS))
+def test_the_bound_never_undercounts_a_metered_prompt(key: str) -> None:
+    bound = input_token_upper_bound(reading_text(key))
+    assert bound == DENSE_READINGS[key]["upper_bound"]
+    assert bound >= metered_or_at_least(key), key
+
+
+def test_the_densest_reading_is_the_digit_named_code_the_review_names() -> None:
+    reading = DENSE_READINGS["code_digit_named_140000"]
+    # 140000 characters meter 69445 tokens: 2.02 characters per token, not the
+    # 2.21 of ledger text the old budget was fitted to, and not 4.
+    assert reading["metered_input_tokens"] == 69445
+    assert round(reading["characters"] / reading["metered_input_tokens"], 2) == 2.02
+    assert reading["metered_input_tokens"] > (
+        SERVED_MAX_MODEL_LEN - OUTPUT_RESERVE - WRAPPER_MAX
+    )
+    letters = DENSE_READINGS["code_letter_named_140000"]
+    assert round(letters["characters"] / letters["metered_input_tokens"], 2) == 2.45
+    assert DENSE_READINGS["digits_140000"]["at_least_input_tokens"] > 130000
+
+
+@pytest.mark.parametrize("key", AT_OLD_BUDGET)
 @pytest.mark.parametrize(("backend", "task"), LOCAL_CLASSES)
-def test_a_near_budget_natural_prompt_fits_the_window_at_its_metered_density(
-    backend: str, task: str, name: str
+def test_a_dense_prompt_at_the_old_budget_is_never_sent_to_a_local_rung(
+    backend: str, task: str, key: str
 ) -> None:
-    # The prompt is accepted at the budget; what the endpoint then meters is the
-    # characters over the measured characters per token, plus the class wrapper.
-    decision = routing.delta(request(task, INPUT_BUDGET, backend))
-    metered = metered_tokens(INPUT_BUDGET, CHARS_PER_TOKEN[name])
+    prompt = reading_text(key)
+    # At the old gate (35000 estimated tokens) this prompt was accepted by the
+    # rung; the endpoint then metered at least the recorded count, which with the
+    # full output reserve passes the window for the digit-named code text.
+    assert len(prompt) // 4 <= INPUT_BUDGET
+    with pytest.raises(ProtocolConfigurationError, match="not routable"):
+        routing.delta(dense_request(task, prompt, backend))
+    try:
+        decision = routing.delta(dense_request(task, prompt))
+    except ProtocolConfigurationError:
+        return
+    assert decision.tier_name != "local", key
+
+
+@pytest.mark.parametrize("key", BELOW_BOUND)
+@pytest.mark.parametrize(("backend", "task"), LOCAL_CLASSES)
+def test_a_dense_prompt_below_the_bound_routes_and_fits_every_member(
+    backend: str, task: str, key: str
+) -> None:
+    prompt = reading_text(key)
+    assert input_token_upper_bound(prompt) <= BOUND_CEILING
+    decision = routing.delta(dense_request(task, prompt, backend))
+    assert decision.selected_backend_ref == backend
+    metered = metered_or_at_least(key)
+    # The rung's window and the spread peer's slot, each with its own reserve.
     assert (
         metered + WRAPPER_BY_CLASS[task] + decision.max_tokens <= SERVED_MAX_MODEL_LEN
     )
-
-
-def test_the_unmetered_budget_overflows_for_the_densest_natural_prompts() -> None:
-    # Negative control: the budget the ladder held before this change (window
-    # minus output reserve minus wrapper margin, counted as if four characters
-    # were one token) overflows the window for real text. This is what makes
-    # the test above fail on the unchanged margin.
-    assert UNMETERED_BUDGET == 64512
-    overflowing = [
-        name
-        for name in NATURAL_TEXT
-        if metered_tokens(UNMETERED_BUDGET, CHARS_PER_TOKEN[name])
-        + WRAPPER_MAX
-        + OUTPUT_RESERVE
-        > SERVED_MAX_MODEL_LEN
-    ]
-    assert {"ledger_text", "git_diff"} <= set(overflowing)
-
-
-@pytest.mark.parametrize(("backend", "task"), LOCAL_CLASSES)
-def test_real_code_text_at_the_budget_is_routed_and_one_token_over_is_refused(
-    backend: str, task: str
-) -> None:
-    prompt = code_dense_prompt(INPUT_BUDGET)
-    inside = routing.delta(
-        ModelDelegationRequest(
-            correlation_id=uuid4(),
-            emitted_at=datetime.now(UTC),
-            task_type=task,
-            prompt=prompt,
-            backend_id=backend,
-        )
+    assert (
+        metered + WRAPPER_BY_CLASS[task] + PEER["max_tokens"]
+        <= PEER["window_per_slot_tokens"]
     )
-    assert inside.selected_backend_ref == backend
+
+
+def test_a_prompt_one_token_over_the_tier_bound_is_refused_locally() -> None:
+    at_bound = "a" * (2 * BOUND_CEILING)
+    assert input_token_upper_bound(at_bound) == BOUND_CEILING
+    inside = routing.delta(dense_request("summarization", at_bound, LOCAL_HEAVY))
+    assert inside.selected_backend_ref == LOCAL_HEAVY
+    over = at_bound + "aa"
+    assert input_token_upper_bound(over) == BOUND_CEILING + 1
     with pytest.raises(ProtocolConfigurationError, match="not routable"):
-        routing.delta(
-            ModelDelegationRequest(
-                correlation_id=uuid4(),
-                emitted_at=datetime.now(UTC),
-                task_type=task,
-                prompt=prompt + "xxxx" * 4,
-                backend_id=backend,
-            )
-        )
+        routing.delta(dense_request("summarization", over, LOCAL_HEAVY))
 
 
-def test_the_budget_is_the_densest_natural_reading_rounded_down() -> None:
-    densest = min(CHARS_PER_TOKEN[name] for name in NATURAL_TEXT)
-    room = UNMETERED_BUDGET - (WRAPPER_MAX - 0)
-    largest = int(room * densest / 4)
-    assert largest - 1000 < INPUT_BUDGET <= largest
-    for model in LOCAL_MODELS:
-        assert model["max_context_tokens"] == INPUT_BUDGET
+def with_spread_peer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Load the placement the lab overlay declares for the second host (spread)."""
+    path = Path(__import__("os").environ["BIFROST_CONTRACT_PATH"])
+    data = yaml.safe_load(path.read_text())
+    heavy = next(b for b in data["backends"] if b["backend_id"] == LOCAL_HEAVY)
+    peer = dict(heavy)
+    peer.update(
+        backend_id=PEER["backend_id"],
+        model_name=PEER["backend_id"],
+        max_tokens=PEER["max_tokens"],
+        timeout_ms=PEER["timeout_ms"],
+        placement=PEER["placement"],
+    )
+    data["backends"].append(peer)
+    peer_path = tmp_path / "bifrost-with-peer.yaml"
+    peer_path.write_text(yaml.safe_dump(data))
+    monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(peer_path))
+    routing._config = None
+    routing._load_bifrost_endpoints.cache_clear()
 
 
-def test_identifier_dense_prompts_pass_the_estimate_and_are_refused_by_the_endpoint() -> (
-    None
-):
-    # Documented limit, not a claim of protection: ids, hashes, digits and
-    # base64 meter at 1.0 to 1.4 characters per token, so a prompt inside the
-    # estimated budget still overflows. The endpoint answers HTTP 400 (recorded)
-    # and the ladder climbs; the handler does not clamp max_tokens.
-    assert "HTTP 400" in READINGS["overflow_refusal"]
-    for name in IDENTIFIER_DENSE:
-        over = metered_tokens(INPUT_BUDGET, CHARS_PER_TOKEN[name]) + WRAPPER_MAX
-        assert over + OUTPUT_RESERVE > SERVED_MAX_MODEL_LEN, name
+def local_choices(
+    task: str, prompt: str, count: int = 200
+) -> tuple[set[str], set[str]]:
+    """The local members chosen and the tiers chosen over ``count`` correlation ids."""
+    members: set[str] = set()
+    tiers: set[str] = set()
+    for _ in range(count):
+        try:
+            decision = routing.delta(dense_request(task, prompt))
+        except ProtocolConfigurationError:
+            tiers.add("refused")
+            continue
+        tiers.add(decision.tier_name)
+        if decision.tier_name == "local":
+            members.add(decision.selected_backend_ref)
+    return members, tiers
+
+
+def test_the_loaded_placement_spreads_a_small_prompt_over_the_peer(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Control: with the placement loaded the peer answers some requests (the
+    # packaged ladder alone never reaches it).
+    members, _ = local_choices("summarization", "x" * 4000)
+    assert members == {LOCAL_HEAVY}
+    with_spread_peer(monkeypatch, tmp_path)
+    members, _ = local_choices("summarization", "x" * 4000)
+    assert members == {LOCAL_HEAVY, PEER["backend_id"]}
+
+
+@pytest.mark.parametrize("key", AT_OLD_BUDGET)
+def test_a_dense_prompt_at_the_old_budget_never_reaches_the_spread_peer(
+    key: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    with_spread_peer(monkeypatch, tmp_path)
+    prompt = reading_text(key)
+    # The peer's placement allows the whole 35000-estimate budget (the smaller of
+    # 131072 and the rung's 35000), but its slot holds 65536 less a 16384
+    # reserve: an input ceiling of 49152 against metered counts of 57171 and up.
+    assert metered_or_at_least(key) > PEER["input_ceiling_tokens"] or "code" in key
+    members, tiers = local_choices("summarization", prompt)
+    assert members == set(), key
+    assert "local" not in tiers
+
+
+@pytest.mark.parametrize("key", ["code_digit_named_140000", "code_letter_named_140000"])
+def test_the_old_gate_admitted_a_prompt_that_overflows_the_peer_slot(key: str) -> None:
+    # Arithmetic on the recorded readings only: what the 35000 gate let through.
+    metered = metered_or_at_least(key)
+    assert metered + WRAPPER_MAX > PEER["input_ceiling_tokens"]
+    assert metered + WRAPPER_MAX + PEER["max_tokens"] > PEER["window_per_slot_tokens"]

@@ -12,7 +12,7 @@ requirements:
   - id: "AC1"
     statement: "AC1: the bus evidence for the missing terminal (consumer, registration, lag, handler errors) is recorded in the contract, or AC1 is re-scoped and AC2 and AC3 are listed as open, and the proof reads the answering field of a run on the dev runtime and not only an in-process run -- falsifier: `uv run pytest` of the contract proof test fails when the proof matches a skipped candidate or runs only in process"
   - id: "AC2"
-    statement: "AC2: the served window minus the output reserve is declared or a near-window prompt is refused for every use_for class, with and without the overlay, and each of escalation, research and reasoning is tested against the large-window rungs -- falsifier: `uv run pytest tests/nodes/node_delegation_routing_reducer -q -p no:cacheprovider` fails with the reserve removed or a class pinned local"
+    statement: "AC2: the served window minus the output reserve is declared or a near-window prompt is refused for every use_for class, with and without the overlay, and the route of every class beyond the local tier is pinned per class (escalation and research are refused unpinned, because the one rung beyond the local tier that lists them is explicit_pin_only) -- falsifier: `uv run pytest tests/nodes/node_delegation_routing_reducer -q -p no:cacheprovider` fails with the reserve removed or a class pinned local"
   - id: "AC3"
     statement: "AC3: the ceiling test pins the routing tiers path against DELEGATION_ROUTING_TIERS_PATH and drives the public handler with the full ladder and the overlay gate -- falsifier: `uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py -q -p no:cacheprovider` passes with the environment variable set to another file"
   - id: "AC4"
@@ -37,7 +37,7 @@ dod_evidence:
     cwd: "."
   binds_ac: ["AC1"]
 - id: "dod-omn25102-output-reserve"
-  description: "The public routing reducer keeps the output reserve for every local use_for class with and without the overlay, and tests escalation, research and reasoning against the large-window rungs."
+  description: "The public routing reducer keeps the output reserve for every local use_for class with and without the overlay, and pins the route of every class beyond the local tier (escalation and research are refused unpinned; a pin reaches the one large-window rung that lists them)."
   source: "manual"
   checks:
   - check_type: "test_passes"
