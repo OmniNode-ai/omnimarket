@@ -31,7 +31,9 @@ from typing import Any
 import pytest
 import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
+from pydantic import ValidationError
 
+from omnimarket.models.model_github_gateway_io import ModelPrComment, ModelPrTextResult
 from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers.handler_integration_proof import (
     check_integration_proof,
 )
@@ -145,24 +147,83 @@ def _run(
 
 
 def _view(head: str, *bodies: str) -> dict[str, Any]:
-    """The recorded pr-view answer plus ``comments``.
+    """The bus form of the pr-view answer, built through its typed models.
 
-    The watcher form of pr-view carries no comments (the recording has none), so the
-    ``comments`` list follows the typed ModelPrComment the bus answer returns.
+    The recorded watcher answer (``pr-view.json``) carries no comments, and a lane's
+    ``onex`` reads pr-view from the watcher only, so no bus answer was recordable.
+    The bus answer's ``result`` is ``ModelPrTextResult.model_dump(mode="json")``
+    (scm_cli), so the stub takes the recorded PR fields and passes every comment
+    through ``ModelPrComment``: a comment without ``body`` cannot be built.
     """
-    view = json.loads(_recorded("pr-view.json", head))
-    view["result"]["comments"] = [
-        {
-            "id": index,
-            "author": "reviewer",
-            "created_at": "2026-11-17T14:00:00Z",
-            "updated_at": "2026-11-17T14:00:00Z",
-            "body": body,
-            "body_truncated": False,
-        }
+    watcher = json.loads(_recorded("pr-view.json", head))
+    recorded = watcher["result"]
+    comments = [
+        ModelPrComment(
+            id=index,
+            author="reviewer",
+            created_at="2026-11-17T14:00:00Z",
+            updated_at="2026-11-17T14:00:00Z",
+            body=body,
+            body_truncated=False,
+        )
         for index, body in enumerate(bodies, start=1)
     ]
-    return view
+    result = ModelPrTextResult(
+        repo=recorded["repo"],
+        pr_number=recorded["number"],
+        title=recorded["title"],
+        body="",
+        body_truncated=False,
+        state=recorded["state"],
+        is_draft=recorded["draft"],
+        merged=False,
+        author=recorded["author"],
+        head_ref=recorded["head_ref"],
+        head_sha=recorded["head_sha"],
+        base_ref=recorded["base"],
+        total_count=len(comments),
+        truncated=False,
+        comments=comments,
+    )
+    return {
+        **{key: watcher[key] for key in ("verb", "node", "operation", "repo")},
+        "source": "bus",
+        "outcome": "completed",
+        "result": result.model_dump(mode="json"),
+    }
+
+
+@pytest.mark.unit
+def test_lab_comment_stub_is_the_typed_bus_answer_with_comment_bodies() -> None:
+    head = _head()
+    view = _view(head, _lab_line(head))
+    assert view["result"]["operation"] == "pr_text"
+    assert view["result"]["comments"][0]["body"].startswith(f"Lab: head={head}")
+    with pytest.raises(ValidationError):
+        ModelPrComment.model_validate(
+            {
+                key: value
+                for key, value in view["result"]["comments"][0].items()
+                if key != "body"
+            }
+        )
+
+
+@pytest.mark.unit
+def test_lab_comment_check_refuses_the_watcher_answer_and_bodyless_comments(
+    tmp_path: Path,
+) -> None:
+    """The recorded watcher answer holds no comments; a comment with no body is no Lab line."""
+    command = _command("OMN-25309", "dod-omn25309-lab-comment-local")
+    head = _head()
+    watcher = _recorded("pr-view.json", head)
+    assert "comments" not in json.loads(watcher)["result"]
+    refused = _run(command, tmp_path, {"pr-view": watcher})
+    assert refused.returncode != 0
+    assert "no comments list" in refused.stderr
+    bodyless = _view(head, _lab_line(head))
+    del bodyless["result"]["comments"][0]["body"]
+    assert _run(command, tmp_path, {"pr-view": bodyless}).returncode != 0
 
 
 def _lab_line(head: str) -> str:
@@ -206,7 +267,45 @@ _CHECKS_ITEMS = [
     ("OMN-24837", "dod-omn24837-required-checks-local"),
     ("OMN-24794", "dod-omn24794-required-checks-local"),
     ("OMN-25309", "dod-omn25309-required-checks-local"),
+    ("OMN-25383", "dod-omn25383-required-checks-local"),
 ]
+# The OMN-25383 Lab-comment commands need every one of their lines.
+_FULL_ITEMS = [
+    (
+        "OMN-25383",
+        "dod-omn25383-lab-comment-local",
+        ("Findings 1-9", "Exclusion count: 61", "Integration-proof gate:", "F821,F401"),
+    ),
+    (
+        "OMN-25383",
+        "dod-omn25383-ratchet-comment-local",
+        (
+            "Ratchet refusal scripts/ci:",
+            "Ratchet refusal scripts/validation:",
+            "Callers:",
+        ),
+    ),
+]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(("contract", "item_id", "texts"), _FULL_ITEMS)
+def test_contract_lab_comment_check_needs_every_line_at_head(
+    tmp_path: Path, contract: str, item_id: str, texts: tuple[str, ...]
+) -> None:
+    command = _command(contract, item_id)
+    head = _head()
+    lines = "".join(f"{text} stated\n" for text in texts)
+
+    def run(*bodies: str) -> int:
+        return _run(command, tmp_path, {"pr-view": _view(head, *bodies)}).returncode
+
+    assert run("unrelated", _lab_line(head) + lines) == 0
+    assert run() != 0
+    assert run("The review quoted:\n" + _lab_line(head) + lines) != 0
+    assert run(f"Lab: head={'0' * 40}\n" + lines) != 0
+    for text in texts:
+        assert run(_lab_line(head) + lines.replace(f"{text} stated\n", "")) != 0, text
 
 
 @pytest.mark.unit
@@ -324,6 +423,8 @@ def test_contract_mergeable_check_reads_the_merge_state_not_the_blocked_flag(
     assert run(clean) == 0
     assert run(recorded.replace("merge_state=BLOCKED", "merge_state=DIRTY")) != 0
     assert run(recorded.replace("merge_state=BLOCKED", "merge_state=UNKNOWN")) != 0
+    assert run(recorded.replace("merge_state=BLOCKED", "merge_state=BEHIND")) != 0
+    assert run(recorded.replace("merge_state=BLOCKED", "merge_state=DRAFT")) != 0
     assert run(clean.replace("draft=False", "draft=True")) != 0
     assert run(clean.replace("state=OPEN", "state=MERGED")) != 0
     assert run(clean.replace(head, "0" * 40)) != 0
@@ -366,6 +467,9 @@ def test_contract_hosted_criteria_state_no_pull_request_reading(
         for criterion in requirement["acceptance"]:
             statement = criterion["statement"]
             assert "onex scm pr-" not in statement, criterion["id"]
+            falsifier = statement.partition("-- falsifier:")[2]
+            for reading in ("the PR holds", "gh pr ", "pr-view OmniNode"):
+                assert reading not in falsifier, (criterion["id"], reading)
     for item in document["dod_evidence"]:
         if item.get("binds_ac"):
             assert item.get("execution_scope") != "local_done_gate", item["id"]
@@ -437,3 +541,24 @@ def test_runtime_handler_path_change_needs_an_integration_proof_item() -> None:
     failure = check_integration_proof(stripped).failure
     assert failure is not None
     assert "integration proof" in failure
+
+
+@pytest.mark.unit
+def test_omn25309_ac2_falsifier_names_a_stub_answer_not_the_pull_request() -> None:
+    """The AC2 falsifier can hold only when a command passes with no Lab comment."""
+    document = yaml.safe_load(
+        (_REPO_ROOT / "contracts" / "OMN-25309.yaml").read_text(encoding="utf-8")
+    )
+    statement = next(
+        criterion["statement"]
+        for requirement in document["requirements"]
+        for criterion in requirement["acceptance"]
+        if criterion["id"] == "AC2"
+    )
+    falsifier = statement.partition("-- falsifier:")[2]
+    assert "test_omn25309_local_check_assertions.py" in falsifier
+    assert (
+        "exits 0 on a recorded answer with no comment starting `Lab: head=`"
+        in falsifier
+    )
+    assert "PR holds no" not in falsifier

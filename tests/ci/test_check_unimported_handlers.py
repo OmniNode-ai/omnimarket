@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 from scripts.ci.check_unimported_handlers import (
     find_dead_handlers,
@@ -239,6 +240,38 @@ def test_stale_baseline_entry_for_now_imported_class_is_reported(
         "from .handlers.handler_x import HandlerXEffect\n",
     )
     baseline = _baseline(tmp_path, f"{_HANDLER_REL}:HandlerXEffect")
+    assert find_stale_baseline_entries(src, baseline) == [
+        f"{_HANDLER_REL}:HandlerXEffect"
+    ]
+
+
+@pytest.mark.parametrize(
+    "test_rel",
+    ["nodes/node_x/tests/test_handler_x.py", "nodes/node_x/tests/helpers.py"],
+)
+@pytest.mark.unit
+def test_src_resident_test_is_no_evidence_for_a_stale_baseline_entry(
+    tmp_path: Path, test_rel: str
+) -> None:
+    """A test under src/ that imports a baselined class does not wire it.
+
+    The HandlerDemoFanoutOrchestrator entry records such a test as false evidence;
+    the entry stays until a non-test file references the class.
+    """
+    src = tmp_path / "src" / "omnimarket"
+    _write(
+        src, "nodes/node_x/handlers/handler_x.py", "class HandlerXEffect:\n    pass\n"
+    )
+    _write(src, test_rel, "from ..handlers.handler_x import HandlerXEffect\n")
+    baseline = _baseline(tmp_path, f"{_HANDLER_REL}:HandlerXEffect")
+    assert find_stale_baseline_entries(src, baseline) == []
+    assert find_dead_handlers(src, baseline_path=baseline) == []
+    # Control: the same import from a runtime module is wiring, so the entry is stale.
+    _write(
+        src,
+        "nodes/node_x/wiring.py",
+        "from .handlers.handler_x import HandlerXEffect\n",
+    )
     assert find_stale_baseline_entries(src, baseline) == [
         f"{_HANDLER_REL}:HandlerXEffect"
     ]
@@ -531,8 +564,10 @@ def test_baseline_entry_count_is_the_exact_baseline_count() -> None:
     count = len(load_baseline(_COMMITTED_BASELINE))
     assert count == _BASELINE_COUNT, (
         f"unimported handler baseline holds {count} entries, expected exactly "
-        f"{_BASELINE_COUNT}; shrink the baseline and lower _BASELINE_COUNT in "
-        "the same change, never grow it"
+        f"{_BASELINE_COUNT}; Fix: set _BASELINE_COUNT in "
+        "tests/ci/test_check_unimported_handlers.py to the baseline's entry count "
+        "after shrinking it (two merged prunes each lowering it by one leave it one "
+        "too high), never grow the baseline"
     )
 
 
@@ -553,17 +588,35 @@ def test_selector_node_handlers_have_wiring_evidence() -> None:
 def test_every_caller_runs_the_gate_script_in_place_from_a_full_checkout() -> None:
     """The callers named by the helper's docstring run the script where it sits.
 
-    The two pre-commit hooks and the two CI lint steps run the script by its repo
-    path, so the helper under src/omnimarket/handlers is present in each of them;
-    no caller copies the script elsewhere.
+    The hook entries of .pre-commit-config.yaml and the ``run`` steps of every
+    workflow are parsed; each one naming the gate script is one of the two in-place
+    commands, so the helper under src/omnimarket/handlers is present in each of
+    them. A caller that copies or moves the script elsewhere fails.
     """
     gate = "scripts/ci/check_unimported_handlers.py"
-    precommit = (_REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    workflow = (_REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(
-        encoding="utf-8"
+    allowed = {f"uv run python {gate}", f"uv run python {gate} --transport-imports"}
+    precommit = yaml.safe_load(
+        (_REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     )
-    for text in (precommit, workflow):
-        assert f"uv run python {gate} --transport-imports" in text
-        assert f"uv run python {gate}\n" in text
+    hook_entries = [
+        str(hook.get("entry", ""))
+        for repo in precommit["repos"]
+        for hook in repo.get("hooks", [])
+        if "check_unimported_handlers" in str(hook.get("entry", ""))
+    ]
+    step_runs: list[str] = []
+    for workflow in sorted((_REPO_ROOT / ".github" / "workflows").glob("*.y*ml")):
+        document = yaml.safe_load(workflow.read_text(encoding="utf-8")) or {}
+        for job in (document.get("jobs") or {}).values():
+            for step in job.get("steps") or []:
+                run = str(step.get("run", ""))
+                if "check_unimported_handlers" in run:
+                    step_runs.extend(
+                        line.strip()
+                        for line in run.splitlines()
+                        if "check_unimported_handlers" in line
+                    )
+    assert sorted(hook_entries) == sorted(allowed), hook_entries
+    assert sorted(step_runs) == sorted(allowed), step_runs
     assert (_REPO_ROOT / gate).is_file()
     assert (_REPO_ROOT / _HELPER_REL).is_file()

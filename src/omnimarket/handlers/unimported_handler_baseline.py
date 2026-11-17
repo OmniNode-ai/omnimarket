@@ -126,13 +126,23 @@ def scan_unimported_handlers(
         py_file: _collect_referenced_symbols(source)
         for py_file, source in _collect_all_source_lines(src_root).items()
     }
+    # A test under src/ is not wiring: a baseline entry leaves only when a
+    # non-test file references the class (the HandlerDemoFanoutOrchestrator entry).
+    wiring_symbols = {
+        py_file: symbols
+        for py_file, symbols in all_source_symbols.items()
+        if not _is_src_resident_test(py_file, src_root)
+    }
     repo_root = src_root.parent.parent
     still_dead: set[str] = set()
     dead: list[str] = []
     for class_name, defining_file, lineno in sorted(definitions):
-        if _is_imported_elsewhere(class_name, defining_file, all_source_symbols):
-            continue
         rel = repo_relative(defining_file, repo_root)
+        evidence = (
+            wiring_symbols if f"{rel}:{class_name}" in baseline else all_source_symbols
+        )
+        if _is_imported_elsewhere(class_name, defining_file, evidence):
+            continue
         still_dead.add(f"{rel}:{class_name}")
         if f"{rel}:{class_name}" not in baseline:
             dead.append(f"{rel}:{lineno}: {class_name}")
@@ -145,6 +155,13 @@ def find_dead_handlers(
 ) -> list[str]:
     """Return sorted violation strings for Handler* with no wiring evidence."""
     return scan_unimported_handlers(src_root, baseline_path)[1]
+
+
+def _is_src_resident_test(py_file: pathlib.Path, src_root: pathlib.Path) -> bool:
+    """True for a test module, a conftest or any file under a ``tests`` package."""
+    parts = py_file.relative_to(src_root).parts
+    name = parts[-1]
+    return name.startswith("test_") or name == "conftest.py" or "tests" in parts[:-1]
 
 
 def _is_imported_elsewhere(
