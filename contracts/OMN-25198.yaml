@@ -19,8 +19,8 @@ interface_change: false
 interfaces_touched: []
 context:
   run_receipts:
-    host: "h053"
-    lab_run: "One placement on h053 of the head that carries the receipts commit's parent ran the control pair and the evidence test files, so every receipt below is one host; the logs are in the pull request comment starting Lab: head= for the head that carries this contract."
+    host: "h051"
+    lab_run: "One placement on h051 of c722f616e21a, the head whose tests this change carries, ran the control pair, the evidence test files and each split check, so every receipt below is one host; the logs are in the pull request comment starting Lab: head= for the head that carries this contract."
     control_revert:
       claim: "With the product paths of baa835fa277a reverted at the merge base, the AC2 test fails on an assertion about the dispatched models; with them in place it passes. The test file is kept in both runs."
       reverted_paths: "src/ of baa835fa277a (git diff baa835fa27^ baa835fa27 -- src, reversed with git apply -R)"
@@ -28,13 +28,13 @@ context:
       reverted_run:
         command: "uv run --frozen pytest tests/nodes/node_delegation_routing_reducer/test_hosted_ordered_models_omn21217.py::test_hosted_retry_walks_only_the_selected_keys_ordered_models -q -n 0 --no-cov -rs -p no:cacheprovider"
         exit_code: 1
-        summary_line: "2 failed in 6.59s"
+        summary_line: "2 failed in 7.64s"
         assertion: "AssertionError: assert ['chosen-a'] == ['chosen-a', 'chosen-b'] at test_hosted_ordered_models_omn21217.py:155; no ImportError and no collection error"
         log: "attached in the pull request comment starting Lab: head= for the head that carries this contract, under control-reverted"
       unreverted_run:
         command: "uv run --frozen pytest tests/nodes/node_delegation_routing_reducer/test_hosted_ordered_models_omn21217.py::test_hosted_retry_walks_only_the_selected_keys_ordered_models -q -n 0 --no-cov -rs -p no:cacheprovider"
         exit_code: 0
-        summary_line: "2 passed in 8.05s"
+        summary_line: "2 passed in 5.97s"
         log: "attached in the pull request comment starting Lab: head= for the head that carries this contract, under control-unreverted"
     split_2_of_20:
       head: "63b11bfe0bb4"
@@ -92,7 +92,7 @@ context:
       - claim: "7965f64668c6 is a commit of the clone the check runs in and is not reachable from the head of the change when the check runs before merge, so git answers 1 and not 128"
         command: "git merge-base --is-ancestor 7965f64668c6 HEAD"
         exit_code: 1
-        object_read: "git cat-file -t 7965f64668c6 prints commit in the registry clone of h053, read 2026-11-17 (its subject is evidence(OMN-21217): accepted acceptance-criterion bindings (2026-11-17T0145Z)); the case the item must fail (an object the clone lacks, exit 128) is run by tests/ci/test_repo_evidence_caller_workflow.py"
+        object_read: "git cat-file -t 7965f64668c6 prints commit in the registry clone of h051, read 2026-11-17 (its subject is evidence(OMN-21217): accepted acceptance-criterion bindings (2026-11-17T0145Z)); the case the item must fail (an object the clone lacks, exit 128) is run by tests/ci/test_repo_evidence_caller_workflow.py"
     criterion_hash:
       claim: "criterion_hash in context.ac_binding_provenance of the OMN-21217 contract equals the hash the gate's own canonicalisation (omnimarket.occ_contract_pin.criterion_hash) gives the AC2 line of the ticket as the ticket system holds it."
       value: "08bc4215e732d3427c66f80caa5ae09ed98f3650c4888447fa2ec5905a98ae27"
@@ -109,11 +109,11 @@ context:
     check_budget:
       seconds: 300
       source: ".github/workflows/call-repo-evidence-gate.yml:79 check-timeout-seconds"
-      unsplit_selection_seconds: 62
-      split_checks_max_seconds: 27
+      unsplit_selection_seconds: 70
+      split_checks_max_seconds: 22
       local_done_gate_default_seconds: 30
       local_done_gate_source: "src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py: _DEFAULT_CHECK_TIMEOUT_S = 30 and _check_timeout_s() read DOD_VERIFY_CHECK_TIMEOUT_S; the one function bounds every check subprocess, hosted or local, and no file of this repository sets that variable"
-      note: "This repository's caller sets 300 s for the hosted run; the local Done gate runs the same collector with its 30 s default and nothing here sets DOD_VERIFY_CHECK_TIMEOUT_S. The earlier single selection (-k ac2_binding) spawns nested pytest runs and took 62 s wall on h053 at 9dd698b581f3, which no 30 s run can finish, so the AC3 item is now six checks, each one to five of the cheaper cases, the longest 27 s wall on h053 at the head that carries this contract. No variable is needed."
+      note: "This repository's caller sets 300 s for the hosted run; the local Done gate runs the same collector with its 30 s default and nothing here sets DOD_VERIFY_CHECK_TIMEOUT_S. Measured on h051 at c722f616e21a, one selection after another: the single selection -k ac2 of the OMN-25208 contract took 69.7 s wall; the split checks took 9.9 to 22.1 s wall in a warm environment, the first of them 32.1 s in a cold one (the environment build). tests/ci/test_repo_evidence_caller_workflow.py models every selection of every contract from the measured seconds of its slow tests and refuses any over 80 percent of the default."
     original_failure:
       earlier_head:
         head: "3fac496de483"
@@ -190,7 +190,10 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_refuse_skips_omn19987.py -q -n 0 --no-cov -k 'asks_for_the_refusal or check_passes_when_both_parametrizations_run or filter_alone or pytest_fails_but or not_rescued'"
+        check_value: "uv run pytest tests/test_refuse_skips_omn19987.py -q -n 0 --no-cov -k 'check_passes_when_both_parametrizations_run'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_refuse_skips_omn19987.py -q -n 0 --no-cov -k 'asks_for_the_refusal or filter_alone or pytest_fails_but or not_rescued'"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_refuse_skips_omn19987.py -q -n 0 --no-cov -k 'old_form_exits_zero_when_both_skip'"

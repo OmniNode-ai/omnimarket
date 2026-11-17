@@ -68,7 +68,10 @@ dod_evidence:
     binds_ac: ["AC3", "AC8"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_refuse_skips_omn19987.py -q -n 0 --no-cov -k 'asks_for_the_refusal or check_passes_when_both_parametrizations_run or filter_alone or pytest_fails_but or not_rescued'"
+        check_value: "uv run pytest tests/test_refuse_skips_omn19987.py -q -n 0 --no-cov -k 'check_passes_when_both_parametrizations_run'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_refuse_skips_omn19987.py -q -n 0 --no-cov -k 'asks_for_the_refusal or filter_alone or pytest_fails_but or not_rescued'"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_refuse_skips_omn19987.py -q -n 0 --no-cov -k 'old_form_exits_zero_when_both_skip'"
