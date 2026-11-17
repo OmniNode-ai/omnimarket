@@ -65,12 +65,12 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "concurrently or row_order" -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24944-ac4-integration-proof
-  description: Run the register tick, local host name and unit tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check; the reading of the installed unit on h201 (installer revision and heartbeat) is recorded in the Lab line and a STATUS row.
+  description: Read the installed unit on h201 through the declared installer. The check passes only when the status read exits 0, names the installed revision equal to the checked-out head, and shows last-run.json younger than 7200 s (two intervals of the 3600 s timer). Rerunning the unit tests proves nothing about the install, so the check does not. Hosted CI cannot reach h201, so only the local Done gate runs this unbound check; its output is recorded in the Lab line and a STATUS row.
   source: manual
   binds_ac:
   - AC4
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24944 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -q --no-cov -n 0 -p no:randomly
+    check_value: sh -c 'head=$(git rev-parse HEAD) && out=$(ssh h201 onex-host-install-units ruling-register-systemd --status) && printf "%s\n" "$out" && printf "%s\n" "$out" | grep -qF "installed revision $head of " && age=$(printf "%s\n" "$out" | sed -n "s/^.* \([0-9][0-9]*\) s old$/\1/p" | head -n 1) && test -n "$age" && test "$age" -lt 7200'
     cwd: .

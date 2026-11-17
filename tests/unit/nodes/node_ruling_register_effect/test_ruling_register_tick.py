@@ -15,7 +15,12 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.nodes.node_ruling_register_effect import (
+    runtime_ruling_register_tick as tick,
+)
 from omnimarket.nodes.node_ruling_register_effect.runtime_ruling_register_tick import (
     main,
 )
@@ -116,3 +121,89 @@ def test_a_run_with_no_state_dir_writes_nothing(
     cli_env(tmp_path, monkeypatch, [cli_row("row-true", "pass", {"kind": "exit_zero"})])
     assert main([]) == 0
     assert not list(tmp_path.glob("**/last-run.json"))
+
+
+def _bad_overlay_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A register overlay that exists but fails validation (its rows key is missing)."""
+    cli_env(tmp_path, monkeypatch, [cli_row("row-true", "pass", {"kind": "exit_zero"})])
+    (tmp_path / "node_ruling_register_compute" / "overlay.yaml").write_text(
+        "max_reading_age_seconds: 600\n", encoding="utf-8"
+    )
+
+
+def test_an_invalid_overlay_exits_3_on_the_probe_and_on_the_run_and_the_run_writes_no_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _bad_overlay_env(tmp_path, monkeypatch)
+    assert main(["--probe"]) == 3
+    assert "INDETERMINATE" in capsys.readouterr().err
+    state_dir = tmp_path / "state"
+    assert main(["--state-dir", str(state_dir)]) == 3
+    assert "INDETERMINATE" in capsys.readouterr().err
+    assert not (state_dir / "last-run.json").exists()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        NodeOverlayError("overlay missing"),
+        ValueError("a loader let a bare ValueError through"),
+        OSError("a loader let an OSError through"),
+        ValidationError.from_exception_data("ModelRulingRoute", []),
+    ],
+    ids=["node-overlay-error", "value-error", "os-error", "validation-error"],
+)
+def test_the_probe_and_the_run_exit_3_for_one_exception_set_and_never_traceback(
+    error: Exception,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def refuse(*_args: object, **_kwargs: object) -> object:
+        raise error
+
+    monkeypatch.setattr(tick, "load_ruling_register_policy", refuse)
+    monkeypatch.setattr(tick, "read_register", refuse)
+    assert main(["--probe"]) == 3
+    assert "INDETERMINATE" in capsys.readouterr().err
+    assert main(["--state-dir", str(tmp_path / "state")]) == 3
+    assert "INDETERMINATE" in capsys.readouterr().err
+    assert not (tmp_path / "state" / "last-run.json").exists()
+
+
+def test_a_state_dir_that_cannot_be_written_exits_3_and_does_not_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cli_env(tmp_path, monkeypatch, [cli_row("row-true", "pass", {"kind": "exit_zero"})])
+    blocker = tmp_path / "state"
+    blocker.write_text("a file where the state directory should be", encoding="utf-8")
+    assert main(["--state-dir", str(blocker)]) == 3
+    assert "INDETERMINATE" in capsys.readouterr().err
+
+
+def test_a_journal_write_that_fails_is_recorded_in_last_run_json_as_well_as_on_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env = cli_env(
+        tmp_path, monkeypatch, [cli_row("row-true", "pass", {"kind": "exit_zero"})]
+    )
+    # The journal is a directory: every append to it fails, so the row's event is lost, not its reading.
+    journal = tmp_path / "journal-dir"
+    journal.mkdir()
+    monkeypatch.setenv("ONEX_RULING_REGISTER_JOURNAL", str(journal))
+    assert env["ONEX_RULING_REGISTER_JOURNAL"] != str(journal)
+    state_dir = tmp_path / "state"
+    assert main(["--state-dir", str(state_dir)]) == 0
+    assert "RULING-REGISTER-JOURNAL-ERROR row-true" in capsys.readouterr().err
+    record = _record(state_dir)
+    assert record["journal_errors"] == ["row-true: IsADirectoryError"]
+    assert record["verdicts"] == {"row-true": "TRUE"}
+
+
+def test_a_run_with_a_working_journal_records_no_journal_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cli_env(tmp_path, monkeypatch, [cli_row("row-true", "pass", {"kind": "exit_zero"})])
+    state_dir = tmp_path / "state"
+    assert main(["--state-dir", str(state_dir)]) == 0
+    assert _record(state_dir)["journal_errors"] == []

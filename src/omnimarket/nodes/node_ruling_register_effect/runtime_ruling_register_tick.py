@@ -6,7 +6,9 @@ The host installer's tick form of the register reading (OMN-24944): one pass rea
 standing-rulings register exactly as ``python -m omnimarket.nodes.node_ruling_register_effect`` does, prints one
 ``MISSING ruling-not-running:<row>`` line per row that is not TRUE on stdout and records the reading in
 ``<state-dir>/last-run.json``, whose age is the unit's heartbeat. A row that is not TRUE is the reading, not a
-failed tick: the tick exits 0 when the register was read and 3 when an overlay is missing or refuses to validate.
+failed tick: the tick exits 0 when the register was read and 3 (``INDETERMINATE: <type>: <text>`` on stderr, on the probe and the
+run alike) when an overlay is missing or refuses to validate or a file cannot be read or written. A journal write that
+failed costs its row's event only and is listed in ``journal_errors`` of the record.
 ``--probe`` loads the policy and the route and prints ``PROBE ok``: it runs no read and writes nothing (the
 installer runs a probe before it loads the unit). ``--omni-home`` is the installer's tick argument; the reading
 takes its settings from the overlays and its environment, not from it.
@@ -37,6 +39,9 @@ from omnimarket.nodes.node_ruling_register_effect.runtime_ruling_register import
 
 EXIT_OK = 0
 EXIT_UNREADABLE = 3
+# One exception set for the probe and the run: an overlay that is missing or refuses to validate, a value a loader
+# did not wrap, and a file the tick cannot read or write all end the tick with 3 and a line on stderr, never a traceback.
+UNREADABLE = (NodeOverlayError, ValidationError, ValueError, OSError)
 
 
 def _write_atomically(path: Path, text: str) -> None:
@@ -58,20 +63,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--state-dir", default="")
     parser.add_argument("--probe", action="store_true")
     args = parser.parse_args(list(sys.argv[1:] if argv is None else argv))
-    if args.probe:
-        try:
+    try:
+        if args.probe:
             load_ruling_register_policy(os.environ)
             load_route(os.environ)
-        except (NodeOverlayError, ValidationError, ValueError, OSError) as exc:
-            sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
-            return EXIT_UNREADABLE
-        sys.stdout.write("PROBE ok\n")
-        return EXIT_OK
-    try:
-        judged, sink_errors = read_register(os.environ)
-    except NodeOverlayError as exc:
-        sys.stderr.write(f"{exc}\n")
+            sys.stdout.write("PROBE ok\n")
+            return EXIT_OK
+        return _run(args.state_dir)
+    except UNREADABLE as exc:
+        sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
         return EXIT_UNREADABLE
+
+
+def _run(state_dir: str) -> int:
+    """One pass: read the register, print the MISSING lines and the summary, record the reading under ``state_dir``."""
+    judged, sink_errors = read_register(os.environ)
     for error in sink_errors:
         sys.stderr.write(f"RULING-REGISTER-JOURNAL-ERROR {error}\n")
     for line in judged.lines():
@@ -86,15 +92,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         "rows": len(judged.verdicts),
         "counts": counts,
         "verdicts": {v.row_id: v.verdict.value for v in judged.verdicts},
+        # A journal write that failed loses its row's event, not its reading: the failures are part of the record.
+        "journal_errors": list(sink_errors),
     }
     sys.stdout.write(
         f"RULING-REGISTER rows={record['rows']} "
         + " ".join(f"{name}={count}" for name, count in counts.items())
         + "\n"
     )
-    if args.state_dir:
+    if state_dir:
         _write_atomically(
-            Path(args.state_dir) / "last-run.json", json.dumps(record, sort_keys=True)
+            Path(state_dir) / "last-run.json", json.dumps(record, sort_keys=True)
         )
     return EXIT_OK
 

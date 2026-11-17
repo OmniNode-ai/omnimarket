@@ -22,9 +22,11 @@ judges FALSE, never UNREAD.
 from __future__ import annotations
 
 import json
+import math
 import shlex
 import subprocess
 import sys
+import threading
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -51,6 +53,7 @@ from omnimarket.nodes.node_ruling_register_effect.adapters import (
     InMemoryRulingSink,
 )
 from omnimarket.nodes.node_ruling_register_effect.handlers.handler_ruling_register_read import (
+    MAX_CONCURRENT_READS,
     HandlerRulingRegisterRead,
     load_topics,
 )
@@ -200,7 +203,7 @@ def test_a_row_without_a_fixture_reads_unread_never_answered() -> None:
     assert event.detail == "no reading fixture"
 
 
-def test_six_slow_rows_read_concurrently_in_under_1_2_seconds() -> None:
+def test_six_slow_rows_read_concurrently_in_about_one_read() -> None:
     class SlowPort:
         def read(self, row: ModelRulingRow) -> ModelRulingReading:
             time.sleep(0.3)
@@ -212,10 +215,60 @@ def test_six_slow_rows_read_concurrently_in_under_1_2_seconds() -> None:
     started = time.monotonic()
     result = h.handle(request)
     elapsed = time.monotonic() - started
-    assert elapsed < 1.2
+    # One 0.3 s read: six rows under eight workers all run at once. Two workers would take 0.9 s.
+    assert elapsed < 0.6
     assert len(result.readings) == 6
     assert len(sink.events) == 6
     assert result.sink_errors == ()
+
+
+def test_more_slow_rows_than_the_cap_run_at_most_the_cap_at_once() -> None:
+    lock = threading.Lock()
+    running = 0
+    peak = 0
+
+    class CountingPort:
+        def read(self, row: ModelRulingRow) -> ModelRulingReading:
+            nonlocal running, peak
+            with lock:
+                running += 1
+                peak = max(peak, running)
+            time.sleep(0.1)
+            with lock:
+                running -= 1
+            return fixture(row.row_id)
+
+    count = 2 * MAX_CONCURRENT_READS + 1
+    rows = tuple(row(f"row-{index}") for index in range(count))
+    h, sink = handler(CountingPort())
+    started = time.monotonic()
+    result = h.handle(
+        ModelRulingReadRequest(correlation_id="read-1", policy=policy(*rows))
+    )
+    elapsed = time.monotonic() - started
+    assert MAX_CONCURRENT_READS == 8
+    # The cap is reached (a pool of two would peak at 2) and never passed (no cap would peak at 17).
+    assert peak == MAX_CONCURRENT_READS
+    # 17 rows under a cap of 8 take three waves of 0.1 s, not one (no cap) and not nine (two workers).
+    assert 0.28 < elapsed < 0.6
+    assert [reading.row_id for reading in result.readings] == [r.row_id for r in rows]
+    assert len(sink.events) == count
+
+
+def test_the_register_at_review_ends_inside_the_unit_run_limit_at_the_route_timeout() -> (
+    None
+):
+    """Worst case: every row waits the full route timeout. ceil(rows / cap) waves of it must stay under the unit's
+    600 s run limit. The register held 16 rows at review (route timeout 90 s): 2 waves, 180 s; the register
+    can grow to 48 rows (6 waves, 540 s) before the limit is hit."""
+    unit_limit_s = 600
+    route_timeout_s = 90
+    rows_at_review = 16
+    waves = math.ceil(rows_at_review / MAX_CONCURRENT_READS)
+    assert waves * route_timeout_s == 180
+    assert waves * route_timeout_s < unit_limit_s
+    assert math.ceil(48 / MAX_CONCURRENT_READS) * route_timeout_s < unit_limit_s
+    assert math.ceil(49 / MAX_CONCURRENT_READS) * route_timeout_s >= unit_limit_s
 
 
 def test_readings_and_events_stay_in_row_order_when_the_first_read_is_slower() -> None:
@@ -495,6 +548,79 @@ def test_a_row_on_the_local_host_name_runs_locally_and_the_same_row_without_it_g
     local, remote = ran
     assert local == ["uptime", "quiet"]
     assert remote[:4] == ["ssh", "-o", "BatchMode=yes", "192.0.2.10"]
+
+
+# The shape of a real h201 row: `sh -c <multi-line script>` with command substitution, a trap, a case and the
+# "exit 4 means could not read" convention (the register's overlay holds four of them, all on h201).
+REAL_SHAPED_ARGV = (
+    "sh",
+    "-c",
+    """log=$(mktemp) || exit 4
+trap 'rm -f "$log"' EXIT
+printf 'one\\ntwo\\n' >"$log"
+n=$(grep -c . "$log") || exit 4
+case " $n" in
+  " 2") echo $((n - 2)) ;;
+  *) exit 4 ;;
+esac
+""",
+)
+
+
+def test_a_real_shaped_row_runs_directly_under_the_hosts_own_name_with_no_ssh_and_no_login_shell() -> (
+    None
+):
+    real_row = row("row-real", host="h201", argv=REAL_SHAPED_ARGV)
+    real_row = real_row.model_copy(
+        update={
+            "read": real_row.read.model_copy(
+                update={
+                    "ok_exit_codes": (0,),
+                    "expect": ModelRulingExpect(kind="int_at_most", bound=0),
+                }
+            )
+        }
+    )
+    # The real runner: the argv is exec'd as the unit user, no ssh, no login shell, no shell expansion beforehand.
+    port = CommandRulingReadPort(route(), clock=lambda: NOW, local_host_name="h201")
+    reading = port.read(real_row)
+    assert reading.status is EnumReadStatus.OK, reading.detail
+    assert reading.stdout == "0\n"
+    verdict = (
+        HandlerRulingRegister()
+        .handle(
+            ModelRulingRegisterRequest(
+                correlation_id="real-1",
+                now=NOW,
+                policy=policy(real_row),
+                readings=(reading,),
+            )
+        )
+        .verdicts[0]
+    )
+    assert verdict.verdict is EnumRulingVerdict.TRUE
+
+
+def test_a_real_shaped_row_reaches_a_remote_host_as_one_shell_word_and_an_unnamed_host_goes_over_ssh() -> (
+    None
+):
+    ran: list[list[str]] = []
+
+    def recording_runner(argv: list[str], timeout_seconds: int) -> tuple[int, str]:
+        ran.append(argv)
+        return 0, "0\n"
+
+    real_row = row("row-real", host="host-a", argv=REAL_SHAPED_ARGV)
+    CommandRulingReadPort(route(), runner=recording_runner, clock=lambda: NOW).read(
+        real_row
+    )
+    CommandRulingReadPort(
+        route(), runner=recording_runner, clock=lambda: NOW, local_host_name="h201"
+    ).read(real_row)
+    # A host that is not the named one still goes over ssh; the script survives as the remote shell's one word.
+    for argv in ran:
+        assert argv[:4] == ["ssh", "-o", "BatchMode=yes", "192.0.2.10"]
+        assert shlex.split(argv[-1]) == list(REAL_SHAPED_ARGV)
 
 
 def test_the_register_reads_the_hosts_own_rows_locally_under_the_lab_work_local_host_name(
