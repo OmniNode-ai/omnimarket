@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -168,3 +169,39 @@ def test_non_probe_delegates_to_the_daily_verb(
     monkeypatch.setattr(tick, "drift_main", daily)
     assert tick.main([]) == 7
     assert calls == [["daily"]]
+
+
+def test_a_pass_leaves_the_heartbeat_the_installer_status_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(tick, "drift_main", lambda _argv: 0)
+    assert (
+        tick.main(["--omni-home", str(tmp_path), "--state-dir", str(tmp_path / "s")])
+        == 0
+    )
+    evidence = json.loads(
+        (tmp_path / "s" / "last-run.json").read_text(encoding="utf-8")
+    )
+    assert evidence["exit_code"] == 0
+    assert evidence["status"] == "ran"
+    assert evidence["written_at"].endswith("Z")
+
+
+def test_a_failed_pass_leaves_a_heartbeat_naming_the_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(tick, "drift_main", lambda _argv: 1)
+    assert tick.main(["--state-dir", str(tmp_path / "s")]) == 1
+    evidence = json.loads(
+        (tmp_path / "s" / "last-run.json").read_text(encoding="utf-8")
+    )
+    assert evidence["exit_code"] == 1
+    assert evidence["status"] == "refused-or-failed"
+
+
+def test_the_probe_writes_no_heartbeat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "none"))
+    assert tick.main(["--probe", "--state-dir", str(tmp_path / "s")]) == 3
+    assert not (tmp_path / "s").exists()
