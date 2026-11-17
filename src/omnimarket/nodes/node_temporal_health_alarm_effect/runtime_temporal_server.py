@@ -21,7 +21,7 @@ import tarfile
 import urllib.request
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import yaml
 
@@ -126,6 +126,11 @@ def server_argv(settings: Mapping[str, Any], home: Path, binary: Path) -> list[s
     ]
 
 
+def replace_process(command: list[str]) -> NoReturn:
+    """Replace this process with the server command; ``os.execv`` does not return."""
+    os.execv(command[0], command)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="runtime_temporal_server")
     parser.add_argument("--probe", action="store_true")
@@ -152,8 +157,7 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps({"start": command, "sha256": settings["sha256"]}) + "\n"
     )
     sys.stdout.flush()
-    os.execv(command[0], command)
-    return 0  # pragma: no cover - execv does not return
+    return replace_process(command)
 
 
 if __name__ == "__main__":

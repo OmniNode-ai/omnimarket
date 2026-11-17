@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from omnimarket.nodes.node_temporal_health_alarm_effect.handlers.temporal_cli_re
 )
 from omnimarket.nodes.node_temporal_health_alarm_effect.models.model_temporal_health_alarm import (
     ModelTemporalHealthAlarmRequest,
+    ModelTemporalHealthAlarmResult,
     ModelTemporalHealthFacts,
     ModelTemporalHealthSettings,
 )
@@ -60,7 +62,7 @@ def _facts(
 
 def _tick(
     handler: HandlerTemporalHealthAlarm, facts: ModelTemporalHealthFacts, state: Path
-) -> object:
+) -> ModelTemporalHealthAlarmResult:
     return handler.handle(
         ModelTemporalHealthAlarmRequest(facts=facts, host="h051", state_dir=state)
     )
@@ -71,9 +73,9 @@ def test_stopped_worker_writes_one_alarm_row(tmp_path: Path) -> None:
     rec = Recorder()
     handler = HandlerTemporalHealthAlarm(settings=SETTINGS, append=rec)
     result = _tick(handler, _facts(worker=False, poll_age_s=None), tmp_path)
-    assert result.verdict == "unhealthy"  # type: ignore[attr-defined]
-    assert result.row_kind == "alarm"  # type: ignore[attr-defined]
-    assert result.outcome == "appended"  # type: ignore[attr-defined]
+    assert result.verdict == "unhealthy"
+    assert result.row_kind == "alarm"
+    assert result.outcome == "appended"
     assert len(rec.rows) == 1
     row = rec.rows[0]
     assert " | STATUS | " in row
@@ -107,7 +109,7 @@ def test_alarm_once_per_episode_then_recovery(tmp_path: Path) -> None:
         )
     assert len(rec.rows) == 1, rec.rows
     recovered = _tick(handler, _facts(at=NOW + timedelta(minutes=6)), tmp_path)
-    assert recovered.row_kind == "recovery"  # type: ignore[attr-defined]
+    assert recovered.row_kind == "recovery"
     assert len(rec.rows) == 2
     assert "| state=recovered |" in rec.rows[1]
     episode = "episode=2026-11-16T16:00:00Z"
@@ -129,7 +131,7 @@ def test_healthy_writes_nothing(tmp_path: Path) -> None:
     rec = Recorder()
     handler = HandlerTemporalHealthAlarm(settings=SETTINGS, append=rec)
     result = _tick(handler, _facts(), tmp_path)
-    assert result.verdict == "healthy"  # type: ignore[attr-defined]
+    assert result.verdict == "healthy"
     assert rec.rows == []
 
 
@@ -154,7 +156,7 @@ def test_unappended_alarm_is_retried_next_tick(tmp_path: Path) -> None:
     failing = Recorder(error="bus down")
     handler = HandlerTemporalHealthAlarm(settings=SETTINGS, append=failing)
     result = _tick(handler, _facts(worker=False, poll_age_s=None), tmp_path)
-    assert result.outcome == "unappended"  # type: ignore[attr-defined]
+    assert result.outcome == "unappended"
     assert not (tmp_path / "episode.json").exists()
     rec = Recorder()
     handler = HandlerTemporalHealthAlarm(settings=SETTINGS, append=rec)
@@ -162,7 +164,9 @@ def test_unappended_alarm_is_retried_next_tick(tmp_path: Path) -> None:
     assert len(rec.rows) == 1
 
 
-def _runner(health: tuple[int, str, str], describe: tuple[int, str, str]):  # type: ignore[no-untyped-def]
+def _runner(
+    health: tuple[int, str, str], describe: tuple[int, str, str]
+) -> Callable[[list[str], float], tuple[int, str, str]]:
     def run(argv: list[str], timeout_s: float) -> tuple[int, str, str]:
         return health if "health" in argv else describe
 

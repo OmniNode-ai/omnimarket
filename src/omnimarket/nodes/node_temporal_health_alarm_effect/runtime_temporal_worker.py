@@ -17,7 +17,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import yaml
 
@@ -70,6 +70,11 @@ def worker_argv(settings: dict[str, Any], project: Path, uv: str) -> list[str]:
     ]
 
 
+def replace_process(command: list[str], environ: dict[str, str]) -> NoReturn:
+    """Replace this process with the worker command; ``os.execve`` does not return."""
+    os.execve(command[0], command, environ)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="runtime_temporal_worker")
     parser.add_argument("--probe", action="store_true")
@@ -88,8 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     environ = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
     sys.stdout.write(json.dumps({"start": command}) + "\n")
     sys.stdout.flush()
-    os.execve(command[0], command, environ)
-    return 0  # pragma: no cover - execv does not return
+    return replace_process(command, environ)
 
 
 if __name__ == "__main__":
