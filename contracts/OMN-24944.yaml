@@ -18,7 +18,7 @@ requirements:
   - id: AC4
     statement: 'AC4: integrated: the unit is installed on h201 from the branch checkout through onex-host-install-units, the installer records the revision, and the unit''s run writes last-run.json and a journal line on h201 -- falsifier: onex-host-install-units ruling-register-systemd --status on h201 names no revision, or last-run.json on h201 is older than two intervals'
   - id: AC5
-    statement: 'AC5: the register reads its rows concurrently and returns the readings and events in row order, so a tick whose ledger-reader rows each wait the full 90 s route timeout ends in about one timeout and not their sum, inside the unit''s 600 s run limit -- falsifier: pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k concurrently -q fails when the six 0.3 s reads take 1.8 s'
+    statement: 'AC5: the register reads its rows concurrently under a cap of 8 and returns the readings and events in row order, except that the rows that run the ledger reader read one after another (eight at once were measured unanswered at 115 s, one alone 69 s), so a tick whose rows each wait the full route timeout ends in at most the longer of the ledger-reader chain (its row count x the route timeout) and ceil(rows / 8) timeouts, and that worst case (720 s for the 16 rows at the 90 s route timeout) stays under the unit''s run limit of 900 s -- falsifier: pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "concurrent or at_once or one_at_a_time or run_limit or each_input" -q fails when six reads that wait for each other do not all run at once, when ledger-reader rows overlap, or when the worst case reaches the unit''s limit'
 evidence_requirements:
 - kind: tests
   description: The tick, the local host name and the unit tests pass at the pushed head.
@@ -56,21 +56,46 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24944-ac5
-  description: Six rows whose reads take 0.3 s each finish in under 1.2 s, and the readings and events keep row order when the first read is the slowest.
+  description: Six reads that wait for each other on a barrier all run at once, 17 gated reads peak at the cap of 8, the ledger-reader rows run one at a time beside the rest, the readings and events keep row order when the first read finishes last, and the worst case (read from the unit's run limit, the route's timeout and the register's rows) stays under the run limit.
   source: manual
   binds_ac:
   - AC5
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "concurrently or row_order" -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "concurrent or at_once or one_at_a_time or run_limit or each_input or row_order or wave_bound" -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24944-ac4-integration-proof
-  description: Read the installed unit on h201 through the declared installer. The check passes only when the status read exits 0, names the installed revision equal to the checked-out head, and shows last-run.json younger than 7200 s (two intervals of the 3600 s timer). Rerunning the unit tests proves nothing about the install, so the check does not. Hosted CI cannot reach h201, so only the local Done gate runs this unbound check; its output is recorded in the Lab line and a STATUS row.
+  description: Read the installed unit on h201 through the declared installer and print what was read, the status output and last-run.json. The check passes only when the status read exits 0, names the installed revision equal to the checked-out head ("installed revision <sha> of "), its first "N s old" line is last-run.json and N is under 7200 (two intervals of the 3600 s timer), last-run.json holds fewer UNREAD rows than rows (a register whose every row reads UNREAD fails), and last-run.json names a journal file on h201 that was written within 120 minutes and ends in an event line. Rerunning the unit tests proves nothing about the install, so the check does not; the unit tests run this same check against the installer's real status output and a real tick's record (every row UNREAD, no journal, an old journal, another revision, a stale heartbeat and another first age line each fail it). Hosted CI cannot reach h201, so only the local Done gate runs this unbound check; its output is recorded in the Lab line and a STATUS row.
   source: manual
   binds_ac:
   - AC4
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: sh -c 'head=$(git rev-parse HEAD) && out=$(ssh h201 onex-host-install-units ruling-register-systemd --status) && printf "%s\n" "$out" && printf "%s\n" "$out" | grep -qF "installed revision $head of " && age=$(printf "%s\n" "$out" | sed -n "s/^.* \([0-9][0-9]*\) s old$/\1/p" | head -n 1) && test -n "$age" && test "$age" -lt 7200'
+    check_value: |-
+      sh -c '
+      set -eu
+      head=$(git rev-parse HEAD)
+      out=$(ssh h201 onex-host-install-units ruling-register-systemd --status)
+      printf "%s\n" "$out"
+      printf "%s\n" "$out" | grep -qF "installed revision $head of "
+      line=$(printf "%s\n" "$out" | grep -m1 -E " [0-9]+ s old$")
+      path=${line%: *}
+      age=${line##*: }
+      age=${age% s old}
+      case "$path" in */last-run.json) ;; *) echo "the first age line is not last-run.json: $line"; exit 1 ;; esac
+      test "$age" -lt 7200
+      rec=$(ssh h201 cat "$path")
+      printf "%s\n" "$rec"
+      rows=$(printf "%s" "$rec" | sed -n "s/.*\"rows\": \([0-9][0-9]*\).*/\1/p")
+      unread=$(printf "%s" "$rec" | sed -n "s/.*\"UNREAD\": \([0-9][0-9]*\).*/\1/p")
+      journal=$(printf "%s" "$rec" | sed -n "s/.*\"journal\": \"\([^\"]*\)\".*/\1/p")
+      test -n "$rows"
+      test -n "$unread"
+      test "$rows" -gt 0
+      test "$unread" -lt "$rows"
+      test -n "$journal"
+      ssh h201 find "$journal" -mmin -120 | grep -q .
+      ssh h201 tail -n 1 "$journal" | grep -q "\"row_id\":"
+      '
     cwd: .

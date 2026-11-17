@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """The ruling register read: ``handle(ModelRulingReadRequest) -> ModelRulingReadResult`` (OMN-24478).
 
-Reads rows of the standing-rulings register concurrently through the port, returning
-readings and emitting events in row order: ``answered`` (golden) for an OK reading,
+Reads rows of the standing-rulings register concurrently through the port (the rows that run the
+ledger reader one after another, because the query service they share answers one window at a time),
+returning readings and emitting events in row order: ``answered`` (golden) for an OK reading,
 ``refused`` (error) for UNREAD.
 The port never raises and a refused read is never an answer; judging the readings into
 verdicts belongs to ``node_ruling_register_compute``. A journal write that fails costs
@@ -14,7 +15,7 @@ them from the contract -- so no topic string is in this file.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
@@ -38,6 +39,37 @@ from omnimarket.nodes.node_ruling_register_effect.protocols import (
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 MAX_CONCURRENT_READS = 8
+# A row whose argv runs the ledger reader reads the same work-ledger query service as every other such row, and
+# that service answers one window at a time: measured on 2026-11-17 (one 24 h window read in 69 s, eight at once
+# all unanswered at 115 s). Those rows therefore run one after another, in row order, beside the concurrent rest.
+LEDGER_READER_MARKER = "node_work_ledger_reader_effect"
+
+
+def is_ledger_reader_row(row: ModelRulingRow) -> bool:
+    """True when the row's argv (any token, so a ``sh -c`` script counts) runs the work-ledger reader."""
+    return any(LEDGER_READER_MARKER in token for token in row.read.argv)
+
+
+def worst_case_seconds(
+    rows: Sequence[ModelRulingRow],
+    timeout_seconds: int,
+    cap: int = MAX_CONCURRENT_READS,
+) -> int:
+    """The longest a register read can take when every row waits the full route timeout.
+
+    The ledger-reader rows form one task of ``count * timeout_seconds``; every other row is a task of
+    ``timeout_seconds``; ``cap`` workers take the tasks in the handler's order (the chain first). The unit's run
+    limit must exceed this.
+    """
+    chain = sum(1 for row in rows if is_ledger_reader_row(row))
+    durations = ([chain * timeout_seconds] if chain else []) + [timeout_seconds] * (
+        len(rows) - chain
+    )
+    free_at = [0] * max(1, min(len(durations), cap))
+    for duration in durations:
+        free_at.sort()
+        free_at[0] += duration
+    return max(free_at) if durations else 0
 
 
 def load_topics(path: Path = CONTRACT) -> dict[str, str]:
@@ -65,19 +97,30 @@ class HandlerRulingRegisterRead:
         readings = []
         sink_errors = []
         rows = request.policy.rows
+        # One task per row, except that the ledger-reader rows form one task that reads them in row order.
+        chain = [i for i, row in enumerate(rows) if is_ledger_reader_row(row)]
+        tasks = ([chain] if chain else []) + [
+            [i] for i, row in enumerate(rows) if not is_ledger_reader_row(row)
+        ]
+
+        def read_task(indexes: list[int]) -> list[tuple[int, ModelRulingReading]]:
+            return [(i, self._port.read(rows[i])) for i in indexes]
+
+        by_index: dict[int, ModelRulingReading] = {}
         with ThreadPoolExecutor(
-            max_workers=max(1, min(len(rows), MAX_CONCURRENT_READS))
+            max_workers=max(1, min(len(tasks), MAX_CONCURRENT_READS))
         ) as executor:
-            for row, reading in zip(
-                rows, executor.map(self._port.read, rows), strict=True
-            ):
-                readings.append(reading)
-                try:
-                    self._emit(request, row, reading)
-                except OSError as exc:
-                    # A journal write that fails loses its row's event, not the
-                    # remaining rows' reads; the failures come back by row.
-                    sink_errors.append(f"{row.row_id}: {type(exc).__name__}")
+            for task_readings in executor.map(read_task, tasks):
+                by_index.update(task_readings)
+        for i, row in enumerate(rows):
+            reading = by_index[i]
+            readings.append(reading)
+            try:
+                self._emit(request, row, reading)
+            except OSError as exc:
+                # A journal write that fails loses its row's event, not the
+                # remaining rows' reads; the failures come back by row.
+                sink_errors.append(f"{row.row_id}: {type(exc).__name__}")
         return ModelRulingReadResult(
             correlation_id=request.correlation_id,
             readings=tuple(readings),
@@ -107,4 +150,11 @@ class HandlerRulingRegisterRead:
         self._sink.emit(event)
 
 
-__all__ = ["HandlerRulingRegisterRead", "load_topics"]
+__all__ = [
+    "LEDGER_READER_MARKER",
+    "MAX_CONCURRENT_READS",
+    "HandlerRulingRegisterRead",
+    "is_ledger_reader_row",
+    "load_topics",
+    "worst_case_seconds",
+]

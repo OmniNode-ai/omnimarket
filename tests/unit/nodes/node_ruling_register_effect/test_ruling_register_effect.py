@@ -21,8 +21,9 @@ judges FALSE, never UNREAD.
 
 from __future__ import annotations
 
+import copy
 import json
-import math
+import os
 import shlex
 import subprocess
 import sys
@@ -32,7 +33,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+import yaml
+from pydantic import ValidationError
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.model_ruling_register import (
     EnumReadStatus,
     EnumRulingVerdict,
@@ -44,8 +48,14 @@ from omnimarket.models.model_ruling_register import (
     ModelRulingRegisterRequest,
     ModelRulingRow,
 )
+from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units import (
+    load_units,
+)
 from omnimarket.nodes.node_ruling_register_compute.handlers.handler_ruling_register import (
     HandlerRulingRegister,
+)
+from omnimarket.nodes.node_ruling_register_compute.overlay import (
+    load_ruling_register_policy,
 )
 from omnimarket.nodes.node_ruling_register_effect.adapters import (
     CommandRulingReadPort,
@@ -55,7 +65,9 @@ from omnimarket.nodes.node_ruling_register_effect.adapters import (
 from omnimarket.nodes.node_ruling_register_effect.handlers.handler_ruling_register_read import (
     MAX_CONCURRENT_READS,
     HandlerRulingRegisterRead,
+    is_ledger_reader_row,
     load_topics,
+    worst_case_seconds,
 )
 from omnimarket.nodes.node_ruling_register_effect.models import (
     EnumRouteKind,
@@ -72,6 +84,8 @@ from omnimarket.nodes.node_ruling_register_effect.runtime_ruling_register import
 from tests.node_overlay_support import install_node_overlay
 
 pytestmark = pytest.mark.unit
+
+ROOT = Path(__file__).resolve().parents[4]
 
 NOW = datetime(2026, 7, 3, 12, 0, 0, tzinfo=UTC)
 RULING = "2026-07-01T10:00:00Z"
@@ -203,20 +217,33 @@ def test_a_row_without_a_fixture_reads_unread_never_answered() -> None:
     assert event.detail == "no reading fixture"
 
 
-def test_six_slow_rows_read_concurrently_in_about_one_read() -> None:
-    class SlowPort:
+LEDGER_READER_ARGV = (
+    "sh",
+    "-c",
+    'fetch() {\n  echo "NOW $(date -u +%Y-%m-%dT%H:%M:%SZ)"\n  "$OMNI_HOME/.onex-dispatch-venv/bin/python" -m '
+    "omnimarket.nodes.node_work_ledger_reader_effect --reader ruling-register --query rows --window-hours 24 "
+    "&& echo END\n}\nfetch | cat\n",
+)
+
+
+def test_six_slow_rows_all_read_at_once() -> None:
+    """Six reads that wait for each other: they pass only when all six run at the same moment.
+
+    No wall-clock bound: a serial or two-worker handler leaves the barrier waiting until its timeout and the
+    read raises, whatever the load of the runner.
+    """
+    rendezvous = threading.Barrier(6)
+
+    class RendezvousPort:
         def read(self, row: ModelRulingRow) -> ModelRulingReading:
-            time.sleep(0.3)
+            rendezvous.wait(timeout=30)
             return fixture(row.row_id)
 
     rows = tuple(row(f"row-{index}") for index in range(6))
-    h, sink = handler(SlowPort())
-    request = ModelRulingReadRequest(correlation_id="read-1", policy=policy(*rows))
-    started = time.monotonic()
-    result = h.handle(request)
-    elapsed = time.monotonic() - started
-    # One 0.3 s read: six rows under eight workers all run at once. Two workers would take 0.9 s.
-    assert elapsed < 0.6
+    h, sink = handler(RendezvousPort())
+    result = h.handle(
+        ModelRulingReadRequest(correlation_id="read-1", policy=policy(*rows))
+    )
     assert len(result.readings) == 6
     assert len(sink.events) == 6
     assert result.sink_errors == ()
@@ -224,70 +251,321 @@ def test_six_slow_rows_read_concurrently_in_about_one_read() -> None:
 
 def test_more_slow_rows_than_the_cap_run_at_most_the_cap_at_once() -> None:
     lock = threading.Lock()
+    reached_cap = threading.Event()
+    release = threading.Event()
     running = 0
     peak = 0
 
-    class CountingPort:
+    class GatedPort:
         def read(self, row: ModelRulingRow) -> ModelRulingReading:
             nonlocal running, peak
             with lock:
                 running += 1
                 peak = max(peak, running)
-            time.sleep(0.1)
+                if running == MAX_CONCURRENT_READS:
+                    reached_cap.set()
+            # The first MAX_CONCURRENT_READS reads are held until the cap is reached and a further read has had
+            # its chance to start (it cannot, with a cap); the grace only gives a missing cap time to show itself.
+            assert release.wait(timeout=30)
             with lock:
                 running -= 1
             return fixture(row.row_id)
 
+    def releaser() -> None:
+        assert reached_cap.wait(timeout=30)
+        time.sleep(0.2)
+        release.set()
+
     count = 2 * MAX_CONCURRENT_READS + 1
     rows = tuple(row(f"row-{index}") for index in range(count))
-    h, sink = handler(CountingPort())
-    started = time.monotonic()
+    h, sink = handler(GatedPort())
+    thread = threading.Thread(target=releaser)
+    thread.start()
     result = h.handle(
         ModelRulingReadRequest(correlation_id="read-1", policy=policy(*rows))
     )
-    elapsed = time.monotonic() - started
+    thread.join()
     assert MAX_CONCURRENT_READS == 8
-    # The cap is reached (a pool of two would peak at 2) and never passed (no cap would peak at 17).
+    # The cap is reached (a pool of two would never reach it) and never passed (no cap would peak at 17).
     assert peak == MAX_CONCURRENT_READS
-    # 17 rows under a cap of 8 take three waves of 0.1 s, not one (no cap) and not nine (two workers).
-    assert 0.28 < elapsed < 0.6
     assert [reading.row_id for reading in result.readings] == [r.row_id for r in rows]
     assert len(sink.events) == count
 
 
-def test_the_register_at_review_ends_inside_the_unit_run_limit_at_the_route_timeout() -> (
+def ledger_row(row_id: str) -> ModelRulingRow:
+    return row(row_id, argv=LEDGER_READER_ARGV)
+
+
+def test_the_rows_that_run_the_ledger_reader_read_one_at_a_time_beside_the_concurrent_rest() -> (
     None
 ):
-    """Worst case: every row waits the full route timeout. ceil(rows / cap) waves of it must stay under the unit's
-    600 s run limit. The register held 16 rows at review (route timeout 90 s): 2 waves, 180 s; the register
-    can grow to 48 rows (6 waves, 540 s) before the limit is hit."""
-    unit_limit_s = 600
-    route_timeout_s = 90
-    rows_at_review = 16
-    waves = math.ceil(rows_at_review / MAX_CONCURRENT_READS)
-    assert waves * route_timeout_s == 180
-    assert waves * route_timeout_s < unit_limit_s
-    assert math.ceil(48 / MAX_CONCURRENT_READS) * route_timeout_s < unit_limit_s
-    assert math.ceil(49 / MAX_CONCURRENT_READS) * route_timeout_s >= unit_limit_s
+    """Eight simultaneous ledger-reader runs were measured: each one unanswered at 115 s, against 69 s alone."""
+    lock = threading.Lock()
+    readers_running = 0
+    reader_peak = 0
+    reader_order: list[str] = []
+    rendezvous = threading.Barrier(3)
 
-
-def test_readings_and_events_stay_in_row_order_when_the_first_read_is_slower() -> None:
-    completed: list[str] = []
-
-    class SlowFirstPort:
+    class MixedPort:
         def read(self, row: ModelRulingRow) -> ModelRulingReading:
-            time.sleep(0.3 if row.row_id == "row-a" else 0.01)
-            completed.append(row.row_id)
+            nonlocal readers_running, reader_peak
+            if row.row_id.startswith("plain"):
+                # The plain rows do not queue behind the chain: all three run together while a reader runs.
+                rendezvous.wait(timeout=30)
+                return fixture(row.row_id)
+            with lock:
+                readers_running += 1
+                reader_peak = max(reader_peak, readers_running)
+                reader_order.append(row.row_id)
+            time.sleep(
+                0.05
+            )  # a grace for a second reader to overlap if the handler let it
+            with lock:
+                readers_running -= 1
             return fixture(row.row_id)
 
-    h, sink = handler(SlowFirstPort())
+    rows = (
+        ledger_row("ledger-1"),
+        row("plain-1"),
+        ledger_row("ledger-2"),
+        row("plain-2"),
+        ledger_row("ledger-3"),
+        row("plain-3"),
+    )
+    h, sink = handler(MixedPort())
+    result = h.handle(
+        ModelRulingReadRequest(correlation_id="read-1", policy=policy(*rows))
+    )
+    assert reader_peak == 1
+    assert reader_order == ["ledger-1", "ledger-2", "ledger-3"]
+    assert [reading.row_id for reading in result.readings] == [r.row_id for r in rows]
+    assert [event.row_id for event in sink.events] == [r.row_id for r in rows]
+
+
+def test_a_script_that_runs_the_ledger_reader_is_recognised_and_a_plain_argv_is_not() -> (
+    None
+):
+    assert is_ledger_reader_row(ledger_row("ledger"))
+    assert not is_ledger_reader_row(row("plain", argv=("uptime", "quiet")))
+    assert not is_ledger_reader_row(row("real-h201", argv=REAL_SHAPED_ARGV))
+
+
+def test_worst_case_seconds_counts_the_ledger_chain_as_one_task_and_the_rest_in_waves() -> (
+    None
+):
+    plain = [row(f"plain-{i}") for i in range(16)]
+    ledger = [ledger_row(f"ledger-{i}") for i in range(8)]
+    assert worst_case_seconds([], 90) == 0
+    # 16 plain rows under a cap of 8: two waves.
+    assert worst_case_seconds(plain, 90) == 180
+    # 8 ledger rows: one chain of 8 timeouts, the other worker free.
+    assert worst_case_seconds(ledger, 90) == 8 * 90
+    # The register at review: 8 ledger rows in one chain beside 8 plain rows on the other seven workers.
+    assert worst_case_seconds(ledger + plain[:8], 90) == 8 * 90
+    # One more timeout on the route or one more ledger row moves the bound.
+    assert worst_case_seconds(ledger + plain[:8], 100) == 800
+    assert worst_case_seconds([*ledger, ledger_row("ledger-8"), *plain[:8]], 90) == 810
+
+
+def register_bound(
+    environ: dict[str, str], units: dict[str, dict[str, object]] | None = None
+) -> tuple[int, int, int]:
+    """The three reads of the bound: the unit's run limit, the route's timeout and the worst case of the register."""
+    unit = (units if units is not None else load_units())["ruling-register-systemd"]
+    limit = int(unit["schedule"]["run_timeout_s"])  # type: ignore[index]
+    route_timeout = load_route(environ).timeout_seconds
+    rows = load_ruling_register_policy(environ).rows
+    return limit, route_timeout, worst_case_seconds(rows, route_timeout)
+
+
+def register_environ(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[dict[str, str], bool]:
+    """The overlays the register runs under: the deployment's own when ONEX_SKILL_OVERLAY_ROOTS holds both, else the
+    examples this repository ships. Returns the environ and whether it is the deployment's.
+
+    A runner with no deployment overlay reads the examples and never skips, so the check runs everywhere and reads
+    the real route and the real row count wherever they are present.
+    """
+    deployed = {
+        "ONEX_SKILL_OVERLAY_ROOTS": os.environ.get("ONEX_SKILL_OVERLAY_ROOTS", "")
+    }
+    try:
+        load_route(deployed)
+        load_ruling_register_policy(deployed)
+        return deployed, True
+    except (NodeOverlayError, ValidationError, ValueError, OSError):
+        pass
+    node_dir = Path(__file__).resolve().parents[4] / "src/omnimarket/nodes"
+    for node in ("node_ruling_register_compute", "node_ruling_register_effect"):
+        install_node_overlay(
+            monkeypatch,
+            tmp_path,
+            node,
+            yaml.safe_load(
+                (node_dir / node / "overlay.example.yaml").read_text("utf-8")
+            ),
+        )
+    return {"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)}, False
+
+
+def test_the_register_ends_inside_the_unit_run_limit_when_every_row_waits_the_route_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Worst case: every row waits the full route timeout. The register at review held 16 rows (8 of them ledger
+    readers) under a 90 s route timeout: 720 s, inside the unit's run limit. Every input is read, none is a literal."""
+    environ, _deployed = register_environ(tmp_path, monkeypatch)
+    limit, route_timeout, worst_case = register_bound(environ)
+    assert worst_case < limit, (limit, route_timeout, worst_case)
+
+
+def synthetic_register_environ(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    ledger_rows: int,
+    plain_rows: int,
+    route_timeout: int,
+) -> dict[str, str]:
+    rows = [
+        {
+            "row_id": f"{kind}-{index}",
+            "ruling": RULING,
+            "must_be_true": "the example ruling holds",
+            "read": {
+                "host": "local",
+                "argv": list(LEDGER_READER_ARGV if kind == "ledger" else ("true",)),
+                "ok_exit_codes": [0],
+                "expect": {"kind": "stdout_empty"},
+            },
+            "owner": "example-lane",
+            "fix": "fix it",
+        }
+        for kind, count in (("ledger", ledger_rows), ("plain", plain_rows))
+        for index in range(count)
+    ]
+    install_node_overlay(
+        monkeypatch,
+        tmp_path,
+        "node_ruling_register_compute",
+        {"max_reading_age_seconds": 600, "rows": rows},
+    )
+    install_node_overlay(
+        monkeypatch,
+        tmp_path,
+        "node_ruling_register_effect",
+        {
+            "kind": "command",
+            "timeout_seconds": route_timeout,
+            "remote_argv_prefix": ["ssh", "{target}"],
+            "local_hosts": ["local"],
+            "host_targets": {},
+            "journal_env": "ONEX_RULING_REGISTER_JOURNAL",
+        },
+    )
+    return {"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)}
+
+
+@pytest.mark.parametrize(
+    ("ledger_rows", "plain_rows", "route_timeout", "unit_limit", "inside"),
+    [
+        (8, 8, 90, None, True),  # the register at review, the unit's own limit
+        (
+            8,
+            8,
+            90,
+            719,
+            False,
+        ),  # the unit limit is read: 720 s of worst case no longer fits
+        (8, 8, 90, 721, True),
+        (
+            10,
+            8,
+            90,
+            None,
+            False,
+        ),  # the row count is read from the overlay: a tenth ledger row reaches the limit (900 s)
+        (8, 8, 120, None, False),  # the route timeout is read from the route: 960 s
+    ],
+    ids=["review", "limit-719", "limit-721", "tenth-ledger-row", "timeout-120"],
+)
+def test_each_input_of_the_bound_is_read_not_a_literal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ledger_rows: int,
+    plain_rows: int,
+    route_timeout: int,
+    unit_limit: int | None,
+    inside: bool,
+) -> None:
+    environ = synthetic_register_environ(
+        tmp_path,
+        monkeypatch,
+        ledger_rows=ledger_rows,
+        plain_rows=plain_rows,
+        route_timeout=route_timeout,
+    )
+    units = load_units()
+    if unit_limit is not None:
+        units = copy.deepcopy(units)
+        units["ruling-register-systemd"]["schedule"]["run_timeout_s"] = unit_limit
+    limit, timeout, worst_case = register_bound(environ, units)
+    assert timeout == route_timeout
+    assert (worst_case < limit) is inside, (limit, timeout, worst_case)
+    if unit_limit is None and ledger_rows == 8 and route_timeout == 90:
+        # The review's own figures, reached through the three reads: 16 rows, 90 s, the unit's limit.
+        assert worst_case == 720
+        assert (
+            limit
+            == load_units()["ruling-register-systemd"]["schedule"]["run_timeout_s"]
+        )
+
+
+def test_the_contract_states_the_wave_bound_and_not_the_old_wording() -> None:
+    contract = yaml.safe_load(
+        (ROOT / "contracts/OMN-24944.yaml").read_text(encoding="utf-8")
+    )
+    ac5 = next(
+        item["statement"]
+        for req in contract["requirements"]
+        for item in req["acceptance"]
+        if item["id"] == "AC5"
+    )
+    assert "ceil(rows / 8)" in ac5
+    assert "about one timeout" not in ac5
+    dod5 = next(
+        item["description"]
+        for item in contract["dod_evidence"]
+        if item["id"] == "dod-omn24944-ac5"
+    )
+    assert "1.2 s" not in dod5
+    assert "barrier" in dod5
+
+
+def test_readings_and_events_stay_in_row_order_when_the_first_read_finishes_last() -> (
+    None
+):
+    finished: list[str] = []
+    last_row_done = threading.Event()
+
+    class FirstFinishesLastPort:
+        def read(self, row: ModelRulingRow) -> ModelRulingReading:
+            if row.row_id == "row-a":
+                # Held until the last row has finished: a handler that reads in row order would wait here until timeout.
+                assert last_row_done.wait(timeout=30)
+            finished.append(row.row_id)
+            if row.row_id == "row-c":
+                last_row_done.set()
+            return fixture(row.row_id)
+
+    h, sink = handler(FirstFinishesLastPort())
     result = h.handle(
         ModelRulingReadRequest(
             correlation_id="read-1",
             policy=policy(row("row-a"), row("row-b"), row("row-c")),
         )
     )
-    assert completed[-1] == "row-a"
+    assert finished[-1] == "row-a"
     assert [reading.row_id for reading in result.readings] == [
         "row-a",
         "row-b",

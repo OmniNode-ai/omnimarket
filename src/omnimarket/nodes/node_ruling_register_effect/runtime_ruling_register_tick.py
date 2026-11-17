@@ -7,8 +7,10 @@ standing-rulings register exactly as ``python -m omnimarket.nodes.node_ruling_re
 ``MISSING ruling-not-running:<row>`` line per row that is not TRUE on stdout and records the reading in
 ``<state-dir>/last-run.json``, whose age is the unit's heartbeat. A row that is not TRUE is the reading, not a
 failed tick: the tick exits 0 when the register was read and 3 (``INDETERMINATE: <type>: <text>`` on stderr, on the probe and the
-run alike) when an overlay is missing or refuses to validate or a file cannot be read or written. A journal write that
-failed costs its row's event only and is listed in ``journal_errors`` of the record.
+run alike) when an overlay is missing or refuses to validate or the record cannot be written. Only the loaders and the write
+are held to that: an error raised inside the read itself is a bug and ends the run with its traceback, never as INDETERMINATE.
+A journal write that failed costs its row's event only and is listed in ``journal_errors`` of the record, which also names the
+``journal`` file the events went to (empty when the route's journal variable is unset and the events stay in memory).
 ``--probe`` loads the policy and the route and prints ``PROBE ok``: it runs no read and writes nothing (the
 installer runs a probe before it loads the unit). ``--omni-home`` is the installer's tick argument; the reading
 takes its settings from the overlays and its environment, not from it.
@@ -39,9 +41,11 @@ from omnimarket.nodes.node_ruling_register_effect.runtime_ruling_register import
 
 EXIT_OK = 0
 EXIT_UNREADABLE = 3
-# One exception set for the probe and the run: an overlay that is missing or refuses to validate, a value a loader
-# did not wrap, and a file the tick cannot read or write all end the tick with 3 and a line on stderr, never a traceback.
-UNREADABLE = (NodeOverlayError, ValidationError, ValueError, OSError)
+# The exceptions of the two places that may end the tick with 3 and a line on stderr instead of a traceback: the
+# loaders (an overlay that is missing or refuses to validate, a value a loader did not wrap, a file it cannot read)
+# and the write of the record. Nothing else is caught: a ValueError or OSError from the read is a bug.
+LOADER_ERRORS = (NodeOverlayError, ValidationError, ValueError, OSError)
+WRITE_ERRORS = (OSError, ValueError)
 
 
 def _write_atomically(path: Path, text: str) -> None:
@@ -64,18 +68,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--probe", action="store_true")
     args = parser.parse_args(list(sys.argv[1:] if argv is None else argv))
     try:
-        if args.probe:
-            load_ruling_register_policy(os.environ)
-            load_route(os.environ)
-            sys.stdout.write("PROBE ok\n")
-            return EXIT_OK
-        return _run(args.state_dir)
-    except UNREADABLE as exc:
-        sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
-        return EXIT_UNREADABLE
+        load_ruling_register_policy(os.environ)
+        route = load_route(os.environ)
+    except LOADER_ERRORS as exc:
+        return _indeterminate(exc)
+    if args.probe:
+        sys.stdout.write("PROBE ok\n")
+        return EXIT_OK
+    return _run(args.state_dir, os.environ.get(route.journal_env, "").strip())
 
 
-def _run(state_dir: str) -> int:
+def _indeterminate(exc: BaseException) -> int:
+    sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
+    return EXIT_UNREADABLE
+
+
+def _run(state_dir: str, journal: str) -> int:
     """One pass: read the register, print the MISSING lines and the summary, record the reading under ``state_dir``."""
     judged, sink_errors = read_register(os.environ)
     for error in sink_errors:
@@ -94,6 +102,8 @@ def _run(state_dir: str) -> int:
         "verdicts": {v.row_id: v.verdict.value for v in judged.verdicts},
         # A journal write that failed loses its row's event, not its reading: the failures are part of the record.
         "journal_errors": list(sink_errors),
+        # The file the events went to; empty when the route's journal variable is unset (the events stay in memory).
+        "journal": journal,
     }
     sys.stdout.write(
         f"RULING-REGISTER rows={record['rows']} "
@@ -101,9 +111,12 @@ def _run(state_dir: str) -> int:
         + "\n"
     )
     if state_dir:
-        _write_atomically(
-            Path(state_dir) / "last-run.json", json.dumps(record, sort_keys=True)
-        )
+        try:
+            _write_atomically(
+                Path(state_dir) / "last-run.json", json.dumps(record, sort_keys=True)
+            )
+        except WRITE_ERRORS as exc:
+            return _indeterminate(exc)
     return EXIT_OK
 
 

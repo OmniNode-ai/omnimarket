@@ -76,12 +76,13 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
     cwd: .
 - id: dod-omn25207-ac6
-  description: The watcher state shows the head the Lab comment names. A PR comment and the watcher state are not readable on the hosted runner, so only the local Done gate runs this check.
+  description: 'The PR view carries a Lab comment line naming the head (grep for Lab:, then head=, then the sha: the head sha alone is on every PR view whether or not a Lab comment exists). A PR comment and the watcher state are not readable on the hosted runner, so only the local Done gate runs this check.'
   source: manual
   binds_ac:
   - AC6
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: sh -c 'onex scm pr-view OmniNode-ai/omnimarket#6345 | grep -F "$(git rev-parse HEAD)"'
+    check_value: |-
+      sh -c 'onex scm pr-view OmniNode-ai/omnimarket#6345 | grep -F "Lab: head=$(git rev-parse HEAD)"'
     cwd: .

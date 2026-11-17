@@ -303,7 +303,10 @@ units:
     timer_template: templates/onex-registry-module-tick.timer.tmpl
     schedule:
       start_interval: 3600
-      run_timeout_s: 600
+      # The rows that run the ledger reader read one after another (the query service they share answers one window at a
+      # time), each for at most the route's timeout: at the 90 s route timeout the register's 8 such rows end by 720 s at
+      # the latest, the rest of its 16 rows reading beside them. The limit sits above that (worst_case_seconds).
+      run_timeout_s: 900
       run_at_load: true
       description: every 3600 s and at load
     registry_project: omnimarket

@@ -1,0 +1,109 @@
+schema_version: 1.0.0
+ticket_id: OMN-25283
+title: 'Review findings 1 to 9 on omnimarket PR 6345 at head dd0f23ff930f are fixed or argued: the AC4 status and journal are recorded, the effect and tick tests can fail, a real h201 row argv is tested and the Lab comment is at the new head'
+summary: The third review of the ruling register tick and unit found the AC4 check passes with every row UNREAD and never checks the journal, an effect test and a tick test that cannot fail, no test of a real h201 row argv, eight simultaneous ledger-reader runs without evidence, and an AC6 check that passes with no Lab comment. This change fixes each with a test that fails against the earlier source, or argues it with the reading in a PR comment; the ledger-reader rows now read one at a time because eight at once were measured unanswered.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25283-review-findings-fixed-or-argued
+  statement: Every blocking finding of the third review is fixed with a test that fails at the reviewed head, or argued with evidence in a PR comment.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the AC4 check of contracts/OMN-24944.yaml records the status output and last-run.json at the new head, asserts the UNREAD count and one journal line, and prints installed revision and the first N s old line as last-run.json -- falsifier: `uv run pytest tests -k ruling_register_unit -q -p no:cacheprovider` fails when the check passes with every row UNREAD or without a journal line'
+  - id: AC2
+    statement: 'AC2: a test with a missing journal parent directory proves the sink or the installer creates it, or the append fails loud with a journal line -- falsifier: `uv run pytest tests -k ruling_register -q -p no:cacheprovider` fails when the parent is not created and the tick still exits 0 with no journal line'
+  - id: AC3
+    statement: 'AC3: AC5 of contracts/OMN-24944.yaml states ceil(rows / 8) timeouts, line 59 states the real bound, and the effect test reads run_timeout_s from load_units(), the timeout from the route and the row count from the overlay -- falsifier: `uv run pytest tests -k ruling_register_effect -q -p no:cacheprovider` fails when a literal replaces one of the three reads'
+  - id: AC4
+    statement: 'AC4: the tick test runs with monkeypatch.chdir(tmp_path) and fails when last-run.json is written without --state-dir, and the tick catches ValueError and OSError only around the loaders and the write -- falsifier: `uv run pytest tests -k ruling_register_tick -q -p no:cacheprovider` fails when the write goes to the working directory or a read_register bug reports INDETERMINATE'
+  - id: AC5
+    statement: 'AC5: a test runs a real h201 row argv under the unit PATH and user, checks row.read.host equals the --set name, and shows the dev container does not carry its host''s LAB_WORK_HOST_NAME -- falsifier: `uv run pytest tests -k ruling_register -q -p no:cacheprovider` fails when the argv commands do not resolve or the host name differs'
+  - id: AC6
+    statement: 'AC6: evidence shows eight simultaneous ledger-reader runs sharing the state directory are safe, or those rows are serialized, and the unit test reads journal_env from the deployed h201 overlay -- falsifier: `uv run pytest tests -k ruling_register_unit -q -p no:cacheprovider` fails when the overlay does not name ONEX_RULING_REGISTER_JOURNAL or the rows run in parallel'
+  - id: AC7
+    statement: 'AC7: the AC6 check of contracts/OMN-25207.yaml greps for the Lab comment with the head and fails without it, the effect timing tests gate on a barrier or event, and the unit check pins patterns to a sample of real status output -- falsifier: `uv run pytest tests -k ruling_register -q -p no:cacheprovider` fails when the Lab comment is absent or a pattern drifts from the sample'
+  - id: AC8
+    statement: 'AC8: a PR comment starting Lab: head=<full new head sha> names each command with exit 0 (a whole-suite run in named parts if it times out), each blocking finding is fixed or argued in a comment, and the PR title names the tick, the unit and the local read -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6345` shows a head that differs from the head named in the Lab: comment, or no Lab: comment, or a command without exit 0'
+evidence_requirements:
+- kind: tests
+  description: The register tick, effect and unit tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25283-ac1
+  description: 'The AC4 check is executed against the installer''s real status output and a real tick''s record: it passes with the head installed, a fresh record, some rows read and a journal line, and fails for every row UNREAD, no journal, an old or empty journal, another revision, a stale heartbeat and another first age line.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -k "ac4 or status_output_the_check" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn25283-ac2
+  description: A tick with a journal under a missing parent creates it and writes the line; a parent that cannot be created gives a RULING-REGISTER-JOURNAL-ERROR line and a journal_errors entry; the installer creates the state directory.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -k "journal_parent or installer_creates or no_journal" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn25283-ac3
+  description: The contract states the wave bound; the run-limit test reads the three inputs (the deployment overlay when the runner holds it, the shipped example otherwise) and each input moves the verdict of the bound.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -k "run_limit or each_input or wave_bound" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn25283-ac4
+  description: The no-state-dir test runs in an empty working directory; a loader error ends 3, a ValueError or OSError from the read propagates.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_tick.py -k "no_state_dir or loader_raises or raised_by_the_read" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn25283-ac5
+  description: The four deployed h201 rows run verbatim under the rendered unit's HOME, USER and PATH with the install's host name and read TRUE; without the host name they read UNREAD; a docker that refuses reads them UNREAD.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -k "real_h201 or docker_that_refuses" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn25283-ac6
+  description: The rows that run the ledger reader read one at a time beside the concurrent rest; the unit's journal variable is the route overlay's (the deployment's when the runner holds it).
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -k "one_at_a_time or ledger_reader or journal_the_route_overlay or another_journal" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn25283-ac7
+  description: 'The earlier round''s AC6 check fails without a Lab: head= line for the head; the timing tests use a barrier and events; the status patterns are checked against the installer''s own output.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -k "lab_comment or at_once or first_read_finishes_last or status_output_the_check" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn25283-ac8
+  description: The PR view carries a Lab comment line naming the head. A PR comment and the watcher state are not readable on the hosted runner, so only the local Done gate runs this check.
+  source: manual
+  binds_ac:
+  - AC8
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'sh -c ''onex scm pr-view OmniNode-ai/omnimarket#6345 | grep -F "Lab: head=$(git rev-parse HEAD)"'''
+    cwd: .
