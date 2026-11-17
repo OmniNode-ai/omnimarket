@@ -60,7 +60,7 @@ class EnumRoutingExclusionReason(StrEnum):
     """The tier costs more per 1k tokens than the task class's declared ceiling."""
 
     TIER_INPUT_BOUND_EXCEEDED = "tier_input_bound_exceeded"
-    """The prompt's token upper bound is above the tier's ``max_input_token_bound``."""
+    """The prompt's token upper bound is above every member's input bound in the tier (``LOCAL_MEMBER_INPUT_BOUNDS``)."""
 
     # ---- candidate-level --------------------------------------------------
     BACKEND_REQUIRES_EXPLICIT_PIN = "backend_requires_explicit_pin"

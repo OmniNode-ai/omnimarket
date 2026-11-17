@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import json
+import random
+import string
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,7 +17,10 @@ import pytest
 import yaml
 from omnibase_infra.errors import ProtocolConfigurationError
 
-from omnimarket.handlers.routing.input_token_bound import input_token_upper_bound
+from omnimarket.handlers.routing.input_token_bound import (
+    LOCAL_MEMBER_INPUT_BOUNDS,
+    input_token_upper_bound,
+)
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     measured_correct_ceiling,
 )
@@ -93,9 +98,34 @@ INPUT_BUDGET = 35000
 # could take 64512 (131072 - 65536 - 1024); the peer takes 48128.
 BOUND_CEILING = PEER["window_per_slot_tokens"] - PEER["max_tokens"] - WRAPPER_MARGIN
 assert BOUND_CEILING == 48128
-# A prompt of ``a`` characters only: each letter bounds at half a token, so
-# this estimate (characters over four) is the largest the bound admits.
-X_EST_LIMIT = BOUND_CEILING // 2
+# The rungs' bound: served window less the output reserve and the wrapper margin.
+RUNG_BOUND = SERVED_MAX_MODEL_LEN - OUTPUT_RESERVE - WRAPPER_MARGIN
+assert RUNG_BOUND == 64512
+# Filler text of plain 12-letter words: a word and its space bound at 7 tokens
+# per 13 characters (letters at two per token, the space at one).
+FILLER_WORD = "abcdefghijkl "
+
+
+def filler(characters: int) -> str:
+    return (FILLER_WORD * (characters // len(FILLER_WORD) + 1))[:characters]
+
+
+def largest_estimate_within(bound: int) -> int:
+    """The largest estimate (characters over four) whose filler the bound admits."""
+    low, high = 1, bound * 4
+    while low < high:
+        middle = (low + high + 1) // 2
+        if input_token_upper_bound(filler(middle * 4)) <= bound:
+            low = middle
+        else:
+            high = middle - 1
+    return low
+
+
+# The largest request estimate each member takes (see ``request``).
+X_EST_LIMIT = largest_estimate_within(RUNG_BOUND)
+X_EST_LIMIT_PEER = largest_estimate_within(BOUND_CEILING)
+assert X_EST_LIMIT_PEER < X_EST_LIMIT < INPUT_BUDGET
 
 
 LOCAL_CODER = "local-coder"
@@ -190,7 +220,7 @@ def request(
         correlation_id=uuid4(),
         emitted_at=datetime.now(UTC),
         task_type=task,
-        prompt="x" * (tokens * 4),
+        prompt=filler(tokens * 4),
         backend_id=backend,
     )
 
@@ -363,24 +393,27 @@ def test_both_local_rungs_fit_the_served_window(model: dict[str, Any]) -> None:
     assert model["id"] == SERVED_MODEL["id"]
     assert backend["max_tokens"] == OUTPUT_RESERVE
     assert model["max_context_tokens"] == INPUT_BUDGET
-    assert BOUND_CEILING + WRAPPER_MAX + backend["max_tokens"] <= SERVED_MAX_MODEL_LEN
+    assert RUNG_BOUND + WRAPPER_MAX + backend["max_tokens"] <= SERVED_MAX_MODEL_LEN
 
 
-def local_tier_bound() -> int:
+def test_each_member_declares_its_own_input_bound_not_one_tier_bound() -> None:
+    # The ladder file declares no tier bound: a key there is a separate read that
+    # fails open when a mounted ladder lacks it.
     local = next(t for t in PACKAGED_LADDER["tiers"] if t["name"] == "local")
-    return int(local["max_input_token_bound"])
-
-
-def test_the_tier_bound_is_sized_for_the_smallest_member_not_the_rungs() -> None:
-    assert local_tier_bound() == BOUND_CEILING
-    # The two rungs could take 64512; the spread peer's slot takes 48128, so the
-    # tier is sized for the peer.
-    assert SERVED_MAX_MODEL_LEN - OUTPUT_RESERVE - WRAPPER_MARGIN == 64512
-    assert BOUND_CEILING < 64512
+    assert "max_input_token_bound" not in local
+    # The rungs take the window less their output reserve and the wrapper margin;
+    # the spread peer's slot takes less.
+    assert {
+        "local-coder": RUNG_BOUND,
+        "local-heavy-reasoning": RUNG_BOUND,
+        PEER["backend_id"]: BOUND_CEILING,
+    } == dict(LOCAL_MEMBER_INPUT_BOUNDS)
+    assert BOUND_CEILING < RUNG_BOUND == 64512
     assert (
         BOUND_CEILING + WRAPPER_MAX + PEER["max_tokens"]
         <= PEER["window_per_slot_tokens"]
     )
+    assert RUNG_BOUND + WRAPPER_MAX + OUTPUT_RESERVE <= SERVED_MAX_MODEL_LEN
     # Negative control: the old 35000-estimate gate at the densest reading of
     # the generated code overflows the peer's slot and, for 140000 characters,
     # the served window too.
@@ -419,8 +452,8 @@ def test_every_local_class_reserves_output_and_wrapper(
     # window. The bound of what was accepted is at most the tier bound.
     assert accepted.max_tokens == OUTPUT_RESERVE
     prompt = request(task, X_EST_LIMIT, backend).prompt
-    assert input_token_upper_bound(prompt) <= BOUND_CEILING
-    worst_case = BOUND_CEILING + WRAPPER_BY_CLASS[task] + accepted.max_tokens
+    assert input_token_upper_bound(prompt) <= RUNG_BOUND
+    worst_case = RUNG_BOUND + WRAPPER_BY_CLASS[task] + accepted.max_tokens
     assert worst_case <= SERVED_MAX_MODEL_LEN
 
 
@@ -604,13 +637,14 @@ def test_a_dense_prompt_below_the_bound_routes_and_fits_every_member(
     )
 
 
-def test_a_prompt_one_token_over_the_tier_bound_is_refused_locally() -> None:
-    at_bound = "a" * (2 * BOUND_CEILING)
-    assert input_token_upper_bound(at_bound) == BOUND_CEILING
+def test_a_prompt_one_token_over_the_rung_bound_is_refused_locally() -> None:
+    # "ab " bounds at two tokens (two letters at one, the space at one).
+    at_bound = "ab " * (RUNG_BOUND // 2)
+    assert input_token_upper_bound(at_bound) == RUNG_BOUND
     inside = routing.delta(dense_request("summarization", at_bound, LOCAL_HEAVY))
     assert inside.selected_backend_ref == LOCAL_HEAVY
-    over = at_bound + "aa"
-    assert input_token_upper_bound(over) == BOUND_CEILING + 1
+    over = at_bound + "ab "
+    assert input_token_upper_bound(over) == RUNG_BOUND + 2
     with pytest.raises(ProtocolConfigurationError, match="not routable"):
         routing.delta(dense_request("summarization", over, LOCAL_HEAVY))
 
@@ -687,3 +721,212 @@ def test_the_old_gate_admitted_a_prompt_that_overflows_the_peer_slot(key: str) -
     metered = metered_or_at_least(key)
     assert metered + WRAPPER_MAX > PEER["input_ceiling_tokens"]
     assert metered + WRAPPER_MAX + PEER["max_tokens"] > PEER["window_per_slot_tokens"]
+
+
+# ---- OMN-25320: counting, per-member gating and every selection path ----------
+
+
+def random_mixed_case(characters: int, seed: int = 11) -> str:
+    rng = random.Random(seed)
+    return "".join(rng.choice(string.ascii_letters) for _ in range(characters))
+
+
+# The lab endpoint overflows the peer's slot above 48732 metered tokens and the
+# rungs' window above 65116 (the review's reading of random mixed-case letters).
+PEER_OVERFLOW_TOKENS = 48732
+RUNG_OVERFLOW_TOKENS = 65116
+RANDOM_LETTERS = 96256  # twice the peer's bound of 48128
+
+
+def test_input_token_bound_counts_random_mixed_case_letters_at_least_per_letter() -> (
+    None
+):
+    text = random_mixed_case(RANDOM_LETTERS)
+    assert len(text) == RANDOM_LETTERS == 2 * BOUND_CEILING
+    assert len(set(text)) > 40
+    bound = input_token_upper_bound(text)
+    # The old count (two letters per token) read 48128, below the metered count.
+    assert bound > RUNG_OVERFLOW_TOKENS > PEER_OVERFLOW_TOKENS > BOUND_CEILING
+    assert bound >= RANDOM_LETTERS  # one token per letter, the byte-level ceiling
+
+
+def test_input_token_bound_counts_a_long_lowercase_run_per_letter() -> None:
+    assert input_token_upper_bound("a" * 4000) == 4000
+    # A plain word and a capitalised word stay at two letters per token.
+    assert input_token_upper_bound("hello") == 3
+    assert input_token_upper_bound("Hello") == 3
+    assert input_token_upper_bound("aBcDeF") == 6
+
+
+@pytest.mark.parametrize("backend", [LOCAL_CODER, LOCAL_HEAVY])
+def test_random_mixed_case_letters_are_never_sent_to_a_local_rung(
+    backend: str,
+) -> None:
+    prompt = random_mixed_case(RANDOM_LETTERS)
+    task = "code_generation" if backend == LOCAL_CODER else "summarization"
+    with pytest.raises(ProtocolConfigurationError, match="not routable"):
+        routing.delta(dense_request(task, prompt, backend))
+    try:
+        decision = routing.delta(dense_request(task, prompt))
+    except ProtocolConfigurationError:
+        return
+    assert decision.tier_name != "local"
+
+
+# Code at 4.4 characters per token (fixtures/metered_token_readings.json).
+CODE_CHARS_PER_TOKEN = 4.4
+
+
+def code_prompt(characters: int) -> str:
+    return dense.sample("code_letter_named", characters)
+
+
+@pytest.mark.parametrize("characters", [65000, 80000])
+def test_per_member_local_coder_admits_code_above_65000_characters(
+    characters: int,
+) -> None:
+    prompt = code_prompt(characters)
+    assert len(prompt) == characters
+    # 65000 characters at 4.4 per token meter about 14773 tokens, far inside the
+    # rungs' window; the bound (0.72 to 0.79 per character) must not refuse them,
+    # and 80000 characters (bound above the peer's 48128) are the ones the single
+    # tier-wide bound sized for the peer refused.
+    assert characters / CODE_CHARS_PER_TOKEN < RUNG_BOUND
+    bound = input_token_upper_bound(prompt)
+    assert bound <= RUNG_BOUND
+    assert (characters == 80000) == (bound > BOUND_CEILING)
+    decision = routing.delta(dense_request("code_generation", prompt, LOCAL_CODER))
+    assert (decision.tier_name, decision.selected_backend_ref) == ("local", LOCAL_CODER)
+    unpinned = routing.delta(dense_request("code_generation", prompt))
+    assert (unpinned.tier_name, unpinned.selected_backend_ref) == (
+        "local",
+        LOCAL_CODER,
+    )
+
+
+def test_per_member_spread_peer_takes_only_prompts_inside_its_own_bound(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    with_spread_peer(monkeypatch, tmp_path)
+    inside = filler(4 * 20000)
+    assert input_token_upper_bound(inside) <= BOUND_CEILING
+    members, _ = local_choices("summarization", inside)
+    assert members == {LOCAL_HEAVY, PEER["backend_id"]}
+    between = code_prompt(80000)
+    assert BOUND_CEILING < input_token_upper_bound(between) <= RUNG_BOUND
+    members, tiers = local_choices("summarization", between)
+    # The rung takes it; the peer, whose slot it would overflow, never does.
+    assert members == {LOCAL_HEAVY}
+    assert tiers == {"local"}
+
+
+# Every selection path takes the prompt: the reducer, the bus-less first tier, the
+# escalation hop, the tier's backend and the same-tier sibling.
+OVER_RUNG = "ab " * (RUNG_BOUND // 2 + 1)
+
+
+def test_tier_selection_refuses_local_for_an_over_bound_prompt_on_every_path() -> None:
+    assert input_token_upper_bound(OVER_RUNG) > RUNG_BOUND
+    # Positive controls: with no prompt (or a small one) every path answers local.
+    assert routing.first_eligible_tier("summarization") == "local"
+    assert routing.first_eligible_tier("summarization", prompt="ab ") == "local"
+    assert routing.backend_id_for_tier("local", "summarization") == LOCAL_HEAVY
+    assert (
+        routing.backend_id_for_tier("local", "summarization", prompt="ab ")
+        == LOCAL_HEAVY
+    )
+    assert (
+        routing.sibling_backend_available_in_tier(
+            "local", "summarization", frozenset({LOCAL_HEAVY}), "ab "
+        )
+        is None
+    )
+    # The over-bound prompt: no path picks the local tier or a local member.
+    assert routing.first_eligible_tier("summarization", prompt=OVER_RUNG) != "local"
+    assert (
+        routing.backend_id_for_tier("local", "summarization", prompt=OVER_RUNG) is None
+    )
+    assert (
+        routing.sibling_backend_available_in_tier(
+            "local", "code_generation", frozenset({LOCAL_HEAVY}), OVER_RUNG
+        )
+        is None
+    )
+    after = routing.next_eligible_tier(
+        "cheap_frontier", frozenset(), task_type="summarization", prompt=OVER_RUNG
+    )
+    assert after != "local"
+
+
+def test_bus_less_loop_cannot_pick_local_for_an_over_bound_prompt() -> None:
+    import asyncio
+
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+        port_local_delegation_dispatch as port,
+    )
+
+    token = port._ACTIVE_PROMPT.set(OVER_RUNG)
+    try:
+        dispatcher = port.LocalDelegationDispatchPort.__new__(
+            port.LocalDelegationDispatchPort
+        )
+        backend = dispatcher._resolve_initial_backend("summarization", spread_key="k")
+    finally:
+        port._ACTIVE_PROMPT.reset(token)
+    assert asyncio  # the resolver is synchronous; kept to name the loop's module
+    assert backend.backend_id not in {LOCAL_CODER, LOCAL_HEAVY}
+    small = port._ACTIVE_PROMPT.set("ab ")
+    try:
+        control = dispatcher._resolve_initial_backend("summarization", spread_key="k")
+    finally:
+        port._ACTIVE_PROMPT.reset(small)
+    assert control.backend_id == LOCAL_HEAVY
+
+
+def test_an_absent_ladder_key_fails_closed_for_an_unlisted_local_member() -> None:
+    # A local member the table does not list takes the smallest bound (a ladder
+    # mounted without any bound key, as the dev mount is, is still bounded).
+    from omnimarket.handlers.routing.input_token_bound import input_bound_members
+
+    class Member:
+        def __init__(self, backend_ref: str) -> None:
+            self.backend_ref = backend_ref
+
+    members = (Member(LOCAL_CODER), Member("local-unlisted-peer"))
+    between = code_prompt(80000)
+    assert BOUND_CEILING < input_token_upper_bound(between) <= RUNG_BOUND
+    kept = input_bound_members("local", members, between)
+    assert [m.backend_ref for m in kept] == [LOCAL_CODER]
+    # Another tier is not bounded here, and an empty prompt (a probe) keeps all.
+    assert input_bound_members("cheap_frontier", members, between) == members
+    assert input_bound_members("local", members, "") == members
+
+
+def test_tier_dev_mount_ladder_without_a_bound_key_still_refuses_over_bound(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    ladder = tmp_path / "mounted-ladder.yaml"
+    ladder.write_text(ROUTING_TIERS_PACKAGED_DEFAULT_PATH.read_text())
+    assert "max_input_token_bound:" not in ladder.read_text()
+    monkeypatch.setenv("DELEGATION_ROUTING_TIERS_PATH", str(ladder))
+    routing._config = None
+    with pytest.raises(ProtocolConfigurationError, match="not routable"):
+        routing.delta(dense_request("summarization", OVER_RUNG, LOCAL_HEAVY))
+    assert (
+        routing.delta(
+            dense_request("summarization", "ab ", LOCAL_HEAVY)
+        ).selected_backend_ref
+        == LOCAL_HEAVY
+    )
+
+
+def test_the_exclusion_report_names_the_input_bound_for_every_member_excluded() -> None:
+    from omnimarket.enums.enum_routing_exclusion import EnumRoutingExclusionReason
+
+    report = routing.build_routing_exclusion_report(
+        dense_request("brief_drafting", OVER_RUNG)
+    )
+    local = next(c for c in report.candidates if c.tier_name == "local")
+    assert local.reason == EnumRoutingExclusionReason.TIER_INPUT_BOUND_EXCEEDED
+    # Every member of the enum has a rendered text (no exhaustive-map gap).
+    assert all(isinstance(reason.value, str) for reason in EnumRoutingExclusionReason)

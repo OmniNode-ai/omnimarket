@@ -47,19 +47,18 @@
 tiers:
   - name: local
     cost_per_1k_tokens: 0.0
-    # Tokenizer-free input bound, sized for the SMALLEST member that serves this
-    # tier. The endpoint meters real tokens, not the characters-over-four
-    # estimate (digit-named generated code meters 2.0 characters per token,
-    # digits and floats 1.0, so a prompt inside max_context_tokens can still
-    # fill the window). A prompt whose input_token_upper_bound
-    # (omnimarket.handlers.routing.input_token_bound) is above this is not
-    # offered to any rung of the tier. Members: local-coder and
-    # local-heavy-reasoning read a 131072-token window with 65536 reserved for
-    # output (131072 - 65536 - 1024 wrapper margin = 64512); the spread peer
-    # local-omnipc2-chat has 65536 tokens per slot (one 131072 KV pool over 2
-    # slots) and a 16384 output reserve (65536 - 16384 - 1024 = 48128, the
-    # smallest). The wrapper is 221 to 429 metered tokens over the 19 classes.
-    max_input_token_bound: 48128
+    # Input bound per member (not declared here): the endpoint meters real
+    # tokens, not the characters-over-four estimate (digit-named generated code
+    # meters 2.0 characters per token, digits and floats 1.0), so a prompt inside
+    # max_context_tokens can still fill the window. The router drops a member
+    # whose bound is below the prompt's token upper bound
+    # (omnimarket.handlers.routing.input_token_bound, LOCAL_MEMBER_INPUT_BOUNDS):
+    # local-coder and local-heavy-reasoning read a 131072-token window with
+    # 65536 reserved for output (131072 - 65536 - 1024 wrapper margin = 64512);
+    # the spread peer local-omnipc2-chat has 65536 tokens per slot and a 16384
+    # output reserve (65536 - 16384 - 1024 = 48128). The bound lives in code, not
+    # in this file, so a ladder mounted without it is still bounded, and a local
+    # member the table does not list takes the smallest bound.
     # OMN-13234: typed per-tier cost model. local is served on owned GPUs
     # (.201/.200) — no marginal API cost. The dollar figure for a local call,
     # when surfaced, comes from the pricing manifest's GPU compute_cost
@@ -77,8 +76,7 @@ tiers:
         backend_id: local-coder
         # Coarse input budget in the handler's characters-over-four estimate.
         # It is not the window guard: real text meters 1.0 to 6.3 characters
-        # per token, so the guard is the tier's max_input_token_bound above,
-        # which bounds the metered count itself. The readings are in
+        # per token, so the guard is the per-member input bound (see the tier comment above). The readings are in
         # tests/nodes/node_delegation_routing_reducer/fixtures/metered_token_readings.json.
         # Keep this bound even when no input-ceiling overlay is loaded.
         max_context_tokens: 35000
@@ -147,7 +145,7 @@ tiers:
       - id: Qwen3.8-27B
         backend_id: local-heavy-reasoning
         # Same endpoint, window and output reserve as local-coder above, so the
-        # same coarse budget and the same tier-level max_input_token_bound.
+        # same coarse budget and the same per-member input bound.
         # Overlay ceilings may narrow individual classes further.
         max_context_tokens: 35000
         use_for:

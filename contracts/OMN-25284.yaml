@@ -15,11 +15,6 @@ requirements:
 - id: req-omn25284-review-follow-up
   statement: Every blocking finding of the fifth review of omnimarket#6344 is fixed or argued with evidence.
   acceptance:
-  - id: AC1
-    statement: 'AC1: the ticket fields of the OMN-24980 and OMN-25214 contracts name literal ticket ids instead of null, and a
-      PR comment starting `Lab: head=<full new head sha>` names each command with exit 0 (the fail-at-53e3cd0f6050 run and an
-      xdist run included) -- falsifier: `uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py
-      -q -p no:cacheprovider` fails when a contract ticket field is null or the asserted ids are absent'
   - id: AC2
     statement: 'AC2: AC1 of the OMN-24980 contract binds to a base-failing test in the owning repository or an owner re-scope
       is recorded, and the recorded delegate_stdout_local.json run fails the AC1 check -- falsifier: `uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py
@@ -33,10 +28,6 @@ requirements:
     statement: 'AC4: the spread peer window (65536 per slot, a 16384 output reserve, a 49152 ceiling) is read and the input gate
       is sized for the smallest member, with a test that loads the placement -- falsifier: `uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py
       -q -p no:cacheprovider` fails when a 35000-estimate prompt that meters 63348 is admitted to the peer'
-  - id: AC5
-    statement: 'AC5: the dev mount is updated through its owner and one passing hosted dev run is recorded in the contract --
-      falsifier: `uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q -p no:cacheprovider`
-      fails when the contract records no dev run or only in-process runs'
   - id: AC6
     statement: 'AC6: the full tests/ run at the new head passes with the 65536 to 35000 move of local-coder, in named parts if
       a whole run times out, and any existing routing test that cites 65536 is changed or argued -- falsifier: `uv run pytest
@@ -73,8 +64,6 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q -p no:cacheprovider
       --no-cov
     cwd: .
-  binds_ac:
-  - AC1
 - id: dod-omn25284-ac2
   description: AC1 of OMN-24980 is bound to a check that fails until a base-failing test of the cause is recorded in its owning
     repository; the recorded one-line summarise run at tier local, accepted, fails that check until then.
@@ -87,8 +76,8 @@ dod_evidence:
   binds_ac:
   - AC2
 - id: dod-omn25284-ac3
-  description: The local tier declares max_input_token_bound, a tokenizer-free upper bound on metered input that never undercounts
-    a lab reading; every generated dense prompt of 140000 characters (digit-named code text at 69445 metered tokens included)
+  description: Each local member takes its own input bound (omnimarket.handlers.routing.input_token_bound), a tokenizer-free upper bound
+    on metered input that never undercounts a lab reading; every generated dense prompt of 140000 characters (digit-named code text at 69445 metered tokens included)
     is refused at every local member.
   source: manual
   checks:
@@ -100,7 +89,7 @@ dod_evidence:
   - AC3
 - id: dod-omn25284-ac4
   description: The spread peer's window (65536 per slot, 16384 output reserve, 49152 ceiling) is recorded from the lab overlay,
-    the tier bound is sized for it (48128), and a test loads the placement and shows the peer receives no dense prompt of the
+    the peer takes its own input bound (48128), and a test loads the placement and shows the peer receives no dense prompt of the
     old budget.
   source: manual
   checks:
@@ -120,8 +109,6 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q -p no:cacheprovider
       --no-cov
     cwd: .
-  binds_ac:
-  - AC5
 - id: dod-omn25284-ac6
   description: The routing directory runs here; the full tests/ run is on the lab in named parts, listed with their exits in the
     Lab comment of the new head.
@@ -177,3 +164,15 @@ dod_evidence:
       dod-integration-proof-25284 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py
       tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov
     cwd: .
+context:
+  open_criteria:
+    AC1: 'AC1: the ticket fields of the OMN-24980 and OMN-25214 contracts name literal ticket ids instead of null, and a PR
+      comment starting `Lab: head=<full new head sha>` names each command with exit 0 (the fail-at-53e3cd0f6050 run and an xdist
+      run included) -- falsifier: `uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py
+      -q -p no:cacheprovider` fails when a contract ticket field is null or the asserted ids are absent'
+    AC5: 'AC5: the dev mount is updated through its owner and one passing hosted dev run is recorded in the contract -- falsifier:
+      `uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q -p no:cacheprovider` fails
+      when the contract records no dev run or only in-process runs'
+  open_criteria_reason: AC1 needs literal owner ticket ids where the OMN-24980 contract records none exist, and AC5 needs one
+    passing hosted dev run that does not exist; neither can be met by this change (it mints no ticket and does not update the
+    dev mount). They are recorded here and bound to nothing, so no check passes while they are open.

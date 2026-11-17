@@ -1585,6 +1585,11 @@ _ACTIVE_PROBE_LADDER: ContextVar[_ProbeLadderWalk | None] = ContextVar(
     "active_probe_ladder", default=None
 )
 
+# The prompt of the dispatch running in this context. Every tier and backend
+# resolution of the run (first tier, sibling, escalation) reads it, so a local
+# member whose input bound is below the prompt's is not picked on any hop.
+_ACTIVE_PROMPT: ContextVar[str] = ContextVar("active_routing_prompt", default="")
+
 # OMN-23162: the transport faults of the faults-mode probe running in this
 # context, if any. Unlike a probe ladder they replace no rung: the production
 # ladder is resolved as usual and a call to a faulted model id answers its
@@ -2021,6 +2026,7 @@ class LocalDelegationDispatchPort:
         # ladder installs a walk; the faults are read at each provider call.
         faults_token = None
         walk_token = None
+        prompt_token = _ACTIVE_PROMPT.set(prompt)
         if isinstance(probe_ladder, ModelProbeFaults):
             faults_token = _ACTIVE_PROBE_FAULTS.set(probe_ladder)
         else:
@@ -2053,6 +2059,7 @@ class LocalDelegationDispatchPort:
                 queue_wait_ms=queue_wait_ms,
             )
         finally:
+            _ACTIVE_PROMPT.reset(prompt_token)
             if faults_token is not None:
                 _ACTIVE_PROBE_FAULTS.reset(faults_token)
             if walk_token is not None:
@@ -4641,11 +4648,16 @@ class LocalDelegationDispatchPort:
             roi_overlay=roi_overlay,
             correlation_id=spread_key,
             quota_state=quota_state,
+            prompt=_ACTIVE_PROMPT.get(),
             **byok_kwargs,
         )
         if first_tier is not None:
             backend_id = backend_id_for_tier(
-                first_tier, task_type, spread_key=spread_key, **byok_kwargs
+                first_tier,
+                task_type,
+                spread_key=spread_key,
+                prompt=_ACTIVE_PROMPT.get(),
+                **byok_kwargs,
             )
             blocked = quota_blocked_backend_refs(quota_state)
             if backend_id is not None and backend_id in blocked:
@@ -4763,6 +4775,7 @@ class LocalDelegationDispatchPort:
                 current_tier,
                 task_type,
                 frozenset(tried) | quota_blocked_backend_refs(quota_state),
+                prompt=_ACTIVE_PROMPT.get(),
             )
             if sibling_ref is None:
                 return None
@@ -4918,6 +4931,7 @@ class LocalDelegationDispatchPort:
             roi_overlay=roi_overlay,
             excluded_backend_refs=excluded_backend_refs,
             correlation_id=spread_key,
+            prompt=_ACTIVE_PROMPT.get(),
             **byok_kwargs,
         )
 
@@ -4941,7 +4955,11 @@ class LocalDelegationDispatchPort:
             f"current_tier='{current_tier}'; next tier '{next_tier}'"
         )
         backend_id = backend_id_for_tier(
-            next_tier, task_type, spread_key=spread_key, **byok_kwargs
+            next_tier,
+            task_type,
+            spread_key=spread_key,
+            prompt=_ACTIVE_PROMPT.get(),
+            **byok_kwargs,
         )
         if backend_id is None:
             stopped(f"{stop_prefix} selects no backend for the task class")

@@ -92,10 +92,7 @@ from omnimarket.handlers.routing.customer_key_terminus import (
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
-from omnimarket.handlers.routing.input_token_bound import (
-    input_token_upper_bound,
-    tier_input_bound_ceiling,
-)
+from omnimarket.handlers.routing.input_token_bound import input_bound_members
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     exceeds_measured_correct_ceiling,
     grounded_input_budget,
@@ -360,19 +357,6 @@ _LOCAL_TIERS = {"local"}
 # the single eligibility point ``_tier_allowed_by_contract``, consulted by both the
 # routing reducer (``delta``) and the bus-less escalation loop
 # (``next_eligible_tier``/``first_eligible_tier`` via ``_tier_can_route_task``).
-def _tier_exceeds_input_bound(tier: ModelRoutingTier, prompt: str) -> bool:
-    """Whether ``prompt`` is above the input-token bound the ladder file gives ``tier``.
-
-    A tier that declares ``max_input_token_bound`` is sized for its smallest
-    serving member (window less that member's output reserve and the request
-    wrapper). The bound is a tokenizer-free upper bound on what the endpoint
-    meters, so a prompt above it is never sent to a member it could overflow,
-    however dense its text.
-    """
-    ceiling = tier_input_bound_ceiling(resolve_routing_tiers_path(), tier.name)
-    return ceiling is not None and input_token_upper_bound(prompt) > ceiling
-
-
 def _estimate_prompt_tokens(prompt: str) -> int:
     """Estimate token count from prompt character length (4 chars/token heuristic)."""
     return len(prompt) // 4
@@ -1802,6 +1786,7 @@ def _tier_can_route_task(
     contract: dict[str, object] | None,
     excluded_backend_refs: frozenset[str] = frozenset(),
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
+    prompt: str = "",
 ) -> bool:
     """Return whether ``tier`` can actually route ``task_type``.
 
@@ -1827,7 +1812,7 @@ def _tier_can_route_task(
     # serve the task with a resolvable backend", not the final selection. delta()
     # re-selects with the real token estimate when it builds the decision.
     selected = _select_model_for_task(
-        tier.models,
+        input_bound_members(tier.name, tier.models, prompt),
         task_type,
         0,
         bifrost_backends,
@@ -1849,6 +1834,7 @@ def next_eligible_tier(
     excluded_backend_refs: frozenset[str] = frozenset(),
     correlation_id: object | None = None,
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
+    prompt: str = "",
 ) -> str | None:
     """Return the next tier name after current_tier_name, skipping excluded_tiers.
 
@@ -1916,6 +1902,7 @@ def next_eligible_tier(
                 contract,
                 excluded_backend_refs,
                 byok_backends=byok_backends,
+                prompt=prompt,
             ):
                 continue
             return tier.name
@@ -1932,6 +1919,7 @@ def first_eligible_tier(
     correlation_id: object | None = None,
     quota_state: ModelProviderQuotaSnapshot | None = None,
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
+    prompt: str = "",
 ) -> str | None:
     """Return the initial tier for ``task_type``, honoring its entry share.
 
@@ -1991,7 +1979,12 @@ def first_eligible_tier(
             if tier.name in skip:
                 continue
             if _tier_can_route_task(
-                tier, task_type, bifrost_backends, contract, byok_backends=byok_backends
+                tier,
+                task_type,
+                bifrost_backends,
+                contract,
+                byok_backends=byok_backends,
+                prompt=prompt,
             ):
                 return tier.name
         # Only a non-empty ROI suppression warrants a fail-safe second pass.
@@ -2196,6 +2189,7 @@ def backend_id_for_tier(
     require_credential: bool = True,
     spread_key: str | None = None,
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
+    prompt: str = "",
 ) -> str | None:
     """Return the bifrost ``backend_id`` ``tier_name`` would select for ``task_type``.
 
@@ -2249,7 +2243,7 @@ def backend_id_for_tier(
     # 0-token availability probe: identifies which backend the tier WOULD select
     # for the task (delta re-selects with the real token estimate).
     selected = _select_model_for_task(
-        matching_tier.models,
+        input_bound_members(matching_tier.name, matching_tier.models, prompt),
         task_type,
         0,
         bifrost_backends,
@@ -2343,6 +2337,7 @@ def sibling_backend_available_in_tier(
     tier_name: str,
     task_type: str,
     exclude_backend_refs: frozenset[str],
+    prompt: str = "",
 ) -> str | None:
     """Return the ``backend_ref`` of an untried sibling backend in ``tier_name``.
 
@@ -2384,7 +2379,7 @@ def sibling_backend_available_in_tier(
     # identifies which backend the tier WOULD select excluding the failed
     # backend(s); the real re-route re-selects with the actual token estimate.
     selected = _select_model_for_task(
-        matching_tier.models,
+        input_bound_members(matching_tier.name, matching_tier.models, prompt),
         task_type,
         0,
         bifrost_backends,
@@ -2703,7 +2698,9 @@ def build_routing_exclusion_report(
             )
             continue
 
-        if _tier_exceeds_input_bound(tier, request.prompt):
+        if tier.models and not input_bound_members(
+            tier.name, tier.models, request.prompt
+        ):
             candidates.append(
                 ModelRoutingCandidateExclusion(
                     tier_name=tier.name,
@@ -3167,8 +3164,7 @@ def delta(
             ):
                 continue
 
-            if _tier_exceeds_input_bound(tier, request.prompt):
-                continue
+            bounded_models = input_bound_members(tier.name, tier.models, request.prompt)
 
             if requested_backend_ref is not None:
                 # Caller pin precedence is exact and intentionally bypasses
@@ -3178,7 +3174,7 @@ def delta(
                 selected = next(
                     (
                         model
-                        for model in tier.models
+                        for model in bounded_models
                         if model.backend_ref == requested_backend_ref
                         and model.backend_ref not in excluded_backend_refs
                         and estimated_tokens <= model.max_context_tokens
@@ -3192,7 +3188,7 @@ def delta(
                 )
             else:
                 selected = _select_model_for_task(
-                    tier.models,
+                    bounded_models,
                     task_type,
                     estimated_tokens,
                     bifrost_backends,

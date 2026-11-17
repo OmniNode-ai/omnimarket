@@ -5,12 +5,13 @@ title: onex delegate with a one-line summarise task ends with a terminal from a 
 summary: 'This draft corrects the packaged input budget and tests the public routing reducer; it does not establish the missing-terminal
   cause and does not fix it. Both local rungs reserve 65536 output tokens from the served 131072-token window (GET /v1/models
   on the endpoint both rungs read, max_model_len 131072, read 2026-11-17), independently of optional overlay ceilings. AC1: OPEN.
-  AC2: OPEN. AC3: OPEN. No owner re-scope is claimed. AC1 is bound to a check that fails until a base-failing test of the cause
-  in its owning repository is recorded (context.criterion_status.AC1.cause_fix_test); a one-line summarise run accepted at tier
-  local, which the dev lane now returns, does not meet AC1. AC1, AC2 and AC3 are declared as acceptance entries and each is bound
-  (binds_ac) to a check that runs only at the local Done gate and fails until the criterion is met; the Done gate reads a passing
-  bound check as its criterion met and does not read the free-form context, so none is bound to a check that passes while the
-  criterion is open. The cause of run 27f4e945-e16e-4cac-a4d7-b1388dfac169 cannot be recovered (its log window 19:45Z to 19:56Z
+  AC2: OPEN. AC3: OPEN. No owner re-scope is claimed. AC1, AC2 and AC3 are open and are recorded in context.open_criteria, not declared as acceptance entries: the repository
+  refuses a binds_ac on a local_done_gate item (the hosted check runs it neither at the head nor at the merge base), and a hosted
+  test_passes check that fails until the criterion is met would hold this pull request red, so no hosted check passes or fails
+  for them. The local Done gate items dod-omn24980-ac1-live, dod-omn24980-ac2-live and dod-omn24980-ac3-live bind nothing and
+  fail until the criterion is met; the AC1 one runs the named cause test at base_ref (it must fail there) and at the head (it must
+  pass), so an empty test file does not satisfy it. A one-line summarise run accepted at tier local, which the dev lane now
+  returns, does not meet AC1. The cause of run 27f4e945-e16e-4cac-a4d7-b1388dfac169 cannot be recovered (its log window 19:45Z to 19:56Z
   retains zero rows), so this contract carries a captured reproduction of the same symptom instead: run 13dcf955-9911-48e0-9185-753ecdd1fe92
   on the dev lane ended with no delegation terminal (terminal_class queued_not_started, 6 records ahead of the command, backlog
   7) on topic onex.cmd.omnimarket.delegate-skill.v1, consumer group local.omnimarket.node_delegate_skill_orchestrator.consume.1.3.0.__i.runtime-main.__t.onex.cmd.omnimarket.delegate-skill.v1.
@@ -29,13 +30,16 @@ summary: 'This draft corrects the packaged input budget and tests the public rou
   is characters over four, and the endpoint meters real tokens: digit-named generated code 2.02 characters per token (140000 characters
   meter 69445), letter-named code 2.45, ledger text 2.21 to 2.37, a git diff 2.63 to 3.35, digits and floats 1.0, so no estimate
   alone keeps a prompt inside the window; the old 35000-estimate gate admitted the 140000-character digit-named code text, which
-  with the 65536 max_tokens and the 420-token wrapper passes the 131072 window (69445 + 420 + 65536 = 135401). The local tier
-  now declares max_input_token_bound 48128, a tokenizer-free upper bound on the metered input (omnimarket.handlers.routing.input_token_bound,
-  checked against every lab reading in fixtures/metered_token_readings.json), sized for the smallest member that serves the tier:
-  the spread peer local-omnipc2-chat has 65536 tokens per slot, a 16384 output reserve and a 49152 input ceiling (65536 - 16384
-  - 1024 wrapper margin = 48128), while the two rungs alone could take 64512. A prompt whose bound is above 48128 is offered to
-  no member of the local tier, pinned or not, and climbs; the bound is a gate, max_tokens is not clamped. The 35000 estimate per
-  rung stays as a coarse budget. The captured reproduction is a summarization call on a single-slot endpoint (queue wait); the
+  with the 65536 max_tokens and the 420-token wrapper passes the 131072 window (69445 + 420 + 65536 = 135401). Each
+  member of the local tier now takes its own input bound, a tokenizer-free upper bound on the metered input (omnimarket.handlers.routing.input_token_bound,
+  LOCAL_MEMBER_INPUT_BOUNDS, held in code and not read from the ladder file, so a mounted ladder without a key is still bounded,
+  and an unlisted local member takes the smallest bound): local-coder and local-heavy-reasoning 64512 (131072 - 65536 output reserve
+  - 1024 wrapper margin), the spread peer local-omnipc2-chat 48128 (65536 tokens per slot - 16384 output reserve - 1024). A prompt
+  whose bound is above a member''s is not offered to that member, pinned or not, on any path (the reducer, the same-tier sibling,
+  first_eligible_tier, next_eligible_tier and backend_id_for_tier), so 80000 characters of code go to a rung and never to the peer;
+  a letter run longer than 12 letters, or one that switches case twice, is counted one token per letter (random mixed-case
+  letters 96256 long bound at 96256). The bound is a gate, max_tokens is not clamped. The 35000 estimate per rung stays as a
+  coarse budget. The captured reproduction is a summarization call on a single-slot endpoint (queue wait); the
   input budget change applies to every class the two local rungs serve, and no other class was reproduced.'
 is_seam_ticket: false
 interface_change: false
@@ -43,18 +47,7 @@ interfaces_touched: []
 requirements:
 - id: req-omn24980-local-route
   statement: A summarise delegation on the dev runtime is answered by a local model, including a prompt above 8192 tokens.
-  acceptance:
-  - id: AC1
-    statement: 'AC1: the cause of the missing terminal is named from the bus (consumer of the delegate command topic, its registration
-      in the dev runtime, consumer group lag, handler errors) and fixed at its source with a test built from the recorded failure
-      that fails on the base commit and passes on the fix -- falsifier: uv run pytest on the named test file in the owning repository
-      fails against the base commit'
-  - id: AC2
-    statement: 'AC2: the endpoint on port 8001 is served by a named unit and answers a model-list call, or its entry is corrected
-      -- falsifier: a model-list call to the endpoint from a lab host does not return 200'
-  - id: AC3
-    statement: 'AC3: no endpoint entry of the declared overlay names a host that serves no model -- falsifier: an overlay test
-      fails when an endpoint host serves no model'
+  acceptance: []
 evidence_requirements:
 - kind: tests
   description: Public routing, receipt-proof falsifiers and existing delegation-health compatibility.
@@ -83,39 +76,45 @@ dod_evidence:
     local candidate, a local rung outside that group, a prompt metered at 8192 tokens or below and the recorded 373-token run
     answered by local-heavy-reasoning. The recorded run is the stdout the CLI printed, in the key order of omnibase_core ModelSkillResult,
     validated with model_validate. Its command is checked to name the dev lane, the bus and the deployed locus, its prompt is
-    run and its metered size is pinned to a recorded reading, and the declared criteria are checked to be bound to checks that
-    fail until the criterion is met, AC1 included.
+    run and its metered size is pinned to a recorded reading, and the open criteria are checked to be recorded in context.open_criteria with no
+    declared acceptance entry and no binds_ac on a local_done_gate item, AC1 included.
   source: manual
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov
     cwd: .
 - id: dod-omn24980-ac1-live
-  description: AC1 bound to a check that fails until a base-failing test of the cause is recorded in its owning repository (context.criterion_status.AC1.cause_fix_test
-    names the repository, the test path and the base ref it fails at, and the file exists there), and then a one-line summarise
-    task on the dev lane ends with a terminal accepted from the local tier. The second half alone passes today (a summarise run
-    is answered locally), so it cannot stand for the cause named and fixed; the first half fails until the owner records the test.
-    It runs only at the local Done gate (the hosted runner cannot reach the dev lane).
+  description: AC1, recorded in context.open_criteria and bound to nothing (the repository refuses a binds_ac on this scope).
+    The check fails until a base-failing test of the cause is recorded (context.criterion_status.AC1.cause_fix_test names
+    the repository, the test path and the base ref), then runs that test file in the owning repository at the base ref, where
+    it must exit 1 (failed tests, not an empty or missing file), and at the repository head, where it must pass, and then
+    a one-line summarise task on the dev lane must end with a terminal accepted from the local tier. The second half alone
+    passes today (a summarise run is answered locally), so it cannot stand for the cause named and fixed. It runs only at
+    the local Done gate (the hosted runner cannot reach the dev lane).
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: 'python3 -c ''import os, yaml; s = yaml.safe_load(open("contracts/OMN-24980.yaml"))["context"]["criterion_status"]["AC1"];
-      t = s.get("cause_fix_test") or {}; assert t.get("repo") and t.get("path") and t.get("base_ref"), "AC1: no base-failing test
-      of the cause in its owning repository is recorded"; assert os.path.exists(os.path.join(os.environ["OMNI_HOME"], t["repo"],
-      t["path"])), "AC1: the recorded test file does not exist"'' && env "$OMNI_HOME/omnibase_infra/scripts/onex" delegate "Summarize
-      in one line: the sky is blue." --task-type summarization --ticket OMN-24980 --caller-lane ac1-24980 --bus kafka --lane dev
-      --locus deployed-lane --state-root "$OMNI_HOME/.onex_state" --json > "$OMNI_HOME/.onex_state/ac1-24980.json" && python3
-      -c ''import json,sys; r=json.load(open(sys.argv[1])); assert r["status"] == "success" and r["exit_code"] == 0; s=r["result"];
-      assert s["handler_locus"] == "dispatched" and s["workflow_result"] == "completed" and s["exit_code"] == 0; t=s["terminal_payload"]["payload"];
-      assert t["status"] == "completed"; a=[x for x in t["attempts"] if x["acceptance_decision"] == "accept" and x["quality_gate_passed"]];
-      assert len(a) == 1 and a[0]["tier"] == "local"; print("PASS: one-line summarise ended with a terminal accepted from the
-      local tier", a[0]["backend_id"])'' "$OMNI_HOME/.onex_state/ac1-24980.json"'
+    check_value: 'set -eu; out=$(python3 -c ''import yaml; s = yaml.safe_load(open("contracts/OMN-24980.yaml"))["context"]["criterion_status"]["AC1"];
+      t = s.get("cause_fix_test") or {}; assert t.get("repo") and t.get("path") and t.get("base_ref"), "AC1: no base-failing
+      test of the cause in its owning repository is recorded"; print(t["repo"], t["path"], t["base_ref"])''); set -- $out;
+      r="$OMNI_HOME/$1"; test -f "$r/$2" || { echo "AC1: the recorded test file does not exist" >&2; exit 1; }; w=$(mktemp
+      -d); trap ''git -C "$r" worktree remove --force "$w/base" >/dev/null 2>&1; rm -rf "$w"'' EXIT; git -C "$r" worktree
+      add --detach "$w/base" "$3" >/dev/null; mkdir -p "$w/base/$(dirname "$2")"; cp "$r/$2" "$w/base/$2"; rc=0; (cd "$w/base"
+      && ${ONEX_PYTEST:-uv run pytest} "$2" -q -p no:cacheprovider) || rc=$?; [ "$rc" -eq 1 ] || { echo "AC1: the recorded
+      test must fail with exit 1 at base_ref $3, it exited $rc" >&2; exit 1; }; (cd "$r" && ${ONEX_PYTEST:-uv run pytest}
+      "$2" -q -p no:cacheprovider) || { echo "AC1: the recorded test does not pass at the head of the owning repository" >&2;
+      exit 1; }; env "$OMNI_HOME/omnibase_infra/scripts/onex" delegate "Summarize in one line: the sky is blue." --task-type
+      summarization --ticket OMN-24980 --caller-lane ac1-24980 --bus kafka --lane dev --locus deployed-lane --state-root "$OMNI_HOME/.onex_state"
+      --json > "$OMNI_HOME/.onex_state/ac1-24980.json" && python3 -c ''import json,sys; r=json.load(open(sys.argv[1])); assert
+      r["status"] == "success" and r["exit_code"] == 0; s=r["result"]; assert s["handler_locus"] == "dispatched" and s["workflow_result"]
+      == "completed" and s["exit_code"] == 0; t=s["terminal_payload"]["payload"]; assert t["status"] == "completed"; a=[x
+      for x in t["attempts"] if x["acceptance_decision"] == "accept" and x["quality_gate_passed"]]; assert len(a) == 1 and
+      a[0]["tier"] == "local"; print("PASS: one-line summarise ended with a terminal accepted from the local tier", a[0]["backend_id"])''
+      "$OMNI_HOME/.onex_state/ac1-24980.json"'
     cwd: .
-  binds_ac:
-  - AC1
 - id: dod-omn24980-ac2-live
-  description: 'AC2 bound to a check that fails until the endpoint on port 8001 answers a model-list call with 200 (the host is
+  description: 'AC2 (open, bound to nothing) has a check that fails until the endpoint on port 8001 answers a model-list call with 200 (the host is
     the one BIFROST_LOCAL_CODER_ENDPOINT_URL names). Read 2026-11-17: connection refused. It runs only at the local Done gate.'
   source: manual
   execution_scope: local_done_gate
@@ -124,10 +123,8 @@ dod_evidence:
     check_value: 'u="${BIFROST_LOCAL_CODER_ENDPOINT_URL:?}" && h="${u#*://}" && curl -sf -o /dev/null --max-time 10 "http://${h%%[:/]*}:8001/v1/models"
       && echo "PASS: port 8001 answered the model list with 200"'
     cwd: .
-  binds_ac:
-  - AC2
 - id: dod-omn24980-ac3-live
-  description: AC3 bound to the overlays repository test that every declared local endpoint host serves a model, which does not
+  description: AC3 (open, bound to nothing) has the overlays repository test that every declared local endpoint host serves a model, which does not
     exist on the overlays default branch until that pull request lands (the check fails until then). It runs only at the local
     Done gate.
   source: manual
@@ -136,8 +133,6 @@ dod_evidence:
   - check_type: command
     check_value: cd "${OMNI_HOME:?}/overlays" && uv run pytest tests/test_local_endpoint_hosts_serve_models.py -q -p no:cacheprovider
     cwd: .
-  binds_ac:
-  - AC3
 - id: dod-omn24980-integration-proof
   description: 'OPEN until the dev mounted ladder is durably updated. Proves routing only: it binds no acceptance criterion and
     says nothing about the missing-terminal cause of AC1. Uses the dev bus and runtime; the check reads the stdout envelope of
@@ -165,6 +160,15 @@ dod_evidence:
       "$OMNI_HOME/.onex_state/route-proof-24980.json"'
     cwd: .
 context:
+  open_criteria:
+    AC1: 'AC1: the cause of the missing terminal is named from the bus (consumer of the delegate command topic, its registration
+      in the dev runtime, consumer group lag, handler errors) and fixed at its source with a test built from the recorded failure
+      that fails on the base commit and passes on the fix -- falsifier: uv run pytest on the named test file in the owning repository
+      fails against the base commit'
+    AC2: 'AC2: the endpoint on port 8001 is served by a named unit and answers a model-list call, or its entry is corrected
+      -- falsifier: a model-list call to the endpoint from a lab host does not return 200'
+    AC3: 'AC3: no endpoint entry of the declared overlay names a host that serves no model -- falsifier: an overlay test fails
+      when an endpoint host serves no model'
   criterion_status:
     AC1:
       status: open

@@ -79,7 +79,7 @@ dod_evidence:
   binds_ac:
   - AC2
 - id: dod-omn25185-ac3
-  description: The local tier declares max_input_token_bound 48128 (the spread peer's 65536-token slot, minus its 16384 output
+  description: The spread peer takes an input bound of 48128 (its 65536-token slot, minus its 16384 output
     reserve, minus a 1024-token wrapper margin over the recorded wrapper of at most 420 tokens), a tokenizer-free upper bound
     on the metered input; the handler does not clamp max_tokens and a test pins that, and a prompt estimated at 65536 tokens
     is refused for every local pair.

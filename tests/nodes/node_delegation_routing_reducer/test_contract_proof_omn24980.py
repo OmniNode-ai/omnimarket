@@ -34,6 +34,11 @@ from omnibase_infra.cli import cli_delegate
 from omnibase_infra.cli.delegate_terminal_resolver import resolve_delegate_terminal
 from omnibase_infra.cli.model_receipt_runtime_summary import ModelReceiptRuntimeSummary
 
+from omnimarket.handlers.routing.input_token_bound import (
+    LOCAL_MEMBER_INPUT_BOUNDS,
+    input_token_upper_bound,
+)
+
 pytestmark = pytest.mark.unit
 CONTRACT = Path(__file__).parents[3] / "contracts/OMN-24980.yaml"
 RECORDED = Path(__file__).parent / "fixtures/delegate_stdout_local.json"
@@ -385,83 +390,94 @@ def test_terminal_status_not_completed_under_top_level_success_fails_the_proof(
 CRITERIA = ("AC1", "AC2", "AC3")
 
 
-def unbound_declared(data: dict[str, Any]) -> tuple[str, ...]:
-    """The declared criteria no item binds, read by the verifier's own rule."""
-    from omnimarket.nodes.node_dod_verify.services.ac_falsifier_checks import (
-        derive_falsifier_items,
+def live_item(data: dict[str, Any], label: str) -> dict[str, Any]:
+    """The local Done gate item that checks open criterion ``label`` (it binds none)."""
+    item_id = f"dod-omn24980-{label.lower()}-live"
+    return next(i for i in data["dod_evidence"] if i["id"] == item_id)
+
+
+def test_open_criteria_are_recorded_and_no_local_done_gate_item_binds_one() -> None:
+    # The repository rule (OMN-22403, tests/ci): a local_done_gate item may not
+    # carry binds_ac, and every declared criterion must be bound to a hosted
+    # test_passes check. A hosted check cannot fail for an open criterion without
+    # holding the pull request red, so AC1 to AC3 are recorded, not declared.
+    for name in ("OMN-24980.yaml", "OMN-25284.yaml"):
+        data = yaml.safe_load((CONTRACT.parent / name).read_text())
+        assert not [
+            i["id"]
+            for i in data["dod_evidence"]
+            if i.get("execution_scope") == "local_done_gate" and i.get("binds_ac")
+        ], name
+        declared = {
+            ac["id"]
+            for requirement in data["requirements"]
+            for ac in requirement["acceptance"]
+        }
+        assert declared.isdisjoint(data["context"]["open_criteria"]), name
+        for statement in data["context"]["open_criteria"].values():
+            assert "falsifier:" in statement
+    data = contract()
+    assert data["requirements"][0]["acceptance"] == []
+    assert sorted(data["context"]["open_criteria"]) == list(CRITERIA)
+    for label in CRITERIA:
+        item = live_item(data, label)
+        assert item["execution_scope"] == "local_done_gate"
+        assert "binds_ac" not in item
+        assert data["context"]["open_criteria"][label].startswith(f"{label}: ")
+
+
+def test_binding_an_open_criterion_to_a_local_done_gate_item_is_refused() -> None:
+    # Positive control for the rule above: the contract this one replaced bound
+    # AC1 to AC3 to local_done_gate items, and the verifier's own rule refuses it.
+    from omnimarket.nodes.node_dod_verify.services.scoped_item_binding import (
+        scoped_item_binding_violation,
     )
 
-    _, summary = derive_falsifier_items(
-        data,
-        data["dod_evidence"],
-        repo_candidates=["omnimarket"],
-        path_exists=lambda _repo, _path: True,
-        declared_runner=lambda _repo, _path: "uv run pytest",
-    )
-    return tuple(summary.unbound_criteria)
-
-
-def bound_items(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
-    bound: dict[str, list[dict[str, Any]]] = {}
-    for item in data["dod_evidence"]:
-        for label in item.get("binds_ac", []):
-            bound.setdefault(label, []).append(item)
-    return bound
-
-
-def test_ac1_ac2_and_ac3_are_declared_and_each_is_bound() -> None:
     data = contract()
-    declared = data["requirements"][0]["acceptance"]
-    assert [entry["id"] for entry in declared] == list(CRITERIA)
-    for entry in declared:
-        assert entry["statement"].startswith(f"{entry['id']}: ")
-        assert "falsifier:" in entry["statement"]
-    assert unbound_declared(data) == ()
-    assert sorted(bound_items(data)) == list(CRITERIA)
+    for label in CRITERIA:
+        item = copy.deepcopy(live_item(data, label))
+        assert scoped_item_binding_violation(item) is None
+        item["binds_ac"] = [label]
+        refusal = scoped_item_binding_violation(item)
+        assert refusal is not None, label
+        assert "local_done_gate" in refusal, label
 
 
-@pytest.mark.parametrize("label", CRITERIA)
-def test_removing_a_binding_is_detected_by_the_verifiers_rule(label: str) -> None:
-    # Positive control, then the mutation: with the binding removed the same
-    # rule reports the criterion unbound. A test that sets the field it then
-    # reads back (the earlier shape) could not fail; this one fails when the
-    # binds_ac entry is missing from the real contract.
-    data = contract()
-    assert unbound_declared(data) == ()
-    for item in data["dod_evidence"]:
-        item["binds_ac"] = [a for a in item.get("binds_ac", []) if a != label]
-    assert unbound_declared(data) == (label,)
-
-
-def test_an_empty_acceptance_list_is_what_the_old_contract_declared() -> None:
-    # The refusal this contract answers: with no declared criterion the
-    # verifier has nothing to bind and the ticket would close on tests alone.
-    data = contract()
-    data["requirements"][0]["acceptance"] = []
-    assert unbound_declared(data) == ()
-    assert contract()["requirements"][0]["acceptance"] != []
+def test_the_open_criteria_of_the_review_ticket_are_recorded_and_bind_nothing() -> None:
+    # OMN-25284 AC1 (literal owner ticket ids) and AC5 (one passing hosted dev
+    # run) cannot be met by this change; their items must not pass for them.
+    review = yaml.safe_load((CONTRACT.parent / "OMN-25284.yaml").read_text())
+    assert sorted(review["context"]["open_criteria"]) == ["AC1", "AC5"]
+    declared = {ac["id"] for ac in review["requirements"][0]["acceptance"]}
+    assert declared == {"AC2", "AC3", "AC4", "AC6", "AC7", "AC8", "AC9"}
+    bound = {label for i in review["dod_evidence"] for label in i.get("binds_ac", [])}
+    assert bound == declared
+    # The record that the criteria are open: no owner ticket and no hosted run.
+    record = contract()["context"]
+    assert any(e["ticket"] is None for e in record["owner_tickets"].values())
+    assert record["dev_ladder_run"]["passing_hosted_run"] is None
 
 
 def test_bound_checks_run_at_the_local_done_gate_and_do_not_assert_open_status() -> (
     None
 ):
     data = contract()
-    for label, items in bound_items(data).items():
-        for item in items:
-            assert item["execution_scope"] == "local_done_gate", label
-            for check_spec in item["checks"]:
-                value = check_spec["check_value"]
-                assert "ac1_record" not in value
-                assert "-k ac" not in value
-                assert RECORD_FILE not in value
-    ac2 = bound_items(data)["AC2"][0]["checks"][0]["check_value"]
+    for label in CRITERIA:
+        item = live_item(data, label)
+        assert item["execution_scope"] == "local_done_gate", label
+        for check_spec in item["checks"]:
+            value = check_spec["check_value"]
+            assert "ac1_record" not in value
+            assert "-k ac" not in value
+            assert RECORD_FILE not in value
+    ac2 = live_item(data, "AC2")["checks"][0]["check_value"]
     assert ":8001/v1/models" in ac2
     assert "curl -sf" in ac2  # --fail: the exit turns on the HTTP status
-    assert "overlays" in bound_items(data)["AC3"][0]["checks"][0]["check_value"]
+    assert "overlays" in live_item(data, "AC3")["checks"][0]["check_value"]
 
 
 def test_ac2_check_fails_until_port_8001_answers_a_model_list_with_200() -> None:
-    command = bound_items(contract())["AC2"][0]["checks"][0]["check_value"]
+    command = live_item(contract(), "AC2")["checks"][0]["check_value"]
     env = {
         "PATH": "/usr/bin:/bin",
         "BIFROST_LOCAL_CODER_ENDPOINT_URL": "http://127.0.0.1:1/v1/chat/completions",
@@ -508,10 +524,10 @@ def test_ac2_check_fails_until_port_8001_answers_a_model_list_with_200() -> None
 
 def test_ac1_ac3_checks_name_the_dev_lane_and_the_overlays_test() -> None:
     data = contract()
-    ac1 = bound_items(data)["AC1"][0]["checks"][0]["check_value"]
+    ac1 = live_item(data, "AC1")["checks"][0]["check_value"]
     assert shape_problems(ac1) == []
     assert 'a[0]["tier"] == "local"' in ac1
-    ac3 = bound_items(data)["AC3"][0]["checks"][0]["check_value"]
+    ac3 = live_item(data, "AC3")["checks"][0]["check_value"]
     assert "tests/test_local_endpoint_hosts_serve_models.py" in ac3
 
 
@@ -583,8 +599,19 @@ def test_the_proof_prompt_is_run_and_its_metered_size_is_the_recorded_one() -> N
     assert reading["estimated_tokens"] == len(prompt) // 4
     assert hashlib.sha256(prompt.encode()).hexdigest() == reading["prompt_sha256"]
     # Past the old 8192 budget by the router's estimate and by the endpoint's
-    # meter, and inside the new 35000 budget: the proof can pass.
-    assert 8192 < len(prompt) // 4 <= 35000
+    # meter, and inside the input bound of the smallest local member (the spread
+    # peer's 48128), which is what gates it: the 35000 estimate never binds a
+    # prompt the bound admits, so it is not the check.
+    assert len(prompt) // 4 > 8192
+    assert (
+        input_token_upper_bound(prompt)
+        <= LOCAL_MEMBER_INPUT_BOUNDS["local-omnipc2-chat"]
+        == 48128
+    )
+    assert (
+        input_token_upper_bound(prompt)
+        >= reading["runs"]["branch_ladder_in_process"][0]["input_tokens"]
+    )
     branch_runs = reading["runs"]["branch_ladder_in_process"]
     assert {r["input_tokens"] for r in branch_runs} == {PROOF_INPUT_TOKENS}
     assert all(r["tier"] == "local" for r in branch_runs)
@@ -608,13 +635,82 @@ def test_reproduction_is_limited_to_summarization_in_the_contract() -> None:
 
 
 def ac1_check() -> str:
-    return str(bound_items(contract())["AC1"][0]["checks"][0]["check_value"])
+    return str(live_item(contract(), "AC1")["checks"][0]["check_value"])
+
+
+GIT_ENV = {
+    "GIT_AUTHOR_NAME": "t",
+    "GIT_AUTHOR_EMAIL": "t@example.invalid",
+    "GIT_COMMITTER_NAME": "t",
+    "GIT_COMMITTER_EMAIL": "t@example.invalid",
+    "GIT_CONFIG_GLOBAL": "/dev/null",
+    "GIT_CONFIG_SYSTEM": "/dev/null",
+}
+CAUSE_TEST = """\
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parents[1]))
+
+from calc import add
+
+
+def test_add() -> None:
+    assert add(1, 2) == 3
+"""
+
+
+def git(repo: Path, *args: str) -> str:
+    done = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        text=True,
+        capture_output=True,
+        env={"PATH": "/usr/bin:/bin", **GIT_ENV},
+    )
+    return done.stdout.strip()
+
+
+def owning_repo(
+    root: Path, *, test_body: str, base_fixed: bool = False, head_fixed: bool = True
+) -> tuple[Path, str]:
+    """A git repository with a base commit and a head commit; returns it and the base sha."""
+    repo = root / "owning_repo"
+    (repo / "tests").mkdir(parents=True)
+    git(root, "init", "-q", str(repo))
+    (repo / "calc.py").write_text(
+        "def add(a, b):\n    return a + b\n"
+        if base_fixed
+        else "def add(a, b):\n    return a - b\n"
+    )
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "base")
+    base = git(repo, "rev-parse", "HEAD")
+    (repo / "calc.py").write_text(
+        "def add(a, b):\n    return a + b\n"
+        if head_fixed
+        else "def add(a, b):\n    return a - b\n"
+    )
+    (repo / "tests/test_cause.py").write_text(test_body)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "fix")
+    return repo, base
 
 
 def run_ac1_check(
-    root: Path, data: dict[str, Any], receipt: dict[str, Any], *, owning_test: bool
+    root: Path,
+    data: dict[str, Any],
+    receipt: dict[str, Any],
+    *,
+    test_body: str | None = None,
+    base_fixed: bool = False,
+    head_fixed: bool = True,
 ) -> subprocess.CompletedProcess[str]:
-    """Run the AC1 check in a stand-in home directory whose CLI prints ``receipt``."""
+    """Run the AC1 check in a stand-in home whose CLI prints ``receipt``.
+
+    ``test_body`` is the owning repository's recorded test, committed at the head
+    of a real two-commit git repository (the base commit holds no test file).
+    """
     home = root / "stand_in_home"
     cli = home / "omnibase_infra/scripts/onex"
     cli.parent.mkdir(parents=True)
@@ -623,9 +719,17 @@ def run_ac1_check(
     cli.write_text(f'#!/bin/sh\ncat "{printed}"\n')
     cli.chmod(0o755)
     (home / ".onex_state").mkdir()
-    if owning_test:
-        (home / "owning_repo/tests").mkdir(parents=True)
-        (home / "owning_repo/tests/test_cause.py").write_text("")
+    if test_body is not None:
+        repo, base = owning_repo(
+            home, test_body=test_body, base_fixed=base_fixed, head_fixed=head_fixed
+        )
+        status = data["context"]["criterion_status"]["AC1"]
+        if not status.get("cause_fix_test"):
+            status["cause_fix_test"] = {
+                "repo": repo.name,
+                "path": "tests/test_cause.py",
+                "base_ref": base,
+            }
     work = root / "repo"
     (work / "contracts").mkdir(parents=True)
     (work / "contracts/OMN-24980.yaml").write_text(yaml.safe_dump(data))
@@ -637,6 +741,8 @@ def run_ac1_check(
         env={
             "PATH": f"{Path(sys.executable).parent}:/usr/bin:/bin",
             "OMNI_HOME": str(home),
+            "ONEX_PYTEST": f"{sys.executable} -m pytest",
+            **GIT_ENV,
         },
         cwd=work,
     )
@@ -655,22 +761,52 @@ def test_a_one_line_summarise_run_at_tier_local_does_not_meet_ac1(
     assert attempt["acceptance_decision"] == "accept"
     data = contract()
     assert data["context"]["criterion_status"]["AC1"]["cause_fix_test"] is None
-    refused = run_ac1_check(tmp_path / "open", data, run, owning_test=False)
+    refused = run_ac1_check(tmp_path / "open", data, run)
     assert refused.returncode != 0
     assert "no base-failing test of the cause" in refused.stderr
     assert "PASS" not in refused.stdout
-    # Positive control: with the base-failing test recorded and present, the same
-    # recorded run satisfies the check, so only the cause binding held it back.
-    data["context"]["criterion_status"]["AC1"]["cause_fix_test"] = {
-        "repo": "owning_repo",
-        "path": "tests/test_cause.py",
-        "base_ref": "0123456789ab",
-    }
-    served = run_ac1_check(tmp_path / "control", data, run, owning_test=True)
+    # Positive control: with a test that fails at the base commit and passes at
+    # the head recorded, the same recorded run satisfies the check, so only the
+    # cause test held it back.
+    served = run_ac1_check(tmp_path / "control", contract(), run, test_body=CAUSE_TEST)
     assert served.returncode == 0, served.stderr
     assert "PASS" in served.stdout
-    # A recorded test whose file does not exist is refused too.
-    missing = run_ac1_check(tmp_path / "missing", data, run, owning_test=False)
+
+
+def test_ac1_cause_test_must_fail_at_base_ref_and_pass_at_the_head(
+    tmp_path: Path,
+) -> None:
+    run = recorded()
+    # An empty test file exists and has the three strings, but runs no test: it
+    # exits 5 at the head, so it does not satisfy the check (it once did).
+    empty = run_ac1_check(tmp_path / "empty", contract(), run, test_body="")
+    assert empty.returncode != 0
+    assert "PASS" not in empty.stdout
+    assert "must fail with exit 1 at base_ref" in empty.stderr
+    # A test that already passes at the base commit shows no cause.
+    passing_at_base = run_ac1_check(
+        tmp_path / "base", contract(), run, test_body=CAUSE_TEST, base_fixed=True
+    )
+    assert passing_at_base.returncode != 0
+    assert "must fail with exit 1 at base_ref" in passing_at_base.stderr
+    # A test that still fails at the head is not a fix.
+    failing_at_head = run_ac1_check(
+        tmp_path / "head", contract(), run, test_body=CAUSE_TEST, head_fixed=False
+    )
+    assert failing_at_head.returncode != 0
+    assert "does not pass at the head" in failing_at_head.stderr
+    assert "PASS" not in failing_at_head.stdout
+    # A recorded test file that is not in the owning repository is refused.
+    data = contract()
+    ok = run_ac1_check(tmp_path / "ok", data, run, test_body=CAUSE_TEST)
+    assert ok.returncode == 0, ok.stderr
+    data = contract()
+    data["context"]["criterion_status"]["AC1"]["cause_fix_test"] = {
+        "repo": "owning_repo",
+        "path": "tests/test_missing.py",
+        "base_ref": "HEAD",
+    }
+    missing = run_ac1_check(tmp_path / "missing", data, run, test_body=CAUSE_TEST)
     assert missing.returncode != 0
     assert "does not exist" in missing.stderr
 
