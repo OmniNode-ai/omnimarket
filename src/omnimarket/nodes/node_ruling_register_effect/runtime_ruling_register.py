@@ -16,6 +16,7 @@ stderr per failed row; it changes no exit code.
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import sys
 import uuid
@@ -61,6 +62,7 @@ def read_register(
     *,
     port: ProtocolRulingReadPort | None = None,
     clock: Callable[[], datetime] = utc_now,
+    now: datetime | None = None,
 ) -> tuple[ModelRulingRegisterResult, tuple[str, ...]]:
     """The register's judgement under ``environ``'s overlays, and its journal write failures.
 
@@ -70,6 +72,12 @@ def read_register(
     the read handler and then the judge, and returns the judged result with the read's
     ``sink_errors``. A missing or invalid overlay raises ``NodeOverlayError``; the caller
     decides the exit code.
+
+    ``now`` is the instant the readings are judged at; unset, it is the clock once the reads have ended. A tick
+    reads for as long as its slowest row (the ledger-reader rows one after another: 720 s at most), so a fast row's
+    reading is that much older than ``now`` by the time it is judged. The age bound guards against a reading older
+    than the tick, so the tick's own span is added to it: a reading taken inside the tick is never stale for the
+    tick's length, and a reading older than the bound before the tick began still is.
     """
     policy = load_ruling_register_policy(environ)
     route = load_route(environ)
@@ -90,14 +98,22 @@ def read_register(
     journal = environ.get(route.journal_env, "").strip()
     sink = JournalRulingSink(Path(journal)) if journal else InMemoryRulingSink()
     correlation_id = uuid.uuid4().hex
+    started = clock()
     read = HandlerRulingRegisterRead(
         read_port, sink, load_topics(), clock=clock
     ).handle(ModelRulingReadRequest(correlation_id=correlation_id, policy=policy))
+    ended = clock()
+    span_seconds = max(0, math.ceil((ended - started).total_seconds()))
     judged = HandlerRulingRegister().handle(
         ModelRulingRegisterRequest(
             correlation_id=correlation_id,
-            now=clock(),
-            policy=policy,
+            now=ended if now is None else now,
+            policy=policy.model_copy(
+                update={
+                    "max_reading_age_seconds": policy.max_reading_age_seconds
+                    + span_seconds
+                }
+            ),
             readings=read.readings,
         )
     )

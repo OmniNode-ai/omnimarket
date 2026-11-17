@@ -14,11 +14,11 @@ requirements:
   - id: AC2
     statement: 'AC2: the AC4 check of contracts/OMN-24944.yaml records `onex-host-install-units ruling-register-systemd --status` on h201 naming the new head and a last-run.json younger than 7200 s, and asserts both -- falsifier: `uv run pytest tests -k ruling_register_unit -q -p no:cacheprovider` fails when the check only reruns the unit tests or omits the head or the age bound'
   - id: AC3
-    statement: 'AC3: the rendered unit passes --state-dir so that --state-dir plus /last-run.json equals the declared evidence_file, the render test asserts ONEX_PR_WATCHER_STATE, ONEX_STATE_DIR, ONEX_SKILL_OVERLAY_ROOTS, ONEX_RULING_REGISTER_JOURNAL, the 600 s limit, run-at-load and the probe, and an install without LAB_WORK_HOST_NAME is refused or renders empty -- falsifier: `uv run pytest tests -k ruling_register_unit -q -p no:cacheprovider` fails when the state directory and evidence_file differ or an unrendered host name is left in the unit'
+    statement: 'AC3: the rendered unit passes --state-dir so that --state-dir plus /last-run.json equals the declared evidence_file, the render test asserts ONEX_PR_WATCHER_STATE, ONEX_STATE_DIR, ONEX_SKILL_OVERLAY_ROOTS, ONEX_RULING_REGISTER_JOURNAL, the 900 s limit, run-at-load and the probe, and an install without LAB_WORK_HOST_NAME is refused or renders empty -- falsifier: `uv run pytest tests -k ruling_register_unit -q -p no:cacheprovider` fails when the state directory and evidence_file differ or an unrendered host name is left in the unit'
   - id: AC4
     statement: 'AC4: the run path and the probe path catch one exception set and an invalid overlay exits 3 on both -- falsifier: `uv run pytest tests -k ruling_register_tick -q -p no:cacheprovider` fails when the run path raises a traceback for an invalid overlay'
   - id: AC5
-    statement: 'AC5: the concurrency test bounds the six-row case near 0.6 s and a second test with more than 8 slow rows reaches the cap, the real row count keeps ceil(n/8) x 90 s under 600 s, and a test with a real-shaped self-host row argv passes -- falsifier: `uv run pytest tests -k ruling_register_effect -q -p no:cacheprovider` fails when max_workers is 2 or the cap is removed'
+    statement: 'AC5: the concurrency test bounds the six-row case near 0.6 s and a second test with more than 8 slow rows reaches the cap, the real row count keeps the worst case of the register (its ledger-reader rows one after another) under the 900 s run limit of the unit, and a test with a real-shaped self-host row argv passes -- falsifier: `uv run pytest tests -k ruling_register_effect -q -p no:cacheprovider` fails when max_workers is 2 or the cap is removed'
   - id: AC6
     statement: 'AC6: a PR comment starting `Lab: head=<full new head sha>` names each command with exit 0 (a whole-suite run in named parts if it times out), findings 7 and 8 are fixed or argued, and the PR title covers the diff -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6345` shows a head that differs from the head named in the Lab: comment, or no Lab: comment, or a command without exit 0'
 evidence_requirements:
@@ -76,7 +76,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
     cwd: .
 - id: dod-omn25207-ac6
-  description: 'The PR view carries a Lab comment line naming the head (grep for Lab:, then head=, then the sha: the head sha alone is on every PR view whether or not a Lab comment exists). A PR comment and the watcher state are not readable on the hosted runner, so only the local Done gate runs this check.'
+  description: 'The PR view carries a Lab comment line naming the head (grep for Lab:, then head=, then the sha: the head sha alone is on every PR view whether or not a Lab comment exists; the line must carry exit=0 and no non-zero exit). A PR comment and the watcher state are not readable on the hosted runner, so only the local Done gate runs this check.'
   source: manual
   binds_ac:
   - AC6
@@ -84,5 +84,5 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: |-
-      sh -c 'onex scm pr-view OmniNode-ai/omnimarket#6345 | grep -F "Lab: head=$(git rev-parse HEAD)"'
+      sh -c 'set -eu; lab=$(onex scm pr-view OmniNode-ai/omnimarket#6345 | grep -F "Lab: head=$(git rev-parse HEAD)"); printf "%s\n" "$lab"; printf "%s\n" "$lab" | grep -q "exit=0"; if printf "%s\n" "$lab" | grep -qE "exit[= ][1-9]"; then echo "the Lab line reports a failed command"; exit 1; fi'
     cwd: .

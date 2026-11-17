@@ -26,6 +26,12 @@ from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_regist
     HandlerRegistryUnits,
     load_units,
 )
+from omnimarket.nodes.node_ruling_register_compute.overlay import (
+    load_ruling_register_policy,
+)
+from omnimarket.nodes.node_ruling_register_effect.handlers.handler_ruling_register_read import (
+    is_ledger_reader_row,
+)
 from omnimarket.nodes.node_ruling_register_effect.overlay import load_route
 from omnimarket.nodes.node_ruling_register_effect.runtime_ruling_register import (
     read_register,
@@ -335,11 +341,9 @@ def test_the_ac4_check_reads_the_installed_status_on_h201_and_asserts_the_head_a
     assert load_units()[UNIT]["schedule"]["start_interval"] * 2 == 7200
 
 
-# The four h201 rows of the deployed register (the work-ledger-free ones), argv verbatim; their commands are docker, curl,
-# python3, grep, date and mktemp, all resolved through the unit's PATH.
-H201_ROWS: dict[str, tuple[str, dict[str, object]]] = {
-    "one-runtime-no-foreign-containers": (
-        r"""for c in $(docker ps --filter label=com.docker.compose.project=omnibase-infra --format '{{.Names}}'); do
+# The row as deployed before the docker list failed loud: its loop ran over `$(docker ps ...)`, so a docker that failed
+# gave an empty list, no output and exit 0, which its stdout_empty expectation judged TRUE.
+DEPLOYED_FOREIGN_CONTAINERS = r"""for c in $(docker ps --filter label=com.docker.compose.project=omnibase-infra --format '{{.Names}}'); do
   img=$(docker inspect -f '{{.Image}}' "$c") || exit 4
   svc=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' "$c") || exit 4
   tags=$(docker image inspect -f '{{join .RepoTags " "}}' "$img") || exit 4
@@ -347,7 +351,24 @@ H201_ROWS: dict[str, tuple[str, dict[str, object]]] = {
     " omnibase-infra-"*) [ "$svc" = omninode-runtime ] || echo "$svc" ;;
   esac
 done
-""",
+"""
+# The hardened row: the docker list is read first and a docker that fails ends the row with 4 (a refused read, UNREAD).
+HARDENED_FOREIGN_CONTAINERS = r"""names=$(docker ps --filter label=com.docker.compose.project=omnibase-infra --format '{{.Names}}') || exit 4
+for c in $names; do
+  img=$(docker inspect -f '{{.Image}}' "$c") || exit 4
+  svc=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' "$c") || exit 4
+  tags=$(docker image inspect -f '{{join .RepoTags " "}}' "$img") || exit 4
+  case " $tags" in
+    " omnibase-infra-"*) [ "$svc" = omninode-runtime ] || echo "$svc" ;;
+  esac
+done
+"""
+
+# The four h201 rows of the deployed register (the work-ledger-free ones), argv verbatim; their commands are docker, curl,
+# python3, grep, date and mktemp, all resolved through the unit's PATH.
+H201_ROWS: dict[str, tuple[str, dict[str, object]]] = {
+    "one-runtime-no-foreign-containers": (
+        HARDENED_FOREIGN_CONTAINERS,
         {"kind": "stdout_empty"},
     ),
     "no-onex-api-container-on-dev": (
@@ -385,6 +406,24 @@ echo $((groups - required))
         {"kind": "int_at_most", "bound": 0},
     ),
 }
+
+H201_ROW_IDS = (
+    "one-runtime-no-foreign-containers",
+    "no-onex-api-container-on-dev",
+    "boot-wires-only-attached-contracts",
+    "boot-joins-only-required-contracts",
+)
+# The eight deployed rows that run the work-ledger reader (each carries its module name in its argv).
+LEDGER_ROW_IDS = (
+    "new-work-lands-with-a-fable-verdict",
+    "dev-holds-ready",
+    "merged-means-running",
+    "lanes-placed-bottom-up",
+    "fable-reviews-run-on-the-mac",
+    "holds-have-an-owner-and-an-unexpired-expiry",
+    "plan-slice-round-four-needs-a-scope-cut",
+    "lab-fill-skips-under-a-fifth",
+)
 
 # ---- review of head dd0f23ff930f: the register's own checks, run -------------------------------------------------
 
@@ -540,11 +579,58 @@ def test_failing_control_a_docker_that_refuses_reads_the_real_h201_rows_unread_n
     docker.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
     judged, _ = read_register(environ)
     verdicts = {v.row_id: v.verdict.value for v in judged.verdicts}
-    # A row that cannot read reads UNREAD, never TRUE. One row of the deployed register is an exception that this test
-    # records rather than hides: its loop runs over `$(docker ps ...)`, so a docker that fails gives an empty list, no
-    # output and exit 0, which the row's stdout_empty expectation judges TRUE. The overlay owner's row to harden.
-    assert verdicts.pop("one-runtime-no-foreign-containers") == "TRUE"
-    assert set(verdicts.values()) == {"UNREAD"}
+    # A unit whose user cannot run docker reads every h201 row UNREAD, the row that lists the containers included.
+    assert verdicts == dict.fromkeys(H201_ROWS, "UNREAD")
+
+
+def test_failing_control_the_row_as_deployed_before_the_hardening_reads_true_when_docker_fails(
+    tmp_path: Path,
+) -> None:
+    """The control for the test above: the loop over ``$(docker ps ...)`` gave exit 0 and no output on a failing docker."""
+    docker = tmp_path / "docker"
+    docker.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    docker.chmod(0o755)
+    env = {**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}"}
+    for script, code in (
+        (DEPLOYED_FOREIGN_CONTAINERS, 0),
+        (HARDENED_FOREIGN_CONTAINERS, 4),
+    ):
+        result = subprocess.run(
+            ["sh", "-c", script],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert (result.returncode, result.stdout) == (code, ""), script
+
+
+def test_the_h201_rows_of_the_test_match_the_deployed_overlay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each H201_ROWS entry is the deployed row verbatim (argv, host and expectation); the one row the deployment still
+    carries as it was before the docker list failed loud may equal that earlier text instead. A hosted runner holds no
+    deployed overlay and checks only that the entries are well formed."""
+    environ, deployed = register_environ(tmp_path, monkeypatch)
+    assert set(H201_ROWS) == set(H201_ROW_IDS)
+    if not deployed:
+        assert all(script.strip() for script, _ in H201_ROWS.values())
+        return
+    by_id = {r.row_id: r for r in load_ruling_register_policy(environ).rows}
+    for row_id, (script, expect) in H201_ROWS.items():
+        deployed_row = by_id[row_id]
+        assert deployed_row.read.host == "h201", row_id
+        allowed = {script}
+        if row_id == "one-runtime-no-foreign-containers":
+            allowed.add(DEPLOYED_FOREIGN_CONTAINERS)
+        assert deployed_row.read.argv[:2] == ("sh", "-c"), row_id
+        assert len(deployed_row.read.argv) == 3, row_id
+        assert deployed_row.read.argv[2] in allowed, row_id
+        assert deployed_row.read.expect.kind == expect["kind"], row_id
+    # The eight ledger rows the AC4 check names are the deployed rows that run the ledger reader.
+    assert {r.row_id for r in by_id.values() if is_ledger_reader_row(r)} == set(
+        LEDGER_ROW_IDS
+    )
 
 
 # ---- the AC4 and AC6 checks of the contracts, executed ---------------------------------------------------------------
@@ -596,6 +682,37 @@ class Ac4World:
         )
         assert result.status == "success", result.stderr
         _write_stub(self.bin, "ssh", 'shift\nexec "$@"\n')
+        # The shell expression of the checked-out head, evaluated when the stubbed PR view runs.
+        self.head_expr = f"$(git -C {self.checkout} rev-parse HEAD)"
+        self.container_env = "PATH=/usr/bin:/bin\nHOME=/root\n"
+        self.docker_ps_rc = 0
+        self.curl_rc = 0
+        self.lab_line: str | None = None
+        self.write_host_stubs()
+
+    def write_host_stubs(self) -> None:
+        """What h201 answers to the check: the dev runtime container's environment, docker and curl on the unit's PATH
+        and the PR view's Lab line (by default one for the checked-out head that reports every command with exit 0)."""
+        env_file = self.tmp_path / "container-env.txt"
+        env_file.write_text(self.container_env, encoding="utf-8")
+        _write_stub(
+            self.bin,
+            "docker",
+            f'case "$1" in\n  ps) exit {self.docker_ps_rc} ;;\n  exec) cat "{env_file}" ;;\n  *) exit 2 ;;\nesac\n',
+        )
+        _write_stub(self.bin, "curl", f"exit {self.curl_rc}\n")
+        lab = (
+            self.lab_line
+            if self.lab_line is not None
+            else f"Lab: head={self.head_expr} host=h053 cmd=pytest exit=0"
+        )
+        _write_stub(
+            self.bin,
+            "onex",
+            '[ "$*" = "scm pr-view OmniNode-ai/omnimarket#6345" ] || exit 2\n'
+            'echo \'{"head_sha":"x"}\'\n'
+            f'echo "{lab}"\n',
+        )
 
     def tick(self, rows: list[dict[str, object]], *, journal: bool = True) -> None:
         """One real tick under ``rows``; its last-run.json lands where the installer's status reads the heartbeat."""
@@ -628,7 +745,12 @@ class Ac4World:
             shlex.split(command),
             cwd=self.checkout,
             env=scrub_git_location_env(
-                {**os.environ, "PATH": f"{self.bin}:{os.environ['PATH']}"}
+                {
+                    **os.environ,
+                    "PATH": f"{self.bin}:{os.environ['PATH']}",
+                    # The unit's PATH on h201, with the stubs standing for /usr/bin/docker and /usr/bin/curl.
+                    "RULING_REGISTER_UNIT_PATH": f"{self.bin}:/usr/bin:/bin",
+                }
             ),
             capture_output=True,
             text=True,
@@ -642,13 +764,26 @@ def _row(row_id: str, code: str) -> dict[str, object]:
 
 READS = _row("row-reads", "pass")
 UNREADABLE = _row("row-unread", "import sys; sys.exit(9)")
+# The rows the check requires to be read: the eight that run the ledger reader and the four h201 rows.
+REQUIRED_IDS = (*LEDGER_ROW_IDS, *H201_ROW_IDS)
+REQUIRED_ROWS = [_row(row_id, "pass") for row_id in REQUIRED_IDS]
+# A register whose required rows are all read and one other row is not (the check allows that).
+PASSING_ROWS = [*REQUIRED_ROWS, UNREADABLE]
+
+
+def _unread(*row_ids: str) -> list[dict[str, object]]:
+    """The register with each named row unreadable and every other required row read, plus the unread extra row."""
+    return [
+        _row(row_id, "import sys; sys.exit(9)") if row_id in row_ids else row
+        for row_id, row in zip(REQUIRED_IDS, REQUIRED_ROWS, strict=True)
+    ] + [UNREADABLE]
 
 
 def test_the_status_output_the_check_pins_its_patterns_to_is_the_installers_own(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     world = Ac4World(tmp_path, monkeypatch)
-    world.tick([READS, UNREADABLE])
+    world.tick(PASSING_ROWS)
     status = world.render_status()
     lines = status.splitlines()
     assert lines[0] == "LOADED onex-ruling-register.timer"
@@ -656,26 +791,100 @@ def test_the_status_output_the_check_pins_its_patterns_to_is_the_installers_own(
     assert re.fullmatch(rf"{re.escape(str(world.evidence))}: \d+ s old", lines[1])
     assert lines[2] == f"installed revision {world.revision} of {world.checkout}"
     record = json.loads(world.evidence.read_text(encoding="utf-8"))
-    assert record["counts"] == {"TRUE": 1, "FALSE": 0, "UNREAD": 1}
+    assert record["counts"] == {"TRUE": 12, "FALSE": 0, "UNREAD": 1}
     assert record["journal"] == str(world.journal)
     # The record's key order and spacing are what the check's sed patterns read.
     text = world.evidence.read_text(encoding="utf-8")
-    assert '"rows": 2' in text
+    assert '"rows": 13' in text
     assert '"UNREAD": 1' in text
     assert f'"journal": "{world.journal}"' in text
 
 
-def test_the_ac4_check_passes_with_the_head_installed_a_fresh_record_some_rows_read_and_a_journal_line(
+def test_the_ac4_check_passes_with_the_head_installed_a_fresh_record_the_required_rows_read_and_a_journal_line(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     world = Ac4World(tmp_path, monkeypatch)
-    world.tick([READS, UNREADABLE])
+    world.tick(PASSING_ROWS)
     world.render_status()
     result = world.run_check()
     assert result.returncode == 0, result.stdout + result.stderr
     # The check prints the status and last-run.json it judged, so the PR can record them.
     assert f"installed revision {world.revision} of " in result.stdout
     assert '"UNREAD": 1' in result.stdout
+    # ... and the Lab line it judged.
+    assert f"Lab: head={world.revision} " in result.stdout
+
+
+def test_the_ac4_check_fails_when_one_row_is_read_and_the_rest_are_unread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``unread < rows`` passed on one read row: every ledger-reader row and every h201 row must be read."""
+    world = Ac4World(tmp_path, monkeypatch)
+    world.tick([READS, UNREADABLE, _row("row-unread-2", "import sys; sys.exit(9)")])
+    world.render_status()
+    counts = json.loads(world.evidence.read_text(encoding="utf-8"))["counts"]
+    assert counts["UNREAD"] < 3  # the old check's whole condition holds
+    assert world.run_check().returncode != 0
+
+
+@pytest.mark.parametrize("row_id", REQUIRED_IDS)
+def test_the_ac4_check_fails_when_any_one_required_row_reads_unread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, row_id: str
+) -> None:
+    world = Ac4World(tmp_path, monkeypatch)
+    world.tick(PASSING_ROWS)
+    world.render_status()
+    assert world.run_check().returncode == 0
+    world.tick(_unread(row_id))
+    world.render_status()
+    result = world.run_check()
+    assert result.returncode != 0
+    assert f"row {row_id} is not read" in result.stdout
+
+
+def test_the_ac4_check_fails_when_the_dev_container_carries_the_host_name_or_docker_or_curl_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = Ac4World(tmp_path, monkeypatch)
+    world.tick(PASSING_ROWS)
+    world.render_status()
+    assert world.run_check().returncode == 0
+    # The h201 rows would run inside the container and read themselves, so the container must carry no host name.
+    world.container_env = "PATH=/usr/bin:/bin\nLAB_WORK_HOST_NAME=h201\n"
+    world.write_host_stubs()
+    result = world.run_check()
+    assert result.returncode != 0
+    assert "carries LAB_WORK_HOST_NAME" in result.stdout
+    world.container_env = "PATH=/usr/bin:/bin\n"
+    world.docker_ps_rc = 1  # the unit's user cannot run docker
+    world.write_host_stubs()
+    assert world.run_check().returncode != 0
+    world.docker_ps_rc = 0
+    world.curl_rc = 127  # curl is not on the unit's PATH
+    world.write_host_stubs()
+    assert world.run_check().returncode != 0
+    world.curl_rc = 0
+    world.write_host_stubs()
+    assert world.run_check().returncode == 0
+
+
+def test_the_ac4_check_fails_without_a_lab_line_for_the_head_or_with_one_that_reports_a_failed_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = Ac4World(tmp_path, monkeypatch)
+    world.tick(PASSING_ROWS)
+    world.render_status()
+    assert world.run_check().returncode == 0
+    for line in (
+        f"Lab: head={'0' * 40} host=h053 exit=0",  # another head
+        f"Lab: head={world.head_expr} host=h053 cmd=a exit=0 cmd=b exit=1",
+        f"Lab: head={world.head_expr} host=h053 cmd=a exit=2",
+        f"Lab: head={world.head_expr} host=h053 cmd=a",  # names no exit 0
+        "no lab comment here",
+    ):
+        world.lab_line = line
+        world.write_host_stubs()
+        assert world.run_check().returncode != 0, line
 
 
 def test_the_ac4_check_fails_when_every_row_reads_unread(
@@ -695,7 +904,7 @@ def test_the_ac4_check_fails_when_the_journal_is_not_written(
 ) -> None:
     world = Ac4World(tmp_path, monkeypatch)
     world.tick(
-        [READS, UNREADABLE], journal=False
+        PASSING_ROWS, journal=False
     )  # the route's journal variable is unset: events stay in memory
     world.render_status()
     assert not world.journal.exists()
@@ -706,7 +915,7 @@ def test_the_ac4_check_fails_when_the_journal_has_no_line_or_only_an_old_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     world = Ac4World(tmp_path, monkeypatch)
-    world.tick([READS, UNREADABLE])
+    world.tick(PASSING_ROWS)
     world.render_status()
     assert world.run_check().returncode == 0
     old = time.time() - 3 * 3600
@@ -720,7 +929,7 @@ def test_the_ac4_check_fails_for_another_revision_a_stale_record_or_another_firs
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     world = Ac4World(tmp_path, monkeypatch)
-    world.tick([READS, UNREADABLE])
+    world.tick(PASSING_ROWS)
     world.render_status()
     assert world.run_check().returncode == 0
     # A later commit: the checked-out head is no longer the installed revision.
@@ -765,10 +974,15 @@ def test_the_ac4_check_fails_for_another_revision_a_stale_record_or_another_firs
     assert world.run_check().returncode != 0
 
 
-def test_the_ac6_check_of_the_earlier_round_fails_without_the_lab_comment_for_the_head(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    ("contract_file", "ac"),
+    [("OMN-25207.yaml", "AC6"), ("OMN-25283.yaml", "AC8")],
+    ids=["round-two", "round-three"],
+)
+def test_the_lab_comment_check_of_the_earlier_rounds_fails_without_the_lab_line_for_the_head_or_with_a_failed_command(
+    tmp_path: Path, contract_file: str, ac: str
 ) -> None:
-    command = _check_command("OMN-25207.yaml", "AC6")
+    command = _check_command(contract_file, ac)
     head = base._git(
         ["git", "rev-parse", "HEAD"],
         cwd=base.ROOT,
@@ -795,6 +1009,8 @@ def test_the_ac6_check_of_the_earlier_round_fails_without_the_lab_comment_for_th
     bare_head = f'{{"head_sha":"{head}","comments":[]}}\n'
     other_head = f'Lab: head={"0" * 40} host=h053\n{{"head_sha":"{head}"}}\n'
     with_lab = f'{{"head_sha":"{head}"}}\nLab: head={head} host=h053 exit=0\n'
+    failed = f'{{"head_sha":"{head}"}}\nLab: head={head} host=h053 cmd=a exit=0 cmd=b exit=1\n'
+    no_exit = f'{{"head_sha":"{head}"}}\nLab: head={head} host=h053 cmd=a\n'
     # The old check (grep for the sha alone) passes on a PR with no Lab comment; the new one does not.
     old = subprocess.run(
         ["sh", "-c", 'printf "%s" "$1" | grep -F "$2"', "_", bare_head, head],
@@ -803,4 +1019,12 @@ def test_the_ac6_check_of_the_earlier_round_fails_without_the_lab_comment_for_th
     assert old.returncode == 0
     assert run(bare_head) != 0
     assert run(other_head) != 0
+    # The grep alone passed on a Lab line that reports a failed command; the check also rejects a non-zero exit.
+    grep_only = subprocess.run(
+        ["sh", "-c", 'printf "%s" "$1" | grep -F "Lab: head=$2"', "_", failed, head],
+        check=False,
+    )
+    assert grep_only.returncode == 0
+    assert run(failed) != 0
+    assert run(no_exit) != 0
     assert run(with_lab) == 0

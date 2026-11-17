@@ -27,8 +27,10 @@ import os
 import shlex
 import subprocess
 import sys
+import tempfile
 import threading
-import time
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -46,6 +48,7 @@ from omnimarket.models.model_ruling_register import (
     ModelRulingReadRequest,
     ModelRulingRegisterPolicy,
     ModelRulingRegisterRequest,
+    ModelRulingRegisterResult,
     ModelRulingRow,
 )
 from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units import (
@@ -80,7 +83,10 @@ from omnimarket.nodes.node_ruling_register_effect.overlay import load_route
 from omnimarket.nodes.node_ruling_register_effect.protocols import (
     ProtocolRulingReadPort,
 )
-from omnimarket.nodes.node_ruling_register_effect.runtime_ruling_register import main
+from omnimarket.nodes.node_ruling_register_effect.runtime_ruling_register import (
+    main,
+    read_register,
+)
 from tests.node_overlay_support import install_node_overlay
 
 pytestmark = pytest.mark.unit
@@ -249,45 +255,39 @@ def test_six_slow_rows_all_read_at_once() -> None:
     assert result.sink_errors == ()
 
 
-def test_more_slow_rows_than_the_cap_run_at_most_the_cap_at_once() -> None:
-    lock = threading.Lock()
-    reached_cap = threading.Event()
-    release = threading.Event()
-    running = 0
-    peak = 0
+def test_more_slow_rows_than_the_cap_run_at_most_the_cap_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two full waves of the cap, no clock: a barrier of the cap fails a pool smaller than the cap, and the pool the
+    handler builds is read from the executor, so a pool larger than the cap fails on the number it was given."""
+    pool_sizes: list[int] = []
 
-    class GatedPort:
+    class SpyExecutor(ThreadPoolExecutor):
+        def __init__(self, max_workers: int) -> None:
+            pool_sizes.append(max_workers)
+            super().__init__(max_workers=max_workers)
+
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_ruling_register_effect.handlers.handler_ruling_register_read.ThreadPoolExecutor",
+        SpyExecutor,
+    )
+    wave = threading.Barrier(MAX_CONCURRENT_READS)
+
+    class WavePort:
         def read(self, row: ModelRulingRow) -> ModelRulingReading:
-            nonlocal running, peak
-            with lock:
-                running += 1
-                peak = max(peak, running)
-                if running == MAX_CONCURRENT_READS:
-                    reached_cap.set()
-            # The first MAX_CONCURRENT_READS reads are held until the cap is reached and a further read has had
-            # its chance to start (it cannot, with a cap); the grace only gives a missing cap time to show itself.
-            assert release.wait(timeout=30)
-            with lock:
-                running -= 1
+            # A wave is released only when the cap's worth of reads is waiting together: a pool of two never fills it
+            # and the wait ends in BrokenBarrierError, whatever the load of the runner.
+            wave.wait(timeout=30)
             return fixture(row.row_id)
 
-    def releaser() -> None:
-        assert reached_cap.wait(timeout=30)
-        time.sleep(0.2)
-        release.set()
-
-    count = 2 * MAX_CONCURRENT_READS + 1
+    count = 2 * MAX_CONCURRENT_READS
     rows = tuple(row(f"row-{index}") for index in range(count))
-    h, sink = handler(GatedPort())
-    thread = threading.Thread(target=releaser)
-    thread.start()
+    h, sink = handler(WavePort())
     result = h.handle(
         ModelRulingReadRequest(correlation_id="read-1", policy=policy(*rows))
     )
-    thread.join()
     assert MAX_CONCURRENT_READS == 8
-    # The cap is reached (a pool of two would never reach it) and never passed (no cap would peak at 17).
-    assert peak == MAX_CONCURRENT_READS
+    assert pool_sizes == [MAX_CONCURRENT_READS]
     assert [reading.row_id for reading in result.readings] == [r.row_id for r in rows]
     assert len(sink.events) == count
 
@@ -299,11 +299,17 @@ def ledger_row(row_id: str) -> ModelRulingRow:
 def test_the_rows_that_run_the_ledger_reader_read_one_at_a_time_beside_the_concurrent_rest() -> (
     None
 ):
-    """Eight simultaneous ledger-reader runs were measured: each one unanswered at 115 s, against 69 s alone."""
+    """Eight simultaneous ledger-reader runs were measured: each one unanswered at 115 s, against 69 s alone.
+
+    Gated on events: the first ledger read stays inside its read until the three plain rows have met at a barrier
+    (the rest of the register reads beside the chain), so a handler that let a second ledger read start would show it
+    running at that read's entry, whatever the load of the runner.
+    """
     lock = threading.Lock()
     readers_running = 0
     reader_peak = 0
     reader_order: list[str] = []
+    plain_rows_met = threading.Event()
     rendezvous = threading.Barrier(3)
 
     class MixedPort:
@@ -312,14 +318,15 @@ def test_the_rows_that_run_the_ledger_reader_read_one_at_a_time_beside_the_concu
             if row.row_id.startswith("plain"):
                 # The plain rows do not queue behind the chain: all three run together while a reader runs.
                 rendezvous.wait(timeout=30)
+                plain_rows_met.set()
                 return fixture(row.row_id)
             with lock:
                 readers_running += 1
                 reader_peak = max(reader_peak, readers_running)
                 reader_order.append(row.row_id)
-            time.sleep(
-                0.05
-            )  # a grace for a second reader to overlap if the handler let it
+                first = len(reader_order) == 1
+            if first:
+                assert plain_rows_met.wait(timeout=30)
             with lock:
                 readers_running -= 1
             return fixture(row.row_id)
@@ -378,6 +385,17 @@ def register_bound(
     return limit, route_timeout, worst_case_seconds(rows, route_timeout)
 
 
+def max_reading_age(environ: dict[str, str]) -> int:
+    """The register's ``max_reading_age_seconds``: how old a reading may be at the moment it is judged."""
+    return load_ruling_register_policy(environ).max_reading_age_seconds
+
+
+# A lab run names the deployment's overlay roots here. The test session replaces ONEX_SKILL_OVERLAY_ROOTS before every
+# test (tests/conftest.py drops a root that holds a delegation routing document, which the deployment's root does), so
+# the deployed overlays are never reached through that variable; a root named here is required, never fallen back from.
+REQUIRE_DEPLOYED = "ONEX_RULING_REGISTER_DEPLOYED_ROOTS"
+
+
 def register_environ(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[dict[str, str], bool]:
@@ -388,14 +406,18 @@ def register_environ(
     the real route and the real row count wherever they are present.
     """
     deployed = {
-        "ONEX_SKILL_OVERLAY_ROOTS": os.environ.get("ONEX_SKILL_OVERLAY_ROOTS", "")
+        "ONEX_SKILL_OVERLAY_ROOTS": os.environ.get(REQUIRE_DEPLOYED, "")
+        or os.environ.get("ONEX_SKILL_OVERLAY_ROOTS", "")
     }
     try:
         load_route(deployed)
         load_ruling_register_policy(deployed)
         return deployed, True
     except (NodeOverlayError, ValidationError, ValueError, OSError):
-        pass
+        if os.environ.get(REQUIRE_DEPLOYED):
+            # A lab run sets this: a register that cannot be read from the deployed overlays fails, it never falls
+            # back to the synthetic example, which cannot fail for the real register.
+            raise
     node_dir = Path(__file__).resolve().parents[4] / "src/omnimarket/nodes"
     for node in ("node_ruling_register_compute", "node_ruling_register_effect"):
         install_node_overlay(
@@ -417,6 +439,175 @@ def test_the_register_ends_inside_the_unit_run_limit_when_every_row_waits_the_ro
     environ, _deployed = register_environ(tmp_path, monkeypatch)
     limit, route_timeout, worst_case = register_bound(environ)
     assert worst_case < limit, (limit, route_timeout, worst_case)
+
+
+# The overlay values the register is reviewed against: 16 rows, 8 that run the ledger reader, a 90 s route timeout.
+DEPLOYED_ROWS = 16
+DEPLOYED_LEDGER_ROWS = 8
+DEPLOYED_ROUTE_TIMEOUT = 90
+# Argv words that reach the work-ledger query service. A row carrying one of these without the marker the handler
+# serializes on would run beside the chain and make the measured 115 s of eight at once.
+QUERY_SERVICE_HINTS = ("ledger_reader", "onex-ledger", "work_ledger_query")
+
+
+def register_values(environ: dict[str, str]) -> tuple[int, int, int, int]:
+    """The rows, the ledger-reader rows, the route timeout and the age bound, read from the overlays of ``environ``."""
+    rows = load_ruling_register_policy(environ).rows
+    return (
+        len(rows),
+        sum(1 for r in rows if is_ledger_reader_row(r)),
+        load_route(environ).timeout_seconds,
+        max_reading_age(environ),
+    )
+
+
+def test_the_register_values_are_read_from_the_deployed_overlay_and_a_lab_run_prints_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With ``ONEX_RULING_REGISTER_DEPLOYED_ROOTS`` set (a lab run) the deployed overlay is required and holds the
+    reviewed 16 rows, 8 ledger rows and 90 s; hosted CI, which holds no deployed overlay, reads the shipped example."""
+    environ, deployed = register_environ(tmp_path, monkeypatch)
+    rows, ledger, timeout, max_age = register_values(environ)
+    # Printed for the lab comment (run with -s): the line the review asks for.
+    sys.stdout.write(
+        f"REGISTER-VALUES deployed={deployed} rows={rows} ledger_rows={ledger} timeout={timeout} "
+        f"max_reading_age={max_age} worst_case={worst_case_seconds(load_ruling_register_policy(environ).rows, timeout)}\n"
+    )
+    if os.environ.get(REQUIRE_DEPLOYED):
+        assert deployed is True
+    if deployed:
+        assert (rows, ledger, timeout) == (
+            DEPLOYED_ROWS,
+            DEPLOYED_LEDGER_ROWS,
+            DEPLOYED_ROUTE_TIMEOUT,
+        )
+
+
+def test_failing_control_a_lab_run_with_no_deployed_overlay_fails_and_never_reads_the_example(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(REQUIRE_DEPLOYED, str(tmp_path / "no-overlays"))
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "no-overlays"))
+    with pytest.raises(NodeOverlayError):
+        register_environ(tmp_path, monkeypatch)
+    monkeypatch.delenv(REQUIRE_DEPLOYED)
+    environ, deployed = register_environ(tmp_path, monkeypatch)
+    assert deployed is False
+    assert register_values(environ)[0] == 2  # the shipped example, never the register
+
+
+def test_every_row_that_reaches_the_query_service_carries_the_serialization_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Serialization reads the marker in a row's argv, so a row that reaches the service another way (a wrapper
+    script, another module) would overlap the chain. No row of the register may name the service without it."""
+    environ, deployed = register_environ(tmp_path, monkeypatch)
+    rows = load_ruling_register_policy(environ).rows
+    reaching = [
+        r.row_id
+        for r in rows
+        if any(h in token for token in r.read.argv for h in QUERY_SERVICE_HINTS)
+    ]
+    assert reaching == [r.row_id for r in rows if is_ledger_reader_row(r)]
+    if deployed:
+        assert len(reaching) == DEPLOYED_LEDGER_ROWS
+
+
+def test_failing_control_a_wrapper_row_that_reaches_the_query_service_without_the_marker_is_found() -> (
+    None
+):
+    wrapper = row("wrapper", argv=("sh", "-c", "onex-ledger rows --window-hours 24"))
+    assert not is_ledger_reader_row(wrapper)
+    assert any(h in token for token in wrapper.read.argv for h in QUERY_SERVICE_HINTS)
+
+
+def test_fast_rows_are_not_judged_stale_when_the_tick_reads_for_longer_than_the_age_bound() -> (
+    None
+):
+    """A tick whose slowest row ends 720 s after its fastest: with the 600 s bound the fast row would be judged 719 s
+    old when the reads end. The reading was taken inside the tick, so it reads TRUE; a reading older than the bound
+    before the tick began still reads UNREAD."""
+    state = {"now": NOW}
+    lock = threading.Lock()
+
+    class SlowPort:
+        def read(self, r: ModelRulingRow) -> ModelRulingReading:
+            if r.row_id == "slow":
+                with lock:
+                    state["now"] = NOW + timedelta(seconds=720)
+                return fixture("slow").model_copy(
+                    update={"read_at": NOW + timedelta(seconds=720)}
+                )
+            return fixture(r.row_id).model_copy(
+                update={"read_at": NOW + timedelta(seconds=1)}
+            )
+
+    rows = [cli_row_dict("fast"), cli_row_dict("slow")]
+    judged_result, _ = read_register_with(
+        rows, SlowPort(), lambda: state["now"], bound=600
+    )
+    verdicts = {v.row_id: v.verdict for v in judged_result.verdicts}
+    assert verdicts["fast"] is EnumRulingVerdict.TRUE
+    assert verdicts["slow"] is EnumRulingVerdict.TRUE
+
+
+def test_a_reading_older_than_the_bound_before_the_tick_began_still_reads_unread() -> (
+    None
+):
+    class OldPort:
+        def read(self, r: ModelRulingRow) -> ModelRulingReading:
+            return fixture(r.row_id).model_copy(
+                update={"read_at": NOW - timedelta(seconds=601)}
+            )
+
+    judged_result, _ = read_register_with(
+        [cli_row_dict("old")], OldPort(), lambda: NOW, bound=600
+    )
+    [verdict] = judged_result.verdicts
+    assert verdict.verdict is EnumRulingVerdict.UNREAD
+    assert "601 seconds old" in verdict.detail
+
+
+def test_read_register_judges_at_the_now_it_is_given() -> None:
+    class SamePort:
+        def read(self, r: ModelRulingRow) -> ModelRulingReading:
+            return fixture(r.row_id)
+
+    later = NOW + timedelta(seconds=601)
+    judged_result, _ = read_register_with(
+        [cli_row_dict("row")], SamePort(), lambda: NOW, bound=600, now=later
+    )
+    [verdict] = judged_result.verdicts
+    assert verdict.verdict is EnumRulingVerdict.UNREAD
+
+
+def cli_row_dict(row_id: str) -> dict[str, object]:
+    return {
+        "row_id": row_id,
+        "ruling": RULING,
+        "must_be_true": "the example ruling holds",
+        "read": {
+            "host": "local",
+            "argv": ["example-command"],
+            "ok_exit_codes": [0, 1],
+            "expect": {"kind": "exit_zero"},
+        },
+        "owner": "example-lane",
+        "fix": f"fix {row_id}",
+    }
+
+
+def read_register_with(
+    rows: list[dict[str, object]],
+    port: ProtocolRulingReadPort,
+    clock: Callable[[], datetime],
+    *,
+    bound: int,
+    now: datetime | None = None,
+) -> tuple[ModelRulingRegisterResult, tuple[str, ...]]:
+    with pytest.MonkeyPatch.context() as patch, tempfile.TemporaryDirectory() as tmp:
+        environ = cli_env(Path(tmp), patch, rows, max_reading_age_seconds=bound)
+        return read_register(environ, port=port, clock=clock, now=now)
 
 
 def synthetic_register_environ(
@@ -989,13 +1180,14 @@ def cli_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     rows: list[dict[str, object]],
+    max_reading_age_seconds: int = 600,
 ) -> dict[str, str]:
     """Install the register and the command route under one overlay root; both hosts local."""
     install_node_overlay(
         monkeypatch,
         tmp_path,
         "node_ruling_register_compute",
-        {"max_reading_age_seconds": 600, "rows": rows},
+        {"max_reading_age_seconds": max_reading_age_seconds, "rows": rows},
     )
     install_node_overlay(
         monkeypatch,
