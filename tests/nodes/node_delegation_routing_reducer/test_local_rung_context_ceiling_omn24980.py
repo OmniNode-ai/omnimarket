@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -65,10 +66,34 @@ RECORDED_WRAPPER_TOKENS: int = (
     RECORDED["metrics"]["input_tokens"] - len(RECORDED["prompt_text"]) // 4
 )
 OUTPUT_RESERVE = 65536
-# The ladder keeps this much of the window back for the wrapper (the recorded
-# overhead is below it).
+# The ladder keeps this much of the window back for the request wrapper.
 WRAPPER_MARGIN = 1024
-INPUT_BUDGET = SERVED_MAX_MODEL_LEN - OUTPUT_RESERVE - WRAPPER_MARGIN
+READINGS = json.loads(
+    (Path(__file__).parent / "fixtures/metered_token_readings.json").read_text()
+)
+# Metered input tokens of a 39-character prompt per local class, from a real
+# in-process run of each class (the wrapper is the metered count minus the
+# prompt's own estimated tokens).
+WRAPPER_BY_CLASS: dict[str, int] = {
+    task: metered - READINGS["wrapper"]["prompt_characters"] // 4
+    for task, metered in READINGS["wrapper"]["metered_input_tokens_by_class"].items()
+}
+WRAPPER_MAX = max(WRAPPER_BY_CLASS.values())
+CHARS_PER_TOKEN: dict[str, float] = READINGS["density_samples"]["chars_per_token"]
+NATURAL_TEXT: list[str] = READINGS["density_samples"]["natural_text"]
+IDENTIFIER_DENSE: list[str] = READINGS["density_samples"]["identifier_dense"]
+# The estimate the ladder compares is characters over four; the endpoint meters
+# the real tokenisation, which for natural text is denser than four characters
+# per token. The budget is written out, then checked against the densest natural
+# reading (below), and never derived from the ladder the handler loads.
+INPUT_BUDGET = 35000
+UNMETERED_BUDGET = SERVED_MAX_MODEL_LEN - OUTPUT_RESERVE - WRAPPER_MARGIN
+
+
+def metered_tokens(estimated: int, chars_per_token: float) -> int:
+    """Metered input tokens of a prompt the router estimates at ``estimated``."""
+    return math.ceil(estimated * 4 / chars_per_token)
+
 
 LOCAL_CODER = "local-coder"
 LOCAL_HEAVY = "local-heavy-reasoning"
@@ -98,8 +123,8 @@ LITERAL_OUTCOMES: dict[str, tuple[str, str]] = {
     "test": (LOCAL_CODER, BEYOND),
     "validator_generation": (LOCAL_CODER, BEYOND),
 }
-# One route beyond the local tier for every class: pinned to a large-window rung
-# outside it, which a pin reaches whether or not the class lists it.
+# A large-window rung outside the local tier that a pin reaches whether or not
+# the class lists it (the unpinned route per class is LITERAL_OUTCOMES).
 PINNED_BEYOND_LOCAL = ("cloud-gemini-2-5-flash", "cheap_cloud")
 
 
@@ -244,8 +269,48 @@ def test_unpinned_calls_route_literally_per_class_and_token_count(task: str) -> 
         assert_outcome(task, tokens, beyond)
 
 
+def beyond_local_outcome(task: str) -> str:
+    """What the public handler does with an unpinned prompt past every local budget."""
+    try:
+        decision = routing.delta(request(task, 65537))
+    except ProtocolConfigurationError:
+        return "refused"
+    return f"{decision.tier_name}/{decision.selected_backend_ref}"
+
+
 @pytest.mark.parametrize("task", sorted(LITERAL_OUTCOMES))
-def test_every_class_has_one_route_beyond_the_local_tier(task: str) -> None:
+def test_each_class_takes_its_own_literal_route_beyond_the_local_tier(
+    task: str,
+) -> None:
+    assert beyond_local_outcome(task) == LITERAL_OUTCOMES[task][1]
+
+
+def test_beyond_local_routes_are_not_one_route_for_every_class() -> None:
+    # Fails when every class takes the same route beyond the local tier (one
+    # pin that ignores the class would pass a per-class parametrisation and
+    # still be the same route everywhere).
+    outcomes = {task: beyond_local_outcome(task) for task in LITERAL_OUTCOMES}
+    assert len(set(outcomes.values())) > 1
+    assert {"refused", f"{BEYOND}"} <= set(outcomes.values())
+    # escalation and research are refused unpinned: the one rung beyond the
+    # local tier that lists them is explicit_pin_only, so only a pin reaches it.
+    assert outcomes["escalation"] == "refused"
+    assert outcomes["research"] == "refused"
+    listing = {
+        model["backend_id"]
+        for tier in PACKAGED_LADDER["tiers"]
+        if tier["name"] != "local"
+        for model in tier["models"]
+        if {"escalation", "research"} & set(model.get("use_for", []))
+    }
+    assert listing == {"cloud-gemini-2-5-flash"}
+    assert all(packaged_pin_only(backend) for backend in listing)
+
+
+@pytest.mark.parametrize("task", sorted(LITERAL_OUTCOMES))
+def test_a_pin_reaches_a_large_window_rung_whatever_the_class(task: str) -> None:
+    # A pin bypasses class routing: it says the rung is reachable, not that the
+    # class lists it. The per-class routes are the tests above.
     backend, tier = PINNED_BEYOND_LOCAL
     decision = routing.delta(request(task, 100000, backend))
     assert (decision.tier_name, decision.selected_backend_ref) == (tier, backend)
@@ -295,8 +360,13 @@ def test_both_local_rungs_fit_the_served_window(model: dict[str, Any]) -> None:
     assert model["id"] == SERVED_MODEL["id"]
     assert backend["max_tokens"] == OUTPUT_RESERVE
     assert model["max_context_tokens"] == INPUT_BUDGET
+    # Metered worst case of a natural-text prompt filling the budget at the
+    # densest natural reading, plus the widest wrapper of any class.
+    densest = min(CHARS_PER_TOKEN[name] for name in NATURAL_TEXT)
     window_used = (
-        model["max_context_tokens"] + RECORDED_WRAPPER_TOKENS + backend["max_tokens"]
+        metered_tokens(model["max_context_tokens"], densest)
+        + WRAPPER_MAX
+        + backend["max_tokens"]
     )
     assert window_used <= SERVED_MAX_MODEL_LEN
 
@@ -322,7 +392,12 @@ def test_every_local_class_reserves_output_and_wrapper(
     # The handler does not clamp max_tokens: the decision carries the backend's
     # full reserve, so the input gate is what keeps a request inside the window.
     assert accepted.max_tokens == OUTPUT_RESERVE
-    metered_worst_case = INPUT_BUDGET + RECORDED_WRAPPER_TOKENS + accepted.max_tokens
+    densest = min(CHARS_PER_TOKEN[name] for name in NATURAL_TEXT)
+    metered_worst_case = (
+        metered_tokens(INPUT_BUDGET, densest)
+        + WRAPPER_BY_CLASS[task]
+        + accepted.max_tokens
+    )
     assert metered_worst_case <= SERVED_MAX_MODEL_LEN
 
 
@@ -398,3 +473,104 @@ def test_131072_overlay_is_loaded_and_one_narrowed_pair_changes_the_outcome(
     )
     unchanged = routing.delta(request("research", 11072))
     assert (unchanged.tier_name, unchanged.selected_backend_ref) == ("local", other[0])
+
+
+def test_wrapper_is_metered_for_every_local_class_and_inside_the_margin() -> None:
+    # One wrapper reading per class the local tier serves (19), not one
+    # summarization prompt applied to all of them.
+    assert set(WRAPPER_BY_CLASS) == {task for _, task in LOCAL_CLASSES}
+    assert len(WRAPPER_BY_CLASS) == 19
+    assert min(WRAPPER_BY_CLASS.values()) < WRAPPER_MAX
+    assert WRAPPER_MAX == 420
+    assert WRAPPER_MAX <= WRAPPER_MARGIN
+
+
+def code_dense_prompt(estimated_tokens: int) -> str:
+    """Real code text (function definitions) of ``estimated_tokens`` by chars/4."""
+    line = "def f_{n}(a):\n    return a\n"
+    chars, n, parts = 0, 0, []
+    while chars < estimated_tokens * 4:
+        parts.append(line.format(n=n))
+        chars += len(parts[-1])
+        n += 1
+    return "".join(parts)[: estimated_tokens * 4]
+
+
+@pytest.mark.parametrize("name", NATURAL_TEXT)
+@pytest.mark.parametrize(("backend", "task"), LOCAL_CLASSES)
+def test_a_near_budget_natural_prompt_fits_the_window_at_its_metered_density(
+    backend: str, task: str, name: str
+) -> None:
+    # The prompt is accepted at the budget; what the endpoint then meters is the
+    # characters over the measured characters per token, plus the class wrapper.
+    decision = routing.delta(request(task, INPUT_BUDGET, backend))
+    metered = metered_tokens(INPUT_BUDGET, CHARS_PER_TOKEN[name])
+    assert (
+        metered + WRAPPER_BY_CLASS[task] + decision.max_tokens <= SERVED_MAX_MODEL_LEN
+    )
+
+
+def test_the_unmetered_budget_overflows_for_the_densest_natural_prompts() -> None:
+    # Negative control: the budget the ladder held before this change (window
+    # minus output reserve minus wrapper margin, counted as if four characters
+    # were one token) overflows the window for real text. This is what makes
+    # the test above fail on the unchanged margin.
+    assert UNMETERED_BUDGET == 64512
+    overflowing = [
+        name
+        for name in NATURAL_TEXT
+        if metered_tokens(UNMETERED_BUDGET, CHARS_PER_TOKEN[name])
+        + WRAPPER_MAX
+        + OUTPUT_RESERVE
+        > SERVED_MAX_MODEL_LEN
+    ]
+    assert {"ledger_text", "git_diff"} <= set(overflowing)
+
+
+@pytest.mark.parametrize(("backend", "task"), LOCAL_CLASSES)
+def test_real_code_text_at_the_budget_is_routed_and_one_token_over_is_refused(
+    backend: str, task: str
+) -> None:
+    prompt = code_dense_prompt(INPUT_BUDGET)
+    inside = routing.delta(
+        ModelDelegationRequest(
+            correlation_id=uuid4(),
+            emitted_at=datetime.now(UTC),
+            task_type=task,
+            prompt=prompt,
+            backend_id=backend,
+        )
+    )
+    assert inside.selected_backend_ref == backend
+    with pytest.raises(ProtocolConfigurationError, match="not routable"):
+        routing.delta(
+            ModelDelegationRequest(
+                correlation_id=uuid4(),
+                emitted_at=datetime.now(UTC),
+                task_type=task,
+                prompt=prompt + "xxxx" * 4,
+                backend_id=backend,
+            )
+        )
+
+
+def test_the_budget_is_the_densest_natural_reading_rounded_down() -> None:
+    densest = min(CHARS_PER_TOKEN[name] for name in NATURAL_TEXT)
+    room = UNMETERED_BUDGET - (WRAPPER_MAX - 0)
+    largest = int(room * densest / 4)
+    assert largest - 1000 < INPUT_BUDGET <= largest
+    for model in LOCAL_MODELS:
+        assert model["max_context_tokens"] == INPUT_BUDGET
+
+
+def test_identifier_dense_prompts_pass_the_estimate_and_are_refused_by_the_endpoint() -> (
+    None
+):
+    # Documented limit, not a claim of protection: ids, hashes, digits and
+    # base64 meter at 1.0 to 1.4 characters per token, so a prompt inside the
+    # estimated budget still overflows. The endpoint answers HTTP 400 (recorded)
+    # and the ladder climbs; the handler does not clamp max_tokens.
+    assert "HTTP 400" in READINGS["overflow_refusal"]
+    for name in IDENTIFIER_DENSE:
+        over = metered_tokens(INPUT_BUDGET, CHARS_PER_TOKEN[name]) + WRAPPER_MAX
+        assert over + OUTPUT_RESERVE > SERVED_MAX_MODEL_LEN, name

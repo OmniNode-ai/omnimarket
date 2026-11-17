@@ -22,7 +22,7 @@ requirements:
 evidence_requirements:
 - kind: "tests"
   description: "Focused tests of every file the change touches."
-  command: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py tests/nodes/node_delegation_health_compute/test_local_share_zero_omn24980.py tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q --no-cov"
+  command: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -65,7 +65,7 @@ dod_evidence:
   source: "manual"
   checks:
   - check_type: "test_passes"
-    check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py tests/nodes/node_delegation_health_compute/test_local_share_zero_omn24980.py tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q --no-cov"
+    check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q --no-cov"
     cwd: "."
   binds_ac: ["AC5"]
 - id: "dod-omn25102-integration-proof"

@@ -3,130 +3,163 @@ ticket_id: OMN-24980
 title: onex delegate with a one-line summarise task ends with a terminal from a local model, and the endpoints that serve
   no model are restored or corrected
 summary: 'This draft corrects the packaged input budget and tests the public routing reducer; it does not establish the missing-terminal
-  cause and does not fix it. Both local rungs reserve 65536 output tokens and a wrapper margin from the served 131072-token window (GET /v1/models
-  on the endpoint both rungs read, max_model_len 131072, read 2026-11-17), independently of optional overlay ceilings. The
-  unfinished local-share alarm is split out; its reader and scheduled check remain open. AC1: OPEN. No owner re-scope is claimed.
-  The cause of run 27f4e945-e16e-4cac-a4d7-b1388dfac169 cannot be recovered (its log window 19:45Z to 19:56Z retains zero
-  rows), so this contract carries a captured reproduction of the same symptom instead: run 13dcf955-9911-48e0-9185-753ecdd1fe92
+  cause and does not fix it. Both local rungs reserve 65536 output tokens from the served 131072-token window (GET /v1/models
+  on the endpoint both rungs read, max_model_len 131072, read 2026-11-17), independently of optional overlay ceilings. AC1:
+  OPEN. AC2: OPEN. AC3: OPEN. No owner re-scope is claimed. AC1, AC2 and AC3 are declared as acceptance entries and each is
+  bound (binds_ac) to a check that runs only at the local Done gate and fails until the criterion is met; the Done gate reads
+  a passing bound check as its criterion met and does not read the free-form context, so none is bound to a check that passes
+  while the criterion is open. The cause of run 27f4e945-e16e-4cac-a4d7-b1388dfac169 cannot be recovered (its log window 19:45Z
+  to 19:56Z retains zero rows), so this contract carries a captured reproduction of the same symptom instead: run 13dcf955-9911-48e0-9185-753ecdd1fe92
   on the dev lane ended with no delegation terminal (terminal_class queued_not_started, 6 records ahead of the command, backlog
   7) on topic onex.cmd.omnimarket.delegate-skill.v1, consumer group local.omnimarket.node_delegate_skill_orchestrator.consume.1.3.0.__i.runtime-main.__t.onex.cmd.omnimarket.delegate-skill.v1.
   That run shows one cause class (queue wait ahead of a single-slot local endpoint); it is not shown to be the cause of 27f4e945
-  and no source fix is made here. AC2: OPEN. The endpoint on port 8001 has no declared serving unit and answers no model-list
-  call (read 2026-11-17). AC3: OPEN. Overlay endpoint host validation is outside this repository. Dev runtime read on 2026-11-16:
-  DELEGATION_ROUTING_TIERS_PATH=/app/config/delegation/routing_tiers.yaml; the pinned file and the installed packaged ladder
-  both have sha256 22269ddea166de0f3c10a435967a81b71764e0711d32bbc7a00d3b46f63f14e9, with local-coder=65536 and local-heavy-reasoning=8192,
-  so this change is inert on dev until its mounted ladder is updated through its owner and the deployed proof can validate
-  it. The in-process base answer local-omnipc2-chat is a local spread peer and does not reproduce the earlier hosted answer.
-  Follow-ups not yet filed as tickets (their ticket texts are handed to the orchestrator, who files them): updating the dev
-  runtime''s mounted ladder to the packaged input budget, and the scheduled local-share alarm (its reader and page) that
-  this change split out. Input budget: each local rung keeps 1024 tokens of the window for the request wrapper the handler
-  does not count (a recorded 39-character prompt metered 373 input tokens), so the packaged input budget is 64512 and not
-  65536; the handler does not clamp max_tokens, which stays the backend''s 65536. Done gate: a passing check bound through
-  binds_ac counts as its criterion met, so none of AC1, AC2 or AC3 is bound here while all three are open; the record checks
-  that read their open status are unbound items, and the three criteria are listed under context.criterion_status because the push
-  hook refuses a contract that declares a criterion no item binds. The captured reproduction is a summarization call on a single-slot endpoint
-  (queue wait); the input budget change applies to every class the two local rungs serve, and no other class was reproduced.'
+  and no source fix is made here. AC2: the endpoint on port 8001 has no declared serving unit and refuses the connection (read
+  2026-11-17). AC3: overlay endpoint host validation is outside this repository (overlays repository branch of its own pull
+  request). Dev runtime read on 2026-11-16: DELEGATION_ROUTING_TIERS_PATH=/app/config/delegation/routing_tiers.yaml; the pinned
+  file and the installed packaged ladder both have sha256 22269ddea166de0f3c10a435967a81b71764e0711d32bbc7a00d3b46f63f14e9,
+  with local-coder=65536 and local-heavy-reasoning=8192, so this change is inert on dev until its mounted ladder is updated
+  through its owner and the deployed proof can validate it. The recorded dev answer came from local-omnipc2-chat, a spread
+  peer of both rungs (see context.local_omnipc2_chat); it is a local rung of the changed ladder group, and the proof accepts
+  it only above 8192 metered input tokens. Owner tickets for the follow-ups: none exists for the dev mounted ladder and none
+  for the local-share alarm (see context.owner_tickets); the orchestrator files them and this lane mints none. The local-share
+  alarm feature was split out and its test file removed because it exercised no code of this diff. Input budget: each local
+  rung declares 35000 estimated tokens. The estimate is characters over four; the endpoint meters real tokens, and natural
+  text packs 2.2 to 2.6 characters per token (ledger text 2.21, a git diff 2.63), so 35000 estimated tokens of ledger text
+  meter 63348, plus at most 420 wrapper tokens over the 19 classes (221 to 429 metered for a 39-character prompt), plus the
+  65536 max_tokens, inside 131072. The earlier 64512 overflowed the window for such text. Prompts made of identifiers (UUIDs,
+  hashes, digits, base64) meter at 1.0 to 1.4 characters per token and still pass the estimate; the endpoint refuses them
+  with HTTP 400 and the ladder climbs, and the handler does not clamp max_tokens. The captured reproduction is a summarization
+  call on a single-slot endpoint (queue wait); the input budget change applies to every class the two local rungs serve, and
+  no other class was reproduced.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
 - id: req-omn24980-local-route
   statement: A summarise delegation on the dev runtime is answered by a local model, including a prompt above 8192 tokens.
-  acceptance: []
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the cause of the missing terminal is named from the bus (consumer of the delegate command topic, its
+      registration in the dev runtime, consumer group lag, handler errors) and fixed at its source with a test built from
+      the recorded failure that fails on the base commit and passes on the fix -- falsifier: uv run pytest on the named test
+      file in the owning repository fails against the base commit'
+  - id: AC2
+    statement: 'AC2: the endpoint on port 8001 is served by a named unit and answers a model-list call, or its entry is corrected
+      -- falsifier: a model-list call to the endpoint from a lab host does not return 200'
+  - id: AC3
+    statement: 'AC3: no endpoint entry of the declared overlay names a host that serves no model -- falsifier: an overlay
+      test fails when an endpoint host serves no model'
 evidence_requirements:
 - kind: tests
   description: Public routing, receipt-proof falsifiers and existing delegation-health compatibility.
   command: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py
-    tests/nodes/node_delegation_health_compute/test_local_share_zero_omn24980.py -q --no-cov
+    -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24980-local-ceiling-test
-  description: The public reducer walks the full packaged ladder, retains the output reserve for every local use_for class
-    with and without an overlay, and tests escalation, research and reasoning through the large-window rungs. This is a routing
-    correction, not missing-terminal-cause evidence.
+  description: The public reducer walks the full packaged ladder, retains the output reserve and the metered wrapper and token
+    density for every local use_for class with and without an overlay, and tests escalation, research and reasoning through
+    the large-window rungs. This is a routing correction, not missing-terminal-cause evidence.
   source: manual
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py -q
       --no-cov
     cwd: .
-- id: dod-omn24980-health-scope-test
-  description: The unpopulated local-share feature is split out; existing rule payloads load, ordinary callers gain no local-share
-    warning, and the remaining pinned smoke command is rendered.
-  source: manual
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_delegation_health_compute/test_local_share_zero_omn24980.py -q --no-cov
-    cwd: .
 - id: dod-omn24980-receipt-proof-test
-  description: The deployed proof accepts one attempt from the changed rung with more than 8192 input tokens and refuses
-    an in-process run, a failed top-level status or exit code, a failed terminal, a skipped local candidate, another local
-    rung, a prompt metered at 8192 tokens or below and the recorded 373-token run answered by local-omnipc2-chat. Its command
-    is checked to name the dev lane, the bus and the deployed locus, and a command naming another lane is refused.
+  description: The deployed proof accepts one attempt from a local rung of the changed ladder (the rung or its spread peer)
+    with more than 8192 input tokens and refuses an in-process run, a failed top-level status or exit code, a failed terminal,
+    a skipped local candidate, a local rung outside that group, a prompt metered at 8192 tokens or below and the recorded
+    373-token run answered by local-omnipc2-chat. Its command is checked to name the dev lane, the bus and the deployed locus,
+    its prompt is run and its metered size is pinned to a recorded reading, and the declared criteria are checked to be bound
+    to checks that fail until the criterion is met.
   source: manual
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov
     cwd: .
-- id: dod-omn24980-ac1-record
-  description: 'Checks only that this contract records, for AC1, an owner re-scope or a captured reproduction of a missing
-    terminal (run, topic, consumer group, terminal class). It does not establish or fix the cause: AC1 stays OPEN. Unbound: a passing bound check would count as AC1 met at the Done gate.'
-  source: manual
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov -k
-      ac1_record
-    cwd: .
-- id: dod-omn24980-ac2-record
-  description: 'Checks only that this contract lists AC2 as an entry marked open. It does not serve or correct the endpoint
-    on port 8001: AC2 stays OPEN. Unbound: a passing bound check would count as AC2 met at the Done gate.'
-  source: manual
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov -k
-      ac2_record
-    cwd: .
-- id: dod-omn24980-ac3-record
-  description: 'Checks only that this contract lists AC3 as an entry marked open. Overlay endpoint host validation is outside
-    this repository: AC3 stays OPEN. Unbound: a passing bound check would count as AC3 met at the Done gate.'
-  source: manual
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov -k
-      ac3_record
-    cwd: .
-- id: dod-omn24980-integration-proof
-  description: 'OPEN until the dev mounted ladder is durably updated. Proves routing only: it binds no acceptance criterion
-    and says nothing about the missing-terminal cause of AC1. Uses the dev bus and runtime; the check reads the stdout envelope
-    of onex delegate --json (not the runs receipt file): top-level success, dispatched handler locus, completed workflow and
-    completed terminal, and exactly one accepted attempt from the changed rung (local-heavy-reasoning, whose input budget was 8192 on the base
-    ladder) with metrics.input_tokens above 8192. Another local rung, a non-local candidate and a prompt metered at 8192
-    tokens or below cannot satisfy it. No packaged-file override or in-process fallback is used.'
+- id: dod-omn24980-ac1-live
+  description: AC1 bound to a deployed-lane check that fails until a one-line summarise task on the dev lane ends with a terminal
+    accepted from the local tier. It runs only at the local Done gate (the hosted runner cannot reach the dev lane). The captured
+    reproduction of the missing terminal is in context; the cause is not fixed here, so this check is expected to fail or
+    time out until it is.
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: 'env "$OMNI_HOME/omnibase_infra/scripts/onex" delegate "$(python3 -c ''print("Summarize in one line: " +
-      "x" * 44290)'')" --task-type summarization --ticket OMN-24980 --caller-lane route-proof-24980 --bus kafka --lane dev
-      --locus deployed-lane --state-root "$OMNI_HOME/.onex_state" --json > "$OMNI_HOME/.onex_state/route-proof-24980.json"
-      && python3 -c ''import json,sys; r=json.load(open(sys.argv[1])); assert r["status"] == "success" and r["exit_code"]
-      == 0; s=r["result"]; assert s["handler_locus"] == "dispatched" and s["workflow_result"] == "completed" and s["exit_code"]
-      == 0; t=s["terminal_payload"]["payload"]; assert t["status"] == "completed"; a=[x for x in t["attempts"] if x["acceptance_decision"]
-      == "accept" and x["quality_gate_passed"]]; assert len(a) == 1 and a[0]["tier"] == "local" and a[0]["backend_id"]
-      == "local-heavy-reasoning" and t["metrics"]["input_tokens"] > 8192; print("PASS: dispatched terminal accepted the changed
-      local rung", a[0]["backend_id"], t["metrics"]["input_tokens"])'' "$OMNI_HOME/.onex_state/route-proof-24980.json"'
+    check_value: 'env "$OMNI_HOME/omnibase_infra/scripts/onex" delegate "Summarize in one line: the sky is blue." --task-type
+      summarization --ticket OMN-24980 --caller-lane ac1-24980 --bus kafka --lane dev --locus deployed-lane --state-root "$OMNI_HOME/.onex_state"
+      --json > "$OMNI_HOME/.onex_state/ac1-24980.json" && python3 -c ''import json,sys; r=json.load(open(sys.argv[1])); assert
+      r["status"] == "success" and r["exit_code"] == 0; s=r["result"]; assert s["handler_locus"] == "dispatched" and s["workflow_result"]
+      == "completed" and s["exit_code"] == 0; t=s["terminal_payload"]["payload"]; assert t["status"] == "completed"; a=[x
+      for x in t["attempts"] if x["acceptance_decision"] == "accept" and x["quality_gate_passed"]]; assert len(a) == 1 and
+      a[0]["tier"] == "local"; print("PASS: one-line summarise ended with a terminal accepted from the local tier", a[0]["backend_id"])''
+      "$OMNI_HOME/.onex_state/ac1-24980.json"'
+    cwd: .
+  binds_ac:
+  - AC1
+- id: dod-omn24980-ac2-live
+  description: 'AC2 bound to a check that fails until the endpoint on port 8001 answers a model-list call with 200 (the host
+    is the one BIFROST_LOCAL_CODER_ENDPOINT_URL names). Read 2026-11-17: connection refused. It runs only at the local Done
+    gate.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'u="${BIFROST_LOCAL_CODER_ENDPOINT_URL:?}" && h="${u#*://}" && curl -sf -o /dev/null --max-time 10 "http://${h%%[:/]*}:8001/v1/models"
+      && echo "PASS: port 8001 answered the model list with 200"'
+    cwd: .
+  binds_ac:
+  - AC2
+- id: dod-omn24980-ac3-live
+  description: AC3 bound to the overlays repository test that every declared local endpoint host serves a model, which does
+    not exist on the overlays default branch until that pull request lands (the check fails until then). It runs only at the
+    local Done gate.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: cd "${OMNI_HOME:?}/overlays" && uv run pytest tests/test_local_endpoint_hosts_serve_models.py -q -p no:cacheprovider
+    cwd: .
+  binds_ac:
+  - AC3
+- id: dod-omn24980-integration-proof
+  description: 'OPEN until the dev mounted ladder is durably updated. Proves routing only: it binds no acceptance criterion
+    and says nothing about the missing-terminal cause of AC1. Uses the dev bus and runtime; the check reads the stdout envelope
+    of onex delegate --json (not the runs receipt file): top-level success, dispatched handler locus, completed workflow and
+    completed terminal, and exactly one accepted local-tier attempt from the changed rung (local-heavy-reasoning) or its spread
+    peer (local-omnipc2-chat) with metrics.input_tokens above 8192. The prompt is 40587 characters of generated function definitions
+    that the dev endpoint meters at 15335 input tokens on the base ladder (answered by openrouter-north-mini-code, run 872b24fa-6d5a-4d25-b3fa-f2fc0418e08c)
+    and at 16912 on the branch ladder (answered by local-heavy-reasoning, runs be2e4a4f-41a4-4d25-a6f7-dce7ca4f0597 and a329bd49-d6cb-489a-8d2e-f4e12a29c7c7).
+    A repeated-character prompt of 44290 characters meters 5597 tokens and could never pass. No packaged-file override or
+    in-process fallback is used.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env "$OMNI_HOME/omnibase_infra/scripts/onex" delegate "$(python3 -c ''print("Summarize in one short sentence
+      what this code does. Use no digits and no number words. " + "".join("def f_%s(a):\n    return a\n" % "".join(c) for
+      c in __import__("itertools").islice(__import__("itertools").product("abcdefghijklmnopqrstuvwxyz", repeat=3), 1500)))'')"
+      --task-type summarization --ticket OMN-24980 --caller-lane route-proof-24980 --bus kafka --lane dev --locus deployed-lane
+      --state-root "$OMNI_HOME/.onex_state" --json > "$OMNI_HOME/.onex_state/route-proof-24980.json" && python3 -c ''import
+      json,sys; r=json.load(open(sys.argv[1])); assert r["status"] == "success" and r["exit_code"] == 0; s=r["result"]; assert
+      s["handler_locus"] == "dispatched" and s["workflow_result"] == "completed" and s["exit_code"] == 0; t=s["terminal_payload"]["payload"];
+      assert t["status"] == "completed"; a=[x for x in t["attempts"] if x["acceptance_decision"] == "accept" and x["quality_gate_passed"]];
+      assert len(a) == 1 and a[0]["tier"] == "local" and a[0]["backend_id"] in ("local-heavy-reasoning", "local-omnipc2-chat")
+      and t["metrics"]["input_tokens"] > 8192; print("PASS: dispatched terminal accepted a local rung of the changed ladder",
+      a[0]["backend_id"], t["metrics"]["input_tokens"])'' "$OMNI_HOME/.onex_state/route-proof-24980.json"'
     cwd: .
 context:
   criterion_status:
     AC1:
       status: open
-      statement: 'AC1: the cause of the missing terminal is named from the bus (consumer of the delegate command topic, its registration
-        in the dev runtime, consumer group lag, handler errors) and fixed at its source with a test built from the recorded failure
-        that fails on the base commit and passes on the fix -- falsifier: uv run pytest on the named test file in the owning repository
-        fails against the base commit'
+      statement: 'AC1: the cause of the missing terminal is named from the bus (consumer of the delegate command topic, its
+        registration in the dev runtime, consumer group lag, handler errors) and fixed at its source with a test built from
+        the recorded failure that fails on the base commit and passes on the fix -- falsifier: uv run pytest on the named
+        test file in the owning repository fails against the base commit'
       owner_rescope: null
       captured_reproduction:
         run_id: 13dcf955-9911-48e0-9185-753ecdd1fe92
@@ -140,9 +173,41 @@ context:
           only; not shown to be that run cause; no source fix in this change.
     AC2:
       status: open
-      statement: 'AC2: the endpoint on port 8001 is served by a named unit and answers a model-list call, or its entry is corrected
-        -- falsifier: a model-list call to the endpoint from a lab host does not return 200'
+      statement: 'AC2: the endpoint on port 8001 is served by a named unit and answers a model-list call, or its entry is
+        corrected -- falsifier: a model-list call to the endpoint from a lab host does not return 200'
     AC3:
       status: open
-      statement: 'AC3: no endpoint entry of the declared overlay names a host that serves no model -- falsifier: an overlay test
-        fails when an endpoint host serves no model'
+      statement: 'AC3: no endpoint entry of the declared overlay names a host that serves no model -- falsifier: an overlay
+        test fails when an endpoint host serves no model'
+  owner_tickets:
+    dev_mounted_ladder:
+      ticket: null
+      state: no owner ticket exists; the orchestrator files it (this lane mints none)
+      searched: rolling ledger grep and onex ticket read of OMN-25098 (the overlays endpoint-host pull request) and OMN-24980
+        on 2026-11-17
+      scope: the dev runtime mounts a routing ladder (sha256 22269ddea166, DELEGATION_ROUTING_TIERS_PATH=/app/config/delegation/routing_tiers.yaml)
+        with local-heavy-reasoning at 8192; done when the mounted ladder is the packaged one and the integration proof passes
+        on dev
+    local_share_alarm:
+      ticket: null
+      state: no owner ticket exists; the orchestrator files it (this lane mints none)
+      searched: rolling ledger grep and onex ticket read of OMN-25098 and OMN-24980 on 2026-11-17
+      scope: a scheduled alarm when the local share of delegated runs over 6 hours is 0 while a local endpoint is up
+  local_omnipc2_chat:
+    what_selects_it: 'a spread-mode placement: omnimarket backend_placement.spread_groups names it a first-choice peer of
+      local-heavy-reasoning and local-coder, and the routing reducer picks one member of the group per request by a stable
+      hash of the correlation id, weighted by the declared weight; the packaged config and the tests (no overlay roots, no
+      bifrost overlay) never load the placement, so a test run cannot reach it'
+    ceiling: overlays node_delegation_code_budget_compute input_ceilings gives it 49152 input tokens (one 131072 KV pool over
+      2 slots, 65536 per slot, output reserve 16384); it is the second lab host, a different endpoint from the one the two
+      rungs read
+    read: '2026-11-17: overlays origin/main delegation_routing/overlay.yaml local_endpoints and node_delegation_code_budget_compute/overlay.yaml;
+      in-process runs of context_compaction, context_selection and document answered by it'
+  input_budget_metering:
+    readings: tests/nodes/node_delegation_routing_reducer/fixtures/metered_token_readings.json
+    wrapper_tokens_by_class: 221 to 429 metered for a 39-character prompt over the 19 local classes, so at most 420 wrapper
+      tokens, inside the 1024 margin
+    characters_per_token: prose 6.3, code 4.4, git diff 2.63, ledger text 2.21, base64 1.36, UUID lines 1.14, hashes 1.13,
+      digits and floats 1.0
+    overflow: a request with 65537 input tokens and 65536 max_tokens is refused by the endpoint with HTTP 400 (reproduced
+      2026-11-17)

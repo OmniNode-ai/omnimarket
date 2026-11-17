@@ -51,8 +51,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: Focused tests of every file the change touches.
-  command: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py
-    tests/nodes/node_delegation_health_compute/test_local_share_zero_omn24980.py -q --no-cov
+  command: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -144,6 +143,6 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
       --lane dod-integration-proof-25185 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py
-      tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py tests/nodes/node_delegation_health_compute/test_local_share_zero_omn24980.py
+      tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py
       -q --no-cov
     cwd: .

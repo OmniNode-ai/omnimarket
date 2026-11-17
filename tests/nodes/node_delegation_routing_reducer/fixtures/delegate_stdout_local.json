@@ -212,5 +212,50 @@
     "prerelease": null
   },
   "skill_name": "node_delegate_skill_orchestrator",
-  "status": "success"
+  "status": "success",
+  "runtime_identity": {
+    "host": "<redacted>",
+    "locus_kind": "venv",
+    "execution_locus": "<redacted>",
+    "interpreter": "<redacted>",
+    "packages": {
+      "omnibase_core": {
+        "name": "omnibase_core",
+        "version": "0.47.73.dev9+ga09066ca",
+        "commit": "a09066caf945cd79e13447d92ad42549f1019f78",
+        "source": "vcs",
+        "import_path": null
+      },
+      "omnibase_infra": {
+        "name": "omnibase_infra",
+        "version": "0.38.77",
+        "commit": null,
+        "source": "local_path",
+        "import_path": null
+      },
+      "omnibase_spi": {
+        "name": "omnibase_spi",
+        "version": "0.23.15",
+        "commit": null,
+        "source": "registry",
+        "import_path": null
+      },
+      "omnimarket": {
+        "name": "omnimarket",
+        "version": "0.4.321",
+        "commit": "13a7e30415faf3707eb4225d569fd1c31014efa9",
+        "source": "vcs",
+        "import_path": null
+      }
+    },
+    "config_source": "<redacted>",
+    "stamped_at": "2026-11-17T05:58:47.206711Z",
+    "schema_version": {
+      "major": 1,
+      "minor": 0,
+      "patch": 0,
+      "prerelease": null,
+      "build": null
+    }
+  }
 }

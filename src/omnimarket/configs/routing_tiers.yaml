@@ -62,12 +62,22 @@ tiers:
       # header comment) — a mismatch here would strand routing.
       - id: Qwen3.8-27B
         backend_id: local-coder
-        # Input budget: served window 131072 minus the backend's 65536 output
-        # reserve minus a 1024-token margin for the request wrapper the handler
-        # does not count (a recorded 39-character prompt measured 373 input
-        # tokens, about 364 of them wrapper). Keep this bound even when no
-        # input-ceiling overlay is loaded.
-        max_context_tokens: 64512
+        # Input budget, in the handler's characters-over-four estimate. The
+        # served window is 131072 and the backend reserves 65536 output tokens
+        # (max_tokens is not clamped), so the endpoint refuses a request whose
+        # metered input passes 65536 (HTTP 400, measured). Metered input is not
+        # the estimate: the request wrapper adds at most 420 tokens over the 19
+        # local classes (221 to 429 metered for a 39-character prompt), and real
+        # text packs 2.2 to 2.6 characters per token (ledger text 2.21, a git
+        # diff 2.63, code 4.4, prose 6.3), not 4. 35000 estimated tokens of the
+        # densest of those, ledger text, meter 63348 plus 420, inside the 64512
+        # left after a 1024-token wrapper margin. Identifier-dense text (UUIDs,
+        # hashes, digits, base64: 1.0 to 1.4 characters per token) still passes
+        # the estimate and is refused by the endpoint, after which the ladder
+        # climbs. The readings are in
+        # tests/nodes/node_delegation_routing_reducer/fixtures/metered_token_readings.json.
+        # Keep this bound even when no input-ceiling overlay is loaded.
+        max_context_tokens: 35000
         # OMN-13599 (SUPERSEDED by OMN-16442 for `test`): local-coder was the
         # CODE backend only; `test` and `research` were removed here so the
         # code-only fast_path_threshold did not bleed local-coder into task
@@ -133,10 +143,10 @@ tiers:
       - id: Qwen3.8-27B
         backend_id: local-heavy-reasoning
         # The recorded 11072-token summarization prompt fits this input budget.
-        # Reserve 65536 output tokens from the served 131072-token window and a
-        # 1024-token margin for the request wrapper the handler does not count.
-        # Overlay ceilings may narrow individual classes further.
-        max_context_tokens: 64512
+        # Same endpoint, window, output reserve and measured wrapper and
+        # density as local-coder above, so the same budget; see the reading
+        # there. Overlay ceilings may narrow individual classes further.
+        max_context_tokens: 35000
         use_for:
           - research
           - reasoning
@@ -154,9 +164,12 @@ tiers:
           # taxonomy, so serving escalation's declared ``reasoning`` capability
           # is not a new claim. escalation's other declared capability,
           # ``context_window_large``, stays mechanically honoured rather than
-          # asserted: ``max_context_tokens`` (64512 here) excludes this model
-          # from selection for any prompt that does not fit, which escalates to
-          # the large-window rungs below / the ceiling instead.
+          # asserted: ``max_context_tokens`` (35000 here) excludes this model
+          # from selection for any prompt that does not fit. Measured at this
+          # budget: an unpinned escalation prompt above it is refused, because
+          # the one rung beyond the local tier that lists escalation (and
+          # research), cloud-gemini-2-5-flash, is explicit_pin_only; a pin to
+          # it reaches it.
           - escalation
           # OMN-17427: evidence_comment, the internal class that drafts
           # done-evidence comments from a lane report. Local only (its
