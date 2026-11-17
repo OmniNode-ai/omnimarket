@@ -13,7 +13,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppendRoute
@@ -80,6 +80,19 @@ class ModelRefusalPublish(BaseModel):
     publish_max_age_seconds: int = Field(ge=1)
 
 
+class ModelBrokerAuthRefusalHost(BaseModel):
+    """A lab host that runs the reading on its schedule (a systemd user timer)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    #: The venv whose interpreter runs the installed unit, relative to the registry root (or
+    #: absolute). A dedicated venv of a release or a kept tree, never a dispatch venv.
+    venv: str = Field(min_length=1)
+    #: Environment the host's installed unit carries (the append route and its host name).
+    environment: dict[str, str]
+
+
 class ModelBrokerAuthRefusalOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -90,6 +103,18 @@ class ModelBrokerAuthRefusalOverlay(BaseModel):
     ledger_append: ModelLedgerAppendRoute
     publish: ModelRefusalPublish
     injected_fault: str = Field(min_length=1)
+    #: Optional so existing deployed overlays still load; empty means no host can install a timer.
+    schedule_hosts: tuple[ModelBrokerAuthRefusalHost, ...] = ()
+
+    @model_validator(mode="after")
+    def _shape(self) -> ModelBrokerAuthRefusalOverlay:
+        hosts = [host.name for host in self.schedule_hosts]
+        if len(hosts) != len(set(hosts)):
+            raise ValueError("a schedule host is declared twice")
+        return self
+
+    def host(self, name: str) -> ModelBrokerAuthRefusalHost | None:
+        return next((host for host in self.schedule_hosts if host.name == name), None)
 
     def overlay_hash(self) -> str:
         """Hash of what the verdict depends on, so a bar or window change shows in the row."""
@@ -113,6 +138,7 @@ def load_overlay(
 
 __all__ = [
     "NODE_NAME",
+    "ModelBrokerAuthRefusalHost",
     "ModelBrokerAuthRefusalOverlay",
     "ModelBrokerLogSource",
     "ModelControlMarker",
