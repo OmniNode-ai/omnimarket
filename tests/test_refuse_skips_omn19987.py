@@ -215,6 +215,38 @@ def _ac2_check_value() -> str:
     return value
 
 
+# The verifier runs a contract check as ["bash", "-o", "pipefail", "-c", cmd]
+# (list form, no shell=True): evidence_collector.py:6413 at the omnimarket
+# dev-merge tag the repo-evidence caller installs it from
+# (verifier-tag dev-20261101000200-949993edf3b7 in
+# .github/workflows/call-repo-evidence-gate.yml). Without pipefail a pipeline's
+# status is the last stage's, which is the case the regression tests below pin.
+_VERIFIER_SHELL = ["bash", "-o", "pipefail", "-c"]
+_NO_PIPEFAIL_SHELL = ["bash", "-c"]
+
+
+def _run_command(
+    tmp_path: Path,
+    command: str,
+    *,
+    shell: list[str] = _VERIFIER_SHELL,
+    cwd: Path = _ROOT,
+) -> subprocess.CompletedProcess[str]:
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(
+        part for part in (str(tmp_path), env.get("PYTHONPATH", "")) if part
+    )
+    return subprocess.run(
+        [*shell, command],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+        env=env,
+    )
+
+
 def _run_check(
     tmp_path: Path, check_value: str, *extra: str
 ) -> subprocess.CompletedProcess[str]:
@@ -226,19 +258,15 @@ def _run_check(
         f"{shlex.quote(sys.executable)} -m pytest -p no:cacheprovider {' '.join(extra)}",
         1,
     )
-    env = dict(os.environ)
-    env["PYTHONPATH"] = os.pathsep.join(
-        part for part in (str(tmp_path), env.get("PYTHONPATH", "")) if part
-    )
-    return subprocess.run(
-        ["bash", "-o", "pipefail", "-c", command],
-        cwd=_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=300,
-        env=env,
-    )
+    return _run_command(tmp_path, command)
+
+
+def _pytest_stage_and_filter(check_value: str) -> tuple[str, str]:
+    """The pytest stage and the grep stage of the AC2 check, split at its one pipe."""
+    stages = check_value.split(" | ")
+    assert len(stages) == 2, check_value
+    assert stages[1].startswith("grep -E "), stages[1]
+    return stages[0], stages[1]
 
 
 def test_the_ac2_binding_check_asks_for_the_refusal_and_the_count() -> None:
@@ -266,8 +294,17 @@ def test_the_ac2_binding_check_fails_when_both_parametrizations_skip(
     control = _run_check(tmp_path, old, "-p", "skip_every_test")
     assert control.returncode == 0, control.stdout + control.stderr
     assert "2 skipped" in control.stdout
+    # The pytest stage alone names the refusal and both parametrizations.
+    pytest_stage, _ = _pytest_stage_and_filter(value)
+    refusal = _run_check(tmp_path, pytest_stage, "-p", "skip_every_test")
+    assert refusal.returncode == 1, refusal.stdout + refusal.stderr
+    assert "refuse-skips: tests that did not run" in refusal.stdout
+    assert "[False]" in refusal.stdout
+    assert "[True]" in refusal.stdout
+    # The whole check prints no "2 passed" line, so grep's status refuses it too.
     new = _run_check(tmp_path, value, "-p", "skip_every_test")
-    assert new.returncode != 0, new.stdout + new.stderr
+    assert new.returncode == 1, new.stdout + new.stderr
+    assert "2 passed" not in new.stdout
 
 
 def test_the_ac2_binding_check_fails_when_only_one_parametrization_runs(
@@ -280,7 +317,77 @@ def test_the_ac2_binding_check_fails_when_only_one_parametrization_runs(
     control = _run_check(tmp_path, only_one)
     assert control.returncode == 0, control.stdout + control.stderr
     assert "1 passed" in control.stdout
+    assert "2 passed" not in control.stdout
     selected = value.replace(" --refuse-skips |", " --refuse-skips -k False |", 1)
     assert selected != value
     done = _run_check(tmp_path, selected)
-    assert done.returncode != 0, done.stdout + done.stderr
+    # grep finds no "2 passed" line: its status 1 is the refusal, and nothing is
+    # printed because the only stage that prints is the one that matched nothing.
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert done.stdout == ""
+
+
+_PYTEST_FAILS_AFTER_TWO_PASS = """
+import pytest
+
+@pytest.fixture
+def broken():
+    raise RuntimeError("fixture refused")
+
+def test_one():
+    assert True
+
+def test_two():
+    assert True
+
+def test_errors(broken):
+    assert True
+"""
+
+
+def test_the_ac2_filter_alone_passes_a_failed_run_that_prints_the_counted_line(
+    tmp_path: Path,
+) -> None:
+    # The hazard the verifier's pipefail closes. pytest ends "2 passed, 1 error"
+    # and exits 1; the grep stage matches that line. Without pipefail the
+    # pipeline's status is grep's (0), so the check would pass a run in which
+    # pytest failed. This is the control: it must read 0.
+    _, filter_stage = _pytest_stage_and_filter(_ac2_check_value())
+    (tmp_path / "test_mixed.py").write_text(_PYTEST_FAILS_AFTER_TWO_PASS, "utf-8")
+    command = (
+        f"{shlex.quote(sys.executable)} -m pytest -p no:cacheprovider -q "
+        f"{shlex.quote(str(tmp_path / 'test_mixed.py'))} | {filter_stage}"
+    )
+    plain = _run_command(tmp_path, command, shell=_NO_PIPEFAIL_SHELL, cwd=tmp_path)
+    assert plain.returncode == 0, plain.stdout + plain.stderr
+    assert "2 passed, 1 error" in plain.stdout
+
+
+def test_the_ac2_binding_check_fails_when_pytest_fails_but_the_counted_line_prints(
+    tmp_path: Path,
+) -> None:
+    # The same run under the verifier's shell: the matching line is printed,
+    # and the check still fails because pytest's status (1) is the pipeline's.
+    _, filter_stage = _pytest_stage_and_filter(_ac2_check_value())
+    (tmp_path / "test_mixed.py").write_text(_PYTEST_FAILS_AFTER_TWO_PASS, "utf-8")
+    command = (
+        f"{shlex.quote(sys.executable)} -m pytest -p no:cacheprovider -q "
+        f"{shlex.quote(str(tmp_path / 'test_mixed.py'))} | {filter_stage}"
+    )
+    done = _run_command(tmp_path, command, cwd=tmp_path)
+    assert "2 passed, 1 error" in done.stdout, done.stdout + done.stderr
+    assert done.returncode == 1, done.stdout + done.stderr
+
+
+def test_the_ac2_binding_check_is_not_rescued_by_a_stubbed_pytest_line(
+    tmp_path: Path,
+) -> None:
+    # A stage that prints the counted line and exits non-zero, in place of the
+    # pytest stage of the real check, is refused under the verifier's shell.
+    _, filter_stage = _pytest_stage_and_filter(_ac2_check_value())
+    command = f"(echo '2 passed, 1 error in 0.10s'; exit 3) | {filter_stage}"
+    refused = _run_command(tmp_path, command)
+    assert refused.returncode == 3, refused.stdout + refused.stderr
+    assert "2 passed, 1 error" in refused.stdout
+    unguarded = _run_command(tmp_path, command, shell=_NO_PIPEFAIL_SHELL)
+    assert unguarded.returncode == 0, unguarded.stdout + unguarded.stderr
