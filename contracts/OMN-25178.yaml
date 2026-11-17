@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-25178
+title: The onex tools a Codex lane calls over MCP
+summary: A Codex lane runs codex exec in a sandbox with no Claude Code skill and no hook, so it could not call onex scm, the ledger write or the handoff check. This change adds node_codex_lane_mcp_server_effect, an MCP server on stdio that lists four tools (scm_pr_view, scm_pr_comment, ledger_status, pr_handoff_check) and runs each as one command pinned to the lane named in its environment. The remote-lane runner change that writes the lane's Codex config with an mcp_servers table pointing at this server and an AGENTS.md carrying the standing rules is a separate pull request in the plugin repository.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25178-tools
+  statement: The server lists exactly the four tools, each tool is one command with no shell, and the lane, ticket, ledger and plugin root come from the server's environment, never from the tool's arguments.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the MCP server exposes at least onex scm pr-view, onex scm pr-comment, the ledger STATUS write and the pr-handoff check as tools -- falsifier: `uv run pytest tests/unit/nodes/node_codex_lane_mcp_server_effect -q` shows a listed tool absent from the tool list'
+  - id: AC2
+    statement: 'AC2: a test that asserts the tool list and each tool command fails on the unfixed tree (red) and passes on the fix (green) -- falsifier: the same command run at the base commit passes'
+  - id: AC3
+    statement: 'AC3: one Codex lane on a lab host calls pr-view, pr-comment, the pr-handoff check and the ledger STATUS write as MCP tools and a STATUS row written through the tool is read in the ledger -- falsifier: the lane brief grep shows no STATUS row written by the tool call, or the lane codex JSON stream shows no MCP tool call'
+  - id: AC4
+    statement: 'AC4: the change adds no skip, xfail, removed assertion or --no-verify -- falsifier: `git diff origin/dev...HEAD` shows a removed assert, a new skip or xfail marker or a --no-verify flag'
+evidence_requirements:
+- kind: tests
+  description: The node's tests pass at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_codex_lane_mcp_server_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25178-ac1
+  description: 'AC1: the server lists exactly scm_pr_view, scm_pr_comment, ledger_status and pr_handoff_check, and each runs the declared command.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_codex_lane_mcp_server_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25178-ac2
+  description: 'AC2: the node tests import the node, which is absent at the base commit, so they fail there and pass at the head.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_codex_lane_mcp_server_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25178-ac3
+  description: 'AC3 hosted proxy: the entry module the lane config starts is present and importable; the live Codex lane run (tool calls in its JSON stream, the STATUS row in the ledger) is recorded in the pull request Lab line and is not claimed by this check.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: sh -c 'test -f src/omnimarket/nodes/node_codex_lane_mcp_server_effect/__main__.py'
+    cwd: .
+- id: dod-omn25178-ac4
+  description: 'AC4: the change adds no skip, xfail or --no-verify.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: sh -c '! grep -rEn "pytest.mark.(skip|xfail)|pytest.skip|no-verify" src/omnimarket/nodes/node_codex_lane_mcp_server_effect tests/unit/nodes/node_codex_lane_mcp_server_effect'
+    cwd: .
+- id: dod-omn25178-integration-proof
+  description: 'lab proxy: the node tests run on a lab host at the pushed head; the live Codex lane run on h053 is recorded in the pull request Lab line and is not claimed by this local check'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25178 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_codex_lane_mcp_server_effect -q --no-cov -p no:randomly
+    cwd: .

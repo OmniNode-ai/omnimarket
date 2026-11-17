@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Codex Lane MCP Server Effect (OMN-25178)
+#
+# The onex tools a Codex lane calls over MCP: scm_pr_view, scm_pr_comment, ledger_status, pr_handoff_check. The remote-lane
+# runner writes the lane's Codex config with an mcp_servers table that starts `python -m omnimarket.nodes.node_codex_lane_mcp_server_effect`
+# on stdio. No topics and no handler_routing: a runtime must not auto-wire a consumer for a process Codex starts itself.
+name: node_codex_lane_mcp_server_effect
+contract_name: node_codex_lane_mcp_server_effect
+node_name: node_codex_lane_mcp_server_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+description: >
+  Serves the fixed list of onex tools a Codex lane calls over MCP on stdio; each tool is one command run as the lane.
+input_model:
+  name: ModelCodexLaneMcpToolCall
+  module: omnimarket.nodes.node_codex_lane_mcp_server_effect.models.model_codex_lane_mcp_tool
+output_model:
+  name: ModelCodexLaneMcpToolResult
+  module: omnimarket.nodes.node_codex_lane_mcp_server_effect.models.model_codex_lane_mcp_tool
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 600000
+seam:
+  handler:
+    module: omnimarket.nodes.node_codex_lane_mcp_server_effect.handlers.handler_codex_lane_mcp_server_effect
+    class: HandlerCodexLaneMcpServerEffect
+metadata:
+  description: "Codex lane MCP tool server"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-17"
+  tags: [effect, mcp, codex, remote-lane]
+  related_tickets: ["OMN-25178"]
