@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-24993
+title: A demand on the ask state command topic reaches node_ask_state_compute on the dev runtime
+summary: node_ask_state_compute declared a command topic and two terminal topics but no event_bus mapping, so the dev runtime subscribed to no ask-state topic and no demand could reach the handler (two earlier
+  reads of the dev runtime on h201 found zero run lines). The contract now maps the command topic as a subscription, the completed and failed topics as publications, and declares the broker grants those three
+  topics need.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24993-ask-state-bus
+  statement: The ask state node is reachable by a bus command, and its topics carry the broker grants the coverage gate requires.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the contract of node_ask_state_compute subscribes its command topic and publishes its completed and failed topics in event_bus -- falsifier: pytest tests/unit/nodes/node_ask_state_compute/test_contract_event_bus.py
+      -q fails when event_bus is absent or names another topic'
+  - id: AC2
+    statement: 'AC2: every topic the contract declares has the broker grant its direction needs, so the broker permission coverage gate reads covered -- falsifier: the gate command reads refused for the three
+      added topic uses'
+  - id: AC3
+    statement: 'AC3: integrated: after a dev deploy of the merge, the dev runtime on h201 subscribes the ask-state command topic and one demand on it is handled with one run line -- falsifier: the dev runtime
+      subscription list holds no ask-state topic after the deploy'
+evidence_requirements:
+- kind: tests
+  description: The contract test for the event_bus mapping and the existing ask state handler tests.
+  command: uv run pytest tests/unit/nodes/node_ask_state_compute -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24993-ac1-mapping
+  description: The contract test reads event_bus, the command topic and both terminal topics from the contract.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_ask_state_compute/test_contract_event_bus.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24993-ac2-grants
+  description: The broker permission coverage gate against the base branch reads covered for the added topic uses.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref origin/dev
+    cwd: .
+- id: dod-omn24993-ac3-integration-proof
+  description: Hosted CI cannot reach the dev runtime on h201, so only the local Done gate runs this unbound check; the running reading is the dev runtime subscription list and one run line after the deploy,
+    recorded as a STATUS row.
+  source: manual
+  binds_ac:
+  - AC3
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24993 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/unit/nodes/node_ask_state_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .

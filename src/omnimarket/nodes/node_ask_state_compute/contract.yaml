@@ -60,11 +60,37 @@ runtime_dispatch:
     success: "onex.evt.omnimarket.ask-state-completed.v1"
     failure: "onex.evt.omnimarket.ask-state-failed.v1"
   external_trigger: "node_ask_state_effect (python -m omnimarket.nodes.node_ask_state_effect --since <UTC stamp>) reads the sources and calls HandlerAskState.handle in process."
+
+# The bus demand path: a command on the request topic runs the fold and the report returns on the completed
+# topic (the failed topic on a refused request), so the dev runtime subscribes and a dispatch reaches the handler.
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ask-state-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.ask-state-completed.v1
+    - onex.evt.omnimarket.ask-state-failed.v1
+
+# No node contract subscribes to the result events: the caller that sent the request reads the report from them.
+externally_consumed_topics:
+  - onex.evt.omnimarket.ask-state-completed.v1
+  - onex.evt.omnimarket.ask-state-failed.v1
+
+# The broker grants the three topics need (coverage gate): the runtime login reads the request and writes both answers.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.ask-state-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.ask-state-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ask-state-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ask-state-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ask-state-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ask-state-failed.v1, operation: DESCRIBE}
 descriptor:
   node_archetype: compute
   purity: pure
   idempotent: true
   timeout_ms: 5000
+  runtime_profiles: [main]
 dod_evidence:
   PYTEST:
     description: "ask states on fixtures: chat-only ask dropped, lane-spawning ask owned then done, parked queue order, grace window, inferred link"
