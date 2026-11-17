@@ -24,16 +24,15 @@ over the conclusion GitHub gives a run whose legs finished the way each case say
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
 import pytest
 import yaml
 
-from tests.ci.test_delegation_health_check_caller_omn19451 import (
-    _run_check,
-    infra_tree,  # noqa: F401  (fixture: the pinned reader's files)
-)
+from tests.ci import test_delegation_health_check_caller_omn19451 as caller
+from tests.ci.test_delegation_health_check_caller_omn19451 import _run_check
 
 pytestmark = pytest.mark.unit
 
@@ -44,6 +43,16 @@ RUNTIME_FILES = ["src/omnimarket/delegation/__init__.py"]
 RUN_ID = 44000000001
 
 Leg = dict[str, object]
+
+
+@pytest.fixture(scope="module")
+def pinned_infra_tree(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The pinned reader's files, built by the caller test's own fixture."""
+    build = cast(
+        "Callable[[pytest.TempPathFactory], Path]",
+        vars(caller.infra_tree)["__wrapped__"],
+    )
+    return build(tmp_path_factory)
 
 
 def _document() -> dict[object, object]:
@@ -177,27 +186,29 @@ def test_dev_leg_reads_its_endpoints_from_the_lane_overlay() -> None:
 # Section 2: replay the pinned reader over the conclusion each case gives a run.
 def _check(
     failed_legs: set[str],
-    infra_tree: Path,  # noqa: F811
+    pinned_infra_tree: Path,
 ) -> tuple[int, str, dict[str, object]]:
     red = {NIGHTLY_FILE: RUN_ID} if _run_conclusion(failed_legs) == "failure" else {}
-    return _run_check(infra_tree, red=red, changed_files=RUNTIME_FILES, labels=[])
+    return _run_check(
+        pinned_infra_tree, red=red, changed_files=RUNTIME_FILES, labels=[]
+    )
 
 
 def test_failed_alarm_only_leg_with_green_dev_leg_passes_the_check(
-    infra_tree: Path,  # noqa: F811
+    pinned_infra_tree: Path,
 ) -> None:
     (leg,) = _alarm_only()
-    code, stdout, record = _check({cast("str", leg["leg"])}, infra_tree)
+    code, stdout, record = _check({cast("str", leg["leg"])}, pinned_infra_tree)
     assert record["runtime_affecting"] is True, record
     assert code == 0, stdout
     assert record["red_runs"] == [], record
 
 
 def test_failed_dev_leg_fails_the_check(
-    infra_tree: Path,  # noqa: F811
+    pinned_infra_tree: Path,
 ) -> None:
     (leg,) = _gating()
-    code, stdout, record = _check({cast("str", leg["leg"])}, infra_tree)
+    code, stdout, record = _check({cast("str", leg["leg"])}, pinned_infra_tree)
     assert record["runtime_affecting"] is True, record
     assert code == 1, stdout
     assert str(RUN_ID) in stdout
@@ -207,19 +218,19 @@ def test_failed_dev_leg_fails_the_check(
 
 
 def test_failed_dev_leg_still_fails_beside_a_failed_alarm_only_leg(
-    infra_tree: Path,  # noqa: F811
+    pinned_infra_tree: Path,
 ) -> None:
     """Positive control: both legs red, the run is red and the check names it."""
     failed = {cast("str", leg["leg"]) for leg in _legs()}
-    code, stdout, record = _check(failed, infra_tree)
+    code, stdout, record = _check(failed, pinned_infra_tree)
     assert code == 1, stdout
     assert str(RUN_ID) in stdout
     assert len(cast("list[object]", record["red_runs"])) == 1, record
 
 
 def test_all_green_is_a_positive_control(
-    infra_tree: Path,  # noqa: F811
+    pinned_infra_tree: Path,
 ) -> None:
-    code, stdout, record = _check(set(), infra_tree)
+    code, stdout, record = _check(set(), pinned_infra_tree)
     assert code == 0, stdout
     assert record["red_runs"] == []
