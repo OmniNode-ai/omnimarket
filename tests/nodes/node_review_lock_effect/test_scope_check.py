@@ -41,10 +41,18 @@ Second fix round, review of head 0b0a4b819f86. Files added in this push:
 """
 
 
-def _request(comment: str, **extra: object) -> ModelScopeCheckRequest:
+def _request(
+    comment: str,
+    contract_path: str | None = None,
+    contract_text: str | None = None,
+) -> ModelScopeCheckRequest:
     return ModelScopeCheckRequest(
-        first_files=FIRST, new_files=LAST, comment=comment, **extra
-    )  # type: ignore[arg-type]
+        first_files=FIRST,
+        new_files=LAST,
+        comment=comment,
+        contract_path=contract_path,
+        contract_text=contract_text,
+    )
 
 
 def test_fixtures_are_the_6_and_12_file_heads() -> None:
