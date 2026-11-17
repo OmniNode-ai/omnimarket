@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerOnexSetup is resolved at boot from handler_routing in contract.yaml, by module path, not by a Python import
 """HandlerOnexSetup: run the onboarding walk a developer needs after installing the CLI.
 
 Steps, in order (``SETUP_STEPS``):
@@ -27,14 +28,15 @@ from __future__ import annotations
 import os
 import shlex
 import shutil
-import subprocess
 import tempfile
+import threading
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 
 from omnibase_core.cli.cli_user_config import USER_CONFIG_TEMPLATE, read_user_config
 from omnibase_core.errors.model_onex_error import ModelOnexError
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers.routing.byok_provider_backends import (
     customer_provider_catalogue,
@@ -105,30 +107,10 @@ _PATH_SHAPES = {
     ),
 }
 
-_DOCKER_TOOLS = {
-    "docker": "install Docker (https://docs.docker.com/get-docker/), or use --path local, "
-    "which needs no Docker",
-    "openssl": "install openssl (macOS: brew install openssl@3)",
-    "make": "install make (macOS: xcode-select --install)",
-}
-
 
 def which(name: str) -> str | None:
     """Where ``name`` is on PATH, or None. A seam the tests replace."""
     return shutil.which(name)
-
-
-def compose_available() -> bool:
-    """True when ``docker compose version`` succeeds. A seam the tests replace."""
-    try:
-        completed = subprocess.run(
-            ["docker", "compose", "version"],
-            capture_output=True,
-            check=False,
-        )
-    except OSError:
-        return False
-    return completed.returncode == 0
 
 
 class _StepFailedError(Exception):
@@ -337,26 +319,6 @@ def _resolve_path(
     return choice
 
 
-def _step_prerequisites(install_path: str) -> str:
-    if install_path == "local":
-        return "path local needs nothing beyond this CLI"
-    for tool, remedy in _DOCKER_TOOLS.items():
-        if which(tool) is None:
-            raise _StepFailedError(
-                "prerequisites",
-                f"the docker install path needs {tool}, which is not on PATH",
-                remedy,
-            )
-        if tool == "docker" and not compose_available():
-            raise _StepFailedError(
-                "prerequisites",
-                "the docker install path needs the docker compose plugin",
-                "install the Docker Compose plugin (docker compose version must succeed), "
-                "or use --path local",
-            )
-    return "path docker: docker, docker compose, openssl and make found"
-
-
 def ensure_user_config(onex_home: Path) -> tuple[str, bool]:
     config = onex_home / USER_CONFIG_FILE_NAME
     if config.exists():
@@ -460,6 +422,34 @@ def prove_model(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
 ModelStep = Callable[[ModelOnexSetupRequest], ModelOnexSetupReceipt]
 
 
+# The CLI hosts this node on the local runtime, which records every command it carries, so the
+# provider key cannot ride on the command. The CLI parks it here, in this process only, and the
+# command carries the token; handle() takes the key back out before any step runs.
+_PARKED_KEYS: dict[str, SecretStr] = {}
+_PARKED_KEYS_LOCK = threading.Lock()
+
+
+def park_key(key: SecretStr) -> str:
+    """Hold ``key`` in this process and return the token that names it."""
+    token = uuid.uuid4().hex
+    with _PARKED_KEYS_LOCK:
+        _PARKED_KEYS[token] = key
+    return token
+
+
+def take_key(token: str | None) -> SecretStr | None:
+    """Remove and return the key parked under ``token``; None for no token or an unknown one."""
+    if token is None:
+        return None
+    with _PARKED_KEYS_LOCK:
+        return _PARKED_KEYS.pop(token, None)
+
+
+def discard_key(token: str | None) -> None:
+    """Drop a parked key nobody took."""
+    take_key(token)
+
+
 class HandlerOnexSetup:
     """Keep the v1 contract shape while dispatching to the one setup engine."""
 
@@ -474,6 +464,10 @@ class HandlerOnexSetup:
             ModelSetupPlan,
         )
 
+        if request.key is None and request.key_handoff is not None:
+            request = request.model_copy(
+                update={"key": take_key(request.key_handoff), "key_handoff": None}
+            )
         refused = refused_before_any_step(request)
         if refused is not None:
             return refused
@@ -583,10 +577,12 @@ __all__ = [
     "SETUP_STEPS",
     "URL_PROVIDERS",
     "HandlerOnexSetup",
-    "compose_available",
+    "discard_key",
+    "park_key",
     "prove_model",
     "recorded_state",
     "refused_before_any_step",
     "retry_command",
+    "take_key",
     "which",
 ]

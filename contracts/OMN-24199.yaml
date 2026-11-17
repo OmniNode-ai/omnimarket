@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-24199
+title: Clear old tool caches on a lab host whose disk is nearly full
+summary: 'node_host_retention_effect gains a pre_commit_store age class: an aged hook repository folder of the pre-commit cache is removed whole after its row is deleted from the store''s sqlite index under the store''s lock, so pre-commit never finds a row whose folder is gone; the process-hold check reads ps command lines where /proc is absent (macOS); the uv cache folder may be named uv. The overlays repository declares host h101 (a Mac with no docker): the pre-commit store at seven days and the uv cache pruned from ten GiB. On h101 the uv cache measured about 240 GiB on 2026-11-13.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24199-host-cache-retention
+  statement: The host retention node clears the pre-commit store and the uv cache of a Mac lab host from overlay values only, and never a folder a live process names or a store whose lock is held.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the host retention pass removes an aged saved copy of a pre-commit hook repository whole and deletes its row from the store''s index under the store lock, keeps a recent one, and keeps the store''s own files -- falsifier: pytest tests/nodes/node_host_retention_effect/test_host_retention_precommit.py -q'
+  - id: AC2
+    statement: 'AC2: a saved copy that a live process names is kept, a store whose lock cannot be taken is kept whole, and an overlay row that declares the class without its index file is refused -- falsifier: pytest tests/nodes/node_host_retention_effect/test_host_retention_precommit.py -q -k "held or locked or refused"'
+  - id: AC3
+    statement: 'AC3: the overlay''s row for the Mac build host validates against the overlay model and its pre-commit root and uv cache path equal the tools'' own default cache folders -- falsifier: pytest tests/nodes/node_host_retention_effect/test_host_retention_seams.py -q -k h101'
+  - id: AC4
+    statement: 'AC4: integrated: on lab host h101 the host retention pass run from the branch removes aged pre-commit copies and prunes the uv cache, and free disk on h101 reads at least 10G afterwards with the next lane start accepted -- falsifier: ssh h101 df -h / reads under 10G free, or the pass result''s errors list is not empty'
+evidence_requirements:
+- kind: tests
+  description: The host retention tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_precommit.py tests/nodes/node_host_retention_effect/test_host_retention.py tests/nodes/node_host_retention_effect/test_host_retention_seams.py tests/nodes/node_host_retention_effect/test_golden_chain_host_retention.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24199-ac1
+  description: 'AC1: the test file passes at the head; at the merge base the pre-commit store port does not exist, so the test file cannot import it.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_precommit.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24199-ac2
+  description: 'AC2: the held, locked and refused tests pass at the head; at the merge base the test file cannot import the store port.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_precommit.py -q -k 'held or locked or refused' -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24199-ac3
+  description: 'AC3: the seam test passes at the head; the overlay row of h101 in the overlays repository is read by the model and bounds in a lab run, because the hosted runner holds no overlays checkout.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_seams.py -q -k h101 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24199-ac4
+  description: 'hosted proxy for AC4: the host retention tests pass here; the h101 dry run list, the real run and df before and after are posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_precommit.py tests/nodes/node_host_retention_effect/test_host_retention.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24199-integration-proof
+  description: the host retention tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24199 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_retention_effect/test_host_retention_precommit.py -q --no-cov -p no:randomly

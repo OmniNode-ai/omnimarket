@@ -23,6 +23,7 @@ FLOOR_NODES = (
     "node_floor_simple_effect",
     "node_floor_compare_effect",
     "node_floor_delegation_effect",
+    "node_floor_delegation_history_effect",
     "node_work_state_projection_effect",
     "node_floor_projection_read_effect",
     "node_floor_owner_map_publish_effect",

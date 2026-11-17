@@ -8,6 +8,7 @@ from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_conf
 from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io import (
     MAX_BODY_CHARS,
     MAX_DISPATCH_INPUTS,
+    MAX_VARIABLE_CHARS,
     EnumRepoWriteMode,
     EnumRepoWriteOperation,
     EnumRepoWriteRefusal,
@@ -16,6 +17,8 @@ from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io i
     ModelRepoWriteCompleted,
     ModelRepoWriteFailed,
     ModelRepoWriteRequest,
+    ModelRepoWriteRunner,
+    ModelRepoWriteRunnerGroup,
 )
 from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_lease import (
     EnumRepoWriteFenceStatus,
@@ -30,6 +33,7 @@ from omnimarket.nodes.node_github_repo_write_effect.models.model_source_control_
 __all__ = [
     "MAX_BODY_CHARS",
     "MAX_DISPATCH_INPUTS",
+    "MAX_VARIABLE_CHARS",
     "EnumRepoWriteFenceStatus",
     "EnumRepoWriteMode",
     "EnumRepoWriteOperation",
@@ -41,6 +45,8 @@ __all__ = [
     "ModelRepoWriteFailed",
     "ModelRepoWriteLease",
     "ModelRepoWriteRequest",
+    "ModelRepoWriteRunner",
+    "ModelRepoWriteRunnerGroup",
     "ModelSourceControlHealthStatus",
     "SourceControlOperationNotSupportedError",
     "SourceControlWriteRefusedError",

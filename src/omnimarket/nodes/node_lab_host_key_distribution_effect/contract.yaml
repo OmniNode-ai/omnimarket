@@ -35,6 +35,12 @@ handler_routing:
       module: omnimarket.nodes.node_lab_host_key_distribution_effect.handlers.handler_lab_host_public_keys_install
     input_model: omnimarket.nodes.node_lab_host_key_distribution_effect.models.model_lab_host_public_keys_install.ModelLabHostPublicKeysInstallRequest
     output_model: omnimarket.nodes.node_lab_host_key_distribution_effect.models.model_lab_host_public_keys_install.ModelLabHostPublicKeysInstallResult
+  - operation: install_declared_host_keys
+    handler:
+      name: HandlerLabHostDeclaredHostKeysInstall
+      module: omnimarket.nodes.node_lab_host_key_distribution_effect.handlers.handler_lab_host_declared_host_keys_install
+    input_model: omnimarket.nodes.node_lab_host_key_distribution_effect.models.model_lab_host_declared_host_keys_install.ModelLabHostDeclaredHostKeysInstallRequest
+    output_model: omnimarket.nodes.node_lab_host_key_distribution_effect.models.model_lab_host_public_keys_install.ModelLabHostPublicKeysInstallResult
   - operation: distribute
     handler:
       name: HandlerLabHostKeyDistribution
@@ -46,7 +52,8 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: The onex-host-key-distribution console script (runtime_lab_host_key_distribution)
-    on the launching host, with --declared-keys for the declared key set, or python -m
+    on the launching host, with --declared-keys for the declared key set or
+    --declared-host-keys for the declared host keys, or python -m
     omnimarket.nodes.node_lab_host_key_distribution_effect.
 descriptor:
   node_archetype: effect
@@ -58,6 +65,7 @@ descriptor:
   - appends missing public user keys to ~/.ssh/authorized_keys over ssh
   - appends missing public host keys to ~/.ssh/known_hosts over ssh
   - appends the missing public keys the lab_host_public_keys overlay declares to ~/.ssh/authorized_keys of every available pool host over ssh
+  - appends the missing public host keys the lab_hosts overlay declares to ~/.ssh/known_hosts of the selected pool hosts over ssh
 metadata:
   transport_type: local
   ticket: OMN-22115
@@ -73,3 +81,4 @@ metadata:
   - OMN-22115
   - OMN-20348
   - OMN-22174
+  - OMN-24128

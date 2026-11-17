@@ -24,6 +24,22 @@ protected_prefixes: ["_", "__consumer_offsets"]
 recent_producer_days: 7
 max_topics_per_command: 20
 enforce: false
-bus_lane: example-lane
+bus_lane: dev
 probe_client_id: example-topic-delete-probe
 request_timeout_seconds: 30
+#   superuser               optional; when present the evidence and deletes run as the dev broker superuser, read on the broker host
+#     lane                  must be dev and must equal bus_lane; any other value refuses the load
+#     host, compose_project, broker_container, superuser_source_container   the broker permission tool's declaration cells
+#     ssh_target_env        name of the environment variable holding the broker host's ssh target
+#     rpk_brokers, sasl_mechanism   the rpk client's -X brokers and -X sasl.mechanism inside the broker container
+#     script_timeout_seconds  the most a remote script may run
+# superuser:
+#   lane: dev
+#   host: example-broker-host
+#   compose_project: example-project
+#   broker_container: example-broker
+#   superuser_source_container: example-sasl-source
+#   ssh_target_env: EXAMPLE_BROKER_SSH_TARGET
+#   rpk_brokers: example-broker:9092
+#   sasl_mechanism: SCRAM-SHA-256
+#   script_timeout_seconds: 600

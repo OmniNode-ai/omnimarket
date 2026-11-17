@@ -568,6 +568,7 @@ def test_contract_and_models() -> None:
         "OMN-22115",
         "OMN-20348",
         "OMN-22174",
+        "OMN-24128",
     ]
     metadata = yaml.safe_load(
         NodeLabHostKeyDistributionEffect.contract_path.with_name(

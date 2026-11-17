@@ -25,15 +25,20 @@ is paid once per process.
 
 WHAT IT SKIPS, returning no event: records that are not prompts, every chunk
 after the first (the first chunk is the start of the prompt, which is what
-the classifier weighs), blank content, and records with no correlation id
-(the projection upserts on it, so an event without one cannot land).
+the classifier weighs), blank content, and records whose correlation id is
+absent or not a UUID, or whose emission time is missing or not an ISO 8601
+datetime — the consumers reject all of those (the omnimemory event model
+needs a UUID correlation id to upsert on and a datetime emitted_at, so an
+event carrying them would fail validation downstream, not just land empty).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from datetime import datetime
 from functools import cache
 from importlib import import_module
+from uuid import UUID
 
 from omnimarket.nodes.node_prompt_intent_classify_compute.models.model_content_captured_record import (
     ModelContentCapturedRecord,
@@ -111,6 +116,29 @@ def classify_with_omniintelligence(prompt: str) -> ModelPromptIntentVerdict:
     )
 
 
+def _is_valid_uuid(value: str) -> bool:
+    """True when ``value`` parses as a UUID (the consumers upsert on it)."""
+    try:
+        UUID(value)
+    except (ValueError, TypeError):
+        return False
+    return True
+
+
+def _is_valid_iso8601(value: str | None) -> bool:
+    """True when ``value`` parses as an ISO 8601 datetime (trailing Z ok)."""
+    if not value:
+        return False
+    text = value
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        datetime.fromisoformat(text)
+    except ValueError:
+        return False
+    return True
+
+
 def _agent_source(actor: str | None) -> str:
     if not actor or not actor.strip():
         return DEFAULT_AGENT_SOURCE
@@ -140,7 +168,9 @@ class HandlerPromptIntentClassify:
             return None
         if record.chunk_index != 0:
             return None
-        if not record.correlation_id:
+        if not record.correlation_id or not _is_valid_uuid(record.correlation_id):
+            return None
+        if not _is_valid_iso8601(record.emitted_at):
             return None
         text = record.content or ""
         if not text.strip():

@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: pause_check_findings_compute
+version: "1.0.0"
+description: "Decides the pause check findings (HOLD, PR-ROW, REPO-PAUSE, LABEL, PARKED) for a batch of pull requests from the work ledger rows; the runtime command adds the one live-log hold read and a counted file fallback."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pause_check_findings_compute: omnimarket.nodes.node_pause_check_findings_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+tags: [compute, work-ledger, hold, pause-check]
+pack: "data"
+display_name: "Compute: Pause Check Findings"
+node_role: "compute"
+license: "MIT"

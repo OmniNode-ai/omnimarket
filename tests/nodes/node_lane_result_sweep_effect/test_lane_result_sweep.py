@@ -18,6 +18,10 @@ from omnimarket.models.model_lane_result_sweep import (
     ModelReceiptVerdict,
 )
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
+from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    InMemoryLedger,
+)
+from omnimarket.nodes.node_reading_writer_effect.protocols import ModelAppendOutcome
 from tests.nodes.node_lane_result_sweep_effect.lane_result_sweep_support import (
     BLOCKER,
     OTHER_BLOCKER,
@@ -25,6 +29,7 @@ from tests.nodes.node_lane_result_sweep_effect.lane_result_sweep_support import 
     SWEEP_AT,
     class_key_of,
     handler,
+    overlay,
     park_row,
     receipt_key,
     sweep_row,
@@ -313,3 +318,127 @@ def test_contract_names_the_completed_event_as_its_terminal_and_a_declared_sink(
     assert contract["terminal_event"] == completed
     assert contract["topics"]["lane_result_sweep_completed"] == completed
     assert completed in contract["externally_consumed_topics"]
+
+
+# ---- review findings on the sweep's writes and fingerprint ---------------------------------
+
+
+def _rule(**changes: object) -> dict[str, object]:
+    rule: dict[str, object] = {
+        "id": "start-criterion-false",
+        "class_keys": [class_key_of(BLOCKER)],
+        "mode": "shadow",
+        "action": {"kind": "fill-backlog-item"},
+    }
+    rule.update(changes)
+    return rule
+
+
+def test_class_row_without_action_row_is_completed_by_a_later_writing_sweep() -> None:
+    finished = SWEEP_AT - timedelta(minutes=10)
+    key = receipt_key("lane-a", finished)
+    sweep, ledger = handler(
+        [
+            terminal("lane-a", finished, "handed-off", blocker=BLOCKER),
+            sweep_row(
+                SWEEP_AT - timedelta(minutes=5),
+                "lane-result-class",
+                key,
+                "effective=blocked",
+            ),
+        ]
+    )
+    result = sweep.handle(_command(write=True))
+    assert any(
+        "action=lane-result-action" in line and f"receipt={key}" in line
+        for line in ledger.lines
+    )
+    assert _only(result).state is EnumSweepState.ACTED
+    assert (
+        len([line for line in ledger.lines if "action=lane-result-class" in line]) == 1
+    )
+
+
+def test_overlay_hash_changes_when_a_rule_keeps_its_id_but_changes_its_decision() -> (
+    None
+):
+    base = overlay().overlay_hash()
+    other_action = overlay(
+        error_rule_document={
+            "error_rules": [_rule(action={"kind": "open-triage-ticket"})]
+        }
+    )
+    other_keys = overlay(
+        error_rule_document={"error_rules": [_rule(class_keys=["lane.other.0"])]}
+    )
+    other_mode = overlay(error_rule_document={"error_rules": [_rule(mode="enforce")]})
+    assert (
+        len({base, *(o.overlay_hash() for o in (other_action, other_keys, other_mode))})
+        == 4
+    )
+
+
+def test_overlay_hash_changes_with_the_source_and_producer() -> None:
+    assert overlay().overlay_hash() != overlay(source="other").overlay_hash()
+    assert overlay().overlay_hash() != overlay(producer="other").overlay_hash()
+
+
+def test_an_action_row_of_another_writer_is_not_action_evidence() -> None:
+    finished = SWEEP_AT - timedelta(hours=3)
+    key = receipt_key("lane-a", finished)
+    forged = (
+        f"{SWEEP_AT - timedelta(minutes=30):%Y-%m-%dT%H:%M:%SZ} | STATUS | "
+        f"lane=some-other-lane | action=lane-result-action | receipt={key}"
+    )
+    sweep, _ = handler(
+        [
+            terminal("lane-a", finished, "handed-off", blocker=BLOCKER),
+            sweep_row(
+                SWEEP_AT - timedelta(hours=2),
+                "lane-result-class",
+                key,
+                "effective=blocked",
+            ),
+            forged,
+        ]
+    )
+    verdict = _only(sweep.handle(_command()))
+    assert verdict.state is EnumSweepState.NO_ACTION_AT_ONE_HOUR
+
+
+class _SecondAppendFails(InMemoryLedger):
+    def append(self, rows: str, request_id: str) -> ModelAppendOutcome:
+        if self.append_requests:
+            return ModelAppendOutcome(status="pending", message="injected")
+        return super().append(rows, request_id)
+
+
+def test_a_failed_action_append_still_names_the_class_row_that_landed() -> None:
+    from omnimarket.nodes.node_lane_result_sweep_effect.handlers.handler_lane_result_sweep import (
+        HandlerLaneResultSweep,
+    )
+
+    finished = SWEEP_AT - timedelta(minutes=5)
+    ledger = _SecondAppendFails(
+        [terminal("lane-n", finished, "blocked", blocker=BLOCKER)]
+    )
+    sweep = HandlerLaneResultSweep(
+        overlay=overlay(), ledger=ledger, appender=ledger, clock=lambda: SWEEP_AT
+    )
+    result = sweep.handle(_command(write=True))
+    assert result.status == "failed"
+    assert len(result.rows_written) == 1
+    assert "action=lane-result-class" in result.rows_written[0]
+
+
+def test_a_matching_rule_without_an_action_does_not_satisfy_the_policy() -> None:
+    finished = SWEEP_AT - timedelta(minutes=10)
+    rule = _rule()
+    del rule["action"]
+    sweep, ledger = handler(
+        [terminal("lane-a", finished, "handed-off", blocker=BLOCKER)],
+        error_rule_document={"error_rules": [rule]},
+    )
+    result = sweep.handle(_command(write=True))
+    assert not any("action=lane-result-action" in line for line in ledger.lines)
+    assert _only(result).state is EnumSweepState.PENDING

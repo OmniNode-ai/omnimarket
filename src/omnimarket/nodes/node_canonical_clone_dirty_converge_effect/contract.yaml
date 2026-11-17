@@ -7,13 +7,15 @@
 # runtime container holds no canonical clone. The typed handler is invoked locally by the host timer;
 # its empty bus topics and runtime profiles keep it outside shared runtime dispatch.
 #
-# WHAT IT DOES. The sync engine only fast-forwards a clean clone. A clone refused for tracked changes
-# stayed behind for days (a host's omniclaude, 8 days; another host's omnidash, 143103 s). One tick runs
-# the engine with its refusal bound set to the age below, so the engine names every clone refused that
-# long. Each is converged to its upstream and what it held is dropped: no rescue branch, no pin, no tar
-# (operator ruling 2026-10-31 about 20:00Z; the work is redone from its ticket). converge-canonical-clone.sh
-# resets the clone and writes the one ledger row, which names what was dropped. A clone a live lane is
-# using (an open CLAIM naming it, or a process whose working directory is inside it) is left alone.
+# WHAT IT DOES. The sync engine only fast-forwards a clean clone. A clone refused for tracked changes or
+# local commits stayed behind for days (a host's omniclaude, 8 days; another host's omnidash, 143103 s).
+# One tick runs the engine with its refusal bound set to the age below, so the engine names every clone
+# refused that long. A clone that holds local work (a staged or modified tracked file, an untracked file, or
+# a commit no remote has) is REFUSED: nothing moves, the clone stays byte for byte as found, the outcome
+# names the clone and the kind of work, and the tick raises one owned alarm (OMN-19998; the earlier rule
+# converged such a clone with a hard reset and dropped its work). Only a clone with no local work is moved,
+# and only to put it back where it belongs. A clone a live lane is using (an open CLAIM naming it, or a
+# process whose working directory is inside it) is left alone.
 name: "node_canonical_clone_dirty_converge_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
@@ -21,8 +23,10 @@ runtime_profiles: []
 contract_version: {major: 0, minor: 1, patch: 0}
 node_version: "0.1.0"
 description: >
-  Converges a canonical clone that has been refused for tracked changes or local commits past a declared
-  age, and returns a canonical clone left on a detached HEAD or a lane branch to its tracking branch.
+  Refuses, alarms and leaves as found a canonical clone that has been refused past a declared age and holds
+  local work (staged, modified or untracked files, or commits no remote has; OMN-19998). A clone with no local
+  work is returned from a detached HEAD or a lane branch to its tracking branch, and has core.bare cleared when
+  it holds a working tree (a true bare mirror, with no .git directory inside it, is never touched; OMN-24240).
 input_model:
   name: "ModelDirtyConvergeTickRequest"
   module: "omnimarket.nodes.node_canonical_clone_dirty_converge_effect.models.model_canonical_clone_dirty_converge"
@@ -55,8 +59,8 @@ metadata:
   description: "Hosted by one timer tick per host, never a shared runtime"
   author: "OmniNode Team"
   created: "2026-10-31"
-  tags: ["effect", "canonical-clone", "OMN-21821", "OMN-20344", "OMN-23032"]
-  related_tickets: ["OMN-21821", "OMN-20344", "OMN-23032"]
+  tags: ["effect", "canonical-clone", "OMN-21821", "OMN-20344", "OMN-23032", "OMN-19998"]
+  related_tickets: ["OMN-21821", "OMN-20344", "OMN-23032", "OMN-19998"]
 
 timeouts:
   # A canonical clone refused for tracked changes or local commits this long is converged. The same value
@@ -91,3 +95,7 @@ dirty_converge:
   # provenance. A tick leaves every clone alone while one of these is held and younger than the age below.
   build_lock_dirs: [.onex-reconcile-host.lock, ../.onex-reconcile-host.lock]
   build_lock_max_age_seconds: 3900  # Above the agent's 3600 s image build bound; an older lock is stale.
+  # OMN-19998: a clone that holds local work (staged, modified or untracked files, or commits no remote has)
+  # is refused, never converged, and raised under this lab alarm condition with the clone's path as subject.
+  # node_alarm_owner_responder_compute dispatches an owner for a condition its policy lists.
+  alarm_condition: clone_local_work_refused

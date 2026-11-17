@@ -43,11 +43,13 @@ from omnimarket.nodes.node_job_log_filler_effect.models.model_job_log_filler imp
     EnumJobLogFillStatus,
     ModelJobLogFillRequest,
     ModelJobLogFillResult,
+    ModelJobLogHold,
 )
 
 NODE = "node_job_log_filler_effect"
 EVIDENCE_FILE = "last-run.json"
 HELD_FILE = "held.json"
+NOT_FOUND_FILE = "held-not-found.json"
 EXIT_FAILED = 1
 EXIT_OVERLAY = 2
 EXIT_LOCKED = 3
@@ -77,6 +79,7 @@ def evidence_for(result: ModelJobLogFillResult, now: datetime) -> dict[str, Any]
         "already_cached": result.already_cached,
         "failed": result.failed,
         "deferred": result.deferred,
+        "held_not_found": result.held_not_found,
         "budget_exhausted": result.budget_exhausted,
         "stale_skipped": result.stale_skipped,
         "coverage": (held / result.considered) if result.considered else 1.0,
@@ -90,6 +93,16 @@ def read_held(path: Path) -> dict[int, float]:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
         return {int(job): float(at) for job, at in raw.items()}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+def read_not_found(path: Path) -> dict[int, ModelJobLogHold]:
+    """The job ids the last passes saw the gateway answer HTTP 404 for, with when and why; an absent,
+    unreadable or malformed file is an empty memo (every job is read again), never a failed tick."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return {int(job): ModelJobLogHold.model_validate(at) for job, at in raw.items()}
     except (OSError, ValueError, AttributeError):
         return {}
 
@@ -147,7 +160,9 @@ def run_pass(
     evidence_path = args.state_dir / EVIDENCE_FILE
     try:
         pass_handler = handler or HandlerJobLogFiller(
-            overlay=load_overlay(), held=read_held(args.state_dir / HELD_FILE)
+            overlay=load_overlay(),
+            held=read_held(args.state_dir / HELD_FILE),
+            not_found=read_not_found(args.state_dir / NOT_FOUND_FILE),
         )
     except (NodeOverlayError, ValueError, OSError) as exc:
         faulthandler.cancel_dump_traceback_later()
@@ -168,6 +183,16 @@ def run_pass(
         args.state_dir / HELD_FILE,
         json.dumps({str(job): at for job, at in pass_handler.held.items()}) + "\n",
     )
+    _write_atomically(
+        args.state_dir / NOT_FOUND_FILE,
+        json.dumps(
+            {
+                str(job): hold.model_dump()
+                for job, hold in pass_handler.not_found.items()
+            }
+        )
+        + "\n",
+    )
     reading = evidence_for(result, stamp)
     _write_atomically(evidence_path, json.dumps(reading, sort_keys=True) + "\n")
     sys.stdout.write(json.dumps(reading, sort_keys=True) + "\n")
@@ -179,9 +204,11 @@ __all__ = [
     "EXIT_LOCKED",
     "HELD_FILE",
     "LOCK_FILE",
+    "NOT_FOUND_FILE",
     "evidence_for",
     "main",
     "read_held",
+    "read_not_found",
     "single_run",
 ]
 

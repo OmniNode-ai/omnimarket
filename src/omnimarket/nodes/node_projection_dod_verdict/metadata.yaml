@@ -13,6 +13,7 @@ capabilities:
   side_effect_class: write_db
 dependencies:
   - "omnibase_core>=0.47.25,<0.48.0"
+  - "omnibase-infra>=0.38.3"
   - "pyyaml>=6.0"
 tags:
   - projection

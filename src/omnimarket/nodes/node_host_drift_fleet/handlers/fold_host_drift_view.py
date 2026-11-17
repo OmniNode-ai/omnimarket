@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Pure, idempotent fleet projection and time-bound alerts."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 
 from ..models import (
@@ -13,6 +13,7 @@ from ..models import (
     ModelHostDriftFleetOverlay,
     ModelHostDriftFleetView,
     ModelHostDriftHeartbeatEvent,
+    ModelHostDriftParkedHost,
     ModelHostDriftResolvedEvent,
 )
 
@@ -32,8 +33,16 @@ def fold_view(
     now: datetime,
     consumer_group: str,
     malformed: int = 0,
+    parked: Mapping[str, str] | None = None,
+    parked_cause: str = "",
 ) -> ModelHostDriftFleetView:
-    """Fold latest heartbeats and unique resolutions; malformed counts this read."""
+    """Fold latest heartbeats and unique resolutions; malformed counts this read.
+
+    A parked host (``parked``, host -> the table's reason) is never required: it draws
+    no heartbeat, stale or open-item alert and is not counted as reporting; the view
+    lists it with its reason instead. ``parked_cause`` says why the parked set is
+    unknown, in which case every host stays required.
+    """
     hosts = {host.host: host for host in previous.hosts} if previous else {}
     for key in overlay.hosts:
         hosts.setdefault(key, ModelHostDriftFleetHost(host=key))
@@ -79,7 +88,12 @@ def fold_view(
     alerts: list[str] = []
     reporting = 0
     within_bound = 0
-    required = tuple(key for key in overlay.hosts if key not in overlay.read_only_hosts)
+    parked_map = parked or {}
+    required = tuple(
+        key
+        for key in overlay.hosts
+        if key not in overlay.read_only_hosts and key not in parked_map
+    )
     for key in required:
         host = hosts[key]
         if host.last_heartbeat_at is None:
@@ -115,6 +129,17 @@ def fold_view(
     )
     if failed is not None and failed >= 4:
         alerts.insert(3, alerts.pop(failed))
+    parked_listed = tuple(
+        ModelHostDriftParkedHost(host=key, reason=parked_map[key])
+        for key in sorted(set(overlay.hosts) & set(parked_map))
+    )
+    suffix = ""
+    if parked_listed:
+        suffix = "; parked, not required: " + ", ".join(
+            f"{entry.host} ({entry.reason})" for entry in parked_listed
+        )
+    if parked_cause:
+        suffix += f"; host table unread ({parked_cause}): every host is required"
     stamp = now.astimezone(UTC).isoformat().replace("+00:00", "Z")
     line = (
         " ".join(
@@ -122,7 +147,7 @@ def fold_view(
         )
         if alerts
         else f"host-drift: OK {reporting}/{len(required)} hosts reporting, {within_bound} open drift within bound as of {stamp}"
-    )
+    ) + suffix
     return ModelHostDriftFleetView(
         hosts=tuple(hosts[key] for key in sorted(hosts)),
         alerts=tuple(alerts),
@@ -130,4 +155,6 @@ def fold_view(
         folded_at=now,
         consumer_group=consumer_group,
         malformed=malformed,
+        parked=parked_listed,
+        parked_cause=parked_cause,
     )

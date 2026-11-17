@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Overlay Merge Order Compute (OMN-22809, piece 4 of the base-first rebuild, OMN-22478)
+#
+# Takes the overlays a change touches and the per-overlay answers of the merged omnimarket tree (the answers
+# node_overlay_drift_effect gives) and decides ORDER_OK or AHEAD_OF_CODE. It writes nothing: the decision is
+# the event, and the caller (the overlay home's ci) acts on it. This is the order that keeps piece 4's daily
+# drift read WORKING: the code that models an overlay merges first, the overlay second.
+name: node_overlay_merge_order_compute
+contract_name: node_overlay_merge_order_compute
+node_name: node_overlay_merge_order_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  The merge order check between an overlay change and the code that models it. Every overlay the change
+  touches that the merged tree's models accept reads ORDER_OK; one the merged tree rejects, cannot import
+  a model for, cannot read or cannot find reads AHEAD_OF_CODE and is named with its refused fields (never
+  a value). An overlay of the whole home that the change does not touch is never counted against the change.
+  A change with no touched overlay, a touched overlay the merged tree did not judge, a verdict the overlay
+  does not rule on, or a duplicated answer is refused with a typed failure, never passed. Without its
+  overlay the run is refused.
+
+handler:
+  module: omnimarket.nodes.node_overlay_merge_order_compute.handlers.handler_overlay_merge_order
+  class: HandlerOverlayMergeOrder
+  input_model: omnimarket.nodes.node_overlay_merge_order_compute.models.model_overlay_merge_order.ModelOverlayMergeOrderCommand
+  output_model: omnimarket.nodes.node_overlay_merge_order_compute.models.model_overlay_merge_order.ModelOverlayMergeOrderResult
+
+# HandlerOverlayMergeOrder takes the overlay as a constructor parameter, so the node runs through its own CLI,
+# not handler_routing.
+
+descriptor:
+  node_archetype: compute
+  runtime_profiles: []
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 10000
+
+input_model:
+  name: ModelOverlayMergeOrderCommand
+  module: omnimarket.nodes.node_overlay_merge_order_compute.models.model_overlay_merge_order
+  description: A correlation id, the merged ref the answers were taken at, the overlays the change touches and the merged tree's answer for each overlay.
+output_model:
+  name: ModelOverlayMergeOrderResult
+  module: omnimarket.nodes.node_overlay_merge_order_compute.models.model_overlay_merge_order
+  description: The verdict, each touched overlay that is ahead of the code with its refused fields, and the typed failure when the check was refused.
+
+terminal_event: onex.evt.omnimarket.overlay-merge-order-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: "The overlay home's ci invokes the local node through its own CLI with the overlay and the merged tree's per-overlay answers."
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  overlay_merge_order_requested: onex.cmd.omnimarket.overlay-merge-order-requested.v1
+  overlay_merge_order_decided: onex.evt.omnimarket.overlay-merge-order-decided.v1
+  overlay_merge_order_run_completed: onex.evt.omnimarket.overlay-merge-order-run-completed.v1
+  overlay_merge_order_run_failed: onex.evt.omnimarket.overlay-merge-order-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+dependency_ownership:
+  overlay: "Owned by the overlay home's CI step (runtime_overlay_merge_order_check), which loads the node overlay and constructs the handler in process."
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.overlay-merge-order-decided.v1
+  - onex.evt.omnimarket.overlay-merge-order-run-completed.v1
+  - onex.evt.omnimarket.overlay-merge-order-run-failed.v1
+
+metadata:
+  transport_type: local
+  description: "Pure compute node: merge order check between an overlay change and the code that models it"
+  author: "OmniNode Platform Team"

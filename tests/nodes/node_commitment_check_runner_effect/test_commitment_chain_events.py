@@ -129,6 +129,8 @@ def assert_golden_verified(events: list[tuple[str, dict[str, Any]]]) -> None:
     assert {b["correlation_id"] for _, b in events} == {CORRELATION}
     assert events[0][1]["result"] == "verified"
     assert events[-1][1]["checked"] == 1
+    assert events[-1][1]["read"] == 1
+    assert events[-1][1]["live"] == 1
 
 
 def test_golden_chain_an_open_commitment_whose_check_passes_ends_verified() -> None:
@@ -192,6 +194,16 @@ def test_error_chain_a_refused_append_is_a_failed_event_and_the_commitment_stays
     assert events[0][0] == TOPICS["commitment_check_failed"]
     assert events[0][1]["result"].startswith("append-failed:refused")
     assert len(ledger.lines) == 1
+
+
+def test_error_chain_an_empty_ledger_ends_in_a_completed_event_with_no_live() -> None:
+    ledger = InMemoryLedger([])
+    events = _chain(
+        ledger, InMemoryCheckExecutor({CHECK: ModelCheckExecution(exit_code=0)})
+    )
+    assert [t for t, _ in events] == [TOPICS["commitment_check_completed"]]
+    assert events[0][1]["live"] == 0
+    assert events[0][1]["read"] == 0
 
 
 def test_error_chain_a_payload_that_is_not_a_command_is_a_typed_failure() -> None:

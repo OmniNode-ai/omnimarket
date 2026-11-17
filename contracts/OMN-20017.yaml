@@ -6,6 +6,23 @@ summary: >-
 is_seam_ticket: true
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn20017-ac1-accepted-20261113t0145z:
+    - label: AC1
+      criterion_hash: a1f8b9f0ae1ed175af96270653c6d2ad4836faee3a6f0bbdf42911bc04288611
+      proposed_by: lane=dod-closeout-bind-2026-11-13T0145Z-c0
+      accepted_by: lane=dod-closeout-accept-2026-11-13T0145Z-c0
+    dod-omn20017-ac2-accepted-20261113t0145z:
+    - label: AC2
+      criterion_hash: 5eb03cd2a22f846357a64cf827f82363f53da167effa97e01a410b49c5a1895d
+      proposed_by: lane=dod-closeout-bind-2026-11-13T0145Z-c0
+      accepted_by: lane=dod-closeout-accept-2026-11-13T0145Z-c0
+    dod-omn20017-ac3-accepted-20261113t0145z:
+    - label: AC3
+      criterion_hash: 20012d206fb71de6a9857495dcf958dd71f07f34e1d26d25a111bfc9664d5ab1
+      proposed_by: lane=dod-closeout-bind-2026-11-13T0145Z-c0
+      accepted_by: lane=dod-closeout-accept-2026-11-13T0145Z-c0
 requirements:
 - id: req-omn20017-arm-compare
   statement: Two arms' results on the same tasks are compared by the exact paired test, a gain the negative control reproduces is not counted, and a bad request is a typed failure and never a verdict.
@@ -90,4 +107,31 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: 'onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-20017 --kind test -- uv run --frozen pytest tests/nodes/node_delegation_arm_compare_compute -q --no-cov'
+    cwd: .
+- id: dod-omn20017-ac1-accepted-20261113t0145z
+  description: 'Accepted binding (2026-11-13T0145Z): the planted 2/12 discordant split over 90 tasks reports a_only, b_only and the exact two-sided p, and reversing one arm still pairs by task key. Red at the merge base, which has no node.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q --no-cov -p no:cacheprovider tests/nodes/node_delegation_arm_compare_compute/test_exact_paired_planted.py::test_exact_paired_planted_pairs_by_task_key_not_by_position tests/nodes/node_delegation_arm_compare_compute/test_exact_paired_planted.py::test_exact_paired_planted_difference_reports_wins_losses_and_exact_p
+    cwd: .
+- id: dod-omn20017-ac2-accepted-20261113t0145z
+  description: 'Accepted binding (2026-11-13T0145Z): a gain the negative control reproduces reads no difference with control_cancelled_gain true. Red at the merge base, which has no node.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q --no-cov -p no:cacheprovider tests/nodes/node_delegation_arm_compare_compute/test_negative_control_cancels_gain.py::test_negative_control_cancels_gain_when_the_control_reproduces_it
+    cwd: .
+- id: dod-omn20017-ac3-accepted-20261113t0145z
+  description: 'Accepted binding (2026-11-13T0145Z): the CompareUnpairedRows break (pairing by position) makes the pairing check raise AssertionError. Red at the merge base, which has no node.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q --no-cov -p no:cacheprovider tests/nodes/node_delegation_arm_compare_compute/test_failing_controls.py::test_break_compare_unpaired_rows_turns_the_pairing_check_red
     cwd: .

@@ -46,6 +46,8 @@ class EnumQuarantineOutcome(StrEnum):
     REFUSED_CLOCK_RUNNING = "refused-clock-running"
     REFUSED_NO_TAG = "refused-no-tag"
     REFUSED_NO_CATALOG_ROW = "refused-no-catalog-row"
+    REFUSED_TESTS_NOT_WITH_MODULE = "refused-tests-not-with-module"
+    REFUSED_RARE_PATH = "refused-rare-path"
     BACKEND_FAILED = "backend-failed"
 
 
@@ -59,6 +61,17 @@ OK_OUTCOMES = frozenset(
         EnumQuarantineOutcome.REMOVED,
     }
 )
+
+
+class EnumEntityKind(StrEnum):
+    """What the entity is. Stage 4 of the unused-code removal (OMN-23149) names two kinds that need one more read."""
+
+    #: Not in stage 4: only the reads every quarantine already needs.
+    UNSTAGED = "unstaged"
+    #: A module whose only references are tests: it leaves with those tests, never the tests alone.
+    TEST_ONLY_MODULE = "test-only-module"
+    #: A skill never seen in use: it leaves only after a rare-path check names no drill that uses it.
+    SKILL_NEVER_SEEN = "skill-never-seen"
 
 
 class EnumEntityState(StrEnum):
@@ -91,6 +104,19 @@ class ModelRemovalEvidence(BaseModel):
     #: Where the observation and the public-consumer search are recorded (a ledger row, a report path).
     evidence_ref: str
     public_consumers: int = Field(ge=0)
+
+
+class ModelRarePathCheck(BaseModel):
+    """The rare-path declaration read for a skill: the drills that were read, and those of them that use the skill."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Where the check is recorded (a ledger row, a report path).
+    evidence_ref: str
+    #: Every drill the check read. A check that read none is no check.
+    drills_checked: tuple[str, ...]
+    #: The drills among them that use the skill. Any one keeps the skill.
+    drills_using: tuple[str, ...] = ()
 
 
 class ModelCatalogRow(BaseModel):
@@ -129,6 +155,8 @@ class ModelQuarantineRecord(BaseModel):
     clock_started_at: datetime | None = None
     restored_reason: str = ""
     restarts: int = Field(default=0, ge=0)
+    #: A record written before stage 4 carries no kind and reads as unstaged.
+    entity_kind: EnumEntityKind = EnumEntityKind.UNSTAGED
 
 
 class ModelQuarantineRequest(BaseModel):
@@ -143,8 +171,14 @@ class ModelQuarantineRequest(BaseModel):
     test_paths: tuple[str, ...] = ()
     evidence: ModelRemovalEvidence | None = None
     batch: ModelRemovalBatch | None = None
+    #: Stage 4 (OMN-23149). The default reads as before: no further read beyond the observation and the consumers.
+    entity_kind: EnumEntityKind = EnumEntityKind.UNSTAGED
+    #: The tests that reference a test-only module; every one of them must be among ``test_paths``.
+    test_references: tuple[str, ...] = ()
+    #: The rare-path check of a skill never seen.
+    rare_path: ModelRarePathCheck | None = None
 
-    @field_validator("entity_paths", "test_paths")
+    @field_validator("entity_paths", "test_paths", "test_references")
     @classmethod
     def _paths(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         for item in value:

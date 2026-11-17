@@ -13,6 +13,7 @@ It derives, from rows already parsed:
 * ``cause_releases``: RELEASE rows with ``cause=<cause key>``;
 * ``cause_fixes``: the fix PRs an open cause CLAIM declares in a ``fix=`` cell;
 * ``lab_passes``: every head a lab proof PASS readback recorded for a PR;
+* ``review``: each PR's new-work mark, and the review verdicts an accepted reviewer lane recorded;
 * ``drain_lane``: the live repo drain lane, the newest open ``repo-drains-*`` CLAIM whose lane wrote a
   row in the last 45 minutes.
 
@@ -37,6 +38,11 @@ from omnimarket.handlers.work_ledger_fixer_holds import (
 from omnimarket.models.landing_decision import (
     ModelLandingCauseOwner,
     ModelLandingCauseRelease,
+)
+from omnimarket.models.model_landing_review import (
+    EnumReviewVerdict,
+    ModelLandingReviewFacts,
+    ModelLandingReviewVerdictRow,
 )
 from omnimarket.nodes.node_pr_landing_ledger_facts_compute.models.model_landing_ledger_facts import (
     ModelLandingCauseFix,
@@ -65,6 +71,8 @@ CAUSE_KEY_RE: Final = re.compile(
     r"^cause:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+:[0-9a-f]{12}$"
 )
 FIX_TOKEN_RE: Final = re.compile(r"(?:OmniNode-ai/)?([A-Za-z0-9_.-]+)#(\d+)")
+PR_REF_RE: Final = re.compile(r"([A-Za-z0-9_.-]+)#(\d+)")
+REVIEW_HEAD_RE: Final = re.compile(r"[0-9a-f]{40}")
 # The pool readback writes ten-character heads (or a full SHA), including each member of a group.
 LAB_PASS_MEMBER_RE: Final = re.compile(
     r"(?:^| \+ )(?P<pr>[A-Za-z0-9_.-]+#\d+) head (?P<head>[0-9a-f]{10,40})(?= \+ | on )"
@@ -331,6 +339,51 @@ def lab_passes(rows: Iterable[ModelLandingLedgerRow]) -> dict[str, tuple[str, ..
     return {short: tuple(sorted(heads)) for short, heads in sorted(out.items())}
 
 
+def review_facts(
+    rows: Iterable[ModelLandingLedgerRow],
+    now: datetime,
+    lane_prefixes: tuple[str, ...],
+    engines: tuple[str, ...],
+) -> dict[str, ModelLandingReviewFacts]:
+    """The review fact of each PR a STATUS row speaks of: the new-work marks any row gives, and the
+    verdicts the reviewer lanes record for a head. A verdict row from a lane that is not an accepted
+    reviewer (``lane_prefixes``), or names an engine outside ``engines``, is ignored."""
+    new_work: set[str] = set()
+    verdicts: dict[str, list[ModelLandingReviewVerdictRow]] = {}
+    for row in rows:
+        if row.rtype != "STATUS":
+            continue
+        stamp = _stamp(row.ts)
+        if stamp is None or stamp > now:
+            continue
+        ref = PR_REF_RE.fullmatch(cell(row.text, "pr").removeprefix(f"{OWNER}/"))
+        if ref is None:
+            continue
+        pr = f"{ref[1]}#{ref[2]}"
+        if cell(row.text, "work_kind") == "new_work":
+            new_work.add(pr)
+        head = cell(row.text, "head")
+        verdict = cell(row.text, "verdict").upper().replace("-", "_")
+        if (
+            cell(row.text, "review").lower() in engines
+            and row.lane is not None
+            and row.lane.startswith(lane_prefixes)
+            and REVIEW_HEAD_RE.fullmatch(head) is not None
+            and verdict in ("CLEAN", "CHANGES_NEEDED")
+        ):
+            verdicts.setdefault(pr, []).append(
+                ModelLandingReviewVerdictRow(
+                    head_sha=head, verdict=EnumReviewVerdict[verdict], at=stamp
+                )
+            )
+    return {
+        pr: ModelLandingReviewFacts(
+            new_work=pr in new_work, verdicts=tuple(verdicts.get(pr, ()))
+        )
+        for pr in sorted(new_work | verdicts.keys())
+    }
+
+
 def live_drain_lane(
     claims: Iterable[ModelLandingLedgerRow], last_row: dict[str, str], now: datetime
 ) -> str:
@@ -372,6 +425,12 @@ def derive_ledger_facts(request: ModelLandingLedgerRows) -> ModelLandingLedgerFa
         cause_releases=tuple(cause_releases(rows)),
         cause_fixes=tuple(cause_fixes(claims)),
         lab_passes=lab_passes(history),
+        review=review_facts(
+            (*request.history_rows, *rows),
+            now,
+            request.review_lane_prefixes,
+            request.review_engines,
+        ),
         drain_lane=live_drain_lane(claims, last_row, now),
     )
 
@@ -395,5 +454,6 @@ __all__: list[str] = [
     "last_rows",
     "live_drain_lane",
     "open_claims",
+    "review_facts",
     "split_cause_owners",
 ]

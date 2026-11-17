@@ -43,6 +43,7 @@ handler_routing:
         module: omnimarket.nodes.node_lab_sli_alert_effect.handlers.handler_lab_sli_alert
       input_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliAlertRequest
       output_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliAlertResult
+      event_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliEvaluationBatch
 
 descriptor:
   node_archetype: effect

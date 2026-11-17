@@ -13,6 +13,7 @@ predicate moves to the other name, and nothing else changes.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -32,19 +33,21 @@ SAVINGS_SQL = """
     SELECT
       COALESCE(
         (SELECT SUM(savings_usd) FROM savings_estimates
-         WHERE tenant_id = %(tenant_text)s), 0
+         WHERE tenant_id = %(tenant_text)s
+           AND NOT EXISTS (SELECT 1 FROM delegation_events d WHERE d.correlation_id = savings_estimates.session_id AND d.tenant_id = %(tenant_uuid)s AND d.data_source = ANY(%(uncounted_sources)s::text[]))), 0
       )::float8 AS total_saved_usd,
       COALESCE(
         (SELECT SUM(local_cost_usd) FROM savings_estimates
-         WHERE tenant_id = %(tenant_text)s), 0
+         WHERE tenant_id = %(tenant_text)s
+           AND NOT EXISTS (SELECT 1 FROM delegation_events d WHERE d.correlation_id = savings_estimates.session_id AND d.tenant_id = %(tenant_uuid)s AND d.data_source = ANY(%(uncounted_sources)s::text[]))), 0
       )::float8 AS total_spend_usd,
       COALESCE(
         (SELECT COUNT(*) FROM delegation_events
-         WHERE tenant_id = %(tenant_uuid)s), 0
+         WHERE tenant_id = %(tenant_uuid)s AND data_source <> ALL(%(uncounted_sources)s::text[])), 0
       )::bigint AS delegation_runs,
       COALESCE(
         (SELECT SUM(tokens_input + tokens_output) FROM delegation_events
-         WHERE tenant_id = %(tenant_uuid)s), 0
+         WHERE tenant_id = %(tenant_uuid)s AND data_source <> ALL(%(uncounted_sources)s::text[])), 0
       )::bigint AS total_tokens,
       (SELECT MAX(event_timestamp) FROM savings_estimates
        WHERE tenant_id = %(tenant_text)s) AS savings_latest,
@@ -118,12 +121,27 @@ def _when(value: object) -> datetime | None:
 class AnalyticsTenantProjectionReader:
     """``ProtocolTenantDelegationProjectionReader`` over an analytics query runner."""
 
-    def __init__(self, runner: ProtocolAnalyticsQueryExecutor) -> None:
+    def __init__(
+        self,
+        runner: ProtocolAnalyticsQueryExecutor,
+        *,
+        uncounted_data_sources: Sequence[str],
+    ) -> None:
+        if not uncounted_data_sources:
+            raise ValueError(
+                "uncounted_data_sources is empty: the node contract declares which "
+                "data sources are listed but never counted in a tenant's totals"
+            )
         self._runner = runner
+        self._uncounted_data_sources = tuple(uncounted_data_sources)
 
     async def read_savings(self, tenant_id: UUID) -> ModelTenantSavingsAggregate:
         rows = await self._runner.run_query(
-            SAVINGS_SQL, tenant_params(tenant_id), tenant_id=str(tenant_id)
+            SAVINGS_SQL,
+            tenant_params(
+                tenant_id, uncounted_sources=list(self._uncounted_data_sources)
+            ),
+            tenant_id=str(tenant_id),
         )
         row = rows[0] if rows else {}
         return ModelTenantSavingsAggregate(

@@ -12,6 +12,7 @@ renders a user service and timer for a Linux pool host instead of a plist (OMN-2
 
 from __future__ import annotations
 
+import difflib
 import fcntl
 import hashlib
 import json
@@ -44,11 +45,110 @@ from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_u
 )
 
 NODE_DIR = Path(__file__).resolve().parents[1]
+
+# The previous install of a unit, kept one level deep so a rollback can put it back (OMN-24108). An install that replaces a
+# unit's files first copies each of them to <state>/<unit>.previous/ with a manifest naming where each came from and whether it
+# existed; a rollback copies them back, or removes the unit's files when the install was the first. One level only.
+MANIFEST = "manifest.json"
+KEPT_SUFFIX = ".previous"
+
+
+def fill_placeholders(node: Any, values: dict[str, str], unit: str) -> Any:
+    """``node`` with every ``{name}`` of ``values`` filled, in strings, lists and mappings; a placeholder left over is refused.
+
+    The one filler of a unit's declared configuration (``config_file``) and declared files (``declared_files``): a
+    document is never written with a hole in it.
+    """
+    if isinstance(node, str):
+        for key, value in values.items():
+            node = node.replace("{" + key + "}", value)
+        left = PLACEHOLDER.search(node)
+        if left is not None:
+            raise ValueError(
+                f"the {unit} configuration names {left.group(0)}, which this request does not set "
+                "(name it as a request input, export its environment variable, or reinstall once with it)"
+            )
+        return node
+    if isinstance(node, list):
+        return [fill_placeholders(item, values, unit) for item in node]
+    if isinstance(node, dict):
+        return {
+            str(key): fill_placeholders(item, values, unit)
+            for key, item in node.items()
+        }
+    return node
+
+
+class NoPreviousInstallError(ValueError):
+    """A rollback was asked for a unit that has no kept previous install."""
+
+
+def kept_directory(state: Path, unit: str) -> Path:
+    return state / f"{unit}{KEPT_SUFFIX}"
+
+
+def keep_previous(state: Path, unit: str, targets: dict[str, Path]) -> Path:
+    """Copy each target that exists to the unit's kept directory, replacing any earlier kept copy."""
+    kept = kept_directory(state, unit)
+    shutil.rmtree(kept, ignore_errors=True)
+    kept.mkdir(parents=True)
+    manifest: dict[str, dict[str, object]] = {}
+    for key, target in targets.items():
+        present = target.exists()
+        manifest[key] = {"target": str(target), "present": present}
+        if not present:
+            continue
+        if target.is_dir():
+            shutil.copytree(target, kept / key, symlinks=True)
+        else:
+            shutil.copy2(target, kept / key)
+    (kept / MANIFEST).write_text(
+        json.dumps(manifest, indent=1, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return kept
+
+
+def read_previous(state: Path, unit: str) -> tuple[Path, dict[str, dict[str, object]]]:
+    kept = kept_directory(state, unit)
+    manifest = kept / MANIFEST
+    if not manifest.is_file():
+        raise NoPreviousInstallError(
+            f"no previous install of {unit} is kept under {kept}; nothing to roll back "
+            "(an install keeps the files it replaces, one level deep, and a rollback uses them up)"
+        )
+    return kept, json.loads(manifest.read_text(encoding="utf-8"))
+
+
+def restore_previous(kept: Path, manifest: dict[str, dict[str, object]]) -> list[str]:
+    """Put each kept file back where it came from; remove the ones the unit did not have. Returns what was done."""
+    done: list[str] = []
+    for key, row in sorted(manifest.items()):
+        target = Path(str(row["target"]))
+        if target.is_dir() and not target.is_symlink():
+            shutil.rmtree(target)
+        else:
+            target.unlink(missing_ok=True)
+        if row["present"]:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            source = kept / key
+            if source.is_dir():
+                shutil.copytree(source, target, symlinks=True)
+            else:
+                shutil.copy2(source, target)
+            done.append(f"restored {target}")
+        else:
+            done.append(
+                f"removed {target} (the install that was rolled back was the first)"
+            )
+    shutil.rmtree(kept)
+    return done
+
+
 STALE_INTERVALS = 3
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 # The modes that change what the host runs. A dry-run, a status read and a kickstart change nothing, so they never take the lock.
-LOCKED_MODES = frozenset({"install", "uninstall"})
+LOCKED_MODES = frozenset({"install", "uninstall", "rollback"})
 EXIT_INSTALL_IN_PROGRESS = 75
 # After an unit is unloaded, how long the install waits for a tick still holding the unit's tick lock to end by itself, then
 # how long it waits after TERM before it sends KILL (OMN-23349).
@@ -153,12 +253,53 @@ class HandlerRegistryUnits:
         declared = declared_overlay_root(document, host, Path(request.registry_root))
         return os.path.normpath(str(declared))
 
+    def host_table_ledger_path(self, request: ModelRegistryUnitsRequest) -> str:
+        """The ledger the install reads when the request and the shell name no ledger path.
+
+        An install that names no ledger path, in the request or the shell, reads the ledger
+        the lab host table's row for the host declares (OMN-24406, ported from the frozen
+        internal installer change, OMN-23598). The host is the request's host_name, else
+        its ledger_host_name, else the shell's ONEX_LEDGER_HOST_NAME. A row that declares no
+        ledger path, or a host the table does not list, yields '' and the install refuses as
+        before; a declared path under $OMNI_HOME/ fills against the request's registry root,
+        and any other declared value is the path as declared.
+        """
+        host = (
+            request.host_name
+            or request.ledger_host_name
+            or os.environ.get("ONEX_LEDGER_HOST_NAME", "").strip()
+        )
+        if not host:
+            return ""
+        try:
+            table = self.hosts()
+        except NodeOverlayError as exc:
+            raise ValueError(f"the lab host table cannot be read: {exc}") from exc
+        declared = next(
+            (row.ledger_path for row in table.hosts if row.name == host), None
+        )
+        if not declared:
+            return ""
+        if declared.startswith("$OMNI_HOME/"):
+            return str(
+                Path(request.registry_root) / declared.removeprefix("$OMNI_HOME/")
+            )
+        return declared
+
     def handle(self, request: ModelRegistryUnitsRequest) -> ModelRegistryUnitsResult:
         unit = self.units.get(request.unit)
         if unit is None:
             return self.result(
                 request, 2, error=f"{request.unit} is not a unit of this node\n"
             )
+        if request.plan_verb is not None:
+            verb = request.plan_verb
+            plan_text = (
+                f"dry-run: would {verb} {request.unit} "
+                f"({unit['label']}, {unit['platform']}); "
+                "nothing was written, loaded, unloaded or run\n"
+            )
+            return self.result(request, 0, out=plan_text)
         try:
             with self.install_lock(request, unit):
                 if unit.get("kind") == "copied_tree":
@@ -370,6 +511,8 @@ class HandlerRegistryUnits:
                 str(getattr(request, str(field))).strip()
                 or os.environ.get(str(name), "").strip()
             )
+            if not supplied and str(field) == "ledger_path":
+                supplied = self.host_table_ledger_path(request)
             if supplied:
                 filled[str(name)] = supplied
         for name in unit.get("environment_refuse_worktree_paths") or []:
@@ -500,21 +643,7 @@ class HandlerRegistryUnits:
         values.update(self.config_inputs(request, unit))
 
         def fill(node: Any) -> Any:
-            if isinstance(node, str):
-                for key, value in values.items():
-                    node = node.replace("{" + key + "}", value)
-                left = PLACEHOLDER.search(node)
-                if left is not None:
-                    raise ValueError(
-                        f"the {request.unit} configuration names {left.group(0)}, which this request does not set "
-                        "(name it as a request input, export its environment variable, or reinstall once with it)"
-                    )
-                return node
-            if isinstance(node, list):
-                return [fill(item) for item in node]
-            if isinstance(node, dict):
-                return {str(key): fill(item) for key, item in node.items()}
-            return node
+            return fill_placeholders(node, values, request.unit)
 
         document = dict(declared["document"])
         for key in declared.get("optional_keys") or []:
@@ -551,6 +680,46 @@ class HandlerRegistryUnits:
             if value:
                 found[str(name)] = value
         return found
+
+    def declared_file_writes(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> list[tuple[Path, str, int]]:
+        """The files a systemd unit declares under ``declared_files``: (path, text, mode) each, every placeholder filled.
+
+        ``path`` and every string of ``document`` may use {home}, {registry_root} and {marketplace_root} (the request's; the
+        last only when the request names one). A path that is not
+        absolute after filling, or that is not under the request's home, is refused, and a placeholder nothing fills is
+        refused naming it, so a declared file is never written with a hole in it or outside the home.
+        """
+        declared = unit.get("declared_files") or []
+        if declared and unit.get("platform") != "systemd":
+            raise ValueError(
+                f"{unit['label']} declares declared_files; only systemd units may declare them"
+            )
+        values = {"home": request.home, "registry_root": request.registry_root}
+        if request.marketplace_root:
+            values["marketplace_root"] = request.marketplace_root
+        home = Path(os.path.normpath(request.home))
+        writes: list[tuple[Path, str, int]] = []
+        for entry in declared:
+            path = Path(
+                os.path.normpath(
+                    fill_placeholders(str(entry["path"]), values, request.unit)
+                )
+            )
+            if not path.is_absolute() or home not in path.parents:
+                raise ValueError(
+                    f"{request.unit} declares the file {entry['path']!r}, which is not a path under the home {home}"
+                )
+            text = (
+                json.dumps(
+                    fill_placeholders(dict(entry["document"]), values, request.unit),
+                    indent=1,
+                )
+                + "\n"
+            )
+            writes.append((path, text, int(str(entry.get("mode", "0600")), 8)))
+        return writes
 
     @staticmethod
     def write_config(target: Path, text: str, mode: int) -> str:
@@ -608,6 +777,15 @@ class HandlerRegistryUnits:
             raise ValueError(
                 f"{unit['label']} declares environment_file {unit['environment_file']!r}; "
                 "launchd units do not support an environment file, declare the variables instead"
+            )
+        if unit.get("kill_mode"):
+            raise ValueError(
+                f"{unit['label']} declares kill_mode {unit['kill_mode']!r}; "
+                "launchd units do not support a kill mode, keep every process in the job's own care"
+            )
+        if unit.get("declared_files"):
+            raise ValueError(
+                f"{unit['label']} declares declared_files; only systemd units may declare them"
             )
         text = (NODE_DIR / str(unit["template"])).read_text(encoding="utf-8")
         process_type = str(unit.get("process_type") or DEFAULT_PROCESS_TYPE)
@@ -707,6 +885,23 @@ class HandlerRegistryUnits:
                 + ended
                 + f"removed {label} (state under {state} is left in place)\n",
             )
+        if request.mode == "rollback":
+            kept, manifest = read_previous(state, request.unit)
+            self.run(["launchctl", "bootout", target])
+            ended = self.stop_running_tick(unit, request)
+            restored = restore_previous(kept, manifest)
+            if plist.exists():
+                started = self.run(["launchctl", "bootstrap", domain, str(plist)])
+                if started.returncode:
+                    return self.result(
+                        request,
+                        started.returncode,
+                        out=started.stdout,
+                        error=f"the previous {label} was put back and launchctl refused it:\n{started.stderr}",
+                    )
+            return self.result(
+                request, 0, out=ended + f"rolled back {label}: {'; '.join(restored)}\n"
+            )
         if request.mode == "status":
             return self.status(request, unit, target, evidence, state, record)
 
@@ -757,6 +952,8 @@ class HandlerRegistryUnits:
             rendered.chmod(0o600)
             self.run(["launchctl", "bootout", target])
             ended = self.stop_running_tick(unit, request)
+            if not plist.exists() or plist.read_text(encoding="utf-8") != text:
+                keep_previous(state, request.unit, {"plist": plist, "record": record})
             shutil.move(str(rendered), str(plist))
         started = self.run(["launchctl", "bootstrap", domain, str(plist)])
         if started.returncode:
@@ -848,6 +1045,23 @@ class HandlerRegistryUnits:
             )
         return f"EnvironmentFile=-{self.systemd_value(path)}"
 
+    def kill_mode(self, unit: dict[str, Any]) -> str:
+        """The KillMode line of a systemd unit that declares one, else nothing.
+
+        A oneshot service that starts processes meant to outlive it (the drift owner's dispatch starts lane
+        runners) declares ``process``: with systemd's default ``control-group`` the exit of the main process
+        SIGTERMs every process left in the unit's cgroup. ``mixed`` is the other mode a unit may name; anything
+        else is refused rather than written as a line systemd would reject or misread.
+        """
+        declared = str(unit.get("kill_mode") or "")
+        if not declared:
+            return ""
+        if declared not in ("mixed", "process"):
+            raise ValueError(
+                f"{unit['label']} declares kill_mode {declared!r}; it must be one of: mixed, process"
+            )
+        return f"\nKillMode={declared}"
+
     def render_systemd(
         self,
         request: ModelRegistryUnitsRequest,
@@ -893,6 +1107,7 @@ class HandlerRegistryUnits:
         service = service.replace(
             "__ENVIRONMENT_FILE__", self.environment_file(request, unit)
         )
+        service = service.replace("__KILL_MODE__", self.kill_mode(unit))
         service = service.replace(
             "__TICK_SYNC_ARGS__", '"--no-sync"' if unit.get("tick_no_sync") else ""
         )
@@ -937,11 +1152,32 @@ class HandlerRegistryUnits:
             service_path.unlink(missing_ok=True)
             timer_path.unlink(missing_ok=True)
             self.run([*systemctl, "daemon-reload"])
+            # A unit that failed before its removal stays on `systemctl --user --failed` until its mark is reset;
+            # a refusal is ignored, the removal has already happened (OMN-23961).
+            self.run([*systemctl, "reset-failed", f"{label}.service", f"{label}.timer"])
             return self.result(
                 request,
                 0,
                 out=stopped.stdout
                 + f"removed {label} (state under {state} is left in place)\n",
+            )
+        if request.mode == "rollback":
+            kept, manifest = read_previous(state, request.unit)
+            self.run([*systemctl, "disable", "--now", f"{label}.timer"])
+            restored = restore_previous(kept, manifest)
+            self.run([*systemctl, "daemon-reload"])
+            if timer_path.exists():
+                for verb in ("enable", "restart"):
+                    started = self.run([*systemctl, verb, f"{label}.timer"])
+                    if started.returncode:
+                        return self.result(
+                            request,
+                            started.returncode,
+                            out=started.stdout,
+                            error=f"the previous {label} was put back and systemctl {verb} refused it:\n{started.stderr}",
+                        )
+            return self.result(
+                request, 0, out=f"rolled back {label}: {'; '.join(restored)}\n"
             )
         if request.mode == "status":
             return self.status_systemd(request, unit, evidence, record)
@@ -957,11 +1193,16 @@ class HandlerRegistryUnits:
         python = self.interpreter_for(unit)
         service, timer = self.render_systemd(request, unit, project, uv, python)
         text = service + "\n" + timer
+        declared_files = self.declared_file_writes(request, unit)
         if request.mode == "dry-run":
             return self.result(
                 request,
                 0,
-                out=text,
+                out=text
+                + "".join(
+                    f"\ndeclared file {path}:\n{body}"
+                    for path, body, _mode in declared_files
+                ),
                 rendered=text,
                 project=project,
                 revision=revision,
@@ -974,10 +1215,21 @@ class HandlerRegistryUnits:
             )
         state.mkdir(parents=True, exist_ok=True)
         unit_dir.mkdir(parents=True, exist_ok=True)
+        for path, body, mode in declared_files:
+            self.write_config(path, body, mode)
         previous = {
             path: (path.read_bytes() if path.exists() else None)
             for path in (service_path, timer_path)
         }
+        if (
+            previous[service_path] != service.encode()
+            or previous[timer_path] != timer.encode()
+        ):
+            keep_previous(
+                state,
+                request.unit,
+                {"service": service_path, "timer": timer_path, "record": record},
+            )
         for path, body in ((service_path, service), (timer_path, timer)):
             staged = path.with_name(f".{path.name}.staged")
             staged.write_text(body, encoding="utf-8")
@@ -1072,7 +1324,61 @@ class HandlerRegistryUnits:
             out += f"installed revision {recorded.get('revision')} of {recorded.get('project')}\n"
         except (OSError, ValueError):
             out += f"no install record at {record}\n"
+        text, differs = self.unit_text_lines(request, unit, record)
+        out += text
+        if differs:
+            failed = 1
         return self.result(request, failed, out=out)
+
+    def unit_text_lines(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any], record: Path
+    ) -> tuple[str, bool]:
+        """Compare the installed service and timer files with the text the installer renders now.
+
+        One line per file: IN SYNC, DIFFERS FROM RENDER (then every differing line) or NOT COMPARED with its reason.
+        The project the render names is the request's override, else the one the install record names (a unit
+        installed from a branch is judged against that branch), else the canonical clone.
+        """
+        label = str(unit["label"])
+        unit_dir = Path(request.home) / ".config/systemd/user"
+        project = self.project_for(request, unit)[0]
+        if not request.project_path:
+            try:
+                recorded = json.loads(record.read_text(encoding="utf-8")).get("project")
+            except (OSError, ValueError):
+                recorded = None
+            if recorded:
+                project = Path(str(recorded))
+        try:
+            uv = shutil.which("uv")
+            if uv is None:
+                raise ValueError("uv is not on PATH")
+            service, timer = self.render_systemd(
+                request, unit, project, uv, self.interpreter_for(unit)
+            )
+        except (OSError, ValueError) as exc:
+            return f"UNIT TEXT NOT COMPARED {label}: {exc}\n", False
+        out, differs = "", False
+        for suffix, rendered in ((".service", service), (".timer", timer)):
+            path = unit_dir / f"{label}{suffix}"
+            try:
+                installed = path.read_text(encoding="utf-8")
+            except OSError:
+                out += f"UNIT TEXT NOT COMPARED {path}: unreadable\n"
+                continue
+            if installed == rendered:
+                out += f"UNIT TEXT IN SYNC {path}\n"
+                continue
+            differs = True
+            out += f"UNIT DIFFERS FROM RENDER {path}\n"
+            for line in difflib.unified_diff(
+                installed.splitlines(), rendered.splitlines(), lineterm="", n=0
+            ):
+                if line.startswith(("---", "+++", "@@")):
+                    continue
+                kind = "installed" if line.startswith("-") else "rendered"
+                out += f"  {kind}: {line[1:]}\n"
+        return out, differs
 
     def head_of(self, project: Path) -> str:
         head = self.run(["git", "-C", str(project), "rev-parse", "HEAD"])
@@ -1193,6 +1499,13 @@ class HandlerRegistryUnits:
                 return result(
                     out=f"removed {label}; copied payload and state retained\n"
                 )
+            if request.mode == "rollback":
+                kept, manifest = read_previous(state, request.unit)
+                self.run(["launchctl", "bootout", target])
+                restored = restore_previous(kept, manifest)
+                if plist.exists():
+                    checked(["launchctl", "bootstrap", domain, str(plist)])
+                return result(out=f"rolled back {label}: {'; '.join(restored)}\n")
             if request.mode == "status":
                 checked(["launchctl", "print", target])
                 log = state / "runs.jsonl"
@@ -1289,6 +1602,20 @@ class HandlerRegistryUnits:
                 checked(["plutil", "-lint", str(candidate)])
                 if request.mode == "dry-run":
                     return result(out=rendered)
+                if (
+                    not plist.exists()
+                    or plist.read_text(encoding="utf-8") != rendered
+                    or self.installed_digest(state) != digest
+                ):
+                    keep_previous(
+                        state,
+                        request.unit,
+                        {
+                            "plist": plist,
+                            "payload": install,
+                            "install.json": state / "install.json",
+                        },
+                    )
                 self.activate(
                     staged, install, candidate, plist, state, domain, target, checked
                 )
@@ -1302,6 +1629,19 @@ class HandlerRegistryUnits:
                 return result(out=f"installed {label}; bundle_sha256={digest}\n")
         except (OSError, ValueError, shutil.Error) as exc:
             return result(1, err=f"{exc}\n")
+
+    @staticmethod
+    def installed_digest(state: Path) -> str:
+        """The bundle digest the last install of a copied unit recorded, or empty when it recorded none."""
+        record = state / "install.json"
+        if not record.is_file():
+            return ""
+        try:
+            return str(
+                json.loads(record.read_text(encoding="utf-8")).get("bundle_sha256", "")
+            )
+        except ValueError:
+            return ""
 
     @staticmethod
     def relative(name: str) -> Path:

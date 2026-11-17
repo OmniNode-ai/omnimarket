@@ -26,7 +26,7 @@ from omnimarket.handlers.scm.handler_scm_dispatch import ScmBusCaller
 from omnimarket.handlers.scm.scm_cli import _open_bus
 from omnimarket.lab_work.cli import _with_bus_options
 from omnimarket.models.scm import ModelScmTerminal, ModelScmTopics
-from omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io import (
+from omnimarket.models.ticket_write_io import (
     ModelTicketWriteRequest,
 )
 

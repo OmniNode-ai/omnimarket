@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeSeamGraphDefectsCompute (OMN-19998)
+#
+# One scan of the seam graph as a pure compute:
+#
+#   handle(ModelSeamGraphRequest) -> ModelSeamGraphDefectReport
+#
+# The request pins checkouts of the declared repos and carries the overlay
+# rule. The facts loader (omnimarket.handlers.seam_graph_facts_loader) reads
+# every contract of the declared repos with node_contract_topic_reader_compute's
+# handler and gathers the per-node facts; this compute derives nine defect
+# classes over the seams between the nodes. It carries no effect of its own:
+# it pins, reads, counts and reports, changing nothing. A verification node
+# never reports clean for work it did not do: a scan that read no contract
+# refuses instead of returning an empty report. Deterministic in any input
+# order: no clock, no randomness, every output list sorted.
+name: "node_seam_graph_defects_compute"
+contract_name: "node_seam_graph_defects_compute"
+node_name: "node_seam_graph_defects_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Pins the checkouts named in the request, reads every contract of the
+  declared repos with node_contract_topic_reader_compute's handler, and
+  derives nine defect classes over the seam graph: topics subscribed with no
+  publisher and published with no subscriber, nodes nothing calls, missing or
+  key-incomplete overlay rows, cross-repo imports no seam test covers,
+  synchronous I/O in a handler, file-backed ledger readers, and replay-marked
+  nodes publishing topics shared past the consumer budget. Returns the graph
+  counts and one group per defect class, every class present even at count
+  zero, the first rule.first_n defects of each. Deterministic in any input
+  order.
+input_model:
+  name: "ModelSeamGraphRequest"
+  module: "omnimarket.models.model_seam_graph_defects"
+  description: "The overlay rule and the pinned checkout root of each declared repo."
+output_model:
+  name: "ModelSeamGraphDefectReport"
+  module: "omnimarket.models.model_seam_graph_defects"
+  description: "Graph counts, one group per defect class, contracts read and unreadable."
+handler:
+  module: "omnimarket.nodes.node_seam_graph_defects_compute.handlers.handler_seam_graph_defects"
+  class: "HandlerSeamGraphDefects"
+  input_model: "omnimarket.models.model_seam_graph_defects.ModelSeamGraphRequest"
+  output_model: "omnimarket.models.model_seam_graph_defects.ModelSeamGraphDefectReport"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_seam_graph_defects_compute.handlers.handler_seam_graph_defects:HandlerSeamGraphDefects"
+  handlers:
+    - operation: "handle"
+      handler:
+        name: "HandlerSeamGraphDefects"
+        module: "omnimarket.nodes.node_seam_graph_defects_compute.handlers.handler_seam_graph_defects"
+      topic: "onex.cmd.omnimarket.seam-graph-defects-requested.v1"
+terminal_event: "onex.evt.omnimarket.seam-graph-defects-completed.v1"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.seam-graph-defects-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.seam-graph-defects-completed.v1"
+    failure: "onex.evt.omnimarket.seam-graph-defects-failed.v1"
+# The dev runtime's per-contract provisioning reads only this section:
+# event_bus.subscribe_topics, publish_topics and dlq_topics. The command is
+# the scan request (runtime_dispatch.command_topic); the two terminals are
+# runtime_dispatch.terminal_events.
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnimarket.seam-graph-defects-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.seam-graph-defects-completed.v1"
+    - "onex.evt.omnimarket.seam-graph-defects-failed.v1"
+# main: the runtime-profile validator requires a profile on a contract that
+# consumes a command.
+runtime_profiles:
+  - main
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+replay:
+  deterministic: true
+entrypoint:
+  name: "NodeSeamGraphDefectsCompute"
+  module: "omnimarket.nodes.node_seam_graph_defects_compute"
+metadata:
+  description: "Pure seam-graph defect derivation over pinned checkouts."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-14"
+  tags:
+    - compute
+    - seam-graph
+    - pure
+# The broker permission rows of this node's topics, under the dev runtime's main login. The principal is the placeholder the
+# overlays repository's broker_acl_principals role dev_runtime_main fills for the nodes it lists; this node is listed there.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.seam-graph-defects-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.seam-graph-defects-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.seam-graph-defects-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.seam-graph-defects-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.seam-graph-defects-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.seam-graph-defects-failed.v1, operation: DESCRIBE}

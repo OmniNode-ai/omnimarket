@@ -1,0 +1,147 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host install ORCHESTRATOR (OMN-23957)
+#
+# Composes one host unit install over the bus: dry-run render and install through the registry installer effect, snapshot,
+# read and restore through the file effect, the readback compute, one run read, and an automatic rollback after a failed
+# install, verify or run. Each step is a typed step event the reducer folds into the install record; the orchestrator
+# sends nothing further for an install until the reducer's record for the step comes back. No I/O, no clock of its own.
+---
+name: node_host_install_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Host unit install orchestrator. On an install request it asks the registry installer for the declared render, then
+  walks snapshot, install, readback, run read; a failed install, a readback that differs from the render, or a failed
+  run read sends a restore of the snapshot. Every step is published as a reducer command carrying the last record the
+  reducer returned; the install ends with one terminal event naming the final state and the digests. A result or record
+  for an install it does not know, or in the wrong phase, is ignored. Every setting comes from the node overlay.
+
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - topic: onex.cmd.omnimarket.host-install-requested.v1
+      message_category: command
+      operation: host_install_request
+      event_model:
+        name: ModelHostInstallRequest
+        module: omnimarket.nodes.node_host_install_orchestrator.models.model_host_install_orchestrator
+      handler:
+        name: HandlerHostInstallOrchestrator
+        module: omnimarket.nodes.node_host_install_orchestrator.handlers.handler_host_install_orchestrator
+    - topic: onex.evt.omnimarket.host-registry-unit-completed.v1
+      message_category: event
+      operation: host_registry_unit_result
+      event_model:
+        name: ModelRegistryUnitsResult
+        module: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units
+      handler:
+        name: HandlerHostInstallOrchestrator
+        module: omnimarket.nodes.node_host_install_orchestrator.handlers.handler_host_install_orchestrator
+    - topic: onex.evt.omnimarket.host-install-file-completed.v1
+      message_category: event
+      operation: host_install_file_result
+      event_model:
+        name: ModelHostInstallFileResult
+        module: omnimarket.nodes.node_host_install_file_effect.models.model_host_install_file
+      handler:
+        name: HandlerHostInstallOrchestrator
+        module: omnimarket.nodes.node_host_install_orchestrator.handlers.handler_host_install_orchestrator
+    - topic: onex.evt.omnimarket.host-install-readback-completed.v1
+      message_category: event
+      operation: host_install_readback_result
+      event_model:
+        name: ModelHostInstallReadbackResult
+        module: omnimarket.nodes.node_host_install_readback_compute.models.model_host_install_readback
+      handler:
+        name: HandlerHostInstallOrchestrator
+        module: omnimarket.nodes.node_host_install_orchestrator.handlers.handler_host_install_orchestrator
+    - topic: onex.evt.omnimarket.host-install-state-updated.v1
+      message_category: event
+      operation: host_install_state_record
+      event_model:
+        name: ModelHostInstallRecord
+        module: omnimarket.nodes.node_host_install_state_reducer.models.model_host_install_state
+      handler:
+        name: HandlerHostInstallOrchestrator
+        module: omnimarket.nodes.node_host_install_orchestrator.handlers.handler_host_install_orchestrator
+
+handler:
+  module: omnimarket.nodes.node_host_install_orchestrator.handlers.handler_host_install_orchestrator
+  class: HandlerHostInstallOrchestrator
+  input_model: omnimarket.nodes.node_host_install_orchestrator.models.model_host_install_orchestrator.ModelHostInstallRequest
+
+input_model:
+  name: ModelHostInstallRequest
+  module: omnimarket.nodes.node_host_install_orchestrator.models.model_host_install_orchestrator
+  description: "One install of one registry unit on one host."
+output_model:
+  name: ModelHostInstallCompleted
+  module: omnimarket.nodes.node_host_install_orchestrator.models.model_host_install_orchestrator
+  description: "How the install ended: the final state and the digests."
+
+descriptor:
+  node_archetype: orchestrator
+  purity: pure
+  idempotent: false
+  timeout_ms: 60000
+  runtime_profiles: [workers]
+
+terminal_event: onex.evt.omnimarket.host-install-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-install-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.host-install-requested.v1
+    - onex.evt.omnimarket.host-registry-unit-completed.v1
+    - onex.evt.omnimarket.host-install-file-completed.v1
+    - onex.evt.omnimarket.host-install-readback-completed.v1
+    - onex.evt.omnimarket.host-install-state-updated.v1
+  publish_topics:
+    - onex.cmd.omnimarket.host-registry-unit-requested.v1
+    - onex.cmd.omnimarket.host-install-file-requested.v1
+    - onex.cmd.omnimarket.host-install-readback-requested.v1
+    - onex.evt.omnimarket.host-install-step.v1
+    - onex.evt.omnimarket.host-install-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-install-completed.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-install-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-install-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-registry-unit-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-registry-unit-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-file-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-file-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-readback-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-readback-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-state-updated.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-state-updated.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-registry-unit-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-registry-unit-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-install-file-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-install-file-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-install-readback-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-install-readback-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-step.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-step.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-completed.v1, operation: DESCRIBE}
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Host install orchestrator"
+  author: "OmniNode Platform Team"
+  related_tickets:
+    - "OMN-23957"

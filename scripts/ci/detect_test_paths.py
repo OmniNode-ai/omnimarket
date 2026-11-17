@@ -176,7 +176,7 @@ def compute_selection(
     # dev path. Not filtered against the on-disk tree -- see the field
     # docstring on ModelAdjacencyMap.always_selected_paths.
     if not any(path == TEST_PREFIX for path in selected):
-        selected = sorted(set(selected) | set(config.always_selected_paths))
+        selected = sorted(set(selected) | config.narrowed_extra_paths(changed_files))
     # OMN-23296: shard count and weight bound come from estimated test time.
     decision = HandlerTestSelectionSelector(None, load_policy()).handle(
         ModelSelectorRequest(selected_paths=tuple(selected), repo_root=str(root))

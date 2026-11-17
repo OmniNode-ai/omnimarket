@@ -32,10 +32,9 @@ import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import resources
-from typing import Any, Literal, Protocol
+from typing import Any, Literal
 
 import yaml
 from omnibase_core.event_bus.util_consumer_group import derive_service_group_id
@@ -47,6 +46,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
+from omnimarket.models.model_lab_work_held_unit import ModelLabWorkHeldUnit
 from omnimarket.nodes.node_lab_placement_compute import handlers, models
 from omnimarket.nodes.node_lab_work_unit_effect.handlers import HostAdvertiser
 from omnimarket.nodes.node_lab_work_unit_effect.models import (
@@ -58,6 +58,10 @@ from omnimarket.nodes.node_lab_work_unit_effect.models import (
     WorkKind,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.protocols import require_ungrouped
+from omnimarket.protocols.protocol_lab_work_handlers import (
+    ProtocolAdvertiseHandler,
+    ProtocolWorkHandler,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,17 +84,6 @@ DEFAULT_TOOLS = (
     "node",
     "docker",
 )
-
-
-@dataclass
-class _HeldUnit:
-    """A unit one worker holds, with the clock it has been held on."""
-
-    unit_id: str
-    started: float
-    limit_seconds: float
-    last_logged: float
-    past_limit_logged: bool = False
 
 
 class ModelLabWorkTopics(BaseModel):
@@ -118,21 +111,9 @@ class ModelLabWorkCommandFailure(BaseModel):
     kind: WorkKind = "other"
     duration_seconds: float = 0.0
     error_message: str = Field(default="", max_length=2000)
-
-
-class ProtocolWorkHandler(Protocol):
-    @property
-    def host_name(self) -> str: ...
-
-    async def handle(
-        self, request: ModelLabWorkUnitRequest
-    ) -> ModelLabWorkUnitReceipt: ...
-
-
-class ProtocolAdvertiseHandler(Protocol):
-    def handle(
-        self, request: ModelHostCapacityProbeRequest
-    ) -> ModelHostCapacityAdvertisement: ...
+    #: The command envelope's own correlation id, echoed so a caller that put
+    #: its run's id on the command can match the terminal to the run.
+    correlation_id: str = ""
 
 
 def load_lab_work_topics(node: str = LAB_WORK_NODE) -> ModelLabWorkTopics:
@@ -226,7 +207,7 @@ class LabWorkHost:
         self._queue: asyncio.Queue[ProtocolBusMessage] = asyncio.Queue()
         self._tasks: list[asyncio.Task[None]] = []
         self._beat_task: asyncio.Task[None] | None = None
-        self._held: dict[int, _HeldUnit] = {}
+        self._held: dict[int, ModelLabWorkHeldUnit] = {}
         self._unsubscribe: Callable[[], Awaitable[None]] | None = None
         self.running = 0
         self.processed = 0
@@ -364,7 +345,7 @@ class LabWorkHost:
             message = await self._queue.get()
             now = self._clock()
             # Until the command is read, the host's own age limit bounds the hold.
-            self._held[index] = _HeldUnit(
+            self._held[index] = ModelLabWorkHeldUnit(
                 "<unread command>", now, float(self._max_age), now
             )
             try:
@@ -391,10 +372,16 @@ class LabWorkHost:
         if isinstance(payload, dict) and payload.get("target_host") != self._host:
             return  # another host's unit: seen by every host, run by its own
         command_id = _uuid_or_none(raw.get("envelope_id"))
+        correlation_id = _uuid_or_none(raw.get("correlation_id"))
         try:
             request = ModelLabWorkUnitRequest.model_validate(payload)
         except ValidationError as exc:
-            await self._publish_failure(command_id, "", f"not a lab work unit: {exc}")
+            await self._publish_failure(
+                command_id,
+                "",
+                f"not a lab work unit: {exc}",
+                correlation_id=correlation_id,
+            )
             return
         age = self._age(raw)
         if age is not None and age > self._max_age:
@@ -409,7 +396,7 @@ class LabWorkHost:
         self.running += 1
         started = time.monotonic()
         now = self._clock()
-        self._held[index] = _HeldUnit(
+        self._held[index] = ModelLabWorkHeldUnit(
             request.work_unit_id, now, float(request.timeout_seconds), now
         )
         try:
@@ -424,6 +411,7 @@ class LabWorkHost:
                 f"{type(exc).__name__}: {exc}",
                 request=request,
                 duration_seconds=time.monotonic() - started,
+                correlation_id=correlation_id,
             )
             return
         finally:
@@ -433,7 +421,7 @@ class LabWorkHost:
             payload=receipt.model_copy(
                 update={"lane": request.lane, "kind": request.kind}
             ).model_dump(mode="json"),
-            correlation_id=_uuid_or_none(raw.get("correlation_id")) or uuid.uuid4(),
+            correlation_id=correlation_id or uuid.uuid4(),
             parent_envelope_id=command_id,
             event_type=event_type_for(self._topics.success),
         )
@@ -461,8 +449,10 @@ class LabWorkHost:
         *,
         request: ModelLabWorkUnitRequest | None = None,
         duration_seconds: float = 0.0,
+        correlation_id: uuid.UUID | None = None,
     ) -> None:
         failure = ModelLabWorkCommandFailure(
+            correlation_id=str(correlation_id) if correlation_id else "",
             work_unit_id=work_unit_id,
             host=self._host,
             error_message=message[:2000],
@@ -474,7 +464,7 @@ class LabWorkHost:
         )
         envelope = ModelEventEnvelope[dict[str, object]](
             payload=failure.model_dump(mode="json"),
-            correlation_id=uuid.uuid4(),
+            correlation_id=correlation_id or uuid.uuid4(),
             parent_envelope_id=command_id,
             event_type=event_type_for(self._topics.failure),
         )
@@ -592,8 +582,11 @@ class LabWorkCaller:
     async def dispatch(
         self, request: ModelLabWorkUnitRequest
     ) -> ModelLabWorkUnitReceipt:
+        # exclude_none: an unset optional field (code_draft on an ordinary unit) stays off the wire, so a pool host still
+        # running a request model from before the field existed (extra="forbid") accepts the unit. OMN-19998: h106 and h201
+        # refused every J2 canary unit with "code_draft: Extra inputs are not permitted" while the caller sent null.
         envelope = ModelEventEnvelope[dict[str, object]](
-            payload=request.model_dump(mode="json"),
+            payload=request.model_dump(mode="json", exclude_none=True),
             correlation_id=uuid.uuid4(),
             event_type=event_type_for(self._topics.command),
         )

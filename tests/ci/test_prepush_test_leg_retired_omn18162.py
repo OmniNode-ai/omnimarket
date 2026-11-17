@@ -77,6 +77,7 @@ RETIRED_HOOK_ID = "prepush-smart-tests"
 # runs a test runner.
 EXPECTED_PRE_PUSH_HOOK_IDS: tuple[str, ...] = (
     "check-direct-model-call",
+    "effect-bypass-ratchet",
     "topic-naming-lint",
     "ticket-contract-prerequisite",
     "mypy-type-check",

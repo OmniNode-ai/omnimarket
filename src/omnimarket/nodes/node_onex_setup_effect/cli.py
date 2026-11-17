@@ -56,6 +56,14 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits 
 discover_models = HandlerEndpointCatalog().discover
 probe_models = HandlerModelProbe().probe
 
+# Printed before the first model question (and before any step when unattended):
+# an exhausted model ladder ends returned_to_caller, so Claude Code does the task.
+LADDER_NOTICE = (
+    "If none of the models you choose can finish a task, free or paid, the task "
+    "goes back to Claude Code and Claude does it as usual. That task shows no "
+    "savings, and any attempts your models made are still billed by their provider."
+)
+
 
 def _json_failures[**P, R](function: Callable[P, R]) -> Callable[P, R]:
     @wraps(function)
@@ -403,6 +411,8 @@ def setup_command(
             raise click.ClickException(
                 "--workspace is missing. Pass --workspace DIR or export OMNIBASE_PATH=DIR."
             )
+    if not json_output:
+        click.echo(LADDER_NOTICE)
     prepared_credentials: dict[str, SecretStr] = {}
     if plan_file is None:
         if compose_file is not None or topology_file is not None:

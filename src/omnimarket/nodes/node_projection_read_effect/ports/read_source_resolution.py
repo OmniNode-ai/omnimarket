@@ -18,20 +18,25 @@ bound to.
 
 Unlike that node there is no fallback. A runtime with no binding has no
 projection tables to read, and answering from some other database would
-serve rows the writers never wrote, so the read is refused by name.
+serve rows the writers never wrote, so the read is refused by name. The
+binding may also come from the ``node_projection_read_effect`` node overlay,
+the per-host projection read binding the read node's own overlay names for
+this host (OMN-23994).
 """
 
 from __future__ import annotations
 
 from urllib.parse import urlsplit
 
+from omnimarket.handlers.projection_read_binding_host_overlay import (
+    resolve_projection_read_binding,
+)
 from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import (
     SqliteTableRowSource,
 )
 from omnimarket.projection.runner import (
     PROJECTION_READ_BINDING_UNSET_DETAIL,
     ProjectionReadBindingOverlayError,
-    projection_read_binding_from_overlay_env,
 )
 from omnimarket.projection.sqlite_database import (
     SQLITE_SCHEMES,
@@ -57,7 +62,7 @@ def resolve_projection_read_source() -> TableRowSource | SqliteTableRowSource:
     that did not load raises its own load error, as it always has.
     """
     try:
-        binding = projection_read_binding_from_overlay_env()
+        binding = resolve_projection_read_binding()
     except ProjectionReadBindingOverlayError as exc:
         # Its message names the variable, the file and the error's class only,
         # never the file's contents, so it is safe for an external caller.
@@ -65,8 +70,9 @@ def resolve_projection_read_source() -> TableRowSource | SqliteTableRowSource:
     if binding is None:
         raise ProjectionReadError(
             "projection_binding_unconfigured",
-            f"{PROJECTION_READ_BINDING_UNSET_DETAIL}, so this runtime has no "
-            "projection tables to read",
+            f"{PROJECTION_READ_BINDING_UNSET_DETAIL}, and no row of the "
+            "node_projection_read_effect overlay names this host, so this "
+            "runtime has no projection tables to read",
         )
     # binding.source is where the binding came from (overlay:<path>), never a
     # credential, so the operator is sent to the file that was in effect.

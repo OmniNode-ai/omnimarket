@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-24121
+title: Seam check for every sender and reader pair, plus two message shape fixes
+summary: A reading of 100 producer and consumer contract pairs reported two new candidates. The pull request inventory completed message was examined on the in-memory bus; the triage node subscribed to it, its route validated every payload into a model the inventory event cannot satisfy, and the dispatcher failed on every message, so the node never published a result. The orchestrator calls triage in process, so the subscription is removed and the tests that pinned it now pin the empty list. The second reader of the same message, the CI-attempt projection, accepts the event through a before-validator that maps pr_states and the envelope time, so the field comparison reported a false alarm there. A new compute node compares the declared message shape of every producer and consumer pair (consumer-required field missing, type mismatch, optional-vs-required, extra field refused by a strict consumer) and an effect node runs it over the contracts of this repository, omnibase_infra and omnibase_core, evaluates the base revision's models in a subprocess on a git extract of the base source, and refuses only differences that are new since the base; a consumer whose model carries a before or wrap validator is counted and named as skipped. The check runs as a CI step and a pre-commit hook.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - topics
+requirements:
+  - id: req-omn24121-seam-check
+    statement: A producer-consumer pair a change adds or reshapes must match in declared message shape, shown by a node that diffs the declared models, a check that refuses only what is new since the base, and a seam test for the triage subscription.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a change that adds a sender-reader pair whose declared message shapes do not match fails the merge check, and a difference already on the main branch is not judged -- falsifier: pytest tests/nodes/node_seam_field_diff_compute -q fails on the dev tip without this change'
+      - id: AC2
+        statement: 'AC2: the pull request inventory completed message no longer reaches the triage node that cannot parse it -- falsifier: pytest tests/nodes/node_pr_lifecycle_triage_compute/test_seam_inventory_completed_consumers.py -q fails on the dev tip without this change'
+      - id: AC4
+        statement: 'AC4: integrated: after merge and the dev roll, the running dev runtime image carries this change and its logs show no AttributeError from the triage dispatcher on an inventory completed message, read in the running runtime -- falsifier: the running image revision label is older than the merge commit, or the runtime log shows the triage dispatcher failing on that topic'
+evidence_requirements:
+  - kind: tests
+    description: The seam field diff node tests, the check's tests over a real temporary git repository and the triage seam tests pass at the pushed head.
+    command: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_seam_field_diff_compute tests/nodes/node_seam_field_diff_check_effect tests/nodes/node_pr_lifecycle_triage_compute -q -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn24121-ac1
+    description: 'AC1: the compute node tests (golden chain, error chain with the failing control: a finding the base already had is not judged, the same finding with an empty base is refused) and the check effect tests over a real temporary git repository pass; they fail at the merge base because neither node exists there.'
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_seam_field_diff_compute tests/nodes/node_seam_field_diff_check_effect -q -p no:cacheprovider
+        cwd: .
+  - id: dod-omn24121-ac2
+    description: 'AC2: the triage seam test wires the triage contract on the in-memory bus the way the kernel does and publishes the inventory node real output on the inventory topic; the triage handler is not called and the contract carries no subscribe topic. At the merge base the contract subscribes the topic, the handler is called with a raw dict and the test fails.'
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pr_lifecycle_triage_compute/test_seam_inventory_completed_consumers.py -q -p no:cacheprovider
+        cwd: .
+  - id: dod-omn24121-ac4
+    description: 'hosted proxy for AC4: the triage seam test passes; the reading in the running dev runtime is named in the pull request and taken after the dev runtime runs this revision.'
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pr_lifecycle_triage_compute/test_seam_inventory_completed_consumers.py -q -p no:cacheprovider
+        cwd: .
+  - id: dod-omn24121-integration-proof
+    description: the seam field diff node and check tests and the triage seam test run on a lab host at the pushed head, including the in-memory bus test that wires the triage contract as the kernel does and the check run over a real temporary git repository; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24121 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_seam_field_diff_compute tests/nodes/node_seam_field_diff_check_effect tests/nodes/node_pr_lifecycle_triage_compute -q --no-cov

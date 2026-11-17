@@ -1,0 +1,68 @@
+schema_version: 1.0.0
+ticket_id: OMN-23944
+title: The merge override alarm's handler gets typed inputs so the dev runtime reads healthy
+summary: The merge override alarm node routed five event models to one handler whose handle() is annotated with a union. The runtime picks its wiring arm from that annotation, wired the handler as a raw-dict projection (db_io is declared), counted zero rows written, and reported the projection_apply_divergence dimension DEGRADED for HandlerMergeOverrideAlarm, which kept the dev runtime unhealthy and the lab pass receipt FAIL. Each routing entry now has its own thin handler class with one concrete input model, delegating to the unchanged handler.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23944-typed-handlers
+  statement: The merge override alarm node's routed handlers each declare one concrete input model, so the runtime's own arm selection (_typed_def_b_input_model) returns that model for every handler entry of the node.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: The merge override alarm node''s routed handlers each declare one concrete input model, so the runtime''s own arm selection (_typed_def_b_input_model) returns that model for every handler entry of the node -- falsifier: restore the single union-annotated handler on the contract and run the new contract test; it must fail naming the handler entry.'
+- id: req-omn23944-verdicts-unchanged
+  statement: Each of the node's five input events still reaches the alarm logic and yields the same verdict as before (golden chain and error chain tests of the node pass unchanged).
+  acceptance:
+  - id: AC2
+    statement: 'AC2: Each of the node''s five input events still reaches the alarm logic and yields the same verdict as before (golden chain and error chain tests of the node pass unchanged) -- falsifier: route an entry to a handler that ignores its input; the golden chain test must fail.'
+- id: req-omn23944-integrated
+  statement: After the next dev runtime rebuild carrying the change, the dev runtime's health answer no longer lists the projection_apply_divergence dimension as DEGRADED for HandlerMergeOverrideAlarm, and the lab pass receipt for the merge that carries the change reads PASS.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: integrated: after the next dev runtime rebuild carrying the change, the dev runtime''s health answer no longer lists the projection_apply_divergence dimension as DEGRADED for HandlerMergeOverrideAlarm, and the lab pass receipt for the merge that carries the change reads PASS -- falsifier: read the running runtime''s health answer and that receipt after the roll; a DEGRADED dimension naming the handler, or a FAIL receipt, fails this criterion.'
+evidence_requirements:
+- kind: tests
+  description: The typed-entry and golden/error chain tests of the merge override alarm node pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect/test_typed_entries.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23944-ac1
+  description: The typed-entry contract test holds that every routed handler of the node declares one concrete input model and that the runtime's arm selection returns that model; on the base contract the single union-annotated handler fails the test naming the handler entry.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect/test_typed_entries.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23944-ac2
+  description: The golden chain and error chain tests of the node pass unchanged, holding that each of the five input events reaches the alarm logic and yields the same verdict as before.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect/ -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23944-ac3
+  description: The reading is taken after the merge from the running dev runtime's health answer and the lab pass receipt; the check is the same focused test command (the tests behind it).
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect/test_typed_entries.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23944-integration-proof
+  description: Run the declared merge override alarm node tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check; it binds no criterion for the hosted check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23944 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect/ -q --no-cov -n 0 -p no:randomly
+    cwd: .

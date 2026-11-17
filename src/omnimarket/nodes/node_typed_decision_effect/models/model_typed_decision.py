@@ -52,6 +52,8 @@ class EnumTypedDecisionReason(StrEnum):
     REPOSITORY_REFUSED = "repository_refused"
     BACKEND_UNRESOLVED = "backend_unresolved"
     CREDENTIAL_NOT_REGISTERED = "credential_not_registered"
+    # The local engine offers each option as one code; more options than codes.
+    TOO_MANY_OPTIONS = "too_many_options"
     # Backend errors: the call was made and produced no usable answer.
     BACKEND_HTTP_ERROR = "backend_http_error"
     BACKEND_TRANSPORT_ERROR = "backend_transport_error"

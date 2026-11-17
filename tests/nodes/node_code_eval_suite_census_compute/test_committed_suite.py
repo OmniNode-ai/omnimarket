@@ -7,7 +7,7 @@ from __future__ import annotations
 import copy
 import json
 from collections import Counter
-from pathlib import Path
+from importlib.resources import files
 
 import pytest
 
@@ -29,12 +29,7 @@ from tests.nodes.node_code_eval_suite_census_compute.support import overlay
 
 pytestmark = pytest.mark.unit
 
-SUITE = (
-    Path(__file__).resolve().parents[3]
-    / "benchmarks"
-    / "code_eval_suite"
-    / "suite.v1.json"
-)
+SUITE = files("omnimarket").joinpath("configs", "code_eval_suite.v1.json")
 
 PASS = EnumCodeScoreVerdict.PASS
 FAIL_CHECK = EnumCodeScoreVerdict.FAIL_CHECK

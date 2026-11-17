@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+lane: dev
+keycloak:
+  base_url: https://keycloak.example.invalid
+  realm: omninode
+  admin_realm: master
+  timeout_seconds: 10.0
+  token_path_template: /realms/{realm}/protocol/openid-connect/token
+  clients_path_template: /admin/realms/{realm}/clients
+  client_path_template: /admin/realms/{realm}/clients/{client_uuid}
+  service_account_user_path_template: /admin/realms/{realm}/clients/{client_uuid}/service-account-user
+  client_role_path_template: /admin/realms/{realm}/clients/{client_uuid}/roles/{role}
+  user_client_role_mappings_path_template: /admin/realms/{realm}/users/{user_id}/role-mappings/clients/{client_uuid}
+  client_scope_mappings_path_template: /admin/realms/{realm}/clients/{client_uuid}/scope-mappings/clients/{management_client_uuid}
+  client_protocol_mappers_path_template: /admin/realms/{realm}/clients/{client_uuid}/protocol-mappers/models
+  client_protocol_mapper_path_template: /admin/realms/{realm}/clients/{client_uuid}/protocol-mappers/models/{mapper_id}
+bootstrap:
+  env_file: .example/.env
+  username_name: ADMIN_USERNAME
+  password_name: ADMIN_PASSWORD
+  admin_client_id: admin-cli
+client:
+  client_id: provisioner-client
+  management_client_id: realm-management
+  roles:
+  - manage-users
+  - view-users
+  secret_key_id: dev_keycloak_client_secret
+  secret_folder: /shared/env
+  secret_key: KEYCLOAK_DEV_CLIENT_SECRET
+sign_in_client:
+  client_id: omnidash-spa
+  mappers:
+  - name: tenant_id
+    protocol_mapper: oidc-usermodel-attribute-mapper
+    config:
+      user.attribute: tenant_id
+      claim.name: tenant_id
+      id.token.claim: "false"
+      access.token.claim: "true"
+      userinfo.token.claim: "true"
+      jsonType.label: String
+  - name: tenant_slug
+    protocol_mapper: oidc-usermodel-attribute-mapper
+    config:
+      user.attribute: tenant_slug
+      claim.name: tenant_slug
+      id.token.claim: "false"
+      access.token.claim: "true"
+      userinfo.token.claim: "true"
+      jsonType.label: String
+secret_store: null

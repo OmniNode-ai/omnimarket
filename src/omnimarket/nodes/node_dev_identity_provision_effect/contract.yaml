@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Dev Identity Provision Effect (OMN-24115, the dev lanes' probe tenant)
+#
+# Creates ONE named dev Keycloak user in the declared dev realm, stores a generated password for it through the seed
+# node's generate-key operation, signs in as that user and asks onex-api to bind one new probe tenant to it. The result
+# carries names and ids only: never a token, a secret or a password, and never the response's bootstrap_token. Any lane
+# or realm the dev_only block does not declare is refused before any secret read or HTTP call.
+name: node_dev_identity_provision_effect
+contract_name: node_dev_identity_provision_effect
+node_name: node_dev_identity_provision_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Provisions one dev probe identity. The dev-only guard refuses, with no side effect, any command lane, overlay lane or
+  Keycloak realm the dev_only block does not declare. A run reads the Keycloak admin credential from the secret store,
+  generates the declared user password key (an existing key is reused, never replaced), creates or resets the one named
+  dev user, signs in with the password grant and asks onex-api to bind a probe tenant; a probe stops at the credential
+  read and answers ready. Every failure is a typed result.
+
+handler:
+  module: omnimarket.nodes.node_dev_identity_provision_effect.handlers.handler_dev_identity_provision
+  class: HandlerDevIdentityProvision
+  input_model: omnimarket.nodes.node_dev_identity_provision_effect.models.model_dev_identity_provision.ModelDevIdentityProvisionCommand
+
+# HandlerDevIdentityProvision takes the overlay, the transport, the settings store, the key generator and the contract
+# path as constructor parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [keycloak-user-write, secret-store-write, tenant-provision]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelDevIdentityProvisionCommand
+  module: omnimarket.nodes.node_dev_identity_provision_effect.models.model_dev_identity_provision
+  description: Which lane acts, and whether to write anything.
+output_model:
+  name: ModelDevIdentityProvisionResult
+  module: omnimarket.nodes.node_dev_identity_provision_effect.models.model_dev_identity_provision
+  description: The outcome, the realm and lane, the user and tenant ids; never a token or a secret.
+
+terminal_event: onex.evt.omnimarket.dev-identity-provision-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  command: onex.cmd.omnimarket.dev-identity-provision-requested.v1
+  completed: onex.evt.omnimarket.dev-identity-provision-completed.v1
+  failed: onex.evt.omnimarket.dev-identity-provision-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.dev-identity-provision-completed.v1
+  - onex.evt.omnimarket.dev-identity-provision-failed.v1
+
+overlay:
+  node: node_dev_identity_provision_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+dev_only:
+  # The guard reads this block from this file, never from code: a run or probe whose command lane, overlay lane or
+  # Keycloak realm is not declared here is refused_not_dev before any secret read or HTTP call.
+  lane: dev
+  realms:
+    - omninode
+
+metadata:
+  ticket: OMN-24115
+  transport_type: inmemory
