@@ -33,6 +33,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.ci.verifier_shell import verifier_shell
+
 _ROOT = Path(__file__).resolve().parents[1]
 
 _ALL_SKIP = """
@@ -215,13 +217,12 @@ def _ac2_check_value() -> str:
     return value
 
 
-# The verifier runs a contract check as ["bash", "-o", "pipefail", "-c", cmd]
-# (list form, no shell=True): evidence_collector.py:6413 at the omnimarket
-# dev-merge tag the repo-evidence caller installs it from
-# (verifier-tag dev-20261101000200-949993edf3b7 in
-# .github/workflows/call-repo-evidence-gate.yml). Without pipefail a pipeline's
-# status is the last stage's, which is the case the regression tests below pin.
-_VERIFIER_SHELL = ["bash", "-o", "pipefail", "-c"]
+# The verifier runs a contract check under the shell its own runner names; the
+# argv prefix is read from that runner's source (tests/ci/verifier_shell.py), not
+# written here, so these tests stop passing when the verifier drops pipefail.
+# Without pipefail a pipeline's status is the last stage's, which is the case the
+# regression tests below pin.
+_VERIFIER_SHELL = verifier_shell()
 _NO_PIPEFAIL_SHELL = ["bash", "-c"]
 
 
@@ -267,6 +268,15 @@ def _pytest_stage_and_filter(check_value: str) -> tuple[str, str]:
     assert len(stages) == 2, check_value
     assert stages[1].startswith("grep -E "), stages[1]
     return stages[0], stages[1]
+
+
+def test_the_shell_these_cases_run_under_is_the_verifiers_and_has_pipefail() -> None:
+    # Read from the verifier's runner, so these cases follow it: a verifier that
+    # dropped pipefail would change this prefix and fail the case below that
+    # needs a failed pytest stage to fail the check.
+    assert _VERIFIER_SHELL[0] == "bash"
+    assert "pipefail" in _VERIFIER_SHELL
+    assert _VERIFIER_SHELL[-1] == "-c"
 
 
 def test_the_ac2_binding_check_asks_for_the_refusal_and_the_count() -> None:

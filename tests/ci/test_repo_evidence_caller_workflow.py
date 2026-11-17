@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 import yaml
+from _pytest.mark.expression import Expression
 from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 from pydantic import ValidationError
@@ -26,6 +27,7 @@ from omnimarket.nodes.node_dod_verify.services.scoped_item_binding import (
 )
 from omnimarket.occ_contract_pin import criteria_by_label, criterion_hash
 from tests.ci.receipt_gate_pin import RECEIPT_GATE_PIN_TAG
+from tests.ci.verifier_shell import verifier_shell, verifier_shell_from_source
 
 pytestmark = pytest.mark.unit
 
@@ -832,7 +834,7 @@ def test_omn22496_items_bind_their_criterion_to_a_test_passes_check(
 
 _ROOT = REPO_ROOT
 _CONTRACTS = _ROOT / "contracts"
-_NAMES = ("OMN-21217", "OMN-25198", "OMN-25208")
+_NAMES = ("OMN-21217", "OMN-25198", "OMN-25208", "OMN-25286")
 _AC2_TEST_FILE = (
     _ROOT
     / "tests"
@@ -841,9 +843,9 @@ _AC2_TEST_FILE = (
     / "test_hosted_ordered_models_omn21217.py"
 )
 _AC2_TEST = "test_hosted_retry_walks_only_the_selected_keys_ordered_models"
-# The verifier runs a check as bash -o pipefail -c (evidence_collector.py:6413
-# at the omnimarket tag the repo-evidence caller installs it from).
-_VERIFIER_SHELL = ["bash", "-o", "pipefail", "-c"]
+# The shell the verifier runs a command check with, read from the verifier's own
+# source (tests/ci/verifier_shell.py), not a literal of this file.
+_VERIFIER_SHELL = verifier_shell()
 
 
 def _contract(name: str) -> dict[str, Any]:
@@ -877,6 +879,202 @@ def _verifier(command: str, cwd: Path) -> subprocess.CompletedProcess[str]:
         timeout=120,
         env=scrub_git_location_env(os.environ),
     )
+
+
+# --- the verifier's shell (finding 3) -----------------------------------------
+
+
+def test_the_verifier_runs_a_command_check_under_pipefail() -> None:
+    # Read from the runner's source: every contract check that ends a pipeline in
+    # grep depends on this, and the AC2 check of contracts/OMN-21217.yaml is one.
+    shell = verifier_shell()
+    assert shell[0] == "bash"
+    assert "pipefail" in shell
+    assert shell[-1] == "-c"
+
+
+def test_the_verifier_shell_reader_sees_a_runner_that_drops_pipefail() -> None:
+    # The control: the reader is not one that always answers pipefail. The same
+    # source with the option removed reads as a shell without it, and then a
+    # test that runs the pipefail case under it fails.
+    source = (
+        REPO_ROOT
+        / "src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py"
+    ).read_text(encoding="utf-8")
+    old = '["bash", "-o", "pipefail", "-c", cmd_str]'
+    assert source.count(old) == 1
+    mutant = verifier_shell_from_source(source.replace(old, '["bash", "-c", cmd_str]'))
+    assert "pipefail" not in mutant
+
+
+def test_the_verifier_shell_reader_refuses_a_source_without_the_runner() -> None:
+    with pytest.raises(AssertionError, match="exactly one bash command-check runner"):
+        verifier_shell_from_source("import subprocess\nsubprocess.run(['ls'])\n")
+
+
+def test_a_failed_pytest_that_prints_the_counted_line_fails_under_the_verifier_shell() -> (
+    None
+):
+    # The hazard pipefail closes, run under the shell read from the verifier. A
+    # first stage that prints the line and exits 3 must fail the pipeline; under a
+    # shell without pipefail it passes (the control).
+    command = "(echo '2 passed'; exit 3) | grep -E '^2 passed'"
+    guarded = _verifier(command, _ROOT)
+    assert guarded.returncode == 3, guarded.stdout + guarded.stderr
+    plain = subprocess.run(
+        ["bash", "-c", command], capture_output=True, text=True, check=False
+    )
+    assert plain.returncode == 0
+
+
+# --- the selections of the checks (finding 2) --------------------------------
+#
+# A check that selects a test with -k must select only tests this pull request
+# adds: a selected test that already passes at the merge base proves nothing about
+# the change. The test names of the two files at the merge base are spelled out
+# here (a list in this repository, so it runs everywhere, with no history read).
+_MERGE_BASE_TESTS = {
+    "tests/ci/test_repo_evidence_caller_workflow.py": frozenset(
+        {
+            "test_caller_installs_its_verifier_from_a_dev_merge_tag",
+            "test_caller_pins_a_reusable_that_gives_bound_tests_a_database",
+            "test_caller_pins_a_reusable_with_the_bot_bump_exemption",
+            "test_caller_stops_comparing_with_occ_after_the_s6_cutover",
+            "test_caller_workflow_shape",
+            "test_contract_binds_accepts_a_command_that_wraps_uv_run_pytest",
+            "test_contract_binds_accepts_a_selector_naming_an_existing_directory",
+            "test_contract_binds_accepts_an_unbound_command_only_deploy_probe",
+            "test_contract_binds_accepts_an_unbound_local_done_gate_item",
+            "test_contract_binds_does_not_read_an_option_value_as_the_target",
+            "test_contract_binds_reads_through_an_env_prefix",
+            "test_contract_binds_refuses_a_bound_command_only_deploy_probe",
+            "test_contract_binds_refuses_a_bound_local_done_gate_item",
+            "test_contract_binds_refuses_a_nonexistent_test_path",
+            "test_contract_binds_refuses_a_selector_naming_a_path_not_in_the_tree",
+            "test_contract_binds_refuses_a_wrapped_pytest_naming_a_missing_path",
+            "test_contract_binds_still_refuses_a_command_with_no_pytest_run",
+            "test_dev_merge_tag_shape_has_an_admitting_and_refusing_cases",
+            "test_every_repo_contract_binds_every_criterion",
+            "test_no_repo_contract_binds_a_local_done_gate_item",
+            "test_omn22399_a_grep_command_binding_fails_and_the_message_names_the_cause",
+            "test_omn22399_a_k_selector_with_a_foreign_cwd_binds_an_existing_test_file",
+            "test_omn22399_the_diagnosis_marks_a_missing_target",
+            "test_omn22496_items_bind_their_criterion_to_a_test_passes_check",
+        }
+    ),
+    "tests/test_refuse_skips_omn19987.py": frozenset(
+        {
+            "test_a_real_failure_stays_a_failure",
+            "test_a_run_in_which_a_test_did_not_prove_anything_is_refused",
+            "test_a_run_in_which_every_test_passes_still_passes",
+            "test_a_run_that_selects_no_test_does_not_pass",
+            "test_the_same_run_without_the_option_is_unchanged",
+            "test_the_shared_conftest_offers_the_option",
+        }
+    ),
+}
+_SELECTION_NAMES = ("OMN-25198", "OMN-25208", "OMN-25286")
+
+
+def _selected_tests(check_value: str) -> tuple[str, set[str]]:
+    """The test file of a `uv run pytest ... -k expr` check and the tests it selects."""
+    tokens = shlex.split(check_value.split(" | ")[0])
+    paths = [t for t in tokens if t.endswith(".py") or ".py::" in t]
+    assert len(paths) == 1, check_value
+    path = paths[0].split("::")[0]
+    assert "-k" in tokens, f"no -k selection: {check_value}"
+    expression = Expression.compile(tokens[tokens.index("-k") + 1])
+    module = Path(path).stem
+    tree = ast.parse((_ROOT / path).read_text(encoding="utf-8"))
+    chosen = {
+        node.name
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name.startswith("test_")
+        and expression.evaluate(
+            lambda ident, name=node.name: (
+                ident.lower() in name.lower() or ident.lower() in module.lower()
+            )
+        )
+    }
+    return path, chosen
+
+
+def _selection_checks() -> list[tuple[str, str, str]]:
+    found: list[tuple[str, str, str]] = []
+    for name in _SELECTION_NAMES:
+        for item in _contract(name)["dod_evidence"]:
+            for check in item["checks"]:
+                if check["check_type"] == "test_passes":
+                    found.append((name, item["id"], check["check_value"]))
+    return found
+
+
+def test_this_pull_requests_contracts_select_only_tests_the_pull_request_adds() -> None:
+    checks = _selection_checks()
+    assert len(checks) >= 15
+    problems: list[str] = []
+    for name, item_id, value in checks:
+        path, chosen = _selected_tests(value)
+        if not chosen:
+            problems.append(f"{name}:{item_id} selects no test in {path}")
+        old = sorted(chosen & _MERGE_BASE_TESTS.get(path, frozenset()))
+        if old:
+            problems.append(f"{name}:{item_id} selects tests of the merge base: {old}")
+    assert not problems, "\n".join(problems)
+
+
+def test_the_selection_check_refuses_the_selection_the_review_named() -> None:
+    # The control: the -k of the earlier head selects two tests that exist at the
+    # merge base and pass there, and this reader names both.
+    earlier = (
+        "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 "
+        "--no-cov -k 'failure_causes or binds_every_criterion or binds_a_local_done_gate'"
+    )
+    path, chosen = _selected_tests(earlier)
+    old = chosen & _MERGE_BASE_TESTS[path]
+    assert old == {
+        "test_every_repo_contract_binds_every_criterion",
+        "test_no_repo_contract_binds_a_local_done_gate_item",
+    }
+    # and a selection that matches nothing reads as empty, which the check above refuses
+    _, nothing = _selected_tests(earlier.replace(earlier.split("-k ")[1], "'zzz_none'"))
+    assert nothing == set()
+
+
+def test_the_merge_base_names_are_not_among_the_tests_this_pull_request_adds() -> None:
+    # The list names tests the files held at the merge base; each still exists
+    # unchanged, so the list is not stale in a way that hides an overlap.
+    for path, names in _MERGE_BASE_TESTS.items():
+        tree = ast.parse((_ROOT / path).read_text(encoding="utf-8"))
+        present = {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}
+        assert names <= present, sorted(names - present)
+
+
+def test_this_pull_requests_contracts_bind_every_criterion_to_a_test_passes_check() -> (
+    None
+):
+    for name in _SELECTION_NAMES:
+        contract = _contract(name)
+        assert contract_binds_violations(f"{name}.yaml", contract) == [], name
+        bound = {ac for i in contract["dod_evidence"] for ac in i.get("binds_ac", [])}
+        criteria = {
+            ac["id"] for r in contract["requirements"] for ac in r["acceptance"]
+        }
+        assert bound == criteria, name
+
+
+def test_this_pull_requests_contracts_carry_no_bound_local_done_gate_item() -> None:
+    for name in _SELECTION_NAMES:
+        scoped = [
+            item["id"]
+            for item in _contract(name)["dod_evidence"]
+            if item.get("execution_scope") == "local_done_gate"
+        ]
+        assert scoped, f"{name} has no local_done_gate item"
+        for item in _contract(name)["dod_evidence"]:
+            if item["id"] in scoped:
+                assert not item.get("binds_ac"), item["id"]
 
 
 # --- the ticket contract model (finding 4) -----------------------------------
@@ -933,14 +1131,42 @@ def test_the_unescaped_bracket_form_does_not_hash_to_the_recorded_value() -> Non
     assert unescaped != _hash_receipt()["value"]
 
 
-def test_the_live_ticket_read_is_recorded_with_the_same_line_and_hash() -> None:
+def test_the_live_ticket_read_is_recorded_without_a_hand_typed_equality() -> None:
     live = _hash_receipt()["live_read"]
     assert (
         live["source"] == "the ticket system's own text for OMN-21217, read by the lane"
     )
     assert re.fullmatch(r"20\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ", live["read_at"])
-    assert live["line_equals_ticket_line"] is True
-    assert live["hash"] == _hash_receipt()["value"]
+    # A recorded true proves nothing: the equality is computed by the tests here.
+    assert "line_equals_ticket_line" not in live
+    assert "hash" not in live
+
+
+def test_the_criterion_hash_was_accepted_by_a_lane_other_than_the_one_that_proposed_it() -> (
+    None
+):
+    provenance = _contract("OMN-21217")["context"]["ac_binding_provenance"]
+    record = provenance["dod-omn21217-ac2-accepted-20261117t0145z"][0]
+    assert record["accepted_by"] != record["proposed_by"]
+    assert record["accepted_by"].startswith("lane=")
+
+
+def test_a_changed_ac2_line_no_longer_hashes_to_the_accepted_criterion_hash() -> None:
+    # The control for the recorded line: the accepted hash is the anchor, so a
+    # ticket_line with one word changed fails the equality the tests compute,
+    # whatever a hand-typed field beside it says.
+    line = _hash_receipt()["ticket_line"].strip()
+    assert "never a model outside the list" in line
+    for old, new in (
+        ("never a model outside the list", "sometimes a model outside the list"),
+        ("in the order stored", "in any order"),
+        ("the same key", "any key"),
+    ):
+        assert old in line, old
+        changed = criterion_hash(
+            criteria_by_label("- [ ] " + line.replace(old, new))["AC2"]
+        )
+        assert changed != _provenance_hash(), new
 
 
 def test_the_pinned_criterion_is_the_ticket_line_not_the_checks_extra_assertions() -> (
@@ -960,6 +1186,15 @@ def test_the_pinned_criterion_is_the_ticket_line_not_the_checks_extra_assertions
 # --- the bound AC2 test (finding 2) -------------------------------------------
 
 
+# The one monkeypatch use the bound test needs: the environment root and the
+# same-model reissue budget of the orchestrator. Any other patch, of a handler
+# method, the router or the overlay reader, would let the test pass on a stub.
+_ALLOWED_MONKEYPATCH = {
+    ("setenv", "OMNI_HOME"),
+    ("setattr", "byok_backend_max_retries"),
+}
+
+
 def _ac2_violations(source: str) -> list[str]:
     """What the bound AC2 test must do, read from its source."""
     tree = ast.parse(source)
@@ -976,10 +1211,52 @@ def _ac2_violations(source: str) -> list[str]:
     def names(node: ast.AST) -> set[str]:
         return {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
 
-    if not {"model_dump_json", "model_validate_json"} <= attrs(route):
-        problems.append("the routing decision is not round-tripped through JSON")
-    if "_route" not in names(test):
-        problems.append("the test does not route through _route")
+    def is_call_to(node: ast.AST, attr: str) -> bool:
+        return (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == attr
+        )
+
+    # The round trip is what _route returns: a returned validate(dump(decision)).
+    returns = [n for n in ast.walk(route) if isinstance(n, ast.Return)]
+    round_trip_returned = len(returns) == 1 and any(
+        is_call_to(call, "model_validate_json")
+        and any(is_call_to(arg, "model_dump_json") for arg in call.args)
+        for call in ast.walk(returns[0])
+    )
+    if not round_trip_returned:
+        problems.append(
+            "the routing decision is not round-tripped through JSON and returned"
+        )
+
+    # Every decision handed to the orchestrator is the routed one: _route(...)
+    # itself, or a name assigned from it, never the unserialized original.
+    routed: set[str] = set()
+    for node in ast.walk(test):
+        if (
+            isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id == "_route"
+        ):
+            routed |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+    decisions = [n for n in ast.walk(test) if is_call_to(n, "handle_routing_decision")]
+    if not decisions:
+        problems.append(
+            "the test never calls the orchestrator's handle_routing_decision"
+        )
+    for call in decisions:
+        arg = call.args[0] if call.args else None
+        fed = (
+            isinstance(arg, ast.Call)
+            and isinstance(arg.func, ast.Name)
+            and arg.func.id == "_route"
+        ) or (isinstance(arg, ast.Name) and arg.id in routed)
+        if not fed:
+            problems.append(
+                "handle_routing_decision is not fed the decision _route returned"
+            )
     real = (
         "omnimarket.nodes.node_delegation_orchestrator.handlers"
         ".handler_delegation_workflow"
@@ -1002,19 +1279,31 @@ def _ac2_violations(source: str) -> list[str]:
         problems.append(
             "the test does not construct the real HandlerDelegationWorkflow"
         )
-    for method in (
-        "handle_delegation_request",
-        "handle_routing_decision",
-        "handle_inference_response",
-    ):
+    for method in ("handle_delegation_request", "handle_inference_response"):
         if method not in attrs(test):
             problems.append(f"the test never calls the orchestrator's {method}")
-    for field in ("selected_backend_id", "selected_backend_ref"):
-        asserted = any(
-            isinstance(n, ast.Assert) and field in attrs(n) for n in ast.walk(test)
+
+    def asserted_with(attr: str, name: str) -> bool:
+        return any(
+            isinstance(n, ast.Assert) and attr in attrs(n) and name in names(n)
+            for n in ast.walk(test)
         )
-        if not asserted:
-            problems.append(f"the test asserts nothing about {field}")
+
+    # The same key and endpoint on every attempt, and the stored backend.
+    for attr, name in (
+        ("api_key_ref", "_KEY"),
+        ("base_url", "_ENDPOINT"),
+        ("selected_backend_ref", "_BACKEND"),
+    ):
+        if not asserted_with(attr, name):
+            problems.append(f"the test asserts no {attr} equal to {name}")
+    if not any(
+        isinstance(n, ast.Assert)
+        and "selected_backend_id" in attrs(n)
+        and "initial" in names(n)
+        for n in ast.walk(test)
+    ):
+        problems.append("the test asserts nothing about selected_backend_id")
     parametrized = any(
         isinstance(d, ast.Call)
         and isinstance(d.func, ast.Attribute)
@@ -1028,6 +1317,25 @@ def _ac2_violations(source: str) -> list[str]:
     for banned in ("skip", "skipif", "xfail", "Mock", "MagicMock", "patch"):
         if banned in names(tree) | attrs(tree):
             problems.append(f"the bound test file uses {banned}")
+    # monkeypatch is used, but only for the two allowed targets.
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "monkeypatch"
+        ):
+            first = node.args[0] if node.args else None
+            second = node.args[1] if len(node.args) > 1 else None
+            target = None
+            if node.func.attr == "setenv" and isinstance(first, ast.Constant):
+                target = first.value
+            if node.func.attr == "setattr" and isinstance(second, ast.Constant):
+                target = second.value
+            if (node.func.attr, target) not in _ALLOWED_MONKEYPATCH:
+                problems.append(
+                    f"the bound test uses monkeypatch.{node.func.attr} on {target!r}"
+                )
     return problems
 
 
@@ -1046,6 +1354,34 @@ def test_the_bound_ac2_test_round_trips_drives_the_real_orchestrator_and_asserts
             "real HandlerDelegationWorkflow",
         ),
         ("model_validate_json", "model_validate", "round-tripped through JSON"),
+        # The round trip is run and then discarded: the original is returned.
+        (
+            "    return type(decision).model_validate_json(decision.model_dump_json())",
+            "    type(decision).model_validate_json(decision.model_dump_json())\n    return decision",
+            "round-tripped through JSON and returned",
+        ),
+        # The first decision is the unserialized one: the orchestrator is not fed
+        # what _route returned.
+        (
+            "calls = list(handler.handle_routing_decision(initial))",
+            "unrouted = routing.delta(request, tenant_overlay=resolve_tenant_overlay("
+            "reader, tenant_id=request.tenant_id, task_type=request.task_type, "
+            "selector_key=str(request.correlation_id)), "
+            "surface=EnumDelegationSurface.CLOUD)\n"
+            "    calls = list(handler.handle_routing_decision(unrouted))",
+            "not fed the decision _route returned",
+        ),
+        # The key is not compared with the stored key between attempts.
+        (
+            "assert all(call.api_key_ref == _KEY for call in calls)",
+            "assert all(call.api_key_ref == calls[0].api_key_ref for call in calls)",
+            "api_key_ref equal to _KEY",
+        ),
+        (
+            "assert all(call.base_url == _ENDPOINT for call in calls)",
+            "assert calls",
+            "base_url equal to _ENDPOINT",
+        ),
         ("selected_backend_ref", "selected_backend_id", "selected_backend_ref"),
         (
             "handle_inference_response(",
@@ -1057,6 +1393,17 @@ def test_the_bound_ac2_test_round_trips_drives_the_real_orchestrator_and_asserts
             "import pytest\n",
             "import pytest\nfrom unittest.mock import MagicMock\n\n_m = MagicMock()\n",
             "MagicMock",
+        ),
+        # monkeypatch on the orchestrator itself, in place of the budget only.
+        (
+            'monkeypatch.setattr(workflow_module, "byok_backend_max_retries", lambda _: 0)',
+            'monkeypatch.setattr(workflow_module.HandlerDelegationWorkflow, "handle_inference_response", lambda self, response: [])',
+            "monkeypatch.setattr on 'handle_inference_response'",
+        ),
+        (
+            'monkeypatch.setenv("OMNI_HOME", str(tmp_path))',
+            'monkeypatch.setattr(routing, "delta", lambda *a, **k: None)',
+            "monkeypatch.setattr on 'delta'",
         ),
     ],
 )
@@ -1119,21 +1466,22 @@ def test_the_bound_ac2_test_fails_when_the_orchestrator_is_stubbed(
     assert "2 failed" in done.stdout, done.stdout
 
 
-# --- the pr-checks check (finding 5) ------------------------------------------
+# --- the pr-checks and pr-view checks (finding 8) ----------------------------
 
 _CHECKS_ITEM = "dod-omn25198-pr-checks"
+_VIEW_ITEM = "dod-omn25198-lab-comment"
+_CHECKS_SOURCE = "onex scm pr-checks OmniNode-ai/omnimarket#6358"
+_VIEW_SOURCE = "onex scm pr-view OmniNode-ai/omnimarket#6358"
+_SETTINGS_SOURCE = (
+    'python3 "$OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py" '
+    "--settings OmniNode-ai/omnimarket:dev"
+)
+_REQUIRED = ["CI Summary", "Wire Compatibility Gate"]
+_RULE_REQUIRED = ["repo-evidence / dod-verify"]
 
 
-def _pr_checks_filter() -> str:
-    value = _check_value("OMN-25198", _CHECKS_ITEM)
-    source, _, rest = value.partition(" | ")
-    assert source.startswith("onex scm pr-checks OmniNode-ai/omnimarket#6358")
-    assert rest.startswith("python3 -c ")
-    return rest
-
-
-def _checks_json(**changes: Any) -> str:
-    head = subprocess.run(
+def _head() -> str:
+    return subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=_ROOT,
         capture_output=True,
@@ -1141,32 +1489,63 @@ def _checks_json(**changes: Any) -> str:
         check=True,
         env=scrub_git_location_env(os.environ),
     ).stdout.strip()
+
+
+def _checks_json(**changes: Any) -> str:
     result: dict[str, Any] = {
-        "head_sha": head,
-        "class": "green",
+        "head_sha": _head(),
+        "class": "green-unarmed",
         "red": [],
         "pending": [],
         "cancelled": [],
-        "runs": [["CI Summary", "completed", "success", "2026-11-17T05:00:00Z"]],
+        "runs": [
+            [name, "completed", "success", "2026-11-17T05:00:00Z"]
+            for name in [*_REQUIRED, *_RULE_REQUIRED, "Aislop Sweep"]
+        ],
     }
     result.update(changes)
     return json.dumps({"verb": "pr-checks", "result": result})
 
 
-def _run_filter(payload: str) -> subprocess.CompletedProcess[str]:
-    command = f"printf '%s' {shlex.quote(payload)} | {_pr_checks_filter()}"
+def _settings_text(required: list[str], rule_required: list[str]) -> str:
+    return (
+        "source: pr-watcher state 2026-11-17T07:26:13Z age=158s\n"
+        "omnimarket:dev protection=protected strict=False "
+        f"contexts={','.join(required)} required_reviews=0 enforce_admins=True "
+        f"rules=required_status_checks rule_contexts={','.join(rule_required)} "
+        "rule_strict=False rule_reviews=0 read_at=2026-11-17T06:42:12Z\n"
+    )
+
+
+def _run_checks_check(
+    payload: str, settings: str | None = None
+) -> subprocess.CompletedProcess[str]:
+    """The pr-checks item, with its two readers replaced by the given output."""
+    value = _check_value("OMN-25198", _CHECKS_ITEM)
+    assert value.startswith(_CHECKS_SOURCE + " | python3 -c ")
+    assert _SETTINGS_SOURCE in value
+    text = _settings_text(_REQUIRED, _RULE_REQUIRED) if settings is None else settings
+    command = value.replace(_CHECKS_SOURCE, f"printf '%s' {shlex.quote(payload)}", 1)
+    command = command.replace(_SETTINGS_SOURCE, f"printf '%s' {shlex.quote(text)}", 1)
     return _verifier(command, _ROOT)
 
 
 def test_the_pr_checks_check_passes_only_a_green_read_at_this_head() -> None:
-    done = _run_filter(_checks_json())
+    done = _run_checks_check(_checks_json())
     assert done.returncode == 0, done.stdout + done.stderr
+    for green in ("green", "green-armed"):
+        assert _run_checks_check(_checks_json(**{"class": green})).returncode == 0
 
 
 @pytest.mark.parametrize(
     "changes",
     [
         {"class": "red", "red": ["CI Summary"]},
+        {"class": "pending"},
+        {"class": "green-held"},
+        {"class": "merged"},
+        {"class": "unknown"},
+        {"class": ""},
         {"pending": ["Tests (Split 2/20)"]},
         {"cancelled": ["Tests (Split 2/20)"]},
         {"head_sha": "0" * 40},
@@ -1178,8 +1557,62 @@ def test_the_pr_checks_check_fails_on_a_red_pending_cancelled_or_stale_read(
 ) -> None:
     # `onex scm pr-checks` itself exits 0 on a red read (read 2026-11-17 at
     # head 2bf71927f97e: class red, exit 0), so the status is read from its
-    # JSON here and the check's own exit status carries the verdict.
-    done = _run_filter(_checks_json(**changes))
+    # JSON here and the check's own exit status carries the verdict. Only the
+    # three classes that mean every check-run is green are accepted: any other
+    # class, including one the watcher adds later, is refused.
+    done = _run_checks_check(_checks_json(**changes))
+    assert done.returncode == 1, done.stdout + done.stderr
+
+
+@pytest.mark.parametrize(
+    "runs",
+    [
+        # a required context that has no run
+        [["CI Summary", "completed", "success", "t"]],
+        # a required context that ran and did not succeed
+        [
+            ["CI Summary", "completed", "success", "t"],
+            ["Wire Compatibility Gate", "completed", "failure", "t"],
+            ["repo-evidence / dod-verify", "completed", "success", "t"],
+        ],
+        # a required context that is still running
+        [
+            ["CI Summary", "completed", "success", "t"],
+            ["Wire Compatibility Gate", "completed", "success", "t"],
+            ["repo-evidence / dod-verify", "in_progress", "", "t"],
+        ],
+    ],
+)
+def test_the_pr_checks_check_fails_when_a_required_context_has_no_successful_run(
+    runs: list[list[str]],
+) -> None:
+    done = _run_checks_check(_checks_json(runs=runs))
+    assert done.returncode == 1, done.stdout + done.stderr
+
+
+def test_the_pr_checks_check_fails_when_the_required_contexts_cannot_be_read() -> None:
+    assert _run_checks_check(_checks_json(), settings="").returncode == 1
+    empty = _settings_text([], [])
+    assert _run_checks_check(_checks_json(), settings=empty).returncode == 1
+
+
+def _run_view_check(head: str) -> subprocess.CompletedProcess[str]:
+    value = _check_value("OMN-25198", _VIEW_ITEM)
+    assert value.startswith(_VIEW_SOURCE + " | python3 -c ")
+    payload = json.dumps({"verb": "pr-view", "result": {"head_sha": head}})
+    command = value.replace(_VIEW_SOURCE, f"printf '%s' {shlex.quote(payload)}", 1)
+    return _verifier(command, _ROOT)
+
+
+def test_the_pr_view_check_passes_only_the_pushed_head() -> None:
+    done = _run_view_check(_head())
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+@pytest.mark.parametrize("stale", ["0" * 40, "", _head()[:12]])
+def test_the_pr_view_check_fails_on_a_stale_head(stale: str) -> None:
+    # The pull request reads a head that is not the one checked out here.
+    done = _run_view_check(stale)
     assert done.returncode == 1, done.stdout + done.stderr
 
 
@@ -1188,10 +1621,18 @@ def test_the_pr_checks_read_carries_no_comment_so_the_check_does_not_claim_one()
 ):
     # `onex scm pr-view` returns state, head and CI class and no comment text,
     # so no lane reader can see a `Lab: head=` comment; the contract says so.
-    description = _item("OMN-25198", "dod-omn25198-lab-comment")["description"]
+    description = _item("OMN-25198", _VIEW_ITEM)["description"]
     assert "cannot read pull request comments" in description
-    value = _check_value("OMN-25198", "dod-omn25198-lab-comment")
-    assert "Lab: head=" not in value
+    assert "Lab: head=" not in _check_value("OMN-25198", _VIEW_ITEM)
+
+
+def test_the_live_pr_checks_items_of_both_contracts_are_the_same_check() -> None:
+    assert _check_value("OMN-25208", "dod-omn25208-pr-checks-live") == _check_value(
+        "OMN-25198", _CHECKS_ITEM
+    )
+    assert _check_value("OMN-25286", "dod-omn25286-pr-checks-live") == _check_value(
+        "OMN-25198", _CHECKS_ITEM
+    )
 
 
 # --- the commit message (finding 7) -------------------------------------------
@@ -1231,21 +1672,91 @@ def _trailer_repo(tmp_path: Path, messages: list[str]) -> Path:
 
 
 _FIX = "Binds-Merged-Fix: OMN-21217 baa835fa277a9885b0c1caac7398e5ce6ca52a2a"
+# The commit the live check says must not be reachable from the head. A temporary
+# repository cannot hold that object, so the check's copy of the name is replaced
+# by an object the repository does hold (a commit on a side branch, so it is not an
+# ancestor of the head) in the cases that need git to answer 1 and not 128.
+_NOT_ANCESTOR = "7965f64668c6"
 
 
-def _trailer_check(repo: Path) -> subprocess.CompletedProcess[str]:
-    return _verifier(_check_value("OMN-25198", _TRAILER_ITEM), repo)
+def _side_commit(repo: Path) -> str:
+    """A commit that exists in the repository and is not an ancestor of its head."""
+    _git(repo, "switch", "-q", "-c", "side", "origin/dev")
+    (repo / "side").write_text("side", encoding="utf-8")
+    _git(repo, "add", "side")
+    _git(repo, "commit", "-q", "-m", "side")
+    sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-q", "dev")
+    return sha
+
+
+def _trailer_check(
+    repo: Path, *, not_ancestor: str | None = None
+) -> subprocess.CompletedProcess[str]:
+    value = _check_value("OMN-25198", _TRAILER_ITEM)
+    assert value.count(_NOT_ANCESTOR) == 1
+    if not_ancestor is not None:
+        value = value.replace(_NOT_ANCESTOR, not_ancestor)
+    return _verifier(value, repo)
+
+
+def test_the_trailer_check_requires_exit_status_1_exactly_from_the_ancestor_test() -> (
+    None
+):
+    value = _check_value("OMN-25198", _TRAILER_ITEM)
+    assert f"git merge-base --is-ancestor {_NOT_ANCESTOR} HEAD; test $? -eq 1" in value
+    # not the negation, which turns exit 128 (an unknown object) into a pass
+    assert f"! git merge-base --is-ancestor {_NOT_ANCESTOR}" not in value
 
 
 def test_the_trailer_check_passes_one_fix_named_once_in_a_trailer_block(
+    tmp_path: Path,
+) -> None:
+    # The fix is named in the first commit of the range and the second carries no
+    # trailer: the check reads the range from the merge base, not the head alone.
+    repo = _trailer_repo(
+        tmp_path,
+        [f"one\n\nbody\n\nTicket: OMN-25198\n{_FIX}", "two\n\nTicket: OMN-25208"],
+    )
+    other = _side_commit(repo)
+    # The control: the object is real, so git answers 1 (not an ancestor) and the
+    # check passes; the unchanged check in this repository would exit 128.
+    assert _git(repo, "cat-file", "-t", other) == "commit"
+    done = _trailer_check(repo, not_ancestor=other)
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_the_trailer_check_fails_when_the_ancestor_test_exits_128(
+    tmp_path: Path,
+) -> None:
+    # The same repository and history with the object the check names absent: git
+    # exits 128 for an unknown object and the check must fail on it.
+    repo = _trailer_repo(
+        tmp_path,
+        [f"one\n\nbody\n\nTicket: OMN-25198\n{_FIX}", "two\n\nTicket: OMN-25208"],
+    )
+    probe = subprocess.run(
+        ["git", "-C", str(repo), "merge-base", "--is-ancestor", _NOT_ANCESTOR, "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=scrub_git_location_env(os.environ),
+    )
+    assert probe.returncode == 128, probe.stdout + probe.stderr
+    done = _trailer_check(repo)
+    assert done.returncode == 1, done.stdout + done.stderr
+
+
+def test_the_trailer_check_fails_when_the_named_commit_is_an_ancestor_of_the_head(
     tmp_path: Path,
 ) -> None:
     repo = _trailer_repo(
         tmp_path,
         [f"one\n\nbody\n\nTicket: OMN-25198\n{_FIX}", "two\n\nTicket: OMN-25208"],
     )
-    done = _trailer_check(repo)
-    assert done.returncode == 0, done.stdout + done.stderr
+    first = _git(repo, "rev-parse", "HEAD~1")
+    done = _trailer_check(repo, not_ancestor=first)
+    assert done.returncode == 1, done.stdout + done.stderr
 
 
 @pytest.mark.parametrize(
@@ -1265,14 +1776,12 @@ def test_the_trailer_check_passes_one_fix_named_once_in_a_trailer_block(
 def test_the_trailer_check_fails_two_fixes_none_or_the_token_in_prose(
     tmp_path: Path, messages: list[str]
 ) -> None:
-    done = _trailer_check(_trailer_repo(tmp_path, messages))
-    assert done.returncode != 0, done.stdout + done.stderr
-
-
-def test_the_gate_reads_trailers_over_the_whole_range_not_the_head_alone() -> None:
-    description = _item("OMN-25198", _TRAILER_ITEM)["description"]
-    assert "merge base to the head" in description
-    assert "receipt-gate.yml:1834" in description
+    repo = _trailer_repo(tmp_path, messages)
+    other = _side_commit(repo)
+    # With a real, non-ancestor object the ancestor test passes, so the exit
+    # status 1 comes from the trailer reading and from nothing else.
+    done = _trailer_check(repo, not_ancestor=other)
+    assert done.returncode == 1, done.stdout + done.stderr
 
 
 # --- the receipts (finding 6) -------------------------------------------------
@@ -1280,12 +1789,16 @@ def test_the_gate_reads_trailers_over_the_whole_range_not_the_head_alone() -> No
 
 def test_the_receipts_are_run_output_on_one_host_with_their_logs_named() -> None:
     receipts = _contract("OMN-25198")["context"]["run_receipts"]
+    # The host is stated once for every receipt; a run or ancestry check that
+    # carries a host of its own could differ from it, which is what a repeated
+    # run on another host looked like.
+    assert re.fullmatch(r"h\d{3}", receipts["host"])
     runs = [
         receipts["control_revert"]["reverted_run"],
         receipts["control_revert"]["unreverted_run"],
     ]
     for run in runs:
-        assert run["host"] == "h051"
+        assert "host" not in run
         assert isinstance(run["exit_code"], int)
         assert re.search(r"\d+ (passed|failed) in \d+\.\d+s", run["summary_line"])
         assert "Lab: head=" in run["log"]
@@ -1294,20 +1807,46 @@ def test_the_receipts_are_run_output_on_one_host_with_their_logs_named() -> None
     assert runs[1]["exit_code"] == 0
     assert "2 passed" in runs[1]["summary_line"]
     for ancestry in receipts["ancestry"]:
-        assert ancestry["host"] == "h051"
+        assert "host" not in ancestry
     assert [a["exit_code"] for a in receipts["ancestry"]] == [0, 1]
+    assert f"on {receipts['host']} " in receipts["lab_run"]
 
 
-def test_the_exclusion_rule_is_cited_from_the_gate_source_at_a_pinned_revision() -> (
+def test_the_receipts_name_the_job_log_of_the_red_context_and_both_control_runs() -> (
+    None
+):
+    receipts = _contract("OMN-25198")["context"]["run_receipts"]
+    failure = receipts["original_failure"]["head_2bf71927f97e"]
+    assert "job 133828358922" in failure["log"]
+    assert "Lab: head=" in failure["log"]
+    control = receipts["control_revert"]
+    for key in ("reverted_run", "unreverted_run"):
+        assert "Lab: head=" in control[key]["log"]
+
+
+def test_no_receipts_carry_a_hand_typed_dod_verify_result() -> None:
+    # The dod-verify verdict of a head is read from onex scm pr-checks at that
+    # head and attached in the Lab comment; a string typed into the contract is
+    # not run output and cannot be checked.
+    text = (_CONTRACTS / "OMN-25198.yaml").read_text(encoding="utf-8")
+    assert "dod_verify_result" not in text
+
+
+def test_the_exclusion_rule_is_cited_from_the_gate_source_at_the_pinned_revision() -> (
     None
 ):
     rule = _contract("OMN-25198")["context"]["run_receipts"]["exclusion_rule"]
-    assert rule["revision"] == "dev-20261113222915-b853619df394"
+    # The revision is the reusable's pin, read from the test-side copy of it, so
+    # advancing the pin without re-reading the cited lines fails here.
+    assert rule["revision"] == RECEIPT_GATE_PIN_TAG
+    caller = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))
+    job = caller["jobs"]["repo-evidence"]
+    assert job["uses"].endswith(f"@{RECEIPT_GATE_PIN_TAG}")
     assert rule["repository"] == "omnibase_core"
     assert rule["file"] == ".github/workflows/receipt-gate.yml"
     assert rule["lines"] == "1892-1977"
     other = _contract("OMN-25198")["context"]["run_receipts"]["exclusion_rule_verifier"]
-    assert other["revision"] == "dev-20261101000200-949993edf3b7"
+    assert other["revision"] == job["with"]["verifier-tag"]
     assert (
         other["file"] == "src/omnimarket/nodes/node_dod_verify/services/occ_replay.py"
     )
@@ -1326,7 +1865,6 @@ def test_the_failure_causes_are_the_gate_texts_read_from_the_runs() -> None:
         "tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion",
         "tests/ci/test_repo_evidence_caller_workflow.py::test_no_repo_contract_binds_a_local_done_gate_item",
     ]
-    assert later["dod_verify_result"] == "success"
     assert "may not carry binds_ac" in later["error_text"]
 
 
@@ -1339,13 +1877,44 @@ def test_the_follow_up_for_ac5_is_recorded_with_what_was_searched() -> None:
     assert follow["existing_ticket_or_pull_request"] == "none found"
     assert follow["searched"]
     assert "for the orchestrator to file" in follow["action"]
+    # The text to file is written out: a title, a parent and criteria that each
+    # carry a falsifier.
+    proposed = follow["proposed_ticket"]
+    assert proposed["title"]
+    assert proposed["parent_candidate"] == "OMN-21217"
+    assert len(proposed["criteria"]) >= 1
+    for criterion in proposed["criteria"]:
+        assert re.match(r"AC\d+: ", criterion)
+        assert " -- falsifier: " in criterion
 
 
 def test_the_verifier_budget_and_the_nested_run_time_are_recorded() -> None:
     budget = _contract("OMN-25198")["context"]["run_receipts"]["check_budget"]
-    assert budget["seconds"] == 300
+    caller = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))
+    hosted = int(caller["jobs"]["repo-evidence"]["with"]["check-timeout-seconds"])
+    assert budget["seconds"] == hosted
     assert budget["source"].endswith("check-timeout-seconds")
     assert budget["nested_selection_seconds"] < budget["seconds"]
+
+
+def test_the_verifier_budget_of_the_local_done_gate_is_read_from_the_collector() -> (
+    None
+):
+    # The local Done gate runs the same collector, bounded by one function: the
+    # default it records is the one in the source, and the nested runs exceed it.
+    source = (
+        REPO_ROOT
+        / "src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py"
+    ).read_text(encoding="utf-8")
+    default = re.search(r"^_DEFAULT_CHECK_TIMEOUT_S = (\d+)$", source, re.MULTILINE)
+    assert default is not None
+    budget = _contract("OMN-25198")["context"]["run_receipts"]["check_budget"]
+    assert budget["local_done_gate_default_seconds"] == int(default.group(1))
+    assert (
+        budget["nested_selection_seconds"] > budget["local_done_gate_default_seconds"]
+    )
+    assert "DOD_VERIFY_CHECK_TIMEOUT_S" in budget["note"]
+    assert "DOD_VERIFY_CHECK_TIMEOUT_S" in source
 
 
 def test_the_reacceptance_decision_is_recorded_with_its_source() -> None:
