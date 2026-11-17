@@ -28,7 +28,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_hook_delegate import (
-    TASK_CLASS_BY_INTENT,
     HandlerHookDelegate,
     read_switches,
 )
@@ -115,17 +114,8 @@ HISTORY_KEEP = 8
 #: Transcript lines read from the end for the recent conversation.
 TRANSCRIPT_TAIL = 400
 
-#: The prompt's own definition of done, replacing the task class's rubric. Graded
-#: by research's rubric a short decline was vetoed and retried down the ladder
-#: (run a165bc2e: 4 attempts, 48 s) and a one-sentence answer took 63 s and about
-#: 6000 output tokens (run 18cdbca6); with this bar both answered on the first
-#: attempt in 22 s and 17 s (runs 6ec07c1f, 251f59de). final_artifact_only is the
-#: criterion that can accept; the other two can only reject.
-PROMPT_CRITERIA = ("final_artifact_only", "concise", "response_non_empty")
-PROMPT_CRITERIA_MODE = "replace-task-class"
-PROMPT_MAX_TOKENS = 2048
-#: The user waits for a prompt, so it gets less time than a subagent task (240 s).
-PROMPT_TIMEOUT_S = 90.0
+#: Match the ordinary delegate process budget; explicit shorter hook limits win.
+PROMPT_TIMEOUT_S = 240.0
 
 RULES = f"""You answer a user's message on behalf of a coding assistant (Claude Code).
 - If answering needs the user's machine or accounts (reading or editing their files, running commands, checking Slack, Linear, GitHub, email, calendars or live system state), or needs earlier conversation you cannot see, or you are not confident the answer is correct, reply with exactly one line: {DECLINE_TOKEN}: followed by a reason of at most five words, such as "needs the user's files". That line is your whole reply: no explanation before or after it, no apology, never "I cannot".
@@ -339,20 +329,12 @@ class HandlerPromptDelegate:
         limit = PROMPT_TIMEOUT_S
         if request.timeout_seconds is not None:
             limit = min(limit, request.timeout_seconds)
-        # An intent with no public task class (debug, unknown, ...) is asked as research.
-        intent = (
-            request.intent if request.intent in TASK_CLASS_BY_INTENT else "research"
-        )
         return ModelHookDelegateRequest(
             task=_TASK.format(context=context or "(none)", prompt=request.prompt),
-            intent=intent,
             timeout_seconds=limit,
             session_id=request.session_id,
             decline_token=DECLINE_TOKEN,
             system_prompt=RULES,
-            criteria=PROMPT_CRITERIA,
-            criteria_mode=PROMPT_CRITERIA_MODE,
-            max_tokens=PROMPT_MAX_TOKENS,
         ), fate
 
     @classmethod
