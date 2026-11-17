@@ -1,0 +1,137 @@
+schema_version: 1.0.0
+ticket_id: OMN-25319
+title: 'Review findings 1 to 8 on omnimarket PR 6353 at head 37fe44a7a8ef are fixed or argued: the contract selectors select the exit-0 tests, the falsifier paths exist, the shim shapes are real fixtures
+  and the Lab comment is at the new head'
+summary: The AC2 selectors of the alarm contracts select the golden-chain tests that assert a tick exit of 0; the falsifier commands name real test paths and a test reads them; the shims of the contract
+  checks equal the committed real tool output; the comment checker reads exit lines, the lab command word, truncation, the author, the review round and the tree head; an alarm stamp is never after its tick.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25319-ac1
+  statement: The `-k` selectors in the contracts for OMN-25071 and OMN-25206 select at least one test that asserts a tick exit of 0.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the `-k` selectors in the contracts for OMN-25071 and OMN-25206 select at least one test that asserts a tick exit of 0 -- falsifier: `uv run --frozen pytest tests/nodes -k "omn24874
+      and tick_exit" --collect-only -q` collects no test'
+- id: req-omn25319-ac2
+  statement: Every falsifier command in the OMN-25281 contract names a test path that exists, and a test reads the falsifier commands and fails on a missing path.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: every falsifier command in the OMN-25281 contract names a test path that exists, and a test reads the falsifier commands and fails on a missing path -- falsifier: `uv run --frozen pytest
+      tests/nodes -k "contract_checks_omn25071" -q` passes with a falsifier naming tests/test_contract_checks_omn25071.py'
+- id: req-omn25319-ac3
+  statement: The AC5 assertions compare real tool output committed as fixtures (pr_state_local.py and watcher pr-checks for 6335, the cost files on dev 13a7e30415fa, the Done gate output), the shim refuses
+    an unknown `--source`, and the origin/dev tests run at the merge base.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the AC5 assertions compare real tool output committed as fixtures (pr_state_local.py and watcher pr-checks for 6335, the cost files on dev 13a7e30415fa, the Done gate output), the shim
+      refuses an unknown `--source`, and the origin/dev tests run at the merge base -- falsifier: `uv run --frozen pytest tests/nodes -k "contract_checks_omn25071" -q` passes with a hand-copied shape the
+      real tool never prints'
+- id: req-omn25319-ac4
+  statement: The Lab comment for the new head names findings 1 to 8, the lab command and exit 0, and the skipped tests of part 2 are named.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the Lab comment for the new head names findings 1 to 8, the lab command and exit 0, and the skipped tests of part 2 are named -- falsifier: `uv run --frozen pytest tests/nodes -k "contract_checks_omn25071
+      and lab" -q` passes with a Lab comment that names no exit'
+- id: req-omn25319-ac5
+  statement: Non-blocking findings 5 to 8 are fixed with a test red then green each or argued with evidence in a PR comment.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: non-blocking findings 5 to 8 are fixed with a test red then green each or argued with evidence in a PR comment -- falsifier: `uv run --frozen pytest tests -k "omn24874 and alarm" -q`
+      passes with the stale row stamped after now'
+evidence_requirements:
+- kind: tests
+  description: The alarm node golden-chain tests and the contract check tests.
+  command: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25319-ac1
+  description: The AC2 selectors of the OMN-25071 and OMN-25206 contracts select a golden-chain test that asserts the tick exit code is 0, and the ticket's own selector collects one.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "ac2_selector or ac2_falsifier_text or ticket_falsifier_for_the_tick_exit" -q
+      --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -k "omn24874 and tick_exit" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25319-ac2
+  description: Every falsifier and check command of the three alarm contracts names a test path that exists in the tree (the cost pull request's own files are named by the committed fixture), and the old
+    OMN-25281 path is gone.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "every_falsifier_command or falsifier_path_check" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25319-ac3
+  description: The shims print exactly the keys of the committed real output of pr_state_local.py (open and merged) and onex scm pr-checks for 6335, the shim refuses an unknown --source, the cost files
+    are absent on dev tip and the merge base per the committed reading, the Done gate fixture names every item, and the dev tests are read in the working tree too.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "shim_reading or shim_state or merged_pull_request or refuses_a_source or c1_checks
+      or done_gate_fixture or cost_files or dev_tests_are_also" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25319-ac4
+  description: The Lab check fails a comment that names no exit 0, no lab command or an old head; the Lab comment of the new head is read as a local Done gate item (findings 1 to 8 of this review, the lab
+    command and exit 0).
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "lab" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25319-ac4-comment
+  description: 'Local Done gate: the one comment of this pull request that opens with the Lab marker for the head the PR watcher records names each of findings 1 to 8 of the review of head 37fe44a7a8ef,
+    and the lab command and exit 0.'
+  source: manual
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: sh -c 'H=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6353 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]])"
+      facts head_sha) && test "${#H}" -eq 40 && test "$H" = "$(git rev-parse HEAD)" && onex scm pr-view --source bus OmniNode-ai/omnimarket#6353 | python3 tests/nodes/node_delegation_scenario_alarm_effect/pr_comment_check.py
+      --head "$H" --finding 1 --finding 2 --finding 3 --finding 4 --finding 5 --finding 6 --finding 7 --finding 8 --round 1139 --lab'
+    cwd: .
+- id: dod-omn25319-ac5
+  description: The stamp of an alarm row is never after the tick that writes it (round-up, future ran_at, literal stale), the contract's discovery entry is skipped by the effects runtime's wiring in both
+    modes, the rendered unit environment leaves the state dir and the lane login to the real append, and the comment check reads exit lines, the lab command word, truncation, the author, the review round
+    and the tree head.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -k "omn24874 and alarm" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -k "effects_runtime or would_be_unresolvable or leaves_the_state_dir"
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "exit_of_a_line or collab_runs or truncated_comment or reads_the_author or finding_eight
+      or watcher_head" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25319-integration-proof
+  description: The alarm node tests and the installer registry unit tests run on a lab host at the pushed head through the lab work runner; hosted CI cannot reach the lab, so only the local Done gate runs
+    this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path "${OMNI_HOME:?}" --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25319
+      --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect tests/nodes/node_host_installer_registry_units -q --no-cov -n 0 -p no:randomly
+    cwd: .

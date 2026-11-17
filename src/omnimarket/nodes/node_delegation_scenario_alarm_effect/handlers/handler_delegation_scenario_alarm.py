@@ -174,10 +174,13 @@ def build_alarm_row(
     ran_at: str,
     bucket: int | None,
     last_conclusion: str | None = None,
+    now: datetime | None = None,
 ) -> str:
     """Stamp a failed run at its own time, or a recurring outage at its bucket start.
 
-    ``last_conclusion`` is the conclusion of the record a stale reading replaced.
+    ``last_conclusion`` is the conclusion of the record a stale reading replaced. ``now`` is the moment of the tick that
+    writes the row: the stamp is never after it (a fractional run time rounded up, a run time in the future and a fresh
+    record that concludes the literal ``stale`` would otherwise stamp the row ahead of the tick).
     """
     if bucket is None:
         moment = _read_run_time(ran_at)
@@ -195,6 +198,8 @@ def build_alarm_row(
     # reader whose window starts at ran_at cannot exclude this run's alarm.
     if moment.microsecond:
         moment = moment.replace(microsecond=0) + timedelta(seconds=1)
+    if now is not None:
+        moment = min(moment, now.astimezone(UTC).replace(microsecond=0))
     stamp = moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     if conclusion == "no-record":
         reason = "no readable last-run record"
@@ -280,6 +285,7 @@ class HandlerDelegationScenarioAlarm:
                 ran_at=ran_at,
                 bucket=row_bucket,
                 last_conclusion=last_conclusion,
+                now=now,
             )
             outcome = self._appender.append(
                 row,

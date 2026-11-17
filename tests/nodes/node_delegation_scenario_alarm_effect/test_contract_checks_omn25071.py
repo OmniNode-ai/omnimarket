@@ -17,6 +17,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import stat
 import subprocess
 import sys
@@ -48,43 +49,24 @@ _CONTRACTS = {
     name: yaml.safe_load(
         (_REPO / "contracts" / f"{name}.yaml").read_text(encoding="utf-8")
     )
-    for name in ("OMN-25071", "OMN-25206", "OMN-25281")
+    for name in ("OMN-25071", "OMN-25206", "OMN-25281", "OMN-25319")
 }
 _HEAD = "0123456789abcdef0123456789abcdef01234567"
 _OLD = "89abcdef0123456789abcdef0123456789abcdef"
 _LAB = "onex lab-work run --bus-lane dev --lane x --kind test -- uv run pytest"
-# The top-level keys and the result keys the real tools printed on 2026-11-17 for an open pull request.
-_REAL_STATE_KEYS = frozenset(
-    {
-        "baseline",
-        "blocked",
-        "bus_closed_emitted",
-        "caller_fields",
-        "ci",
-        "cls",
-        "facts",
-        "first_seen",
-        "handoff",
-        "queue",
-        "queued",
-        "reason",
-        "review",
-    }
-)
-_REAL_WATCHER_CHECK_KEYS = frozenset(
-    {
-        "repo",
-        "number",
-        "head_sha",
-        "class",
-        "read_at",
-        "red",
-        "pending",
-        "cancelled",
-        "red_facts",
-        "runs",
-    }
-)
+_FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+def _fixture(name: str) -> Any:
+    """Output the real tools printed, committed as it was read (see the fixtures directory)."""
+    return json.loads((_FIXTURES / name).read_text(encoding="utf-8"))
+
+
+_SOURCES = (
+    "auto",
+    "local",
+    "bus",
+)  # the choices `onex scm pr-view|pr-checks --source` declares
 
 
 def _all_items() -> dict[str, dict[str, Any]]:
@@ -108,11 +90,23 @@ class _World:
         self._script(
             bin_dir / "onex",
             '#!/bin/sh\ncase "$*" in *--comments*) echo "Error: No such option: --comments" >&2; exit 2 ;; esac\n'
+            'prev=""\nfor arg in "$@"; do\n'
+            '  if [ "$prev" = "--source" ]; then\n'
+            '    case "$arg" in auto|local|bus) ;; *) echo "Error: Invalid value for \'--source\'" >&2; exit 2 ;; esac\n'
+            '  fi\n  prev="$arg"\ndone\n'
             'case "$2" in\n'
             f'  pr-view) case "$*" in *"--source bus"*) cat "{root}/comments.json" ;; *) cat "{root}/view.json" ;; esac ;;\n'
             f'  pr-checks) case "$*" in *"--source bus"*) cat "{root}/checks-bus.json" ;; *) cat "{root}/checks.json" ;; esac ;;\n'
             "  *) exit 2 ;;\nesac\n",
         )
+        real_git = shutil.which("git")
+        assert real_git is not None
+        self._script(
+            bin_dir / "git",
+            f'#!/bin/sh\nif [ "$1" = rev-parse ] && [ "$2" = HEAD ]; then cat "{root}/git-head"; exit 0; fi\n'
+            f'exec "{real_git}" "$@"\n',
+        )
+        self.git_head(_HEAD)
         self._script(
             bin_dir / "uv",
             f'#!/bin/sh\nshift 3\nexec "{sys.executable}" -m pytest "$@"\n',
@@ -123,7 +117,15 @@ class _World:
         self.state()
         self.comments()
         self.checks()
-        (root / "view.json").write_text(self._answer("pr-view", {}), encoding="utf-8")
+        # What `onex scm pr-view --source bus` printed when the bus was not reached: the watcher's answer, no comments.
+        (root / "view.json").write_text(
+            json.dumps(_fixture("pr_view_bus_read_without_bus_6353.json")),
+            encoding="utf-8",
+        )
+
+    def git_head(self, sha: str) -> None:
+        """What ``git rev-parse HEAD`` prints in the tree the Done gate runs in."""
+        (self.root / "git-head").write_text(sha + "\n", encoding="utf-8")
 
     @staticmethod
     def _script(path: Path, text: str) -> None:
@@ -154,10 +156,16 @@ class _World:
             result=result,
         ).model_dump_json()
 
-    def state(self, *, head: str = _HEAD, shape: str = "real") -> None:
-        """The PR watcher reader's ``--json`` answer: ``facts.head_sha`` among the real top-level keys."""
-        document: dict[str, object] = dict.fromkeys(_REAL_STATE_KEYS)
-        document["facts"] = {"head_sha": head, "number": 6353, "state": "OPEN"}
+    def state(
+        self,
+        *,
+        head: str = _HEAD,
+        shape: str = "real",
+        fixture: str = "pr_state_local_open_6335.json",
+    ) -> None:
+        """The PR watcher reader's ``--json`` answer: the committed real output with ``facts.head_sha`` set."""
+        document = _fixture(fixture)
+        document["facts"]["head_sha"] = head
         if shape == "flat":
             document = {"head_sha": head}
         self.state_script.write_text(
@@ -219,22 +227,24 @@ class _World:
         runs: int = 3,
         shape: str = "real",
     ) -> None:
-        reading: dict[str, object] = {
-            "repo": "OmniNode-ai/omnimarket",
-            "number": 6335,
-            "head_sha": head,
-            "class": "green",
-            "read_at": "2026-11-17T07:00:00Z",
-            "red": list(red),
-            "pending": list(pending),
-            "cancelled": list(cancelled),
-            "red_facts": [],
-            "runs": [["CI Summary", "completed", "success", "t"]] * runs,
-        }
-        assert set(reading) == _REAL_WATCHER_CHECK_KEYS
-        document = self._answer("pr-checks", reading)
+        answer = _fixture("pr_checks_local_6335.json")
+        reading = answer["result"]
+        row = next(
+            r for r in reading["runs"] if r[1] == "completed" and r[2] == "success"
+        )
+        reading.update(
+            head_sha=head,
+            number=6335,
+            red=list(red),
+            pending=list(pending),
+            cancelled=list(cancelled),
+            red_facts=[],
+            runs=[row] * runs,
+        )
+        reading["class"] = "green" if not (red or pending or cancelled) else "red"
+        document = json.dumps(answer)
         if shape == "flat":
-            document = json.dumps({**reading})
+            document = json.dumps(reading)
         (self.root / "checks.json").write_text(document, encoding="utf-8")
         bus_result = ModelCiChecksResult(
             repo="OmniNode-ai/omnimarket",
@@ -298,8 +308,14 @@ _FINDING_CHECKS = [
 ]
 
 
-def _naming(numbers: Sequence[int]) -> str:
-    return "\n".join(f"finding {n}: argued with evidence" for n in numbers)
+def _round(command: str) -> str | None:
+    found = re.search(r"--round (\d+)", command)
+    return found.group(1) if found else None
+
+
+def _naming(numbers: Sequence[int], rnd: str | None = None) -> str:
+    tag = f"[round {rnd}] " if rnd else ""
+    return "\n".join(f"{tag}finding {n}: argued with evidence" for n in numbers)
 
 
 def _numbers(command: str) -> list[int]:
@@ -385,26 +401,27 @@ def test_each_finding_number_is_read_inside_the_fixer_comment_for_the_head(
 ) -> None:
     command = _one(item, marker)
     numbers = _numbers(command)
+    rnd = _round(command)
     assert len(numbers) >= 4
-    review = f"VERDICT CHANGES NEEDED head={_HEAD}\n{_naming(numbers)}\n"
+    review = f"VERDICT CHANGES NEEDED head={_HEAD}\n{_naming(numbers, rnd)}\n"
     # AC1: a review that quotes every number, and no fixer comment for the head, passes nothing.
     world.comments(review)
     assert world.run(command) != 0
-    world.comments(review, _lab(_OLD) + _naming(numbers))
+    world.comments(review, _lab(_OLD) + _naming(numbers, rnd))
     assert world.run(command) != 0
     # A fixer comment that names all but one number fails, even though the review names every number.
     for skipped in numbers:
         world.comments(
             review,
             f"Lab: head={_HEAD}\n"
-            + _naming([n for n in numbers if n != skipped])
+            + _naming([n for n in numbers if n != skipped], rnd)
             + "\n",
         )
         assert world.run(command) != 0
     # A number that is a prefix of another does not read as that number.
-    world.comments(f"Lab: head={_HEAD}\n" + _naming([n * 10 for n in numbers]))
+    world.comments(f"Lab: head={_HEAD}\n" + _naming([n * 10 for n in numbers], rnd))
     assert world.run(command) != 0
-    world.comments(review, f"Lab: head={_HEAD}\n{_naming(numbers)}\n")
+    world.comments(review, f"Lab: head={_HEAD}\n{_naming(numbers, rnd)}\n")
     assert world.run(command) == 0
 
 
@@ -415,7 +432,7 @@ def test_the_numbers_of_the_old_head_comment_are_not_read_for_the_new_head(
 ) -> None:
     command = _one(item, marker)
     numbers = _numbers(command)
-    world.comments(f"Lab: head={_OLD}\n{_naming(numbers)}\n")
+    world.comments(f"Lab: head={_OLD}\n{_naming(numbers, _round(command))}\n")
     assert world.run(command) != 0
 
 
@@ -451,7 +468,7 @@ def test_a_shape_the_real_tools_never_print_fails_the_comment_checks(
 ) -> None:
     command = _one(item, marker)
     numbers = _numbers(command)
-    good = _lab(_HEAD) + _naming(numbers)
+    good = _lab(_HEAD) + _naming(numbers, _round(command))
     world.comments(good)
     assert world.run(command) == 0
     # Plain text where the tool prints JSON, and the watcher's answer (no comments key).
@@ -489,18 +506,6 @@ def test_ac6_pr_checks_check_reads_the_required_check_runs_at_the_head(
     # The flat shape and the bus answer are shapes the real tool prints for another source or never.
     world.checks(shape="flat")
     assert world.run(command) != 0
-
-
-@pytest.mark.unit
-def test_the_shims_print_the_keys_the_real_tools_printed() -> None:
-    # Read on 2026-11-17 from the PR watcher reader (--json) and `onex scm pr-checks` for an open pull request.
-    assert "facts" in _REAL_STATE_KEYS
-    assert {"head_sha", "red", "pending", "cancelled", "runs"} <= (
-        _REAL_WATCHER_CHECK_KEYS
-    )
-    comment_fields = set(ModelPrComment.model_fields)
-    assert {"body", "created_at"} <= comment_fields
-    assert "comments" in ModelPrTextResult.model_fields
 
 
 def _git(*args: str) -> None:
@@ -646,3 +651,398 @@ def test_the_ticket_falsifier_selectors_select_a_test_in_the_alarm_node_tests() 
     assert _selected([node_tests], "omn24874 and golden_chain") > 0
     # The selector must be able to select nothing: a made-up token selects no test (the negative control).
     assert _selected([node_tests], "omn24874 and no_such_token_xyz") == 0
+
+
+# --- Review of head 37fe44a7a8ef (OMN-25319): findings 1 to 5 ------------------------------------------------------
+
+_ALARM_TESTS = "tests/nodes/node_delegation_scenario_alarm_effect"
+_GOLDEN_CHAIN = Path(__file__).resolve().parent / (
+    "test_golden_chain_delegation_scenario_alarm.py"
+)
+
+
+_FALSIFIER = re.compile(r"falsifier: `(?P<command>[^`]+)`")
+
+
+def _falsifier_commands(contract: dict[str, Any]) -> list[str]:
+    """The command inside each ``falsifier: `...``` of the contract's acceptance statements."""
+    return [
+        match.group("command")
+        for requirement in contract["requirements"]
+        for criterion in requirement["acceptance"]
+        for match in _FALSIFIER.finditer(str(criterion["statement"]))
+    ]
+
+
+def _selected_ids(paths: Sequence[str], expr: str | None) -> list[str]:
+    """The test ids ``-k expr`` selects under ``paths`` (the keywords of ``_selected``)."""
+    matcher = Expression.compile(expr) if expr is not None else None
+    ids = []
+    for path in paths:
+        for node_id in _node_ids(path):
+            file_part, _, name = node_id.partition("::")
+            keywords = [*file_part.split("/"), name]
+            if matcher is None or matcher.evaluate(_keyword_matcher(keywords)):
+                ids.append(node_id)
+    return ids
+
+
+def _asserts_a_zero_tick_exit(function_name: str) -> bool:
+    """True when the golden-chain test function holds ``assert main(...) == 0`` (the tick's exit code is read)."""
+    import ast
+
+    tree = ast.parse(_GOLDEN_CHAIN.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == function_name:
+            for inner in ast.walk(node):
+                if (
+                    isinstance(inner, ast.Assert)
+                    and isinstance(inner.test, ast.Compare)
+                    and isinstance(inner.test.left, ast.Call)
+                    and getattr(inner.test.left.func, "id", "") == "main"
+                    and isinstance(inner.test.ops[0], ast.Eq)
+                    and isinstance(inner.test.comparators[0], ast.Constant)
+                    and inner.test.comparators[0].value == 0
+                ):
+                    return True
+    return False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("item", ["dod-omn25071-ac2", "dod-omn25206-ac2"])
+def test_the_ac2_selector_selects_a_test_that_asserts_a_tick_exit_of_zero(
+    item: str,
+) -> None:
+    # Review finding 1: `-k rendered` selected two tests and neither asserted a tick exit of 0.
+    (check,) = _ITEMS[item]["checks"]
+    ((paths, expr),) = _selectors(str(check["check_value"]))
+    names = [node.partition("::")[2] for node in _selected_ids(paths, expr)]
+    zero = [n for n in names if _asserts_a_zero_tick_exit(n.partition("[")[0])]
+    assert zero, (expr, names)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("contract", ["OMN-25071", "OMN-25206"])
+def test_the_ac2_falsifier_text_selects_a_test_that_asserts_a_tick_exit_of_zero(
+    contract: str,
+) -> None:
+    (command,) = [
+        c
+        for c in _falsifier_commands(_CONTRACTS[contract])
+        if "golden_chain" in c
+        and "-k" in c
+        and "boundary" not in c
+        and "bucketed_stale" not in c
+    ]
+    ((paths, expr),) = _selectors(command)
+    names = [node.partition("::")[2] for node in _selected_ids(paths, expr)]
+    assert any(_asserts_a_zero_tick_exit(n.partition("[")[0]) for n in names), names
+
+
+@pytest.mark.unit
+def test_the_ticket_falsifier_for_the_tick_exit_collects_a_test() -> None:
+    # OMN-25319 AC1: `-k "omn24874 and tick_exit"` (the alarm node tests are the only ones under tests/nodes it can select) collects at least one test.
+    assert _selected([_ALARM_TESTS], "omn24874 and tick_exit") > 0
+    assert _selected([_ALARM_TESTS], "omn24874 and no_such_token_xyz") == 0
+
+
+@pytest.mark.unit
+def test_every_falsifier_command_in_the_contracts_names_a_test_path_that_exists() -> (
+    None
+):
+    # Review finding 2: the OMN-25281 falsifiers named tests/test_contract_checks_omn25071.py, which is not in the tree.
+    cost_files = {
+        path
+        for path, present in _fixture("cost_files_on_dev.json")["refs"][
+            "pr_head_37fe44a7a8ef"
+        ]["files"].items()
+        if not present
+    }
+    seen = 0
+    for name, contract in _CONTRACTS.items():
+        commands = _falsifier_commands(contract) + [
+            str(check["check_value"])
+            for item in contract["dod_evidence"]
+            for check in item["checks"]
+        ]
+        for command in commands:
+            for paths, _ in _selectors(command):
+                seen += 1
+                for path in paths:
+                    # The cost pull request's own files are read from dev once it merges (their absence is the
+                    # committed reading in fixtures/cost_files_on_dev.json); every other path exists here.
+                    assert path in cost_files or (_REPO / path).exists(), (
+                        name,
+                        path,
+                    )
+    assert seen > 10
+
+
+@pytest.mark.unit
+def test_a_falsifier_path_check_fails_on_a_missing_test_file() -> None:
+    # The negative control: the old OMN-25281 falsifier path is not a file in the tree.
+    assert not (_REPO / "tests" / "test_contract_checks_omn25071.py").exists()
+    assert (
+        _REPO
+        / "tests"
+        / "nodes"
+        / "node_delegation_scenario_alarm_effect"
+        / "test_contract_checks_omn25071.py"
+    ).exists()
+    assert "tests/test_contract_checks_omn25071.py" not in "".join(
+        _falsifier_commands(_CONTRACTS["OMN-25281"])
+    )
+
+
+def _real_checks_result() -> dict[str, Any]:
+    return dict(_fixture("pr_checks_local_6335.json")["result"])
+
+
+@pytest.mark.unit
+def test_the_shim_reading_has_exactly_the_keys_of_the_real_pr_checks_output(
+    world: _World,
+) -> None:
+    # Review finding 3: the keys were hand-copied. The committed output of `onex scm pr-checks --source local` for
+    # omnimarket#6335 is the reference; the shim's reading is compared to it key for key.
+    real = _fixture("pr_checks_local_6335.json")
+    assert real["source"] == "watcher"
+    shim = json.loads((world.root / "checks.json").read_text(encoding="utf-8"))
+    assert set(shim) == set(real)
+    assert set(shim["result"]) == set(real["result"])
+    assert set(shim["result"]) == set(_real_checks_result())
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "fixture", ["pr_state_local_open_6335.json", "pr_state_local_merged_6351.json"]
+)
+def test_the_shim_state_has_the_keys_of_the_real_state_reader_for_open_and_merged(
+    world: _World, fixture: str
+) -> None:
+    real = _fixture(fixture)
+    script = world.state_script.read_text(encoding="utf-8")
+    shim = json.loads(
+        subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    )
+    assert set(shim) == set(real)
+    assert set(shim["facts"]) == set(real["facts"])
+    assert len(real["facts"]["head_sha"]) == 40
+
+
+@pytest.mark.unit
+def test_a_merged_pull_request_still_prints_facts_head_sha() -> None:
+    merged = _fixture("pr_state_local_merged_6351.json")
+    assert merged["facts"]["state"] == "MERGED"
+    assert merged["facts"]["merged_at"]
+    assert FULL_SHA.match(merged["facts"]["head_sha"])
+
+
+FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("verb", ["pr-view", "pr-checks"])
+@pytest.mark.parametrize("source", ["watcher", "nonsense", ""])
+def test_the_shim_refuses_a_source_the_tool_does_not_accept(
+    world: _World, verb: str, source: str
+) -> None:
+    # `onex scm <verb> --source` takes auto, local or bus (`--help` of both verbs); the answer's own `source` is
+    # `watcher` or `bus`, which is not an input value.
+    assert (
+        world.run(f"onex scm {verb} --source '{source}' OmniNode-ai/omnimarket#1") == 2
+    )
+    for accepted in ("auto", "local", "bus"):
+        assert (
+            world.run(f"onex scm {verb} --source {accepted} OmniNode-ai/omnimarket#1")
+            == 0
+        )
+
+
+@pytest.mark.unit
+def test_the_c1_checks_pass_a_source_the_tool_accepts() -> None:
+    for item in ("dod-omn25071-ac5", "dod-omn25071-ac6"):
+        for check in _ITEMS[item]["checks"]:
+            for source in re.findall(r"--source (\S+)", str(check["check_value"])):
+                assert source in {"auto", "local", "bus"}, source
+
+
+@pytest.mark.unit
+def test_the_done_gate_fixture_reads_every_evidence_item_of_the_alarm_contract() -> (
+    None
+):
+    gate = _fixture("done_gate_dry_run_omn25071.json")
+    assert gate["ticket_id"] == "OMN-25071"
+    assert gate["contract_repo_path"] == "contracts/OMN-25071.yaml"
+    assert [c["evidence_id"] for c in gate["checks"]] == [
+        item["id"] for item in _CONTRACTS["OMN-25071"]["dod_evidence"]
+    ]
+    assert {c["status"] for c in gate["checks"]} == {"skipped"}
+
+
+@pytest.mark.unit
+def test_the_cost_files_the_contracts_read_are_not_on_dev_or_the_merge_base(
+    tmp_path: Path,
+) -> None:
+    # Review finding 3: contracts/OMN-25071.yaml AC3 and AC4 test origin/dev and run pytest in the working tree.
+    refs = _fixture("cost_files_on_dev.json")["refs"]
+    for name in ("dev_tip_13a7e30415fa", "merge_base_3102bd1c"):
+        assert not any(refs[name]["files"].values()), name
+    ac3_exists = _commands("dod-omn25071-ac3", "cat-file")[0]
+    ac4_exists = _commands("dod-omn25071-ac4", "cat-file")[0]
+    world = _World(tmp_path / "w")
+    bare = tmp_path / "bare"
+    _repo(bare, {"README.md": "x"})
+    assert world.run(ac3_exists, cwd=bare) != 0
+    assert world.run(ac4_exists, cwd=bare) != 0
+
+
+@pytest.mark.unit
+def test_the_dev_tests_are_also_read_in_the_working_tree_before_pytest_runs_them(
+    tmp_path: Path,
+) -> None:
+    # The checks read origin/dev for the file and then run pytest on the working tree: a branch cut before the cost
+    # pull request merged has the file on dev and not in its tree, and the check must fail there, not pass.
+    files = {
+        "tests/test_omn24874_contract_checks.py": "def test_ac3_reads():\n    pass\n",
+        "contracts/OMN-24874.yaml": "ticket_id: OMN-24874\n",
+        "tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py": "",
+    }
+    behind = tmp_path / "behind"
+    _repo(behind, files)
+    ident = ("-c", "user.name=t", "-c", "user.email=t@example.com")
+    for name in files:
+        _git("-C", str(behind), *ident, "rm", "-q", name)
+    _git("-C", str(behind), *ident, "commit", "-q", "-m", "tree without the files")
+    world = _World(tmp_path / "w")
+    for item in ("dod-omn25071-ac3", "dod-omn25071-ac4"):
+        exists = _commands(item, "cat-file")[0]
+        assert world.run(exists, cwd=behind) != 0, item
+
+
+_REVIEW_FINDING_5 = [
+    ("a_line_with_exit_one_and_expected_exit_zero", "exit 1, expected exit 0"),
+    ("not_exit_zero", "result: exit 1 (not exit 0)"),
+]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("name", "text"), _REVIEW_FINDING_5, ids=[n for n, _ in _REVIEW_FINDING_5]
+)
+@pytest.mark.parametrize(("item", "marker"), _LAB_CHECKS)
+def test_lab_comment_check_reads_the_exit_of_a_line_not_an_exit_zero_inside_a_failure(
+    world: _World, item: str, marker: str, name: str, text: str
+) -> None:
+    del name
+    world.comments(f"Lab: head={_HEAD}\nhost h053, command: {_LAB}\n{text}\n")
+    assert world.run(_one(item, marker)) != 0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(("item", "marker"), _LAB_CHECKS)
+def test_lab_comment_check_does_not_read_collab_runs_as_a_lab_command(
+    world: _World, item: str, marker: str
+) -> None:
+    world.comments(f"Lab: head={_HEAD}\nthe collab runs were slow\nresult: exit 0\n")
+    assert world.run(_one(item, marker)) != 0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(("item", "marker"), _LAB_CHECKS)
+def test_lab_comment_check_reads_a_red_run_on_another_line_beside_the_exit_zero_line(
+    world: _World, item: str, marker: str
+) -> None:
+    world.comments(
+        f"Lab: head={_HEAD}\nred at the old head: exit 1\n"
+        f"green: command: {_LAB}\nresult: exit 0\n"
+    )
+    assert world.run(_one(item, marker)) == 0
+
+
+@pytest.mark.unit
+def test_pr_comment_check_refuses_a_truncated_comment_or_comment_list(
+    world: _World,
+) -> None:
+    command = _one("dod-omn25071-ac6", "--lab")
+    world.comments(_lab(_HEAD))
+    assert world.run(command) == 0
+    document = json.loads((world.root / "comments.json").read_text(encoding="utf-8"))
+    document["result"]["comments"][0]["body_truncated"] = True
+    world.comments(raw=json.dumps(document))
+    assert world.run(command) != 0
+    document["result"]["comments"][0]["body_truncated"] = False
+    document["result"]["truncated"] = True
+    world.comments(raw=json.dumps(document))
+    assert world.run(command) != 0
+
+
+@pytest.mark.unit
+def test_pr_comment_check_reads_the_author_of_the_comment(world: _World) -> None:
+    command = _one("dod-omn25071-ac6", "--lab")
+    world.comments(_lab(_HEAD))
+    document = json.loads((world.root / "comments.json").read_text(encoding="utf-8"))
+    document["result"]["comments"][0]["author"] = ""
+    world.comments(raw=json.dumps(document))
+    assert world.run(command) != 0
+    document["result"]["comments"][0]["author"] = "lane"
+    world.comments(raw=json.dumps(document))
+    assert world.run(command.replace("--lab'", "--lab --author lane'")) == 0
+    assert world.run(command.replace("--lab'", "--lab --author other'")) != 0
+
+
+@pytest.mark.unit
+def test_one_finding_eight_does_not_satisfy_two_reviews(world: _World) -> None:
+    # Review finding 5: the OMN-25206 checks (review 0525) and the OMN-25281 checks (review 0655) both read a bare
+    # `finding 8`, which names different findings of different reviews.
+    c2 = _one("dod-omn25206-ac4", "--finding")
+    c3 = _one("dod-omn25281-ac6", "--finding")
+    assert "--round 0525" in c2
+    assert "--round 0655" in c3
+    numbers2, numbers3 = _numbers(c2), _numbers(c3)
+    bare = f"Lab: head={_HEAD}\n" + _naming(sorted({*numbers2, *numbers3}))
+    world.comments(bare)
+    assert world.run(c2) != 0
+    assert world.run(c3) != 0
+    both = (
+        f"Lab: head={_HEAD}\n"
+        + "\n".join(f"[round 0525] finding {n}: still fixed" for n in numbers2)
+        + "\n"
+        + "\n".join(f"[round 0655] finding {n}: see below" for n in numbers3)
+        + "\n"
+    )
+    world.comments(both)
+    assert world.run(c2) == 0
+    assert world.run(c3) == 0
+    only_0655 = f"Lab: head={_HEAD}\n" + "\n".join(
+        f"[round 0655] finding {n}: x" for n in sorted({*numbers2, *numbers3})
+    )
+    world.comments(only_0655)
+    assert world.run(c2) != 0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("item", "contains"),
+    [("dod-omn25206-ac4", "--finding"), ("dod-omn25281-ac6", "--finding")],
+)
+def test_the_watcher_head_of_6353_is_compared_with_the_head_of_the_tree(
+    world: _World, item: str, contains: str
+) -> None:
+    command = _one(item, contains)
+    assert "git rev-parse HEAD" in command
+    numbers = _numbers(command)
+    rounds = re.search(r"--round (\d+)", command)
+    assert rounds is not None
+    good = f"Lab: head={_HEAD}\n" + "\n".join(
+        f"[round {rounds.group(1)}] finding {n}: x" for n in numbers
+    )
+    world.comments(good)
+    world.git_head(_HEAD)
+    assert world.run(command) == 0
+    world.git_head(_OLD)
+    assert world.run(command) != 0

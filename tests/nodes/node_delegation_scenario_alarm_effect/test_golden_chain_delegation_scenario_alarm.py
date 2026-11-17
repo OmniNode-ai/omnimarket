@@ -19,10 +19,21 @@ from uuid import UUID
 import pytest
 import yaml
 from click.testing import CliRunner
+from omnibase_core.container import ModelONEXContainer
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
+from omnibase_core.protocols.event_bus.protocol_event_bus_subscriber import (
+    ProtocolEventBusSubscriber,
+)
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.runtime.auto_wiring.discovery import (
     discover_contracts_from_paths,
 )
+from omnibase_infra.runtime.auto_wiring.handler_wiring import wire_from_manifest
+from omnibase_infra.runtime.auto_wiring.models import ModelAutoWiringManifest
+from omnibase_infra.runtime.auto_wiring.report import EnumWiringOutcome
+from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
 from omnimarket.handlers import delegation_readiness_scenario as readiness_scenario
@@ -560,6 +571,64 @@ def test_runtime_discovery_reads_the_top_level_handler_of_the_alarm_contract() -
     assert probe.ok, probe.reason
 
 
+async def _wire(contract_path: Path, monkeypatch: pytest.MonkeyPatch, strict: bool):  # type: ignore[no-untyped-def]
+    """Run infra's real ``wire_from_manifest`` over one contract with an in-memory bus, as the effects runtime does."""
+    if strict:
+        monkeypatch.setenv("ONEX_WIRING_STRICT_MODE", "1")
+    else:
+        monkeypatch.delenv("ONEX_WIRING_STRICT_MODE", raising=False)
+    manifest = ModelAutoWiringManifest(
+        contracts=tuple(discover_contracts_from_paths([contract_path]).contracts)
+    )
+    bus = EventBusInmemory()
+    container = ModelONEXContainer()
+    await container.service_registry.register_instance(ProtocolEventBusPublisher, bus)
+    await container.service_registry.register_instance(ProtocolEventBusSubscriber, bus)
+    try:
+        return await wire_from_manifest(
+            manifest,
+            MessageDispatchEngine(),
+            event_bus=bus,
+            environment="local",
+            container=container,
+        )
+    finally:
+        await bus.close()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("strict", [False, True], ids=["non_strict", "strict"])
+async def test_the_effects_runtime_wires_nothing_from_the_alarm_contract_and_never_builds_the_handler(
+    monkeypatch: pytest.MonkeyPatch, strict: bool
+) -> None:
+    # Review finding 6: the contract's top-level handler is discovered as a routing entry, and the class takes two
+    # required constructor parameters (settings, appender) that no runtime can supply. Infra builds a handler only for
+    # a contract that subscribes to a topic; this one declares no event_bus.subscribe_topics, so the wiring pass reads
+    # it as SKIPPED in both modes, and nothing is constructed (no TypeError at boot, strict or not).
+    report = await _wire(CONTRACT_PATH, monkeypatch, strict)
+    assert [(r.contract_name, r.outcome) for r in report.results] == [
+        ("node_delegation_scenario_alarm_effect", EnumWiringOutcome.SKIPPED)
+    ]
+    assert "subscribe_topics" in str(report.results[0].reason)
+    assert report.quarantined_handlers == ()
+
+
+@pytest.mark.unit
+async def test_the_alarm_handler_would_be_unresolvable_if_the_contract_subscribed_to_a_topic(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The negative control of the test above: with a subscribed topic the same class is built by the wiring pass, and a
+    # constructor it cannot satisfy is a TypeError (re-raised in strict mode), so the skip above is what protects boot.
+    contract = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
+    contract["event_bus"] = {
+        "subscribe_topics": ["onex.cmd.omnimarket.scenario-alarm-control.v1"]
+    }
+    control = tmp_path / "contract.yaml"
+    control.write_text(yaml.safe_dump(contract), encoding="utf-8")
+    with pytest.raises(TypeError):
+        await _wire(control, monkeypatch, strict=True)
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize("conclusion", ["failure", "refused"])
 def test_a_failed_run_crossing_a_bucket_boundary_has_one_row_and_request_id(
@@ -873,7 +942,7 @@ def _rendered_tick(tmp_path: Path, home: Path) -> tuple[list[str], dict[str, str
 
 
 @pytest.mark.unit
-def test_omn24874_golden_chain_accepted_reply_comes_from_the_append_command_under_clirunner(
+def test_omn24874_golden_chain_tick_exit_zero_on_the_accepted_reply_of_the_append_command_under_clirunner(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Review finding 4: the accepted reply is what the real `append` command prints, not a receipt built in the test.
@@ -902,7 +971,7 @@ def test_omn24874_golden_chain_accepted_reply_comes_from_the_append_command_unde
 
 @pytest.mark.unit
 @pytest.mark.parametrize("conclusion", ["failure", "refused"])
-def test_omn24874_golden_chain_duplicate_receipt_returns_zero_from_the_tick(
+def test_omn24874_golden_chain_tick_exit_zero_on_a_duplicate_receipt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, conclusion: str
 ) -> None:
     # Review finding 5: a failed run is resubmitted every 900 s, so the steady state is a duplicate receipt. The
@@ -970,3 +1039,105 @@ def test_omn24874_alarm_stale_row_is_stamped_no_earlier_than_the_run_it_cites(
         assert stamp > bucket_start
     # A reader window that starts at the run's own time finds the row; the stamp is never in the future either.
     assert ran_at <= stamp <= _NOW
+
+
+def _stamp_of_r8_row(appender: _Appender) -> datetime:
+    (row, _) = next(c for c in appender.calls if "scenario=R8" in c[0])
+    return datetime.strptime(row.split(" | ")[0], "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=UTC
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "case",
+    ["round_up_of_a_fractional_run_time", "future_ran_at", "fresh_literal_stale"],
+)
+def test_omn24874_alarm_stamp_is_never_after_the_tick_that_writes_the_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    # Review finding 8: the round-up of a fractional run time, a run time in the future (clock skew) and a fresh record
+    # that concludes the literal `stale` (EnumScenarioConclusion has no such value, so only a hand-written record can)
+    # each stamped a row after the moment of the tick that wrote it.
+    now = _NOW + timedelta(microseconds=900000)
+    settings = load_alarm_settings()
+    if case == "round_up_of_a_fractional_run_time":
+        _record(
+            tmp_path,
+            "r8",
+            "failure",
+            (_NOW + timedelta(microseconds=400000)).isoformat(),
+            monkeypatch,
+        )
+    elif case == "future_ran_at":
+        _record(
+            tmp_path,
+            "r8",
+            "failure",
+            (_NOW + timedelta(seconds=600)).isoformat(),
+            monkeypatch,
+        )
+    else:
+        watch = next(w for w in settings.scenarios if w.scenario == "R8")
+        record = tmp_path / watch.evidence_file
+        record.parent.mkdir(parents=True)
+        record.write_text(
+            json.dumps({"conclusion": "stale", "ran_at": _NOW.isoformat()}),
+            encoding="utf-8",
+        )
+    appender = _Appender()
+    HandlerDelegationScenarioAlarm(settings, appender, clock=lambda: now).handle(
+        ModelScenarioAlarmRequest(home=tmp_path, host="h053")
+    )
+    assert _stamp_of_r8_row(appender) <= now
+
+
+@pytest.mark.unit
+def test_omn24874_alarm_enum_scenario_conclusion_has_no_stale_value() -> None:
+    # The values the writer can record: `stale` is the alarm's own reading and is never a recorded conclusion.
+    assert {c.value for c in EnumScenarioConclusion} == {
+        "success",
+        "failure",
+        "cancelled",
+        "timed_out",
+        "skipped",
+        "startup_failure",
+        "queued",
+        "in_progress",
+    }
+
+
+@pytest.mark.unit
+def test_the_rendered_unit_environment_leaves_the_state_dir_and_the_lane_login_to_the_real_append(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Review finding 7: the chain replaces `bound_lane_principal`, the bus and the caller, and sets ONEX_STATE_DIR itself.
+    # What the unit really gives the append command is read here without those replacements: the rendered environment
+    # holds no ONEX_STATE_DIR, so the real command's state directory is the unit's own HOME (`~/.onex/state`), and its
+    # lane login comes from the lane declaration under ONEX_WORKSPACE_CONFIG_ROOT (`--bus-lane dev`), not from the
+    # environment, so with no bound bus the login read raises instead of resolving.
+    from omnimarket.delegated_test_loop.lane_bus import (
+        LabRunBusError,
+        bound_lane_principal,
+    )
+    from omnimarket.handlers.bus_binding.select import default_state_dir
+
+    unit = load_units()["scenario-alarm-systemd"]
+    rendered = HandlerRegistryUnits().environment(
+        request(tmp_path, unit="scenario-alarm-systemd"), unit
+    )
+    assert "ONEX_STATE_DIR" not in rendered
+    assert not [name for name in rendered if "KAFKA" in name or "SASL" in name]
+    assert rendered["ONEX_WORKSPACE_CONFIG_ROOT"] == str(tmp_path / "ws")
+    assert shlex.split(rendered["ONEX_LEDGER_BUS_APPEND_COMMAND"])[-4:-2] == [
+        "--bus-lane",
+        "dev",
+    ]
+    unit_home = tmp_path / "unit-home"
+    for name, value in rendered.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("ONEX_STATE_DIR", raising=False)
+    monkeypatch.setenv("HOME", str(unit_home))
+    assert default_state_dir() == unit_home / ".onex" / "state"
+    with pytest.raises(LabRunBusError):
+        bound_lane_principal()

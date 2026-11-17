@@ -1,0 +1,29 @@
+{
+ "read": "git cat-file -e <ref>:<path>, rc 0 means present",
+ "refs": {
+  "dev_tip_13a7e30415fa": {
+   "files": {
+    "contracts/OMN-24874.yaml": false,
+    "tests/test_omn24874_contract_checks.py": false,
+    "tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py": false
+   },
+   "sha": "13a7e30415faf3707eb4225d569fd1c31014efa9"
+  },
+  "merge_base_3102bd1c": {
+   "files": {
+    "contracts/OMN-24874.yaml": false,
+    "tests/test_omn24874_contract_checks.py": false,
+    "tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py": false
+   },
+   "sha": "3102bd1c11d4d65dbf5bd266bb410ddb63ddf5c2"
+  },
+  "pr_head_37fe44a7a8ef": {
+   "files": {
+    "contracts/OMN-24874.yaml": false,
+    "tests/test_omn24874_contract_checks.py": false,
+    "tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py": false
+   },
+   "sha": "37fe44a7a8ef2cd854b5a173f2493b088815c9ae"
+  }
+ }
+}

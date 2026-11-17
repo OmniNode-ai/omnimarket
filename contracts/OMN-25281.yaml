@@ -14,13 +14,13 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: every per-number check in the contracts reads the number inside the fixer''s comment for the current head only, and the shim tests cover both contract files -- falsifier: `uv run
-      --frozen pytest tests/test_contract_checks_omn25071.py -q` passes with a review comment that quotes the number-8 pattern and no fixer comment'
+      --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -q` passes with a review comment that quotes the number-8 pattern and no fixer comment'
 - id: req-omn25281-ac2
   statement: The Lab segment is one comment; a failing marker comment followed by a later comment and a corrected second comment are both tested.
   acceptance:
   - id: AC2
     statement: 'AC2: the Lab segment is bounded to one comment, with a test for a failing marker comment followed by a later comment holding the command and exit 0, and a test where a corrected second comment
-      is read -- falsifier: `uv run --frozen pytest tests/test_contract_checks_omn25071.py -q` passes with the segment running to the next marker across comment ends'
+      is read -- falsifier: `uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -q` passes with the segment running to the next marker across comment ends'
 - id: req-omn25281-ac3
   statement: Each dod item runs a file or selector that selects a test in the diff.
   acceptance:
@@ -38,7 +38,7 @@ requirements:
   acceptance:
   - id: AC5
     statement: 'AC5: contract items AC3 to AC6 are provable from the packet (files on dev tip 13a7e30415fa, the state of omnimarket#6335, the Done gate output, and shim JSON shapes equal to the real pr-checks
-      and pr_state_local.py output) -- falsifier: `uv run --frozen pytest tests/test_contract_checks_omn25071.py -q` passes with a shim JSON shape the real tool never prints'
+      and pr_state_local.py output) -- falsifier: `uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -q` passes with a shim JSON shape the real tool never prints'
 - id: req-omn25281-ac6
   statement: Non-blocking findings 7, 8 and 9 are fixed or argued; a Lab comment names the head, the command and exit 0.
   acceptance:
@@ -124,11 +124,11 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: >-
-      sh -c 'H=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6353 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]])" facts head_sha) && test "${#H}" -eq 40 && onex scm pr-view --source bus OmniNode-ai/omnimarket#6353 | python3 tests/nodes/node_delegation_scenario_alarm_effect/pr_comment_check.py --head "$H" --finding 1 --finding 2 --finding 3 --finding 4 --finding 5 --finding 6 --finding 7 --finding 8 --finding 9'
+      sh -c 'H=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6353 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]])" facts head_sha) && test "${#H}" -eq 40 && test "$H" = "$(git rev-parse HEAD)" && onex scm pr-view --source bus OmniNode-ai/omnimarket#6353 | python3 tests/nodes/node_delegation_scenario_alarm_effect/pr_comment_check.py --head "$H" --finding 1 --finding 2 --finding 3 --finding 4 --finding 5 --finding 6 --finding 7 --finding 8 --finding 9 --round 0655'
     cwd: .
   - check_type: command
     check_value: >-
-      sh -c 'H=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6353 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]])" facts head_sha) && test "${#H}" -eq 40 && onex scm pr-view --source bus OmniNode-ai/omnimarket#6353 | python3 tests/nodes/node_delegation_scenario_alarm_effect/pr_comment_check.py --head "$H" --lab'
+      sh -c 'H=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6353 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]])" facts head_sha) && test "${#H}" -eq 40 && test "$H" = "$(git rev-parse HEAD)" && onex scm pr-view --source bus OmniNode-ai/omnimarket#6353 | python3 tests/nodes/node_delegation_scenario_alarm_effect/pr_comment_check.py --head "$H" --lab'
     cwd: .
 - id: dod-omn25281-integration-proof
   description: The alarm node tests and the installer registry unit tests run on a lab host at the pushed head through the lab work runner; hosted CI cannot reach the lab, so only the local Done gate runs
