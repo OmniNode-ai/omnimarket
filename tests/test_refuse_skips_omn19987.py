@@ -24,6 +24,7 @@ decides the outcome.
 
 from __future__ import annotations
 
+import ast
 import os
 import shlex
 import subprocess
@@ -263,7 +264,7 @@ def _run_check(
     tmp_path: Path, check_value: str, *extra: str
 ) -> subprocess.CompletedProcess[str]:
     """Run a contract check as the verifier does (bash, pipefail), with this interpreter."""
-    assert check_value.startswith("uv run pytest ")
+    assert check_value.startswith("set -o pipefail; uv run pytest ")
     (tmp_path / "skip_every_test.py").write_text(_SKIP_EVERY_TEST, encoding="utf-8")
     command = check_value.replace(
         "uv run pytest",
@@ -488,11 +489,26 @@ def test_the_runner_at_the_verifier_tag_has_pipefail_and_runs_a_test_passes_chec
     assert VERIFIER_TAG_STATUS[0].strip() == "if result.returncode != 0:"
 
 
+def _require_the_tag_object(
+    required: bool, lines: list[str] | None
+) -> list[str] | None:
+    """The collector's lines, or None where the clone lacks the tag and it is not required."""
+    if lines is None and required:
+        raise AssertionError(
+            f"the verifier tag {VERIFIER_TAG} is not in this clone, so the recorded "
+            "runner lines were not compared with the verifier"
+        )
+    return lines
+
+
 def test_the_recorded_runner_lines_are_the_lines_of_the_collector_at_the_tag() -> None:
-    # Compared with the tag's own file wherever the clone holds that object (the
-    # local Done gate and the lab clones do; a shallow hosted checkout does not,
-    # and there the pin test above is what holds). Never a skip.
-    lines = _collector_at_tag()
+    # Compared with the tag's own file wherever the clone holds that object. A
+    # shallow hosted checkout does not, and there the pin test above is what
+    # holds; the local Done gate item of contracts/OMN-25198.yaml sets
+    # REQUIRE_VERIFIER_TAG, which turns the absence of the tag into a failure.
+    lines = _require_the_tag_object(
+        os.environ.get("REQUIRE_VERIFIER_TAG") == "1", _collector_at_tag()
+    )
     if lines is None:
         return
     # Each recorded line is a line of the tag's file, in order, and the run call
@@ -502,6 +518,71 @@ def test_the_recorded_runner_lines_are_the_lines_of_the_collector_at_the_tag() -
         assert positions == sorted(positions), recorded
     start = lines.index(VERIFIER_TAG_RUN[0])
     assert tuple(lines[start : start + len(VERIFIER_TAG_RUN)]) == VERIFIER_TAG_RUN
+
+
+def test_the_recorded_runner_comparison_fails_when_the_tag_is_required_and_absent() -> (
+    None
+):
+    with pytest.raises(AssertionError, match="not in this clone"):
+        _require_the_tag_object(True, None)
+    assert _require_the_tag_object(False, None) is None
+    assert _require_the_tag_object(True, ["x"]) == ["x"]
+
+
+def test_the_recorded_runner_comparison_refuses_a_recorded_line_the_tag_lacks() -> None:
+    # The control: the comparison is not one that always passes. A tag file
+    # without the runner's call fails the lookup the real comparison does.
+    lines = (_collector_at_tag() or list(VERIFIER_TAG_RUN)).copy()
+    lines = [line for line in lines if "pipefail" not in line]
+    with pytest.raises(ValueError, match="not in list"):
+        lines.index(VERIFIER_TAG_RUN[1])
+
+
+def test_a_local_done_gate_item_reads_the_verifier_tag_before_the_recorded_runner_tests() -> (
+    None
+):
+    contract = yaml.safe_load(
+        (_ROOT / "contracts" / "OMN-25198.yaml").read_text(encoding="utf-8")
+    )
+    found = [
+        i
+        for i in contract["dod_evidence"]
+        if i["id"] == "dod-omn25198-verifier-tag-read"
+    ]
+    assert len(found) == 1
+    item = found[0]
+    assert item["execution_scope"] == "local_done_gate"
+    assert "binds_ac" not in item
+    (check,) = item["checks"]
+    value = check["check_value"]
+    assert value.startswith(f"git cat-file -e '{VERIFIER_TAG}^{{commit}}' && ")
+    assert "REQUIRE_VERIFIER_TAG=1" in value
+    assert "tests/test_refuse_skips_omn19987.py" in value
+    assert "-k recorded_runner" in value
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    selected = [
+        n.name
+        for n in tree.body
+        if isinstance(n, ast.FunctionDef) and "recorded_runner" in n.name
+    ]
+    assert len(selected) >= 3, selected
+
+
+def test_the_ac2_check_sets_pipefail_itself_so_a_runner_without_it_still_fails_it(
+    tmp_path: Path,
+) -> None:
+    # The binding does not rest on the runner's shell, which a test here can only
+    # read: the check names the option in its own text. Under a plain `bash -c`
+    # a first stage that prints the counted line and exits 3 still fails it, and
+    # the same check with the option removed passes there (the control).
+    value = _ac2_check_value()
+    assert value.startswith("set -o pipefail; ")
+    _, filter_stage = _pytest_stage_and_filter(value)
+    stub = "(echo '2 passed, 1 error in 0.10s'; exit 3)"
+    with_option = f"set -o pipefail; {stub} | {filter_stage}"
+    without = f"{stub} | {filter_stage}"
+    assert _run_command(tmp_path, with_option, shell=_NO_PIPEFAIL_SHELL).returncode == 3
+    assert _run_command(tmp_path, without, shell=_NO_PIPEFAIL_SHELL).returncode == 0
 
 
 def test_the_runner_reader_sees_a_tag_runner_that_drops_pipefail() -> None:

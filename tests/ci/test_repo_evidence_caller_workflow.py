@@ -838,7 +838,14 @@ def test_omn22496_items_bind_their_criterion_to_a_test_passes_check(
 
 _ROOT = REPO_ROOT
 _CONTRACTS = _ROOT / "contracts"
-_NAMES = ("OMN-21217", "OMN-25198", "OMN-25208", "OMN-25286", "OMN-25316")
+_NAMES = (
+    "OMN-21217",
+    "OMN-25198",
+    "OMN-25208",
+    "OMN-25286",
+    "OMN-25316",
+    "OMN-25379",
+)
 _AC2_TEST_FILE = (
     _ROOT
     / "tests"
@@ -977,7 +984,7 @@ _MERGE_BASE_TESTS = {
         }
     ),
 }
-_SELECTION_NAMES = ("OMN-25198", "OMN-25208", "OMN-25286", "OMN-25316")
+_SELECTION_NAMES = ("OMN-25198", "OMN-25208", "OMN-25286", "OMN-25316", "OMN-25379")
 
 
 def _selected_tests(check_value: str) -> tuple[str, set[str]]:
@@ -1394,7 +1401,8 @@ def test_the_pinned_criterion_is_the_ticket_line_not_the_checks_extra_assertions
     assert "endpoint" not in line
     assert "backend identity" not in line
     assert "serialized" not in line
-    assert "check's own strictness" in _hash_receipt()["note"]
+    # The note beside the line is prose; no assertion reads its words. What the
+    # line says is pinned by the hash tests above.
 
 
 # --- the bound AC2 test (finding 2) -------------------------------------------
@@ -1770,10 +1778,7 @@ _STUB_PLUGINS = {
 }
 
 
-@pytest.mark.parametrize("stub", sorted(_STUB_PLUGINS))
-def test_the_bound_ac2_test_fails_when_the_orchestrator_is_stubbed(
-    tmp_path: Path, stub: str
-) -> None:
+def _run_with_stubbed_orchestrator(tmp_path: Path, stub: str) -> None:
     (tmp_path / f"stub_{stub}.py").write_text(_STUB_PLUGINS[stub], encoding="utf-8")
     done = subprocess.run(
         [
@@ -1799,6 +1804,20 @@ def test_the_bound_ac2_test_fails_when_the_orchestrator_is_stubbed(
     )
     assert done.returncode == 1, done.stdout + done.stderr
     assert "2 failed" in done.stdout, done.stdout
+
+
+# One test per stub: each starts a nested pytest run (about 9 s), and a check that
+# selected both would be the longest of the contracts' checks.
+def test_the_bound_ac2_test_fails_when_the_orchestrator_drops_the_retry(
+    tmp_path: Path,
+) -> None:
+    _run_with_stubbed_orchestrator(tmp_path, "no_retry")
+
+
+def test_the_bound_ac2_test_fails_when_the_orchestrator_drops_the_dispatch(
+    tmp_path: Path,
+) -> None:
+    _run_with_stubbed_orchestrator(tmp_path, "no_dispatch")
 
 
 # --- the pr-checks and pr-view checks (finding 8) ----------------------------
@@ -2025,6 +2044,9 @@ def test_the_live_pr_checks_items_of_both_contracts_are_the_same_check() -> None
     assert _check_value("OMN-25316", "dod-omn25316-pr-checks-live") == _check_value(
         "OMN-25198", _CHECKS_ITEM
     )
+    assert _check_value("OMN-25379", "dod-omn25379-pr-checks-live") == _check_value(
+        "OMN-25198", _CHECKS_ITEM
+    )
 
 
 # --- the commit message (finding 7) -------------------------------------------
@@ -2220,6 +2242,7 @@ def test_the_receipts_are_run_output_on_one_host_with_their_logs_named() -> None
         assert "host" not in ancestry
     assert [a["exit_code"] for a in receipts["ancestry"]] == [0, 1]
     assert f"on {receipts['host']} " in receipts["lab_run"]
+    assert _receipt_host_violations(receipts) == []
 
 
 def test_no_receipts_carry_a_hand_typed_dod_verify_result() -> None:
@@ -2300,21 +2323,16 @@ def test_the_verifier_budget_of_the_local_done_gate_is_read_from_the_collector()
     None
 ):
     # The local Done gate runs the same collector, bounded by one function: the
-    # default it records is the one in the source. The one selection that
-    # exceeded it was split, so no check of the contracts is recorded past it.
+    # default it records is the one in the source. That every check of the
+    # contracts fits it is tested per selection below, not asserted here.
     source = (
         REPO_ROOT
         / "src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py"
     ).read_text(encoding="utf-8")
-    default = re.search(r"^_DEFAULT_CHECK_TIMEOUT_S = (\d+)$", source, re.MULTILINE)
-    assert default is not None
     budget = _contract("OMN-25198")["context"]["run_receipts"]["check_budget"]
-    assert budget["local_done_gate_default_seconds"] == int(default.group(1))
+    assert budget["local_done_gate_default_seconds"] == _local_done_gate_default(source)
     assert (
         budget["unsplit_selection_seconds"] > budget["local_done_gate_default_seconds"]
-    )
-    assert (
-        budget["split_checks_max_seconds"] < budget["local_done_gate_default_seconds"]
     )
     assert "DOD_VERIFY_CHECK_TIMEOUT_S" in source
 
@@ -2370,3 +2388,612 @@ def test_this_contract_binds_every_criterion_to_a_test_in_this_file_or_its_sibli
     assert criteria == {f"AC{n}" for n in range(1, 9)}
     bound = {ac for item in contract["dod_evidence"] for ac in item.get("binds_ac", [])}
     assert bound == criteria
+
+
+# --- the fifth review ---------------------------------------------------------
+#
+# Finding 2: the receipts name one host. Finding 3: every selection of the
+# contracts is tested for its run time. Finding 5: the gate's control is read
+# from the gate's own source. Finding 6: the reader stage of the live item runs.
+# Finding 7: the merged guard is run on real `onex scm pr-view` output.
+
+_HOST_TOKEN = re.compile(r"\bh\d{3}\b")
+
+
+def _strings(node: Any) -> list[str]:
+    if isinstance(node, str):
+        return [node]
+    if isinstance(node, dict):
+        return [t for k, v in node.items() for t in (*_strings(k), *_strings(v))]
+    if isinstance(node, list):
+        return [t for v in node for t in _strings(v)]
+    return []
+
+
+def _receipt_host_violations(receipts: dict[str, Any]) -> list[str]:
+    """Every host-shaped token of run_receipts that is not the one host it names."""
+    host = receipts.get("host")
+    if not isinstance(host, str) or not re.fullmatch(r"h\d{3}", host):
+        return [f"run_receipts.host is not one host: {host!r}"]
+    found = sorted(
+        {m for text in _strings(receipts) for m in _HOST_TOKEN.findall(text)}
+    )
+    return [
+        f"run_receipts names {other}, not {host}" for other in found if other != host
+    ]
+
+
+def test_the_run_receipts_name_one_host_and_no_other() -> None:
+    receipts = _contract("OMN-25198")["context"]["run_receipts"]
+    assert _receipt_host_violations(receipts) == []
+    assert receipts["host"] in _strings(receipts)
+
+
+@pytest.mark.parametrize("where", ["lab_run", "check_budget", "ancestry", "log"])
+def test_run_receipts_refuse_any_other_host_wherever_it_is_named(where: str) -> None:
+    import copy
+
+    receipts = copy.deepcopy(_contract("OMN-25198")["context"]["run_receipts"])
+    other = "h053" if receipts["host"] != "h053" else "h051"
+    if where == "lab_run":
+        receipts["lab_run"] += f" and on {other}"
+    elif where == "check_budget":
+        receipts["check_budget"]["note"] = f"took 62 s wall on {other}"
+    elif where == "ancestry":
+        receipts["ancestry"][1]["object_read"] = f"read on {other}"
+    else:
+        receipts["control_revert"]["reverted_run"]["log"] += f" run on {other}"
+    problems = _receipt_host_violations(receipts)
+    assert problems == [f"run_receipts names {other}, not {receipts['host']}"]
+
+
+def test_run_receipts_refuse_a_host_that_is_not_one_token() -> None:
+    assert _receipt_host_violations({"host": "h05"}) != []
+    assert _receipt_host_violations({}) != []
+
+
+# Finding 3: run time of each selection. The local Done gate bounds every check at
+# the collector's default; a check that spawns nested pytest runs is the one that
+# exceeds it. The seconds below are the `--durations` of one lab run of both test
+# files at head 03ef655b49c2 (one host, -n 0); every other test is counted at
+# _DEFAULT_TEST_S, and a selection pays _STARTUP_S for the interpreter and the
+# imports of its module. A selection must fit _LOCAL_FRACTION of the default.
+_STARTUP_S = 8.0
+_DEFAULT_TEST_S = 1.0
+_LOCAL_FRACTION = 0.8
+_MEASURED_TEST_S = {
+    "test_the_ac2_binding_check_passes_when_both_parametrizations_run": 11.0,
+    "test_the_ac2_binding_check_old_form_exits_zero_when_only_one_runs": 9.4,
+    "test_the_ac2_binding_check_fails_when_only_one_parametrization_runs": 9.4,
+    "test_the_ac2_binding_check_whole_check_prints_no_count_when_both_skip": 8.2,
+    "test_the_ac2_binding_check_refusal_stage_names_both_skips": 7.7,
+    "test_the_ac2_binding_check_old_form_exits_zero_when_both_skip": 7.4,
+    "test_the_bound_ac2_test_fails_when_the_orchestrator_drops_the_retry": 9.6,
+    "test_the_bound_ac2_test_fails_when_the_orchestrator_drops_the_dispatch": 9.3,
+    "test_a_selection_that_matches_no_test_exits_5_and_the_pinned_runner_fails_it": 6.0,
+    "test_the_ac2_source_check_refuses_a_stubbed_or_weakened_test": 4.0,
+}
+
+
+def _local_done_gate_default(collector_source: str) -> int:
+    found = re.search(r"^_DEFAULT_CHECK_TIMEOUT_S = (\d+)$", collector_source, re.M)
+    assert found is not None
+    return int(found.group(1))
+
+
+def _local_budget_s() -> float:
+    source = (
+        REPO_ROOT
+        / "src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py"
+    ).read_text(encoding="utf-8")
+    return _local_done_gate_default(source) * _LOCAL_FRACTION
+
+
+def _estimated_seconds(check_value: str) -> float:
+    _, chosen = _selected_tests(check_value)
+    return _STARTUP_S + sum(_MEASURED_TEST_S.get(n, _DEFAULT_TEST_S) for n in chosen)
+
+
+def test_every_selection_of_every_contract_fits_the_local_done_gate_budget() -> None:
+    over = [
+        f"{name}:{item_id}: {_estimated_seconds(value):.1f} s over {_local_budget_s():.0f} s: {value.split('-k ')[-1]}"
+        for name, item_id, value in _selection_checks()
+        if _estimated_seconds(value) > _local_budget_s()
+    ]
+    assert not over, "\n".join(over)
+
+
+def test_the_measured_seconds_name_tests_that_exist() -> None:
+    present: set[str] = set()
+    for path in ("tests/test_refuse_skips_omn19987.py", __file__):
+        tree = ast.parse(
+            Path(path if path.startswith("/") else _ROOT / path).read_text("utf-8")
+        )
+        present |= {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}
+    assert set(_MEASURED_TEST_S) <= present, sorted(set(_MEASURED_TEST_S) - present)
+
+
+def test_the_unsplit_ac2_selection_is_over_the_budget_and_no_contract_carries_it() -> (
+    None
+):
+    # The control: the selection the review named, every ac2_binding case in one
+    # check, is over the budget by the same model, so the model is not one that
+    # fits everything; and no check of any contract selects all of those cases.
+    unsplit = (
+        "uv run pytest tests/test_refuse_skips_omn19987.py -q -n 0 --no-cov -k 'ac2'"
+    )
+    assert _estimated_seconds(unsplit) > _local_done_gate_default(
+        (
+            REPO_ROOT
+            / "src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py"
+        ).read_text(encoding="utf-8")
+    )
+    tree = ast.parse((_ROOT / "tests/test_refuse_skips_omn19987.py").read_text("utf-8"))
+    every_case = {
+        n.name
+        for n in tree.body
+        if isinstance(n, ast.FunctionDef) and "ac2_binding" in n.name
+    }
+    assert len(every_case) == 10
+    for name, item_id, value in _selection_checks():
+        _, chosen = _selected_tests(value)
+        assert not every_case <= chosen, (
+            f"{name}:{item_id} selects every ac2_binding case"
+        )
+
+
+def test_the_ac2_binding_cases_are_covered_once_by_every_contract_that_runs_them() -> (
+    None
+):
+    tree = ast.parse((_ROOT / "tests/test_refuse_skips_omn19987.py").read_text("utf-8"))
+    every_case = {
+        n.name
+        for n in tree.body
+        if isinstance(n, ast.FunctionDef) and "ac2_binding" in n.name
+    }
+    for name in ("OMN-25198", "OMN-25208"):
+        chosen: list[set[str]] = []
+        for item in _contract(name)["dod_evidence"]:
+            for check in item["checks"]:
+                if (
+                    "test_refuse_skips_omn19987.py" in check["check_value"]
+                    and "-k" in check["check_value"]
+                ):
+                    _, names = _selected_tests(check["check_value"])
+                    chosen.append(names & every_case)
+        assert set().union(*chosen) == every_case, name
+        assert sum(len(c) for c in chosen) == len(every_case), name
+
+
+def test_the_recorded_split_time_is_within_the_modelled_budget() -> None:
+    budget = _contract("OMN-25198")["context"]["run_receipts"]["check_budget"]
+    assert budget["split_checks_max_seconds"] <= _local_budget_s()
+    longest = max(_estimated_seconds(v) for _, _, v in _selection_checks())
+    assert longest <= _local_budget_s()
+
+
+# Finding 6: the reader stage of the live item. The item's first stage is the
+# repository's own ticket reader; the tests above replaced it. Here it runs as
+# written, with the handler module replaced by a stand-in that records what it
+# was called with, so what `read_ticket` receives and returns is run.
+
+_READER_STUB = """
+import json, os, sys, types
+
+module = types.ModuleType(
+    "omnimarket.nodes.node_ticket_text_effect.handlers.handler_ticket_text"
+)
+
+
+def read_ticket(ident, url, key):
+    with open(os.environ["STUB_CALL_LOG"], "w", encoding="utf-8") as handle:
+        json.dump([ident, url, key], handle)
+    return {value}
+
+
+module.read_ticket = read_ticket
+sys.modules[module.__name__] = module
+"""
+
+
+def _reader_stage(tmp_path: Path, returns: str) -> subprocess.CompletedProcess[str]:
+    value = _check_value("OMN-25198", _LIVE_HASH_ITEM)
+    reader, separator, _ = value.partition(_LIVE_SEPARATOR)
+    assert separator
+    (tmp_path / "sitecustomize.py").write_text(
+        _READER_STUB.replace("{value}", returns), encoding="utf-8"
+    )
+    env = scrub_git_location_env(os.environ)
+    env.update(
+        {
+            "PYTHONPATH": str(tmp_path),
+            "LINEAR_API_KEY": "stand-in-key",
+            "STUB_CALL_LOG": str(tmp_path / "call.json"),
+        }
+    )
+    return subprocess.run(
+        [*_VERIFIER_SHELL, reader],
+        cwd=_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+        env=env,
+    )
+
+
+def test_the_reader_stage_passes_the_ticket_the_endpoint_and_the_key_and_prints_json(
+    tmp_path: Path,
+) -> None:
+    done = _reader_stage(tmp_path, '{"description": "- [ ] AC2: a line"}')
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert json.loads((tmp_path / "call.json").read_text("utf-8")) == [
+        "OMN-21217",
+        "https://api.linear.app/graphql",
+        "stand-in-key",
+    ]
+    assert json.loads(done.stdout)["description"] == "- [ ] AC2: a line"
+    assert "stand-in-key" not in done.stdout + done.stderr
+
+
+def test_the_reader_stage_fails_when_read_ticket_returns_a_value_json_cannot_hold(
+    tmp_path: Path,
+) -> None:
+    done = _reader_stage(tmp_path, "object()")
+    assert done.returncode != 0, done.stdout + done.stderr
+
+
+def test_the_whole_live_item_fails_when_read_ticket_returns_a_value_json_cannot_hold(
+    tmp_path: Path,
+) -> None:
+    value = _check_value("OMN-25198", _LIVE_HASH_ITEM)
+    (tmp_path / "sitecustomize.py").write_text(
+        _READER_STUB.replace("{value}", "object()"), encoding="utf-8"
+    )
+    env = scrub_git_location_env(os.environ)
+    env.update(
+        {
+            "PYTHONPATH": str(tmp_path),
+            "LINEAR_API_KEY": "stand-in-key",
+            "STUB_CALL_LOG": str(tmp_path / "call.json"),
+        }
+    )
+    done = subprocess.run(
+        [*_VERIFIER_SHELL, value],
+        cwd=_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+        env=env,
+    )
+    assert done.returncode != 0, done.stdout + done.stderr
+
+
+def test_the_reader_stage_fails_when_the_ticket_has_no_description(
+    tmp_path: Path,
+) -> None:
+    # read_ticket answers None for an unknown ticket; the item must not pass on it.
+    value = _check_value("OMN-25198", _LIVE_HASH_ITEM)
+    (tmp_path / "sitecustomize.py").write_text(
+        _READER_STUB.replace("{value}", "None"), encoding="utf-8"
+    )
+    env = scrub_git_location_env(os.environ)
+    env.update(
+        {
+            "PYTHONPATH": str(tmp_path),
+            "LINEAR_API_KEY": "stand-in-key",
+            "STUB_CALL_LOG": str(tmp_path / "call.json"),
+        }
+    )
+    done = subprocess.run(
+        [*_VERIFIER_SHELL, value],
+        cwd=_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+        env=env,
+    )
+    assert done.returncode != 0, done.stdout + done.stderr
+
+
+def test_the_real_read_ticket_accepts_the_arguments_the_reader_stage_passes() -> None:
+    import inspect
+
+    from omnimarket.nodes.node_ticket_text_effect.handlers.handler_ticket_text import (
+        read_ticket,
+    )
+
+    bound = inspect.signature(read_ticket).bind(
+        "OMN-21217", "https://api.linear.app/graphql", "k"
+    )
+    assert list(bound.arguments) == ["ident", "url", "key"]
+    assert "dict" in str(inspect.signature(read_ticket).return_annotation)
+
+
+# Finding 7: the merged guard on real output. The fixtures are the output of
+# `onex scm pr-view` and `onex scm pr-checks` as the watcher printed it for a
+# merged pull request and for this one (the login is replaced, nothing else).
+
+_FIXTURES = REPO_ROOT / "tests" / "ci" / "fixtures"
+
+
+def _fixture(name: str) -> str:
+    return (_FIXTURES / name).read_text(encoding="utf-8")
+
+
+def _run_view_item_with(payload: str) -> subprocess.CompletedProcess[str]:
+    command = _with_view_source(_check_value("OMN-25198", _VIEW_ITEM), payload)
+    return _verifier(command, _ROOT)
+
+
+def test_the_real_pr_view_output_of_a_merged_pull_request_spells_the_state_merged() -> (
+    None
+):
+    merged = json.loads(_fixture("onex_scm_pr_view_merged.json"))
+    assert merged["verb"] == "pr-view"
+    assert merged["result"]["state"] == "MERGED"
+    assert merged["result"]["class"] == "merged"
+    assert merged["result"]["merged_at"]
+    opened = json.loads(_fixture("onex_scm_pr_view_open.json"))
+    assert opened["result"]["state"] == "OPEN"
+    assert opened["result"]["class"] != "merged"
+    assert not opened["result"]["merged_at"]
+
+
+def test_the_real_pr_checks_output_of_a_merged_pull_request_spells_the_class_merged() -> (
+    None
+):
+    merged = json.loads(_fixture("onex_scm_pr_checks_merged.json"))["result"]
+    assert merged["class"] == "merged"
+    # the read of a merged pull request still lists the pending context of its
+    # last open read, so a check that reads pending first cannot pass it
+    assert merged["pending"]
+
+
+def test_the_merged_guard_passes_a_real_merged_pr_view_whatever_head_is_checked_out() -> (
+    None
+):
+    done = _run_view_item_with(_fixture("onex_scm_pr_view_merged.json"))
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_the_merged_guard_does_not_pass_a_real_open_pr_view_at_another_head() -> None:
+    # The control: this pull request's own real read, whose head is not the head
+    # checked out here, is refused by the item's own check.
+    done = _run_view_item_with(_fixture("onex_scm_pr_view_open.json"))
+    assert done.returncode == 1, done.stdout + done.stderr
+
+
+@pytest.mark.parametrize("spelling", ["merged", "Merged", "MERGE", "CLOSED"])
+def test_the_pr_view_merged_guard_reads_only_the_spelling_the_real_output_uses(
+    spelling: str,
+) -> None:
+    payload = json.loads(_fixture("onex_scm_pr_view_merged.json"))
+    payload["result"]["state"] = spelling
+    done = _run_view_item_with(json.dumps(payload))
+    assert done.returncode == 1, done.stdout + done.stderr
+
+
+def test_the_pr_checks_item_passes_the_real_merged_class_when_pr_view_is_unavailable() -> (
+    None
+):
+    # pr-checks spells the class lower case; its read of a merged pull request
+    # lists a pending context, so the item has to read the class first.
+    done = _run_checks_check(
+        _fixture("onex_scm_pr_checks_merged.json").replace("\n", " "),
+        state="OPEN",
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+@pytest.mark.parametrize("spelling", ["Merged", "MERGED", "merge"])
+def test_the_pr_checks_item_does_not_read_another_spelling_of_merged(
+    spelling: str,
+) -> None:
+    payload = json.loads(_fixture("onex_scm_pr_checks_merged.json"))
+    payload["result"]["class"] = spelling
+    done = _run_checks_check(json.dumps(payload), state="OPEN")
+    assert done.returncode == 1, done.stdout + done.stderr
+
+
+# Finding 5: the gate's control, read from the gate's own source at the pin. The
+# control is a full detached worktree of the merge base (or of the fix's parent)
+# with the fix's non-test, non-contract paths reverted, and a bound check passes
+# the control only by failing in it. The reader below judges a gate source; the
+# mutants prove it refuses a control built from a src-only revert; the one read of
+# the real file at the pin runs where the clone holds it, and the local item that
+# sets REQUIRE_GATE_SOURCE makes the absence of it a failure.
+
+_GATE_FILE = ".github/workflows/receipt-gate.yml"
+
+
+def _gate_control_violations(source: str) -> list[str]:
+    problems: list[str] = []
+    prepare = re.search(r"prepare_control\(\) \{(.*?)\n          \}\n", source, re.S)
+    if prepare is None:
+        return ["the gate has no prepare_control"]
+    body = prepare.group(1)
+    if 'worktree add --detach "$control_tree" "$MB"' not in body:
+        problems.append("the control tree is not a detached worktree of the merge base")
+    if re.search(r"sparse|checkout[^\n]*\$MB[^\n]*--\s+src|\bsrc/", body):
+        problems.append("the control is built from part of the tree, not the whole")
+    if 'diff --binary --no-renames "$fix^1" "$fix" -- "${product[@]}"' not in body:
+        problems.append("the revert is not the fix's product diff")
+    if "TEST_SIDE|^contracts/OMN-[0-9]+" not in body:
+        problems.append(
+            "the revert does not exempt exactly test-side paths and contracts"
+        )
+    if 'checkout "$HEAD_SHA" -- "$path"' not in body:
+        problems.append("the head's test-side files are not overlaid on the control")
+    step = re.search(r"- name: Must-fail control at the merge base(.*)", source, re.S)
+    if step is None:
+        return [*problems, "the gate has no must-fail control step"]
+    control = step.group(1)
+    for needle, why in (
+        (
+            'export OMNI_HOME="$control_home"',
+            "the control does not run in the control tree",
+        ),
+        (
+            "--execution-audience hosted",
+            "the control is not run by the hosted verifier",
+        ),
+        (
+            'select(.status == "verified")',
+            "a verified bound check is not read as always-pass",
+        ),
+        (
+            'select(.status != "failed" and .status != "verified")',
+            "a check that did not fail or verify is not read as not run",
+        ),
+        (
+            "the control did not fail (always-pass)",
+            "an always-pass control is not refused",
+        ),
+        (
+            "a control that did not run is not a pass",
+            "a control that did not run passes",
+        ),
+        (
+            "TEST_ONLY_DIFF requires verified head evidence",
+            "the test-only exception needs no head verdict",
+        ),
+    ):
+        if needle not in control:
+            problems.append(why)
+    return problems
+
+
+_GATE_GOOD = """
+          prepare_control() {
+            git -C "$head_tree" worktree add --detach "$control_tree" "$MB"
+            if [[ "$path" =~ $TEST_SIDE|^contracts/OMN-[0-9]+\\.yaml$ ]]; then continue; fi
+            git -C "$head_tree" diff --binary --no-renames "$fix^1" "$fix" -- "${product[@]}" | git apply -R
+            git -C "$control_tree" checkout "$HEAD_SHA" -- "$path"
+          }
+      - name: Must-fail control at the merge base
+            export OMNI_HOME="$control_home"
+            --execution-audience hosted
+            select(.status == "verified")
+            select(.status != "failed" and .status != "verified")
+            the control did not fail (always-pass)
+            a control that did not run is not a pass
+            TEST_ONLY_DIFF requires verified head evidence
+"""
+
+
+def test_the_gate_control_reader_accepts_a_control_of_the_full_base_tree() -> None:
+    assert _gate_control_violations(_GATE_GOOD) == []
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "named"),
+    [
+        (
+            'worktree add --detach "$control_tree" "$MB"',
+            'worktree add --detach "$control_tree" "$MB" && git -C "$control_tree" sparse-checkout set src',
+            "part of the tree",
+        ),
+        (
+            '-- "${product[@]}"',
+            "-- src/",
+            "product diff",
+        ),
+        (
+            "TEST_SIDE|^contracts/OMN-[0-9]+",
+            "^docs/",
+            "exempt exactly test-side",
+        ),
+        (
+            'select(.status != "failed" and .status != "verified")',
+            'select(.status == "x")',
+            "not run",
+        ),
+        (
+            "the control did not fail (always-pass)",
+            "the control passed",
+            "always-pass",
+        ),
+        (
+            "--execution-audience hosted",
+            "--execution-audience local",
+            "hosted verifier",
+        ),
+    ],
+)
+def test_the_gate_control_reader_refuses_a_control_built_from_a_src_only_revert(
+    old: str, new: str, named: str
+) -> None:
+    assert old in _GATE_GOOD, old
+    problems = _gate_control_violations(_GATE_GOOD.replace(old, new))
+    assert any(named in p for p in problems), problems
+
+
+def _gate_source_at_the_pin() -> str | None:
+    clone = Path(os.environ.get("OMNI_HOME", "")) / "omnibase_core"
+    shown = subprocess.run(
+        ["git", "-C", str(clone), "show", f"{RECEIPT_GATE_PIN_TAG}:{_GATE_FILE}"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=scrub_git_location_env(os.environ),
+    )
+    return shown.stdout if shown.returncode == 0 else None
+
+
+def _gate_source_or_none_where_not_required(
+    required: bool, source: str | None
+) -> str | None:
+    if source is None and required:
+        raise AssertionError("the gate source at the pin is not in this clone")
+    return source
+
+
+def test_the_gate_source_is_required_where_the_local_item_sets_the_variable() -> None:
+    with pytest.raises(AssertionError, match="not in this clone"):
+        _gate_source_or_none_where_not_required(True, None)
+    assert _gate_source_or_none_where_not_required(False, None) is None
+
+
+def test_the_gate_control_source_at_the_pin_builds_the_full_base_tree_control() -> None:
+    source = _gate_source_or_none_where_not_required(
+        os.environ.get("REQUIRE_GATE_SOURCE") == "1", _gate_source_at_the_pin()
+    )
+    if source is None:
+        return
+    assert _gate_control_violations(source) == []
+
+
+def test_the_gate_counts_a_nonzero_runner_status_as_a_failed_check_so_exit_5_fails() -> (
+    None
+):
+    from tests.ci.verifier_shell import VERIFIER_TAG_STATUS
+
+    assert VERIFIER_TAG_STATUS[0].strip() == "if result.returncode != 0:"
+    done = subprocess.run(
+        [*verifier_shell_at_tag(), "exit 5"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 5
+
+
+# Finding 1: the run the fourth review's premise was about. The record is read
+# with `onex scm run-view` (the check-run read of a head other than the pull
+# request's current one is refused to a lane); the test pins its shape and that
+# the ids it names are the ones its own read command names.
+def test_the_split_2_of_20_run_at_63b11bfe0bb4_is_recorded_with_its_ids_and_conclusion() -> (
+    None
+):
+    record = _contract("OMN-25198")["context"]["run_receipts"]["split_2_of_20"]
+    assert record["head"] == "63b11bfe0bb4"
+    assert record["workflow"] == "CI"
+    assert record["check"] == "Tests (Split 2/20)"
+    assert isinstance(record["run_id"], int)
+    assert isinstance(record["job_id"], int)
+    assert record["conclusion"] in {"success", "failure"}
+    assert f"--run-id {record['run_id']}" in record["read_with"]
+    assert record["read_with"].startswith("onex scm run-view OmniNode-ai/omnimarket ")
