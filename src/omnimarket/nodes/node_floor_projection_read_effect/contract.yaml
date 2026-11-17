@@ -6,6 +6,8 @@
 # floor takes an input from, keep the time its producer stood by it, and write them as one bundle that the floor cycle
 # reads. A projection that cannot be read is written unread with its reason; the floor reads it as unknown and never as
 # the last value it held. Which projections, their topics and their own bounds are the overlay's.
+# The integration projection also reaches this node as the runtime delivers it (OMN-25036): the runtime subscribes this node
+# to that snapshot topic, each publication is read the way the pass reads it, and the entry is the terminal event.
 name: node_floor_projection_read_effect
 contract_name: node_floor_projection_read_effect
 node_name: node_floor_projection_read_effect
@@ -20,9 +22,23 @@ description: >
   transport; the floor never reads a producer's local file for an input that has a projection.
 
 handler:
-  module: omnimarket.nodes.node_floor_projection_read_effect.handlers.handler_floor_projection_read
-  class: HandlerFloorProjectionRead
-  input_model: omnimarket.models.floor_projection.ModelFloorProjectionTickRequest
+  module: omnimarket.nodes.node_floor_projection_read_effect.handlers.handler_floor_projection_snapshot_read
+  class: HandlerFloorProjectionSnapshotRead
+  input_model: omnimarket.models.floor_projection.ModelFloorProjectionEnvelope
+  output_model: omnimarket.models.floor_projection.ModelFloorProjectionEntry
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_floor_projection_read_effect.handlers.handler_floor_projection_snapshot_read:HandlerFloorProjectionSnapshotRead
+  handlers:
+    - operation: read_floor_projection_snapshot
+      # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+      topic: onex.snapshot.projection.floor-integration.v1
+      handler:
+        name: HandlerFloorProjectionSnapshotRead
+        module: omnimarket.nodes.node_floor_projection_read_effect.handlers.handler_floor_projection_snapshot_read
+      input_model: omnimarket.models.floor_projection.ModelFloorProjectionEnvelope
+      output_model: omnimarket.models.floor_projection.ModelFloorProjectionEntry
 
 descriptor:
   node_archetype: effect
@@ -35,23 +51,41 @@ descriptor:
     - writes the projection bundle under the registry home
 
 input_model:
-  name: ModelFloorProjectionTickRequest
+  name: ModelFloorProjectionEnvelope
   module: omnimarket.models.floor_projection
-  description: The registry home of one pass.
+  description: One publication of the integration projection, as the runtime delivers it.
 output_model:
-  name: ModelFloorProjectionBundle
+  name: ModelFloorProjectionEntry
   module: omnimarket.models.floor_projection
-  description: What each projection read, with its own time.
+  description: What the publication read as, with its own time.
 
 runtime_dispatch:
-  external_trigger: python -m omnimarket.nodes.node_floor_projection_read_effect, as a step of python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares.
+  external_trigger: python -m omnimarket.nodes.node_floor_projection_read_effect, as a step of python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares; and each publication of the integration snapshot topic, which the runtime delivers.
+  terminal_events:
+    success: onex.evt.omnimarket.floor-projection-read.v1
 
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  # Only the integration projection is delivered by the runtime: the other three are replayed topics of thousands of
+  # publications, which the pass reads from its own login within the overlay's window.
+  subscribe_topics:
+    # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+    - onex.snapshot.projection.floor-integration.v1
+  publish_topics:
+    - onex.evt.omnimarket.floor-projection-read.v1
+terminal_event: onex.evt.omnimarket.floor-projection-read.v1
 
-# Read by a bus client within the overlay's window, never dispatched by a runtime, so no subscription of this node. Each
-# topic is the snapshot topic of one projection; its producer declares it as a publish topic.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.floor-integration.v1, operation: READ}
+      # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.floor-integration.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.floor-projection-read.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.floor-projection-read.v1, operation: DESCRIBE}
+
+# The pass reads these by a bus client within the overlay's window. Each topic is the snapshot topic of one projection; its
+# producer declares it as a publish topic.
 snapshot_reads:
   # onex-topic-allow: a projection snapshot topic has the projection's own name form.
   - onex.snapshot.projection.floor-overlay-store-fleet.v1

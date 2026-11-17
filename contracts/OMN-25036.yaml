@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-25036
+title: Make the integration floor nodes run on the dev runtime from a demand the runtime delivers
+summary: node_integration_reading_publish_effect and node_floor_projection_read_effect declared no subscribe topic, so the runtime delivered them nothing and onex run-node refused them. The publish effect now subscribes to a command topic carrying one ModelIntegrationReadingBatch, builds the projection through node_integration_projection_compute and publishes the floor projection envelope on the snapshot topic over the runtime's own bus; the reader node subscribes to that snapshot topic and reads each delivered publication.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - topics
+requirements:
+  - id: req-omn25036-trigger
+    statement: The three integration floor nodes have a trigger the runtime delivers, and one demand is handled by them.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a STATUS row on the rolling ledger reads kv pr=omnimarket#5879 installed=<host>:<revision> observed=<what ran> read_at=<UTC>, written by the lane after it read one run on the dev runtime on h201 itself (a log line, a dispatch, a health read or a job record) -- falsifier: `grep -F ''pr=omnimarket#5879'' $ONEX_LEDGER_PATH | grep -F ''installed=''` finds no row'
+      - id: AC2
+        statement: 'AC2: one demand or tick reaches node_floor_projection_read_effect, node_integration_projection_compute and node_integration_reading_publish_effect on the dev runtime and is handled, or the STATUS row names the single measured cause that keeps it from running and who must act -- falsifier: the dev runtime log and job record on h201 show no handled run line of these three nodes and the STATUS row names no cause and no actor'
+      - id: AC3
+        statement: 'AC3: no host file, unit or plist was edited by hand: every change went through the declared installer, read from the installer''s own receipt -- falsifier: the STATUS row cites no installer receipt, or the installed unit differs from the revision the receipt names'
+evidence_requirements:
+  - kind: tests
+    description: The contract trigger read with its control, the runtime handler on a fake bus, the reader handler over a delivered publication.
+    command: uv run --frozen pytest tests/nodes/node_integration_reading_publish_effect tests/nodes/node_floor_projection_read_effect -q -n 0 -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn25036-ac1
+    description: AC1 is the ledger STATUS row written after the lane read the run on the dev runtime; hosted CI cannot read the ledger or the dev runtime, so the hosted part is the demand handler publishing the envelope the floor reader parses.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_integration_reading_publish_effect/test_golden_chain_integration_reading_publish_demand.py -q -n 0 -p no:randomly --no-cov -k publishes_the_envelope
+        cwd: .
+  - id: dod-omn25036-ac2
+    description: AC2 hosted part is the trigger read of both contracts with its control, which fails on the base commit where the publish effect declares no subscribe topic.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_integration_reading_publish_effect/test_golden_chain_integration_reading_publish_demand.py tests/nodes/node_floor_projection_read_effect/test_golden_chain_floor_projection_snapshot_read.py -q -n 0 -p no:randomly --no-cov -k "trigger or subscribes or named_break"
+        cwd: .
+  - id: dod-omn25036-ac3
+    description: AC3 is read from the dev branch install receipt of the lane; hosted CI checks that the change is contract and handler files only, with no host file, unit or plist in the diff.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_integration_reading_publish_effect/test_integration_nodes_registered.py -q -n 0 -p no:randomly --no-cov
+        cwd: .
+  - id: dod-omn25036-integration-proof-dev-runtime-demand
+    description: The integration proof is one demand on the dev runtime, which only the local Done gate can reach; it sends one batch to node_integration_reading_publish_effect with onex run-node and asserts the terminal event reports the projection published.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: "onex run-node node_integration_reading_publish_effect --timeout 60 --input '{\"as_of\":\"2026-11-17T19:00:00+00:00\",\"origin\":\"omn25036-proof\",\"readings\":[]}' | grep -Eq '\"published\": ?true'"
+        cwd: .

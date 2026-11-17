@@ -6,6 +6,8 @@
 # module validates them, node_integration_projection_compute builds the projection (newest reading per repository and
 # number, counts, groups), and this effect publishes it as the integration floor projection, stamped with the time the
 # pass stood by its readings. The floor reads it through node_floor_projection_read_effect and never reads the pass's file.
+# The same batch also arrives as a demand on the command topic the runtime delivers (OMN-25036): the runtime handler builds
+# the projection and publishes the envelope on the snapshot topic over the runtime's own bus, and answers with the result.
 name: node_integration_reading_publish_effect
 contract_name: node_integration_reading_publish_effect
 node_name: node_integration_reading_publish_effect
@@ -19,9 +21,22 @@ description: >
   Publishes the integration projection of one integration pass as a floor projection with the pass's own time.
 
 handler:
-  module: omnimarket.nodes.node_integration_reading_publish_effect.handlers.handler_integration_reading_publish
-  class: HandlerIntegrationReadingPublish
-  input_model: omnimarket.models.integration_reading.ModelIntegrationPublishCommand
+  module: omnimarket.nodes.node_integration_reading_publish_effect.handlers.handler_integration_reading_publish_requested
+  class: HandlerIntegrationReadingPublishRequested
+  input_model: omnimarket.models.integration_reading.ModelIntegrationReadingBatch
+  output_model: omnimarket.models.floor_projection.ModelFloorProjectionPublishResult
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_integration_reading_publish_effect.handlers.handler_integration_reading_publish_requested:HandlerIntegrationReadingPublishRequested
+  handlers:
+    - operation: publish_integration_reading
+      topic: onex.cmd.omnimarket.integration-reading-publish-requested.v1
+      handler:
+        name: HandlerIntegrationReadingPublishRequested
+        module: omnimarket.nodes.node_integration_reading_publish_effect.handlers.handler_integration_reading_publish_requested
+      input_model: omnimarket.models.integration_reading.ModelIntegrationReadingBatch
+      output_model: omnimarket.models.floor_projection.ModelFloorProjectionPublishResult
 
 descriptor:
   node_archetype: effect
@@ -33,23 +48,43 @@ descriptor:
     - appends a start and a success or a typed failure to the floor emission journal under the registry home
 
 input_model:
-  name: ModelIntegrationPublishCommand
+  name: ModelIntegrationReadingBatch
   module: omnimarket.models.integration_reading
-  description: The projection to publish and the projection id to publish it under.
+  description: One integration pass's readings; the projection is built from them and published under the overlay's projection id.
 output_model:
   name: ModelFloorProjectionPublishResult
   module: omnimarket.models.floor_projection
   description: Whether the projection was published, as of when, and how many rows it carried.
 
 runtime_dispatch:
-  external_trigger: python -m omnimarket.nodes.node_integration_reading_publish_effect --home <registry home>, with one ModelIntegrationReadingBatch on stdin, from the hourly integration pass.
+  external_trigger: python -m omnimarket.nodes.node_integration_reading_publish_effect --home <registry home>, with one ModelIntegrationReadingBatch on stdin, from the hourly integration pass; or one ModelIntegrationReadingBatch on the command topic, which the runtime delivers (onex run-node).
+  command_topic: onex.cmd.omnimarket.integration-reading-publish-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.integration-reading-published.v1
 
 event_bus:
-  subscribe_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.integration-reading-publish-requested.v1
   publish_topics:
+    - onex.evt.omnimarket.integration-reading-published.v1
     # onex-topic-allow: a projection snapshot topic has the projection's own name form.
     - onex.snapshot.projection.floor-integration.v1
+terminal_event: onex.evt.omnimarket.integration-reading-published.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.integration-reading-publish-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.integration-reading-publish-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.integration-reading-published.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.integration-reading-published.v1, operation: DESCRIBE}
+      # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.floor-integration.v1, operation: WRITE}
+      # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.floor-integration.v1, operation: DESCRIBE}
+
 externally_consumed_topics:
+  - onex.evt.omnimarket.integration-reading-published.v1
   # The floor reads it through node_floor_projection_read_effect.
   # onex-topic-allow: a projection snapshot topic has the projection's own name form.
   - onex.snapshot.projection.floor-integration.v1
