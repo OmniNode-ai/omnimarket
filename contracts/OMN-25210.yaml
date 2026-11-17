@@ -1,0 +1,97 @@
+schema_version: 1.0.0
+ticket_id: OMN-25210
+title: 'Review findings 1 to 11 on omnimarket PR 6297 at the third review of head c743290447fe are fixed or argued: the AC3, AC4 and Lab readings are posted at the head, the CRLF, line-split and merge-ref checks are tightened, and the tests run both contracts'
+summary: The reading checks of the OMN-24611 contract strip carriage returns before the line-anchored match; the Lab checks of the OMN-25181 and OMN-25196 contracts split the packet on the newline character only, so U+2028 and U+0085 in one comment cannot break the parse; the second parent of HEAD names the pull request head only on a hosted merge ref (GITHUB_REF refs/pull/<n>/merge). The Lab tests run both contracts, the delivery CLI turns an error raised past the handler into a typed exit 3 refusal, and the CLI tests no longer assert a traceback that cannot occur in process. The readings of the h051 and h201 host operators are not written here; AC3 and AC4 of the OMN-24611 contract stay red until the operators post them.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25210-review-findings
+  statement: Every finding of the third review at head c743290447fe of the omnimarket pull request is fixed with a test that fails on that head, or argued with evidence in a pull request comment.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every blocking finding (1 and 2) of the review at head c743290447fe is fixed or argued with evidence in a PR comment, and the non-blocking findings 3 to 11 are fixed or argued, each with a test that is red on that head and green on the new head -- falsifier: `uv run pytest tests/nodes/node_branch_deploy_command_effect tests/unit/nodes/node_secret_store_effect -q` on the lab at the new head passes while the new tests fail against the source files of head c743290447fe'
+  - id: AC2
+    statement: 'AC2: AC3 and AC4 of contracts/OMN-24611.yaml read green at the new head, with the h051 and h201 key check lines and the no-op line naming c743290447feab18d4188a33b693169e66ef8922 posted by the host operators -- falsifier: the AC3 and AC4 checks of contracts/OMN-24611.yaml run against a packet with no reading from one of the two hosts fail'
+  - id: AC3
+    statement: 'AC3: the CRLF, line-split and merge-ref checks accept a reading only as designed: a reading line inside a multi-line CRLF comment matches, a comment holding U+2028 or U+0085 does not break the packet parse, and a reading at the second parent is accepted only on a hosted merge ref -- falsifier: `uv run pytest tests/unit/nodes/node_secret_store_effect -q -k ''crlf or u2028 or merge_ref''` fails with the strip of the carriage return, the split on the newline character, or the hosted merge ref test removed'
+  - id: AC4
+    statement: 'AC4: the Lab tests for contracts/OMN-25181.yaml and contracts/OMN-25196.yaml are parametrized over both contracts, the deliver key CLI tests can fail on an uncaught error, and the asyncio mode for the bare async tests is read and shown -- falsifier: `uv run pytest tests/unit/nodes/node_secret_store_effect -q` fails when the check in the OMN-25196 contract is broken'
+  - id: AC5
+    statement: 'AC5: a PR comment starting `Lab: head=<full head sha>` names the new head after the required suites ran on the lab (a whole-suite timeout rerun in named parts), states the merge order against overlays PR 571, whether the runtime loads this overlay, and that overlays PR 571 carries verify_env_key -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6297` shows a head that differs from the head named in the Lab: comment, or no Lab: comment'
+evidence_requirements:
+- kind: tests
+  description: The secret store node tests and the sender node tests at the new head.
+  command: uv run pytest tests/nodes/node_branch_deploy_command_effect tests/unit/nodes/node_secret_store_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25210-ac1-suites
+  description: The sender node and secret store node suites pass at the new head; the new tests fail against the source files and contracts of head c743290447fe.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_branch_deploy_command_effect tests/unit/nodes/node_secret_store_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn25210-ac2-reading-checks-need-readings
+  description: The AC3 and AC4 reading checks of the OMN-24611 contract are run against packets with no reading, a reading from one host only and a reading at an older head; each must fail, and the matching packets at HEAD must pass. The readings themselves are posted by the host operators and are not written by this change.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_secret_store_effect/test_contract_reading_checks_omn25196.py -k 'ac3 or ac4' -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn25210-ac3-crlf-split-merge-ref
+  description: A multi-line CRLF comment matches, U+2028 and U+0085 in one comment do not break the Lab packet parse, and the second parent of HEAD is read only on a hosted merge ref.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_secret_store_effect -k 'crlf or u2028 or merge_ref' -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn25210-ac4-both-contracts-and-cli
+  description: The Lab tests run the check of both the OMN-25181 and the OMN-25196 contract (pytest parameter ids carry both), and the delivery CLI turns an error raised past the handler into a typed exit 3 refusal.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_secret_store_effect/test_contract_reading_checks_omn25196.py tests/unit/nodes/node_secret_store_effect/test_deliver_key_cli.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn25210-ac5-lab-comment
+  description: The comment of the Lab head is read from the pull request comments. The check passes only when a comment that starts Lab head= names HEAD of this checkout (or, on a hosted merge ref, its second parent, the pull request head) and states the merge order against overlays#571. It fails on every head until that comment is posted.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: |-
+      gh api repos/OmniNode-ai/omnimarket/issues/6297/comments --paginate --jq '.[].body | @json' | python3 -c '
+      import json, os, re, subprocess, sys
+      bodies = [json.loads(line) for line in sys.stdin.read().split("\n") if line.strip()]
+      def rev(ref):
+          r = subprocess.run(["git", "rev-parse", "--verify", "--quiet", ref], capture_output=True, text=True)
+          return r.stdout.strip() if r.returncode == 0 else ""
+      ref = os.environ.get("GITHUB_REF", "")
+      hosted_merge_ref = ref.startswith("refs/pull/") and ref.endswith("/merge")
+      heads = {h for h in (rev("HEAD"), rev("HEAD^2") if hosted_merge_ref else "") if h}
+      named = [(re.match(r"Lab: head=([0-9a-f]{40})", b), b) for b in bodies]
+      ok = [b for m, b in named if m and m.group(1) in heads and "overlays#571" in b and re.search(r"merge order", b, re.I)]
+      assert ok, "no comment that starts Lab: head= and names HEAD with the merge order against overlays#571"
+      print("AC4 Lab comment: PASS")
+      '
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn25210-integration-proof
+  description: Run the focused tests of the secret store node and of the sender node on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25210 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_secret_store_effect tests/nodes/node_branch_deploy_command_effect -q -n 0 --no-cov
+    cwd: .

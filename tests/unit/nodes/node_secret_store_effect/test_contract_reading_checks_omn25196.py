@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -30,13 +31,18 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]
 _STALE_HEAD = "d037540c300c8a1f2b3c4d5e6f708192a3b4c5d6"
 _DIGEST = "a" * 64
 _CHECK = "0123456789abcdef"
+#: Both Lab-comment contracts carry the same check; each copy is run (OMN-25210).
+_LAB_CONTRACTS = ["OMN-25181", "OMN-25196"]
+#: What a hosted pull request merge checkout sets in the runner's environment.
+_HOSTED_MERGE_REF = {"GITHUB_REF": "refs/pull/6297/merge"}
 
 _FAKE_GH = """#!/usr/bin/env python3
 import json, os, sys
 bodies = json.load(open(os.environ["FAKE_GH_COMMENTS"]))
 if any("@json" in a for a in sys.argv[1:]):
     for body in bodies:
-        print(json.dumps(body))
+        # jq and gojq leave U+2028 and U+0085 unescaped in @json; so does this stand-in.
+        print(json.dumps(body, ensure_ascii=False))
 else:
     for body in bodies:
         print(body)
@@ -58,6 +64,16 @@ def _check(contract: str, ac: str, marker: str) -> str:
     return str(found[0])
 
 
+def _tool_path() -> str:
+    """The directories of the host's own git and python3, then the usual ones."""
+    dirs = [
+        str(Path(found).parent)
+        for found in (shutil.which("git"), shutil.which("python3"))
+        if found
+    ]
+    return ":".join([*dict.fromkeys(dirs), "/usr/bin", "/bin", "/usr/local/bin"])
+
+
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
         ["git", "-C", str(repo), *args],
@@ -70,7 +86,7 @@ def _git(repo: Path, *args: str) -> str:
             "GIT_COMMITTER_NAME": "t",
             "GIT_COMMITTER_EMAIL": "t@example.invalid",
             "HOME": str(repo),
-            "PATH": "/usr/bin:/bin:/usr/local/bin",
+            "PATH": _tool_path(),
         },
     ).stdout.strip()
 
@@ -101,7 +117,12 @@ def checkout(tmp_path: Path) -> dict[str, Any]:
     }
 
 
-def _run(checkout: dict[str, Any], command: str, comments: list[str]) -> int:
+def _run(
+    checkout: dict[str, Any],
+    command: str,
+    comments: list[str],
+    extra_env: dict[str, str] | None = None,
+) -> int:
     packet = checkout["tmp"] / "comments.json"
     packet.write_text(json.dumps(comments), encoding="utf-8")
     return subprocess.run(
@@ -110,9 +131,10 @@ def _run(checkout: dict[str, Any], command: str, comments: list[str]) -> int:
         capture_output=True,
         text=True,
         env={
-            "PATH": f"{checkout['bin']}:/usr/bin:/bin:/usr/local/bin",
+            "PATH": f"{checkout['bin']}:{_tool_path()}",
             "FAKE_GH_COMMENTS": str(packet),
             "HOME": str(checkout["tmp"]),
+            **(extra_env or {}),
         },
     ).returncode
 
@@ -184,10 +206,8 @@ def test_ac3_the_stale_head_of_the_second_review_fails(
     assert _run(checkout, command, comments) != 0
 
 
-def test_ac3_a_hosted_merge_checkout_reads_the_pull_request_head(
-    checkout: dict[str, Any],
-) -> None:
-    """On a merge checkout HEAD is the merge commit and the pull request head its second parent."""
+def _merge_checkout(checkout: dict[str, Any]) -> str:
+    """Make HEAD a merge commit of main and a pr branch; return the pr branch tip."""
     repo = checkout["repo"]
     _git(repo, "checkout", "-q", "-b", "pr", checkout["head"])
     (repo / "b").write_text("pr", encoding="utf-8")
@@ -199,26 +219,116 @@ def test_ac3_a_hosted_merge_checkout_reads_the_pull_request_head(
     _git(repo, "add", "c")
     _git(repo, "commit", "-q", "-m", "base moved")
     _git(repo, "merge", "-q", "--no-ff", "-m", "merge", "pr")
+    return pr_head
+
+
+def test_ac3_a_hosted_merge_ref_reads_the_pull_request_head(
+    checkout: dict[str, Any],
+) -> None:
+    """On the hosted merge ref HEAD is the merge commit and the pull request head its second parent."""
+    pr_head = _merge_checkout(checkout)
     command = _check("OMN-24611", "AC3", "gh api")
-    assert (
-        _run(
-            checkout,
-            command,
-            [_key_reading(pr_head, "h051"), _key_reading(pr_head, "h201")],
-        )
-        == 0
+    both = [_key_reading(pr_head, "h051"), _key_reading(pr_head, "h201")]
+    assert _run(checkout, command, both, _HOSTED_MERGE_REF) == 0
+    at_base = [
+        _key_reading(checkout["head"], "h051"),
+        _key_reading(checkout["head"], "h201"),
+    ]
+    assert _run(checkout, command, at_base, _HOSTED_MERGE_REF) != 0
+
+
+def test_ac3_merge_ref_a_local_merge_does_not_accept_the_second_parent(
+    checkout: dict[str, Any],
+) -> None:
+    """A branch that merged dev locally is not a hosted merge ref: its second parent is dev's tip (OMN-25210)."""
+    dev_tip = _merge_checkout(checkout)
+    command = _check("OMN-24611", "AC3", "gh api")
+    comments = [_key_reading(dev_tip, "h051"), _key_reading(dev_tip, "h201")]
+    assert _run(checkout, command, comments) != 0
+    assert _run(checkout, command, comments, {"GITHUB_REF": "refs/heads/main"}) != 0
+
+
+def test_ac4_merge_ref_a_local_merge_does_not_accept_the_second_parent(
+    checkout: dict[str, Any],
+) -> None:
+    dev_tip = _merge_checkout(checkout)
+    command = _check("OMN-24611", "AC4", "gh api")
+    assert _run(checkout, command, [_noop_reading(dev_tip)]) != 0
+    assert _run(checkout, command, [_noop_reading(dev_tip)], _HOSTED_MERGE_REF) == 0
+
+
+@pytest.mark.parametrize("contract", _LAB_CONTRACTS)
+def test_lab_merge_ref_a_local_merge_does_not_accept_the_second_parent(
+    checkout: dict[str, Any], contract: str
+) -> None:
+    dev_tip = _merge_checkout(checkout)
+    command = _check(contract, "AC4", "gh api")
+    assert _run(checkout, command, [_lab(dev_tip)]) != 0
+    assert _run(checkout, command, [_lab(dev_tip)], _HOSTED_MERGE_REF) == 0
+
+
+# --- CRLF: a reading line inside a multi-line comment with carriage returns -----------
+
+
+def test_ac3_crlf_reading_lines_inside_a_multi_line_comment_match(
+    checkout: dict[str, Any],
+) -> None:
+    head = checkout["head"]
+    body = "\r\n".join(
+        [
+            "Readings from the hosts:",
+            _key_reading(head, "h051"),
+            _key_reading(head, "h201"),
+            "done",
+        ]
     )
-    assert (
-        _run(
-            checkout,
-            command,
-            [
-                _key_reading(checkout["head"], "h051"),
-                _key_reading(checkout["head"], "h201"),
-            ],
+    command = _check("OMN-24611", "AC3", "gh api")
+    assert _run(checkout, command, [body]) == 0
+
+
+def test_ac3_crlf_a_reading_at_an_older_head_still_fails(
+    checkout: dict[str, Any],
+) -> None:
+    older = checkout["older"]
+    body = "\r\n".join([_key_reading(older, "h051"), _key_reading(older, "h201")])
+    command = _check("OMN-24611", "AC3", "gh api")
+    assert _run(checkout, command, [body]) != 0
+
+
+def test_ac4_crlf_the_no_op_reading_inside_a_multi_line_comment_matches(
+    checkout: dict[str, Any],
+) -> None:
+    body = "\r\n".join(["Operator note", _noop_reading(checkout["head"]), "thanks"])
+    command = _check("OMN-24611", "AC4", "gh api")
+    assert _run(checkout, command, [body]) == 0
+
+
+# --- U+2028 and U+0085 in a comment do not break the packet parse ----------------------
+
+
+@pytest.mark.parametrize("separator", ["\u2028", "\u0085"], ids=["u2028", "u0085"])
+@pytest.mark.parametrize("contract", _LAB_CONTRACTS)
+def test_lab_check_u2028_or_u0085_in_one_comment_does_not_fail_the_packet(
+    checkout: dict[str, Any], contract: str, separator: str
+) -> None:
+    """One unrelated comment holding the separator must not hide the Lab comment at HEAD."""
+    command = _check(contract, "AC4", "gh api")
+    comments = [f"first{separator}second", _lab(checkout["head"])]
+    assert _run(checkout, command, comments) == 0
+
+
+@pytest.mark.parametrize("contract", _LAB_CONTRACTS)
+def test_lab_check_u2028_inside_the_lab_comment_itself_still_matches(
+    checkout: dict[str, Any], contract: str
+) -> None:
+    command = _check(contract, "AC4", "gh api")
+    comments = [
+        _lab(
+            checkout["head"],
+            tail="Merge order:\u2028omnimarket 6297 first, then overlays#571.",
         )
-        != 0
-    )
+    ]
+    assert _run(checkout, command, comments) == 0
 
 
 def test_key_check_value_is_sixteen_lowercase_hex_characters() -> None:
@@ -248,22 +358,24 @@ def test_ac4_fails_without_the_reading_at_head(
     assert _run(checkout, command, packets[case]) != 0
 
 
-# --- AC4 of the OMN-25181 contract: a Lab comment that names HEAD ----------------------
+# --- AC4 of the OMN-25181 and OMN-25196 contracts: a Lab comment that names HEAD -------
 
 
+@pytest.mark.parametrize("contract", _LAB_CONTRACTS)
 def test_lab_check_passes_with_a_lab_comment_at_head_and_the_merge_order(
-    checkout: dict[str, Any],
+    checkout: dict[str, Any], contract: str
 ) -> None:
-    command = _check("OMN-25181", "AC4", "gh api")
+    command = _check(contract, "AC4", "gh api")
     assert _run(checkout, command, ["unrelated", _lab(checkout["head"])]) == 0
 
 
+@pytest.mark.parametrize("contract", _LAB_CONTRACTS)
 @pytest.mark.parametrize(
     "case",
     ["no-comment", "no-lab-comment", "older-head", "no-merge-order", "not-first"],
 )
 def test_lab_check_fails_without_a_lab_comment_that_names_head(
-    checkout: dict[str, Any], case: str
+    checkout: dict[str, Any], contract: str, case: str
 ) -> None:
     head, older = checkout["head"], checkout["older"]
     packets = {
@@ -276,11 +388,12 @@ def test_lab_check_fails_without_a_lab_comment_that_names_head(
         "no-merge-order": [_lab(head, tail="Four suites passed.")],
         "not-first": [f"See the run.\n{_lab(head)}"],
     }
-    command = _check("OMN-25181", "AC4", "gh api")
+    command = _check(contract, "AC4", "gh api")
     assert _run(checkout, command, packets[case]) != 0
 
 
-def test_lab_check_is_no_longer_a_grep_of_the_other_contract() -> None:
-    command = _check("OMN-25181", "AC4", "gh api")
+@pytest.mark.parametrize("contract", _LAB_CONTRACTS)
+def test_lab_check_is_no_longer_a_grep_of_the_other_contract(contract: str) -> None:
+    command = _check(contract, "AC4", "gh api")
     assert "contracts/OMN-24611.yaml" not in command
     assert "Lab: head=" in command

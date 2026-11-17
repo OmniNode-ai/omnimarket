@@ -13,6 +13,8 @@ from __future__ import annotations
 import asyncio
 import json
 import secrets
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -234,7 +236,6 @@ def test_cli_a_named_overlay_that_loads_as_none_is_refused_not_the_host_env_stor
     payload = json.loads(captured.err)
     assert payload["outcome"] == "key_unreadable"
     assert _OVERLAY_ID in payload["detail"]
-    assert "Traceback" not in captured.err
 
 
 def test_cli_a_named_overlay_that_loads_is_handed_to_the_handler(
@@ -334,7 +335,6 @@ def test_cli_a_malformed_contract_is_exit_3_not_a_traceback(
     assert captured.out == ""
     payload = json.loads(captured.err)
     assert payload["outcome"] == "not_declared"
-    assert "Traceback" not in captured.err
 
 
 @pytest.mark.parametrize("empty", ["", "  "], ids=["empty", "blank"])
@@ -356,7 +356,6 @@ def test_cli_an_empty_overlay_id_is_exit_3_and_never_the_host_env_file_store(
     payload = json.loads(captured.err)
     assert payload["outcome"] == "key_unreadable"
     assert "empty" in payload["detail"]
-    assert "Traceback" not in captured.err
     assert list(home.rglob("*")) == []
 
 
@@ -375,7 +374,6 @@ def test_cli_a_non_mapping_contract_block_writes_nothing_to_the_host_env_file_st
     captured = capsys.readouterr()
     assert code == 3
     assert captured.out == ""
-    assert "Traceback" not in captured.err
     assert list(home.rglob("*")) == []
 
 
@@ -399,7 +397,6 @@ def test_cli_an_unparsable_named_overlay_is_exit_3_not_a_traceback(
     assert code == 3
     assert captured.out == ""
     assert json.loads(captured.err)["outcome"] == "key_unreadable"
-    assert "Traceback" not in captured.err
 
 
 def test_cli_an_unreadable_named_overlay_file_is_exit_3_not_a_traceback(
@@ -416,3 +413,54 @@ def test_cli_an_unreadable_named_overlay_file_is_exit_3_not_a_traceback(
     assert code == 3
     assert captured.out == ""
     assert json.loads(captured.err)["outcome"] == "key_unreadable"
+
+
+class _RaisingHandler:
+    """A handler whose ``handle`` raises with a value-shaped message (OMN-25210)."""
+
+    def __init__(self, message: str) -> None:
+        self._message = message
+
+    async def handle(self, request: Any) -> Any:
+        raise RuntimeError(self._message)
+
+
+def test_cli_a_handler_that_raises_is_exit_3_with_a_typed_refusal_and_no_value(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``main`` runs in process, so an uncaught error would raise out of it; it must not."""
+    leaked = "s3cr3t-" + secrets.token_hex(16)
+    code = main(
+        ["--name", _ID],
+        handler=_RaisingHandler(f"boom {leaked}"),  # type: ignore[arg-type]
+    )
+    captured = capsys.readouterr()
+    assert code == 3
+    assert captured.out == ""
+    payload = json.loads(captured.err)
+    assert payload["outcome"] == "key_unreadable"
+    assert "RuntimeError" in payload["detail"]
+    assert leaked not in captured.err
+
+
+def test_cli_run_as_a_process_a_bad_name_is_exit_3_with_no_traceback(
+    tmp_path: Path,
+) -> None:
+    """A real process: an uncaught error here would print a traceback and exit 1."""
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_secret_store_effect.runtime_deliver_key_cli",
+            "--name",
+            "Not A Name",
+        ],
+        capture_output=True,
+        text=True,
+        env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"},
+        check=False,
+    )
+    assert proc.returncode == 3
+    assert proc.stdout == ""
+    assert "Traceback" not in proc.stderr
+    assert json.loads(proc.stderr)["outcome"] == "not_declared"

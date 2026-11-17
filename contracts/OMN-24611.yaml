@@ -66,12 +66,14 @@ dod_evidence:
   - check_type: command
     check_value: |-
       gh api repos/OmniNode-ai/omnimarket/issues/6297/comments --paginate --jq '.[].body' | python3 -c '
-      import re, subprocess, sys
-      t = sys.stdin.read()
+      import os, re, subprocess, sys
+      t = sys.stdin.read().replace("\r", "")
       def rev(ref):
           r = subprocess.run(["git", "rev-parse", "--verify", "--quiet", ref], capture_output=True, text=True)
           return r.stdout.strip() if r.returncode == 0 else ""
-      heads = {h for h in (rev("HEAD"), rev("HEAD^2")) if h}
+      ref = os.environ.get("GITHUB_REF", "")
+      hosted_merge_ref = ref.startswith("refs/pull/") and ref.endswith("/merge")
+      heads = {h for h in (rev("HEAD"), rev("HEAD^2") if hosted_merge_ref else "") if h}
       ms = re.findall(r"^Reading: head=([0-9a-f]{40}) key check host=(h051|h201) agent_check=([0-9a-f]{16}) store_check=([0-9a-f]{16})$", t, re.M)
       hosts = {m[1] for m in ms if m[0] in heads and m[2] == m[3]}
       assert hosts == {"h051", "h201"}, "no equal key check reading at HEAD from every sending host (h051 and h201); have: " + ",".join(sorted(hosts))
@@ -87,12 +89,14 @@ dod_evidence:
   - check_type: command
     check_value: |-
       gh api repos/OmniNode-ai/omnimarket/issues/6297/comments --paginate --jq '.[].body' | python3 -c '
-      import re, subprocess, sys
-      t = sys.stdin.read()
+      import os, re, subprocess, sys
+      t = sys.stdin.read().replace("\r", "")
       def rev(ref):
           r = subprocess.run(["git", "rev-parse", "--verify", "--quiet", ref], capture_output=True, text=True)
           return r.stdout.strip() if r.returncode == 0 else ""
-      heads = {h for h in (rev("HEAD"), rev("HEAD^2")) if h}
+      ref = os.environ.get("GITHUB_REF", "")
+      hosted_merge_ref = ref.startswith("refs/pull/") and ref.endswith("/merge")
+      heads = {h for h in (rev("HEAD"), rev("HEAD^2") if hosted_merge_ref else "") if h}
       ms = re.findall(r"^Reading: head=([0-9a-f]{40}) h051->h201 no-op accepted unit_digest_before=([0-9a-f]{64}) unit_digest_after=([0-9a-f]{64})$", t, re.M)
       ok = [m for m in ms if m[0] in heads and m[1] == m[2]]
       assert ok, "no h051 to h201 reading comment at HEAD with equal unit digests"

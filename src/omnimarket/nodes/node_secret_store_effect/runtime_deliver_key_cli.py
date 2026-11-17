@@ -19,6 +19,7 @@ outside the declared-id pattern, a malformed node contract, and an
 when no overlay file is found under the overlay roots) or a broken one (it
 raises). A named overlay that cannot be loaded never falls back to the host env
 file store: the operator asked for one store and gets a refusal, not another.
+An error raised out of the handler itself is a refusal too, named by its type.
 """
 
 from __future__ import annotations
@@ -109,7 +110,17 @@ def main(
                 f"the node contract could not be loaded ({type(exc).__name__}); "
                 "nothing was read and nothing was written",
             )
-    result = asyncio.run(handler.handle(request))
+    try:
+        result = asyncio.run(handler.handle(request))
+    except Exception as exc:
+        # The handler answers with typed outcomes; an error raised past it is still a
+        # refusal here, named by its type only (a message could carry a value).
+        return _refusal(
+            args.name,
+            EnumDeliverKeyOutcome.KEY_UNREADABLE,
+            f"the delivery stopped on an unexpected {type(exc).__name__}; "
+            "the state of the env file is not known",
+        )
     if (
         result.outcome is EnumDeliverKeyOutcome.DELIVERED
         or result.outcome is EnumDeliverKeyOutcome.UNCHANGED
