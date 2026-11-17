@@ -28,7 +28,6 @@ from __future__ import annotations
 import os
 import shlex
 import shutil
-import subprocess
 import tempfile
 import threading
 import uuid
@@ -122,30 +121,10 @@ _PATH_SHAPES = {
     ),
 }
 
-_DOCKER_TOOLS = {
-    "docker": "install Docker (https://docs.docker.com/get-docker/), or use --path local, "
-    "which needs no Docker",
-    "openssl": "install openssl (macOS: brew install openssl@3)",
-    "make": "install make (macOS: xcode-select --install)",
-}
-
 
 def which(name: str) -> str | None:
     """Where ``name`` is on PATH, or None. A seam the tests replace."""
     return shutil.which(name)
-
-
-def compose_available() -> bool:
-    """True when ``docker compose version`` succeeds. A seam the tests replace."""
-    try:
-        completed = subprocess.run(
-            ["docker", "compose", "version"],
-            capture_output=True,
-            check=False,
-        )
-    except OSError:
-        return False
-    return completed.returncode == 0
 
 
 class _StepFailedError(Exception):
@@ -352,26 +331,6 @@ def _resolve_path(
             "use --path local (no Docker) or --path docker",
         )
     return choice
-
-
-def _step_prerequisites(install_path: str) -> str:
-    if install_path == "local":
-        return "path local needs nothing beyond this CLI"
-    for tool, remedy in _DOCKER_TOOLS.items():
-        if which(tool) is None:
-            raise _StepFailedError(
-                "prerequisites",
-                f"the docker install path needs {tool}, which is not on PATH",
-                remedy,
-            )
-        if tool == "docker" and not compose_available():
-            raise _StepFailedError(
-                "prerequisites",
-                "the docker install path needs the docker compose plugin",
-                "install the Docker Compose plugin (docker compose version must succeed), "
-                "or use --path local",
-            )
-    return "path docker: docker, docker compose, openssl and make found"
 
 
 def ensure_user_config(onex_home: Path) -> tuple[str, bool]:
@@ -650,7 +609,6 @@ __all__ = [
     "SETUP_STEPS",
     "URL_PROVIDERS",
     "HandlerOnexSetup",
-    "compose_available",
     "discard_key",
     "park_key",
     "prove_model",

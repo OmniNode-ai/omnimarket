@@ -84,7 +84,6 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     assert Path.home() != real_home
     # Every prerequisite present by default; tests remove what they need to.
     monkeypatch.setattr(handler_onex_setup, "which", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr(handler_onex_setup, "compose_available", lambda: True)
     monkeypatch.setattr(handler_onex_setup, "prove_model", _answering_model_step)
     monkeypatch.setattr(
         HandlerSetupPreflight,
