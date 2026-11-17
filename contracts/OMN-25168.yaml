@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-25168
 title: 'Review findings 1 to 6 on omnimarket PR 6335 at head 671de2919b0d are fixed or argued: the AC3 item pins host, container and revision, and own-key metered cost is excluded from platform spend readers'
-summary: 'Fixes for the review of the delegation cost fix: the AC3 item of the OMN-24874 contract reads the running revision of the pinned dev runtime container and tests ancestry, the ceiling budget readers skip the tenant_overlay tier by their own rule, the projection floor rounds like the workflow terminal, and the probe test sets the endpoint.'
+summary: 'Fixes for the review of the delegation cost fix: the AC3 item of the OMN-24874 contract reads the running revision of the pinned dev runtime container and tests ancestry, the ceiling budget readers skip the tenant_overlay tier because resolve_tier_cost returns None for it, the projection floor rounds like the workflow terminal, and the probe test sets the endpoint.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []

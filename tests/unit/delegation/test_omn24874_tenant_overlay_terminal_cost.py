@@ -625,3 +625,66 @@ def test_projection_with_missing_route_identity_stays_unpriced(
     measured = _measure_actual_cost(event)
     assert measured.cost_usd == 0.0
     assert measured.cost_measurement_source == "no_cost_model"
+
+
+@pytest.mark.unit
+def test_omn24874_tenant_overlay_attempt_is_priced_at_the_declared_price() -> None:
+    # Review finding 5: the attempt-pricing site hard-coded endpoint_url=None, so a
+    # tenant_overlay attempt recorded before a retry or escalation was priced
+    # no_cost_model (0.0) and the cumulative cost undercounted. The attempt is the
+    # current route's, so the site reads the endpoint from the routing decision.
+    from omnimarket.enums.enum_delegation_acceptance import (
+        EnumDelegationAcceptanceDecision,
+        EnumDelegationAcceptanceReason,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
+        DelegationWorkflowState,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_escalation_attempt import (
+        ModelDelegationEscalationAttempt,
+    )
+
+    decision = _overlay_decision()
+    assert decision.tier_name == TENANT_OVERLAY_TIER_NAME
+    workflow = DelegationWorkflowState(
+        correlation_id=uuid4(),
+        routing_decision=decision,
+        current_tier_name=TENANT_OVERLAY_TIER_NAME,
+    )
+    attempt = ModelDelegationEscalationAttempt(
+        tier_name=TENANT_OVERLAY_TIER_NAME,
+        model_used=_R8_MODEL_USED,
+        quality_score=0.0,
+        latency_ms=10,
+        fallback_recommended=True,
+        attempted_at=datetime.now(UTC),
+        acceptance_decision=EnumDelegationAcceptanceDecision.CLIMB,
+        acceptance_reason=EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED,
+    )
+    handler = HandlerDelegationWorkflow()
+    cost = handler._record_escalation_attempt(
+        workflow,
+        attempt,
+        prompt_tokens=_PROMPT_TOKENS,
+        completion_tokens=_COMPLETION_TOKENS,
+    )
+    assert cost == pytest.approx(_declared_cost())
+    assert workflow.escalation_history[-1].cost_usd == pytest.approx(_declared_cost())
+    # Positive control: a platform tier's attempt is still priced from the registry
+    # (free_local -> 0.0), not from the declared price.
+    local = ModelDelegationEscalationAttempt(
+        tier_name="local",
+        model_used="Qwen3.6-35B-A3B",
+        quality_score=0.0,
+        latency_ms=10,
+        fallback_recommended=True,
+        attempted_at=datetime.now(UTC),
+        acceptance_decision=EnumDelegationAcceptanceDecision.CLIMB,
+        acceptance_reason=EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED,
+    )
+    assert handler._record_escalation_attempt(
+        workflow,
+        local,
+        prompt_tokens=_PROMPT_TOKENS,
+        completion_tokens=_COMPLETION_TOKENS,
+    ) == pytest.approx(0.0)

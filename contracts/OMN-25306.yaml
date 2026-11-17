@@ -54,7 +54,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25306-ac3-cost-logic-callers
-  description: Every caller of resolve_tier_cost reads None as no cost model or tier not budgeted (an AST walk lists the callers and fails on a new one); the premise test reads the loaded registry's tier names.
+  description: Every caller of resolve_tier_cost reads None as no cost model or tier not budgeted (an AST walk lists the callers and fails on a new one); the premise test reads the loaded registry's tier names; the text test reads the contracts of OMN-24874, OMN-25168 and OMN-25186 and the budget reader test file for the tier-rule text the code no longer has.
   source: manual
   binds_ac:
   - AC3
@@ -62,8 +62,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_budget_readers.py tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn25306-ac4-undeclared-readings-kept
-  description: Each criterion that the contracts of OMN-24918, OMN-24978, OMN-25168 and OMN-25186 no longer declare keeps its unbound local_done_gate reading; the descriptions that cited the alarm or tests no longer in the tree are corrected.
+  description: Each criterion that the contracts of OMN-24918, OMN-24978, OMN-25168 and OMN-25186 no longer declare keeps its unbound local_done_gate reading; the descriptions that cited the alarm or tests no longer in the tree are corrected. The half of AC4 that asks the AC4 reading of OMN-25186 to be confirmed on 6353 is open, because omnimarket#6353 does not carry that reading (read at its head 43bc9673d0c1), the reading is owed to a lane on omnimarket#6353, and OMN-25186 says so in its own words, so this item's tests show the texts agree, not that the reading passes.
   source: manual
   binds_ac:
   - AC4

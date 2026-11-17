@@ -672,6 +672,84 @@ def test_omn24874_contract_text_names_no_rule_the_code_no_longer_has() -> None:
     assert "AC4" not in text, "the alarm criterion is omnimarket#6353's contract"
 
 
+_CONTRACTS = _CONTRACT.parent
+_READERS_TEST = (
+    Path(__file__).resolve().parent
+    / "unit"
+    / "delegation"
+    / "test_omn24874_tenant_overlay_budget_readers.py"
+)
+# Texts that name a per-reader tier rule or a line of handler_delegation.py: the ceiling readers skip the overlay tier because
+# resolve_tier_cost returns None for it, and the guard that used to sit in handler_delegation.py is gone.
+_STALE_TIER_RULE_TEXT = (
+    "by their own rule",
+    "tier rule at ``handler_delegation``",
+    "tier rule at handler_delegation",
+    "lines 1657",
+    "1657 and 1658",
+)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "path",
+    [
+        _CONTRACTS / "OMN-24874.yaml",
+        _CONTRACTS / "OMN-25168.yaml",
+        _CONTRACTS / "OMN-25186.yaml",
+        _CONTRACTS / "OMN-25306.yaml",
+        _READERS_TEST,
+    ],
+    ids=lambda p: p.name,
+)
+def test_omn24874_contract_stale_tier_rule_text_is_gone_from_all_three_files(
+    path: Path,
+) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert text, path
+    found = [stale for stale in _STALE_TIER_RULE_TEXT if stale in text]
+    assert not found, (path.name, found)
+
+
+@pytest.mark.unit
+def test_omn24874_contract_stale_tier_rule_text_check_sees_the_old_text() -> None:
+    # Positive control: the phrases are the ones the files carried at the reviewed head.
+    old = "ceiling budget readers skip the tenant_overlay tier by their own rule"
+    assert any(stale in old for stale in _STALE_TIER_RULE_TEXT)
+
+
+@pytest.mark.unit
+def test_omn24874_contract_alarm_reading_is_owed_to_a_lane_on_6353_in_both_contracts() -> (
+    None
+):
+    # omnimarket#6353 carries the alarm node and its tests, not the AC4 reading of the alarm unit's install record and a newer
+    # row (read at its head). Both contracts say the reading is owed to a lane on that pull request, in the same words.
+    owed = "owed to a lane on omnimarket#6353"
+    for ticket in ("OMN-25186", "OMN-25306"):
+        text = (_CONTRACTS / f"{ticket}.yaml").read_text(encoding="utf-8")
+        assert owed in text, ticket
+    assert "does not carry that reading or those tests at its read head" not in (
+        _CONTRACTS / "OMN-25186.yaml"
+    ).read_text(encoding="utf-8")
+
+
+@pytest.mark.unit
+def test_omn24874_contract_stale_text_test_is_bound_in_the_omn25306_ac3_item() -> None:
+    document = yaml.safe_load(
+        (_CONTRACTS / "OMN-25306.yaml").read_text(encoding="utf-8")
+    )
+    item = next(
+        i
+        for i in document["dod_evidence"]
+        if i["id"] == "dod-omn25306-ac3-cost-logic-callers"
+    )
+    assert item["binds_ac"] == ["AC3"]
+    assert any(
+        "tests/test_omn24874_contract_checks.py" in c["check_value"]
+        for c in item["checks"]
+    )
+
+
 @pytest.mark.unit
 def test_omn24874_contract_real_postgres_file_is_a_dod_command() -> None:
     commands = [
@@ -721,3 +799,30 @@ def test_a_criterion_a_review_contract_does_not_declare_keeps_its_unbound_local_
         assert item["checks"], item_id
         # the item reads something: a command or a test the Done gate runs, not an empty shell.
         assert all(str(c["check_value"]).strip() for c in item["checks"]), item_id
+
+
+@pytest.mark.unit
+def test_omn24874_contract_ac3_check_reads_the_subject_only_not_a_body_line(
+    tmp_path: Path,
+) -> None:
+    # Review finding 8: --grep matches the whole message, so a commit whose BODY has a line ending (#6335) was read as the fix.
+    # A history whose only mention is a body line must fail the reading; the control (the default world) passes it.
+    world = _Ac3World(tmp_path)
+    assert world.run(_ac3_command()) == 0  # positive control: the subject form passes
+    _git(world.repo, "checkout", "-q", "--orphan", "bodyonly")
+    _git(
+        world.repo,
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "OMN-24874: not the fix\n\nthis reverts the fix (#6335)",
+    )
+    _git(world.repo, "commit", "-q", "--allow-empty", "-m", "a later change")
+    later = _git(world.repo, "rev-parse", "HEAD")
+    tag = f"dev-20261117020000-{later[:12]}"
+    _git(world.repo, "tag", tag, later)
+    _git(world.repo, "update-ref", "refs/remotes/origin/dev", later)
+    world.set_installed(later)
+    world.set_runtime(commit=later, dev_merge_tag=tag)
+    assert world.run(_ac3_command()) != 0

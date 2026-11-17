@@ -15,7 +15,7 @@ requirements:
   statement: 'AC2: each control in the async twin''s tests takes the overlay call''s arguments with only the tier changed and the test asserts the execute is the upsert, with a test'
   acceptance:
   - id: AC2
-    statement: 'AC2: each control in the async twin''s tests takes the overlay call''s arguments with only the tier changed and the test asserts the execute is the upsert, with a test -- falsifier: `uv run --frozen pytest tests -k "omn24874 and tenant_overlay" -q` passes with handler_delegation.py lines 1657 and 1658 reverted'
+    statement: 'AC2: each control in the async twin''s tests takes the overlay call''s arguments with only the tier changed and the test asserts the execute is the upsert, with a test -- falsifier: `uv run --frozen pytest tests -k "omn24874 and tenant_overlay" -q` passes with the tenant_overlay rule in resolve_tier_cost (src/omnimarket/pricing.py) reverted'
 evidence_requirements:
 - kind: tests
   description: The contract check tests, the ceiling budget reader tests, the tenant overlay pricing tests and the real-Postgres file.
@@ -26,7 +26,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn25186-ac1-ac4-ac5-items-read-the-alarm
-  description: "This file's tests run the OMN-24874 contract's AC5 reading over a temp repo with a ledger and a PR watcher state (a CLEAN row at the head of each of the two pull requests passes; an older head, a missing row or an unreadable watcher state fails) and its AC3 and R9 readings over shims. The AC4 reading of the alarm unit (its install record and a row newer than it) and its four tests are no longer in this tree: the OMN-24874 contract does not declare AC4, and omnimarket#6353 does not carry that reading or those tests at its read head, so nothing here shows it passing or failing."
+  description: "This file's tests run the OMN-24874 contract's AC5 reading over a temp repo with a ledger and a PR watcher state (a CLEAN row at the head of each of the two pull requests passes; an older head, a missing row or an unreadable watcher state fails) and its AC3 and R9 readings over shims. The AC4 reading of the alarm unit (its install record and a row newer than it) and its four tests are no longer in this tree: the OMN-24874 contract does not declare AC4, and omnimarket#6353 does not carry that reading or those tests either: at its read head 43bc9673d0c1 it carries the alarm node and its golden-chain and contract tests but no reading of the alarm unit's install record or of a row newer than it, so the reading is owed to a lane on omnimarket#6353 and nothing here shows it passing or failing."
   source: manual
   binds_ac:
   - AC1

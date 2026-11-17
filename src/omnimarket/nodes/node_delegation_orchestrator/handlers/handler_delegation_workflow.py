@@ -5496,7 +5496,11 @@ class HandlerDelegationWorkflow:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             premium_counterfactual=None,
-            endpoint_url=None,
+            endpoint_url=(
+                workflow.routing_decision.endpoint_url
+                if workflow.routing_decision is not None
+                else None
+            ),
             model_id=attempt.model_used,
         )
         priced_attempt = attempt.model_copy(

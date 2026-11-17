@@ -410,7 +410,7 @@ def resolve_tier_cost(tier_name: str) -> ModelTierCost | None:
     # platform's spend, so it resolves to None and never draws a ceiling.
     if not tier_name or tier_name == _overlay.TENANT_OVERLAY_TIER_NAME:
         return None
-    return {t.name: t.cost for t in _load_routing_config().tiers}.get(tier_name)
+    return next((t.cost for t in _load_routing_config().tiers if t.name == tier_name), None)  # fmt: skip
 
 
 class ModelActualCostMeasurement(BaseModel):

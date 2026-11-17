@@ -1,0 +1,131 @@
+schema_version: 1.0.0
+ticket_id: OMN-25378
+title: 'Review findings 1 to 8 on omnimarket PR 6335 at head b837aa0be0a1 are fixed or argued: the alarm reading is on 6353, the tier lookup returns the first match, the attempt-pricing call site passes its endpoint and the Lab comment is at the new head'
+summary: Answers the review of omnimarket#6335 at head b837aa0be0a1. The tier cost lookup returns the first tier of a name, the attempt-pricing site passes the endpoint of the current route, the factory floor ledger_projection field has a test, the stale tier-rule text is gone from three files and the text test reads them, the AST walk matches every way of writing the call, and the AC4 alarm reading is stated as owed to a lane on omnimarket#6353.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25378-ac1
+  statement: 'AC1: the AC4 alarm reading and its tests are on omnimarket#6353 or the ticket is shown amended on Linear, and contracts/[OMN-25186](https://linear.app/omninode/issue/OMN-25186).yaml line 29 and contracts/[OMN-25306](https://linear.app/omninode/issue/OMN-25306).yaml agree with where the reading lives -- falsifier: `uv run --frozen pytest tests -k "omn24874 and contract" -q` passes with contracts/[OMN-25186](https://linear.app/omninode/issue/OMN-25186).yaml still saying 6353 carries no AC4 reading'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the AC4 alarm reading and its tests are on omnimarket#6353 or the ticket is shown amended on Linear, and contracts/[OMN-25186](https://linear.app/omninode/issue/OMN-25186).yaml line 29 and contracts/[OMN-25306](https://linear.app/omninode/issue/OMN-25306).yaml agree with where the reading lives -- falsifier: `uv run --frozen pytest tests -k "omn24874 and contract" -q` passes with contracts/[OMN-25186](https://linear.app/omninode/issue/OMN-25186).yaml still saying 6353 carries no AC4 reading'
+- id: req-omn25378-ac2
+  statement: 'AC2: each deleted or kept criterion of [OMN-24918](https://linear.app/omninode/issue/OMN-24918), [OMN-24978](https://linear.app/omninode/issue/OMN-24978), [OMN-25168](https://linear.app/omninode/issue/OMN-25168) and [OMN-25186](https://linear.app/omninode/issue/OMN-25186) is shown amended on Linear or restored, and tests/ci/test_repo_evidence_caller_workflow.py is shown to refuse a declared criterion with no hosted binding -- falsifier: `uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q` passes with a declared criterion that has no hosted binding'
+  acceptance:
+  - id: AC2
+    statement: 'AC2: each deleted or kept criterion of [OMN-24918](https://linear.app/omninode/issue/OMN-24918), [OMN-24978](https://linear.app/omninode/issue/OMN-24978), [OMN-25168](https://linear.app/omninode/issue/OMN-25168) and [OMN-25186](https://linear.app/omninode/issue/OMN-25186) is shown amended on Linear or restored, and tests/ci/test_repo_evidence_caller_workflow.py is shown to refuse a declared criterion with no hosted binding -- falsifier: `uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q` passes with a declared criterion that has no hosted binding'
+- id: req-omn25378-ac3
+  statement: 'AC3: the stale tier-rule text in contracts/[OMN-25168](https://linear.app/omninode/issue/OMN-25168).yaml, contracts/[OMN-25186](https://linear.app/omninode/issue/OMN-25186).yaml and test_omn24874_tenant_overlay_budget_readers.py is corrected, and the text test reads all three and is bound in [OMN-25306](https://linear.app/omninode/issue/OMN-25306) AC3 -- falsifier: `uv run --frozen pytest tests -k "omn24874 and contract" -q` passes with the stale text left in any of the three files'
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the stale tier-rule text in contracts/[OMN-25168](https://linear.app/omninode/issue/OMN-25168).yaml, contracts/[OMN-25186](https://linear.app/omninode/issue/OMN-25186).yaml and test_omn24874_tenant_overlay_budget_readers.py is corrected, and the text test reads all three and is bound in [OMN-25306](https://linear.app/omninode/issue/OMN-25306) AC3 -- falsifier: `uv run --frozen pytest tests -k "omn24874 and contract" -q` passes with the stale text left in any of the three files'
+- id: req-omn25378-ac4
+  statement: 'AC4: the tier cost lookup in src/omnimarket/pricing.py returns the first tier with the name, or the registry is shown to reject duplicate names, with a test, and a PR comment starting `Lab: head=<full new head sha>` includes the real-Postgres run -- falsifier: `uv run --frozen pytest tests -k "omn24874 and pricing" -q` passes with a duplicate tier name that returns the last match'
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the tier cost lookup in src/omnimarket/pricing.py returns the first tier with the name, or the registry is shown to reject duplicate names, with a test, and a PR comment starting `Lab: head=<full new head sha>` includes the real-Postgres run -- falsifier: `uv run --frozen pytest tests -k "omn24874 and pricing" -q` passes with a duplicate tier name that returns the last match'
+- id: req-omn25378-ac5
+  statement: 'AC5: the attempt-pricing call site in handler_delegation_workflow.py passes the attempt''s endpoint, or a test shows the site is unreachable for the tenant_overlay tier, and the cumulative cost counts a tenant_overlay retry at the declared price -- falsifier: `uv run --frozen pytest tests -k "omn24874 and tenant_overlay" -q` passes with endpoint_url=None at the call site'
+  acceptance:
+  - id: AC5
+    statement: 'AC5: the attempt-pricing call site in handler_delegation_workflow.py passes the attempt''s endpoint, or a test shows the site is unreachable for the tenant_overlay tier, and the cumulative cost counts a tenant_overlay retry at the declared price -- falsifier: `uv run --frozen pytest tests -k "omn24874 and tenant_overlay" -q` passes with endpoint_url=None at the call site'
+- id: req-omn25378-ac6
+  statement: 'AC6: the [OMN-23963](https://linear.app/omninode/issue/OMN-23963) and [OMN-24490](https://linear.app/omninode/issue/OMN-24490) change in model_factory_floor_runtime.py is split out, or covered by a test, and dev is checked for already carrying it -- falsifier: `uv run --frozen pytest tests -k "factory_floor_runtime" -q` passes with the change in the diff and no test covering it'
+  acceptance:
+  - id: AC6
+    statement: 'AC6: the [OMN-23963](https://linear.app/omninode/issue/OMN-23963) and [OMN-24490](https://linear.app/omninode/issue/OMN-24490) change in model_factory_floor_runtime.py is split out, or covered by a test, and dev is checked for already carrying it -- falsifier: `uv run --frozen pytest tests -k "factory_floor_runtime" -q` passes with the change in the diff and no test covering it'
+- id: req-omn25378-ac7
+  statement: 'AC7: the AST walk in test_omn24874_tenant_overlay_budget_readers.py matches attribute calls, aliases and module-level calls of resolve_tier_cost, the PR title no longer claims the alarm on failed R8 or R9 runs, and the AC3 git log grep in [OMN-24874](https://linear.app/omninode/issue/OMN-24874).yaml matches the subject only -- falsifier: `uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_budget_readers.py -q` passes with a call written as pricing.resolve_tier_cost'
+  acceptance:
+  - id: AC7
+    statement: 'AC7: the AST walk in test_omn24874_tenant_overlay_budget_readers.py matches attribute calls, aliases and module-level calls of resolve_tier_cost, the PR title no longer claims the alarm on failed R8 or R9 runs, and the AC3 git log grep in [OMN-24874](https://linear.app/omninode/issue/OMN-24874).yaml matches the subject only -- falsifier: `uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_budget_readers.py -q` passes with a call written as pricing.resolve_tier_cost'
+evidence_requirements:
+- kind: tests
+  description: The contract check tests, the repo contract binds test, the tier lookup test, the tenant overlay pricing tests, the ceiling budget reader tests and the factory floor overlay test.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/test_omn24874_contract_checks.py tests/ci/test_repo_evidence_caller_workflow.py tests/unit/delegation/test_omn24874_pricing_tier_lookup.py tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/unit/delegation/test_omn24874_tenant_overlay_budget_readers.py tests/nodes/node_factory_floor_effect/test_model_factory_floor_runtime_ledger_projection.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25378-ac1
+  description: 'The contract text tests read OMN-25186 and OMN-25306 and assert both say the AC4 alarm reading is owed to a lane on omnimarket#6353, which does not carry it at its read head. The Linear amendment is not shown: this lane has no Linear tool.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25378-ac2
+  description: The repo contract binds test refuses a declared criterion that no hosted test binds, with a positive control. The kept alarm items of OMN-24918 and OMN-24978 stay unbound local_done_gate readings whose tests exist on omnimarket#6353.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25378-ac3
+  description: The text test reads the contracts of OMN-24874, OMN-25168, OMN-25186 and OMN-25306 and the budget reader test file for the stale tier-rule text, and OMN-25306 AC3 binds it.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25378-ac4
+  description: The registry parser accepts a repeated tier name, so the tier cost lookup returns the first tier with the name, as the loop did before OMN-24874.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_omn24874_pricing_tier_lookup.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25378-ac5
+  description: The attempt-pricing site reads the endpoint from the routing decision, so a tenant_overlay attempt is priced at the declared price, with a platform-tier control.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25378-ac6
+  description: 'The ledger_projection block of the factory floor overlay is covered by a test: absent by default, accepted when declared, strict inside the block. dev does not carry the field.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_model_factory_floor_runtime_ledger_projection.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25378-ac7
+  description: The caller walk matches attribute calls, import aliases, bound names and module-level calls of resolve_tier_cost; the AC3 command of the OMN-24874 contract reads the commit subject only (see the contract check test).
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_budget_readers.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25378-ac4-lab-comment-real-postgres
+  description: 'The PR holds a comment starting Lab: head= with the full head of the checkout that names the real-Postgres run. Local Done gate only: it reads the pull request comments and a sha.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'sh -c ''C=$(onex scm pr-view OmniNode-ai/omnimarket#6335 --comments) && printf %s "$C" | grep -qF "Lab: head=$(git rev-parse HEAD)" && printf %s "$C" | grep -qi "real-postgres"'''
+    cwd: .
+- id: dod-omn25378-integration-proof
+  description: The focused tests of this change run on a lab host at the pushed head through the lab work runner; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path "${OMNI_HOME:?}" --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25378 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn24874_contract_checks.py tests/ci/test_repo_evidence_caller_workflow.py tests/unit/delegation/test_omn24874_pricing_tier_lookup.py tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/unit/delegation/test_omn24874_tenant_overlay_budget_readers.py tests/nodes/node_factory_floor_effect/test_model_factory_floor_runtime_ledger_projection.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

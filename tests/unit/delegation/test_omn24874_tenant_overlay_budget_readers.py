@@ -96,7 +96,7 @@ def _run_async_twin(tier: str) -> AsyncMock:
     """Run the async ceiling reader for ``tier`` with the overlay run's own arguments and return the database mock.
 
     Overlay run and control share every argument (``metered``, headroom 0.0, the same cost): only the tier name differs, so a
-    control that writes while the overlay run does not can only be down to the tier rule at ``handler_delegation``.
+    control that writes while the overlay run does not can only be down to the tier rule in ``resolve_tier_cost``.
     """
     runner = DelegationProjectionRunner()
     db = AsyncMock()
@@ -154,21 +154,78 @@ _RESOLVE_TIER_COST_CALLERS = {
 }
 
 
+def _callers_in_source(source: str, module: str) -> set[tuple[str, str]]:
+    """Every (module, enclosing function) that calls ``resolve_tier_cost`` in ``source``.
+
+    A call counts when it is written as the bare name, as an attribute
+    (``pricing.resolve_tier_cost``), through an import alias, through a name bound
+    to the function, or at module scope (enclosing name ``<module>``).
+    """
+    tree = ast.parse(source)
+    names = {"resolve_tier_cost"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            names.update(
+                alias.asname or alias.name
+                for alias in node.names
+                if alias.name == "resolve_tier_cost"
+            )
+        elif isinstance(node, ast.Assign) and (
+            (isinstance(node.value, ast.Name) and node.value.id in names)
+            or (isinstance(node.value, ast.Attribute) and node.value.attr in names)
+        ):
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+    found: set[tuple[str, str]] = set()
+
+    def visit(node: ast.AST, scope: str) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            scope = node.name
+        if isinstance(node, ast.Call):
+            func = node.func
+            if (isinstance(func, ast.Name) and func.id in names) or (
+                isinstance(func, ast.Attribute) and func.attr in names
+            ):
+                found.add((module, scope))
+        for child in ast.iter_child_nodes(node):
+            visit(child, scope)
+
+    visit(tree, "<module>")
+    return found
+
+
 def _resolve_tier_cost_callers() -> set[tuple[str, str]]:
     found: set[tuple[str, str]] = set()
     for path in _SRC_ROOT.rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for function in ast.walk(tree):
-            if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            for node in ast.walk(function):
-                if (
-                    isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Name)
-                    and node.func.id == "resolve_tier_cost"
-                ):
-                    found.add((path.relative_to(_SRC_ROOT).as_posix(), function.name))
+        found |= _callers_in_source(
+            path.read_text(encoding="utf-8"), path.relative_to(_SRC_ROOT).as_posix()
+        )
     return found
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def reader():\n    return resolve_tier_cost('x')\n",
+        "def reader():\n    return pricing.resolve_tier_cost('x')\n",
+        "from omnimarket.pricing import resolve_tier_cost as price\n"
+        "def reader():\n    return price('x')\n",
+        "import omnimarket.pricing as p\ndef reader():\n    return p.resolve_tier_cost('x')\n",
+        "lookup = pricing.resolve_tier_cost\ndef reader():\n    return lookup('x')\n",
+        "async def reader():\n    return pricing.resolve_tier_cost('x')\n",
+    ],
+)
+def test_the_caller_walk_finds_every_way_of_writing_the_call(source: str) -> None:
+    assert _callers_in_source(source, "m.py") == {("m.py", "reader")}
+
+
+@pytest.mark.unit
+def test_the_caller_walk_finds_a_module_level_call_and_ignores_other_names() -> None:
+    assert _callers_in_source("TIER = pricing.resolve_tier_cost('x')\n", "m.py") == {
+        ("m.py", "<module>")
+    }
+    # Positive control: a call to another function is not a caller.
+    assert _callers_in_source("def r():\n    return other('x')\n", "m.py") == set()
 
 
 @pytest.mark.unit
