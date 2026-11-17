@@ -5496,6 +5496,8 @@ class HandlerDelegationWorkflow:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             premium_counterfactual=None,
+            endpoint_url=None,
+            model_id=attempt.model_used,
         )
         priced_attempt = attempt.model_copy(
             update={
@@ -5543,8 +5545,8 @@ class HandlerDelegationWorkflow:
         prompt_tokens: int,
         completion_tokens: int,
         premium_counterfactual: ModelPremiumCounterfactual | None,
-        endpoint_url: str = "",
-        model_id: str = "",
+        endpoint_url: str | None,
+        model_id: str,
     ) -> ModelActualCostMeasurement:
         """Measure a terminal event's actual cost from the typed tier cost model.
 
@@ -5562,11 +5564,8 @@ class HandlerDelegationWorkflow:
         ``free_local`` → 0.0, ``metered`` → ``rate_per_1k_usd * tokens / 1000``.
         No parallel formula, no hardcoded 0.0.
 
-        OMN-24874: a tier the registry has no cost model for (the tenant overlay
-        route's ``tenant_overlay``, a run on the customer's own key) is priced from
-        the catalogue's declared per-1M price for the endpoint and model, booked
-        as ``metered``. Only that tier takes the declared price: any other tier
-        without a cost model, and a model no table prices, stays ``no_cost_model``.
+        OMN-24874: ``tenant_overlay`` (own key, no registry cost model) is priced from the
+        declared per-1M price, booked ``metered``; any other case keeps the measurement.
         """
         measurement = recompute_actual_cost_and_savings(
             tier_name=tier_name,
@@ -5577,7 +5576,6 @@ class HandlerDelegationWorkflow:
         if (
             tier_name != TENANT_OVERLAY_TIER_NAME
             or measurement.cost_measurement_source != "no_cost_model"
-            or not model_id
         ):
             return measurement
         declared = byok_declared_price_per_1m(endpoint_url, model_id)
@@ -5594,6 +5592,8 @@ class HandlerDelegationWorkflow:
             ),
             10,
         )
+        if cash <= 0:  # no declared price, or no tokens served: the measurement stands
+            return measurement
         savings = (
             0.0
             if premium_counterfactual is None

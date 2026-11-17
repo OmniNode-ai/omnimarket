@@ -85,8 +85,12 @@ def test_a_budgeted_tier_still_draws_the_ceiling_when_the_overlay_rule_exists() 
     assert Decimal(str(row["overage_usd"])) == _OWN_KEY_COST
 
 
-@pytest.mark.unit
-def test_tenant_overlay_run_never_draws_the_async_ceiling_twin() -> None:
+def _run_async_twin(tier: str) -> AsyncMock:
+    """Run the async ceiling reader for ``tier`` with the overlay run's own arguments and return the database mock.
+
+    Overlay run and control share every argument (``metered``, headroom 0.0, the same cost): only the tier name differs, so a
+    control that writes while the overlay run does not can only be down to the tier rule at ``handler_delegation``.
+    """
     runner = DelegationProjectionRunner()
     db = AsyncMock()
     db.execute = AsyncMock(return_value=[])
@@ -96,7 +100,7 @@ def test_tenant_overlay_run_never_draws_the_async_ceiling_twin() -> None:
         asyncio.run(
             runner._materialize_budget_state_async(
                 correlation_id="omn24874-own-key-run",
-                cost_tier_name=TENANT_OVERLAY_TIER_NAME,
+                cost_tier_name=tier,
                 cost_measurement_source="metered",
                 budget_headroom_consumed_usd=0.0,
                 cost_usd=float(_OWN_KEY_COST),
@@ -104,26 +108,23 @@ def test_tenant_overlay_run_never_draws_the_async_ceiling_twin() -> None:
                 timestamp=None,
             )
         )
-    assert db.execute.await_args_list == []
+    return db
+
+
+@pytest.mark.unit
+def test_tenant_overlay_run_never_draws_the_async_ceiling_twin() -> None:
+    assert _run_async_twin(TENANT_OVERLAY_TIER_NAME).execute.await_args_list == []
 
 
 @pytest.mark.unit
 def test_a_budgeted_tier_still_draws_the_async_ceiling_twin() -> None:
-    runner = DelegationProjectionRunner()
-    db = AsyncMock()
-    db.execute = AsyncMock(return_value=[])
-    db.fetchval = AsyncMock(return_value=None)
-    runner._db = db  # type: ignore[assignment]
-    with patch(_ASYNC_RESOLVE, return_value=_CAPPED):
-        asyncio.run(
-            runner._materialize_budget_state_async(
-                correlation_id="omn24874-own-key-run",
-                cost_tier_name="cheap_cloud",
-                cost_measurement_source="budgeted_in_budget",
-                budget_headroom_consumed_usd=1.5,
-                cost_usd=1.5,
-                tenant_id="readiness-probe",
-                timestamp=None,
-            )
-        )
+    # Positive control: the overlay run's exact arguments with only the tier changed. The one statement is the budget upsert.
+    db = _run_async_twin("cheap_cloud")
     assert len(db.execute.await_args_list) == 1
+    call = db.execute.await_args_list[0]
+    statement = call.args[0]
+    assert "INSERT INTO delegation_budget_state AS s" in statement
+    assert (
+        "ON CONFLICT (tenant_id, cost_tier_name, budget_period) DO UPDATE" in statement
+    )
+    assert "cheap_cloud" in call.args

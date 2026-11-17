@@ -71,13 +71,22 @@ def _hostname_shim(directory: Path, name: str) -> dict[str, str]:
     return {"PATH": f"{shim.parent}:/usr/bin:/bin:/usr/local/bin"}
 
 
-# The R8 and R9 max ages the live readings carry. The alarm node's own contract declares the same numbers (its tests tie them to
-# the units' start_interval); this file pins the numbers the contract commands use.
-_MAX_AGES = {"R8": 27000, "R9": 4500}
+_UNITS_CONTRACT = (
+    Path(__file__).resolve().parents[1]
+    / "src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml"
+)
+_SCENARIO_UNITS = {"R8": "scenario-r8-systemd", "R9": "scenario-r9-systemd"}
 
 
 def _max_age(scenario: str) -> int:
-    return _MAX_AGES[scenario]
+    """The age past which a scenario's last-run record reads stale: the unit's declared start_interval plus a quarter.
+
+    Read from the registry units contract the units are installed from, so the live commands' numbers follow the unit's
+    schedule and are not pinned by this file.
+    """
+    units = yaml.safe_load(_UNITS_CONTRACT.read_text(encoding="utf-8"))["units"]
+    interval = int(units[_SCENARIO_UNITS[scenario]]["schedule"]["start_interval"])
+    return interval + interval // 4
 
 
 @pytest.mark.unit
@@ -127,10 +136,10 @@ def test_omn24874_contract_live_reading_parses_the_conclusion_field(
 
 
 @pytest.mark.unit
-def test_omn24874_contract_live_command_ages_equal_the_alarm_contract_max_ages() -> (
+def test_omn24874_contract_live_command_ages_follow_the_units_declared_intervals() -> (
     None
 ):
-    # A number in a command that drifts from the alarm contract's max age is a live reading with the wrong tolerance.
+    # A number in a command that drifts from the unit's interval plus a quarter is a live reading with the wrong tolerance.
     items = _items()
     live = str(items["dod-omn24874-live-readings"]["checks"][0]["check_value"])
     assert f'"r8 {_max_age("R8")}"' in live
@@ -192,70 +201,93 @@ def test_omn24874_contract_r8_reading_means_cost_above_zero_on_a_real_writer_row
     assert reading() != 0
 
 
-def _ac5_command_env(
-    tmp_path: Path, rows: list[str]
-) -> tuple[str, dict[str, str], Path]:
-    repo = tmp_path / "repo"
-    repo.mkdir(parents=True)
-    git = ["git", "-C", str(repo)]
-    subprocess.run([*git, "init", "-q"], check=True)
-    subprocess.run(
-        [
-            *git,
-            "-c",
-            "user.name=t",
-            "-c",
-            "user.email=t@t",
-            "commit",
-            "-q",
-            "--allow-empty",
-            "-m",
-            "head",
-        ],
-        check=True,
-    )
-    head = subprocess.run(
-        [*git, "rev-parse", "HEAD"], check=True, capture_output=True, text=True
-    ).stdout.strip()
-    script = tmp_path / "plugin/skills/lane-brief/scripts/lane_brief.py"
+_ALARM_HEAD = "d65bc516360e8a0324f044cb0d637c9309665874"  # the head the watcher state records for the alarm pull request
+
+
+def _plugin_with_ledger_rows(
+    tmp_path: Path, rows: list[str], *, head: str, alarm_pr_state: str | None
+) -> Path:
+    """A plugin root whose lane_brief.py prints ``rows`` (``<HEAD>`` and ``<ALARM>`` filled in) and whose pr_state_local.py
+    prints the watcher record of the alarm pull request (``alarm_pr_state`` None: the watcher cannot read it, exit 3)."""
+    plugin = tmp_path / "plugin"
+    script = plugin / "skills/lane-brief/scripts/lane_brief.py"
     script.parent.mkdir(parents=True)
     script.write_text(
         "import sys\nfor row in "
         + repr(rows)
         + ":\n    print(row.replace('<HEAD>', "
         + repr(head)
+        + ").replace('<ALARM>', "
+        + repr(_ALARM_HEAD)
         + "))\n",
         encoding="utf-8",
+    )
+    state = plugin / "skills/merge-drain/scripts/pr_state_local.py"
+    state.parent.mkdir(parents=True)
+    if alarm_pr_state is None:
+        state.write_text("import sys\nsys.exit(3)\n", encoding="utf-8")
+    else:
+        state.write_text(
+            "import sys\n"
+            "assert sys.argv[1:] == ['--pr', 'OmniNode-ai/omnimarket#6353', '--json'], sys.argv\n"
+            f"print({json.dumps(json.dumps({'facts': {'head_sha': alarm_pr_state}}))})\n",
+            encoding="utf-8",
+        )
+    return plugin
+
+
+def _checkout_head(tmp_path: Path) -> tuple[Path, str]:
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True)
+    _git(repo, "init", "-q")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "head")
+    return repo, _git(repo, "rev-parse", "HEAD")
+
+
+def _run_ac5(
+    tmp_path: Path, rows: list[str], *, alarm_pr_state: str | None = _ALARM_HEAD
+) -> int:
+    repo, head = _checkout_head(tmp_path)
+    plugin = _plugin_with_ledger_rows(
+        tmp_path, rows, head=head, alarm_pr_state=alarm_pr_state
     )
     command = str(
         _items()["dod-omn24874-ac5-clean-verdict-row"]["checks"][0]["check_value"]
     )
     env = {
-        "OMNI_PLUGIN_ROOT": str(tmp_path / "plugin"),
+        "OMNI_PLUGIN_ROOT": str(plugin),
         "PATH": "/usr/bin:/bin:/usr/local/bin",
         "HOME": str(tmp_path),
     }
-    return command, env, repo
+    return subprocess.run(
+        shlex.split(command), cwd=repo, env=env, check=False, capture_output=True
+    ).returncode
+
+
+_CLEAN = "2026-11-16T21:00:00Z | STATUS | lane=x | pr=OmniNode-ai/omnimarket#{pr} | head={head} | verdict=CLEAN"
 
 
 @pytest.mark.unit
-def test_omn24874_contract_ac5_check_needs_the_clean_row_to_name_the_head(
+def test_omn24874_contract_ac5_check_needs_a_clean_row_at_the_head_of_each_pull_request(
     tmp_path: Path,
 ) -> None:
     older = "2026-11-16T19:44:33Z | STATUS | lane=x | pr=omnimarket#6335 | head=32e9b16c909d | verdict=CLEAN"
-    named = "2026-11-16T21:00:00Z | STATUS | lane=x | pr=omnimarket#6335 | head=<HEAD> | verdict=CLEAN"
+    this = _CLEAN.format(pr=6335, head="<HEAD>")
+    alarm = _CLEAN.format(pr=6353, head="<ALARM>")
+    # Both pull requests have a CLEAN row naming their current head: passes.
+    assert _run_ac5(tmp_path / "both", [older, this, alarm]) == 0
     # The row of a head this checkout is not at (an older CLEAN row after a new push) passes nothing.
-    command, env, repo = _ac5_command_env(tmp_path, [older])
-    stale = subprocess.run(
-        shlex.split(command), cwd=repo, env=env, check=False, capture_output=True
-    )
-    assert stale.returncode != 0
-    # A CLEAN row that names the checkout's 12-character head passes.
-    command, env, repo = _ac5_command_env(tmp_path / "second", [older, named])
-    ok = subprocess.run(
-        shlex.split(command), cwd=repo, env=env, check=False, capture_output=True
-    )
-    assert ok.returncode == 0, ok.stderr
+    assert _run_ac5(tmp_path / "stale", [older, alarm]) != 0
+    # A CLEAN row for #6335 alone does not pass: the alarm pull request has none (the Done gate read passed with #6353 unmerged).
+    assert _run_ac5(tmp_path / "no-alarm-row", [older, this]) != 0
+    # A CLEAN row for an older head of #6353 is not its head.
+    old_alarm = _CLEAN.format(pr=6353, head="0123456789ab")
+    assert _run_ac5(tmp_path / "old-alarm-head", [this, old_alarm]) != 0
+    # The row that names the other pull request's head does not stand in for #6353's own.
+    wrong = _CLEAN.format(pr=6353, head="<HEAD>")
+    assert _run_ac5(tmp_path / "wrong-head", [this, wrong]) != 0
+    # A head the watcher cannot read fails closed.
+    assert _run_ac5(tmp_path / "unreadable", [this, alarm], alarm_pr_state=None) != 0
 
 
 _RUNTIME_CONTAINER = "omninode-runtime"
@@ -264,13 +296,13 @@ _RUNTIME_PROJECT = (
 )
 
 
-def _git(repo: Path, *args: str) -> str:
+def _git(repo: Path, *args: str, env: Mapping[str, str] | None = None) -> str:
     return subprocess.run(
         ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *args],
         check=True,
         capture_output=True,
         text=True,
-        env=scrub_git_location_env(os.environ),
+        env={**scrub_git_location_env(os.environ), **(env or {})},
     ).stdout.strip()
 
 
@@ -278,18 +310,40 @@ class _Ac3World:
     """A temp omnimarket clone (base, the squash commit of the fix, a later dev commit tagged dev-*), the R8 unit's
     installed.json, and ssh and hostname shims standing in for the dev runtime host and its container."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, tag_age_days: int = 0) -> None:
         self.root = root
         self.repo = root / "omnimarket"
         self.repo.mkdir(parents=True)
         _git(self.repo, "init", "-q")
         _git(self.repo, "commit", "-q", "--allow-empty", "-m", "base")
         self.base = _git(self.repo, "rev-parse", "HEAD")
-        _git(self.repo, "commit", "-q", "--allow-empty", "-m", "OMN-24874: the fix")
+        _git(
+            self.repo,
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "OMN-24874: the fix (#6335)",
+        )
         self.fix = _git(self.repo, "rev-parse", "HEAD")
         _git(self.repo, "commit", "-q", "--allow-empty", "-m", "a later change")
         self.later = _git(self.repo, "rev-parse", "HEAD")
-        _git(self.repo, "tag", f"dev-20261117000000-{self.later[:12]}", self.later)
+        self.tag = f"dev-20261117000000-{self.later[:12]}"
+        if tag_age_days:
+            # An annotated tag carries its own creation date: the newest dev-* tag is then older than a day.
+            then = (datetime.now(UTC) - timedelta(days=tag_age_days)).isoformat()
+            _git(
+                self.repo,
+                "tag",
+                "-a",
+                "-m",
+                "t",
+                self.tag,
+                self.later,
+                env={"GIT_COMMITTER_DATE": then},
+            )
+        else:
+            _git(self.repo, "tag", self.tag, self.later)
         _git(self.repo, "update-ref", "refs/remotes/origin/dev", self.later)
         self.installed = root / ".onex_state/delegation-scenario-r8"
         self.installed.mkdir(parents=True)
@@ -310,26 +364,35 @@ class _Ac3World:
         container: str = _RUNTIME_CONTAINER,
         project: str = _RUNTIME_PROJECT,
         commit: str | None = None,
-        dev_merge_tag: str = "dev-20261116081630-6efbe3ee5027",
+        dev_merge_tag: str | None = None,
         dirty: bool = False,
         sibling: str = "omnimarket",
         symbols_present: bool = True,
     ) -> None:
+        # The top-level keys the real /app/build-provenance.json requires (build-provenance-schema.json in omnibase_infra).
         provenance = {
+            "build_source": "workspace",
+            "build_time": "2026-11-17T00:00:00Z",
+            "infra_vcs_ref": self.later,
             "per_repo_vcs_provenance": {
                 "siblings": {
                     "omnibase_core": {
                         "vcs_ref": self.later,
                         "vcs_dirty": False,
                         "dev_merge_tag": "dev-20261115210713-67a6d77ec939",
+                        "vcs_branch": "HEAD",
                     },
                     sibling: {
                         "vcs_ref": commit if commit is not None else self.later,
                         "vcs_dirty": dirty,
-                        "dev_merge_tag": dev_merge_tag,
+                        "dev_merge_tag": (
+                            self.tag if dev_merge_tag is None else dev_merge_tag
+                        ),
+                        # The record carries the sibling's branch too (build-provenance-schema.json requires it).
+                        "vcs_branch": "HEAD",
                     },
                 }
-            }
+            },
         }
         inspect = json.dumps(
             [
@@ -369,8 +432,9 @@ class _Ac3World:
             "PATH": f"{self.bin}:{hostname['PATH']}",
             "OMNI_HOME": str(self.root),
             "HOME": str(self.root),
-            # The operator variable the previous reading took its container from; the pinned reading must not follow it.
-            "RUNTIME_CONTAINER": _RUNTIME_CONTAINER,
+            # The operator variable the previous reading took its container from; the pinned reading must not follow it, so it
+            # names a container that is not the pinned one (the shim answers the pinned name only).
+            "RUNTIME_CONTAINER": "some-other-container",
         }
         if ssh_host is not None:
             env["ONEX_RUNTIME_SSH_HOST"] = ssh_host
@@ -455,6 +519,54 @@ def test_omn24874_contract_ac3_check_fails_before_the_fix_is_merged(
 
 
 @pytest.mark.unit
+def test_omn24874_contract_ac3_check_needs_the_squash_commit_not_a_ticket_prefixed_subject(
+    tmp_path: Path,
+) -> None:
+    # Only the commit whose subject ends (#6335) is the fix: a newer commit that merely starts with the ticket id is not.
+    world = _Ac3World(tmp_path)
+    _git(world.repo, "commit", "-q", "--allow-empty", "-m", "OMN-24874: a follow-up")
+    follow_up = _git(world.repo, "rev-parse", "HEAD")
+    _git(world.repo, "tag", f"dev-20261117010000-{follow_up[:12]}", follow_up)
+    _git(world.repo, "update-ref", "refs/remotes/origin/dev", follow_up)
+    world.set_installed(world.later)
+    world.set_runtime(commit=world.later)
+    # The newest commit named for the ticket is not an ancestor of the running revision; the squash commit is, so it passes.
+    assert world.run(_ac3_command()) == 0
+
+
+@pytest.mark.unit
+def test_omn24874_contract_ac3_check_fails_when_the_dev_merge_tag_names_another_commit(
+    tmp_path: Path,
+) -> None:
+    # A tag that merely starts with dev- but names a commit other than the build's vcs_ref passes nothing.
+    world = _Ac3World(tmp_path)
+    world.set_runtime(dev_merge_tag="dev-20261116081630-6efbe3ee5027")
+    assert world.run(_ac3_command()) != 0
+    world.set_runtime(dev_merge_tag=f"dev-20261117000000-{world.base[:12]}")
+    assert world.run(_ac3_command()) != 0
+
+
+@pytest.mark.unit
+def test_omn24874_contract_ac3_check_fails_when_no_dev_merge_tag_contains_the_installed_revision(
+    tmp_path: Path,
+) -> None:
+    world = _Ac3World(tmp_path)
+    assert world.run(_ac3_command()) == 0
+    # The R8 unit is installed at a commit past the newest dev-merge tag: no tag contains it.
+    _git(world.repo, "commit", "-q", "--allow-empty", "-m", "an untagged change")
+    world.set_installed(_git(world.repo, "rev-parse", "HEAD"))
+    assert world.run(_ac3_command()) != 0
+
+
+@pytest.mark.unit
+def test_omn24874_contract_ac3_check_fails_when_the_newest_dev_merge_tag_is_over_a_day_old(
+    tmp_path: Path,
+) -> None:
+    assert _Ac3World(tmp_path / "fresh").run(_ac3_command()) == 0
+    assert _Ac3World(tmp_path / "old", tag_age_days=3).run(_ac3_command()) != 0
+
+
+@pytest.mark.unit
 def test_omn24874_contract_ac3_dev_runtime_symbols_exist_only_with_the_fix() -> None:
     # The two names the dev-runtime reading asserts: the workflow's declared-price function and the projection's overlay floor.
     from omnimarket.nodes.node_delegation_orchestrator.handlers import (
@@ -471,13 +583,167 @@ def test_omn24874_contract_ac3_dev_runtime_symbols_exist_only_with_the_fix() -> 
     assert "p._tenant_overlay_cost_usd" in command
 
 
+_ALARM_INSTALLED_AT = "2026-11-17T04:00:00Z"
+_ALARM_ROW = "{ts} | STATUS | lane=delegation-scenario-alarm | src=alarm | alarm={alarm} | req=r1 | the run failed"
+
+
+class _Ac4World:
+    """A temp omnimarket clone (base, the squash commit of the alarm pull request ending (#6353), a later commit), the alarm
+    unit's installed.json, a lane_brief.py printing ledger rows, and a hostname shim."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.repo = root / "omnimarket"
+        self.repo.mkdir(parents=True)
+        _git(self.repo, "init", "-q")
+        _git(self.repo, "commit", "-q", "--allow-empty", "-m", "base")
+        self.base = _git(self.repo, "rev-parse", "HEAD")
+        _git(
+            self.repo,
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "OMN-25071: add the alarm node (#6353)",
+        )
+        self.alarm = _git(self.repo, "rev-parse", "HEAD")
+        _git(self.repo, "commit", "-q", "--allow-empty", "-m", "a later change")
+        self.later = _git(self.repo, "rev-parse", "HEAD")
+        _git(self.repo, "update-ref", "refs/remotes/origin/dev", self.later)
+        self.set_install(self.later)
+        self.set_rows(
+            [
+                _ALARM_ROW.format(
+                    ts="2026-11-17T05:00:00Z", alarm="delegation-scenario-r8-failed"
+                )
+            ]
+        )
+
+    def set_install(
+        self, revision: str | None, installed_at: str | None = None
+    ) -> None:
+        record = self.root / ".onex_state/delegation-scenario-alarm"
+        record.mkdir(parents=True, exist_ok=True)
+        target = record / "scenario-alarm-systemd.installed.json"
+        if revision is None:
+            target.unlink(missing_ok=True)
+            return
+        target.write_text(
+            json.dumps(
+                {
+                    "revision": revision,
+                    "installed_at": installed_at or _ALARM_INSTALLED_AT,
+                    "unit": "scenario-alarm-systemd",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def set_rows(self, rows: list[str], *, prefix: str = "") -> None:
+        script = self.root / "plugin/skills/lane-brief/scripts/lane_brief.py"
+        script.parent.mkdir(parents=True, exist_ok=True)
+        script.write_text(
+            f"for row in {rows!r}:\n    print({prefix!r} + row)\n", encoding="utf-8"
+        )
+
+    def run(self, *, gate_host: str = _PINNED_HOST) -> int:
+        item = _items()["dod-omn24874-ac4-alarm-ledger-row"]
+        assert item["binds_ac"] == ["AC4"]
+        env = {
+            **_hostname_shim(self.root, gate_host),
+            "OMNI_HOME": str(self.root),
+            "OMNI_PLUGIN_ROOT": str(self.root / "plugin"),
+            "HOME": str(self.root),
+        }
+        return subprocess.run(
+            shlex.split(str(item["checks"][0]["check_value"])),
+            cwd=self.repo,
+            env=env,
+            check=False,
+            capture_output=True,
+        ).returncode
+
+
 @pytest.mark.unit
-def test_omn24874_contract_binds_no_proxy_test_to_ac2_ac3_or_ac5() -> None:
+def test_omn24874_contract_ac4_check_passes_on_a_row_left_after_the_unit_was_installed(
+    tmp_path: Path,
+) -> None:
+    assert _Ac4World(tmp_path / "bare").run() == 0
+    # The ledger reader prints each row behind its file and line, as lane_brief.py grep does.
+    world = _Ac4World(tmp_path / "prefixed")
+    world.set_rows(
+        [
+            _ALARM_ROW.format(
+                ts="2026-11-17T05:00:00Z", alarm="delegation-scenario-r9-failed"
+            )
+        ],
+        prefix="ROLLING_WORK_LEDGER.md:3322:",
+    )
+    assert world.run() == 0
+
+
+@pytest.mark.unit
+def test_omn24874_contract_ac4_check_fails_on_a_row_older_than_the_unit_install(
+    tmp_path: Path,
+) -> None:
+    # The old reading passed on any src=alarm row: one left by an earlier alarm unit, or a hand-written one, before the
+    # alarm pull request was installed on the host.
+    world = _Ac4World(tmp_path)
+    world.set_rows(
+        [
+            _ALARM_ROW.format(
+                ts="2026-11-16T03:00:00Z", alarm="delegation-scenario-r8-failed"
+            )
+        ]
+    )
+    assert world.run() != 0
+
+
+@pytest.mark.unit
+def test_omn24874_contract_ac4_check_fails_when_the_alarm_pull_request_is_not_merged_or_installed(
+    tmp_path: Path,
+) -> None:
+    # The squash commit of #6353 is not on origin/dev yet.
+    unmerged = _Ac4World(tmp_path / "unmerged")
+    _git(unmerged.repo, "update-ref", "refs/remotes/origin/dev", unmerged.base)
+    assert unmerged.run() != 0
+    # The unit was installed at a revision that predates the alarm merge.
+    stale = _Ac4World(tmp_path / "stale-install")
+    stale.set_install(stale.base)
+    assert stale.run() != 0
+    # No install record of the alarm unit on the host.
+    uninstalled = _Ac4World(tmp_path / "uninstalled")
+    uninstalled.set_install(None)
+    assert uninstalled.run() != 0
+    # Another host.
+    assert _Ac4World(tmp_path / "elsewhere").run(gate_host="some-other-host") != 0
+
+
+@pytest.mark.unit
+def test_omn24874_contract_ac4_check_fails_on_rows_that_are_not_alarm_rows_of_r8_or_r9(
+    tmp_path: Path,
+) -> None:
+    world = _Ac4World(tmp_path)
+    after = "2026-11-17T05:00:00Z"
+    for row in (
+        f"{after} | STATUS | lane=x | src=alarm | alarm=delegation-scenario-r4-failed | req=r1 | text",
+        f"{after} | STATUS | lane=x | src=lane | req=r1 | text says src=alarm alarm=delegation-scenario-r8-failed",
+        f"{after} | MSG | lane=x | src=alarm | alarm=delegation-scenario-r8-failed | req=r1 | text",
+    ):
+        world.set_rows([row])
+        assert world.run() != 0, row
+    # Positive control: the same shape of row for r9 passes.
+    world.set_rows([_ALARM_ROW.format(ts=after, alarm="delegation-scenario-r9-failed")])
+    assert world.run() == 0
+
+
+@pytest.mark.unit
+def test_omn24874_contract_binds_no_proxy_test_to_ac2_ac3_ac4_or_ac5() -> None:
     items = _items()
     assert not (_REMOVED_PROXIES & set(items))
     for item in items.values():
         bound = set(item.get("binds_ac") or [])
-        if bound & {"AC2", "AC3", "AC5"}:
+        if bound & {"AC2", "AC3", "AC4", "AC5"}:
             # Only a live reading (a command in the local Done gate) may bind these.
             assert item.get("execution_scope") == "local_done_gate", item["id"]
             assert all(c["check_type"] == "command" for c in item["checks"]), item["id"]

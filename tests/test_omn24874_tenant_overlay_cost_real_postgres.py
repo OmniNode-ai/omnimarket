@@ -120,33 +120,32 @@ async def test_a_zero_cost_terminal_naming_an_endpoint_but_no_model_is_stored_un
 
 
 _BUDGET_SELECT = "SELECT count(*) FROM delegation_budget_state WHERE tenant_id = $1"
+_BUDGET_TIERS = (
+    "SELECT cost_tier_name FROM delegation_budget_state WHERE tenant_id = $1"
+)
 
 
 @pytest.mark.integration
 async def test_own_key_spend_never_draws_the_ceiling_budget_state_on_postgres() -> None:
     # Own-key spend is not the platform's: even when a registry declares a cap for the tier name, the async ceiling reader
-    # writes no delegation_budget_state row for tenant_overlay, and the same call on a budgeted tier does (the control).
+    # writes no delegation_budget_state row for tenant_overlay. The control is the same call with only the tier changed
+    # (``metered``, headroom 0.0, the same cost), so a row it writes is down to the tier rule alone.
     async with _provisioned_runner() as (runner, admin_conn, _schema):
         with patch(
             f"{_HANDLER_MODULE}.resolve_tier_cost", return_value=_budgeted_tier()
         ):
-            await runner._materialize_budget_state_async(
-                correlation_id=str(uuid4()),
-                cost_tier_name=_TIER,
-                cost_measurement_source="metered",
-                budget_headroom_consumed_usd=0.0,
-                cost_usd=0.000145,
-                tenant_id=_TENANT,
-                timestamp=None,
-            )
-            assert await admin_conn.fetchval(_BUDGET_SELECT, _TENANT) == 0
-            await runner._materialize_budget_state_async(
-                correlation_id=str(uuid4()),
-                cost_tier_name="ceiling-budgeted",
-                cost_measurement_source="budgeted_in_budget",
-                budget_headroom_consumed_usd=0.05,
-                cost_usd=0.0,
-                tenant_id=_TENANT,
-                timestamp=None,
-            )
+            for tier in (_TIER, "ceiling-budgeted"):
+                await runner._materialize_budget_state_async(
+                    correlation_id=str(uuid4()),
+                    cost_tier_name=tier,
+                    cost_measurement_source="metered",
+                    budget_headroom_consumed_usd=0.0,
+                    cost_usd=0.000145,
+                    tenant_id=_TENANT,
+                    timestamp=None,
+                )
+                if tier == _TIER:
+                    assert await admin_conn.fetchval(_BUDGET_SELECT, _TENANT) == 0
             assert await admin_conn.fetchval(_BUDGET_SELECT, _TENANT) == 1
+            rows = await admin_conn.fetch(_BUDGET_TIERS, _TENANT)
+            assert [r["cost_tier_name"] for r in rows] == ["ceiling-budgeted"]

@@ -138,6 +138,39 @@ def test_an_undeclared_model_on_a_tenant_overlay_route_stays_unpriced() -> None:
 
 
 @pytest.mark.unit
+def test_a_zero_token_tenant_overlay_terminal_returns_the_measurement_not_a_metered_zero() -> (
+    None
+):
+    # A declared price over no served tokens is a cash of 0: the terminal returns the registry measurement (the projection
+    # re-measures the same run as no_cost_model), never a ``metered`` zero the projection stores differently.
+    cost = HandlerDelegationWorkflow._measure_terminal_cost(
+        tier_name=TENANT_OVERLAY_TIER_NAME,
+        prompt_tokens=0,
+        completion_tokens=0,
+        premium_counterfactual=None,
+        endpoint_url=_GENERAL_ENDPOINT,
+        model_id=_MODEL,
+    )
+    assert cost.cash_cost_usd == 0.0
+    assert cost.cost_measurement_source == "no_cost_model"
+    assert cost.cost_tier_type != "metered"
+
+
+@pytest.mark.unit
+def test_the_terminal_cost_measure_takes_the_endpoint_and_model_with_no_default() -> (
+    None
+):
+    # A caller that leaves them out is a TypeError, not a silent "" that reads as an unpriced model.
+    with pytest.raises(TypeError):
+        HandlerDelegationWorkflow._measure_terminal_cost(  # type: ignore[call-arg]
+            tier_name=TENANT_OVERLAY_TIER_NAME,
+            prompt_tokens=_PROMPT_TOKENS,
+            completion_tokens=_COMPLETION_TOKENS,
+            premium_counterfactual=None,
+        )
+
+
+@pytest.mark.unit
 def test_projection_keeps_the_priced_terminal_cost_of_a_tenant_overlay_run() -> None:
     counterfactual = build_premium_counterfactual(
         prompt_tokens=_PROMPT_TOKENS, completion_tokens=_COMPLETION_TOKENS
