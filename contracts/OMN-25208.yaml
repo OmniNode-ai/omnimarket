@@ -8,7 +8,7 @@ summary: >-
   the run (two repository tests that refuse a local_done_gate item carrying
   binds_ac), the contracts of the pull request bind every criterion to a test,
   and tests/test_refuse_skips_omn19987.py and
-  tests/ci/test_evidence_contracts_omn25208.py hold the cases that fail when the
+  tests/ci/test_repo_evidence_caller_workflow.py hold the cases that fail when the
   verifier's shell is not pipefail, when the orchestrator is stubbed, when the
   criterion hash is not that of the live ticket line, and when a state check
   could pass on a red or pending read. No product code changes.
@@ -38,7 +38,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "The evidence tests of this pull request pass: the AC2 check cases and the contract cases."
-    command: "uv run pytest tests/test_refuse_skips_omn19987.py tests/ci/test_evidence_contracts_omn25208.py -q -n 0 --no-cov"
+    command: "uv run pytest tests/test_refuse_skips_omn19987.py tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov"
 dod_evidence:
   - id: "dod-omn25208-failure-cause-and-binding"
     description: "The failure cause and error text are recorded and the repository's binding test passes for every contract."
@@ -46,7 +46,7 @@ dod_evidence:
     binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_evidence_contracts_omn25208.py tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'failure_causes or binds_every_criterion or binds_a_local_done_gate'"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'failure_causes or binds_every_criterion or binds_a_local_done_gate'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn25208-ac2-test-body"
     description: "The bound AC2 test is read from its source and run with the orchestrator stubbed in two ways; each fails."
@@ -54,7 +54,7 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_evidence_contracts_omn25208.py -q -n 0 --no-cov -k 'bound_ac2 or ac2_source_check'"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'bound_ac2 or ac2_source_check'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn25208-pipefail-regression"
     description: "A run in which pytest prints 2 passed, 1 error and exits 1 fails the AC2 check under bash -o pipefail and passes without it; the refusal assertions name the refusal text."
@@ -70,7 +70,7 @@ dod_evidence:
     binds_ac: ["AC4"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_evidence_contracts_omn25208.py -q -n 0 --no-cov -k 'ticket_contract_model or criterion_hash or pinned_ac2_line or unescaped or live_ticket or pinned_criterion'"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'ticket_contract_model or criterion_hash or pinned_ac2_line or unescaped or live_ticket or pinned_criterion'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn25208-pr-state-checks"
     description: "The pr-checks check passes a green read at the head and fails a red, pending, cancelled, stale or empty read; the pr-view read carries no comment and the check does not claim one."
@@ -78,7 +78,7 @@ dod_evidence:
     binds_ac: ["AC5"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_evidence_contracts_omn25208.py -q -n 0 --no-cov -k 'pr_checks'"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'pr_checks'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn25208-receipts"
     description: "The receipts of the OMN-25198 contract are run output on one host with their logs named, and the exclusion rule is cited from the gate source."
@@ -86,7 +86,7 @@ dod_evidence:
     binds_ac: ["AC6"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_evidence_contracts_omn25208.py -q -n 0 --no-cov -k 'receipts or exclusion_rule'"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'receipts or exclusion_rule'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn25208-commit-trailers"
     description: "The trailer check passes one fix named once in a trailer block and fails two fixes, none, and the token in prose."
@@ -94,7 +94,7 @@ dod_evidence:
     binds_ac: ["AC7"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_evidence_contracts_omn25208.py -q -n 0 --no-cov -k 'trailer'"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'trailer'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn25208-non-blocking-findings"
     description: "The follow-up, the verifier budget and the re-acceptance decision are recorded with their sources."
@@ -102,7 +102,7 @@ dod_evidence:
     binds_ac: ["AC8"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_evidence_contracts_omn25208.py -q -n 0 --no-cov -k 'follow_up or verifier_budget or reacceptance'"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'follow_up or verifier_budget or reacceptance'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn25208-pr-checks-live"
     description: "Every required context of the pull request reads success at its head. The check is the same JSON read as the OMN-25198 contract's; only the local Done gate runs it."
