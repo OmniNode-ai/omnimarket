@@ -44,7 +44,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_review_lock_effect/test_review_lock.py tests/nodes/node_review_lock_effect/test_cli.py -q --no-cov -p no:cacheprovider --refuse-skips
+    check_value: uv run --frozen pytest tests/nodes/node_review_lock_effect/test_review_lock.py tests/nodes/node_review_lock_effect/test_review_lock_cli.py -q --no-cov -p no:cacheprovider --refuse-skips
     cwd: .
 - id: dod-omn25407-ac2
   description: With the real 6047 file lists at 7ce37985d13c (6 files) and fca8c3ea6891 (12 files) the scope check holds the push and lists the six added files, and releases it once the comment names a
@@ -54,7 +54,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_review_lock_effect/test_scope_check.py tests/nodes/node_review_lock_effect/test_cli.py -q --no-cov -p no:cacheprovider --refuse-skips
+    check_value: uv run --frozen pytest tests/nodes/node_review_lock_effect/test_scope_check.py tests/nodes/node_review_lock_effect/test_review_lock_cli.py -q --no-cov -p no:cacheprovider --refuse-skips
     cwd: .
 - id: dod-omn25407-ac3
   description: 'hosted proxy for AC3: the lock refuses a second review of a head, so a second verdict file for one repository, pull request and head cannot start; the group-by-head count over the scratchpad
