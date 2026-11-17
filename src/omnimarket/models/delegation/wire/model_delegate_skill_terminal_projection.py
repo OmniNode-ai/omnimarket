@@ -23,6 +23,7 @@ from pydantic import (
     ConfigDict,
     Field,
     JsonValue,
+    PrivateAttr,
     TypeAdapter,
     ValidationError,
     field_validator,
@@ -88,6 +89,8 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
     """Delegate-skill terminal event plus projection-owned metadata."""
 
     model_config = ConfigDict(frozen=True, extra="ignore", populate_by_name=True)
+
+    _attempts_count_reported: bool = PrivateAttr(default=False)
 
     emitted_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
@@ -295,7 +298,28 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         payload: Mapping[str, object],
     ) -> ModelDelegateSkillTerminalProjection:
         """Validate broker payload using the declared terminal response model."""
-        return cls.model_validate(_payload_with_envelope_timestamp(payload))
+        terminal = cls.model_validate(_payload_with_envelope_timestamp(payload))
+        terminal.record_raw_attempts_count(payload.get("attempts_count") is not None)
+        return terminal
+
+    def record_raw_attempts_count(self, reported: bool) -> None:
+        """Note whether the raw payload stated ``attempts_count`` (OMN-18534)."""
+        self._attempts_count_reported = reported
+
+    @property
+    def turn_count_reported(self) -> bool:
+        """True when the raw payload stated ``attempts_count``.
+
+        The response model derives an omitted count from the attempt list, so
+        ``attempts_count`` is always set on the model; only the raw payload can
+        say whether the producer reported one (OMN-18534).
+        """
+        return self._attempts_count_reported
+
+    @property
+    def has_attempt_record(self) -> bool:
+        """True when the terminal lists an attempt it made."""
+        return bool(self.attempts)
 
 
 class ModelDelegationEventProjectionRow(BaseModel):

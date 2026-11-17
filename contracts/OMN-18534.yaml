@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-18534
 title: 'W7-2: Turn count is recorded per delegation as a first-class metric'
-summary: 'Migration 0069 adds a nullable turn_count column to delegation_events. Both terminal writers store the terminal''s attempts_count in it: the total inference calls including escalated rungs, retries and compliance repairs, 0 for a delegation that failed before any turn. The node contract exposes the column, the terminal owns it, and a sparse later terminal keeps a recorded count. The omnibase_infra vendored copy is numbered 0069, byte-identical to this migration, and is on the omnibase_infra dev tip; it must be applied before this code deploys, because a reported count puts turn_count in the INSERT.'
+summary: 'Migration 0069 adds a nullable turn_count column to delegation_events. Both terminal writers store the attempts_count the terminal reported, only when its raw payload stated one and never derived from attempt_history: the total inference calls including escalated rungs, retries and compliance repairs. A refused or not-routed failure that reported no count and holds no attempt evidence stores 0; any other terminal that reported none leaves NULL. The node contract exposes the column, the terminal owns it, and a sparse later terminal keeps a recorded count. The omnibase_infra vendored copy is numbered 0069, byte-identical to this migration, and is on the omnibase_infra dev tip; it must be applied before this code deploys, because a reported count puts turn_count in the INSERT.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []

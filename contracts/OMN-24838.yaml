@@ -77,7 +77,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "producer_refusal or omits_the_count or not_routed or routed_failure"
     cwd: .
 - id: dod-omn24838-ac4
-  description: The sqlite store declares turn_count INTEGER, nullable, with no default before any terminal is projected; a store created before the column gains it on connect with no declared type, pinned; the row on disk carries the projected count.
+  description: The sqlite store declares turn_count INTEGER, nullable, with no default before any terminal is projected; a store created before the column gains it on connect declared INTEGER, as a fresh store has it; the row on disk carries the projected count.
   source: manual
   binds_ac:
   - AC4
@@ -86,13 +86,13 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "fresh_sqlite_store or gains_it_on_connect or row_on_disk"
     cwd: .
 - id: dod-omn24838-ac5
-  description: A delegate-skill terminal with attempts_count 5 against 3 attempt records stores 5; a skill terminal with no count and no history stores NULL; a skill terminal that omits the count keeps the length the model derives; a negative, fractional or non-numeric count is refused and stores nothing.
+  description: A delegate-skill terminal with attempts_count 5 against 3 attempt records stores 5; a skill terminal with no count and no history stores NULL; a skill terminal that omits the count stores NULL, not the length the model derives; a negative, fractional or non-numeric count is refused and stores nothing.
   source: manual
   binds_ac:
   - AC5
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "stated_count or no_count_and_no_history or omits_the_count_keeps or malformed_count"
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "stated_count or no_count_and_no_history or omits_the_count_stores_null or malformed_count"
     cwd: .
 - id: dod-omn24838-ac6
   description: contracts/OMN-18534.yaml names the omnibase_infra copy as 0069 and no line of it reads 0068; the PR comment records the copy on the omnibase_infra dev tip and its pinned checksum. Only the local Done gate runs this unbound check.
@@ -112,7 +112,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/test_omn18534_turn_count_real_postgres.py tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider
     cwd: .
 - id: dod-omn24838-ac1-hosted
-  description: The unit file and the real-Postgres twin pass in the hosted run, where the Postgres service container is present; the lab command of dod-omn24838-ac1 stays the unbound local Done gate proof of the same files at the pushed head.
+  description: The unit file and the real-Postgres twin pass in the hosted run, where the Postgres service container is present, and the twin errors (it never skips) when the database is unreachable; the lab command of dod-omn24838-ac1 stays the unbound local Done gate proof of the same files at the pushed head.
   source: manual
   binds_ac:
   - AC1
@@ -127,5 +127,5 @@ dod_evidence:
   - AC6
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "ticket_contract_names_the_omnibase_infra_copy"
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "ticket_contract_names_the_omnibase_infra_copy or bytes_are_pinned or comment_states"
     cwd: .

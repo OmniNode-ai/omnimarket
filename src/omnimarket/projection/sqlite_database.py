@@ -54,6 +54,9 @@ from omnimarket.models.model_local_install_schema import (
     _CURSOR_TABLE_STEPS,
 )
 from omnimarket.models.model_local_install_schema import (
+    DELEGATION_EVENTS_DECLARED_COLUMN_TYPES as _DELEGATION_EVENTS_COLUMN_TYPES,
+)
+from omnimarket.models.model_local_install_schema import (
     DELEGATION_EVENTS_DECLARED_COLUMNS as _DELEGATION_EVENTS_DECLARED_COLUMNS,
 )
 from omnimarket.nodes.node_projection_tenant_credentials.stores import (
@@ -728,7 +731,12 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
             existing = {str(row["name"]) for row in rows}
             for column in _DELEGATION_EVENTS_DECLARED_COLUMNS:
                 if column not in existing:
-                    conn.execute(f"ALTER TABLE delegation_events ADD COLUMN {column}")
+                    typed = (
+                        f"{column} {_DELEGATION_EVENTS_COLUMN_TYPES.get(column, '')}"
+                    )
+                    conn.execute(
+                        f"ALTER TABLE delegation_events ADD COLUMN {typed.strip()}"
+                    )
             if not any(row["name"] == "id" and row["pk"] for row in rows):
                 if "id" not in existing:
                     conn.execute("ALTER TABLE delegation_events ADD COLUMN id INTEGER")

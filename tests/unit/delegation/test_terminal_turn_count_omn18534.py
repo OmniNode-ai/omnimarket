@@ -15,6 +15,7 @@ payload carried one, and a later terminal that reports a count replaces it.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import re
 import sqlite3
 from pathlib import Path
@@ -27,12 +28,18 @@ from pydantic import ValidationError
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
+from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+    ModelDelegateSkillTerminalProjection,
+)
 from omnimarket.models.model_projection_read import ModelProjectionReadRequest
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_prompt_size_bound import (
     load_prompt_size_bound,
+)
+from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
+    HandlerDelegationWorkflow,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
     DelegationProjectionRunner,
@@ -77,11 +84,19 @@ def db(request: pytest.FixtureRequest, tmp_path: Path) -> Any:
 
 
 def _single_turn_skill_terminal() -> dict[str, Any]:
-    return _skill_terminal([_attempt(backend_id="local", host="h201", passed=True)])
+    payload = _skill_terminal([_attempt(backend_id="local", host="h201", passed=True)])
+    payload["attempts_count"] = 1
+    return payload
+
+
+# The escalated fixtures state their count, as the producer does: the attempt
+# list holds three records, and two compliance repairs made calls it omits.
+_ESCALATED_HISTORY_LENGTH = 3
+_ESCALATED_TOTAL_CALLS = 5
 
 
 def _escalated_skill_terminal() -> dict[str, Any]:
-    """Three inference calls, one tier escalation: the two counts differ."""
+    """Five inference calls over three recorded attempts and one tier escalation."""
     payload = _skill_terminal(
         [
             _attempt(
@@ -100,6 +115,8 @@ def _escalated_skill_terminal() -> dict[str, Any]:
         ]
     )
     payload["escalation_count"] = 1
+    payload["attempts_count"] = _ESCALATED_TOTAL_CALLS
+    assert len(payload["attempts"]) == _ESCALATED_HISTORY_LENGTH
     return payload
 
 
@@ -121,7 +138,8 @@ def test_single_turn_and_escalated_skill_terminals_store_different_counts(
     single = _project(_single_turn_skill_terminal(), db)
     escalated = _project(_escalated_skill_terminal(), db)
     assert single["turn_count"] == 1
-    assert escalated["turn_count"] == 3
+    assert escalated["turn_count"] == _ESCALATED_TOTAL_CALLS
+    assert escalated["turn_count"] != _ESCALATED_HISTORY_LENGTH
     assert single["turn_count"] != escalated["turn_count"]
 
 
@@ -130,8 +148,8 @@ def test_escalated_terminal_reports_total_calls_not_the_pre_escalation_count(
 ) -> None:
     row = _project(_escalated_skill_terminal(), db)
     assert row["escalation_count"] == 1
-    assert row["turn_count"] == 3
-    assert row["turn_count"] != row["escalation_count"]
+    assert row["turn_count"] == _ESCALATED_TOTAL_CALLS
+    assert row["turn_count"] != row["escalation_count"] + 1
 
 
 def test_failure_before_any_turn_stores_zero_not_null(db: Any) -> None:
@@ -175,8 +193,19 @@ def test_canonical_count_rejects_non_integer_or_negative_values(
     assert row.get("turn_count") is None
 
 
+def _sparse_later_terminal(recorded: int) -> dict[str, Any]:
+    """A later terminal that reports no usable count and so replaces nothing.
+
+    After a recorded 0 it must also run no model: a later terminal that did run
+    one contradicts the 0 and does not inherit it (see the stamped-zero tests).
+    """
+    if recorded:
+        return _canonical_terminal()
+    return _canonical_terminal(quality_passed=False, model_used="", attempts_count="x")
+
+
 @pytest.mark.parametrize("path", ["skill", "canonical"])
-@pytest.mark.parametrize("recorded", [3, 0])
+@pytest.mark.parametrize("recorded", [_ESCALATED_TOTAL_CALLS, 0])
 def test_sparse_later_terminal_keeps_the_recorded_count(
     db: Any, path: str, recorded: int
 ) -> None:
@@ -186,10 +215,10 @@ def test_sparse_later_terminal_keeps_the_recorded_count(
             if recorded
             else _refused_before_dispatch_skill_terminal()
         )
-        later = _canonical_terminal()
+        later = _sparse_later_terminal(recorded)
     else:
         first = _canonical_terminal(attempts_count=recorded)
-        later = _canonical_terminal()
+        later = _sparse_later_terminal(recorded)
     _project(first, db)
     later["correlation_id"] = first["correlation_id"]
     assert _project(later, db)["turn_count"] == recorded
@@ -220,9 +249,44 @@ def test_only_migration_0069_adds_turn_count_and_ships_a_rollback() -> None:
 
 def test_ticket_contract_names_the_omnibase_infra_copy_as_0069() -> None:
     contract = Path(__file__).resolve().parents[3] / "contracts" / "OMN-18534.yaml"
-    text = contract.read_text(encoding="utf-8")
-    assert "0069" in text
-    assert "0068" not in text
+    lines = contract.read_text(encoding="utf-8").splitlines()
+    assert "0068" not in "\n".join(lines)
+    # Line 4 is the summary: it names the migration number and the vendored copy.
+    assert lines[3].startswith("summary: ")
+    assert "Migration 0069 adds" in lines[3]
+    assert "vendored copy is numbered 0069" in lines[3]
+
+
+# The omnibase_infra copy must be this file byte for byte (its dev tip carries
+# the same bytes), so the checksum is pinned here, in this repository, and a
+# changed byte on either side is a red test, never a skip on a missing clone.
+_MIGRATION_0069_SHA256 = (
+    "cbbdc1679ee7aa430dd807f00960122054affd15636b0bdd22baae39f646a4cb"
+)
+
+
+def test_migration_0069_bytes_are_pinned_for_the_omnibase_infra_copy() -> None:
+    migration = _NODE / "migrations" / "0069_delegation_events_turn_count.sql"
+    assert hashlib.sha256(migration.read_bytes()).hexdigest() == _MIGRATION_0069_SHA256
+    # When the sibling clone is on this runner its copy must match as well; an
+    # absent clone asserts nothing here (the pin above still holds).
+    infra = (
+        Path(__file__).resolve().parents[4]
+        / "omnibase_infra"
+        / "docker/migrations/forward/nodes/node_projection_delegation"
+        / migration.name
+    )
+    if infra.is_file():
+        assert infra.read_bytes() == migration.read_bytes()
+
+
+def test_migration_0069_comment_states_what_the_column_stores() -> None:
+    sql = (_NODE / "migrations" / "0069_delegation_events_turn_count.sql").read_text()
+    header = sql.split("BEGIN;")[0]
+    flat = " ".join(line.removeprefix("--").strip() for line in header.splitlines())
+    assert "never derived from attempt_history" in flat
+    assert "a routed terminal with no count stores NULL" in flat
+    assert "every new terminal writes an integer" not in flat
 
 
 @pytest.mark.parametrize("path", ["skill", "canonical"])
@@ -262,10 +326,10 @@ async def test_async_runner_binds_the_column_and_preserves_a_reported_zero(
 
     mock_db.execute.reset_mock()
     mock_db.execute.side_effect = read_stored
-    later = _canonical_terminal()
+    later = _sparse_later_terminal(0)
     later["correlation_id"] = cid
     assert await runner.project_event(
-        runner._topic_delegation_completed,
+        runner._topic_delegation_failed,
         later,
         MessageMeta(partition=0, offset=1, fallback_id=cid),
     )
@@ -274,7 +338,13 @@ async def test_async_runner_binds_the_column_and_preserves_a_reported_zero(
         for call in mock_db.execute.await_args_list
         if str(call.args[0]).startswith("INSERT INTO delegation_events")
     ]
-    assert _param_by_column(write.args)["turn_count"] == 0
+    written = _param_by_column(write.args)
+    if path == "skill":
+        # A stored failure owns its terminal columns: the later terminal leaves
+        # the column out of the write, so the stored 0 stands.
+        assert "turn_count" not in written
+    else:
+        assert written["turn_count"] == 0
 
 
 _TOPIC = "onex.snapshot.projection.delegation.decisions.v1"
@@ -329,7 +399,7 @@ def test_read_node_serves_a_reported_zero_as_zero_and_an_unreported_count_as_nul
     assert refused_served is not None
     assert type(refused_served) is int
     assert served[unreported["correlation_id"]]["turn_count"] is None
-    assert served[escalated["correlation_id"]]["turn_count"] == 3
+    assert served[escalated["correlation_id"]]["turn_count"] == _ESCALATED_TOTAL_CALLS
 
 
 def test_a_fresh_sqlite_store_declares_turn_count_integer_nullable_before_any_terminal(
@@ -356,8 +426,8 @@ def test_a_store_created_before_the_column_gains_it_on_connect(tmp_path: Path) -
     reopened = SqliteDatabaseAdapter(path)
     reopened._connect().close()
     column = _turn_count_column(path)
-    # The on-connect adder declares no type; the fresh-store test pins INTEGER.
-    assert column[2] == ""
+    # The on-connect adder declares the same INTEGER type a fresh store does.
+    assert column[2] == "INTEGER"
     assert column[3] == 0
     assert column[4] is None
     refused = _project(_refused_before_dispatch_skill_terminal(), reopened)
@@ -374,16 +444,16 @@ def test_sqlite_row_on_disk_carries_the_projected_count(tmp_path: Path) -> None:
             "SELECT turn_count FROM delegation_events WHERE correlation_id = ?",
             (row["correlation_id"],),
         ).fetchone()
-    assert stored == 3
+    assert stored == _ESCALATED_TOTAL_CALLS
 
 
 def test_skill_terminal_stores_the_stated_count_not_the_history_length(
     db: Any,
 ) -> None:
     payload = _escalated_skill_terminal()
-    payload["attempts_count"] = 5
-    assert len(payload["attempts"]) == 3
-    assert _project(payload, db)["turn_count"] == 5
+    payload["attempts_count"] = 7
+    assert len(payload["attempts"]) == _ESCALATED_HISTORY_LENGTH
+    assert _project(payload, db)["turn_count"] == 7
 
 
 def test_skill_terminal_with_no_count_and_no_history_stores_null(db: Any) -> None:
@@ -392,12 +462,17 @@ def test_skill_terminal_with_no_count_and_no_history_stores_null(db: Any) -> Non
     assert _project(payload, db).get("turn_count") is None
 
 
-def test_skill_terminal_that_omits_the_count_keeps_the_history_length_the_model_derives(
+def test_skill_terminal_that_omits_the_count_stores_null_not_the_derived_length(
     db: Any,
 ) -> None:
     payload = _escalated_skill_terminal()
-    assert "attempts_count" not in payload
-    assert _project(payload, db)["turn_count"] == 3
+    del payload["attempts_count"]
+    # Positive control: the response model derives a count from the list, so the
+    # derived value is what a lax stamp would store.
+    assert (
+        ModelDelegateSkillTerminalProjection.from_payload(payload).attempts_count == 3
+    )
+    assert _project(payload, db).get("turn_count") is None
 
 
 @pytest.mark.parametrize("malformed", [-1, 1.5, "many"])
@@ -522,3 +597,208 @@ async def test_async_runner_stamps_a_refusal_that_omits_the_count() -> None:
         if str(call.args[0]).startswith("INSERT INTO delegation_events")
     ]
     assert _param_by_column(write.args)["turn_count"] == 0
+
+
+# --- a zero is inferred only when no count was reported and no attempt happened ---
+
+
+def _failed_not_routed(**extra: Any) -> dict[str, Any]:
+    return _canonical_terminal(quality_passed=False, model_used="", **extra)
+
+
+def _attempt_evidence() -> dict[str, Any]:
+    return {
+        "escalation_history": [
+            {"model_used": "a", "tier": "local"},
+            {"model_used": "b", "tier": "cheap_cloud"},
+        ]
+    }
+
+
+@pytest.mark.parametrize("malformed", ["many", -1, 1.5, True])
+@pytest.mark.parametrize(
+    "shape",
+    [
+        pytest.param({}, id="not_routed"),
+        pytest.param(
+            {"terminal_failure_cause": "refused_before_dispatch"}, id="refused"
+        ),
+    ],
+)
+def test_a_malformed_count_is_never_replaced_by_the_inferred_zero(
+    db: Any, malformed: object, shape: dict[str, Any]
+) -> None:
+    row = _project(_failed_not_routed(attempts_count=malformed, **shape), db)
+    # Positive control: the row is one the stamp would have zeroed.
+    assert str(row["model_name"]).startswith("not routed")
+    assert row.get("turn_count") is None
+
+
+@pytest.mark.parametrize(
+    "evidence",
+    [
+        pytest.param(_attempt_evidence(), id="attempt_history"),
+        pytest.param({"prompt_tokens": 12}, id="prompt_tokens"),
+        pytest.param({"completion_tokens": 7}, id="completion_tokens"),
+    ],
+)
+def test_a_refused_failure_with_attempt_evidence_and_no_count_stores_null(
+    db: Any, evidence: dict[str, Any]
+) -> None:
+    row = _project(
+        _failed_not_routed(
+            terminal_failure_cause="refused_before_dispatch", **evidence
+        ),
+        db,
+    )
+    assert row.get("turn_count") is None
+
+
+def test_the_attempt_evidence_rule_is_what_withholds_the_zero(db: Any) -> None:
+    # Positive control for the cases above.
+    row = _project(_failed_not_routed(**_attempt_evidence()), db)
+    assert str(row["model_name"]).startswith("not routed")
+    assert row.get("turn_count") is None
+    # Without the record the same failure is stamped, so the NULL is the rule.
+    assert _project(_failed_not_routed(), db)["turn_count"] == 0
+
+
+def test_a_later_sparse_routed_terminal_does_not_keep_a_stamped_zero(db: Any) -> None:
+    first = _failed_not_routed()
+    assert _project(first, db)["turn_count"] == 0  # stamped, never reported
+    later = _canonical_terminal()
+    later["correlation_id"] = first["correlation_id"]
+    assert _project(later, db).get("turn_count") is None
+
+
+def test_a_later_routed_terminal_that_reports_a_count_replaces_a_stamped_zero(
+    db: Any,
+) -> None:
+    first = _failed_not_routed()
+    _project(first, db)
+    later = _canonical_terminal(attempts_count=2)
+    later["correlation_id"] = first["correlation_id"]
+    assert _project(later, db)["turn_count"] == 2
+
+
+def _insert_writes(mock_db: Any) -> list[dict[str, Any]]:
+    return [
+        _param_by_column(call.args)
+        for call in mock_db.execute.await_args_list
+        if str(call.args[0]).startswith("INSERT INTO delegation_events")
+    ]
+
+
+async def _async_project(
+    runner: Any, mock_db: Any, topic: str, payload: dict[str, Any], offset: int
+) -> dict[str, Any]:
+    cid = payload["correlation_id"]
+    mock_db.execute.reset_mock()
+    assert await runner.project_event(
+        topic, payload, MessageMeta(partition=0, offset=offset, fallback_id=cid)
+    )
+    (write,) = _insert_writes(mock_db)
+    return write
+
+
+def _async_runner() -> tuple[DelegationProjectionRunner, Any]:
+    runner = DelegationProjectionRunner()
+    mock_db = _mock_db()
+    mock_tenant_registry(mock_db)
+    runner._db = mock_db
+    return runner, mock_db
+
+
+async def _stored_then_later(
+    first: dict[str, Any], later: dict[str, Any]
+) -> dict[str, Any]:
+    """Write ``first`` on the async runner, then ``later`` over the stored row."""
+    runner, mock_db = _async_runner()
+    later["correlation_id"] = first["correlation_id"]
+    stored = await _async_project(
+        runner, mock_db, runner._topic_delegation_completed, first, 0
+    )
+
+    async def read_stored(
+        query: str, *args: object, **kwargs: object
+    ) -> list[dict[str, object]]:
+        return [stored] if query.startswith("SELECT * FROM delegation_events") else []
+
+    mock_db.execute.side_effect = read_stored
+    return await _async_project(
+        runner, mock_db, runner._topic_delegation_failed, later, 1
+    )
+
+
+async def test_async_later_refused_terminal_keeps_an_earlier_count() -> None:
+    written = await _stored_then_later(
+        _canonical_terminal(attempts_count=4),
+        _failed_not_routed(terminal_failure_cause="refused_before_dispatch"),
+    )
+    # The stamp runs after the stored row is merged in, so the earlier count is
+    # in the row by then and the refusal stamps no zero over it.
+    assert written["turn_count"] == 4
+
+
+async def test_async_later_not_routed_terminal_keeps_an_earlier_count() -> None:
+    written = await _stored_then_later(
+        _canonical_terminal(attempts_count=4), _failed_not_routed()
+    )
+    assert written["turn_count"] == 4
+
+
+async def test_async_later_terminal_that_reports_a_count_replaces_the_earlier_one() -> (
+    None
+):
+    # The intent: the later terminal's own report wins, a 0 over a 4 included.
+    # A terminal states the total calls it made for the whole delegation, and a
+    # zero is a measured report ("no call was made"), so nothing here treats a
+    # reported zero as less authoritative than a positive count.
+    written = await _stored_then_later(
+        _canonical_terminal(attempts_count=4), _canonical_terminal(attempts_count=0)
+    )
+    assert written["turn_count"] == 0
+
+
+async def test_async_later_sparse_routed_terminal_does_not_keep_a_stamped_zero() -> (
+    None
+):
+    written = await _stored_then_later(_failed_not_routed(), _canonical_terminal())
+    # The write names the column, as NULL: omitting it would leave the zero.
+    assert "turn_count" in written
+    assert written["turn_count"] is None
+
+
+async def test_async_malformed_count_on_a_not_routed_failure_stores_no_zero() -> None:
+    runner, mock_db = _async_runner()
+    write = await _async_project(
+        runner,
+        mock_db,
+        runner._topic_delegation_failed,
+        _failed_not_routed(attempts_count="many"),
+        0,
+    )
+    assert write.get("turn_count") is None
+
+
+# --- AC5: the skill path states the count the producer reported -------------------
+
+
+def test_the_skill_terminal_escalated_producer_count_includes_compliance_repairs(
+    db: Any,
+) -> None:
+    """The real producer's count exceeds the attempt list; the row stores it."""
+    from tests.unit.delegation.test_truthful_gate_verdict_omn15464 import _workflow
+
+    workflow = _workflow(escalation_count=1, tiers=("local", "cheap_cloud"))
+    workflow.compliance_attempts = 6
+    total = HandlerDelegationWorkflow._truthful_attempts_count(workflow, completed=True)
+    recorded = len(workflow.escalation_history) + 1
+    assert total == 6
+    assert total > recorded  # the compliance repairs are calls the list omits
+    skill = _escalated_skill_terminal()
+    skill["attempts_count"] = total
+    assert len(skill["attempts"]) == _ESCALATED_HISTORY_LENGTH
+    assert _project(skill, db)["turn_count"] == total
+    canonical = _project(_canonical_terminal(attempts_count=total), db)
+    assert canonical["turn_count"] == total

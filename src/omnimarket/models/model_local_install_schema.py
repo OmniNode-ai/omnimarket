@@ -213,3 +213,7 @@ DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
     "writer_identity",
     "written_at",
 )
+
+# A column the on-connect adder declares with a type rather than untyped, so a
+# store upgraded in place reads the same schema as a fresh one (OMN-18534).
+DELEGATION_EVENTS_DECLARED_COLUMN_TYPES: dict[str, str] = {"turn_count": "INTEGER"}

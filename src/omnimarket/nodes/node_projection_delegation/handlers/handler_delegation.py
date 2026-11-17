@@ -86,6 +86,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     ModelProjectionTaskDelegatedEvent,
     _canonical_result_to_task_delegated_payload,
     _deciding_rung_stop_reason,
+    _inherit_timing_and_turn_count,
     _is_blank,
     _is_zero,
     _judge_verdict_projection_row,
@@ -1557,6 +1558,8 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
             apply_terminal_precedence({}, row)
             return
         existing = existing_rows[0]
+        # Same first-position timing and turn count merge as the sync writer.
+        _inherit_timing_and_turn_count(row, existing)
         # OMN-17427: same terminal ownership decision as the sync preserve step.
         carry_score = fold_terminal_ownership(existing, row)
         # OMN-20303: same attribution fold as the sync preserve step.
@@ -1615,10 +1618,6 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
                 row[key] = existing[key]
                 if key == "finish_reason" and row.get("truncated") is None:
                     row["truncated"] = existing.get("truncated")
-        # Same None-only timing merge as the sync writer; keep measured zero.
-        for key in ("queue_wait_ms", "execution_ms", "turn_count"):
-            if row.get(key) is None and existing.get(key) is not None:
-                row[key] = existing[key]
         if bool(existing.get("request_override_applied")):
             row["request_override_applied"] = True
         if existing.get("override_within_bounds") is False:
@@ -1804,7 +1803,7 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
         _stamp_terminal_trace_and_routing(row, event)
         _stamp_terminal_stop_reason(row, event.finish_reason, event.truncated)
         await self._preserve_existing_evidence_async(row)
-        _stamp_not_routed(row)
+        _stamp_not_routed(row, event)
         # Same fallback as the sync writer: an original pinned counterfactual
         # wins over the canonical savings writer's reconstructed baseline.
         if row.get("premium_counterfactual") is None and canonical_counterfactual:
@@ -2099,7 +2098,7 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
         # late-arriving timeout terminal must not clobber the real answer an
         # earlier delegation-completed.v1 already wrote).
         await self._preserve_existing_evidence_async(row)
-        _stamp_not_routed(row)
+        _stamp_not_routed(row, event)
         _stamp_unmeasured_latency(row, event.execution_duration_ms)
         apply_modelled_terminal_savings(row, event)
         await self._write_delegation_row(

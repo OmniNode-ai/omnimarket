@@ -4,8 +4,9 @@
 
 Real-Postgres twin of the turn-count unit tests, using the live migration set
 and DelegationProjectionRunner.project_event(). The database is the
-INTEGRATION_POSTGRES_* one CI configures; the module skips without a configured,
-reachable server.
+INTEGRATION_POSTGRES_* one CI configures. A missing or unreachable server is an
+error, never a skip: a skipped twin reads as a pass in the suite summary while
+proving nothing about migration 0069 on Postgres.
 """
 
 from __future__ import annotations
@@ -13,11 +14,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+import asyncpg
 import pytest
 
 from omnimarket.projection.runner import MessageMeta
 from tests.test_omn15909_real_postgres_projection_write_path_gate import (
     _MIGRATIONS_DIR,
+    _base_dsn,
     _provisioned_runner,
 )
 from tests.test_omn18928_terminal_outcome_projection_real_postgres import (
@@ -26,9 +29,29 @@ from tests.test_omn18928_terminal_outcome_projection_real_postgres import (
     _wire,
 )
 from tests.unit.delegation.test_terminal_turn_count_omn18534 import (
+    _ESCALATED_TOTAL_CALLS,
     _escalated_skill_terminal,
     _refused_before_dispatch_skill_terminal,
 )
+
+
+async def require_postgres() -> None:
+    """Fail, not skip, when the INTEGRATION_POSTGRES_* database cannot be reached."""
+    try:
+        conn = await asyncpg.connect(_base_dsn(), timeout=10)
+    except (OSError, TimeoutError, asyncpg.PostgresError) as exc:
+        pytest.fail(
+            "the OMN-18534 Postgres twin needs the INTEGRATION_POSTGRES_* "
+            f"database and cannot reach it: {type(exc).__name__}: {exc}",
+            pytrace=False,
+        )
+    await conn.close()
+
+
+@pytest.fixture(autouse=True)
+async def _twin_never_skips() -> None:
+    await require_postgres()
+
 
 _SELECT = "SELECT turn_count FROM delegation_events WHERE correlation_id = $1"
 _MIGRATION = _MIGRATIONS_DIR / "0069_delegation_events_turn_count.sql"
@@ -38,7 +61,7 @@ _MIGRATION = _MIGRATIONS_DIR / "0069_delegation_events_turn_count.sql"
 @pytest.mark.parametrize(
     ("make_terminal", "expected"),
     [
-        (_escalated_skill_terminal, 3),
+        (_escalated_skill_terminal, _ESCALATED_TOTAL_CALLS),
         (_refused_before_dispatch_skill_terminal, 0),
     ],
 )
