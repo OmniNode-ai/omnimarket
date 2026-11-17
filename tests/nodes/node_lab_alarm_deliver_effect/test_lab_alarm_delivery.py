@@ -207,8 +207,8 @@ def test_the_golden_chain_ends_in_the_completed_event() -> None:
     )
 
 
-def test_a_refused_channel_is_a_typed_failure_and_is_not_resent() -> None:
-    handler, channel, ledger, _, _ = _build()
+def test_a_refused_channel_is_a_typed_failure_and_is_retried_on_the_next_tick() -> None:
+    handler, channel, ledger, state, _ = _build()
     channel.refuse = "credentials unresolved"
     failed = handler.handle(_request())
     assert failed.outcome is EnumDeliveryOutcome.FAILED
@@ -216,10 +216,56 @@ def test_a_refused_channel_is_a_typed_failure_and_is_not_resent() -> None:
     topics = load_topics()
     assert events_for(failed, topics)[-1][0] == topics["delivery_failed"]
     assert len(ledger.rows) == 1
+    assert state.state["active"] == {}
     channel.refuse = None
     again = handler.handle(_request())
+    assert len(channel.posts) == 1
+    assert again.outcome is EnumDeliveryOutcome.DELIVERED
+    assert again.deliveries[0].channel is EnumDeliveryStep.DELIVERED
+    assert again.deliveries[0].ledger is EnumDeliveryStep.SUPPRESSED
+    assert len(ledger.rows) == 1
+    assert list(state.state["active"]) == [f"{_CONDITION}:group-a"]
+
+
+def test_lab_alarm_failed_post_keeps_failing_and_retrying_while_the_channel_refuses() -> (
+    None
+):
+    handler, channel, ledger, state, _ = _build()
+    channel.refuse = "credentials unresolved"
+    for _ in range(3):
+        result = handler.handle(_request())
+        assert result.outcome is EnumDeliveryOutcome.FAILED
+        assert result.deliveries[0].channel is EnumDeliveryStep.FAILED
+        assert state.state["active"] == {}
     assert channel.posts == []
-    assert again.outcome is EnumDeliveryOutcome.NOTHING_NEW
+    assert len(ledger.rows) == 1
+
+
+def test_lab_alarm_delivered_post_marks_active_and_the_next_tick_is_suppressed() -> (
+    None
+):
+    handler, channel, _, state, _ = _build()
+    handler.handle(_request())
+    assert list(state.state["active"]) == [f"{_CONDITION}:group-a"]
+    again = handler.handle(_request())
+    assert again.deliveries[0].channel is EnumDeliveryStep.SUPPRESSED
+    assert len(channel.posts) == 1
+
+
+def test_lab_alarm_already_active_subject_stays_suppressed_while_the_channel_refuses() -> (
+    None
+):
+    held = InMemoryDeliveryState(
+        {"active": {f"{_CONDITION}:group-a": "2026-11-10T00:00:00Z"}}
+    )
+    handler, channel, ledger, state, _ = _build(held)
+    channel.refuse = "credentials unresolved"
+    result = handler.handle(_request())
+    assert result.outcome is EnumDeliveryOutcome.NOTHING_NEW
+    assert result.deliveries[0].channel is EnumDeliveryStep.SUPPRESSED
+    assert channel.posts == []
+    assert ledger.rows == []
+    assert state.state["active"] == {f"{_CONDITION}:group-a": "2026-11-10T00:00:00Z"}
 
 
 def test_a_refused_ledger_row_is_kept_and_retried_until_it_lands() -> None:
