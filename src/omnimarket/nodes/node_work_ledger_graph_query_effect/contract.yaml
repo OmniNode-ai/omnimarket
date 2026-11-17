@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_work_ledger_graph_query_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+runtime_profiles: [main]
+description: >
+  Answers five typed queries over a work ledger graph given inline or as a
+  JSON file (the file read is the effect): open_prs_no_live_owner (open PRs
+  whose rows name no lane with a live CLAIM and no handoff to the landing
+  controller), heads_reviewed_more_than_once (heads named by two or more
+  review-verdict rows), red_check_holding_most_open_prs (checks ranked by the
+  open PRs they hold, directly or through a cause), process_rulings_no_mechanism
+  (kind=process RULING rows whose mechanism ticket has no installed+observed
+  row and no done TERMINAL, or that name none) and seen_running_ticket_open
+  (tickets with an installed+observed row and no done row). A PR is closed when
+  a row naming it carries outcome, result, state or step of merged, closed or
+  landed; a ticket is closed when a row naming it carries outcome or state of
+  done. A graph that cannot be read, does not validate, names another schema,
+  fails its content hash or holds no rows answers status=error, never an empty
+  answer. No model is called; model_tokens is always 0.
+handler:
+  module: omnimarket.nodes.node_work_ledger_graph_query_effect.handlers.handler_work_ledger_graph_query
+  class: HandlerWorkLedgerGraphQuery
+  input_model: omnimarket.models.work_ledger_graph.model_work_ledger_graph.ModelWorkLedgerGraphQueryRequest
+  output_model: omnimarket.models.work_ledger_graph.model_work_ledger_graph.ModelWorkLedgerGraphQueryResult
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: work_ledger_graph_query_requested
+      topic: onex.cmd.omnimarket.work-ledger-graph-query-requested.v1
+      message_category: command
+      event_model: omnimarket.models.work_ledger_graph.model_work_ledger_graph.ModelWorkLedgerGraphQueryRequest
+      handler_module: omnimarket.nodes.node_work_ledger_graph_query_effect.handlers.handler_work_ledger_graph_query
+      handler:
+        name: HandlerWorkLedgerGraphQuery
+        module: omnimarket.nodes.node_work_ledger_graph_query_effect.handlers.handler_work_ledger_graph_query
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.work-ledger-graph-query-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.work-ledger-graph-query-completed.v1
+terminal_event: onex.evt.omnimarket.work-ledger-graph-query-completed.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.work-ledger-graph-query-requested.v1]
+  publish_topics: [onex.evt.omnimarket.work-ledger-graph-query-completed.v1]
+metadata:
+  transport_type: kafka
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.work-ledger-graph-query-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.work-ledger-graph-query-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-graph-query-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-graph-query-completed.v1, operation: DESCRIBE}

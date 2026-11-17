@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_work_ledger_graph_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Derives the work ledger graph from work ledger rows (the projection's
+  row_id, row_ts, row_type and raw_row) by the rows' own key=value cells:
+  lane, ticket, parent_ticket, mechanism-ticket, parent, pr/prs/handed-off,
+  head, installed, from, to, handed_to, check/checks, cause and closes-CLAIM
+  each make a typed edge from the row to an entity node; a CLAIM row opens a
+  claim node. No model call and no I/O: rows are ordered by (row_ts, row_id),
+  edges by (row_id, kind, target), and the content hash is taken over the
+  canonical JSON, so the same rows give byte-identical output.
+handler:
+  module: omnimarket.nodes.node_work_ledger_graph_compute.handlers.handler_work_ledger_graph
+  class: HandlerWorkLedgerGraph
+  input_model: omnimarket.models.work_ledger_graph.model_work_ledger_graph.ModelWorkLedgerGraphComputeRequest
+  output_model: omnimarket.models.work_ledger_graph.model_work_ledger_graph.ModelWorkLedgerGraph
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: derive
+      handler:
+        name: HandlerWorkLedgerGraph
+        module: omnimarket.nodes.node_work_ledger_graph_compute.handlers.handler_work_ledger_graph
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - main
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.work-ledger-graph-compute-requested.v1
+terminal_event: onex.evt.omnimarket.work-ledger-graph-computed.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.work-ledger-graph-compute-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.work-ledger-graph-computed.v1
+metadata:
+  transport_type: kafka
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.work-ledger-graph-compute-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.work-ledger-graph-compute-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-graph-computed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-graph-computed.v1, operation: DESCRIBE}

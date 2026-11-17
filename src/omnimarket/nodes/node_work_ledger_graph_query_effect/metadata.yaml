@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_work_ledger_graph_query_effect
+version: "1.0.0"
+description: "Five typed queries over the work ledger graph; an unreadable graph answers an error, never an empty answer"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_secrets: false
+  side_effect_class: filesystem_read
+dependencies:
+  - "pydantic>=2.0"
+tags: [effect, work-ledger, graph]
+pack: "data"
+display_name: "Effect: Work Ledger Graph Query"
+node_role: "effect"
