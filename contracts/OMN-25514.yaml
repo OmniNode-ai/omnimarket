@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-25514
+title: Delegation Health Check leaves the omnimarket required lists (plan step S1-A)
+summary: 'The context delegation-health-check / Delegation Health Check reads delegation verdicts from lab and stability runs, so a broken lab held dev merges. It leaves EXPECTED_EXTERNAL_CONTEXTS in scripts/ci/ci_summary_gate.py and scripts/ci/ci_summary_external_producers.json, and one dated entry in scripts/ci/ci_summary_sweep_exclusions.json (expires 2026-12-17) admits the red row its caller still produces. The caller keeps its pull_request and merge_group triggers in this step, so a head that predates it behaves as before; the trigger change is a later step that lands once no open head names the context.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25514-s1a-not-required
+  statement: 'no omnimarket pull request head or merge-queue head that includes this change waits on the delegation-health signal'
+  acceptance:
+  - id: AC2
+    statement: 'AC2: in omnimarket S1-A the same three cases pass in tests/unit/scripts/ci/test_ci_summary_gate.py, red first -- falsifier: uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q run at the unfixed base commit passes'
+  - id: AC3
+    statement: 'AC3: no required list names the context after S1 and S1-A -- falsifier: git grep -n -F "delegation-health-check / Delegation Health Check" origin/dev -- scripts/ci/ci_summary_gate.py scripts/ci/ci_summary_external_producers.json config/runner_routing_policy.yaml prints a line'
+evidence_requirements:
+- kind: tests
+  description: The CI Summary gate cases, the event-scope count and the caller pin.
+  command: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_gate.py tests/unit/scripts/ci/test_l4_event_scope_omn18963.py tests/ci/test_delegation_health_check_caller_omn19451.py -q -p no:cacheprovider --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25514-ac2-ci-summary-cases
+  description: 'Through main(), a pull_request head and a merge_group head with no Delegation Health Check row read green, a pull_request head with a red row reads green with the context under the applied sweep exclusions, a merge_group head with a red row reads green, and a control with another red row fails.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn25514-ac3-no-required-list
+  description: 'The context is in neither EXPECTED_EXTERNAL_CONTEXTS nor the producer table, the caller job is classified as exempt with its reason, and the dated exclusion carries OMN-25514 and expires 2026-12-17.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_delegation_health_check_caller_omn19451.py tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -p no:cacheprovider --no-cov
+    cwd: .
