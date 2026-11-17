@@ -1158,3 +1158,136 @@ def test_omn24874_contract_ac3_check_reads_the_subject_only_not_a_body_line(
     world.set_installed(later)
     world.set_runtime(commit=later, dev_merge_tag=tag)
     assert world.run(_ac3_command()) != 0
+
+
+_NUMBER_WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
+
+
+@pytest.mark.unit
+def test_omn24874_contract_text_omn25306_summary_counts_the_criteria_it_declares() -> (
+    None
+):
+    # Review finding 4 (OMN-25479): the summary said the contract declares four criteria
+    # "(AC1 to AC4)" while it declares three; the count and the range follow the declared set.
+    document = _contract("OMN-25306")
+    declared = sorted(_declared(document), key=lambda a: int(a[2:]))
+    count = len(declared)
+    assert declared == [f"AC{n}" for n in range(1, count + 1)]
+    summary = str(document["summary"])
+    assert f"declares the {_NUMBER_WORDS[count]} criteria" in summary
+    assert f"(AC1 to AC{count})" in summary
+    wrong = [
+        n
+        for n in _NUMBER_WORDS
+        if n != count
+        and (
+            f"declares the {_NUMBER_WORDS[n]} criteria" in summary
+            or f"(AC1 to AC{n})" in summary
+        )
+    ]
+    assert not wrong, wrong
+
+
+@pytest.mark.unit
+def test_omn24874_contract_text_omn25378_title_and_ac1_item_agree_on_the_alarm_reading() -> (
+    None
+):
+    # Review finding 4 (OMN-25479): the title said "the alarm reading is on 6353" while
+    # dod-omn25378-ac1-alarm-reading-live says the reading is not met.
+    document = _contract("OMN-25378")
+    item = {str(i["id"]): i for i in document["dod_evidence"]}[
+        "dod-omn25378-ac1-alarm-reading-live"
+    ]
+    assert str(item["description"]).startswith(
+        "Not declared in this contract, because it is not met"
+    )
+    title = str(document["title"])
+    assert "the alarm reading is on 6353" not in title
+    assert "the alarm reading on 6353 is not met" in title
+
+
+def _run_real_postgres_comment_check(tmp_path: Path, comments: str) -> int:
+    """Run dod-omn25378-ac4-lab-comment-real-postgres over a checkout whose ``onex`` prints ``comments``."""
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True)
+    _git(repo, "init", "-q")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "head")
+    head = _git(repo, "rev-parse", "HEAD")
+    text = tmp_path / "comments.txt"
+    text.write_text(comments.replace("<HEAD>", head), encoding="utf-8")
+    shim = tmp_path / "bin" / "onex"
+    shim.parent.mkdir(parents=True, exist_ok=True)
+    shim.write_text(
+        "#!/bin/sh\n"
+        "test \"$*\" = 'scm pr-view OmniNode-ai/omnimarket#6335 --comments' || exit 9\n"
+        f"cat {shlex.quote(str(text))}\n",
+        encoding="utf-8",
+    )
+    shim.chmod(shim.stat().st_mode | stat.S_IXUSR)
+    items = {str(i["id"]): i for i in _contract("OMN-25378")["dod_evidence"]}
+    item = items["dod-omn25378-ac4-lab-comment-real-postgres"]
+    assert item["execution_scope"] == "local_done_gate"
+    return subprocess.run(
+        shlex.split(str(item["checks"][0]["check_value"])),
+        cwd=repo,
+        env={
+            **scrub_git_location_env(os.environ),
+            "PATH": f"{shim.parent}:/usr/bin:/bin:/usr/local/bin",
+        },
+        check=False,
+        capture_output=True,
+    ).returncode
+
+
+@pytest.mark.unit
+def test_omn24874_contract_omn25378_real_postgres_comment_needs_the_runs_exit_line(
+    tmp_path: Path,
+) -> None:
+    # Review finding 5 (OMN-25479): grep -qi "real-postgres" passed on a comment that said
+    # the run was NOT made. The check now needs the run's exit line after the Lab: head= line.
+    not_run = (
+        "Lab: head=<HEAD>\n"
+        "Not run by this lane: the real-Postgres run (no lab receipt).\n"
+    )
+    assert _run_real_postgres_comment_check(tmp_path / "a", not_run) != 0
+    ran = (
+        "Lab: head=<HEAD>\n"
+        "focused files: exit=0\n"
+        "real-Postgres: exit=0 3 passed in 4.21s\n"
+    )
+    assert _run_real_postgres_comment_check(tmp_path / "b", ran) == 0
+    # A failed run's exit line is not a pass.
+    failed = "Lab: head=<HEAD>\nreal-Postgres: exit=1 1 failed, 2 passed in 4.21s\n"
+    assert _run_real_postgres_comment_check(tmp_path / "c", failed) != 0
+    # An exit line under an older head's Lab comment does not stand for this head.
+    older = (
+        "real-Postgres: exit=0 3 passed in 4.21s\n"
+        "Lab: head=<HEAD>\n"
+        "Not run by this lane: the real-Postgres run.\n"
+    )
+    assert _run_real_postgres_comment_check(tmp_path / "d", older) != 0
+
+
+@pytest.mark.unit
+def test_omn24874_contract_ac4_check_reads_the_subject_only_not_a_body_line(
+    tmp_path: Path,
+) -> None:
+    # Review finding 7 (OMN-25479): --grep="(#6353)$" matches every line of the message, so a
+    # commit whose BODY ends (#6353) was read as the alarm's squash commit. The control (the
+    # default world, the subject form) passes; a history whose only mention is a body line fails.
+    world = _Ac4World(tmp_path)
+    assert world.run() == 0
+    _git(world.repo, "checkout", "-q", "--orphan", "bodyonly")
+    _git(
+        world.repo,
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "OMN-25071: not the alarm\n\nthis reverts the alarm node (#6353)",
+    )
+    _git(world.repo, "commit", "-q", "--allow-empty", "-m", "a later change")
+    later = _git(world.repo, "rev-parse", "HEAD")
+    _git(world.repo, "update-ref", "refs/remotes/origin/dev", later)
+    world.set_install(later)
+    assert world.run() != 0

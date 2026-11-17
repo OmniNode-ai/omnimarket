@@ -934,3 +934,114 @@ def test_omn24874_a_tenant_overlay_run_has_no_platform_successor_tier() -> None:
             )
             is None
         ), task_type
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("stub_provider_quota_reader")
+def test_omn24874_gate_failed_tenant_overlay_run_ends_on_the_overlay_tier_and_draws_no_budget_row() -> (
+    None
+):
+    # Review finding 6 (OMN-25479): the mixed case was shown unreachable through
+    # next_eligible_tier only, and only the inference-error branch was driven. Drive the
+    # quality-gate branch: an answer on the customer's own route that fails its gate, with
+    # escalation allowed, reaches its terminal on tenant_overlay with no platform tier
+    # after it; every attempt it banked is tenant_overlay; and the projection of that
+    # terminal draws no ceiling budget row.
+    from omnibase_core.models.delegation.wire import ModelDelegationFailed
+
+    from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
+        ModelDelegationRequest as OrchestratorRequest,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
+        ModelInferenceResponseData,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.models.model_quality_gate_intent import (
+        ModelQualityGateIntent,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
+        ModelRoutingIntent,
+    )
+    from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
+        ModelQualityGateResult,
+    )
+    from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
+        TABLE,
+        ModelDelegationBudgetStateEvent,
+        materialize_budget_state,
+    )
+    from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+
+    handler = HandlerDelegationWorkflow()
+    cid = uuid4()
+    handler.handle_delegation_request(
+        OrchestratorRequest(
+            prompt="Reply with the single word OK.",
+            task_type="summarization",
+            correlation_id=cid,
+            emitted_at=datetime.now(UTC),
+            tenant_id=_TENANT_ID,
+        )
+    )
+    handler.handle_routing_decision(_glm_customer_route(cid))
+    gate_intents = handler.handle_inference_response(
+        ModelInferenceResponseData(
+            correlation_id=cid,
+            content="Not the requested answer.",
+            model_used=_R8_MODEL_USED,
+            latency_ms=900,
+            prompt_tokens=_PROMPT_TOKENS,
+            completion_tokens=_COMPLETION_TOKENS,
+            total_tokens=_PROMPT_TOKENS + _COMPLETION_TOKENS,
+        )
+    )
+    assert any(isinstance(e, ModelQualityGateIntent) for e in gate_intents)
+    events = handler.handle_gate_result(
+        ModelQualityGateResult(
+            correlation_id=cid,
+            passed=False,
+            quality_score=0.0,
+            failure_reasons=("quality below caller requirements",),
+            fallback_recommended=True,
+        ),
+        max_escalation_attempts=2,
+    )
+    # No re-route: a platform tier never follows the customer's own route.
+    assert not [e for e in events if isinstance(e, ModelRoutingIntent)]
+    terminal = next(e for e in events if isinstance(e, ModelDelegationResult))
+    assert isinstance(terminal, ModelDelegationFailed)
+    # Tier rows: the terminal and every banked attempt are tenant_overlay.
+    assert terminal.cost_tier_name == TENANT_OVERLAY_TIER_NAME
+    assert all(
+        str(dict(h)["tier_name"]) == TENANT_OVERLAY_TIER_NAME
+        for h in terminal.escalation_history
+    ), terminal.escalation_history
+    assert terminal.cumulative_attempt_cost == pytest.approx(_declared_cost())
+
+    # The projection stores the own-key total as metered with no headroom ...
+    projected = _measure_actual_cost(
+        ModelProjectionTaskDelegatedEvent.model_validate(
+            _canonical_result_to_task_delegated_payload(
+                terminal.model_dump(mode="json")
+            )
+        )
+    )
+    assert projected.cost_tier_name == TENANT_OVERLAY_TIER_NAME
+    assert projected.cost_measurement_source == "metered"
+    assert projected.cost_usd == pytest.approx(_declared_cost())
+    assert projected.headroom_consumed_usd == 0.0
+    # ... and the budget row reader skips it: no ceiling row for the tenant.
+    db = InmemoryDatabaseAdapter()
+    result = materialize_budget_state(
+        ModelDelegationBudgetStateEvent(
+            correlation_id=str(cid),
+            cost_tier_name=projected.cost_tier_name,
+            cost_measurement_source=projected.cost_measurement_source,
+            budget_headroom_consumed_usd=Decimal(str(projected.headroom_consumed_usd)),
+            cost_usd=Decimal(str(projected.cost_usd)),
+            tenant_id=_TENANT_ID,
+            timestamp="2026-11-17T18:00:00+00:00",
+        ),
+        db,
+    )
+    assert result.rows_upserted == 0
+    assert db.query(TABLE, {"tenant_id": _TENANT_ID}) == []
