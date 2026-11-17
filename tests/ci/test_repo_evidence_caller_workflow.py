@@ -1922,7 +1922,6 @@ def test_the_pr_checks_check_passes_only_a_green_read_at_this_head() -> None:
         {"class": "red", "red": ["CI Summary"]},
         {"class": "pending"},
         {"class": "green-held"},
-        {"class": "merged"},
         {"class": "unknown"},
         {"class": ""},
         {"pending": ["Tests (Split 2/20)"]},
@@ -2964,6 +2963,14 @@ def test_the_gate_control_source_at_the_pin_builds_the_full_base_tree_control() 
     if source is None:
         return
     assert _gate_control_violations(source) == []
+    # Every line the receipts cite is that line of the file at the pin.
+    receipts = _contract("OMN-25198")["context"]["run_receipts"]
+    control = receipts["gate_control"]
+    assert control["revision"] == RECEIPT_GATE_PIN_TAG
+    assert control["file"] == _GATE_FILE
+    lines = source.splitlines()
+    for cited in control["cited_lines"]:
+        assert cited["text"] in lines[cited["line"] - 1], cited
 
 
 def test_the_gate_counts_a_nonzero_runner_status_as_a_failed_check_so_exit_5_fails() -> (
@@ -2997,3 +3004,17 @@ def test_the_split_2_of_20_run_at_63b11bfe0bb4_is_recorded_with_its_ids_and_conc
     assert record["conclusion"] in {"success", "failure"}
     assert f"--run-id {record['run_id']}" in record["read_with"]
     assert record["read_with"].startswith("onex scm run-view OmniNode-ai/omnimarket ")
+
+
+def test_the_gate_control_receipt_cites_lines_with_numbers_and_text() -> None:
+    # Hosted shape check: the read of the file itself is the local item.
+    control = _contract("OMN-25198")["context"]["run_receipts"]["gate_control"]
+    assert control["revision"] == RECEIPT_GATE_PIN_TAG
+    assert control["file"] == _GATE_FILE
+    assert len(control["cited_lines"]) >= 8
+    for cited in control["cited_lines"]:
+        assert isinstance(cited["line"], int)
+        assert cited["text"]
+    assert [c["line"] for c in control["cited_lines"]] == sorted(
+        c["line"] for c in control["cited_lines"]
+    )

@@ -28,7 +28,7 @@ requirements:
       - id: "AC3"
         statement: "Every contract's -k selection is tested for its run time, the ac2 selection of the OMN-25208 contract is split so no item selects all ten ac2_binding cases, and the test that said no check is over budget is corrected."
       - id: "AC4"
-        statement: "A local item reads the verifier tag and then the recorded_runner tests, and the AC2 check of the OMN-21217 contract carries its own pipefail, so the verifier_tag tests cannot pass on hand-typed literals."
+        statement: "A local item reads the verifier tag and then the recorded_runner tests, so the verifier_tag tests cannot pass on hand-typed literals."
       - id: "AC5"
         statement: "The gate's control is read from the gate source at the pin: a full detached worktree of the merge base, the fix's non-test paths reverted, and a bound check passing the control only by failing in it."
       - id: "AC6"
@@ -65,12 +65,12 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'every_selection_of_every_contract or measured_seconds or unsplit_ac2 or covered_once or recorded_split_time'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn25379-verifier-tag-tests"
-    description: "The AC2 check sets pipefail in its own text, the comparison of the recorded runner lines fails when the tag is required and absent, and a local item reads the tag."
+    description: "The AC2 check stays a behavior-class check (a pipefail prefix would make it indeterminate), the comparison of the recorded runner lines fails when the tag is required and absent, and a local item reads the tag."
     source: "manual"
     binds_ac: ["AC4"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_refuse_skips_omn19987.py -q -n 0 --no-cov -k 'sets_pipefail_itself or comparison_fails_when_the_tag or comparison_refuses or local_done_gate_item_reads'"
+        check_value: "uv run pytest tests/test_refuse_skips_omn19987.py -q -n 0 --no-cov -k 'classified_behavior or comparison_fails_when_the_tag or comparison_refuses or local_done_gate_item_reads'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn25379-gate-control-reader"
     description: "The reader of the gate source refuses a control built from a src-only revert and accepts the full base tree; a nonzero runner status fails a check. The read of the real file at the pin is the local item of the OMN-25198 contract."

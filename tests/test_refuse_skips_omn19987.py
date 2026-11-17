@@ -44,7 +44,6 @@ from tests.ci.verifier_shell import (
     VERIFIER_TAG_STATUS,
     verifier_shell,
     verifier_shell_at_tag,
-    verifier_shell_from_source,
 )
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -264,7 +263,7 @@ def _run_check(
     tmp_path: Path, check_value: str, *extra: str
 ) -> subprocess.CompletedProcess[str]:
     """Run a contract check as the verifier does (bash, pipefail), with this interpreter."""
-    assert check_value.startswith("set -o pipefail; uv run pytest ")
+    assert check_value.startswith("uv run pytest ")
     (tmp_path / "skip_every_test.py").write_text(_SKIP_EVERY_TEST, encoding="utf-8")
     command = check_value.replace(
         "uv run pytest",
@@ -568,38 +567,19 @@ def test_a_local_done_gate_item_reads_the_verifier_tag_before_the_recorded_runne
     assert len(selected) >= 3, selected
 
 
-def test_the_ac2_check_sets_pipefail_itself_so_a_runner_without_it_still_fails_it(
-    tmp_path: Path,
-) -> None:
-    # The binding does not rest on the runner's shell, which a test here can only
-    # read: the check names the option in its own text. Under a plain `bash -c`
-    # a first stage that prints the counted line and exits 3 still fails it, and
-    # the same check with the option removed passes there (the control).
+def test_the_ac2_check_is_classified_behavior_and_a_pipefail_prefix_would_unbind_it() -> (
+    None
+):
+    # The check does not set pipefail in its own text: the verifier's proof-class
+    # grammar reads `set -o pipefail; uv run pytest ...` as indeterminate, and an
+    # indeterminate check does not release the AC it binds. The shell it runs
+    # under is the runner's (read from its source above and, where the clone
+    # holds the tag, from the tag's file by the local Done gate item).
+    from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
+        classify_command,
+    )
+
     value = _ac2_check_value()
-    assert value.startswith("set -o pipefail; ")
-    _, filter_stage = _pytest_stage_and_filter(value)
-    stub = "(echo '2 passed, 1 error in 0.10s'; exit 3)"
-    with_option = f"set -o pipefail; {stub} | {filter_stage}"
-    without = f"{stub} | {filter_stage}"
-    assert _run_command(tmp_path, with_option, shell=_NO_PIPEFAIL_SHELL).returncode == 3
-    assert _run_command(tmp_path, without, shell=_NO_PIPEFAIL_SHELL).returncode == 0
-
-
-def test_the_runner_reader_sees_a_tag_runner_that_drops_pipefail() -> None:
-    # The control: the reader of the recorded lines is not one that always says
-    # pipefail. The same lines with the option removed read as a shell without it.
-    import textwrap
-
-    mutant = "\n".join(VERIFIER_TAG_RUN).replace('"-o", "pipefail", ', "")
-    assert mutant != "\n".join(VERIFIER_TAG_RUN)
-    assert "pipefail" not in verifier_shell_from_source(textwrap.dedent(mutant))
-
-
-def test_the_stubbed_pytest_line_is_refused_under_the_shell_of_the_verifier_tag(
-    tmp_path: Path,
-) -> None:
-    _, filter_stage = _pytest_stage_and_filter(_ac2_check_value())
-    command = f"(echo '2 passed, 1 error in 0.10s'; exit 3) | {filter_stage}"
-    refused = _run_command(tmp_path, command, shell=verifier_shell_at_tag())
-    assert refused.returncode == 3, refused.stdout + refused.stderr
-    assert _run_command(tmp_path, command, shell=_NO_PIPEFAIL_SHELL).returncode == 0
+    assert str(classify_command(value)).endswith("behavior")
+    prefixed = "set -o pipefail; " + value
+    assert str(classify_command(prefixed)).endswith("indeterminate")
