@@ -35,7 +35,16 @@ def test_contract_declares_the_bus_route_and_compute_shape() -> None:
     assert contract["name"] == NAME
     assert contract["node_type"] == "compute"
     assert contract["descriptor"]["side_effects"] == []
-    assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
+    assert contract["event_bus"] == {
+        "subscribe_topics": ["onex.cmd.omnimarket.lab-ssh-probe-requested.v1"],
+        "publish_topics": ["onex.evt.omnimarket.lab-ssh-probe-rendered.v1"],
+    }
+    assert (
+        contract["runtime_dispatch"]["command_topic"]
+        == (contract["event_bus"]["subscribe_topics"][0])
+    )
+    assert contract["terminal_event"] == contract["event_bus"]["publish_topics"][0]
+    assert contract["terminal_event"] in contract["externally_consumed_topics"]
     handlers = contract["handler_routing"]["handlers"]
     assert {e["operation"] for e in handlers} == {"render_lab_ssh_probe"}
     module = importlib.import_module(handlers[0]["handler"]["module"])
