@@ -56,7 +56,11 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     _measure_actual_cost,
     _tenant_overlay_cost_usd,
 )
-from omnimarket.pricing import build_premium_counterfactual, resolve_tier_cost
+from omnimarket.pricing import (
+    _load_routing_config,
+    build_premium_counterfactual,
+    resolve_tier_cost,
+)
 
 _GENERAL_ENDPOINT = "https://api.z.ai/api/paas/v4/chat/completions"
 _MODEL = "glm-5.3-flash"
@@ -95,7 +99,15 @@ def test_the_pinned_cost_literal_is_the_catalogue_price_of_the_pinned_tokens() -
 
 @pytest.mark.unit
 def test_the_tenant_overlay_tier_has_no_registry_cost_model() -> None:
-    # The premise of the defect: the tier name the overlay decision carries is not a registry tier.
+    # The premise of the defect: the tier name the overlay decision carries is not a registry tier. Read the loaded registry's own
+    # tier names, so a registry that gains a tenant_overlay tier turns this red (resolve_tier_cost returns None for the name
+    # whatever the registry holds, so its result alone cannot show the premise).
+    registry_tiers = {tier.name for tier in _load_routing_config().tiers}
+    assert registry_tiers, "the routing registry loaded no tier"
+    assert (
+        "local" in registry_tiers
+    )  # positive control: the registry read is the real one
+    assert TENANT_OVERLAY_TIER_NAME not in registry_tiers
     assert resolve_tier_cost(TENANT_OVERLAY_TIER_NAME) is None
 
 

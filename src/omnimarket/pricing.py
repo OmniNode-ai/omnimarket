@@ -402,7 +402,9 @@ def resolve_tier_cost(tier_name: str) -> ModelTierCost | None:
     """Resolve a tier's typed ModelTierCost by name from the routing registry.
 
     None means the tier is absent from the registry OR has not been migrated to
-    the typed cost model — the caller treats that as ``no_cost_model``.
+    the typed cost model — the caller treats that as ``no_cost_model``, and a
+    ceiling reader as "tier not budgeted" (skip). The tenant overlay tier always
+    resolves to None, whatever the registry declares (OMN-24874).
     """
     # OMN-24874: the tenant overlay tier is the customer's own key, never the
     # platform's spend, so it resolves to None and never draws a ceiling.

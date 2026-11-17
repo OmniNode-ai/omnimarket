@@ -171,6 +171,50 @@ def _write_real_r8_row(home: Path, *, run_cost_usd: Decimal) -> None:
 
 
 @pytest.mark.unit
+def test_omn24874_contract_r9_live_command_reads_the_conclusion_host_and_age(
+    tmp_path: Path,
+) -> None:
+    # The command of dod-omn24874-ac2-r9-live itself (not the combined readings item), run over a real last-run.json.
+    command = str(_items()["dod-omn24874-ac2-r9-live"]["checks"][0]["check_value"])
+    record_path = tmp_path / ".local/state/omni/delegation-scenario-r9/last-run.json"
+    record_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def run(record: Mapping[str, object] | str, host: str = _PINNED_HOST) -> int:
+        record_path.write_text(
+            record if isinstance(record, str) else json.dumps(record), encoding="utf-8"
+        )
+        return subprocess.run(
+            shlex.split(command),
+            env={"HOME": str(tmp_path), **_hostname_shim(tmp_path, host)},
+            check=False,
+            capture_output=True,
+        ).returncode
+
+    now = datetime.now(UTC)
+    fresh = now.isoformat()
+    inside = (now - timedelta(seconds=_max_age("R9") - 600)).isoformat()
+    stale = (now - timedelta(seconds=_max_age("R9") + 60)).isoformat()
+    # success inside the age passes; a record read on the pinned host just inside the bound is the boundary control.
+    assert run({"conclusion": "success", "ran_at": fresh}) == 0
+    assert run({"conclusion": "success", "ran_at": inside}) == 0
+    # failure and refused fail, including the shapes a grep for the word success accepts.
+    assert run({"conclusion": "failure", "ran_at": fresh}) != 0
+    assert run({"conclusion": "failure", "success": True, "ran_at": fresh}) != 0
+    assert (
+        run({"conclusion": "refused", "refused": "no success route", "ran_at": fresh})
+        != 0
+    )
+    assert run({"success": False, "conclusion": "failure", "ran_at": fresh}) != 0
+    # a success record older than the alarm contract's R9 max age is stale.
+    assert run({"conclusion": "success", "ran_at": stale}) != 0
+    # another host fails even with a fresh success record.
+    assert run({"conclusion": "success", "ran_at": fresh}, host="some-other-host") != 0
+    # an unreadable record and a record with no time fail.
+    assert run("not json") != 0
+    assert run({"conclusion": "success"}) != 0
+
+
+@pytest.mark.unit
 def test_omn24874_contract_r8_reading_means_cost_above_zero_on_a_real_writer_row(
     tmp_path: Path,
 ) -> None:
@@ -584,38 +628,48 @@ def test_omn24874_contract_ac3_dev_runtime_symbols_exist_only_with_the_fix() -> 
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("reading", ["ac2", "ac5"])
-def test_omn24874_contract_reading_needs_the_fix_tree(reading: str) -> None:
-    # The AC2 and AC5 readings are taken on a runtime that carries this change, so the tree
-    # that runs their hosted behavioural tests must carry the two names the fix adds. A merge base
-    # lacks them, so this control fails there.
-    from omnimarket.nodes.node_delegation_orchestrator.handlers import (
-        handler_delegation_workflow as workflow,
-    )
-    from omnimarket.nodes.node_projection_delegation.handlers import (
-        handler_projection_delegation as projection,
-    )
-
-    assert callable(workflow.byok_declared_price_per_1m), reading
-    assert callable(projection._tenant_overlay_cost_usd), reading
-
-
-@pytest.mark.unit
 def test_omn24874_contract_binds_no_proxy_test_to_ac2_ac3_or_ac5() -> None:
+    # AC2 (the R9 record), AC3 (the running revision) and AC5 (the CLEAN rows) are facts about a host, a deployment and the
+    # ledger. A hosted test cannot go red with R9 red or the fix undeployed, so a bound test would be a proxy that passes
+    # whether or not the AC holds. The hosted gate also refuses a bound local_done_gate item (see the repo-evidence binds
+    # test), so these three readings stay unbound local_done_gate items and the contract declares AC1 only.
+    document = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
+    declared = {
+        ac["id"]
+        for requirement in document["requirements"]
+        for ac in requirement["acceptance"]
+    }
+    assert declared == {"AC1"}
     items = _items()
     assert not (_REMOVED_PROXIES & set(items))
     for item in items.values():
-        bound = set(item.get("binds_ac") or [])
-        # The hosted gate refuses a bound local_done_gate item, so a live
-        # reading stays unbound; AC2, AC3 and AC5 bind only this file's behavioural
-        # tests of the reading commands, never a product proxy.
-        if bound & {"AC2", "AC3", "AC5"}:
-            assert item.get("execution_scope") != "local_done_gate", item["id"]
-            assert all(c["check_type"] == "test_passes" for c in item["checks"])
-            assert all(
-                "tests/test_omn24874_contract_checks.py" in c["check_value"]
-                for c in item["checks"]
-            ), item["id"]
+        assert not (set(item.get("binds_ac") or []) & {"AC2", "AC3", "AC5"}), item["id"]
+    for live in (
+        "dod-omn24874-ac2-r9-live",
+        "dod-omn24874-ac3-running-revision",
+        "dod-omn24874-ac5-clean-verdict-row",
+    ):
+        assert items[live]["execution_scope"] == "local_done_gate", live
+        assert not items[live].get("binds_ac"), live
+    # The hosted behavioural tests of the reading commands run as the whole file: a -k selection that a rename could empty
+    # would shrink the evidence without a failure.
+    runs = [
+        c["check_value"]
+        for item in items.values()
+        for c in item["checks"]
+        if "tests/test_omn24874_contract_checks.py" in c["check_value"]
+    ]
+    assert runs, "no dod item runs this file"
+    assert all(" -k " not in run for run in runs), runs
+
+
+@pytest.mark.unit
+def test_omn24874_contract_text_names_no_rule_the_code_no_longer_has() -> None:
+    # The ceiling readers skip the overlay tier because resolve_tier_cost returns None for it; there is no per-reader rule.
+    text = _CONTRACT.read_text(encoding="utf-8")
+    assert "by their own rule" not in text
+    assert "resolve_tier_cost returns None for the tenant_overlay tier" in text
+    assert "AC4" not in text, "the alarm criterion is omnimarket#6353's contract"
 
 
 @pytest.mark.unit
@@ -626,3 +680,44 @@ def test_omn24874_contract_real_postgres_file_is_a_dod_command() -> None:
     assert commands, "no dod command names the real-Postgres file"
     # A run that skips any of its tests must fail the command.
     assert all("grep -q skipped" in c for c in commands)
+
+
+# The criteria the review rounds' contracts no longer declare, with the evidence item that still reads each one. The repo's
+# contract binds test (tests/ci/test_repo_evidence_caller_workflow.py) refuses a declared criterion no hosted test binds and refuses
+# a bound local_done_gate item, so a criterion that only a PR comment, the ledger or a lab host can show is not declared; its reading
+# stays as an unbound local_done_gate item that the local Done gate runs. Deleting such an item would delete the requirement.
+_UNDECLARED_CRITERIA_EVIDENCE = {
+    "OMN-24918": {
+        "AC3": "dod-omn24918-ac3",
+        "AC4": "dod-omn24918-ac4",
+        "AC5": "dod-omn24918-ac5",
+        "AC7": "dod-omn24918-ac7",
+        "AC9": "dod-omn24918-ac9",
+        "AC10": "dod-omn24918-ac10",
+    },
+    "OMN-24978": {"AC7": "dod-omn24978-ac7"},
+    "OMN-25168": {"AC4": "dod-omn25168-ac4-lab-comment-names-head"},
+    "OMN-25186": {"AC3": "dod-omn25186-ac3-comments-name-findings-and-head"},
+}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("ticket", sorted(_UNDECLARED_CRITERIA_EVIDENCE))
+def test_a_criterion_a_review_contract_does_not_declare_keeps_its_unbound_local_reading(
+    ticket: str,
+) -> None:
+    document = yaml.safe_load(
+        (_CONTRACT.parent / f"{ticket}.yaml").read_text(encoding="utf-8")
+    )
+    declared = {
+        ac["id"] for req in document["requirements"] for ac in req["acceptance"]
+    }
+    items = {item["id"]: item for item in document["dod_evidence"]}
+    for criterion, item_id in _UNDECLARED_CRITERIA_EVIDENCE[ticket].items():
+        assert criterion not in declared, (ticket, criterion)
+        item = items[item_id]
+        assert item["execution_scope"] == "local_done_gate", item_id
+        assert not item.get("binds_ac"), item_id
+        assert item["checks"], item_id
+        # the item reads something: a command or a test the Done gate runs, not an empty shell.
+        assert all(str(c["check_value"]).strip() for c in item["checks"]), item_id

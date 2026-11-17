@@ -127,8 +127,9 @@ _BUDGET_TIERS = (
 
 @pytest.mark.integration
 async def test_own_key_spend_never_draws_the_ceiling_budget_state_on_postgres() -> None:
-    # Own-key spend is not the platform's: even when a registry declares a cap for the tier name, the async ceiling reader
-    # writes no delegation_budget_state row for tenant_overlay. The control is the same call with only the tier changed
+    # Own-key spend is not the platform's: even when a registry declares a cap for the tier name, resolve_tier_cost returns
+    # None for tenant_overlay, so the async ceiling reader reads it as not budgeted and writes no delegation_budget_state row
+    # for it. The control is the same call with only the tier changed
     # (``metered``, headroom 0.0, the same cost), so a row it writes is down to the tier rule alone.
     async with _provisioned_runner() as (runner, admin_conn, _schema):
         registry = SimpleNamespace(

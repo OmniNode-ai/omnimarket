@@ -1,22 +1,16 @@
 schema_version: 1.0.0
 ticket_id: OMN-24874
 title: A tenant overlay run is priced from the declared model price, and the revision running on h053 and the dev runtime carries the fix
-summary: The R8 organic control runs on the dev probe tenant's own key, so its route is the tenant overlay and its tier name is tenant_overlay. The routing registry declares no such tier, so the workflow terminal and the projection both re-priced the run through resolve_tier_cost as no_cost_model and stored cost_usd 0.0, while the catalogue declares a price for glm-5.3-flash on that endpoint. The terminal now prices a tier with no registry cost model from the declared per-1M price for the endpoint and model (booked metered), and the projection keeps a priced terminal cost instead of overwriting it with the zero re-measurement; a model no table prices stays unpriced. Own-key spend is not the platform's, so the two ceiling budget readers skip the tenant_overlay tier by their own rule. The alarm that reads the R8 and R9 last-run records is not in this change and carries none of its criteria, it is omnimarket#6353 and its own contract. AC3 reads the cost fix and AC5 needs a CLEAN verdict row at the head of each of the two pull requests.
+summary: "The R8 organic control runs on the dev probe tenant's own key, so its route is the tenant overlay and its tier name is tenant_overlay. The routing registry declares no such tier, so the workflow terminal and the projection both re-priced the run through resolve_tier_cost as no_cost_model and stored cost_usd 0.0, while the catalogue declares a price for glm-5.3-flash on that endpoint. The terminal now prices a tier with no registry cost model from the declared per-1M price for the endpoint and model (booked metered), and the projection keeps a priced terminal cost instead of overwriting it with the zero re-measurement; a model no table prices stays unpriced. Own-key spend is not the platform's: resolve_tier_cost returns None for the tenant_overlay tier for every caller, so the two ceiling budget readers read it as not budgeted and skip it, and the measurement reads it as no cost model before the declared price applies. The alarm that reads the R8 and R9 last-run records is not in this change, it is omnimarket#6353 and its own contract. This contract declares AC1 only, the one criterion a hosted check can fail at the merge base: the live readings of AC2, AC3 and AC5 (the R9 record, the running revision, the CLEAN verdict rows) are local_done_gate items that stay unbound, because the hosted gate refuses a bound local_done_gate item and no hosted test can go red with R9 red or the fix undeployed."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-- id: req-omn24874-priced-and-alarmed
+- id: req-omn24874-priced
   statement: A run on a customer's own key is stored with the declared model price.
   acceptance:
   - id: AC1
     statement: 'AC1: the newest r8 run on h053 reads 13 of 13 checks passed with a real provider cost above zero, read from its own job record -- falsifier: journalctl --user -u onex-delegation-scenario-r8 on h053 for the newest run shows fewer than 13 passed checks or a cost_usd of 0.0'
-  - id: AC2
-    statement: 'AC2: the newest r9 run on h053 reads passed, read from its own job record -- falsifier: the newest r9 scenario row on h053 reads success false, or systemctl --user show onex-delegation-scenario-r9 reports a non-zero exit status'
-  - id: AC3
-    statement: 'AC3: each fix is merged and the revision running on h053 and on the dev runtime is a dev-merge tag that contains it -- falsifier: git merge-base --is-ancestor <fix sha> <running dev-merge tag> exits 1, or the revision read on h053 lacks the fix sha'
-  - id: AC5
-    statement: 'AC5: every fix pull request has a STATUS row verdict=CLEAN from a Fable review at its head -- falsifier: grep -F ''verdict=CLEAN'' $ONEX_LEDGER_PATH | grep -F ''<head sha prefix>'' finds no row for a fix head'
 evidence_requirements:
 - kind: tests
   description: The tenant overlay pricing tests, the ceiling budget reader tests, the existing cost path tests and the registry unit tests.
@@ -97,30 +91,10 @@ dod_evidence:
     check_value: >-
       sh -c 'H=$(git rev-parse HEAD | cut -c1-12) && J=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6353 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]][:12])" facts head_sha) && test -n "$J" && V=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "verdict=CLEAN") && printf %s "$V" | grep -F "omnimarket#6335" | grep -F "head=$H" | grep -q STATUS && printf %s "$V" | grep -F "omnimarket#6353" | grep -F "head=$J" | grep -q STATUS'
     cwd: .
-- id: dod-omn24874-ac2-reading-command-behaviour
-  description: Hosted proxy for AC2. The live reading itself runs only in the local Done gate (the live item beside it is unbound). This hosted test runs the R9 live reading command (dod-omn24874-ac2-r9-live) passes on a success record inside its age bound and fails on a failed or stale one, over a temporary repository with shims; the test file does not exist at the merge base, so the control fails there.
+- id: dod-omn24874-reading-commands-behaviour
+  description: The behavioural tests of the live reading commands in this contract (the R9 and R8 and R9 readings over success, failure, refused, stale and wrong-host records, the running-revision reading over a temporary repository with ssh and hostname shims, the CLEAN verdict reading over ledger rows at the head of each pull request) run as the whole file, so no selection can shrink the evidence. This item binds no criterion, because a hosted test of a reading command passes whether or not R9 reads passed or the fix is deployed; the readings themselves are the unbound local_done_gate items above.
   source: manual
-  binds_ac:
-  - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_omn24874_contract_checks.py -k "live_reading_parses or live_command_ages or (fix_tree and ac2)" -q --no-cov -n 0 -p no:randomly
-    cwd: .
-- id: dod-omn24874-ac3-reading-command-behaviour
-  description: Hosted proxy for AC3. The live reading itself runs only in the local Done gate (the live item beside it is unbound). This hosted test runs the AC3 running-revision reading command passes only when host, container, revision and symbols all hold and fails before the fix is merged or on an older build, over a temporary repository with shims; the test file does not exist at the merge base, so the control fails there.
-  source: manual
-  binds_ac:
-  - AC3
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/test_omn24874_contract_checks.py -k "ac3_check or dev_runtime_symbols" -q --no-cov -n 0 -p no:randomly
-    cwd: .
-- id: dod-omn24874-ac5-reading-command-behaviour
-  description: Hosted proxy for AC5. The live reading itself runs only in the local Done gate (the live item beside it is unbound). This hosted test runs the AC5 verdict reading command needs a CLEAN row at the head of each of the two pull requests, over a temporary repository with shims; the test file does not exist at the merge base, so the control fails there.
-  source: manual
-  binds_ac:
-  - AC5
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/test_omn24874_contract_checks.py -k "ac5_check or (fix_tree and ac5)" -q --no-cov -n 0 -p no:randomly
+    check_value: uv run pytest tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
     cwd: .

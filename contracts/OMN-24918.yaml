@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24918
-title: 'Review findings 1 to 9 on omnimarket PR 6335 at head ed751014245a are fixed or argued: the pricing call site is tested, the fallback is tenant-overlay only, the alarm reads age and a missing record, and 6331 is folded in or kept open'
-summary: 'Fixes for the review of omnimarket#6335: the pricing call site and the tier gate, the projection''s authority order and the mixed case, the alarm''s age check, request-id time bucket and bucket-start row stamp, the alarm fixture built through the real R8 and R9 writer, the OMN-24874 contract''s real checks, the real-Postgres file in a dod command, and the zero-cost terminal pricing of omnimarket#6331 folded in.'
+title: "Review findings 1 to 9 on omnimarket PR 6335 at head ed751014245a are fixed or argued: the pricing call site is tested, the fallback is tenant-overlay only, and 6331 is folded in or kept open; the alarm findings moved to omnimarket#6353"
+summary: "Fixes for the review of omnimarket#6335 that this pull request carries: the pricing call site and the tier gate, the projection's authority order and the mixed case, the OMN-24874 contract's real checks, and the zero-cost terminal pricing of omnimarket#6331 folded in. This contract declares only the criteria a hosted test can fail at the merge base (AC1, AC2, AC6, AC8). The alarm node, its tests and the live readings are omnimarket#6353 and the unbound local_done_gate items below; their criteria are not declared here because the hosted gate refuses a criterion no hosted test binds."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -28,7 +28,7 @@ requirements:
     statement: 'AC8: omnimarket#6331''s projection pricing of a terminal arriving with cost_usd 0 is folded into 6335 with a test, or 6331 stays open and is rebased, stated in a PR comment -- falsifier: `uv run --frozen pytest tests/unit/delegation -k "zero_cost or cost_usd_zero" -q` collects no test for a terminal arriving with cost_usd 0 while 6331 is closed'
 evidence_requirements:
 - kind: tests
-  description: The pricing, projection, alarm and contract tests pass at the pushed head.
+  description: The pricing, projection and contract tests pass at the pushed head.
   command: uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
@@ -78,7 +78,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24918-ac6
-  description: The OMN-24874 contract's live reading parses conclusion, no check greps for success, AC2 is bound to a live R9 reading, AC1 to a 13-of-13 reading with the cost assertion, and the proxy items for AC2, AC3 and AC5 are removed.
+  description: The OMN-24874 contract's live readings parse conclusion and no check greps for success, the R9 reading command is run over success, failure, refused, stale and wrong-host records, and AC2, AC3 and AC5 of that contract are bound to no item (the hosted gate refuses a bound local_done_gate item, and a hosted test cannot read R9 or the running revision), with the proxy items removed.
   source: manual
   binds_ac:
   - AC6
@@ -113,7 +113,7 @@ dod_evidence:
     check_value: sh -c 'python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "src=alarm.*alarm=delegation-scenario-r[89]-failed" | grep -q STATUS'
     cwd: .
 - id: dod-omn24918-integration-proof
-  description: 'The focused tests of this change run on a lab host at the pushed head through the lab work runner; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The PR comment that starts Lab: head= names the head, the command and the exit code (AC10).'
+  description: 'The focused tests of this change run on a lab host at the pushed head through the lab work runner; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The PR comment that starts Lab: head= names the head, the command and the exit code; that comment is read by dod-omn24918-ac10 in the local Done gate.'
   source: manual
   execution_scope: local_done_gate
   checks:
