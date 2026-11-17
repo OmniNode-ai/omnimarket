@@ -2028,7 +2028,6 @@ class LocalDelegationDispatchPort:
         # ladder installs a walk; the faults are read at each provider call.
         faults_token = None
         walk_token = None
-        prompt_token = _ACTIVE_PROMPT.set(prompt)
         if isinstance(probe_ladder, ModelProbeFaults):
             faults_token = _ACTIVE_PROBE_FAULTS.set(probe_ladder)
         else:
@@ -2061,7 +2060,6 @@ class LocalDelegationDispatchPort:
                 queue_wait_ms=queue_wait_ms,
             )
         finally:
-            _ACTIVE_PROMPT.reset(prompt_token)
             if faults_token is not None:
                 _ACTIVE_PROBE_FAULTS.reset(faults_token)
             if walk_token is not None:
@@ -2071,9 +2069,13 @@ class LocalDelegationDispatchPort:
         """Run the ladder; name each rung it skipped on the result (OMN-21310)."""
         skipped_rungs: list[dict[str, object]] = []
         token = _RUNG_SKIPS.set(skipped_rungs)
+        # Every tier and backend resolution of the run reads the prompt from here,
+        # on the production path (no probe ladder) as on the probe path.
+        prompt_token = _ACTIVE_PROMPT.set(str(kwargs["prompt"]))
         try:
             result = await self._dispatch_rungs(**kwargs)
         finally:
+            _ACTIVE_PROMPT.reset(prompt_token)
             _RUNG_SKIPS.reset(token)
         if skipped_rungs and "skipped_rungs" not in result:
             result = {**result, "skipped_rungs": skipped_rungs}

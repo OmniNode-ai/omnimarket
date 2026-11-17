@@ -5,10 +5,13 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import inspect
 import random
 import string
 from pathlib import Path
+from typing import Any
+from uuid import uuid4
 
 import pytest
 
@@ -22,6 +25,9 @@ from omnimarket.handlers.routing.input_token_bound import (
     input_bound_members,
     input_token_upper_bound,
     member_input_bound,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+    port_local_delegation_dispatch as port_mod,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
@@ -248,6 +254,38 @@ def test_prompt_required_second_pass_after_the_roi_suppression_passes_it() -> No
     assert small == "local"
     over = routing.first_eligible_tier("summarization", prompt=hex_words(6000))
     assert over != "local"
+
+
+def test_prompt_required_the_production_dispatch_path_carries_the_prompt() -> None:
+    # probe_ladder is None on every production run. The routing resolutions of the
+    # run read the prompt from the active-prompt context; it must be the run's
+    # prompt on that path, not the empty default (which keeps every local member).
+    seen: list[str] = []
+
+    class _Capture(port_mod.LocalDelegationDispatchPort):
+        async def _dispatch_rungs(self, **kwargs: Any) -> dict[str, object]:
+            seen.append(port_mod._ACTIVE_PROMPT.get())
+            return {}
+
+    text = hex_words(6000)
+    asyncio.run(
+        object.__new__(_Capture).dispatch(
+            prompt=text,
+            task_type="summarization",
+            correlation_id=uuid4(),
+            max_tokens=None,
+            source_file_path=None,
+            source_session_id=None,
+            wait=False,
+            execution_timeout_seconds=60,
+            terminal_delivery_margin_seconds=5,
+            quality_contract_mode="standard",
+            acceptance_criteria=(),
+            tenant_id=None,
+        )
+    )
+    assert seen == [text]
+    assert port_mod._ACTIVE_PROMPT.get() == ""
 
 
 # ---- finding 5: the bound comes from the resolved backend -------------------
