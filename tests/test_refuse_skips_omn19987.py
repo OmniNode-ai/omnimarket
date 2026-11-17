@@ -583,3 +583,132 @@ def test_the_ac2_check_is_classified_behavior_and_a_pipefail_prefix_would_unbind
     assert str(classify_command(value)).endswith("behavior")
     prefixed = "set -o pipefail; " + value
     assert str(classify_command(prefixed)).endswith("indeterminate")
+
+
+def test_the_omn25379_summary_does_not_say_the_ac2_check_sets_pipefail() -> None:
+    # contracts/OMN-21217.yaml carries the AC2 check without a pipefail prefix (a
+    # prefix made the check indeterminate); the verifier's runner supplies it.
+    ticket = yaml.safe_load((_ROOT / "contracts" / "OMN-21217.yaml").read_text("utf-8"))
+    checks = [
+        c["check_value"]
+        for item in ticket["dod_evidence"]
+        for c in item["checks"]
+        if "refuse-skips" in c["check_value"]
+    ]
+    assert checks
+    assert all("pipefail" not in value for value in checks)
+    summary = yaml.safe_load(
+        (_ROOT / "contracts" / "OMN-25379.yaml").read_text("utf-8")
+    )["summary"]
+    flat = " ".join(summary.split())
+    assert "sets pipefail in its own text" not in flat
+
+
+# Finding 6 of the sixth review: the recorded dispatch, command and status lines
+# are compared by `lines.index` (first occurrence) and by order, so a copy of a
+# line elsewhere in the file would satisfy them. The structure is read by ast: the
+# dispatch of `command` and `test_passes` calls `_run_command_check` in one branch,
+# and the run call and the status test sit inside `_run_command_check`.
+def _runner_structure_problems(source: str) -> list[str]:
+    tree = ast.parse(source)
+    runners = [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_run_command_check"
+    ]
+    if len(runners) != 1:
+        return [f"expected one _run_command_check, found {len(runners)}"]
+    runner = runners[0]
+    problems: list[str] = []
+    dispatch = [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.If)
+        and isinstance(n.test, ast.Compare)
+        and isinstance(n.test.left, ast.Name)
+        and n.test.left.id == "check_type"
+        and isinstance(n.test.ops[0], ast.In)
+        and isinstance(n.test.comparators[0], ast.Tuple)
+        and {e.value for e in n.test.comparators[0].elts if isinstance(e, ast.Constant)}
+        == {"command", "test_passes"}
+    ]
+    if len(dispatch) != 1:
+        problems.append(f"expected one dispatch branch, found {len(dispatch)}")
+    else:
+        calls = [
+            c
+            for stmt in dispatch[0].body
+            for c in ast.walk(stmt)
+            if isinstance(c, ast.Call)
+            and isinstance(c.func, ast.Attribute)
+            and c.func.attr == "_run_command_check"
+        ]
+        if len(calls) != 1:
+            problems.append("the dispatch branch does not call _run_command_check")
+    status = [
+        n
+        for n in ast.walk(runner)
+        if isinstance(n, ast.If) and ast.unparse(n.test) == "result.returncode != 0"
+    ]
+    if len(status) != 1:
+        problems.append("the non-zero status test is not in _run_command_check")
+    runs = [
+        n
+        for n in ast.walk(runner)
+        if isinstance(n, ast.Call) and ast.unparse(n.func) == "subprocess.run"
+    ]
+    if len(runs) != 1:
+        problems.append("the subprocess.run call is not in _run_command_check")
+    return problems
+
+
+_RUNNER_OK = """
+class V:
+    def _verify(self, check_type, check):
+        if check_type in ("command", "test_passes"):
+            ok, msg = self._run_command_check(check)
+    def _run_command_check(self, check):
+        cmd_str = check.get("check_value", "")
+        result = subprocess.run(["bash", "-o", "pipefail", "-c", cmd_str])
+        if result.returncode != 0:
+            return False, "failed"
+        return True, "ok"
+"""
+
+
+def test_the_runner_structure_reader_accepts_the_shape_the_tag_has() -> None:
+    assert _runner_structure_problems(_RUNNER_OK) == []
+
+
+def test_the_runner_structure_reader_refuses_a_status_test_outside_the_runner() -> None:
+    moved = _RUNNER_OK.replace(
+        '        if result.returncode != 0:\n            return False, "failed"\n',
+        "",
+    ).replace(
+        "            ok, msg = self._run_command_check(check)",
+        "            ok, msg = self._run_command_check(check)\n"
+        "        if result.returncode != 0:\n            return False, 'x'",
+    )
+    assert _runner_structure_problems(moved) == [
+        "the non-zero status test is not in _run_command_check"
+    ]
+
+
+def test_the_runner_structure_reader_refuses_a_dispatch_that_calls_something_else() -> (
+    None
+):
+    other = _RUNNER_OK.replace(
+        "ok, msg = self._run_command_check(check)", "ok, msg = self._other(check)"
+    )
+    assert _runner_structure_problems(other) == [
+        "the dispatch branch does not call _run_command_check"
+    ]
+
+
+def test_the_runner_at_the_verifier_tag_has_the_recorded_structure() -> None:
+    lines = _require_the_tag_object(
+        os.environ.get("REQUIRE_VERIFIER_TAG") == "1", _collector_at_tag()
+    )
+    if lines is None:
+        return
+    assert _runner_structure_problems("\n".join(lines)) == []

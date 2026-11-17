@@ -1539,11 +1539,18 @@ def _ac2_violations(source: str) -> list[str]:
             problems.append(f"the test asserts no {attr} equal to {name}")
     if not any(
         isinstance(n, ast.Assert)
-        and "selected_backend_id" in attrs(n)
-        and "initial" in names(n)
+        and any(
+            isinstance(c, ast.Compare)
+            and all(isinstance(op, ast.Eq) for op in c.ops)
+            and "selected_backend_id" in attrs(c)
+            and "initial" in names(c)
+            for c in ast.walk(n)
+        )
         for n in ast.walk(test)
     ):
-        problems.append("the test asserts nothing about selected_backend_id")
+        problems.append(
+            "the test asserts no selected_backend_id equal to the first decision's"
+        )
     parametrized = any(
         isinstance(d, ast.Call)
         and isinstance(d.func, ast.Attribute)
@@ -1684,6 +1691,13 @@ def test_the_bound_ac2_test_round_trips_drives_the_real_orchestrator_and_asserts
             "assert all(call.api_key_ref == _KEY for call in calls)",
             "assert all(call.api_key_ref != _KEY for call in calls)",
             "api_key_ref equal to _KEY",
+        ),
+        # The backend id is compared with != : the assert is there and holds for
+        # any backend other than the first decision's.
+        (
+            "assert live.selected_backend_id == initial.selected_backend_id",
+            "assert live.selected_backend_id != initial.selected_backend_id",
+            "asserts no selected_backend_id equal to the first decision's",
         ),
         # The key is asserted on the first call only, not on every attempt.
         (
@@ -1873,13 +1887,10 @@ def _settings_text(required: list[str], rule_required: list[str]) -> str:
 
 # The local Done gate runs after the merge (the closer moves a ticket whose pull
 # request merged), when the checked-out HEAD is the landing branch's tip: the head
-# and the range of commits the items compare no longer exist. Each head-relative
-# item therefore answers a merged pull request first, from the state `onex scm
-# pr-view` reads, and runs its own check only for one that is not merged.
-_MERGED_GUARD = (
-    _VIEW_SOURCE + ' | python3 -c "import json,sys; '
-    "sys.exit(0 if json.load(sys.stdin)['result']['state']=='MERGED' else 1)\" || ( "
-)
+# and the range of commits the items compare are no longer checked out. An item
+# that exits 0 on a merged state could never fail when it runs, so each judges the
+# merged head_sha's runs (pr-checks) and the merged range's trailers (the branch's
+# own commits stay in the clone after a squash merge) instead.
 
 
 def _view_payload(state: str = "OPEN", head: str | None = None) -> str:
@@ -1891,16 +1902,15 @@ def _view_payload(state: str = "OPEN", head: str | None = None) -> str:
 
 def _with_view_source(value: str, payload: str) -> str:
     """The check with every `onex scm pr-view` read replaced by ``payload``."""
-    assert value.startswith(_MERGED_GUARD), value[:200]
+    assert _VIEW_SOURCE in value, value[:200]
     return value.replace(_VIEW_SOURCE, f"printf '%s' {shlex.quote(payload)}")
 
 
 def _run_checks_check(
-    payload: str, settings: str | None = None, *, state: str = "OPEN"
+    payload: str, settings: str | None = None
 ) -> subprocess.CompletedProcess[str]:
     """The pr-checks item, with its readers replaced by the given output."""
     value = _check_value("OMN-25198", _CHECKS_ITEM)
-    value = _with_view_source(value, _view_payload(state))
     assert " | python3 -c " in value.split(_CHECKS_SOURCE, 1)[1][:20]
     assert _SETTINGS_SOURCE in value
     text = _settings_text(_REQUIRED, _RULE_REQUIRED) if settings is None else settings
@@ -1975,10 +1985,12 @@ def test_the_pr_checks_check_fails_when_the_required_contexts_cannot_be_read() -
 
 
 def _run_view_check(
-    head: str, *, state: str = "OPEN"
+    head: str, *, state: str = "OPEN", checks: str | None = None
 ) -> subprocess.CompletedProcess[str]:
     value = _check_value("OMN-25198", _VIEW_ITEM)
     command = _with_view_source(value, _view_payload(state, head))
+    read = _checks_json(head_sha=head) if checks is None else checks
+    command = command.replace(_CHECKS_SOURCE, f"printf '%s' {shlex.quote(read)}")
     return _verifier(command, _ROOT)
 
 
@@ -1994,32 +2006,44 @@ def test_the_pr_view_check_fails_on_a_stale_head(stale: str) -> None:
     assert done.returncode == 1, done.stdout + done.stderr
 
 
-def test_a_merged_pull_request_passes_the_head_relative_items_whatever_is_checked_out() -> (
-    None
-):
-    # After the merge HEAD is the landing branch's tip: the pushed head is not
-    # checked out, the watcher class reads merged and no range of commits is left.
-    # Each head-relative item answers a merged pull request first.
-    stale = _run_view_check("0" * 40, state="MERGED")
-    assert stale.returncode == 0, stale.stdout + stale.stderr
+def test_a_merged_pull_request_is_judged_on_its_merged_head_sha_not_passed() -> None:
+    # After the merge HEAD is the landing branch's tip, so the pushed head is not
+    # checked out and is not compared. The merged head_sha's runs are judged: a
+    # merged read whose required contexts all succeeded passes whatever is
+    # checked out, and one with a red or pending context fails.
+    merged_head = "0" * 40
+    green = _checks_json(**{"class": "merged", "head_sha": merged_head})
+    passed = _run_view_check(merged_head, state="MERGED", checks=green)
+    assert passed.returncode == 0, passed.stdout + passed.stderr
+    for changes in (
+        {"red": ["CI Summary"]},
+        {"pending": ["CI Summary"]},
+        {"cancelled": ["Tests (Split 2/20)"]},
+        {"runs": []},
+        {"head_sha": "1" * 40},
+    ):
+        read = _checks_json(**{"class": "merged", "head_sha": merged_head, **changes})
+        failed = _run_view_check(merged_head, state="MERGED", checks=read)
+        assert failed.returncode == 1, (changes, failed.stdout + failed.stderr)
     red = _run_checks_check(
-        _checks_json(**{"class": "red", "red": ["CI Summary"]}), state="MERGED"
+        _checks_json(**{"class": "merged", "red": ["CI Summary"]}),
     )
-    assert red.returncode == 0, red.stdout + red.stderr
-    # the controls: the same reads of a pull request that is open fail
+    assert red.returncode == 1, red.stdout + red.stderr
+    # the controls: an open pull request at a head other than this one still fails
     assert _run_view_check("0" * 40, state="OPEN").returncode == 1
     assert (
         _run_checks_check(
-            _checks_json(**{"class": "red", "red": ["CI Summary"]}), state="OPEN"
+            _checks_json(**{"class": "red", "red": ["CI Summary"]})
         ).returncode
         == 1
     )
 
 
 def test_a_pull_request_whose_state_cannot_be_read_is_checked_as_open() -> None:
-    # An unreadable state is not a merge: the item falls through to its own check.
+    # An unreadable state is not a merge: the item fails.
     value = _check_value("OMN-25198", _VIEW_ITEM)
     command = value.replace(_VIEW_SOURCE, "printf '%s' 'not json'")
+    command = command.replace(_CHECKS_SOURCE, "printf '%s' 'not json'")
     assert _verifier(command, _ROOT).returncode == 1
 
 
@@ -2110,29 +2134,26 @@ def _trailer_check(
     assert value.count(_NOT_ANCESTOR) == 1
     if not_ancestor is not None:
         value = value.replace(_NOT_ANCESTOR, not_ancestor)
-    return _verifier(_with_view_source(value, _view_payload(state)), repo)
+    payload = _view_payload(state, _git(repo, "rev-parse", "HEAD"))
+    return _verifier(_with_view_source(value, payload), repo)
 
 
-def test_the_trailer_check_passes_after_the_merge_when_the_range_is_empty(
+def test_the_trailer_check_passes_a_merged_range_that_reads_from_the_head_sha(
     tmp_path: Path,
 ) -> None:
-    # HEAD is origin/dev: the range from the merge base is empty and a count of
-    # trailers over it is 0, so the item could never pass without the merged guard.
+    # An open pull request whose branch is checked out reads its own range; the
+    # merged case, where HEAD is the landing tip, is the tests further down.
     repo = _trailer_repo(tmp_path, [f"one\n\nTicket: OMN-25198\n{_FIX}"])
-    _git(repo, "update-ref", "refs/remotes/origin/dev", "HEAD")
     other = _side_commit(repo)
-    merged = _trailer_check(repo, not_ancestor=other, state="MERGED")
-    assert merged.returncode == 0, merged.stdout + merged.stderr
-    # the control: the same repository read as an open pull request fails
-    opened = _trailer_check(repo, not_ancestor=other, state="OPEN")
-    assert opened.returncode == 1, opened.stdout + opened.stderr
+    done = _trailer_check(repo, not_ancestor=other, state="OPEN")
+    assert done.returncode == 0, done.stdout + done.stderr
 
 
 def test_the_trailer_check_requires_exit_status_1_exactly_from_the_ancestor_test() -> (
     None
 ):
     value = _check_value("OMN-25198", _TRAILER_ITEM)
-    assert f"git merge-base --is-ancestor {_NOT_ANCESTOR} HEAD; test $? -eq 1" in value
+    assert f'git merge-base --is-ancestor {_NOT_ANCESTOR} "$h"; test $? -eq 1' in value
     # not the negation, which turns exit 128 (an unknown object) into a pass
     assert f"! git merge-base --is-ancestor {_NOT_ANCESTOR}" not in value
 
@@ -2640,6 +2661,7 @@ def test_the_reader_stage_fails_when_read_ticket_returns_a_value_json_cannot_hol
 ) -> None:
     done = _reader_stage(tmp_path, "object()")
     assert done.returncode != 0, done.stdout + done.stderr
+    assert "is not JSON serializable" in done.stderr, done.stderr
 
 
 def test_the_whole_live_item_fails_when_read_ticket_returns_a_value_json_cannot_hold(
@@ -2667,6 +2689,7 @@ def test_the_whole_live_item_fails_when_read_ticket_returns_a_value_json_cannot_
         env=env,
     )
     assert done.returncode != 0, done.stdout + done.stderr
+    assert "is not JSON serializable" in done.stderr, done.stderr
 
 
 def test_the_reader_stage_fails_when_the_ticket_has_no_description(
@@ -2695,6 +2718,7 @@ def test_the_reader_stage_fails_when_the_ticket_has_no_description(
         env=env,
     )
     assert done.returncode != 0, done.stdout + done.stderr
+    assert "TypeError" in done.stderr, done.stderr
 
 
 def test_the_real_read_ticket_accepts_the_arguments_the_reader_stage_passes() -> None:
@@ -2713,7 +2737,8 @@ def test_the_real_read_ticket_accepts_the_arguments_the_reader_stage_passes() ->
 
 # Finding 7: the merged guard on real output. The fixtures are the output of
 # `onex scm pr-view` and `onex scm pr-checks` as the watcher printed it for a
-# merged pull request and for this one (the login is replaced, nothing else).
+# merged pull request and for this one (the login is replaced; the pr-checks
+# fixture's run list is trimmed to six of its runs, so it is not verbatim).
 
 _FIXTURES = REPO_ROOT / "tests" / "ci" / "fixtures"
 
@@ -2722,8 +2747,12 @@ def _fixture(name: str) -> str:
     return (_FIXTURES / name).read_text(encoding="utf-8")
 
 
-def _run_view_item_with(payload: str) -> subprocess.CompletedProcess[str]:
+def _run_view_item_with(
+    payload: str, checks: str | None = None
+) -> subprocess.CompletedProcess[str]:
     command = _with_view_source(_check_value("OMN-25198", _VIEW_ITEM), payload)
+    read = _fixture("onex_scm_pr_checks_merged.json") if checks is None else checks
+    command = command.replace(_CHECKS_SOURCE, f"printf '%s' {shlex.quote(read)}")
     return _verifier(command, _ROOT)
 
 
@@ -2751,10 +2780,21 @@ def test_the_real_pr_checks_output_of_a_merged_pull_request_spells_the_class_mer
     assert merged["pending"]
 
 
-def test_the_merged_guard_passes_a_real_merged_pr_view_whatever_head_is_checked_out() -> (
+def test_the_merged_guard_fails_a_real_merged_pr_view_whose_checks_leave_ci_summary_pending() -> (
     None
 ):
     done = _run_view_item_with(_fixture("onex_scm_pr_view_merged.json"))
+    assert done.returncode == 1, done.stdout + done.stderr
+
+
+def test_the_merged_guard_passes_a_real_merged_pr_view_once_its_head_runs_are_green() -> (
+    None
+):
+    merged = json.loads(_fixture("onex_scm_pr_checks_merged.json"))
+    merged["result"]["pending"] = []
+    done = _run_view_item_with(
+        _fixture("onex_scm_pr_view_merged.json"), checks=json.dumps(merged)
+    )
     assert done.returncode == 0, done.stdout + done.stderr
 
 
@@ -2775,25 +2815,27 @@ def test_the_pr_view_merged_guard_reads_only_the_spelling_the_real_output_uses(
     assert done.returncode == 1, done.stdout + done.stderr
 
 
-def test_the_pr_checks_item_passes_the_real_merged_class_when_pr_view_is_unavailable() -> (
+def test_the_pr_checks_item_fails_the_real_merged_class_with_ci_summary_pending() -> (
     None
 ):
-    # pr-checks spells the class lower case; its read of a merged pull request
-    # lists a pending context, so the item has to read the class first.
+    # pr-checks spells the class lower case; the read of the merged pull request
+    # lists CI Summary pending and no run of it, so the merged head_sha's runs
+    # are not all green and the item fails.
     done = _run_checks_check(
-        _fixture("onex_scm_pr_checks_merged.json").replace("\n", " "),
-        state="OPEN",
+        _fixture("onex_scm_pr_checks_merged.json").replace("\n", " ")
     )
-    assert done.returncode == 0, done.stdout + done.stderr
+    assert done.returncode == 1, done.stdout + done.stderr
 
 
 @pytest.mark.parametrize("spelling", ["Merged", "MERGED", "merge"])
 def test_the_pr_checks_item_does_not_read_another_spelling_of_merged(
     spelling: str,
 ) -> None:
-    payload = json.loads(_fixture("onex_scm_pr_checks_merged.json"))
-    payload["result"]["class"] = spelling
-    done = _run_checks_check(json.dumps(payload), state="OPEN")
+    # A green read at another head with a spelling of merged that is not the
+    # real one is not accepted as merged: its head is compared with this one.
+    green = json.loads(_checks_json(**{"head_sha": "0" * 40}))["result"]
+    payload = json.dumps({"verb": "pr-checks", "result": {**green, "class": spelling}})
+    done = _run_checks_check(payload)
     assert done.returncode == 1, done.stdout + done.stderr
 
 
@@ -3018,3 +3060,211 @@ def test_the_gate_control_receipt_cites_lines_with_numbers_and_text() -> None:
     assert [c["line"] for c in control["cited_lines"]] == sorted(
         c["line"] for c in control["cited_lines"]
     )
+
+
+# --- review round 6 (findings 2, 3 and 4 of the sixth review) ------------------
+# Finding 4: the Done gate runs after the merge, so an item that exits 0 on the
+# state MERGED can never fail when it runs. Each item below judges the merged
+# head_sha's runs and the merged range's trailers instead.
+
+_PINNED_ITEM_IDS = {
+    "OMN-25198": [
+        "dod-omn25198-commit-trailers",
+        "dod-omn25198-pr-checks",
+        "dod-omn25198-lab-comment",
+    ],
+    "OMN-25208": ["dod-omn25208-pr-checks-live"],
+    "OMN-25286": ["dod-omn25286-pr-checks-live"],
+    "OMN-25316": ["dod-omn25316-pr-checks-live"],
+    "OMN-25379": ["dod-omn25379-pr-checks-live"],
+}
+_STATE_SHORT_CIRCUIT = "['result']['state']=='MERGED' else 1)"
+
+
+def test_no_check_of_this_pull_request_exits_0_on_the_state_merged() -> None:
+    for name, ids in _PINNED_ITEM_IDS.items():
+        for item_id in ids:
+            value = _check_value(name, item_id)
+            assert _STATE_SHORT_CIRCUIT not in value, f"{name}:{item_id}"
+            if "onex scm pr-checks" in value:
+                # a merged read is judged on its runs, never passed unread
+                assert re.search(r"not [rc]\['pending'\]", value), f"{name}:{item_id}"
+                assert re.search(r"not [rc]\['red'\]", value), f"{name}:{item_id}"
+
+
+def _run_with_sources(
+    value: str,
+    *,
+    view: str,
+    checks: str,
+    settings: str | None = None,
+    cwd: Path = _ROOT,
+) -> subprocess.CompletedProcess[str]:
+    text = _settings_text(_REQUIRED, _RULE_REQUIRED) if settings is None else settings
+    command = value.replace(_SETTINGS_SOURCE, f"printf '%s' {shlex.quote(text)}")
+    command = command.replace(_CHECKS_SOURCE, f"printf '%s' {shlex.quote(checks)}")
+    command = command.replace(_VIEW_SOURCE, f"printf '%s' {shlex.quote(view)}")
+    return _verifier(command, cwd)
+
+
+def _one_line(payload: str) -> str:
+    return json.dumps(json.loads(payload))
+
+
+@pytest.mark.parametrize(
+    ("name", "item_id"),
+    [
+        ("OMN-25198", "dod-omn25198-pr-checks"),
+        ("OMN-25208", "dod-omn25208-pr-checks-live"),
+        ("OMN-25286", "dod-omn25286-pr-checks-live"),
+        ("OMN-25316", "dod-omn25316-pr-checks-live"),
+        ("OMN-25379", "dod-omn25379-pr-checks-live"),
+    ],
+)
+def test_the_live_items_fail_the_real_merged_read_with_ci_summary_pending(
+    name: str, item_id: str
+) -> None:
+    done = _run_with_sources(
+        _check_value(name, item_id),
+        view=_one_line(_fixture("onex_scm_pr_view_merged.json")),
+        checks=_one_line(_fixture("onex_scm_pr_checks_merged.json")),
+    )
+    assert done.returncode == 1, done.stdout + done.stderr
+
+
+def test_the_live_item_passes_a_merged_read_whose_head_runs_are_all_green() -> None:
+    # the control: the same merged class with every required context successful
+    # on the merged head_sha and nothing pending passes, whatever is checked out
+    green = json.loads(_fixture("onex_scm_pr_checks_merged.json"))
+    green["result"]["pending"] = []
+    green["result"]["runs"] = [
+        [name, "completed", "success", "t"] for name in [*_REQUIRED, *_RULE_REQUIRED]
+    ]
+    done = _run_with_sources(
+        _check_value("OMN-25198", _CHECKS_ITEM),
+        view=_one_line(_fixture("onex_scm_pr_view_merged.json")),
+        checks=json.dumps(green),
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_the_lab_comment_item_fails_a_merged_pull_request_with_ci_summary_pending() -> (
+    None
+):
+    done = _run_with_sources(
+        _check_value("OMN-25198", _VIEW_ITEM),
+        view=_one_line(_fixture("onex_scm_pr_view_merged.json")),
+        checks=_one_line(_fixture("onex_scm_pr_checks_merged.json")),
+    )
+    assert done.returncode == 1, done.stdout + done.stderr
+
+
+def _merged_repo(tmp_path: Path, messages: list[str]) -> tuple[Path, str]:
+    """A repository whose branch was squash-merged: HEAD is the landing tip and the
+    branch's own commits are no longer reachable from it. Returns it and the
+    branch's head."""
+    repo = _trailer_repo(tmp_path, messages)
+    head = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-q", "-c", "landed", "origin/dev")
+    (repo / "landed").write_text("squash", encoding="utf-8")
+    _git(repo, "add", "landed")
+    _git(repo, "commit", "-q", "-m", "squash of the branch")
+    _git(repo, "update-ref", "refs/remotes/origin/dev", "HEAD")
+    return repo, head
+
+
+def _merged_trailer_check(
+    repo: Path, head: str, other: str
+) -> subprocess.CompletedProcess[str]:
+    value = _check_value("OMN-25198", _TRAILER_ITEM).replace(_NOT_ANCESTOR, other)
+    view = json.dumps(
+        {"verb": "pr-view", "result": {"state": "MERGED", "head_sha": head}}
+    )
+    return _run_with_sources(value, view=view, checks="{}", cwd=repo)
+
+
+def test_the_trailer_check_reads_the_merged_range_of_the_head_sha(
+    tmp_path: Path,
+) -> None:
+    repo, head = _merged_repo(tmp_path, [f"one\n\nTicket: OMN-25198\n{_FIX}"])
+    other = _side_commit(repo)
+    _git(repo, "switch", "-q", "landed")
+    done = _merged_trailer_check(repo, head, other)
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_the_trailer_check_fails_a_merged_range_naming_two_fixes(
+    tmp_path: Path,
+) -> None:
+    repo, head = _merged_repo(
+        tmp_path,
+        [
+            f"one\n\nTicket: OMN-25198\n{_FIX}",
+            "two\n\nBinds-Merged-Fix: OMN-21217 " + "1" * 40,
+        ],
+    )
+    other = _side_commit(repo)
+    _git(repo, "switch", "-q", "landed")
+    done = _merged_trailer_check(repo, head, other)
+    assert done.returncode == 1, done.stdout + done.stderr
+
+
+def test_the_trailer_check_fails_when_the_merged_head_sha_is_not_in_the_clone(
+    tmp_path: Path,
+) -> None:
+    repo, _ = _merged_repo(tmp_path, [f"one\n\nTicket: OMN-25198\n{_FIX}"])
+    other = _side_commit(repo)
+    _git(repo, "switch", "-q", "landed")
+    done = _merged_trailer_check(repo, "0" * 40, other)
+    # git answers 128 for the unknown object; the gate fails any non-zero status
+    assert done.returncode != 0, done.stdout + done.stderr
+    assert "Not a valid commit name" in done.stderr
+
+
+# Finding 3: the gate overlays the head's tests onto the merge-base tree and a
+# test-only diff takes TEST_ONLY_DIFF, so no "exit 5 at the merge base" control
+# runs for the OMN-25286 and OMN-25316 contracts; their text must not claim one.
+_CONTROL_CLAIM = re.compile(
+    r"(fail(s|ing)?|exits? 5|exit 5)[^.;]*at the merge base|control[^.;]*at the merge base",
+    re.IGNORECASE,
+)
+
+
+def _claim_texts(name: str) -> list[tuple[str, str]]:
+    contract = _contract(name)
+    texts = [
+        (f"{r['id']}:{ac['id']}", ac["statement"])
+        for r in contract["requirements"]
+        for ac in r["acceptance"]
+    ]
+    texts += [(i["id"], i["description"]) for i in contract["dod_evidence"]]
+    return texts
+
+
+@pytest.mark.parametrize("name", ["OMN-25286", "OMN-25316"])
+def test_the_criteria_claim_no_exit_5_control_at_the_merge_base(name: str) -> None:
+    claims = [
+        where for where, text in _claim_texts(name) if _CONTROL_CLAIM.search(text)
+    ]
+    assert claims == [], f"{name} claims a control at the merge base in {claims}"
+
+
+def test_the_merge_base_item_of_omn25316_says_what_the_gate_does() -> None:
+    text = _item("OMN-25316", "dod-omn25316-merge-base")["description"]
+    assert "TEST_ONLY_DIFF" in text
+    assert "overlay" in text
+
+
+# Finding 2: a receipt may not say a log is attached to the pull request comment,
+# which no test can read; each run names the host that ran it and the command.
+def test_no_receipt_claims_a_log_attached_in_the_pull_request_comment() -> None:
+    receipts = _contract("OMN-25198")["context"]["run_receipts"]
+    texts = _strings(receipts)
+    assert [t for t in texts if "attached in the pull request comment" in t] == []
+    assert [t for t in texts if "are in the pull request comment" in t] == []
+    assert [t for t in texts if "the logs are in" in t] == []
+
+
+def test_the_omn25379_receipt_criterion_claims_no_attached_log() -> None:
+    statements = [s for _, s in _claim_texts("OMN-25379")]
+    assert [s for s in statements if "are in the Lab comment" in s] == []
