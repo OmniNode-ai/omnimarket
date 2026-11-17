@@ -65,3 +65,51 @@ def verifier_shell_from_source(source: str) -> list[str]:
 def verifier_shell() -> list[str]:
     """The shell prefix of the verifier in this tree."""
     return verifier_shell_from_source(EVIDENCE_COLLECTOR.read_text(encoding="utf-8"))
+
+
+# The hosted gate does not run this tree's collector: the caller installs the
+# verifier at its ``verifier-tag``. So the shell a contract check runs under there
+# is the one that tag's runner names. The lines below are copied verbatim from
+# ``EVIDENCE_COLLECTOR`` at ``VERIFIER_TAG`` (``git show <tag>:<path>``); a test
+# compares the tag the caller pins with this one, so moving the pin without
+# re-reading these lines fails, and compares them with the tag's file wherever
+# that object is in the clone.
+VERIFIER_TAG = "dev-20261101000200-949993edf3b7"
+
+# ``check_type in ("command", "test_passes")`` takes the one command path, and
+# that path hands the check's own text to ``_run_command_check``.
+VERIFIER_TAG_DISPATCH = (
+    '            if check_type in ("command", "test_passes"):',
+    "                ok, msg = self._run_command_check(",
+)
+
+# ``cmd_str`` is the check's own text, and it is what the runner executes.
+VERIFIER_TAG_CMD = (
+    '        cmd_str = check.get("command") or check.get("check_value", "")',
+)
+
+# The runner: bash with pipefail, list form, the command last.
+VERIFIER_TAG_RUN = (
+    "            result = subprocess.run(",
+    '                ["bash", "-o", "pipefail", "-c", cmd_str],',
+    "                capture_output=True,",
+    "                text=True,",
+    "                timeout=timeout_s,",
+    "                cwd=run_cwd,",
+    "                env=run_env,",
+    "            )",
+)
+
+# Any non-zero status is a failed check, so pytest's exit 5 (nothing selected)
+# fails it exactly as exit 1 does.
+VERIFIER_TAG_STATUS = (
+    "        if result.returncode != 0:",
+    '        return True, f"OK ({elapsed_ms}ms): {stdout[:200]}"',
+)
+
+
+def verifier_shell_at_tag() -> list[str]:
+    """The argv prefix of the runner at ``VERIFIER_TAG``, from the copied lines."""
+    import textwrap
+
+    return verifier_shell_from_source(textwrap.dedent("\n".join(VERIFIER_TAG_RUN)))

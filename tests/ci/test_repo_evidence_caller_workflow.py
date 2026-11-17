@@ -27,7 +27,11 @@ from omnimarket.nodes.node_dod_verify.services.scoped_item_binding import (
 )
 from omnimarket.occ_contract_pin import criteria_by_label, criterion_hash
 from tests.ci.receipt_gate_pin import RECEIPT_GATE_PIN_TAG
-from tests.ci.verifier_shell import verifier_shell, verifier_shell_from_source
+from tests.ci.verifier_shell import (
+    verifier_shell,
+    verifier_shell_at_tag,
+    verifier_shell_from_source,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -834,7 +838,7 @@ def test_omn22496_items_bind_their_criterion_to_a_test_passes_check(
 
 _ROOT = REPO_ROOT
 _CONTRACTS = _ROOT / "contracts"
-_NAMES = ("OMN-21217", "OMN-25198", "OMN-25208", "OMN-25286")
+_NAMES = ("OMN-21217", "OMN-25198", "OMN-25208", "OMN-25286", "OMN-25316")
 _AC2_TEST_FILE = (
     _ROOT
     / "tests"
@@ -973,7 +977,7 @@ _MERGE_BASE_TESTS = {
         }
     ),
 }
-_SELECTION_NAMES = ("OMN-25198", "OMN-25208", "OMN-25286")
+_SELECTION_NAMES = ("OMN-25198", "OMN-25208", "OMN-25286", "OMN-25316")
 
 
 def _selected_tests(check_value: str) -> tuple[str, set[str]]:
@@ -1049,6 +1053,127 @@ def test_the_merge_base_names_are_not_among_the_tests_this_pull_request_adds() -
         tree = ast.parse((_ROOT / path).read_text(encoding="utf-8"))
         present = {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}
         assert names <= present, sorted(names - present)
+
+
+_MERGE_BASE = "13a7e30415"
+
+
+def _test_names(source: str) -> set[str]:
+    tree = ast.parse(source)
+    return {
+        n.name
+        for n in tree.body
+        if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")
+    }
+
+
+def _names_at_merge_base(path: str) -> set[str] | None:
+    """The test names ``path`` held at the merge base, None where the clone lacks it."""
+    shown = subprocess.run(
+        ["git", "-C", str(_ROOT), "show", f"{_MERGE_BASE}:{path}"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=scrub_git_location_env(os.environ),
+    )
+    return _test_names(shown.stdout) if shown.returncode == 0 else None
+
+
+def _merge_base_name_differences(
+    listed: dict[str, frozenset[str]], read: Any
+) -> list[str]:
+    """Names the list omits and names it invents, per file, against ``read(path)``."""
+    problems: list[str] = []
+    for path, names in sorted(listed.items()):
+        actual = read(path)
+        omitted = sorted(actual - names)
+        invented = sorted(names - actual)
+        if omitted:
+            problems.append(f"{path}: held at the merge base, not listed: {omitted}")
+        if invented:
+            problems.append(f"{path}: listed, not held at the merge base: {invented}")
+    return problems
+
+
+def test_the_merge_base_names_equal_the_test_names_of_the_merge_base_commit() -> None:
+    # Where the clone holds the merge base commit (the local Done gate and the lab
+    # do, through dod-omn25198-merge-base-names, which fails when it does not) the
+    # hand-typed list is diffed against `git show <commit>:<file>`: a name left out
+    # of the list would make a selection of that merge-base test look like one
+    # this pull request adds.
+    if _names_at_merge_base(next(iter(_MERGE_BASE_TESTS))) is None:
+        return
+    problems = _merge_base_name_differences(
+        _MERGE_BASE_TESTS, lambda path: _names_at_merge_base(path) or set()
+    )
+    assert not problems, "\n".join(problems)
+
+
+def test_the_merge_base_names_diff_sees_an_omitted_and_an_invented_name() -> None:
+    # The controls, with no git: the diff is not one that always finds nothing.
+    path = "tests/ci/test_repo_evidence_caller_workflow.py"
+    listed = _MERGE_BASE_TESTS
+
+    def held(**changes: set[str]) -> Any:
+        base = {key: set(value) for key, value in listed.items()}
+        base.update(changes)
+        return lambda p: base[p]
+
+    # the list as git has it: nothing to report
+    assert _merge_base_name_differences(listed, held()) == []
+    # one name removed from the list: git still holds it
+    first = sorted(listed[path])[0]
+    one_removed = {**listed, path: frozenset(sorted(listed[path])[1:])}
+    assert _merge_base_name_differences(one_removed, held()) == [
+        f"{path}: held at the merge base, not listed: {[first]}"
+    ]
+    # one name the merge base never held
+    assert _merge_base_name_differences(
+        listed, held(**{path: set(listed[path]) - {first}})
+    ) == [f"{path}: listed, not held at the merge base: {[first]}"]
+
+
+def test_a_selection_that_matches_no_test_exits_5_and_the_pinned_runner_fails_it() -> (
+    None
+):
+    # At the merge base none of the tests a check selects exists, so its -k matches
+    # nothing: pytest exits 5. The runner at the verifier tag fails any non-zero
+    # status, so that is the failed control. Run here under that runner's shell.
+    value = _check_value("OMN-25286", "dod-omn25286-selection")
+    assert " -k 'this_pull_requests_contracts_select" in value
+    nothing = value.split(" -k ")[0] + " -k zzz_no_such_test"
+    done = subprocess.run(
+        [*verifier_shell_at_tag(), nothing],
+        cwd=_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=200,
+        env=scrub_git_location_env(os.environ),
+    )
+    assert done.returncode == 5, done.stdout + done.stderr
+    assert "no tests ran" in done.stdout or "deselected" in done.stdout
+
+
+def test_every_selection_of_the_contracts_matches_nothing_at_the_merge_base() -> None:
+    # The selection each -k makes over the names the merge-base files held is
+    # empty, which is the exit 5 above; one name over the list would not be.
+    for name, item_id, value in _selection_checks():
+        path, _ = _selected_tests(value)
+        expression = Expression.compile(shlex.split(value.split(" | ")[0])[-1])
+        module = Path(path).stem
+        at_base = {
+            test
+            for test in _MERGE_BASE_TESTS.get(path, frozenset())
+            if expression.evaluate(
+                lambda ident, test=test, module=module: (
+                    ident.lower() in test.lower() or ident.lower() in module.lower()
+                )
+            )
+        }
+        assert not at_base, (
+            f"{name}:{item_id} selects {sorted(at_base)} at the merge base"
+        )
 
 
 def test_this_pull_requests_contracts_bind_every_criterion_to_a_test_passes_check() -> (
@@ -1131,42 +1256,131 @@ def test_the_unescaped_bracket_form_does_not_hash_to_the_recorded_value() -> Non
     assert unescaped != _hash_receipt()["value"]
 
 
-def test_the_live_ticket_read_is_recorded_without_a_hand_typed_equality() -> None:
-    live = _hash_receipt()["live_read"]
-    assert (
-        live["source"] == "the ticket system's own text for OMN-21217, read by the lane"
-    )
-    assert re.fullmatch(r"20\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ", live["read_at"])
-    # A recorded true proves nothing: the equality is computed by the tests here.
-    assert "line_equals_ticket_line" not in live
-    assert "hash" not in live
+# The live comparison is the unbound local_done_gate item
+# dod-omn25198-live-ac2-hash: it reads the ticket system's text for OMN-21217 and
+# hashes its AC2 line. A test that asserts a string typed in the same diff, or that
+# a changed line differs from the typed hash, holds for any hash and cannot fail;
+# these run the item's own command against a stand-in for the ticket reader and
+# fail when any one of the four things it compares moves.
+
+_LIVE_HASH_ITEM = "dod-omn25198-live-ac2-hash"
+_LIVE_SEPARATOR = " | uv run --frozen python -c "
 
 
-def test_the_criterion_hash_was_accepted_by_a_lane_other_than_the_one_that_proposed_it() -> (
-    None
-):
-    provenance = _contract("OMN-21217")["context"]["ac_binding_provenance"]
-    record = provenance["dod-omn21217-ac2-accepted-20261117t0145z"][0]
-    assert record["accepted_by"] != record["proposed_by"]
-    assert record["accepted_by"].startswith("lane=")
+def _live_hash_command(description: str, tmp_path: Path, **changes: str) -> str:
+    """The item's command with the ticket reader replaced by ``description``.
+
+    ``changes`` rewrites the two contracts it reads, copied under ``tmp_path``:
+    ``pin`` the criterion_hash of the OMN-21217 contract, ``value`` the receipt's
+    value and ``ticket_line`` the receipt's pinned line.
+    """
+    value = _check_value("OMN-25198", _LIVE_HASH_ITEM)
+    source, separator, rest = value.partition(_LIVE_SEPARATOR)
+    assert separator, value
+    assert "read_ticket('OMN-21217'" in source
+    assert "LINEAR_API_KEY" in source
+    receipt = _hash_receipt()
+    copies = {
+        "OMN-21217": (_CONTRACTS / "OMN-21217.yaml").read_text(encoding="utf-8"),
+        "OMN-25198": (_CONTRACTS / "OMN-25198.yaml").read_text(encoding="utf-8"),
+    }
+    recorded = receipt["value"]
+    if "pin" in changes:
+        assert copies["OMN-21217"].count(recorded) == 1
+        copies["OMN-21217"] = copies["OMN-21217"].replace(recorded, changes["pin"])
+    if "value" in changes:
+        assert copies["OMN-25198"].count(f'value: "{recorded}"') == 1
+        copies["OMN-25198"] = copies["OMN-25198"].replace(
+            f'value: "{recorded}"', f'value: "{changes["value"]}"'
+        )
+    if "ticket_line" in changes:
+        line = receipt["ticket_line"].strip()
+        assert copies["OMN-25198"].count(line) == 1
+        copies["OMN-25198"] = copies["OMN-25198"].replace(line, changes["ticket_line"])
+    for name, text in copies.items():
+        (tmp_path / f"{name}.yaml").write_text(text, encoding="utf-8")
+        old = f"contracts/{name}.yaml"
+        assert rest.count(old) == 1, old
+        rest = rest.replace(old, str(tmp_path / f"{name}.yaml"))
+    payload = json.dumps({"description": description})
+    return f"printf '%s' {shlex.quote(payload)} | uv run --frozen python -c {rest}"
 
 
-def test_a_changed_ac2_line_no_longer_hashes_to_the_accepted_criterion_hash() -> None:
-    # The control for the recorded line: the accepted hash is the anchor, so a
-    # ticket_line with one word changed fails the equality the tests compute,
-    # whatever a hand-typed field beside it says.
-    line = _hash_receipt()["ticket_line"].strip()
-    assert "never a model outside the list" in line
-    for old, new in (
+def _live_description(line: str) -> str:
+    return "- [ ] AC1: a first criterion\n- [ ] " + line.strip() + "\n"
+
+
+def _run_live_hash(
+    tmp_path: Path, description: str, **changes: str
+) -> subprocess.CompletedProcess[str]:
+    return _verifier(_live_hash_command(description, tmp_path, **changes), _ROOT)
+
+
+def test_the_live_ac2_hash_check_passes_when_the_live_line_hashes_to_every_recorded_hash(
+    tmp_path: Path,
+) -> None:
+    # The positive control: the check is not one that always fails. The stand-in
+    # live text is the pinned line, so this also proves the contract agrees.
+    done = _run_live_hash(tmp_path, _live_description(_hash_receipt()["ticket_line"]))
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
         ("never a model outside the list", "sometimes a model outside the list"),
         ("in the order stored", "in any order"),
         ("the same key", "any key"),
-    ):
-        assert old in line, old
-        changed = criterion_hash(
-            criteria_by_label("- [ ] " + line.replace(old, new))["AC2"]
-        )
-        assert changed != _provenance_hash(), new
+    ],
+)
+def test_the_live_ac2_hash_check_fails_when_the_live_line_changed(
+    tmp_path: Path, old: str, new: str
+) -> None:
+    line = _hash_receipt()["ticket_line"].strip()
+    assert old in line, old
+    done = _run_live_hash(tmp_path, _live_description(line.replace(old, new)))
+    assert done.returncode == 1, done.stdout + done.stderr
+
+
+def test_the_live_ac2_hash_check_fails_when_the_criterion_hash_changed_over_an_unchanged_line(
+    tmp_path: Path,
+) -> None:
+    done = _run_live_hash(
+        tmp_path,
+        _live_description(_hash_receipt()["ticket_line"]),
+        pin="0" * 64,
+    )
+    assert done.returncode == 1, done.stdout + done.stderr
+
+
+def test_the_live_ac2_hash_check_fails_when_the_recorded_value_changed(
+    tmp_path: Path,
+) -> None:
+    done = _run_live_hash(
+        tmp_path,
+        _live_description(_hash_receipt()["ticket_line"]),
+        value="1" * 64,
+    )
+    assert done.returncode == 1, done.stdout + done.stderr
+
+
+def test_the_live_ac2_hash_check_fails_when_the_pinned_line_changed_alone(
+    tmp_path: Path,
+) -> None:
+    line = _hash_receipt()["ticket_line"].strip()
+    done = _run_live_hash(
+        tmp_path,
+        _live_description(line),
+        ticket_line=line.replace("never a model", "sometimes a model"),
+    )
+    assert done.returncode == 1, done.stdout + done.stderr
+
+
+def test_the_live_ac2_hash_check_fails_when_the_live_text_has_no_ac2_line(
+    tmp_path: Path,
+) -> None:
+    done = _run_live_hash(tmp_path, "- [ ] AC1: a first criterion\n")
+    assert done.returncode == 1, done.stdout + done.stderr
 
 
 def test_the_pinned_criterion_is_the_ticket_line_not_the_checks_extra_assertions() -> (
@@ -1283,19 +1497,37 @@ def _ac2_violations(source: str) -> list[str]:
         if method not in attrs(test):
             problems.append(f"the test never calls the orchestrator's {method}")
 
-    def asserted_with(attr: str, name: str) -> bool:
-        return any(
-            isinstance(n, ast.Assert) and attr in attrs(n) and name in names(n)
-            for n in ast.walk(test)
-        )
+    def asserted_with(attr: str, name: str, *, every_call: bool) -> bool:
+        """An assert that compares ``attr`` with ``name`` for equality.
+
+        A comparison with ``!=`` does not count, and for the per-attempt
+        attributes the assert must range over every call (a comprehension), so
+        an assert on the first call alone does not count either.
+        """
+
+        def holds(assertion: ast.Assert) -> bool:
+            equal = any(
+                isinstance(c, ast.Compare)
+                and all(isinstance(op, ast.Eq) for op in c.ops)
+                and attr in attrs(c)
+                and name in names(c)
+                for c in ast.walk(assertion)
+            )
+            ranges = any(
+                isinstance(c, ast.GeneratorExp | ast.ListComp)
+                for c in ast.walk(assertion)
+            )
+            return equal and (ranges or not every_call)
+
+        return any(isinstance(n, ast.Assert) and holds(n) for n in ast.walk(test))
 
     # The same key and endpoint on every attempt, and the stored backend.
-    for attr, name in (
-        ("api_key_ref", "_KEY"),
-        ("base_url", "_ENDPOINT"),
-        ("selected_backend_ref", "_BACKEND"),
+    for attr, name, every_call in (
+        ("api_key_ref", "_KEY", True),
+        ("base_url", "_ENDPOINT", True),
+        ("selected_backend_ref", "_BACKEND", False),
     ):
-        if not asserted_with(attr, name):
+        if not asserted_with(attr, name, every_call=every_call):
             problems.append(f"the test asserts no {attr} equal to {name}")
     if not any(
         isinstance(n, ast.Assert)
@@ -1314,9 +1546,60 @@ def _ac2_violations(source: str) -> list[str]:
     )
     if not parametrized:
         problems.append("the test is not parametrized over [False, True]")
-    for banned in ("skip", "skipif", "xfail", "Mock", "MagicMock", "patch"):
-        if banned in names(tree) | attrs(tree):
+    for banned in (
+        "skip",
+        "skipif",
+        "xfail",
+        "Mock",
+        "MagicMock",
+        "patch",
+        "MonkeyPatch",
+        "setattr",
+        "delattr",
+        "__setattr__",
+        "__dict__",
+    ):
+        # ``monkeypatch.setattr`` is an attribute named setattr and is judged
+        # below by its target; a bare ``setattr(...)`` or ``object.__setattr__``
+        # is a stub that no target check sees.
+        direct_monkeypatch = banned in ("setattr", "delattr")
+        used = names(tree) | (set() if direct_monkeypatch else attrs(tree))
+        if banned in used:
             problems.append(f"the bound test file uses {banned}")
+    # A stub put on a class or an instance by assignment, as _STUB_PLUGINS does.
+    for node in ast.walk(tree):
+        targets: list[ast.expr] = []
+        if isinstance(node, ast.Assign):
+            targets = list(node.targets)
+        elif isinstance(node, ast.AugAssign | ast.AnnAssign):
+            targets = [node.target]
+        for target in targets:
+            # ``self.rows = ...`` in a helper's own __init__ is construction.
+            on_self = isinstance(target, ast.Attribute) and (
+                isinstance(target.value, ast.Name) and target.value.id == "self"
+            )
+            if isinstance(target, ast.Attribute) and not on_self:
+                problems.append(
+                    f"the bound test file assigns the attribute {target.attr!r}"
+                )
+    # monkeypatch is only ever called directly: never aliased, passed or read
+    # as a bound method, which would hide a patch from the target check below.
+    direct_calls = {
+        id(n.func.value)
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute)
+        and isinstance(n.func.value, ast.Name)
+        and n.func.value.id == "monkeypatch"
+    }
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Name)
+            and node.id == "monkeypatch"
+            and isinstance(node.ctx, ast.Load)
+            and id(node) not in direct_calls
+        ):
+            problems.append("monkeypatch is aliased, passed or read without a call")
     # monkeypatch is used, but only for the two allowed targets.
     for node in ast.walk(tree):
         if (
@@ -1387,6 +1670,58 @@ def test_the_bound_ac2_test_round_trips_drives_the_real_orchestrator_and_asserts
             "handle_inference_response(",
             "handle_inference_stub(",
             "handle_inference_response",
+        ),
+        # The key is compared with != : the assert is there and holds for any key.
+        (
+            "assert all(call.api_key_ref == _KEY for call in calls)",
+            "assert all(call.api_key_ref != _KEY for call in calls)",
+            "api_key_ref equal to _KEY",
+        ),
+        # The key is asserted on the first call only, not on every attempt.
+        (
+            "assert all(call.api_key_ref == _KEY for call in calls)",
+            "assert calls[0].api_key_ref == _KEY",
+            "api_key_ref equal to _KEY",
+        ),
+        (
+            "assert all(call.base_url == _ENDPOINT for call in calls)",
+            "assert calls[0].base_url == _ENDPOINT",
+            "base_url equal to _ENDPOINT",
+        ),
+        # A stub put on the handler class, as _STUB_PLUGINS does, or on the
+        # instance, by assignment.
+        (
+            "    handler.handle_delegation_request(request)\n",
+            "    workflow_module.HandlerDelegationWorkflow.handle_inference_response = "
+            "lambda self, response: []\n"
+            "    handler.handle_delegation_request(request)\n",
+            "assigns the attribute 'handle_inference_response'",
+        ),
+        (
+            "    handler.handle_delegation_request(request)\n",
+            "    handler.handle_inference_response = lambda response: []\n"
+            "    handler.handle_delegation_request(request)\n",
+            "assigns the attribute 'handle_inference_response'",
+        ),
+        # A monkeypatch alias, a bound method read off it and the builtin setattr
+        # are not seen by a check that reads only monkeypatch.<call> targets.
+        (
+            'monkeypatch.setattr(workflow_module, "byok_backend_max_retries", lambda _: 0)',
+            "patch_it = monkeypatch\n"
+            '    patch_it.setattr(workflow_module.HandlerDelegationWorkflow, "handle_inference_response", lambda self, response: [])',
+            "monkeypatch is aliased, passed or read without a call",
+        ),
+        (
+            'monkeypatch.setattr(workflow_module, "byok_backend_max_retries", lambda _: 0)',
+            "bound = monkeypatch.setattr\n"
+            '    bound(workflow_module.HandlerDelegationWorkflow, "handle_inference_response", lambda self, response: [])',
+            "monkeypatch is aliased, passed or read without a call",
+        ),
+        (
+            'monkeypatch.setattr(workflow_module, "byok_backend_max_retries", lambda _: 0)',
+            "setattr(workflow_module.HandlerDelegationWorkflow, "
+            '"handle_inference_response", lambda self, response: [])',
+            "the bound test file uses setattr",
         ),
         ("[False, True]", "[False]", "parametrized over"),
         (
@@ -1517,12 +1852,37 @@ def _settings_text(required: list[str], rule_required: list[str]) -> str:
     )
 
 
+# The local Done gate runs after the merge (the closer moves a ticket whose pull
+# request merged), when the checked-out HEAD is the landing branch's tip: the head
+# and the range of commits the items compare no longer exist. Each head-relative
+# item therefore answers a merged pull request first, from the state `onex scm
+# pr-view` reads, and runs its own check only for one that is not merged.
+_MERGED_GUARD = (
+    _VIEW_SOURCE + ' | python3 -c "import json,sys; '
+    "sys.exit(0 if json.load(sys.stdin)['result']['state']=='MERGED' else 1)\" || ( "
+)
+
+
+def _view_payload(state: str = "OPEN", head: str | None = None) -> str:
+    result: dict[str, Any] = {"state": state}
+    if head is not None:
+        result["head_sha"] = head
+    return json.dumps({"verb": "pr-view", "result": result})
+
+
+def _with_view_source(value: str, payload: str) -> str:
+    """The check with every `onex scm pr-view` read replaced by ``payload``."""
+    assert value.startswith(_MERGED_GUARD), value[:200]
+    return value.replace(_VIEW_SOURCE, f"printf '%s' {shlex.quote(payload)}")
+
+
 def _run_checks_check(
-    payload: str, settings: str | None = None
+    payload: str, settings: str | None = None, *, state: str = "OPEN"
 ) -> subprocess.CompletedProcess[str]:
-    """The pr-checks item, with its two readers replaced by the given output."""
+    """The pr-checks item, with its readers replaced by the given output."""
     value = _check_value("OMN-25198", _CHECKS_ITEM)
-    assert value.startswith(_CHECKS_SOURCE + " | python3 -c ")
+    value = _with_view_source(value, _view_payload(state))
+    assert " | python3 -c " in value.split(_CHECKS_SOURCE, 1)[1][:20]
     assert _SETTINGS_SOURCE in value
     text = _settings_text(_REQUIRED, _RULE_REQUIRED) if settings is None else settings
     command = value.replace(_CHECKS_SOURCE, f"printf '%s' {shlex.quote(payload)}", 1)
@@ -1596,11 +1956,11 @@ def test_the_pr_checks_check_fails_when_the_required_contexts_cannot_be_read() -
     assert _run_checks_check(_checks_json(), settings=empty).returncode == 1
 
 
-def _run_view_check(head: str) -> subprocess.CompletedProcess[str]:
+def _run_view_check(
+    head: str, *, state: str = "OPEN"
+) -> subprocess.CompletedProcess[str]:
     value = _check_value("OMN-25198", _VIEW_ITEM)
-    assert value.startswith(_VIEW_SOURCE + " | python3 -c ")
-    payload = json.dumps({"verb": "pr-view", "result": {"head_sha": head}})
-    command = value.replace(_VIEW_SOURCE, f"printf '%s' {shlex.quote(payload)}", 1)
+    command = _with_view_source(value, _view_payload(state, head))
     return _verifier(command, _ROOT)
 
 
@@ -1614,6 +1974,35 @@ def test_the_pr_view_check_fails_on_a_stale_head(stale: str) -> None:
     # The pull request reads a head that is not the one checked out here.
     done = _run_view_check(stale)
     assert done.returncode == 1, done.stdout + done.stderr
+
+
+def test_a_merged_pull_request_passes_the_head_relative_items_whatever_is_checked_out() -> (
+    None
+):
+    # After the merge HEAD is the landing branch's tip: the pushed head is not
+    # checked out, the watcher class reads merged and no range of commits is left.
+    # Each head-relative item answers a merged pull request first.
+    stale = _run_view_check("0" * 40, state="MERGED")
+    assert stale.returncode == 0, stale.stdout + stale.stderr
+    red = _run_checks_check(
+        _checks_json(**{"class": "red", "red": ["CI Summary"]}), state="MERGED"
+    )
+    assert red.returncode == 0, red.stdout + red.stderr
+    # the controls: the same reads of a pull request that is open fail
+    assert _run_view_check("0" * 40, state="OPEN").returncode == 1
+    assert (
+        _run_checks_check(
+            _checks_json(**{"class": "red", "red": ["CI Summary"]}), state="OPEN"
+        ).returncode
+        == 1
+    )
+
+
+def test_a_pull_request_whose_state_cannot_be_read_is_checked_as_open() -> None:
+    # An unreadable state is not a merge: the item falls through to its own check.
+    value = _check_value("OMN-25198", _VIEW_ITEM)
+    command = value.replace(_VIEW_SOURCE, "printf '%s' 'not json'")
+    assert _verifier(command, _ROOT).returncode == 1
 
 
 def test_the_pr_checks_read_carries_no_comment_so_the_check_does_not_claim_one() -> (
@@ -1631,6 +2020,9 @@ def test_the_live_pr_checks_items_of_both_contracts_are_the_same_check() -> None
         "OMN-25198", _CHECKS_ITEM
     )
     assert _check_value("OMN-25286", "dod-omn25286-pr-checks-live") == _check_value(
+        "OMN-25198", _CHECKS_ITEM
+    )
+    assert _check_value("OMN-25316", "dod-omn25316-pr-checks-live") == _check_value(
         "OMN-25198", _CHECKS_ITEM
     )
 
@@ -1691,13 +2083,28 @@ def _side_commit(repo: Path) -> str:
 
 
 def _trailer_check(
-    repo: Path, *, not_ancestor: str | None = None
+    repo: Path, *, not_ancestor: str | None = None, state: str = "OPEN"
 ) -> subprocess.CompletedProcess[str]:
     value = _check_value("OMN-25198", _TRAILER_ITEM)
     assert value.count(_NOT_ANCESTOR) == 1
     if not_ancestor is not None:
         value = value.replace(_NOT_ANCESTOR, not_ancestor)
-    return _verifier(value, repo)
+    return _verifier(_with_view_source(value, _view_payload(state)), repo)
+
+
+def test_the_trailer_check_passes_after_the_merge_when_the_range_is_empty(
+    tmp_path: Path,
+) -> None:
+    # HEAD is origin/dev: the range from the merge base is empty and a count of
+    # trailers over it is 0, so the item could never pass without the merged guard.
+    repo = _trailer_repo(tmp_path, [f"one\n\nTicket: OMN-25198\n{_FIX}"])
+    _git(repo, "update-ref", "refs/remotes/origin/dev", "HEAD")
+    other = _side_commit(repo)
+    merged = _trailer_check(repo, not_ancestor=other, state="MERGED")
+    assert merged.returncode == 0, merged.stdout + merged.stderr
+    # the control: the same repository read as an open pull request fails
+    opened = _trailer_check(repo, not_ancestor=other, state="OPEN")
+    assert opened.returncode == 1, opened.stdout + opened.stderr
 
 
 def test_the_trailer_check_requires_exit_status_1_exactly_from_the_ancestor_test() -> (
@@ -1801,7 +2208,10 @@ def test_the_receipts_are_run_output_on_one_host_with_their_logs_named() -> None
         assert "host" not in run
         assert isinstance(run["exit_code"], int)
         assert re.search(r"\d+ (passed|failed) in \d+\.\d+s", run["summary_line"])
-        assert "Lab: head=" in run["log"]
+        # What the log holds is in the pull request comment, which no test here
+        # can read; the contract only has to point at one.
+        assert isinstance(run["log"], str)
+        assert run["log"]
     assert runs[0]["exit_code"] == 1
     assert "2 failed" in runs[0]["summary_line"]
     assert runs[1]["exit_code"] == 0
@@ -1812,24 +2222,13 @@ def test_the_receipts_are_run_output_on_one_host_with_their_logs_named() -> None
     assert f"on {receipts['host']} " in receipts["lab_run"]
 
 
-def test_the_receipts_name_the_job_log_of_the_red_context_and_both_control_runs() -> (
-    None
-):
-    receipts = _contract("OMN-25198")["context"]["run_receipts"]
-    failure = receipts["original_failure"]["head_2bf71927f97e"]
-    assert "job 133828358922" in failure["log"]
-    assert "Lab: head=" in failure["log"]
-    control = receipts["control_revert"]
-    for key in ("reverted_run", "unreverted_run"):
-        assert "Lab: head=" in control[key]["log"]
-
-
 def test_no_receipts_carry_a_hand_typed_dod_verify_result() -> None:
     # The dod-verify verdict of a head is read from onex scm pr-checks at that
-    # head and attached in the Lab comment; a string typed into the contract is
-    # not run output and cannot be checked.
-    text = (_CONTRACTS / "OMN-25198.yaml").read_text(encoding="utf-8")
-    assert "dod_verify_result" not in text
+    # head and attached in the Lab comment; a string typed into any contract of
+    # this pull request is not run output and cannot be checked.
+    for name in _NAMES:
+        text = (_CONTRACTS / f"{name}.yaml").read_text(encoding="utf-8")
+        assert "dod_verify_result" not in text, name
 
 
 def test_the_exclusion_rule_is_cited_from_the_gate_source_at_the_pinned_revision() -> (
@@ -1894,14 +2293,15 @@ def test_the_verifier_budget_and_the_nested_run_time_are_recorded() -> None:
     hosted = int(caller["jobs"]["repo-evidence"]["with"]["check-timeout-seconds"])
     assert budget["seconds"] == hosted
     assert budget["source"].endswith("check-timeout-seconds")
-    assert budget["nested_selection_seconds"] < budget["seconds"]
+    assert budget["unsplit_selection_seconds"] < budget["seconds"]
 
 
 def test_the_verifier_budget_of_the_local_done_gate_is_read_from_the_collector() -> (
     None
 ):
     # The local Done gate runs the same collector, bounded by one function: the
-    # default it records is the one in the source, and the nested runs exceed it.
+    # default it records is the one in the source. The one selection that
+    # exceeded it was split, so no check of the contracts is recorded past it.
     source = (
         REPO_ROOT
         / "src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py"
@@ -1911,10 +2311,44 @@ def test_the_verifier_budget_of_the_local_done_gate_is_read_from_the_collector()
     budget = _contract("OMN-25198")["context"]["run_receipts"]["check_budget"]
     assert budget["local_done_gate_default_seconds"] == int(default.group(1))
     assert (
-        budget["nested_selection_seconds"] > budget["local_done_gate_default_seconds"]
+        budget["unsplit_selection_seconds"] > budget["local_done_gate_default_seconds"]
     )
-    assert "DOD_VERIFY_CHECK_TIMEOUT_S" in budget["note"]
+    assert (
+        budget["split_checks_max_seconds"] < budget["local_done_gate_default_seconds"]
+    )
     assert "DOD_VERIFY_CHECK_TIMEOUT_S" in source
+
+
+_SPLIT_ITEM = "dod-omn25198-ac2-check-cannot-skip"
+
+
+def test_the_ac2_binding_item_is_split_into_checks_that_cover_each_case_once() -> None:
+    # The cases that start nested pytest runs are selected in groups small enough
+    # for the local Done gate's per-check budget; no case is dropped or run twice.
+    checks = _item("OMN-25198", _SPLIT_ITEM)["checks"]
+    assert len(checks) >= 4
+    groups = [_selected_tests(check["check_value"]) for check in checks]
+    sibling = "tests/test_refuse_skips_omn19987.py"
+    assert {path for path, _ in groups} == {sibling}
+    tree = ast.parse((_ROOT / sibling).read_text(encoding="utf-8"))
+    every_case = {
+        n.name
+        for n in tree.body
+        if isinstance(n, ast.FunctionDef)
+        and n.name.startswith("test_")
+        and "ac2_binding" in n.name
+    }
+    chosen = [names for _, names in groups]
+    assert set().union(*chosen) == every_case
+    assert sum(len(names) for names in chosen) == len(every_case)
+    # the nested-run cases (about 8 s each) are at most one per check
+    nested = [
+        name for name in every_case if "old_form" in name or "refusal_stage" in name
+    ]
+    nested += [name for name in every_case if "prints_no_count" in name]
+    nested += [name for name in every_case if "only_one_parametrization_runs" in name]
+    for names in chosen:
+        assert len(names & set(nested)) <= 1, sorted(names)
 
 
 def test_the_reacceptance_decision_is_recorded_with_its_source() -> None:

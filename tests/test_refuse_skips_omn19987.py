@@ -32,8 +32,19 @@ from pathlib import Path
 
 import pytest
 import yaml
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
-from tests.ci.verifier_shell import verifier_shell
+from tests.ci.verifier_shell import (
+    EVIDENCE_COLLECTOR,
+    VERIFIER_TAG,
+    VERIFIER_TAG_CMD,
+    VERIFIER_TAG_DISPATCH,
+    VERIFIER_TAG_RUN,
+    VERIFIER_TAG_STATUS,
+    verifier_shell,
+    verifier_shell_at_tag,
+    verifier_shell_from_source,
+)
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -294,7 +305,13 @@ def test_the_ac2_binding_check_passes_when_both_parametrizations_run(
     assert "2 passed" in done.stdout
 
 
-def test_the_ac2_binding_check_fails_when_both_parametrizations_skip(
+# The AC2 binding check is run by the local Done gate too, whose per-check budget
+# is 30 s unless the operator sets DOD_VERIFY_CHECK_TIMEOUT_S. Each case below
+# starts one to three nested pytest runs of about 8 s each, so the cases are small
+# enough for the contract to select them in groups that each fit that budget.
+
+
+def test_the_ac2_binding_check_old_form_exits_zero_when_both_skip(
     tmp_path: Path,
 ) -> None:
     value = _ac2_check_value()
@@ -304,30 +321,47 @@ def test_the_ac2_binding_check_fails_when_both_parametrizations_skip(
     control = _run_check(tmp_path, old, "-p", "skip_every_test")
     assert control.returncode == 0, control.stdout + control.stderr
     assert "2 skipped" in control.stdout
+
+
+def test_the_ac2_binding_check_refusal_stage_names_both_skips(
+    tmp_path: Path,
+) -> None:
     # The pytest stage alone names the refusal and both parametrizations.
-    pytest_stage, _ = _pytest_stage_and_filter(value)
+    pytest_stage, _ = _pytest_stage_and_filter(_ac2_check_value())
     refusal = _run_check(tmp_path, pytest_stage, "-p", "skip_every_test")
     assert refusal.returncode == 1, refusal.stdout + refusal.stderr
     assert "refuse-skips: tests that did not run" in refusal.stdout
     assert "[False]" in refusal.stdout
     assert "[True]" in refusal.stdout
+
+
+def test_the_ac2_binding_check_whole_check_prints_no_count_when_both_skip(
+    tmp_path: Path,
+) -> None:
     # The whole check prints no "2 passed" line, so grep's status refuses it too.
-    new = _run_check(tmp_path, value, "-p", "skip_every_test")
+    new = _run_check(tmp_path, _ac2_check_value(), "-p", "skip_every_test")
     assert new.returncode == 1, new.stdout + new.stderr
     assert "2 passed" not in new.stdout
+
+
+def test_the_ac2_binding_check_old_form_exits_zero_when_only_one_runs(
+    tmp_path: Path,
+) -> None:
+    # One parametrization selected: pytest exits 0 with one test run and nothing
+    # skipped, so only the count in the check can refuse it.
+    only_one = (
+        _ac2_check_value().split(" --refuse-skips")[0] + " --refuse-skips -k False"
+    )
+    control = _run_check(tmp_path, only_one)
+    assert control.returncode == 0, control.stdout + control.stderr
+    assert "1 passed" in control.stdout
+    assert "2 passed" not in control.stdout
 
 
 def test_the_ac2_binding_check_fails_when_only_one_parametrization_runs(
     tmp_path: Path,
 ) -> None:
     value = _ac2_check_value()
-    # One parametrization selected: pytest exits 0 with one test run and nothing
-    # skipped, so only the count in the check can refuse it.
-    only_one = value.split(" --refuse-skips")[0] + " --refuse-skips -k False"
-    control = _run_check(tmp_path, only_one)
-    assert control.returncode == 0, control.stdout + control.stderr
-    assert "1 passed" in control.stdout
-    assert "2 passed" not in control.stdout
     selected = value.replace(" --refuse-skips |", " --refuse-skips -k False |", 1)
     assert selected != value
     done = _run_check(tmp_path, selected)
@@ -355,7 +389,7 @@ def test_errors(broken):
 """
 
 
-def test_the_ac2_filter_alone_passes_a_failed_run_that_prints_the_counted_line(
+def test_the_ac2_binding_filter_alone_passes_a_failed_run_that_prints_the_counted_line(
     tmp_path: Path,
 ) -> None:
     # The hazard the verifier's pipefail closes. pytest ends "2 passed, 1 error"
@@ -401,3 +435,90 @@ def test_the_ac2_binding_check_is_not_rescued_by_a_stubbed_pytest_line(
     assert "2 passed, 1 error" in refused.stdout
     unguarded = _run_command(tmp_path, command, shell=_NO_PIPEFAIL_SHELL)
     assert unguarded.returncode == 0, unguarded.stdout + unguarded.stderr
+
+
+# --- the verifier the hosted gate installs (verifier-tag) -----------------------
+#
+# The cases above run under the shell read from this tree's collector. The hosted
+# gate installs the verifier at the caller's ``verifier-tag``, a tag this tree's
+# collector may have moved past, so the shell the AC2 check really runs under
+# there is the one that tag's runner names.
+
+_CALLER = _ROOT / ".github" / "workflows" / "call-repo-evidence-gate.yml"
+_COLLECTOR_REL = EVIDENCE_COLLECTOR.relative_to(_ROOT).as_posix()
+
+
+def _caller_verifier_tag() -> str:
+    caller = yaml.safe_load(_CALLER.read_text(encoding="utf-8"))
+    tag = caller["jobs"]["repo-evidence"]["with"]["verifier-tag"]
+    assert isinstance(tag, str)
+    return tag
+
+
+def _collector_at_tag() -> list[str] | None:
+    """The collector's lines at the pinned tag, or None where the clone lacks it."""
+    shown = subprocess.run(
+        ["git", "-C", str(_ROOT), "show", f"{VERIFIER_TAG}:{_COLLECTOR_REL}"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=scrub_git_location_env(os.environ),
+    )
+    return shown.stdout.splitlines() if shown.returncode == 0 else None
+
+
+def test_the_verifier_tag_the_caller_installs_is_the_one_whose_runner_is_recorded() -> (
+    None
+):
+    # Moving the pin without re-reading the runner's lines fails here.
+    assert _caller_verifier_tag() == VERIFIER_TAG
+
+
+def test_the_runner_at_the_verifier_tag_has_pipefail_and_runs_a_test_passes_check() -> (
+    None
+):
+    shell = verifier_shell_at_tag()
+    assert shell == ["bash", "-o", "pipefail", "-c"]
+    # a test_passes check takes the one command path, with the check's own text
+    assert 'check_type in ("command", "test_passes")' in VERIFIER_TAG_DISPATCH[0]
+    assert "_run_command_check(" in VERIFIER_TAG_DISPATCH[1]
+    assert "cmd_str = check.get(" in VERIFIER_TAG_CMD[0]
+    assert VERIFIER_TAG_RUN[1].endswith("cmd_str],")
+    # any non-zero status fails the check, so pytest's exit 5 fails it too
+    assert VERIFIER_TAG_STATUS[0].strip() == "if result.returncode != 0:"
+
+
+def test_the_recorded_runner_lines_are_the_lines_of_the_collector_at_the_tag() -> None:
+    # Compared with the tag's own file wherever the clone holds that object (the
+    # local Done gate and the lab clones do; a shallow hosted checkout does not,
+    # and there the pin test above is what holds). Never a skip.
+    lines = _collector_at_tag()
+    if lines is None:
+        return
+    # Each recorded line is a line of the tag's file, in order, and the run call
+    # is the contiguous block that file holds.
+    for recorded in (VERIFIER_TAG_DISPATCH, VERIFIER_TAG_CMD, VERIFIER_TAG_STATUS):
+        positions = [lines.index(line) for line in recorded]
+        assert positions == sorted(positions), recorded
+    start = lines.index(VERIFIER_TAG_RUN[0])
+    assert tuple(lines[start : start + len(VERIFIER_TAG_RUN)]) == VERIFIER_TAG_RUN
+
+
+def test_the_runner_reader_sees_a_tag_runner_that_drops_pipefail() -> None:
+    # The control: the reader of the recorded lines is not one that always says
+    # pipefail. The same lines with the option removed read as a shell without it.
+    import textwrap
+
+    mutant = "\n".join(VERIFIER_TAG_RUN).replace('"-o", "pipefail", ', "")
+    assert mutant != "\n".join(VERIFIER_TAG_RUN)
+    assert "pipefail" not in verifier_shell_from_source(textwrap.dedent(mutant))
+
+
+def test_the_stubbed_pytest_line_is_refused_under_the_shell_of_the_verifier_tag(
+    tmp_path: Path,
+) -> None:
+    _, filter_stage = _pytest_stage_and_filter(_ac2_check_value())
+    command = f"(echo '2 passed, 1 error in 0.10s'; exit 3) | {filter_stage}"
+    refused = _run_command(tmp_path, command, shell=verifier_shell_at_tag())
+    assert refused.returncode == 3, refused.stdout + refused.stderr
+    assert _run_command(tmp_path, command, shell=_NO_PIPEFAIL_SHELL).returncode == 0
