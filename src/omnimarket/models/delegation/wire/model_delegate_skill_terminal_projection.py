@@ -92,6 +92,17 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
 
     _attempts_count_reported: bool = PrivateAttr(default=False)
 
+    # OMN-18534: this count is stored as turn_count, so it is a JSON integer:
+    # "2" and true are refused here, never coerced to 2 and 1. The response
+    # model keeps its lax field for every other reader of the wire.
+    attempts_count: int = Field(
+        default=1,
+        ge=0,
+        strict=True,
+        description="Authoritative total inference calls the producer stated "
+        "(OMN-19004); strict so a string or a bool is never read as a count.",
+    )
+
     emitted_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
         validation_alias=AliasChoices("emitted_at", "emittedAt", "timestamp"),

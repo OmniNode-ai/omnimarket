@@ -30,6 +30,7 @@ from tests.test_omn18928_terminal_outcome_projection_real_postgres import (
 )
 from tests.unit.delegation.test_terminal_turn_count_omn18534 import (
     _ESCALATED_TOTAL_CALLS,
+    _canonical_terminal,
     _escalated_skill_terminal,
     _refused_before_dispatch_skill_terminal,
 )
@@ -71,7 +72,7 @@ async def test_skill_terminal_stores_total_calls_and_a_zero_is_not_null(
     payload = make_terminal()
     payload["tenant_id"] = _TENANT
     cid = str(payload["correlation_id"])
-    async with _provisioned_runner() as (runner, admin_conn, _schema):
+    async with _provisioned_runner(_base_dsn()) as (runner, admin_conn, _schema):
         # Re-apply the migration to prove its idempotent shape on Postgres.
         await admin_conn.execute(_MIGRATION.read_text())
         assert await runner.project_event(
@@ -82,13 +83,54 @@ async def test_skill_terminal_stores_total_calls_and_a_zero_is_not_null(
         row = await admin_conn.fetchrow(_SELECT, cid)
         assert row is not None
         assert row["turn_count"] == expected
+        # A later routed terminal that reports no count leaves the recorded count,
+        # and a reported zero, on the row: the stored failure owns its columns.
+        later = {**_canonical_terminal(), "tenant_id": _TENANT, "correlation_id": cid}
+        assert await runner.project_event(
+            runner._topic_delegation_completed,
+            later,
+            MessageMeta(partition=0, offset=1, fallback_id=cid),
+        )
+        after = await admin_conn.fetchrow(_SELECT, cid)
+        assert after is not None
+        assert after["turn_count"] == expected
+
+
+@pytest.mark.integration
+async def test_a_later_routed_no_count_terminal_replaces_a_stamped_zero_with_null() -> (
+    None
+):
+    """The upsert does not COALESCE a NULL back to the stored 0."""
+    first = {
+        **_canonical_terminal(quality_passed=False, model_used=""),
+        "tenant_id": _TENANT,
+    }
+    cid = str(first["correlation_id"])
+    later = {**_canonical_terminal(), "tenant_id": _TENANT, "correlation_id": cid}
+    async with _provisioned_runner(_base_dsn()) as (runner, admin_conn, _schema):
+        assert await runner.project_event(
+            runner._topic_delegation_failed,
+            first,
+            MessageMeta(partition=0, offset=0, fallback_id=cid),
+        )
+        stamped = await admin_conn.fetchrow(_SELECT, cid)
+        assert stamped is not None
+        assert stamped["turn_count"] == 0  # stamped by the writer, never reported
+        assert await runner.project_event(
+            runner._topic_delegation_completed,
+            later,
+            MessageMeta(partition=0, offset=1, fallback_id=cid),
+        )
+        after = await admin_conn.fetchrow(_SELECT, cid)
+        assert after is not None
+        assert after["turn_count"] is None
 
 
 @pytest.mark.integration
 async def test_canonical_terminal_stores_its_attempts_count() -> None:
     payload = {**_wire(_quota_terminal()), "attempts_count": 4}
     cid = str(payload["correlation_id"])
-    async with _provisioned_runner() as (runner, admin_conn, _schema):
+    async with _provisioned_runner(_base_dsn()) as (runner, admin_conn, _schema):
         assert await runner.project_event(
             runner._topic_delegation_failed,
             payload,
@@ -115,7 +157,7 @@ async def test_unreported_terminal_and_pre_migration_row_read_null() -> None:
     # key. Only that the key was reported matters here, not which count another
     # module's fixture happens to carry.
     assert isinstance(payload.pop("attempts_count"), int)
-    async with _provisioned_runner() as (runner, admin_conn, _schema):
+    async with _provisioned_runner(_base_dsn()) as (runner, admin_conn, _schema):
         assert await runner.project_event(
             runner._topic_delegation_failed,
             payload,

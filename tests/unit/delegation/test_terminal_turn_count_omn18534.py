@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import re
 import sqlite3
 from pathlib import Path
@@ -37,9 +38,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_prompt_size_bound import (
     load_prompt_size_bound,
-)
-from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
-    HandlerDelegationWorkflow,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
     DelegationProjectionRunner,
@@ -257,27 +255,61 @@ def test_ticket_contract_names_the_omnibase_infra_copy_as_0069() -> None:
     assert "vendored copy is numbered 0069" in lines[3]
 
 
-# The omnibase_infra copy must be this file byte for byte (its dev tip carries
-# the same bytes), so the checksum is pinned here, in this repository, and a
-# changed byte on either side is a red test, never a skip on a missing clone.
+# The omnibase_infra copy must be this file byte for byte. The checksum is pinned
+# here so a changed byte on this side is a red test on every runner. The copy
+# itself lives in another repository, which a hosted test job does not check
+# out (and a test that skips on an absent clone is refused by the skip ratchet),
+# so a runner that has the clone names its root in ONEX_INFRA_COPY_ROOT and the
+# test then reads that file: a named root that cannot be read, or whose copy
+# differs by one byte, fails the test; it never skips.
 _MIGRATION_0069_SHA256 = (
     "cbbdc1679ee7aa430dd807f00960122054affd15636b0bdd22baae39f646a4cb"
 )
+_INFRA_COPY_ROOT_ENV = "ONEX_INFRA_COPY_ROOT"
+_INFRA_COPY_DIR = "docker/migrations/forward/nodes/node_projection_delegation"
+_MIGRATION_0069 = "0069_delegation_events_turn_count.sql"
+
+
+def _assert_infra_copy_matches(root: Path) -> None:
+    """Fail unless the omnibase_infra copy under ``root`` is this migration."""
+    migration = _NODE / "migrations" / _MIGRATION_0069
+    infra = root / _INFRA_COPY_DIR / _MIGRATION_0069
+    assert infra.is_file(), f"the omnibase_infra copy is not readable at {infra}"
+    assert infra.read_bytes() == migration.read_bytes(), (
+        f"the omnibase_infra copy at {infra} differs from this repository's "
+        f"migration (sha256 {hashlib.sha256(infra.read_bytes()).hexdigest()} "
+        f"against {_MIGRATION_0069_SHA256})"
+    )
 
 
 def test_migration_0069_bytes_are_pinned_for_the_omnibase_infra_copy() -> None:
-    migration = _NODE / "migrations" / "0069_delegation_events_turn_count.sql"
+    migration = _NODE / "migrations" / _MIGRATION_0069
     assert hashlib.sha256(migration.read_bytes()).hexdigest() == _MIGRATION_0069_SHA256
-    # When the sibling clone is on this runner its copy must match as well; an
-    # absent clone asserts nothing here (the pin above still holds).
-    infra = (
-        Path(__file__).resolve().parents[4]
-        / "omnibase_infra"
-        / "docker/migrations/forward/nodes/node_projection_delegation"
-        / migration.name
-    )
-    if infra.is_file():
-        assert infra.read_bytes() == migration.read_bytes()
+    named = os.environ.get(_INFRA_COPY_ROOT_ENV)
+    if named:
+        _assert_infra_copy_matches(Path(named))
+
+
+def test_the_infra_copy_check_reads_the_copy_and_fails_on_one_changed_byte(
+    tmp_path: Path,
+) -> None:
+    migration = _NODE / "migrations" / _MIGRATION_0069
+    copy_dir = tmp_path / _INFRA_COPY_DIR
+    copy_dir.mkdir(parents=True)
+    copy = copy_dir / _MIGRATION_0069
+    # Positive control: a byte-identical copy passes.
+    copy.write_bytes(migration.read_bytes())
+    _assert_infra_copy_matches(tmp_path)
+    # One byte changed fails.
+    changed = bytearray(migration.read_bytes())
+    changed[0] ^= 0x01
+    copy.write_bytes(bytes(changed))
+    with pytest.raises(AssertionError, match="differs from this repository"):
+        _assert_infra_copy_matches(tmp_path)
+    # A named root that holds no copy fails, never passes quietly.
+    copy.unlink()
+    with pytest.raises(AssertionError, match="not readable"):
+        _assert_infra_copy_matches(tmp_path)
 
 
 def test_migration_0069_comment_states_what_the_column_stores() -> None:
@@ -781,24 +813,268 @@ async def test_async_malformed_count_on_a_not_routed_failure_stores_no_zero() ->
     assert write.get("turn_count") is None
 
 
-# --- AC5: the skill path states the count the producer reported -------------------
+# --- the skill path stores the count the real producer emitted --------------------
 
 
-def test_the_skill_terminal_escalated_producer_count_includes_compliance_repairs(
+def _escalated_producer_payload(**overrides: Any) -> dict[str, Any]:
+    """Run HandlerDelegateSkill over a frozen escalated run, with compliance repairs.
+
+    The frozen dispatch result climbed from a local rung to a cloud rung. The
+    port also reports the repair calls it made on the way (``compliance_attempts``)
+    that no attempt record carries, so the producer's total exceeds the list.
+    """
+    from tests.test_omn17979_escalated_accept_terminal_seam import (
+        _load_fixture,
+        _run_producer,
+    )
+
+    fixture = _load_fixture()
+    result = dict(fixture["dispatch_result"])
+    result.pop("attempts_count", None)
+    result.update(overrides)
+    terminal = _run_producer(
+        result,
+        correlation_id=fixture["correlation_id"],
+        prompt=fixture["prompt_text"],
+        task_type=fixture["task_type"],
+    )
+    payload = terminal.model_dump(mode="json")
+    payload["tenant_id"] = _escalated_skill_terminal()["tenant_id"]
+    return payload
+
+
+@pytest.mark.parametrize(
+    ("overrides", "total"),
+    [
+        pytest.param({"compliance_attempts": 6}, 6, id="repairs_reported_by_the_port"),
+        pytest.param({"attempts_count": 7}, 7, id="count_stated_by_the_port"),
+    ],
+)
+def test_the_escalated_producer_count_exceeds_its_attempt_list_and_the_row_stores_it(
+    db: Any, overrides: dict[str, Any], total: int
+) -> None:
+    payload = _escalated_producer_payload(**overrides)
+    # No fixture count is copied in: the producer emitted this value itself.
+    assert payload["escalation_count"] >= 1
+    assert payload["attempts_count"] == total
+    assert payload["attempts_count"] != len(payload["attempts"])
+    assert payload["attempts_count"] > len(payload["attempts"])
+    row = _project(payload, db)
+    assert row["turn_count"] == total
+    assert row["turn_count"] != len(payload["attempts"])
+    # The producer's own model_dump always emits the key, so a reported count
+    # is the producer's value, and the canonical path agrees on it.
+    canonical = _project(_canonical_terminal(attempts_count=total), db)
+    assert canonical["turn_count"] == row["turn_count"]
+
+
+def test_a_skill_terminal_a_dispatch_port_publishes_without_a_count_stores_null(
     db: Any,
 ) -> None:
-    """The real producer's count exceeds the attempt list; the row stores it."""
-    from tests.unit.delegation.test_truthful_gate_verdict_omn15464 import _workflow
+    payload = _escalated_producer_payload(compliance_attempts=6)
+    del payload["attempts_count"]
+    assert len(payload["attempts"]) >= 2
+    assert _project(payload, db).get("turn_count") is None
 
-    workflow = _workflow(escalation_count=1, tiers=("local", "cheap_cloud"))
-    workflow.compliance_attempts = 6
-    total = HandlerDelegationWorkflow._truthful_attempts_count(workflow, completed=True)
-    recorded = len(workflow.escalation_history) + 1
-    assert total == 6
-    assert total > recorded  # the compliance repairs are calls the list omits
-    skill = _escalated_skill_terminal()
-    skill["attempts_count"] = total
-    assert len(skill["attempts"]) == _ESCALATED_HISTORY_LENGTH
-    assert _project(skill, db)["turn_count"] == total
-    canonical = _project(_canonical_terminal(attempts_count=total), db)
-    assert canonical["turn_count"] == total
+
+@pytest.mark.parametrize("not_a_count", ["2", True, 2.0])
+def test_the_skill_count_is_strict_and_a_string_or_a_bool_is_refused(
+    db: Any, not_a_count: object
+) -> None:
+    payload = _single_turn_skill_terminal()
+    payload["attempts_count"] = not_a_count
+    seed_tenant_registry(db)
+    with pytest.raises(ValidationError):
+        HandlerProjectionDelegation().handle({**payload, "_db": db})
+    assert (
+        db.query("delegation_events", {"correlation_id": payload["correlation_id"]})
+        == []
+    )
+
+
+def test_the_skill_count_has_no_camel_case_alias_the_reported_check_would_miss(
+    db: Any,
+) -> None:
+    payload = _escalated_skill_terminal()
+    del payload["attempts_count"]
+    payload["attemptsCount"] = 9
+    terminal = ModelDelegateSkillTerminalProjection.from_payload(payload)
+    # Neither the model nor the reported check reads the alias, so they agree.
+    assert terminal.attempts_count == _ESCALATED_HISTORY_LENGTH
+    assert terminal.turn_count_reported is False
+    assert _project(payload, db).get("turn_count") is None
+
+
+# --- finding 3: a refusal over a routed row is not a zero --------------------------
+
+
+def _skill_refusal_without_a_count() -> dict[str, Any]:
+    """The producer's own refusal (it names no model), with the count left out."""
+    payload = asyncio.run(_producer_refusal_payload())
+    del payload["attempts_count"]
+    return payload
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        pytest.param(
+            lambda: _failed_not_routed(
+                terminal_failure_cause="refused_before_dispatch"
+            ),
+            id="canonical_refusal",
+        ),
+        pytest.param(_skill_refusal_without_a_count, id="skill_refusal"),
+    ],
+)
+def test_a_no_count_refusal_over_a_routed_row_with_no_tokens_stays_unknown(
+    db: Any, refusal: Any
+) -> None:
+    first = _canonical_terminal()
+    stored = _project(first, db)
+    # The stored row names a routed model, holds no count, no tokens and no history.
+    assert stored["model_name"] == "qwen3.8-27b"
+    assert stored.get("turn_count") is None
+    assert not stored.get("tokens_input")
+    assert not stored.get("tokens_output")
+    later = refusal()
+    later["correlation_id"] = first["correlation_id"]
+    row = _project(later, db)
+    assert row["terminal_failure_cause"] == "refused_before_dispatch"
+    assert row.get("turn_count") is None
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        pytest.param(
+            lambda: _failed_not_routed(
+                terminal_failure_cause="refused_before_dispatch"
+            ),
+            id="canonical_refusal",
+        ),
+        pytest.param(_skill_refusal_without_a_count, id="skill_refusal"),
+    ],
+)
+def test_a_no_count_refusal_over_an_unnamed_row_is_still_stamped_zero(
+    db: Any, refusal: Any
+) -> None:
+    # Positive control for the routed case above: the same refusal, with no
+    # routed row behind it, is the zero the stamp exists to write.
+    assert _project(refusal(), db)["turn_count"] == 0
+
+
+async def test_async_no_count_refusal_over_a_routed_row_stays_unknown() -> None:
+    written = await _stored_then_later(
+        _canonical_terminal(),
+        _failed_not_routed(terminal_failure_cause="refused_before_dispatch"),
+    )
+    assert written.get("turn_count") is None
+
+
+# --- finding 4: the rule for a recorded zero under a later no-count terminal -------
+#
+# Decided. A zero a failure terminal reports travels with its typed failure cause
+# (a refusal before dispatch), and a stored typed failure owns its terminal
+# columns, so a later no-count terminal, routed or not, leaves that zero. A zero
+# the writer only stamped (a run that named no model and reported no count) is an
+# inference, so a later no-count terminal that names the model it ran replaces it
+# with NULL; one that ran no model keeps it. The upsert writes the NULL as given.
+
+
+def _canonical_refusal_reporting_zero() -> dict[str, Any]:
+    return _canonical_terminal(
+        quality_passed=False,
+        model_used="",
+        attempts_count=0,
+        terminal_failure_cause="refused_before_dispatch",
+    )
+
+
+_FIRST_TERMINALS_RECORDING_ZERO: dict[str, Any] = {
+    "reported_by_the_skill_producer": lambda: asyncio.run(_producer_refusal_payload()),
+    "reported_by_a_canonical_refusal": _canonical_refusal_reporting_zero,
+    "stamped_by_the_writer": _failed_not_routed,
+}
+
+
+@pytest.mark.parametrize(
+    ("first_kind", "later_names_a_model", "expected"),
+    [
+        ("reported_by_the_skill_producer", False, 0),
+        ("reported_by_the_skill_producer", True, 0),
+        ("reported_by_a_canonical_refusal", False, 0),
+        ("reported_by_a_canonical_refusal", True, 0),
+        ("stamped_by_the_writer", False, 0),
+        ("stamped_by_the_writer", True, None),
+    ],
+)
+def test_a_reported_zero_survives_a_later_no_count_terminal_and_a_stamped_zero_yields(
+    db: Any, first_kind: str, later_names_a_model: bool, expected: int | None
+) -> None:
+    first = _FIRST_TERMINALS_RECORDING_ZERO[first_kind]()
+    assert _project(first, db)["turn_count"] == 0
+    later = _canonical_terminal() if later_names_a_model else _sparse_later_terminal(0)
+    later["correlation_id"] = first["correlation_id"]
+    assert _project(later, db).get("turn_count") == expected
+
+
+@pytest.mark.parametrize(
+    ("first_kind", "expected"),
+    [("reported_by_a_canonical_refusal", 0), ("stamped_by_the_writer", None)],
+)
+async def test_async_a_later_routed_no_count_terminal_keeps_a_reported_zero_only(
+    first_kind: str, expected: int | None
+) -> None:
+    first = _FIRST_TERMINALS_RECORDING_ZERO[first_kind]()
+    written = await _stored_then_later(first, _canonical_terminal())
+    # The column is named in the write either way, so the stored value is replaced
+    # by exactly what the rule decided: the reported 0 kept, or NULL.
+    assert "turn_count" in written
+    assert written["turn_count"] == expected
+
+
+async def test_async_a_later_not_routed_terminal_keeps_a_stamped_zero() -> None:
+    written = await _stored_then_later(_failed_not_routed(), _sparse_later_terminal(0))
+    assert written["turn_count"] == 0
+
+
+def test_the_ticket_contract_states_the_decided_rule_for_a_recorded_zero() -> None:
+    contract = Path(__file__).resolve().parents[3] / "contracts" / "OMN-18534.yaml"
+    lines = contract.read_text(encoding="utf-8").splitlines()
+    for number in (4, 48):  # the summary and the AC3 evidence description
+        text = lines[number - 1]
+        assert "ran no model keeps a recorded" in text, number
+        assert "reported zero" in text, number
+        assert "stamped zero" in text, number
+        assert "names a model it ran" in text, number
+        assert "NULL" in text, number
+
+
+# --- the read node refuses, never serves a guess, while the column is missing ------
+
+
+def test_the_read_node_refuses_the_exposure_while_the_relation_lacks_turn_count(
+    tmp_path: Path,
+) -> None:
+    """Settles the deploy order: the infra copy of 0069 is applied before this code.
+
+    A relation without ``turn_count`` makes the read node refuse the exposure that
+    declares it (``projection_column_missing``); it serves no row and no NULL.
+    """
+    path = tmp_path / "local.db"
+    row = _project(_escalated_skill_terminal(), SqliteDatabaseAdapter(path))
+    with sqlite3.connect(path) as conn:
+        (tenant_id,) = conn.execute(
+            "SELECT tenant_id FROM delegation_events LIMIT 1"
+        ).fetchone()
+        conn.execute("ALTER TABLE delegation_events DROP COLUMN turn_count")
+    handler = HandlerProjectionRead(
+        topic_map={_TOPIC: build_projection_topic_map()[_TOPIC]},
+        row_source=SqliteTableRowSource(path),
+    )
+    result = asyncio.run(
+        handler.handle(ModelProjectionReadRequest(topic=_TOPIC, tenant_id=tenant_id))
+    )
+    assert result.http_status != 200, row["correlation_id"]
+    assert "projection_column_missing" in str(result.response)

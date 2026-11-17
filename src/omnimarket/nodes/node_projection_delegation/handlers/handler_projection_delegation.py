@@ -2162,11 +2162,6 @@ def _preserve_run_attribution(
         row["delegated_to"] = stored_target
 
 
-_REFUSED_BEFORE_DISPATCH_VALUE = (
-    EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH.value
-)
-
-
 class _TurnCountSource(Protocol):
     """A terminal that knows whether it reported a count, and what it recorded."""
 
@@ -2196,15 +2191,28 @@ def _ran_inference(row: Mapping[str, object]) -> bool:
     )
 
 
+# Carried on the row from the merge step to the stamp step of one write, and
+# popped by `_stamp_not_routed` before the row is stored.
+_STORED_RAN_INFERENCE = "_stored_ran_inference"
+
+
 def _inherit_timing_and_turn_count(
     row: dict[str, object], existing: Mapping[str, object]
 ) -> None:
     """Let a sparse terminal inherit a stored timing or turn count (OMN-18534).
 
-    A measured zero is evidence, so only None may inherit a stored value. A
-    stored 0 says no call was made, so a later terminal that ran a model does
-    not inherit it: its own count is then unknown, not zero.
+    A measured zero is evidence, so only None may inherit a stored value, and a
+    sparse later terminal that ran no model keeps a recorded zero. A zero a
+    failure terminal reported carries its typed cause, and a stored typed failure
+    owns its terminal columns, so any later no-count terminal leaves it. A zero
+    the writer only stamped is an inference: a later no-count terminal that names
+    a model it ran contradicts it, so it is not kept and the count is NULL (that
+    terminal's own count is unknown).
     """
+    if existing.get("turn_count") is None and _ran_inference(existing):
+        # The stored row ran a model and states no count: an event that ran
+        # nothing must not read as the zero that stamp would write over it.
+        row[_STORED_RAN_INFERENCE] = True
     for key in ("queue_wait_ms", "execution_ms", "turn_count"):
         if row.get(key) is not None or existing.get(key) is None:
             continue
@@ -2230,18 +2238,24 @@ def _stamp_not_routed(row: dict[str, object], event: _TurnCountSource) -> None:
     (not even a malformed one) and the row holds no attempt evidence. A count
     any terminal reported is kept as it is.
     """
+    stored_ran_inference = bool(row.pop(_STORED_RAN_INFERENCE, False))
     if row.get("terminal_ok") is not False:
         return
     cause = row.get("terminal_failure_cause")
     not_routed = _is_unnamed_model(row.get("model_name")) and _is_blank(
         row.get("routed_model")
     )
+    # A refusal is stamped like any other run that dispatched nothing: only
+    # when neither this row nor the stored row names a model it ran or holds
+    # attempt evidence. A refusal that arrives over a routed row says nothing
+    # about the calls that row's own terminal made, so the count stays NULL:
+    # naming the cause here would stamp 0 over exactly that row.
     if (
         row.get("turn_count") is None
         and not event.turn_count_reported
-        and (not_routed or cause == _REFUSED_BEFORE_DISPATCH_VALUE)
         and not event.has_attempt_record
-        and not _has_attempt_evidence(row)
+        and not stored_ran_inference
+        and not _ran_inference(row)
     ):
         row["turn_count"] = 0
     if not not_routed:

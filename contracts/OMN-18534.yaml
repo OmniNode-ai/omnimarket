@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-18534
 title: 'W7-2: Turn count is recorded per delegation as a first-class metric'
-summary: 'Migration 0069 adds a nullable turn_count column to delegation_events. Both terminal writers store the attempts_count the terminal reported, only when its raw payload stated one and never derived from attempt_history: the total inference calls including escalated rungs, retries and compliance repairs. A refused or not-routed failure that reported no count and holds no attempt evidence stores 0; any other terminal that reported none leaves NULL. The node contract exposes the column, the terminal owns it, and a sparse later terminal keeps a recorded count. The omnibase_infra vendored copy is numbered 0069, byte-identical to this migration, and is on the omnibase_infra dev tip; it must be applied before this code deploys, because a reported count puts turn_count in the INSERT.'
+summary: 'Migration 0069 adds a nullable turn_count column to delegation_events. Both terminal writers store the attempts_count the terminal reported, only when its raw payload stated one and never derived from attempt_history: the total inference calls including escalated rungs, retries and compliance repairs. A refused or not-routed failure that reported no count and holds no attempt evidence stores 0; any other terminal that reported none leaves NULL. The node contract exposes the column, the terminal owns it, and a sparse later terminal that ran no model keeps a recorded count, a recorded zero included, while a reported zero (a refusal before dispatch) is owned by its failure terminal and kept, and a stamped zero is replaced by NULL when a later no-count terminal names a model it ran. The omnibase_infra vendored copy is numbered 0069, byte-identical to this migration, and is on the omnibase_infra dev tip; it must be applied before this code deploys, because a reported count puts turn_count in the INSERT.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -45,7 +45,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -k "different_counts or pre_escalation or canonical_escalated or canonical_terminal_stores"
     cwd: .
 - id: dod-omn18534-zero-not-absent-ac3
-  description: A delegation refused before dispatch stores turn_count 0, not NULL, and a sparse later terminal does not erase a recorded zero; a refused-before-dispatch or not-routed run whose terminal omitted the count is stamped 0; a malformed canonical count is stored as NULL and never coerced to zero, and a malformed delegate-skill count is refused outright.
+  description: A delegation refused before dispatch stores turn_count 0, not NULL, and a sparse later terminal that ran no model keeps a recorded zero, while a reported zero is kept under any later no-count terminal and a stamped zero is replaced by NULL when a later no-count terminal names a model it ran; a refused-before-dispatch or not-routed run whose terminal omitted the count is stamped 0; a malformed canonical count is stored as NULL and never coerced to zero, and a malformed delegate-skill count is refused outright.
   source: manual
   binds_ac:
   - AC3
