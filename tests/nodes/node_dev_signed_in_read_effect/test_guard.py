@@ -10,6 +10,7 @@ instead of raising out of ``handle``, so the runtime emits the handler's own fai
 
 from __future__ import annotations
 
+import contextlib
 import threading
 from pathlib import Path
 from typing import Any, NoReturn
@@ -17,6 +18,7 @@ from typing import Any, NoReturn
 import pytest
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_dev_signed_in_read_effect.handlers import (
     handler_dev_signed_in_read,
 )
@@ -29,6 +31,7 @@ from omnimarket.nodes.node_dev_signed_in_read_effect.models.model_dev_signed_in_
 )
 from omnimarket.nodes.node_dev_signed_in_read_effect.overlay import (
     ModelDevSignedInReadOverlay,
+    load_overlay,
 )
 
 from ._support import CONTRACT_PATH, overlay_document
@@ -145,39 +148,186 @@ async def test_dev_signed_in_read_guard_invalid_overlay_returns_a_typed_failed_r
     assert result.outcome is EnumDevSignedInReadOutcome.OVERLAY_UNAVAILABLE
 
 
+SECRET_SHAPED = "sk-live-4f9c2a7e91b3d0c85a6e12f7"
+
+
+def _overlay_file(tmp_path: Path, text: str) -> Path:
+    node_dir = tmp_path / "roots" / "node_dev_signed_in_read_effect"
+    node_dir.mkdir(parents=True)
+    (node_dir / "overlay.yaml").write_text(text, encoding="utf-8")
+    return tmp_path / "roots"
+
+
+async def _handle_with_overlay_text(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, text: str
+) -> Any:
+    monkeypatch.setenv(OVERLAY_ROOTS_ENV, str(_overlay_file(tmp_path, text)))
+    _fail_on_construct(monkeypatch)
+    return await HandlerDevSignedInRead().handle(
+        ModelDevSignedInReadCommand(lane="dev", write=True)
+    )
+
+
+async def test_dev_signed_in_read_guard_detail_holds_no_value_of_a_failed_validation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A secret-shaped string in a field that fails validation never reaches the failed event's ``detail``."""
+    document = overlay_document()
+    document["keycloak"]["timeout_seconds"] = (
+        SECRET_SHAPED  # not a number: pydantic would print it as input_value
+    )
+    result = await _handle_with_overlay_text(
+        monkeypatch, tmp_path, yaml.safe_dump(document)
+    )
+
+    assert result.outcome is EnumDevSignedInReadOutcome.OVERLAY_UNAVAILABLE
+    assert SECRET_SHAPED not in result.detail
+    assert SECRET_SHAPED not in result.model_dump_json()
+
+
+async def test_dev_signed_in_read_guard_detail_never_forwards_the_reader_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The handler does not depend on the reader's wording: an error text that carries a value is not forwarded."""
+
+    def leaking_reader(*args: object, **kwargs: object) -> NoReturn:
+        raise NodeOverlayError(
+            f"overlay is invalid: 1 validation error, input_value='{SECRET_SHAPED}'"
+        )
+
+    monkeypatch.setattr(handler_dev_signed_in_read, "load_overlay", leaking_reader)
+    _fail_on_construct(monkeypatch)
+
+    result = await HandlerDevSignedInRead().handle(
+        ModelDevSignedInReadCommand(lane="dev", write=True)
+    )
+
+    assert result.outcome is EnumDevSignedInReadOutcome.OVERLAY_UNAVAILABLE
+    assert SECRET_SHAPED not in result.detail
+    assert "NodeOverlayError" in result.detail
+
+
+async def test_dev_signed_in_read_guard_malformed_yaml_returns_a_typed_failed_result(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    text = f"lane: dev\nkeycloak: [unclosed, {SECRET_SHAPED}\n  : : bad\n"
+    result = await _handle_with_overlay_text(monkeypatch, tmp_path, text)
+
+    assert result.outcome is EnumDevSignedInReadOutcome.OVERLAY_UNAVAILABLE
+    assert result.ok is False
+    assert SECRET_SHAPED not in result.detail
+
+
+def test_dev_signed_in_read_guard_the_reader_turns_malformed_yaml_into_node_overlay_error(
+    tmp_path: Path,
+) -> None:
+    roots = _overlay_file(tmp_path, "lane: dev\nkeycloak: [unclosed\n")
+    with pytest.raises(NodeOverlayError) as excinfo:
+        load_overlay({OVERLAY_ROOTS_ENV: str(roots)})
+    assert "ParserError" in str(
+        excinfo.value
+    )  # the YAML error is named by type, its text is not carried
+    assert excinfo.value.__cause__ is None
+
+
+def test_dev_signed_in_read_guard_the_reader_turns_an_os_error_into_node_overlay_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    roots = _overlay_file(tmp_path, yaml.safe_dump(overlay_document()))
+    real_read_text = Path.read_text
+
+    def refuse(self: Path, *args: Any, **kwargs: Any) -> str:
+        if self.name == "overlay.yaml":
+            raise PermissionError(13, f"permission denied reading {SECRET_SHAPED}")
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", refuse)
+    with pytest.raises(NodeOverlayError) as excinfo:
+        load_overlay({OVERLAY_ROOTS_ENV: str(roots)})
+    assert "PermissionError" in str(excinfo.value)
+    assert SECRET_SHAPED not in str(excinfo.value)
+
+
+async def test_dev_signed_in_read_guard_an_os_error_on_the_overlay_returns_a_typed_failed_result(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv(
+        OVERLAY_ROOTS_ENV,
+        str(_overlay_file(tmp_path, yaml.safe_dump(overlay_document()))),
+    )
+    real_read_text = Path.read_text
+
+    def refuse(self: Path, *args: Any, **kwargs: Any) -> str:
+        if self.name == "overlay.yaml":
+            raise PermissionError(13, "permission denied")
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", refuse)
+    _fail_on_construct(monkeypatch)
+
+    result = await HandlerDevSignedInRead().handle(
+        ModelDevSignedInReadCommand(lane="dev", write=True)
+    )
+
+    assert result.outcome is EnumDevSignedInReadOutcome.OVERLAY_UNAVAILABLE
+    assert result.ok is False
+
+
+def _count_builds_under_a_race(
+    handler: HandlerDevSignedInRead,
+    monkeypatch: pytest.MonkeyPatch,
+    threads: int = 8,
+) -> int:
+    """Start ``threads`` first requests together, hold the first build open inside its factory, count the builds."""
+    entered = threading.Event()
+    release = threading.Event()
+    builds: list[object] = []
+
+    def slow_transport() -> object:
+        builds.append(object())
+        entered.set()
+        # Held inside the factory: a build that is not serialized lets the other threads reach here too.
+        release.wait(timeout=5)
+        return object()
+
+    def store(**_: object) -> object:
+        return object()
+
+    monkeypatch.setattr(
+        handler_dev_signed_in_read, "UrllibIdentityTransport", slow_transport
+    )
+    monkeypatch.setattr(handler_dev_signed_in_read, "SecretStoreSettingsReader", store)
+    overlay = ModelDevSignedInReadOverlay.model_validate(overlay_document())
+    workers = [
+        threading.Thread(target=handler._resolve_io, args=(overlay,))
+        for _ in range(threads)
+    ]
+    for worker in workers:
+        worker.start()
+    assert entered.wait(timeout=5)
+    # Give the other threads time to pile up behind the first build (or, with no lock, to enter their own).
+    for worker in workers[1:]:
+        worker.join(timeout=0.2)
+    release.set()
+    for worker in workers:
+        worker.join(timeout=5)
+    assert not any(worker.is_alive() for worker in workers)
+    return len(builds)
+
+
 def test_dev_signed_in_read_guard_first_resolution_builds_once_under_concurrent_requests(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    transports: list[object] = []
-    stores: list[object] = []
-    gate = threading.Barrier(8)
-
-    def make_transport() -> object:
-        transports.append(object())
-        return transports[-1]
-
-    def make_store(**_: object) -> object:
-        stores.append(object())
-        return stores[-1]
-
-    monkeypatch.setattr(
-        handler_dev_signed_in_read, "UrllibIdentityTransport", make_transport
-    )
-    monkeypatch.setattr(
-        handler_dev_signed_in_read, "SecretStoreSettingsReader", make_store
-    )
     overlay = ModelDevSignedInReadOverlay.model_validate(overlay_document())
     handler = HandlerDevSignedInRead(overlay=overlay)
+    assert _count_builds_under_a_race(handler, monkeypatch) == 1
 
-    def resolve() -> None:
-        gate.wait()
-        handler._resolve_io(overlay)
 
-    threads = [threading.Thread(target=resolve) for _ in range(8)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
-
-    assert len(transports) == 1
-    assert len(stores) == 1
+def test_dev_signed_in_read_guard_the_lock_test_fails_without_the_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The control: with the lock removed the same race builds more than once, so the test above can fail."""
+    overlay = ModelDevSignedInReadOverlay.model_validate(overlay_document())
+    handler = HandlerDevSignedInRead(overlay=overlay)
+    handler._lock = contextlib.nullcontext()  # type: ignore[assignment]
+    assert _count_builds_under_a_race(handler, monkeypatch) > 1

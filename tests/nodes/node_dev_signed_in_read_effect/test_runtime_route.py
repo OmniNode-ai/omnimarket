@@ -18,6 +18,7 @@ which matches no inbound message, and the runtime answered the command with ``no
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -30,7 +31,14 @@ from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.runtime.auto_wiring import discover_contracts_from_paths
 from omnibase_infra.runtime.auto_wiring.handler_wiring import wire_from_manifest
+from omnibase_infra.runtime.event_bus_subcontract_wiring import (
+    EventBusSubcontractWiring,
+)
 from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
+from omnibase_infra.runtime.runtime_local_ingress import (
+    ModelRuntimeLocalIngressRoute,
+    discover_runtime_local_ingress_routes,
+)
 
 from omnimarket.nodes.node_dev_signed_in_read_effect.handlers import (
     handler_dev_signed_in_read,
@@ -336,3 +344,103 @@ async def test_dev_signed_in_read_runtime_route_a_typo_in_the_handler_module_fai
     )
     assert report.total_failed == 1
     assert report.total_wired == 0
+
+
+# The ingress route: POST /skill is answered from ``discover_runtime_local_ingress_routes`` (the dev runtime sets its
+# route table with that call, then answers ``unknown_command`` when the requested command name is not a key of it).
+
+
+def _ingress_lookup(
+    routes: dict[str, ModelRuntimeLocalIngressRoute], command_name: str
+) -> ModelRuntimeLocalIngressRoute | None:
+    """The runtime's own resolution of a requested command name: a dict get, a miss is ``unknown_command``."""
+    return routes.get(command_name)
+
+
+def _routes_of_a_package_holding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    mutate: Callable[[dict[str, Any]], None],
+) -> dict[str, ModelRuntimeLocalIngressRoute]:
+    """Route discovery over a one-node package whose contract is the node's contract after ``mutate``."""
+    package = f"ingress_probe_{abs(hash(str(tmp_path)))}"
+    node_dir = tmp_path / package / "nodes" / NODE_NAME
+    node_dir.mkdir(parents=True)
+    (tmp_path / package / "__init__.py").write_text("")
+    document = _contract()
+    mutate(document)
+    (node_dir / "contract.yaml").write_text(
+        yaml.safe_dump(document, sort_keys=False), encoding="utf-8"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    importlib.invalidate_caches()
+    return discover_runtime_local_ingress_routes([package])
+
+
+def test_dev_signed_in_read_runtime_route_ingress_resolves_the_node_by_name() -> None:
+    """The real package: the command name the lanes post is a key of the route table, so it is not ``unknown_command``."""
+    routes = discover_runtime_local_ingress_routes(["omnimarket"])
+    route = _ingress_lookup(routes, NODE_NAME)
+    assert route is not None  # None is what answers ``unknown_command`` at POST /skill
+    contract = _contract()
+    topics = contract["topics"]
+    assert route.command_topic == topics["command"]
+    assert route.terminal_events == (topics["completed"], topics["failed"])
+    declared = contract["handler_routing"]["handlers"][0]["event_type"]
+    assert route.event_type == declared
+    # The event type the runtime matches an inbound command on is the alias of its topic.
+    assert route.event_type == EventBusSubcontractWiring._derive_event_type_from_topic(
+        route.command_topic
+    )
+    assert route.input_model_name == "ModelDevSignedInReadCommand"
+
+
+def test_dev_signed_in_read_runtime_route_ingress_answers_unknown_command_for_the_merge_base_contract(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The control: the contract as it stood at the merge base subscribes nothing and no route is discovered."""
+
+    def merge_base_shape(document: dict[str, Any]) -> None:
+        document["event_bus"]["subscribe_topics"] = []
+
+    routes = _routes_of_a_package_holding(monkeypatch, tmp_path, merge_base_shape)
+    assert _ingress_lookup(routes, NODE_NAME) is None
+
+
+def test_dev_signed_in_read_runtime_route_ingress_event_type_matches_the_topic_alias(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A changed declared event type gives a route whose event type is not the alias the runtime matches commands on."""
+    alias = EventBusSubcontractWiring._derive_event_type_from_topic(
+        _topics()["command"]
+    )
+
+    def typo(document: dict[str, Any]) -> None:
+        document["handler_routing"]["handlers"][0]["event_type"] = (
+            "omnimarket.dev-signed-in-read"
+        )
+
+    routes = _routes_of_a_package_holding(monkeypatch, tmp_path, lambda _: None)
+    route = _ingress_lookup(routes, NODE_NAME)
+    assert route is not None
+    assert route.event_type == alias
+    typo_dir = tmp_path / "typo"
+    typo_dir.mkdir()
+    typo_routes = _routes_of_a_package_holding(monkeypatch, typo_dir, typo)
+    typo_route = _ingress_lookup(typo_routes, NODE_NAME)
+    assert typo_route is not None
+    assert typo_route.event_type != alias
+
+
+def test_dev_signed_in_read_runtime_route_one_entry_so_operation_selects_nothing() -> (
+    None
+):
+    """With one ``event_model`` entry the runtime indexes the handler by event type; ``operation`` selects no other.
+
+    The command carries no operation name, so the declared operation is a label the schema requires: it is pinned to
+    its literal here and the entry count is pinned to one, so a second entry (where selection would start to matter)
+    fails this test and has to say how the payload picks between entries.
+    """
+    handlers = _contract()["handler_routing"]["handlers"]
+    assert [h["operation"] for h in handlers] == ["dev-signed-in-read.run"]
+    assert set(ModelDevSignedInReadCommand.model_fields) == {"lane", "write"}

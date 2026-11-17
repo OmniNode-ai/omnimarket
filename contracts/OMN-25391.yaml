@@ -1,10 +1,12 @@
 schema_version: 1.0.0
 ticket_id: OMN-25391
 title: Fix the review findings on the dev signed-in read route PR
-summary: 'The review of the dev signed-in read route PR returned seven blocking findings. The route declared an event type that matches no inbound command, so the runtime answered the command with no dispatcher; the route test compared YAML with YAML; the dev guard ran after the transport and secret store were built; a missing overlay raised out of the handler; and the checks of the ticket contract for the route could not fail. The route contract now declares the event type the runtime matches, the tests load the contract through the runtime loader and dispatch on an in-memory bus, the handler resolves only the overlay before the guard and returns a typed failed result for a missing overlay, and the checks of the route ticket contract read a head-specific run line or a cause and an actor.'
+summary: 'The review of the dev signed-in read route PR returned seven blocking findings. The route declared an event type that matches no inbound command, so the runtime answered the command with no dispatcher; the route test compared YAML with YAML; the dev guard ran after the transport and secret store were built; a missing overlay raised out of the handler; and the checks of the ticket contract for the route could not fail. The route contract now declares the event type the runtime matches, the tests load the contract through the runtime loader and dispatch on an in-memory bus, the handler resolves only the overlay before the guard and returns a typed failed result for a missing overlay, and the checks of the route ticket contract read a head-specific run line or a cause and an actor. Interface change, declared here as in the route ticket contract: the completed and failed topics are published for the first time, the result gains the overlay_unavailable outcome and its realm may be null; no other repository reads these topics, so no consumer needs a change.'
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched:
+- events
+- topics
 requirements:
 - id: req-omn25391-review-findings
   statement: Each blocking review finding on the dev signed-in read route PR is fixed with a test that fails on the reviewed head and passes on the new one, or argued with evidence in a PR comment.

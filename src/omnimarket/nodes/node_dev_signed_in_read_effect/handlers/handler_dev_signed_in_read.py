@@ -171,10 +171,13 @@ class HandlerDevSignedInRead:
             overlay = self._resolve_overlay()
         except NodeOverlayError as exc:
             # No overlay, nothing to refuse or read with: a typed failed result the runtime emits as the failed event,
-            # never a raise out of ``handle``. The error text names the source and fields, never a document value.
+            # never a raise out of ``handle``. The event's ``detail`` names the error type only: the reader words its
+            # errors without document values, but the handler does not depend on that, and the full text (the source
+            # and the invalid field names) goes to the runtime log, never onto the topic.
+            logger.warning("dev signed-in read overlay unavailable: %s", exc)
             return self._result(
                 EnumDevSignedInReadOutcome.OVERLAY_UNAVAILABLE,
-                detail=f"the node overlay is unavailable: {exc}",
+                detail=f"the node overlay is unavailable ({type(exc).__name__}); the runtime log names the source",
                 lane=command.lane,
                 realm=None,
             )
