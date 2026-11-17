@@ -63,8 +63,11 @@ tiers:
       - id: Qwen3.8-27B
         backend_id: local-coder
         # Input budget: served window 131072 minus the backend's 65536 output
-        # reserve. Keep this bound even when no input-ceiling overlay is loaded.
-        max_context_tokens: 65536
+        # reserve minus a 1024-token margin for the request wrapper the handler
+        # does not count (a recorded 39-character prompt measured 373 input
+        # tokens, about 364 of them wrapper). Keep this bound even when no
+        # input-ceiling overlay is loaded.
+        max_context_tokens: 64512
         # OMN-13599 (SUPERSEDED by OMN-16442 for `test`): local-coder was the
         # CODE backend only; `test` and `research` were removed here so the
         # code-only fast_path_threshold did not bleed local-coder into task
@@ -130,9 +133,10 @@ tiers:
       - id: Qwen3.8-27B
         backend_id: local-heavy-reasoning
         # The recorded 11072-token summarization prompt fits this input budget.
-        # Reserve 65536 output tokens from the served 131072-token window.
+        # Reserve 65536 output tokens from the served 131072-token window and a
+        # 1024-token margin for the request wrapper the handler does not count.
         # Overlay ceilings may narrow individual classes further.
-        max_context_tokens: 65536
+        max_context_tokens: 64512
         use_for:
           - research
           - reasoning
@@ -150,7 +154,7 @@ tiers:
           # taxonomy, so serving escalation's declared ``reasoning`` capability
           # is not a new claim. escalation's other declared capability,
           # ``context_window_large``, stays mechanically honoured rather than
-          # asserted: ``max_context_tokens`` (65536 here) excludes this model
+          # asserted: ``max_context_tokens`` (64512 here) excludes this model
           # from selection for any prompt that does not fit, which escalates to
           # the large-window rungs below / the ceiling instead.
           - escalation

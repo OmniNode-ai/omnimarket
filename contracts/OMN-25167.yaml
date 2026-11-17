@@ -64,7 +64,7 @@ dod_evidence:
   binds_ac:
   - AC1
 - id: dod-omn25167-ac2
-  description: No dod_evidence item of the OMN-24980 contract binds AC1 under any id; the integration proof is unbound.
+  description: No dod_evidence item of the OMN-24980 contract binds AC1, AC2 or AC3 under any id, because all three are open and a passing bound check counts as met at the Done gate; the integration proof is unbound.
   source: manual
   checks:
   - check_type: test_passes
