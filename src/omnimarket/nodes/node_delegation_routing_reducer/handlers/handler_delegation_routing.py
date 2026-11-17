@@ -1784,9 +1784,9 @@ def _tier_can_route_task(
     task_type: str,
     bifrost_backends: dict[str, BifrostBackendRef],
     contract: dict[str, object] | None,
+    prompt: str,
     excluded_backend_refs: frozenset[str] = frozenset(),
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
-    prompt: str = "",
 ) -> bool:
     """Return whether ``tier`` can actually route ``task_type``.
 
@@ -1834,7 +1834,7 @@ def next_eligible_tier(
     excluded_backend_refs: frozenset[str] = frozenset(),
     correlation_id: object | None = None,
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
-    prompt: str = "",
+    prompt: str,
 ) -> str | None:
     """Return the next tier name after current_tier_name, skipping excluded_tiers.
 
@@ -1900,9 +1900,9 @@ def next_eligible_tier(
                 task_type,
                 bifrost_backends,
                 contract,
+                prompt,
                 excluded_backend_refs,
                 byok_backends=byok_backends,
-                prompt=prompt,
             ):
                 continue
             return tier.name
@@ -1919,7 +1919,7 @@ def first_eligible_tier(
     correlation_id: object | None = None,
     quota_state: ModelProviderQuotaSnapshot | None = None,
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
-    prompt: str = "",
+    prompt: str,
 ) -> str | None:
     """Return the initial tier for ``task_type``, honoring its entry share.
 
@@ -1983,8 +1983,8 @@ def first_eligible_tier(
                 task_type,
                 bifrost_backends,
                 contract,
+                prompt,
                 byok_backends=byok_backends,
-                prompt=prompt,
             ):
                 return tier.name
         # Only a non-empty ROI suppression warrants a fail-safe second pass.
@@ -2023,10 +2023,7 @@ def _tier_skip_reason(
             return "cloud_routing_blocked"
         return "above_pricing_ceiling"
     if excluded_backend_refs and _tier_can_route_task(
-        tier,
-        task_type,
-        bifrost_backends,
-        contract,
+        tier, task_type, bifrost_backends, contract, prompt=""
     ):
         exhausted = sorted(
             model.backend_ref
@@ -2189,7 +2186,7 @@ def backend_id_for_tier(
     require_credential: bool = True,
     spread_key: str | None = None,
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
-    prompt: str = "",
+    prompt: str,
 ) -> str | None:
     """Return the bifrost ``backend_id`` ``tier_name`` would select for ``task_type``.
 
@@ -2308,11 +2305,13 @@ def credential_withheld_rung(
     bifrost_backends = _load_bifrost_endpoints()
     blocked = quota_blocked_backend_refs(quota_state)
     for tier in _tier_order_from_contract(config, entry):
-        if backend_id_for_tier(tier.name, task_type) is not None:
+        if backend_id_for_tier(tier.name, task_type, prompt="") is not None:
             # The tier serves this task class today. Nothing is withheld here,
             # whatever the state of any OTHER backend the tier declares.
             continue
-        relaxed = backend_id_for_tier(tier.name, task_type, require_credential=False)
+        relaxed = backend_id_for_tier(
+            tier.name, task_type, require_credential=False, prompt=""
+        )
         if relaxed is None or relaxed in blocked:
             # Declined for a reason the credential term does not explain (for
             # OMN-20154, a provider quota block the caller's snapshot holds).
@@ -2337,7 +2336,7 @@ def sibling_backend_available_in_tier(
     tier_name: str,
     task_type: str,
     exclude_backend_refs: frozenset[str],
-    prompt: str = "",
+    prompt: str,
 ) -> str | None:
     """Return the ``backend_ref`` of an untried sibling backend in ``tier_name``.
 

@@ -672,10 +672,15 @@ def git(repo: Path, *args: str) -> str:
 
 
 def owning_repo(
-    root: Path, *, test_body: str, base_fixed: bool = False, head_fixed: bool = True
+    root: Path,
+    *,
+    test_body: str,
+    base_fixed: bool = False,
+    head_fixed: bool = True,
+    name: str = "owning_repo",
 ) -> tuple[Path, str]:
     """A git repository with a base commit and a head commit; returns it and the base sha."""
-    repo = root / "owning_repo"
+    repo = root / name
     (repo / "tests").mkdir(parents=True)
     git(root, "init", "-q", str(repo))
     (repo / "calc.py").write_text(
@@ -705,6 +710,7 @@ def run_ac1_check(
     test_body: str | None = None,
     base_fixed: bool = False,
     head_fixed: bool = True,
+    repo_name: str = "owning_repo",
 ) -> subprocess.CompletedProcess[str]:
     """Run the AC1 check in a stand-in home whose CLI prints ``receipt``.
 
@@ -721,7 +727,11 @@ def run_ac1_check(
     (home / ".onex_state").mkdir()
     if test_body is not None:
         repo, base = owning_repo(
-            home, test_body=test_body, base_fixed=base_fixed, head_fixed=head_fixed
+            home,
+            test_body=test_body,
+            base_fixed=base_fixed,
+            head_fixed=head_fixed,
+            name=repo_name,
         )
         status = data["context"]["criterion_status"]["AC1"]
         if not status.get("cause_fix_test"):

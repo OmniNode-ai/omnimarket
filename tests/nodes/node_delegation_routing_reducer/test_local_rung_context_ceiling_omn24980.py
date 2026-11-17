@@ -557,7 +557,7 @@ def dense_request(
 # tokens), each with its metered reading from the lab endpoint.
 AT_OLD_BUDGET = sorted(k for k in DENSE_READINGS if k.endswith("_140000"))
 # Generated prompts below the tier bound, metered the same way.
-BELOW_BOUND = ("code_digit_named_61000", "code_letter_named_61000")
+BELOW_BOUND = ("code_digit_named_58000", "code_letter_named_61000")
 
 
 def reading_text(key: str) -> str:
@@ -828,9 +828,11 @@ OVER_RUNG = "ab " * (RUNG_BOUND // 2 + 1)
 def test_tier_selection_refuses_local_for_an_over_bound_prompt_on_every_path() -> None:
     assert input_token_upper_bound(OVER_RUNG) > RUNG_BOUND
     # Positive controls: with no prompt (or a small one) every path answers local.
-    assert routing.first_eligible_tier("summarization") == "local"
+    assert routing.first_eligible_tier("summarization", prompt="") == "local"
     assert routing.first_eligible_tier("summarization", prompt="ab ") == "local"
-    assert routing.backend_id_for_tier("local", "summarization") == LOCAL_HEAVY
+    assert (
+        routing.backend_id_for_tier("local", "summarization", prompt="") == LOCAL_HEAVY
+    )
     assert (
         routing.backend_id_for_tier("local", "summarization", prompt="ab ")
         == LOCAL_HEAVY

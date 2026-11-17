@@ -165,6 +165,7 @@ from omnimarket.handlers.routing.delegation_backend_resolution import (
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
 )
+from omnimarket.handlers.routing.input_token_bound import clamp_max_tokens
 from omnimarket.handlers.routing.local_byok_route import (
     next_chosen_model_byok_route,
     next_registered_byok_route,
@@ -1259,10 +1260,11 @@ def _tier_lost_to_absent_credential(tier_name: str, task_type: str) -> bool:
     snapshot, so the two answers differ in the credential term alone: a rung
     withheld for any other reason stays counted.
     """
-    if backend_id_for_tier(tier_name, task_type) is not None:
+    if backend_id_for_tier(tier_name, task_type, prompt="") is not None:
         return False
     return (
-        backend_id_for_tier(tier_name, task_type, require_credential=False) is not None
+        backend_id_for_tier(tier_name, task_type, require_credential=False, prompt="")
+        is not None
     )
 
 
@@ -5058,8 +5060,15 @@ class LocalDelegationDispatchPort:
         """
         # 2. RESOLVE the effective output-token budget from the routing contract.
         #    Unset request -> backend ceiling; explicit request -> capped at it.
-        effective_max_tokens = resolve_effective_max_tokens(
-            requested=max_tokens, backend_max_tokens=backend.max_tokens
+        #    The local tier's output is then cut to what the resolved backend's
+        #    window leaves after the prompt's token upper bound (the clamp).
+        effective_max_tokens = clamp_max_tokens(
+            prompt,
+            backend.tier,
+            backend.backend_id,
+            resolve_effective_max_tokens(
+                requested=max_tokens, backend_max_tokens=backend.max_tokens
+            ),
         )
 
         # 2b. RESOLVE the per-call HTTP timeout from the routing contract (÷1000),

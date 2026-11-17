@@ -8,7 +8,8 @@ summary: 'Sixth review follow-up of omnimarket#6344. Finding 1: the repository r
   of OMN-25284 (open, not meetable here) are recorded in context.open_criteria and bind nothing; no ledger row states another
   rule. Finding 2: with those criteria unbound, no item passes on a null ticket or a null hosted run. Finding 3: the AC1 live
   check runs the recorded test at base_ref (exit 1) and at the head (pass). Finding 4: letter runs that are not plain words
-  count one token per letter; max_tokens is not clamped. Finding 5: the member bound is held in code, applied on every selection
+  count one token per letter; max_tokens is clamped at dispatch to what the window of the resolved backend leaves after the
+  input bound (OMN-25381). Finding 5: the member bound is held in code, applied on every selection
   path including the bus-less port, and an unlisted local member takes the smallest bound. Finding 6: the bound is per member
   (rungs 64512, peer 48128).'
 is_seam_ticket: false
@@ -95,7 +96,7 @@ dod_evidence:
 - id: dod-omn25320-ac4
   description: input_token_upper_bound counts a letter run longer than 12 letters, or one that switches case twice, one token
     per letter; 96256 random mixed-case letters bound at no less than 96256 (above the 48732 and 65116 overflow points) and
-    are refused at every local member. max_tokens is not clamped at dispatch; the gate is the counting plus the per-member
+    are refused at every local member. max_tokens is clamped at dispatch by clamp_max_tokens (OMN-25381); the gate is the counting plus the per-member
     bound.
   source: manual
   checks:
@@ -148,6 +149,17 @@ dod_evidence:
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
       --lane dod-integration-proof-25320 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py
       tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov
+    cwd: .
+- id: dod-omn25320-open-criteria-gate
+  description: 'The local Done gate refuses while AC7 is open: it reads context.open_criteria (and, where the contract records
+    them, a null owner ticket or a null passing hosted run) and exits 1 naming each, so no hosted check and no unbound
+    item can pass for a criterion this change does not meet. It binds no criterion (a local_done_gate item may not).'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      python3 -c 'import sys, yaml; c = yaml.safe_load(open("contracts/OMN-25320.yaml")).get("context") or {}; p = ["open criterion " + k for k in (c.get("open_criteria") or {})]; p += ["owner ticket " + k + " is null" for k, v in (c.get("owner_tickets") or {}).items() if not v.get("ticket")]; r = c.get("dev_ladder_run"); p += ["no passing hosted dev run"] if r is not None and not r.get("passing_hosted_run") else []; print(chr(10).join(p), file=sys.stderr); sys.exit(1 if p else 0)'
     cwd: .
 context:
   open_criteria:

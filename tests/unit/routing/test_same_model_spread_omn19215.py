@@ -333,12 +333,14 @@ def test_a_prompt_larger_than_the_peer_window_stays_on_the_rung(
 @pytest.mark.usefixtures("_spread")
 def test_the_availability_probes_keep_their_ordered_answers() -> None:
     assert (
-        routing.sibling_backend_available_in_tier("local", "document", frozenset())
+        routing.sibling_backend_available_in_tier(
+            "local", "document", frozenset(), prompt=""
+        )
         == "local-heavy-reasoning"
     )
     assert (
         routing.sibling_backend_available_in_tier(
-            "local", "document", frozenset({"local-heavy-reasoning"})
+            "local", "document", frozenset({"local-heavy-reasoning"}), prompt=""
         )
         == "local-omnipc2-chat"
     )

@@ -104,14 +104,20 @@
    "code_digit_named_140000": {
     "characters": 140000,
     "sha256": "c92da4ee0ade5a37cc98563ce10e7b90e7c8ed23883c1bbd1069f3b5b48aeb29",
-    "upper_bound": 109764,
+    "upper_bound": 114794,
     "metered_input_tokens": 69445
    },
    "code_digit_named_61000": {
     "characters": 61000,
     "sha256": "a56bbfe6ccfdf6cb83ec7cab653cd42bc32fe27f98d2ec3450aea48c0d83b13d",
-    "upper_bound": 47690,
+    "upper_bound": 49898,
     "metered_input_tokens": 29945
+   },
+   "code_digit_named_58000": {
+    "characters": 58000,
+    "sha256": "06288a46d8d568766bd4ac4942aad6b11e059df4579bcf319457be345a673848",
+    "upper_bound": 47434,
+    "metered_input_tokens": 28445
    },
    "code_letter_named_140000": {
     "characters": 140000,

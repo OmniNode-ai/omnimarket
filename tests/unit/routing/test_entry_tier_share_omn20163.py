@@ -221,7 +221,7 @@ def test_entry_tier_share_fraction_and_absent_control(
     assert abs(counts["entry-backend"] / len(_KEYS) - 0.25) <= 0.05, counts
     for key in _KEYS[:30]:
         assert (
-            routing.first_eligible_tier("document", correlation_id=key)
+            routing.first_eligible_tier("document", correlation_id=key, prompt="")
             == routing.delta(_request(key)).tier_name
         )
     _bind(tmp_path, monkeypatch, share=None)
@@ -245,9 +245,11 @@ def test_entry_tier_share_validation_refusals(
     with pytest.raises(ProtocolConfigurationError, match="OMN-20163"):
         routing.delta(_request(_UNDRAWN))
     with pytest.raises(ProtocolConfigurationError, match="OMN-20163"):
-        routing.first_eligible_tier("document")
+        routing.first_eligible_tier("document", prompt="")
     with pytest.raises(ProtocolConfigurationError, match="OMN-20163"):
-        routing.next_eligible_tier("local", frozenset(), task_type="document")
+        routing.next_eligible_tier(
+            "local", frozenset(), task_type="document", prompt=""
+        )
 
 
 def test_entry_tier_share_is_deterministic(
@@ -342,6 +344,7 @@ def test_entry_miss_retries_local_before_metered(
             frozenset({"cheap_frontier"}),
             task_type="document",
             correlation_id=_DRAWN,
+            prompt="",
         )
         == "local"
     )
@@ -351,6 +354,7 @@ def test_entry_miss_retries_local_before_metered(
             frozenset({"cheap_frontier", "local"}),
             task_type="document",
             correlation_id=_DRAWN,
+            prompt="",
         )
         == "cheap_cloud"
     )
@@ -370,6 +374,7 @@ def test_entry_miss_retries_local_before_metered(
             frozenset({"cheap_frontier", "local", "cheap_cloud"}),
             task_type="document",
             correlation_id=_DRAWN,
+            prompt="",
         )
         is None
     )
@@ -386,6 +391,7 @@ def test_entry_miss_retries_local_undrawn_control(
             frozenset({"cheap_frontier"}),
             task_type="document",
             correlation_id=correlation_id,
+            prompt="",
         )
         == "cheap_cloud"
     )
@@ -395,6 +401,7 @@ def test_entry_miss_retries_local_undrawn_control(
             frozenset({"local"}),
             task_type="document",
             correlation_id=correlation_id,
+            prompt="",
         )
         == "cheap_frontier"
     )
@@ -428,7 +435,7 @@ def test_entry_share_quota_bound_all_blocked_and_empty(
     assert _picks(blocked) == Counter({"local-backend": len(_KEYS)})
     assert (
         routing.first_eligible_tier(
-            "document", correlation_id=_DRAWN, quota_state=blocked
+            "document", correlation_id=_DRAWN, quota_state=blocked, prompt=""
         )
         == "local"
     )
@@ -438,7 +445,7 @@ def test_entry_share_quota_bound_all_blocked_and_empty(
     assert restored == _picks()
     assert (
         routing.first_eligible_tier(
-            "document", correlation_id=_DRAWN, quota_state=empty
+            "document", correlation_id=_DRAWN, quota_state=empty, prompt=""
         )
         == "cheap_frontier"
     )

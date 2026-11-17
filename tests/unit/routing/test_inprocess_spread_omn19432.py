@@ -79,17 +79,20 @@ def _port(tmp_path: Path) -> LocalDelegationDispatchPort:
 
 @pytest.mark.usefixtures("_spread")
 def test_backend_id_for_tier_without_a_key_keeps_its_ordered_answer() -> None:
-    assert routing.backend_id_for_tier("local", "document") == "local-heavy-reasoning"
+    assert (
+        routing.backend_id_for_tier("local", "document", prompt="")
+        == "local-heavy-reasoning"
+    )
 
 
 @pytest.mark.usefixtures("_spread")
 def test_backend_id_for_tier_with_a_key_spreads_stably_across_both_hosts() -> None:
     picks = [
-        routing.backend_id_for_tier("local", "document", spread_key=str(key))
+        routing.backend_id_for_tier("local", "document", spread_key=str(key), prompt="")
         for key in _KEYS
     ]
     assert picks == [
-        routing.backend_id_for_tier("local", "document", spread_key=str(key))
+        routing.backend_id_for_tier("local", "document", spread_key=str(key), prompt="")
         for key in _KEYS
     ]
     by_ref = Counter(picks)

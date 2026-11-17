@@ -2767,6 +2767,7 @@ class HandlerDelegationWorkflow:
                 task_type=task_type,
                 excluded_backend_refs=skip_refs,
                 correlation_id=workflow.correlation_id,
+                prompt=workflow.request.prompt if workflow.request else "",
             )
             if next_tier is None:
                 no_higher_tier_reason = (
@@ -4853,7 +4854,10 @@ class HandlerDelegationWorkflow:
 
         excluded = frozenset(workflow.transport_failed_backend_refs)
         sibling = sibling_backend_available_in_tier(
-            tier, task_type, excluded | self._quota_blocked_refs(workflow)
+            tier,
+            task_type,
+            excluded | self._quota_blocked_refs(workflow),
+            workflow.request.prompt,
         )
         if sibling is None:
             return None
