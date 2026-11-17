@@ -66,8 +66,13 @@ def test_command_and_terminal_topics() -> None:
     )
 
 
-def test_shared_runtime_wires_nothing_from_the_serve_node() -> None:
-    """The serve process alone answers: the shared runtime must not subscribe the command topic.
+def test_contract_declares_an_empty_subscribe_topics_and_keeps_the_command_topic() -> (
+    None
+):
+    """The contract text only: empty subscribe_topics, the command topic kept in runtime_dispatch.
+
+    This mirrors the YAML. That the shared runtime then wires nothing is proven by the golden chain tests
+    (test_ci_checkout_golden_*), which run the runtime's own wiring over this contract.
 
     A non-empty subscribe_topics made the dev runtime build the handler with no host name or
     overlay, so each request failed there and a failed terminal raced the serve host's answer.
