@@ -29,7 +29,7 @@ _GUARD = Path(__file__).resolve()
 # The helpers the twin runs through; their names are what the twin imports.
 _HELPERS = _TESTS / "test_omn15909_real_postgres_projection_write_path_gate.py"
 _SKIPPING_NAMES = {"skip", "skipif", "xfail", "importorskip", "_connect_or_skip"}
-_TWIN_CASES = 5
+_TWIN_CASES = 6
 
 
 async def test_an_unreachable_database_fails_the_twin_guard_and_does_not_skip(
@@ -135,7 +135,7 @@ def test_no_pytest_option_or_conftest_deselects_the_integration_marker() -> None
     ), done.stdout[-600:]
 
 
-def test_the_twin_keeps_its_five_cases() -> None:
+def test_the_twin_keeps_its_six_cases() -> None:
     tree = ast.parse(_TWIN.read_text(encoding="utf-8"))
     cases = 0
     for node in tree.body:

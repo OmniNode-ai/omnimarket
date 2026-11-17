@@ -169,3 +169,32 @@ async def test_unreported_terminal_and_pre_migration_row_read_null() -> None:
         await admin_conn.execute("ALTER TABLE delegation_events DROP COLUMN turn_count")
         await admin_conn.execute(_MIGRATION.read_text())
         assert await admin_conn.fetchrow(_SELECT, cid) == row
+
+
+@pytest.mark.integration
+async def test_a_reported_zero_on_a_terminal_that_did_not_fail_survives_in_postgres() -> (
+    None
+):
+    """The stamp writes a zero only on a failure row, so this zero was reported.
+
+    The second write runs with the stored-ran-inference flag computed, and the
+    INSERT succeeds: the flag never reaches the statement as a column.
+    """
+    first = {**_canonical_terminal(attempts_count=0), "tenant_id": _TENANT}
+    cid = str(first["correlation_id"])
+    later = {**_canonical_terminal(), "tenant_id": _TENANT, "correlation_id": cid}
+    async with _provisioned_runner(_base_dsn()) as (runner, admin_conn, _schema):
+        assert await runner.project_event(
+            runner._topic_delegation_completed,
+            first,
+            MessageMeta(partition=0, offset=0, fallback_id=cid),
+        )
+        assert await runner.project_event(
+            runner._topic_delegation_completed,
+            later,
+            MessageMeta(partition=0, offset=1, fallback_id=cid),
+        )
+        after = await admin_conn.fetchrow(_SELECT, cid)
+        assert after is not None
+        assert after["turn_count"] == 0
+        assert "_stored_ran_inference" not in dict(after)

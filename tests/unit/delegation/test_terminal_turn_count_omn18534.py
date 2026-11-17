@@ -199,7 +199,9 @@ def _sparse_later_terminal(recorded: int) -> dict[str, Any]:
     """
     if recorded:
         return _canonical_terminal()
-    return _canonical_terminal(quality_passed=False, model_used="", attempts_count="x")
+    # A terminal that did not fail, names no model and states no count: nothing
+    # stamps it, so a kept zero can only be the inherited one.
+    return _canonical_terminal(model_used="")
 
 
 @pytest.mark.parametrize("path", ["skill", "canonical"])
@@ -1049,6 +1051,9 @@ def test_the_ticket_contract_states_the_decided_rule_for_a_recorded_zero() -> No
         assert "stamped zero" in text, number
         assert "names a model it ran" in text, number
         assert "NULL" in text, number
+        # Provenance: a stamped zero exists only on a failure row.
+        assert "stamps a zero only on a failure row" in text, number
+        assert "did not fail is kept" in text, number
 
 
 # --- the read node refuses, never serves a guess, while the column is missing ------
@@ -1078,3 +1083,155 @@ def test_the_read_node_refuses_the_exposure_while_the_relation_lacks_turn_count(
     )
     assert result.http_status != 200, row["correlation_id"]
     assert "projection_column_missing" in str(result.response)
+
+
+# --- review four of the PR: provenance, the strip, the control key, the producer ---
+
+
+def test_a_reported_zero_on_a_terminal_that_did_not_fail_survives_a_routed_no_count_terminal(
+    db: Any,
+) -> None:
+    # The stamp writes a zero only on a failure row, so this zero was reported.
+    first = _canonical_terminal(attempts_count=0)
+    assert _project(first, db)["turn_count"] == 0
+    later = _canonical_terminal()
+    later["correlation_id"] = first["correlation_id"]
+    assert _project(later, db)["turn_count"] == 0
+
+
+async def test_async_a_reported_zero_on_a_terminal_that_did_not_fail_survives() -> None:
+    written = await _stored_then_later(
+        _canonical_terminal(attempts_count=0), _canonical_terminal()
+    )
+    assert written["turn_count"] == 0
+
+
+async def test_a_count_less_refusal_then_a_routed_terminal_keeps_the_owned_zero(
+    db: Any,
+) -> None:
+    first = await _producer_refusal_payload()
+    del first["attempts_count"]
+    assert _project(first, db)["turn_count"] == 0  # stamped: the producer omitted it
+    later = _canonical_terminal()
+    later["correlation_id"] = first["correlation_id"]
+    row = _project(later, db)
+    # The stored typed refusal owns its terminal columns, the stamped zero included.
+    assert row["terminal_failure_cause"] == "refused_before_dispatch"
+    assert row["turn_count"] == 0
+
+
+_STORED_AT = "2026-11-17T12:00:00+00:00"
+_OLDER = "2026-11-17T11:00:00+00:00"
+
+
+@pytest.mark.parametrize(
+    "cause",
+    [
+        pytest.param({}, id="untyped"),
+        pytest.param({"terminal_failure_cause": "provider_error"}, id="typed"),
+    ],
+)
+def test_a_stored_failure_reporting_four_keeps_it_over_an_older_not_routed_failure(
+    db: Any, cause: dict[str, Any]
+) -> None:
+    first = _canonical_terminal(
+        quality_passed=False, attempts_count=4, timestamp=_STORED_AT, **cause
+    )
+    assert _project(first, db)["turn_count"] == 4
+    later = _failed_not_routed(timestamp=_OLDER)
+    assert "attempts_count" not in later  # the later failure reports no count
+    later["correlation_id"] = first["correlation_id"]
+    row = _project(later, db)
+    assert not row["terminal_ok"]
+    assert row["turn_count"] == 4
+
+
+async def test_async_a_stored_failure_reporting_four_keeps_it_over_an_older_one() -> (
+    None
+):
+    written = await _stored_then_later(
+        _canonical_terminal(
+            quality_passed=False, attempts_count=4, timestamp=_STORED_AT
+        ),
+        _failed_not_routed(timestamp=_OLDER),
+    )
+    assert written["turn_count"] == 4
+
+
+_CONTROL_KEY = "_stored_ran_inference"
+
+
+def test_the_sync_preserve_step_returns_the_flag_and_leaves_no_key_on_the_row(
+    db: Any,
+) -> None:
+    from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+        _preserve_existing_evidence,
+    )
+
+    first = _canonical_terminal()  # routed, states no count
+    _project(first, db)
+    row: dict[str, object] = {
+        "correlation_id": first["correlation_id"],
+        "tenant_id": _project(first, db)["tenant_id"],
+    }
+    assert _preserve_existing_evidence(db, row) is True
+    assert _CONTROL_KEY not in row
+
+
+async def test_the_async_preserve_step_returns_the_flag_and_leaves_no_key_on_the_row() -> (
+    None
+):
+    runner, mock_db = _async_runner()
+    stored = await _async_project(
+        runner, mock_db, runner._topic_delegation_completed, _canonical_terminal(), 0
+    )
+
+    async def read_stored(
+        query: str, *args: object, **kwargs: object
+    ) -> list[dict[str, object]]:
+        return [stored] if query.startswith("SELECT * FROM delegation_events") else []
+
+    mock_db.execute.side_effect = read_stored
+    row: dict[str, object] = {"correlation_id": stored["correlation_id"]}
+    assert await runner._preserve_existing_evidence_async(row) is True
+    assert _CONTROL_KEY not in row
+
+
+async def test_no_insert_or_update_carries_the_control_key() -> None:
+    runner, mock_db = _async_runner()
+    first = _canonical_terminal()  # routed, states no count: the flag is raised
+    stored = await _async_project(
+        runner, mock_db, runner._topic_delegation_completed, first, 0
+    )
+
+    async def read_stored(
+        query: str, *args: object, **kwargs: object
+    ) -> list[dict[str, object]]:
+        return [stored] if query.startswith("SELECT * FROM delegation_events") else []
+
+    mock_db.execute.side_effect = read_stored
+    later = _failed_not_routed(terminal_failure_cause="refused_before_dispatch")
+    later["correlation_id"] = first["correlation_id"]
+    written = await _async_project(
+        runner, mock_db, runner._topic_delegation_failed, later, 1
+    )
+    assert written.get("turn_count") is None  # positive control: the flag was used
+    writes = [
+        call
+        for call in mock_db.execute.await_args_list
+        if str(call.args[0]).lstrip().upper().startswith(("INSERT", "UPDATE"))
+    ]
+    assert writes
+    for call in writes:
+        assert _CONTROL_KEY not in str(call.args[0])
+        assert _CONTROL_KEY not in _param_by_column(call.args)
+
+
+def test_a_sync_write_never_carries_the_control_key(db: Any) -> None:
+    first = _canonical_terminal()
+    _project(first, db)
+    later = _failed_not_routed(terminal_failure_cause="refused_before_dispatch")
+    later["correlation_id"] = first["correlation_id"]
+    row = _project(later, db)
+    assert _CONTROL_KEY not in row
+    assert row.get("turn_count") is None  # the stored routed row's count stays unknown

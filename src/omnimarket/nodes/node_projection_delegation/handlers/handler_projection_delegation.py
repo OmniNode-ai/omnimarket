@@ -941,8 +941,8 @@ class HandlerProjectionDelegation:
             )
         )
         row.update(evidence)
-        _preserve_existing_evidence(db, row)
-        _stamp_not_routed(row, event)
+        stored = _preserve_existing_evidence(db, row)
+        _stamp_not_routed(row, event, stored_ran_inference=stored)
         # OMN-20303: the canonical completion can outlive the outer handler
         # during shutdown. Keep the same token-derived baseline the savings
         # writer uses, only after retaining any originally pinned baseline.
@@ -1184,8 +1184,8 @@ class HandlerProjectionDelegation:
         # response="") would clobber the real model answer written by an earlier
         # delegation-completed.v1 canonical event. _preserve_existing_evidence
         # retains the existing non-blank value when the incoming row has none.
-        _preserve_existing_evidence(db, row)
-        _stamp_not_routed(row, event)
+        stored = _preserve_existing_evidence(db, row)
+        _stamp_not_routed(row, event, stored_ran_inference=stored)
         _stamp_unmeasured_latency(row, event.execution_duration_ms)
         apply_modelled_terminal_savings(row, event)
         ok = bool(
@@ -2026,11 +2026,16 @@ def _gate_count(value: list[str] | None) -> int:
 def _preserve_existing_evidence(
     db: DatabaseAdapter,
     row: dict[str, object],
-) -> None:
-    """Keep terminal evidence when a sparse compatibility event arrives later."""
+) -> bool:
+    """Keep terminal evidence when a sparse compatibility event arrives later.
+
+    Returns whether the stored row ran a model and states no count, which the
+    caller hands to ``_stamp_not_routed``; the flag never rides on the row, so
+    no write can carry it (OMN-18534).
+    """
     correlation_id = row.get(CONFLICT_KEY)
     if not correlation_id:
-        return
+        return False
     # Read under the declared row tenant, matching the async writer. Using
     # the writer's configured tenant here can blind the merge or fail its UUID
     # policy cast even though the terminal carries a valid tenant (OMN-20651).
@@ -2040,11 +2045,11 @@ def _preserve_existing_evidence(
     existing_rows = db.query(TABLE, filters)
     if not existing_rows:
         apply_terminal_precedence({}, row)
-        return
+        return False
     existing = existing_rows[0]
     # First, while the row holds only this event's own evidence: the merges
     # below copy tokens and a routed model in from the stored row.
-    _inherit_timing_and_turn_count(row, existing)
+    stored_ran_inference = _inherit_timing_and_turn_count(row, existing)
     # OMN-17427: a stored failure terminal is never partly overwritten by a
     # non-terminal or out-of-order event. Decided from the two events' own
     # terminal meaning and times, before any column is merged.
@@ -2120,6 +2125,7 @@ def _preserve_existing_evidence(
     # OMN-19448: after precedence, so a model inherited from the stored row
     # never makes an unevidenced handler failure read as evidenced.
     _preserve_run_attribution(existing, row)
+    return stored_ran_inference
 
 
 def _is_unnamed_model(value: object) -> bool:
@@ -2191,38 +2197,53 @@ def _ran_inference(row: Mapping[str, object]) -> bool:
     )
 
 
-# Carried on the row from the merge step to the stamp step of one write, and
-# popped by `_stamp_not_routed` before the row is stored.
-_STORED_RAN_INFERENCE = "_stored_ran_inference"
-
-
 def _inherit_timing_and_turn_count(
     row: dict[str, object], existing: Mapping[str, object]
-) -> None:
+) -> bool:
     """Let a sparse terminal inherit a stored timing or turn count (OMN-18534).
 
     A measured zero is evidence, so only None may inherit a stored value, and a
-    sparse later terminal that ran no model keeps a recorded zero. A zero a
-    failure terminal reported carries its typed cause, and a stored typed failure
-    owns its terminal columns, so any later no-count terminal leaves it. A zero
-    the writer only stamped is an inference: a later no-count terminal that names
-    a model it ran contradicts it, so it is not kept and the count is NULL (that
-    terminal's own count is unknown).
+    sparse later terminal that ran no model keeps a recorded zero.
+
+    Provenance of a stored zero: the writer stamps a zero only on a failure row
+    (``_stamp_not_routed``), so a zero on a row whose terminal did not fail was
+    reported and is kept under any later no-count terminal. A zero on a stored
+    failure is kept while that failure owns its terminal columns (a typed cause,
+    reported or stamped alike); otherwise a later no-count terminal that names a
+    model it ran contradicts it, and the count is NULL (that terminal's own
+    count is unknown).
+
+    Returns True when the stored row ran a model and states no count: the caller
+    hands that to ``_stamp_not_routed`` so an event that ran nothing does not
+    stamp a zero over it. The flag is returned, never set on the row.
     """
-    if existing.get("turn_count") is None and _ran_inference(existing):
-        # The stored row ran a model and states no count: an event that ran
-        # nothing must not read as the zero that stamp would write over it.
-        row[_STORED_RAN_INFERENCE] = True
+    stored_ran_inference = existing.get("turn_count") is None and _ran_inference(
+        existing
+    )
+    stored_failed = existing.get("terminal_ok") is not None and not bool(
+        existing.get("terminal_ok")
+    )
     for key in ("queue_wait_ms", "execution_ms", "turn_count"):
         if row.get(key) is not None or existing.get(key) is None:
             continue
-        if key == "turn_count" and existing[key] == 0 and _ran_inference(row):
+        if (
+            key == "turn_count"
+            and existing[key] == 0
+            and stored_failed
+            and _ran_inference(row)
+        ):
             row[key] = None  # named, so the write replaces the stored 0 with NULL
             continue
         row[key] = existing[key]
+    return stored_ran_inference
 
 
-def _stamp_not_routed(row: dict[str, object], event: _TurnCountSource) -> None:
+def _stamp_not_routed(
+    row: dict[str, object],
+    event: _TurnCountSource,
+    *,
+    stored_ran_inference: bool = False,
+) -> None:
     """Name a failed run that carried no try as not routed, with the reason (OMN-19448).
 
     A run that failed before any try (a timeout before routing, a runtime
@@ -2238,7 +2259,6 @@ def _stamp_not_routed(row: dict[str, object], event: _TurnCountSource) -> None:
     (not even a malformed one) and the row holds no attempt evidence. A count
     any terminal reported is kept as it is.
     """
-    stored_ran_inference = bool(row.pop(_STORED_RAN_INFERENCE, False))
     if row.get("terminal_ok") is not False:
         return
     cause = row.get("terminal_failure_cause")

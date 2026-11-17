@@ -20,12 +20,12 @@ requirements:
   statement: the refused branch of handler_projection_delegation also requires that no model ran (not _ran_inference), on the row and on the stored row; a refused test over a routed row holding NULL and no tokens stores NULL, and the skill refusal row is checked the same way
   acceptance:
   - id: AC3
-    statement: 'AC3: the refused branch of handler_projection_delegation also requires not _ran_inference(row), a refused test over a routed row holding NULL and no tokens stores NULL, and the skill refusal row is checked the same way -- falsifier: `uv run pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q -p no:cacheprovider` passes with the cause clause deleted from the refused branch'
+    statement: 'AC3: the refused branch of handler_projection_delegation also requires not _ran_inference(row), a refused test over a routed row holding NULL and no tokens stores NULL, and the skill refusal row is checked the same way -- falsifier: `uv run pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q -p no:cacheprovider` passes with `and not _ran_inference(row)` deleted from the zero-stamp condition of `_stamp_not_routed`'
 - id: req-omn25382-ac4
   statement: the rule for a reported 0 over a later no-count terminal that names a model is decided and pinned by a test with a not-routed and a routed later terminal, contracts/OMN-18534.yaml lines 4 and 48 state the decision, and a Postgres twin case shows the upsert does not COALESCE a NULL over a stored 0
   acceptance:
   - id: AC4
-    statement: 'AC4: the rule for a reported 0 over a later no-count terminal that names a model is decided and pinned by a test with a not-routed and a routed later terminal, OMN-18534.yaml lines 4 and 48 state the decision, and a Postgres twin case shows the upsert does not COALESCE a NULL over a stored 0 -- falsifier: `uv run pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py tests/test_omn18534_turn_count_real_postgres.py -q -p no:cacheprovider` passes with a stored 0 nulled by a later routed no-count terminal'
+    statement: 'AC4: the rule for a reported 0 over a later no-count terminal that names a model is decided and pinned by a test with a not-routed and a routed later terminal, OMN-18534.yaml lines 4 and 48 state the decision, and a Postgres twin case shows the upsert does not COALESCE a NULL over a stored 0 -- falsifier: `uv run pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py tests/test_omn18534_turn_count_real_postgres.py -q -p no:cacheprovider` passes with a reported 0 on a terminal that did not fail nulled by a later routed no-count terminal, or with a stamped 0 on an untyped failure kept under that terminal (the twin''s NULL case)'
 - id: req-omn25382-ac5
   statement: the omnibase_infra dev tip migration 0069 hashes to cbbdc167 after the comment rewrite, the test reads the infra copy where a runner names it and fails when it cannot read or differs, the PR title names 0069, and a PR comment settles the read node's missing-column refusal
   acceptance:
@@ -111,7 +111,7 @@ dod_evidence:
   - AC7
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "timing or skill_count_is_strict or camel_case_alias"
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py tests/unit/delegation/test_terminal_timing_and_requested_model_omn19448.py -q --no-cov -p no:randomly -p no:cacheprovider -k "timing or skill_count_is_strict or camel_case_alias"
     cwd: .
 - id: dod-omn25382-ac1-checks-read
   description: 'Only the local Done gate runs this unbound check: hosted CI cannot read its own required contexts at the new head.'
@@ -122,7 +122,7 @@ dod_evidence:
     check_value: onex scm pr-checks OmniNode-ai/omnimarket#5611
     cwd: .
 - id: dod-omn25382-integration-proof
-  description: On a lab host at the pushed head, runs the turn count unit file, the real-Postgres twin (5 cases, passed and not skipped) and the twin guard through the lab work runner. Hosted CI cannot reach the lab host, so only the local Done gate runs this unbound check.
+  description: On a lab host at the pushed head, runs the turn count unit file, the real-Postgres twin (6 cases, passed and not skipped) and the twin guard through the lab work runner. Hosted CI cannot reach the lab host, so only the local Done gate runs this unbound check.
   source: manual
   execution_scope: local_done_gate
   checks:

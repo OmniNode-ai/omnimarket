@@ -1528,7 +1528,7 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
             self._last_delegation_write_tenant = tenant
         return written
 
-    async def _preserve_existing_evidence_async(self, row: dict[str, object]) -> None:
+    async def _preserve_existing_evidence_async(self, row: dict[str, object]) -> bool:
         """Async port of ``handler_projection_delegation._preserve_existing_evidence``.
 
         Keeps terminal evidence when a sparse compatibility event arrives
@@ -1540,7 +1540,7 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
         """
         correlation_id = row.get("correlation_id")
         if not correlation_id:
-            return
+            return False
         # OMN-15919: the lookup must run under the SAME tenant the pending
         # write will use (resolved from this row, mirroring _dynamic_upsert's
         # own resolution) -- otherwise an RLS-enforced writer role never sees
@@ -1556,10 +1556,9 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
         if not existing_rows:
             # OMN-19448: same first-write reconcile as the sync writer.
             apply_terminal_precedence({}, row)
-            return
+            return False
         existing = existing_rows[0]
-        # Same first-position timing and turn count merge as the sync writer.
-        _inherit_timing_and_turn_count(row, existing)
+        stored_ran_inference = _inherit_timing_and_turn_count(row, existing)
         # OMN-17427: same terminal ownership decision as the sync preserve step.
         carry_score = fold_terminal_ownership(existing, row)
         # OMN-20303: same attribution fold as the sync preserve step.
@@ -1631,6 +1630,7 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
         # OMN-19448: after precedence, so a model inherited from the stored row
         # never makes an unevidenced handler failure read as evidenced.
         _preserve_run_attribution(existing, row)
+        return stored_ran_inference
 
     async def _materialize_budget_state_async(
         self,
@@ -1802,8 +1802,8 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
             row["terminal_ok"] = event.terminal_ok
         _stamp_terminal_trace_and_routing(row, event)
         _stamp_terminal_stop_reason(row, event.finish_reason, event.truncated)
-        await self._preserve_existing_evidence_async(row)
-        _stamp_not_routed(row, event)
+        stored = await self._preserve_existing_evidence_async(row)
+        _stamp_not_routed(row, event, stored_ran_inference=stored)
         # Same fallback as the sync writer: an original pinned counterfactual
         # wins over the canonical savings writer's reconstructed baseline.
         if row.get("premium_counterfactual") is None and canonical_counterfactual:
@@ -2097,8 +2097,8 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
         # delegate-skill terminal event carries None/empty response_text (a
         # late-arriving timeout terminal must not clobber the real answer an
         # earlier delegation-completed.v1 already wrote).
-        await self._preserve_existing_evidence_async(row)
-        _stamp_not_routed(row, event)
+        stored = await self._preserve_existing_evidence_async(row)
+        _stamp_not_routed(row, event, stored_ran_inference=stored)
         _stamp_unmeasured_latency(row, event.execution_duration_ms)
         apply_modelled_terminal_savings(row, event)
         await self._write_delegation_row(
