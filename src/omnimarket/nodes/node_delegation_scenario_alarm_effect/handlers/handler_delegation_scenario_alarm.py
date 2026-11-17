@@ -6,12 +6,13 @@ Each watched scenario's unit writes a last-run record (``{"conclusion", "ran_at"
 One tick reads every record the contract's ``alarm`` block names. A record whose conclusion is not the success conclusion,
 and a record that is missing or unreadable, yields one STATUS row with ``src=alarm`` and ``alarm=<the scenario's alarm
 name>``, the unit, the run's time and an owner line. A passing record yields no row unless it is older than the scenario's declared
-``max_age_seconds`` (or its time is unreadable): a unit killed before it wrote its record, or a stopped timer, leaves the last
-run's success in place, and that reads ``stale``. The request id is the scenario, the host, the run's own time and the alarm
-time bucket only for missing, unreadable or stale records. A failed run with a readable time is keyed on that time alone
-and stamped with it, so ticks on either side of a bucket boundary submit the identical row and request id. Missing and stale
-records use the bucket start, allowing another outage reading in each bucket. The
-pattern is the deploy-job-failed alarm row of omnibase_infra's deploy job reading.
+``max_age_seconds`` (or a passing record's time is unreadable): a unit killed before it wrote its record, or a stopped timer, leaves the last
+run's record in place, and that reads ``stale``, whether the last run succeeded, failed or was refused. The request id is the
+scenario, the host, the run's own time, the conclusion and the alarm time bucket only for missing, unreadable or stale records.
+A failed run with a readable time that is still inside ``max_age_seconds`` is keyed on that time alone and stamped with it, so
+ticks on either side of a bucket boundary submit the identical row and request id. Missing and stale records use the bucket
+start, allowing another outage reading in each bucket. The pattern is the deploy-job-failed alarm row of omnibase_infra's
+deploy job reading.
 """
 
 from __future__ import annotations
@@ -131,12 +132,20 @@ def alarm_bucket(settings: ModelScenarioAlarmSettings, now: datetime) -> int:
 
 
 def alarm_request_id(
-    watch: ModelScenarioWatch, host: str, ran_at: str, bucket: int | None
+    watch: ModelScenarioWatch,
+    host: str,
+    ran_at: str,
+    bucket: int | None,
+    conclusion: str,
 ) -> str:
-    """One UUID per readable run; missing and stale records also name their bucket."""
+    """One UUID per readable run; missing, unreadable and stale readings also name their conclusion and bucket.
+
+    A bucketed row differs in its bytes by conclusion, and the ledger answers a repeated request id duplicate only for
+    identical bytes, so two readings of one bucket that differ in conclusion must not share an id.
+    """
     key = f"onex-scenario-alarm:{watch.alarm}|{host}|{ran_at}"
     if bucket is not None:
-        key += f"|{bucket}"
+        key += f"|{conclusion}|{bucket}"
     return str(uuid5(NAMESPACE_URL, key))
 
 
@@ -163,8 +172,12 @@ def build_alarm_row(
     conclusion: str,
     ran_at: str,
     bucket: int | None,
+    last_conclusion: str | None = None,
 ) -> str:
-    """Stamp a failed run at its own time, or a recurring outage at its bucket start."""
+    """Stamp a failed run at its own time, or a recurring outage at its bucket start.
+
+    ``last_conclusion`` is the conclusion of the record a stale reading replaced.
+    """
     if bucket is None:
         moment = _read_run_time(ran_at)
         if moment is None:
@@ -180,6 +193,8 @@ def build_alarm_row(
         reason = "no readable last-run record"
     elif conclusion == "stale":
         reason = f"the last run is older than {watch.max_age_seconds} s or has no readable time"
+        if last_conclusion is not None:
+            reason += f" (it concluded {last_conclusion})"
     else:
         reason = f"the run concluded {conclusion}"
     cells = [
@@ -225,9 +240,15 @@ class HandlerDelegationScenarioAlarm:
         bucket = alarm_bucket(self._settings, now)
         for watch in self._settings.scenarios:
             conclusion, ran_at = read_last_run(request.home / watch.evidence_file)
-            if conclusion == self._settings.success_conclusion and is_stale(
-                ran_at, watch.max_age_seconds, now
-            ):
+            last_conclusion: str | None = None
+            # A record older than the declared age reads stale whatever it concluded: a failed or refused run whose
+            # unit then stops would otherwise stay keyed on its ran_at, one row and then duplicates, never an alarm.
+            # A non-success record with no readable time stays its own bucketed reading (its conclusion is the news).
+            if (
+                conclusion == self._settings.success_conclusion
+                or (conclusion != "no-record" and _read_run_time(ran_at) is not None)
+            ) and is_stale(ran_at, watch.max_age_seconds, now):
+                last_conclusion = conclusion
                 conclusion = "stale"
             if conclusion == self._settings.success_conclusion:
                 readings.append(
@@ -251,9 +272,11 @@ class HandlerDelegationScenarioAlarm:
                 conclusion=conclusion,
                 ran_at=ran_at,
                 bucket=row_bucket,
+                last_conclusion=last_conclusion,
             )
             outcome = self._appender.append(
-                row, alarm_request_id(watch, request.host, ran_at, row_bucket)
+                row,
+                alarm_request_id(watch, request.host, ran_at, row_bucket, conclusion),
             )
             readings.append(
                 ModelScenarioReading(

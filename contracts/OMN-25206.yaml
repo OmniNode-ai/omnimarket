@@ -1,0 +1,115 @@
+schema_version: 1.0.0
+ticket_id: OMN-25206
+title: 'Review findings 1 to 11 on the alarm pull request are fixed or argued: a failed record that stops raises a bucketed stale alarm, the stale tests tell the buckets apart, and the contract checks read
+  the sha, command and exit they claim'
+summary: A failed or refused last-run record older than its declared age now raises the bucketed stale reading, the request id of a bucketed reading carries its conclusion, the golden chain stubs the receipt
+  the bus CLI prints on acceptance and runs the rendered argv, and the contract checks of the alarm contract read the full current head, the lab command, exit 0 and the required check-runs. Findings 7 to
+  11 are fixed or argued in the pull request comment that names the new head.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25206-ac1
+  statement: A stale failed or refused record recurs by bucket; buckets and conclusions give different ids, one bucket gives one row and id.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a failed or refused record older than max_age_seconds raises the bucketed stale reading, ticks in adjacent six-hour buckets give different row ids and ticks in one bucket give an identical
+      row and id, and the bucketed key carries the conclusion, each with a test red before the fix -- falsifier: `uv run --frozen pytest tests -k "omn24874 and alarm" -q` passes with the stale reading restricted
+      to success records or with stale keyed on ran_at alone'
+- id: req-omn25206-ac2
+  statement: The tick runs the rendered argv against a stub that prints the receipt the bus CLI prints on acceptance.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the CLI test in the golden chain test passes the full rendered argv of tick_arguments, stubs the reply that omnimarket.work_ledger_bus.cli append prints on acceptance, and asserts exit
+      0, with a test -- falsifier: `uv run --frozen pytest tests -k "omn24874 and golden_chain" -q` passes with the stub reply changed to a string the CLI never prints'
+- id: req-omn25206-ac3
+  statement: The alarm contract's AC3 to AC6 checks read the sha, command, exit 0, check-runs and test files they claim, proved on shims over a temp directory.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the contract checks of contracts/OMN-24874.yaml read the full current #6335 head, command and exit 0 for AC6, add an `onex scm pr-checks` check, grep each of findings 5, 6, 7 and 8
+      for AC5, and for AC3 and AC4 check that the test files exist on dev tip 13a7e30415fa and that `-k ac3` selects a test, with a test built on a temp repo -- falsifier: `uv run --frozen pytest tests/test_omn24874_contract_checks.py
+      -q` passes with the AC6 check reading `Lab: head=` alone'
+- id: req-omn25206-ac4
+  statement: Findings 7 to 11 are fixed in the push or argued in the Lab comment that names the new head.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: each non-blocking finding 7 to 11 is fixed in the push or argued with evidence in a PR comment, and a PR comment starting `Lab: head=<full new head sha>` names the sha, the lab command
+      and exit 0 -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6353 --comments` shows no comment naming findings 7 to 11, or a Lab comment without the full sha, the command or exit 0'
+evidence_requirements:
+- kind: tests
+  description: The alarm node golden-chain tests and the contract check tests.
+  command: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25206-ac1
+  description: A failed, refused or successful record older than max_age_seconds raises the bucketed stale reading; adjacent buckets and different conclusions give different row ids, one bucket an identical
+    row and id.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -k "bucketed_stale or one_bucket or second_tick_over_a_failed_run
+      or boundary" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25206-ac2
+  description: The tick runs the full rendered argv against a stub printing the receipt the CLI prints on acceptance, exits 0, and exits 1 for a reply the CLI never prints; the rendered append command reaches
+    the real bus parser.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -k rendered -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25206-ac3
+  description: 'The alarm contract''s AC3 to AC6 checks are run over shims and a temp repository: a Lab comment for an old head, a short sha, no command or no exit 0 fails, the pr-checks check reads the
+    head and the check-runs, each of findings 5 to 8 has its own grep, and the test files and the AC3 selection are read.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25206-ac4
+  description: 'Local Done gate: the comments of this pull request name each of findings 7 to 11, and a Lab comment names the full head the PR watcher records, the lab command and exit 0. The comment is
+    read from the pull request, so only the local Done gate runs it.'
+  source: manual
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: sh -c 'onex scm pr-view OmniNode-ai/omnimarket#6353 --comments | grep -qE "finding 7([^0-9]|$)"'
+    cwd: .
+  - check_type: command
+    check_value: sh -c 'onex scm pr-view OmniNode-ai/omnimarket#6353 --comments | grep -qE "finding 8([^0-9]|$)"'
+    cwd: .
+  - check_type: command
+    check_value: sh -c 'onex scm pr-view OmniNode-ai/omnimarket#6353 --comments | grep -qE "finding 9([^0-9]|$)"'
+    cwd: .
+  - check_type: command
+    check_value: sh -c 'onex scm pr-view OmniNode-ai/omnimarket#6353 --comments | grep -qE "finding 10([^0-9]|$)"'
+    cwd: .
+  - check_type: command
+    check_value: sh -c 'onex scm pr-view OmniNode-ai/omnimarket#6353 --comments | grep -qE "finding 11([^0-9]|$)"'
+    cwd: .
+  - check_type: command
+    check_value: 'sh -c ''H=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6353 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]])"
+      facts head_sha) && test "${#H}" -eq 40 && onex scm pr-view OmniNode-ai/omnimarket#6353 --comments | python3 -c "import re,sys; t=sys.stdin.read(); head,lab,cmd,ex=sys.argv[1:5]; i=t.find(lab+head);
+      seg=t[i+len(lab+head):].split(lab)[0]; sys.exit(0 if i>=0 and re.search(cmd,seg) and re.search(ex,seg) else 1)" "$H" "Lab: head=" "lab.work run|lab.run" "exit[ =:]+0([^0-9]|$)"'''
+    cwd: .
+- id: dod-omn25206-integration-proof
+  description: The alarm node tests and the installer registry unit tests run on a lab host at the pushed head through the lab work runner; hosted CI cannot reach the lab, so only the local Done gate runs
+    this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path "${OMNI_HOME:?}" --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25206
+      --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect tests/nodes/node_host_installer_registry_units -q --no-cov -n 0 -p no:randomly
+    cwd: .

@@ -5,19 +5,29 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import json
+import shlex
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
 import pytest
 import yaml
+from omnibase_infra.runtime.auto_wiring.discovery import (
+    discover_contracts_from_paths,
+)
 
 from omnimarket.handlers import delegation_readiness_scenario as readiness_scenario
 from omnimarket.models.model_delegation_scenario import (
     EnumScenarioConclusion,
     EnumScenarioTrigger,
     ModelScenarioResult,
+)
+from omnimarket.models.work_ledger_append.model_work_ledger_append import (
+    ModelWorkLedgerAppendReceipt,
 )
 from omnimarket.nodes.node_delegation_scenario_alarm_effect.handlers.handler_delegation_scenario_alarm import (
     CONTRACT_PATH,
@@ -33,6 +43,7 @@ from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_regist
     load_units,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    CommandLedgerAppender,
     InMemoryLedger,
     stamp_request_cell,
 )
@@ -54,6 +65,7 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     LocalLedgerFile,
     ModelAppendCommandResult,
 )
+from omnimarket.work_ledger_bus.cli import append_command
 from tests.nodes.node_host_installer_registry_units.test_registry_units import request
 
 _NOW = datetime(2026, 11, 16, 15, 0, tzinfo=UTC)
@@ -374,31 +386,71 @@ def test_the_installer_declares_the_alarm_timer() -> None:
     assert CONTRACT_PATH.is_file()
 
 
+def _write_cli_stub(path: Path, argv_log: Path, *, real_reply: bool) -> None:
+    """A stand-in for ``omnimarket.work_ledger_bus.cli append``: records its argv, prints a reply.
+
+    ``real_reply`` prints the receipt the CLI prints on acceptance (``receipt.model_dump_json()``); otherwise a
+    reply the CLI never prints.
+    """
+    reply = (
+        "ModelWorkLedgerAppendReceipt(request_id=UUID(rid), status='accepted', exit_code=0, message='appended', "
+        "ledger_lines=[1], ledger_host='h053', duration_ms=1).model_dump_json()"
+        if real_reply
+        else "json.dumps({'result': 'ok'})"
+    )
+    path.write_text(
+        f"#!{sys.executable}\n"
+        "import json, sys\n"
+        "from uuid import UUID\n"
+        "from omnimarket.models.work_ledger_append.model_work_ledger_append import ModelWorkLedgerAppendReceipt\n"
+        f"open({str(argv_log)!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "sys.stdin.read()\n"
+        "rid = sys.argv[sys.argv.index('--request-id') + 1]\n"
+        f"print({reply})\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+
+
 @pytest.mark.unit
-def test_the_rendered_unit_state_dir_receives_the_ticks_declared_evidence_file(
-    tmp_path: Path,
+@pytest.mark.parametrize(("real_reply", "code"), [(True, 0), (False, 1)])
+def test_the_rendered_unit_argv_runs_the_tick_to_exit_zero_on_the_real_accepted_reply(
+    tmp_path: Path, real_reply: bool, code: int
 ) -> None:
-    # The argv the installer renders (--state-dir) must land this tick's record at the unit's declared evidence_file.
+    # The argv the installer renders (--omni-home, --state-dir) is the tick's whole argument list: nothing is added,
+    # and the append command is the one the unit declares. The accepted reply is the CLI's full receipt, so a
+    # stub that prints a string the CLI never prints must fail the tick (the negative control).
     unit = load_units()["scenario-alarm-systemd"]
     argv = HandlerRegistryUnits().tick_arguments(
         request(tmp_path, unit="scenario-alarm-systemd"), unit
     )
-    stub = tmp_path / "append.sh"
-    stub.write_text(
-        "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{\"status\":\"accepted\"}'\n",
-        encoding="utf-8",
-    )
-    stub.chmod(0o755)
+    assert argv[0] == "--omni-home"
+    assert argv[2] == "--state-dir"
+    stub = tmp_path / "append.py"
+    argv_log = tmp_path / "append-argv.log"
+    _write_cli_stub(stub, argv_log, real_reply=real_reply)
     home = tmp_path / "home"
-    code = main(
-        [*argv, "--home", str(tmp_path / "empty")],
+    empty_home = tmp_path / "empty"
+    empty_home.mkdir()
+    exit_code = main(
+        [*argv, "--home", str(empty_home)],
         environ={"ONEX_LEDGER_BUS_APPEND_COMMAND": str(stub), "ONEX_HOST_NAME": "h053"},
     )
-    assert code == 0
+    assert exit_code == code
+    # Both alarms (R8 and R9 have no record under the empty home) reached the append command with the CLI's flags.
+    calls = [
+        json.loads(line) for line in argv_log.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(calls) == 2
+    for call in calls:
+        assert call[:2] == ["--lane", "delegation-scenario-alarm"]
+        assert call[2:4] == ["--host", "h053"]
+        assert call[4] == "--request-id"
+        assert call[6:] == ["--rows-file", "-"]
     record = json.loads((home / unit["evidence_file"]).read_text(encoding="utf-8"))
-    assert record["conclusion"] == "success"
-    assert record["unappended"] == []
     assert record["alarms"] == ["R8", "R9"]
+    assert record["unappended"] == ([] if real_reply else ["R8", "R9"])
+    assert record["conclusion"] == ("success" if real_reply else "failure")
 
 
 @pytest.mark.unit
@@ -486,32 +538,26 @@ def test_the_ledger_takes_the_backdated_stamp_of_an_alarm_row(
 
 
 @pytest.mark.unit
-def test_discovery_never_builds_the_alarm_handler_without_arguments() -> None:
-    # The runtime's wiring builds ``handler_cls()`` for a handler a contract lists under ``handler_routing``
-    # (omnibase_infra util_wiring); this handler needs its settings, appender and clock, so such a build would raise.
-    contract = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
-    assert "handler_routing" not in contract
-    assert "event_bus" not in contract
-    assert not contract.get("subscribe_topics")
-    assert contract["descriptor"]["runtime_profiles"] == ["effects"]
-    with pytest.raises(TypeError):
-        HandlerDelegationScenarioAlarm()  # type: ignore[call-arg]
-    from omnibase_infra.runtime.kafka_contract_source import (
-        _resolve_handler_class_from_routing,
+def test_runtime_discovery_reads_the_top_level_handler_of_the_alarm_contract() -> None:
+    # The runtime's own discovery turns a top-level ``handler:`` into a routing entry (the legacy form), so the
+    # runtime does see this class, and the class takes its settings and appender as constructor parameters. The
+    # test reads that through discovery's public entry point instead of asserting keys the YAML does not hold.
+    manifest = discover_contracts_from_paths([CONTRACT_PATH])
+    assert manifest.errors == ()
+    (discovered,) = manifest.contracts
+    routing = discovered.handler_routing
+    assert routing is not None
+    (entry,) = routing.handlers
+    assert (entry.handler.module, entry.handler.name) == (
+        HandlerDelegationScenarioAlarm.__module__,
+        HandlerDelegationScenarioAlarm.__name__,
     )
-
-    assert _resolve_handler_class_from_routing(contract) is None
-    handler = contract["handler"]
-    routed: dict[str, object] = {
-        "handler_routing": {
-            "handlers": [
-                {"handler": {"module": handler["module"], "name": handler["class"]}}
-            ]
-        }
-    }
-    assert _resolve_handler_class_from_routing(routed) == (
-        handler["module"] + "." + handler["class"]
-    )
+    assert entry.event_model is not None
+    assert entry.event_model.name == ModelScenarioAlarmRequest.__name__
+    parameters = inspect.signature(HandlerDelegationScenarioAlarm).parameters
+    assert [
+        name for name, p in parameters.items() if p.default is inspect.Parameter.empty
+    ] == ["settings", "appender"]
     # The repository's own discovery imports the class and never calls it.
     module = importlib.import_module(
         "omnimarket.nodes.node_delegation_scenario_alarm_effect"
@@ -573,3 +619,181 @@ def test_failure_stamp_is_visible_to_a_reader_window_starting_at_the_run(
     assert reading.error is None
     assert len(reading.rows) == 1
     assert ran_at <= reading.rows[0].stamp < ran_at + timedelta(seconds=1)
+
+
+def _r8_rows(appender: _Appender) -> list[tuple[str, str]]:
+    return [call for call in appender.calls if "scenario=R8" in call[0]]
+
+
+def _r8_tick(home: Path, clock: datetime) -> tuple[str, str]:
+    appender = _Appender()
+    HandlerDelegationScenarioAlarm(
+        load_alarm_settings(), appender, clock=lambda: clock
+    ).handle(ModelScenarioAlarmRequest(home=home, host="h053"))
+    (call,) = _r8_rows(appender)
+    return call
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("conclusion", ["success", "failure", "refused"])
+def test_a_record_older_than_the_declared_age_raises_the_bucketed_stale_reading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, conclusion: str
+) -> None:
+    # A failed or refused run whose unit then stops is as stale as a success: it recurs by bucket, never once forever.
+    settings = load_alarm_settings()
+    r8_age = next(w.max_age_seconds for w in settings.scenarios if w.scenario == "R8")
+    old = (_NOW - timedelta(seconds=r8_age + 600)).isoformat()
+    _record(tmp_path, "r8", conclusion, old, monkeypatch)
+    one_bucket = (_NOW, _NOW + timedelta(seconds=900))
+    next_bucket = _NOW + timedelta(seconds=settings.alarm_bucket_seconds // 2 + 1)
+    first = _r8_tick(tmp_path, one_bucket[0])
+    again = _r8_tick(tmp_path, one_bucket[1])
+    later = _r8_tick(tmp_path, next_bucket)
+    cells = first[0].split(" | ")
+    assert "conclusion=stale" in cells
+    # Stamped at the bucket start (12:00), so a reader's bucket window finds it.
+    assert cells[0] == "2026-11-16T12:00:00Z"
+    # Ticks in one bucket: the identical row and request id. Ticks in adjacent buckets: neither.
+    assert again == first
+    assert later[1] != first[1]
+    assert later[0] != first[0]
+    assert later[0].split(" | ")[0] == "2026-11-16T18:00:00Z"
+
+
+@pytest.mark.unit
+def test_a_no_record_row_and_a_later_record_without_a_time_in_one_bucket_differ(
+    tmp_path: Path,
+) -> None:
+    # Same host, alarm, "unknown" ran_at and bucket, but different bytes: the conclusion is part of a bucketed key.
+    first = _r8_tick(tmp_path, _NOW)
+    record = tmp_path / ".local/state/omni/delegation-scenario-r8/last-run.json"
+    record.parent.mkdir(parents=True)
+    record.write_text(json.dumps({"conclusion": "failure"}), encoding="utf-8")
+    second = _r8_tick(tmp_path, _NOW + timedelta(seconds=900))
+    assert "conclusion=no-record" in first[0]
+    assert "conclusion=failure" in second[0]
+    assert first[0] != second[0]
+    assert first[1] != second[1]
+
+
+class _WorkLedgerAppender:
+    """The real work-ledger append handler behind the alarm's appender protocol."""
+
+    def __init__(self, ledger: Path, now: datetime) -> None:
+        self.ledger = ledger
+        self._now = now
+        self._handler = HandlerWorkLedgerAppendEffect(
+            _FileRunner(ledger),
+            LocalLedgerFile(ledger),
+            "ledger",
+            writer_principals=("alarm-principal",),
+            operator_principal="operator",
+            fence=LedgerFlipFence(),
+            bus_store=InMemoryBusLedgerStore(),
+        )
+
+    def append(self, rows: str, request_id: str) -> ModelAppendOutcome:
+        receipt = self._handler.handle(
+            ModelWorkLedgerAppendRequest(
+                request_id=UUID(request_id),
+                rows=stamp_request_cell(rows, request_id),
+                requested_by_lane="delegation-scenario-alarm",
+                requesting_host="h053",
+                requested_at=self._now,
+            ),
+            writer_principal="alarm-principal",
+        )
+        return ModelAppendOutcome(status=receipt.status.value, message=receipt.message)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("conclusion", ["failure", "refused"])
+@pytest.mark.parametrize("age", ["recent", "old"])
+def test_a_second_tick_over_a_failed_run_is_a_duplicate_and_lands_one_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, conclusion: str, age: str
+) -> None:
+    # One row is shown through the real append handler, not a fake that always accepts.
+    settings = load_alarm_settings()
+    r8_age = next(w.max_age_seconds for w in settings.scenarios if w.scenario == "R8")
+    ran_at = (
+        _NOW - timedelta(seconds=600)
+        if age == "recent"
+        else _NOW - timedelta(seconds=r8_age + 600)
+    )
+    _record(tmp_path, "r8", conclusion, ran_at.isoformat(), monkeypatch)
+    _record(tmp_path, "r9", "success", _NOW.isoformat(), monkeypatch)
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text(
+        f"{_NOW:%Y-%m-%dT%H:%M:%SZ} | STATUS | lane=newer | principal=alarm-principal | ticket=OMN-24874 | "
+        "actor=claude:sonnet:remote-lane | model=sonnet | a row newer than the alarm\n",
+        encoding="utf-8",
+    )
+    appender = _WorkLedgerAppender(ledger, _NOW)
+    clocks = iter((_NOW, _NOW + timedelta(seconds=900)))
+    handler = HandlerDelegationScenarioAlarm(settings, appender, clock=clocks.__next__)
+    request_ = ModelScenarioAlarmRequest(home=tmp_path, host="h053")
+    first = handler.handle(request_)
+    second = handler.handle(request_)
+    assert [r.append_status for r in first.alarms] == ["accepted"]
+    assert [r.append_status for r in second.alarms] == ["duplicate"]
+    landed = [
+        line
+        for line in ledger.read_text(encoding="utf-8").splitlines()
+        if "alarm=delegation-scenario-r8-failed" in line
+    ]
+    assert len(landed) == 1
+    assert f"conclusion={'stale' if age == 'old' else conclusion}" in landed[0]
+
+
+def _accepted_receipt_json(request_id: str) -> str:
+    """The line ``omnimarket.work_ledger_bus.cli append`` prints on acceptance: the full receipt, not a bare status."""
+    return ModelWorkLedgerAppendReceipt(
+        request_id=UUID(request_id),
+        status=EnumWorkLedgerAppendStatus.ACCEPTED,
+        exit_code=0,
+        message="appended",
+        ledger_lines=[1],
+        ledger_host="h053",
+        duration_ms=1,
+    ).model_dump_json()
+
+
+@pytest.mark.unit
+def test_the_rendered_append_command_and_flags_reach_the_real_bus_parser(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The unit's declared environment is rendered and its command is split, as the tick splits it; the argv the
+    # appender then builds is parsed by the real ``append`` command and its accepted reply is the real receipt.
+    unit = load_units()["scenario-alarm-systemd"]
+    handler = HandlerRegistryUnits()
+    rendered = handler.environment(
+        request(tmp_path, unit="scenario-alarm-systemd"), unit
+    )
+    command = rendered["ONEX_LEDGER_BUS_APPEND_COMMAND"]
+    assert "{" not in command
+    assert rendered["ONEX_WORKSPACE_CONFIG_ROOT"] == str(tmp_path / "ws")
+    base = shlex.split(command)
+    assert base[0] == str(tmp_path / "omni" / "omnimarket/.venv/bin/python")
+    assert base[1:4] == ["-m", "omnimarket.work_ledger_bus.cli", "append"]
+    seen: list[list[str]] = []
+
+    def _run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        request_id = argv[argv.index("--request-id") + 1]
+        return subprocess.CompletedProcess(
+            argv, 0, _accepted_receipt_json(request_id) + "\n", ""
+        )
+
+    monkeypatch.setattr(subprocess, "run", _run)
+    outcome = CommandLedgerAppender(
+        base, "delegation-scenario-alarm", "h053", 120
+    ).append("2026-11-16T14:48:29Z | STATUS | lane=x", str(UUID(int=7)))
+    assert outcome.status == "accepted"
+    (argv,) = seen
+    context = append_command.make_context("append", argv[argv.index("append") + 1 :])
+    assert context.params["bus_lane"] == "dev"
+    assert context.params["omnibase_path"] == tmp_path / "omni"
+    assert context.params["lane"] == "delegation-scenario-alarm"
+    assert context.params["host"] == "h053"
+    assert str(context.params["request_id"]) == str(UUID(int=7))
+    assert context.params["rows_file"] == "-"
