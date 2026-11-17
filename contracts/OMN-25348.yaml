@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-25348
 title: Overlay Main Load is green on the pull requests it is red on, fixed at its source
-summary: The overlays repository's main branch carries a ledger_projection block in the node_factory_floor_effect document, and this tree's ModelFactoryFloorOverlay (extra forbid) had no such field, so Overlay Main Load refused that one document on every pull request (loaded=311 refused=1) and on dev itself. The model gains the optional block, with the same definition the factory floor projection change carries, so the document loads (loaded=312 refused=0). The check, its workflow job and its tests are unchanged.
+summary: The overlays repository's main branch carries a ledger_projection block in the node_factory_floor_effect document, and this tree's ModelFactoryFloorOverlay (extra forbid) had no such field, so Overlay Main Load refused that one document on every pull request (loaded=311 refused=1) and on dev itself. The model gains the optional block, so the document loads (loaded=312 refused=0). The class is the one omnimarket#6241 carries, and that pull request owns it and the handler that acts on it; this change only accepts the block and does not act on it. The check, its workflow job and its tests are unchanged.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -25,11 +25,23 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn25348-ac1
-  description: The document the three failure texts name (ledger_projection under node_factory_floor_effect) loads through the floor model; the same block refused at the merge base is the test's failing control.
+  description: |-
+    The failure text of the hosted Overlay Main Load job on each of the three pull requests, read through onex scm job-log on 2026-11-17 and quoted as it printed (the watcher's id for the same check run is in brackets); each names ledger_projection under node_factory_floor_effect as its only refusal:
+    job 134041598568 (omnimarket#6366, check run 44084017943): refused node_factory_floor_effect document_invalid: ModelFactoryFloorOverlay refused the document; fields: ledger_projection
+    job 134041598568 (omnimarket#6366, check run 44084017943): overlay-main-load: loaded=311 refused=1 noted=0
+    job 134042999126 (omnimarket#6367, check run 44084419778): refused node_factory_floor_effect document_invalid: ModelFactoryFloorOverlay refused the document; fields: ledger_projection
+    job 134042999126 (omnimarket#6367, check run 44084419778): overlay-main-load: loaded=311 refused=1 noted=0
+    job 134043875723 (omnimarket#6368, check run 44084673740): refused node_factory_floor_effect document_invalid: ModelFactoryFloorOverlay refused the document; fields: ledger_projection
+    job 134043875723 (omnimarket#6368, check run 44084673740): overlay-main-load: loaded=311 refused=1 noted=0
+    The same document, with the block exactly as overlays main commit a951d8554d2f6dd3d78db46b04cc1184fef5c8bf holds it, loads through the check's own loader in the test named below, and refuses at the merge base.
   source: manual
   binds_ac:
   - AC1
   checks:
+  - check_type: command
+    check_value: |-
+      grep -qE 'job 13404159856[8] .*fields: ledger_projection$' contracts/OMN-25348.yaml && grep -qE 'job 13404299912[6] .*fields: ledger_projection$' contracts/OMN-25348.yaml && grep -qE 'job 13404387572[3] .*fields: ledger_projection$' contracts/OMN-25348.yaml
+    cwd: .
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_overlay_ledger_projection_block.py -q --no-cov -n 0 -p no:randomly -k main_block
     cwd: .
@@ -43,13 +55,23 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_overlay_ledger_projection_block.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25348-ac3
-  description: The overlay main load check's own planted-break tests still pass with the check unchanged; the hosted Overlay Main Load job reads the overlays repository, which no test here can.
+  description: The hosted Overlay Main Load check run at the pull request's head reads success. This reads the check run through onex scm at the live head, so only the local Done gate runs it; the hosted runner cannot read its own check run.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: onex scm pr-checks OmniNode-ai/omnimarket#6371 | grep -F '["Overlay Main Load (OMN-23963)","completed","success"'
+    cwd: .
+- id: dod-omn25348-ac3-loader
+  description: The floor document carrying overlays main's block loads through the overlay main load check's own loader, and the check's own planted-break tests still pass with the check unchanged.
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_overlay_ledger_projection_block.py tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25348-integration-proof
   description: Run the floor overlay model test and the overlay main load check's tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check.

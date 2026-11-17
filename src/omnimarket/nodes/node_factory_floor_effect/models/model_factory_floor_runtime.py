@@ -139,20 +139,23 @@ class ModelLedgerArchiveWindow(BaseModel):
 
 
 class ModelLedgerProjectionRead(BaseModel):
-    """The window read answered from the work ledger projection instead of the ledger file (OMN-19998, ledger cutover Wave 0).
+    """The window read named for the work ledger projection instead of the ledger file (OMN-19998, ledger cutover Wave 0).
 
-    ``reader`` is the name this step reads under: the work ledger reader node answers a rows window for a reader its own overlay
-    moves (``moved_readers``), and a reader it does not move answers ``not-moved``, which this step refuses and never reads the
-    file in its place. With this block present the step opens no ledger file and no archive file. ``cache_ttl_seconds`` has no
-    default: the deployment says how long a closed day's rows are kept.
+    This model accepts the block and nothing in this tree acts on it yet: the floor effect still reads the ledger file its
+    ``ledger_source`` and ``ledger_archives`` name, with the block present or absent. The reader that answers the window from the
+    projection is a separate change (OMN-19998). Once it lands, ``reader`` is the name the step reads under (the work ledger reader
+    node answers a rows window for a reader its own overlay moves, ``moved_readers``, and a reader it does not move answers
+    ``not-moved``, which the step refuses and never reads the file in its place), and the block replaces the file read.
+    ``cache_ttl_seconds`` has no default: the deployment says how long a closed day's rows are kept.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     reader: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
-    # The window is read one UTC day at a time. A closed day's rows are kept in the source read cache for ``cache_ttl_seconds`` and read
-    # again only when it ends; today's rows are read every run. A whole 14-day window in one read measured 102 s for 96 hours on the dev
-    # bus (2026-11-14), far past the step's limit. ``read_workers`` is how many closed days are read at once; absent: one at a time.
+    # For the reader that is not here yet: the window is read one UTC day at a time. A closed day's rows are kept in the source read
+    # cache for ``cache_ttl_seconds`` and read again only when it ends; today's rows are read every run. Reading the whole 14-day window
+    # in one request is too slow: the first 96 hours of it took 102 s on the dev bus (2026-11-14), past the step's limit.
+    # ``read_workers`` is how many closed days are read at once; absent: one at a time.
     cache_ttl_seconds: int = Field(ge=1)
     read_workers: int | None = Field(default=None, ge=1)
     # Seconds after midnight UTC until yesterday's rows are kept: the projection lags the ledger, so a day just ended may lack its last rows.
@@ -261,8 +264,8 @@ class ModelFactoryFloorOverlay(BaseModel):
     # Where the file ledger's split archives are, so the window read keeps each archive's rows in the source read cache and reads only
     # the live ledger each cycle (OMN-19998). Absent: the window is read as before.
     ledger_archives: ModelLedgerArchiveWindow | None = None
-    # Present: the window read is a rows read of the work ledger projection under this reader name, and no ledger file is read.
-    # Absent: the file read above (ledger_source, ledger_archives) as before.
+    # Accepted and not yet acted on (OMN-19998): the floor effect reads the ledger file named by ledger_source and ledger_archives above
+    # whether this block is present or absent. It is here so an overlay that already carries the block loads.
     ledger_projection: ModelLedgerProjectionRead | None = None
     # The line board's declarations (OMN-22368). No default: an overlay without them is refused by name.
     processes: tuple[ModelFloorProcessDecl, ...]

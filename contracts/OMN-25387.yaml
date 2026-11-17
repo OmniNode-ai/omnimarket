@@ -1,0 +1,123 @@
+schema_version: 1.0.0
+ticket_id: OMN-25387
+title: 'Review findings 1 to 5 on omnimarket PR 6371 at head 93a2d6a594a0 are fixed or argued: the hosted check read and the three failure texts are recorded, the block is pasted from overlays main and
+  driven through the check''s loader, the comments match the diff and the malformed cases assert loc and type'
+summary: The first review of the pull request that lets ModelFactoryFloorOverlay accept the ledger_projection block found five blocking and three non-blocking findings. The block test now pastes the block
+  from overlays main commit a951d8554d2f6dd3d78db46b04cc1184fef5c8bf and drives the floor document through the overlay main load check's own loader, the model comments say the block is accepted and not
+  yet acted on and a test pins that, each malformed case asserts its error location and type with the four missing cases added, and the three failure texts are quoted in contracts/OMN-25348.yaml.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25387-review-findings
+  statement: Every blocking review finding on the pull request is fixed with a test that fails first, or argued with evidence.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the hosted Overlay Main Load check-run at the new head of omnimarket#6371 is read through onex scm and its success and its loaded and refused counts are recorded in a PR comment, and
+      the AC3 item of contracts/OMN-25348.yaml runs that read instead of the check''s own tests -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6371` lists Overlay Main Load as not success at the
+      new head, or dod-omn25348-ac3 still runs only pytest'
+  - id: AC2
+    statement: 'AC2: the failure text of runs 6366, 6367 and 6368 is quoted with each check-run or job id and the refused document and key line, and each names ledger_projection under node_factory_floor_effect
+      as its only refusal -- falsifier: `onex scm job-log` of jobs 134041598568, 134042999126 and 134043875723 prints a refusal line other than the one quoted'
+  - id: AC3
+    statement: 'AC3: the ledger_projection block in tests/nodes/node_factory_floor_effect/test_overlay_ledger_projection_block.py is pasted verbatim from overlays main with its commit sha, and a test drives
+      the floor document through node_overlay_main_load_check_effect and fails at the merge base -- falsifier: `uv run pytest tests/nodes/node_factory_floor_effect/test_overlay_ledger_projection_block.py
+      -q -p no:cacheprovider` passes with one key of the overlays main block changed'
+  - id: AC4
+    statement: 'AC4: the comments at model_factory_floor_runtime.py lines 142 to 147 and 264 to 265 match the diff: the block is stated as accepted and not yet acted on (OMN-19998), or a run with it set
+      is refused until the reader lands, and a test pins whichever is chosen -- falsifier: `uv run pytest tests/nodes/node_factory_floor_effect -q -p no:cacheprovider -k ledger_projection` passes with the
+      pinned behaviour reversed'
+  - id: AC5
+    statement: 'AC5: each malformed-block case asserts the error loc and type, and cases exist for read_workers=0, settle_seconds=-1, a missing reader and a missing cache_ttl_seconds -- falsifier: `uv run
+      pytest tests/nodes/node_factory_floor_effect/test_overlay_ledger_projection_block.py -q -p no:cacheprovider` passes with the lower bound of read_workers removed from the model'
+  - id: AC6
+    statement: 'AC6: the non-blocking findings 6 to 8 (interface_change false, the duplicate class with the factory floor projection change, the 102 s and 14-day wording) are fixed or argued in a PR comment
+      -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6371` lists no comment that answers each of findings 6, 7 and 8'
+  - id: AC7
+    statement: 'AC7: the required suites are run on the lab (in named parts if a whole run times out) and a PR comment starting `Lab: head=<new head>` names the sha, the command and the result -- falsifier:
+      `onex scm pr-view OmniNode-ai/omnimarket#6371` lists no comment starting `Lab: head=` with the new head'
+evidence_requirements:
+- kind: tests
+  description: The floor overlay block tests, the floor effect tests and the overlay main load check's tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_factory_floor_effect tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25387-ac1
+  description: The hosted Overlay Main Load check run at the pull request's head is read through onex scm and reads success, and contracts/OMN-25348.yaml binds its AC3 to that read. The read is of the live
+    head, so only the local Done gate runs it.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: onex scm pr-checks OmniNode-ai/omnimarket#6371 | grep -F '["Overlay Main Load (OMN-23963)","completed","success"'
+    cwd: .
+  - check_type: command
+    check_value: grep -qF 'onex scm pr-checks OmniNode-ai/omnimarket#6371' contracts/OMN-25348.yaml
+    cwd: .
+- id: dod-omn25387-ac2
+  description: The three failure texts are quoted in contracts/OMN-25348.yaml with their job ids and each names ledger_projection as its only refusal.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: 'grep -qE ''job 13404159856[8] .*fields: ledger_projection$'' contracts/OMN-25348.yaml && grep -qE ''job 13404299912[6] .*fields: ledger_projection$'' contracts/OMN-25348.yaml && grep -qE
+      ''job 13404387572[3] .*fields: ledger_projection$'' contracts/OMN-25348.yaml'
+    cwd: .
+- id: dod-omn25387-ac3
+  description: The block is pasted from overlays main with its commit sha and the floor document is driven through the overlay main load check's loader; the same test fails at the merge base and with one
+    key of the block changed.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: grep -qF 'a951d8554d2f6dd3d78db46b04cc1184fef5c8bf' tests/nodes/node_factory_floor_effect/test_overlay_ledger_projection_block.py
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_overlay_ledger_projection_block.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25387-ac4
+  description: The model comments say the block is accepted and not yet acted on, and a test pins that the floor effect still reads the ledger file with the block set.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect -q --no-cov -n 0 -p no:randomly -k ledger_projection
+    cwd: .
+- id: dod-omn25387-ac5
+  description: Every malformed-block case asserts the error location and type, with cases for read_workers=0, settle_seconds=-1, a missing reader and a missing cache_ttl_seconds.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_overlay_ledger_projection_block.py -q --no-cov -n 0 -p no:randomly -k error_chain
+    cwd: .
+- id: dod-omn25387-ac6
+  description: Findings 6, 7 and 8 are answered in a pull request comment. Reading comments needs the pull request's live state, so only the local Done gate runs this.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: command
+    check_value: onex scm pr-view OmniNode-ai/omnimarket#6371
+    cwd: .
+- id: dod-omn25387-ac7
+  description: 'The required suites are run on a lab host at the pushed head and a pull request comment starting Lab: head= names the sha. Reading the comment and the lab host needs live state, so only
+    the local Done gate runs this.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: command
+    check_value: onex scm pr-view OmniNode-ai/omnimarket#6371
+    cwd: .
