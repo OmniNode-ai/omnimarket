@@ -1,0 +1,9 @@
+{
+  "endpoint_env": "BIFROST_LOCAL_CODER_ENDPOINT_URL",
+  "observed_at": "2026-11-17T02:05Z",
+  "read": "GET /v1/models on the endpoint both local rungs read (shared)",
+  "model": {
+    "id": "Qwen3.8-27B",
+    "max_model_len": 131072
+  }
+}

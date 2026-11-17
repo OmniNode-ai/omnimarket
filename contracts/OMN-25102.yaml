@@ -1,6 +1,6 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-25102"
-title: "Omnimarket pull request 6344 fixes every blocking finding of its review at head 53e3cd0f6050: the missing-terminal evidence is on the bus, the output reserve is gated, and the tests drive the public handler"
+title: "Omnimarket pull request 6344 fixes every blocking finding of its review at head 53e3cd0f6050: the missing-terminal cause remains open (a captured reproduction is recorded), the output reserve is gated, and the tests drive the public handler"
 summary: "Evidence for the review fixes carried on the branch of omnimarket#6344: the output reserve declared for each local rung, the public routing ladder exercised per use_for class with and without the overlay, the contract proof parsing the deployed dev terminal, the local-share alarm split out with defaulted rule fields. The missing-terminal cause of OMN-24980 stays open and is recorded as such in that ticket contract."
 is_seam_ticket: false
 interface_change: false
@@ -22,7 +22,7 @@ requirements:
 evidence_requirements:
 - kind: "tests"
   description: "Focused tests of every file the change touches."
-  command: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py tests/nodes/node_delegation_health_compute/test_local_share_zero_omn24980.py tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q --no-cov -n 0 -p no:randomly"
+  command: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py tests/nodes/node_delegation_health_compute/test_local_share_zero_omn24980.py tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -33,7 +33,7 @@ dod_evidence:
   source: "manual"
   checks:
   - check_type: "test_passes"
-    check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov -n 0 -p no:randomly"
+    check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov"
     cwd: "."
   binds_ac: ["AC1"]
 - id: "dod-omn25102-output-reserve"
@@ -41,7 +41,7 @@ dod_evidence:
   source: "manual"
   checks:
   - check_type: "test_passes"
-    check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer -q --no-cov -n 0 -p no:randomly"
+    check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer -q --no-cov"
     cwd: "."
   binds_ac: ["AC2"]
 - id: "dod-omn25102-ceiling-path-pin"
@@ -49,7 +49,7 @@ dod_evidence:
   source: "manual"
   checks:
   - check_type: "test_passes"
-    check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py -q --no-cov -n 0 -p no:randomly"
+    check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py -q --no-cov"
     cwd: "."
   binds_ac: ["AC3"]
 - id: "dod-omn25102-health-rules"
@@ -57,7 +57,7 @@ dod_evidence:
   source: "manual"
   checks:
   - check_type: "test_passes"
-    check_value: "uv run pytest tests/nodes/node_delegation_health_compute -q --no-cov -n 0 -p no:randomly"
+    check_value: "uv run pytest tests/nodes/node_delegation_health_compute -q --no-cov"
     cwd: "."
   binds_ac: ["AC4"]
 - id: "dod-omn25102-changed-files"
@@ -65,7 +65,7 @@ dod_evidence:
   source: "manual"
   checks:
   - check_type: "test_passes"
-    check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py tests/nodes/node_delegation_health_compute/test_local_share_zero_omn24980.py tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q --no-cov -n 0 -p no:randomly"
+    check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py tests/nodes/node_delegation_health_compute/test_local_share_zero_omn24980.py tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q --no-cov"
     cwd: "."
   binds_ac: ["AC5"]
 - id: "dod-omn25102-integration-proof"
@@ -74,5 +74,5 @@ dod_evidence:
   execution_scope: "local_done_gate"
   checks:
   - check_type: "command"
-    check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-25102 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_routing_reducer tests/nodes/node_delegation_health_compute -q -n 0 --no-cov"
+    check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-25102 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_routing_reducer tests/nodes/node_delegation_health_compute -q --no-cov"
     cwd: "."

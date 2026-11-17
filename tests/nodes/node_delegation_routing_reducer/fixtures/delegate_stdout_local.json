@@ -1,0 +1,216 @@
+{
+  "artifact_refs": [
+    {
+      "ref": "sha256:168a0398f90bb83f24b8bb33483d91f2f240f614db2c5790e13116b49b67b24c"
+    }
+  ],
+  "correlation_id": "debdb785-7967-42da-a76c-7e5bb2cf5f04",
+  "duration_ms": 44460,
+  "exit_code": 0,
+  "metrics": {
+    "capture_log_bytes": 5066.0
+  },
+  "node_name": "node_delegate_skill_orchestrator",
+  "result": {
+    "capture_log": "<redacted>",
+    "dispatch_target": "onex.cmd.omnimarket.delegate-skill.v1 via <redacted-bus-host>; live consumers: local.omnimarket.node_delegate_skill_orchestrator.consume.1.3.0.__i.runtime-main.__t.onex.cmd.omnimarket.delegate-skill.v1",
+    "error": "",
+    "exit_code": 0,
+    "handler_locus": "dispatched",
+    "handler_result": null,
+    "orchestrator_distribution": "omnimarket 0.4.321 (<redacted-path>)",
+    "runtime_error_is_transport": false,
+    "runtime_error_type": "",
+    "terminal_payload": {
+      "correlation_id": "debdb785-7967-42da-a76c-7e5bb2cf5f04",
+      "envelope_id": "0f881d66-e757-5eb0-9e0e-56ae3c15e4e4",
+      "envelope_timestamp": "2026-11-17T02:01:59.455818Z",
+      "envelope_version": {
+        "build": null,
+        "major": 2,
+        "minor": 4,
+        "patch": 0,
+        "prerelease": null
+      },
+      "event_type": "omnimarket.delegate-skill-completed",
+      "metadata": {
+        "headers": {},
+        "parent_span_id": null,
+        "request_id": null,
+        "span_id": null,
+        "tags": {},
+        "trace_id": null
+      },
+      "onex_version": {
+        "build": null,
+        "major": 1,
+        "minor": 0,
+        "patch": 0,
+        "prerelease": null
+      },
+      "parent_envelope_id": "b7c6ea12-06b6-49da-86a2-69f0ef9aa004",
+      "payload": {
+        "attempts": [
+          {
+            "acceptance_decision": "accept",
+            "acceptance_detail": "",
+            "acceptance_reason": "quality_bar_met",
+            "attempt_id": "160b1eb6-9da5-5715-9535-3ff3110a9df3",
+            "attempt_kind": "first_try",
+            "backend_id": "local-omnipc2-chat",
+            "configuration": null,
+            "cost_usd": 0.0,
+            "error_message": "",
+            "failure_class": null,
+            "finish_reason": "absent",
+            "host": "<redacted-ip>",
+            "http_status": 200,
+            "input_token_budget": null,
+            "input_tokens_measured": null,
+            "model_id": "Qwen3.8-27B",
+            "parent_attempt_id": null,
+            "provider_code": null,
+            "provider_id": "host:<redacted-ip>",
+            "quality_gate_passed": true,
+            "quality_score": 1.0,
+            "reasoning_preamble": "",
+            "reasoning_preamble_rule": "no_boundary_found",
+            "rubric_verdict": {
+              "failed_criteria": [],
+              "outcome": "UNDETERMINED",
+              "rubric_version": "delegation-class-rubrics.v1",
+              "task_class": "summarization",
+              "undetermined_criteria": [
+                "claims_traceable",
+                "id_coverage"
+              ]
+            },
+            "size_band": null,
+            "split_id": null,
+            "substituted_from_backend_id": null,
+            "tier": "local",
+            "truncated": false,
+            "usage_source": null
+          }
+        ],
+        "attempts_count": 1,
+        "baseline_source": "fixed_default",
+        "baseline_state": "RESOLVED",
+        "budget_evidence": {
+          "ceiling_overlay_ref": null,
+          "ceiling_source": "packaged",
+          "execution_timeout_seconds": 240,
+          "requested_timeout_seconds": null,
+          "task_class_timeout_ceiling_seconds": 240,
+          "terminal_delivery_margin_seconds": 60
+        },
+        "budget_refusal": null,
+        "budget_source": "contract:task_class_contracts.v1.yaml#execution_budgets.summarization",
+        "caller_lane": "fix6344-0135-s",
+        "command_id": "b7c6ea12-06b6-49da-86a2-69f0ef9aa004",
+        "content_verdict": null,
+        "correlation_id": "debdb785-7967-42da-a76c-7e5bb2cf5f04",
+        "credential_refusal": null,
+        "credential_withheld": null,
+        "error_message": "",
+        "escalation_count": 0,
+        "execution_duration_ms": 42072,
+        "finish_reason": "absent",
+        "metrics": {
+          "compliance_attempts": 1,
+          "cost_measured": null,
+          "cost_savings_usd": 0.000846,
+          "cost_usd": 0.0,
+          "frontier_costs_usd": {
+            "claude-haiku-3-5": 0.0003384,
+            "claude-opus-4-6": 0.002115,
+            "claude-sonnet-4-20250514": 0.001269,
+            "gpt-4o": 0.0010325
+          },
+          "input_tokens": 373,
+          "latency_ms": 13371,
+          "output_tokens": 10,
+          "premium_counterfactual": {
+            "as_of": "2026-10-06",
+            "counterfactual_cost_usd": "0.000846",
+            "measured": false,
+            "model": "claude-sonnet-5-5",
+            "price_in_per_1k": "0.002",
+            "price_out_per_1k": "0.01",
+            "pricing_source": "pricing_manifest",
+            "tokens_in": 373,
+            "tokens_out": 10
+          },
+          "tokens_to_compliance": 383,
+          "total_tokens": 383
+        },
+        "model_cloud_baseline": "claude-sonnet-5-5",
+        "model_name": "Qwen3.8-27B",
+        "operational_outcome": null,
+        "output_refusal": null,
+        "preamble_chars": 11,
+        "pricing_manifest_version": 1,
+        "prompt_text": "Summarize in one line: the sky is blue.",
+        "provider": "local",
+        "quality_gate_passed": true,
+        "quality_gates_failed": [],
+        "quality_score": 1.0,
+        "queue_wait_ms": 1688,
+        "reasoning_preamble_rule": "no_boundary_found",
+        "required_quality_bar": 0.8,
+        "response": "The sky is blue.",
+        "response_contract_evidence": {
+          "channel": "messages[0].content",
+          "contract_sha256": "eec0c6cf299fdcb0d413c031fd0676b376d343cdbb4c2e12e93971f8a8ef8084",
+          "conveyed": true,
+          "output_shape": "markdown",
+          "raw_response": {
+            "sha256": "9512928270fb6ffdcb73d3114c34e012a35849faf47d7ce9ef5ea5bbc8239657",
+            "source_field": "choices[0].message.content",
+            "text": "### ANSWER\nThe sky is blue.",
+            "utf8_bytes": 27
+          },
+          "validated": true
+        },
+        "score_vs_required_bar": "at_or_above_bar",
+        "session_id": "99b354bf-2ab6-48f9-be7e-923f815eaaa3",
+        "span_id": "cfa5d10a-4a32-4961-b9f1-2d48a7424f76",
+        "status": "completed",
+        "task_type": "summarization",
+        "tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+        "terminal_failure_reason": null,
+        "ticket_id": "OMN-25167",
+        "trace_id": "24b5264c-aa0c-4c16-a76d-3fb37ffcd448",
+        "truncated": false
+      },
+      "payload_schema_version": null,
+      "payload_type": null,
+      "priority": 5,
+      "producer": null,
+      "provenance": null,
+      "request_id": null,
+      "retry_count": 0,
+      "security_context": null,
+      "source_tool": null,
+      "span_id": null,
+      "target_tool": null,
+      "tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+      "timeout_seconds": null,
+      "trace_id": null
+    },
+    "wire_correlation_id": "debdb785-7967-42da-a76c-7e5bb2cf5f04",
+    "workflow": "<redacted-path>",
+    "workflow_result": "completed"
+  },
+  "result_model": "omnibase_infra.cli.model_receipt_runtime_summary.ModelReceiptRuntimeSummary",
+  "run_id": "e97b77ba-c7d1-44db-94e9-4c807c215da3",
+  "schema_version": {
+    "build": null,
+    "major": 1,
+    "minor": 1,
+    "patch": 0,
+    "prerelease": null
+  },
+  "skill_name": "node_delegate_skill_orchestrator",
+  "status": "success"
+}

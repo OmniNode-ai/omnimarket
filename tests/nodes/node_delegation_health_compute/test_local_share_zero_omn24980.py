@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 import shlex
+from pathlib import Path
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_delegation_health_compute.handlers.handler_delegation_health import (
@@ -20,6 +22,16 @@ from omnimarket.nodes.node_delegation_health_compute.models.model_delegation_hea
 )
 
 pytestmark = pytest.mark.unit
+_PACKAGED_BACKENDS = yaml.safe_load(
+    (
+        Path(__file__).parents[3] / "src/omnimarket/configs/bifrost_delegation.yaml"
+    ).read_text()
+)["backends"]
+# A rung the packaged contract declares explicit_pin_only. Both local rungs are
+# not pin-only, so they never belong in a pin-only rung list.
+PIN_ONLY_BACKEND: str = next(
+    b["backend_id"] for b in _PACKAGED_BACKENDS if b.get("explicit_pin_only")
+)
 
 
 def test_existing_caller_does_not_gain_an_unpopulated_local_share_warning() -> None:
@@ -31,12 +43,22 @@ def test_existing_caller_does_not_gain_an_unpopulated_local_share_warning() -> N
     assert not any("local share" in line for line in verdict.not_judged)
 
 
-def test_existing_rule_payload_needs_no_local_share_fields() -> None:
+def test_rules_carry_no_local_share_field_and_refuse_one() -> None:
+    # The rules model neither declares nor accepts the split-out local-share
+    # fields, so a payload that names one is refused rather than ignored.
     payload = load_rules().model_dump(mode="json")
-    payload.pop("local_share_window_minutes", None)
-    payload.pop("local_share_min_runs", None)
-    payload["fixes"].pop("local_share_zero", None)
+    assert not any("local_share" in key for key in payload)
+    assert not any("local_share" in key for key in payload["fixes"])
+    assert not any(
+        "local_share" in name for name in ModelDelegationHealthRules.model_fields
+    )
     ModelDelegationHealthRules.model_validate(payload)
+    for extra in ({"local_share_window_minutes": 360}, {"local_share_min_runs": 5}):
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            ModelDelegationHealthRules.model_validate({**payload, **extra})
+    fixes = {**payload["fixes"], "local_share_zero": "a fix"}
+    with pytest.raises(ValidationError):
+        ModelDelegationHealthRules.model_validate({**payload, "fixes": fixes})
 
 
 def test_unimplemented_local_share_finding_is_not_advertised() -> None:
@@ -45,10 +67,9 @@ def test_unimplemented_local_share_finding_is_not_advertised() -> None:
     }
 
 
-@pytest.mark.parametrize("runs", [4, 5, 40])
-def test_unread_local_share_counts_are_not_accepted_as_health_evidence(
-    runs: int,
-) -> None:
+def test_unread_local_share_counts_are_not_accepted_as_health_evidence() -> None:
+    # One case is enough: the request model forbids the whole local_share block,
+    # so the refusal does not depend on the run counts it carries.
     with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
         ModelDelegationHealthRequest.model_validate(
             {
@@ -57,12 +78,19 @@ def test_unread_local_share_counts_are_not_accepted_as_health_evidence(
                 "total_rows": 100,
                 "local_share": {
                     "window_minutes": 360,
-                    "delegated_runs": runs,
+                    "delegated_runs": 5,
                     "local_runs": 0,
                     "local_endpoints_up": ["a point-in-time endpoint probe"],
                 },
             }
         )
+
+
+def test_the_smoke_fixture_rung_is_pin_only_in_the_packaged_contract() -> None:
+    declared = {b["backend_id"]: b for b in _PACKAGED_BACKENDS}
+    assert declared[PIN_ONLY_BACKEND]["explicit_pin_only"] is True
+    for local in ("local-coder", "local-heavy-reasoning"):
+        assert not declared[local].get("explicit_pin_only", False)
 
 
 def test_remaining_pinned_smoke_fix_renders_the_command() -> None:
@@ -73,15 +101,15 @@ def test_remaining_pinned_smoke_fix_renders_the_command() -> None:
             "total_rows": 100,
             "pin_only_rungs": [
                 {
-                    "backend_id": "local-heavy-reasoning",
-                    "provider": "local",
+                    "backend_id": PIN_ONLY_BACKEND,
+                    "provider": "cloud",
                     "model": "fixture-model",
-                    "tier": "local",
+                    "tier": "cheap_cloud",
                 }
             ],
             "backends": [
                 {
-                    "backend_id": "local-heavy-reasoning",
+                    "backend_id": PIN_ONLY_BACKEND,
                     "accepted": 0,
                     "last": "",
                     "counts": {"h1": 1, "window": 1, "h24": 1},
@@ -95,7 +123,7 @@ def test_remaining_pinned_smoke_fix_renders_the_command() -> None:
     assert load_rules().smoke_command in finding.fix
     command = finding.fix.split("smoke the rung pinned: ", 1)[1].split(";", 1)[0]
     argv = shlex.split(command)
-    assert argv[argv.index("--backend-id") + 1] == "local-heavy-reasoning"
+    assert argv[argv.index("--backend-id") + 1] == PIN_ONLY_BACKEND
     assert argv[argv.index("--task-type") + 1] == "document"
     assert argv[argv.index("--bus") + 1] == "kafka"
     assert argv[argv.index("--locus") + 1] == "deployed-lane"
