@@ -33,6 +33,17 @@ output_model:
   module: omnimarket.nodes.node_emit_daemon.models.model_daemon_state
   description: Current daemon lifecycle state or completed transition event.
 
+# terminal_event (OMN-25291): the answer onex run-node waits for; the failure answer stays under runtime_dispatch.terminal_events.failure.
+terminal_event: onex.evt.omnimarket.emit-daemon-lifecycle-completed.v1
+# OMN-25291: the dev runtime login publishes the terminal_event answer; the principal is the placeholder the broker permission derivation fills
+# for the runtime's own login (overlays: broker_acl_principals). Write and describe on that one topic, literal, nothing else. Declared only until
+# the operator's broker permission apply runs.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.emit-daemon-lifecycle-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.emit-daemon-lifecycle-completed.v1, operation: DESCRIBE}
+
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.emit-daemon-lifecycle.v1
   terminal_events:
