@@ -22,6 +22,9 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.model_tenant_routing_overlay_backend import (
+    TENANT_OVERLAY_TIER_NAME,
+)
 from omnimarket.pricing import resolve_tier_cost
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG, require_tenant_id
@@ -100,6 +103,13 @@ def materialize_budget_state(
     returns a no-row result (truthful empty). Idempotent: a source event whose
     correlation_id already wrote the current period row is skipped.
     """
+    # OMN-24874: a run on the customer's own key (the tenant overlay tier) is booked
+    # ``metered`` with the cost the customer's provider charged, and that is not the
+    # platform's spend. It never draws a ceiling, whatever the registry declares.
+    if event.cost_tier_name == TENANT_OVERLAY_TIER_NAME:
+        return ModelBudgetStateResult(
+            skipped_reason="tenant_overlay_not_platform_spend"
+        )
     cost = resolve_tier_cost(event.cost_tier_name)
     if cost is None or cost.monthly_cap_usd is None:
         return ModelBudgetStateResult(skipped_reason="tier_not_budgeted")

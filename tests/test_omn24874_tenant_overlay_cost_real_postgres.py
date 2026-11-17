@@ -10,6 +10,7 @@ stores NULL. The database is the INTEGRATION_POSTGRES_* one CI configures; the m
 
 from __future__ import annotations
 
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -19,6 +20,8 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
 )
 from omnimarket.projection.runner import MessageMeta
 from tests.test_omn15909_real_postgres_projection_write_path_gate import (
+    _HANDLER_MODULE,
+    _budgeted_tier,
     _provisioned_runner,
     _real_delegation_completed_payload,
 )
@@ -114,3 +117,36 @@ async def test_a_zero_cost_terminal_naming_an_endpoint_but_no_model_is_stored_un
         assert row is not None
         assert row["cost_measurement_source"] == "no_cost_model"
         assert row["cost_usd"] is None
+
+
+_BUDGET_SELECT = "SELECT count(*) FROM delegation_budget_state WHERE tenant_id = $1"
+
+
+@pytest.mark.integration
+async def test_own_key_spend_never_draws_the_ceiling_budget_state_on_postgres() -> None:
+    # Own-key spend is not the platform's: even when a registry declares a cap for the tier name, the async ceiling reader
+    # writes no delegation_budget_state row for tenant_overlay, and the same call on a budgeted tier does (the control).
+    async with _provisioned_runner() as (runner, admin_conn, _schema):
+        with patch(
+            f"{_HANDLER_MODULE}.resolve_tier_cost", return_value=_budgeted_tier()
+        ):
+            await runner._materialize_budget_state_async(
+                correlation_id=str(uuid4()),
+                cost_tier_name=_TIER,
+                cost_measurement_source="metered",
+                budget_headroom_consumed_usd=0.0,
+                cost_usd=0.000145,
+                tenant_id=_TENANT,
+                timestamp=None,
+            )
+            assert await admin_conn.fetchval(_BUDGET_SELECT, _TENANT) == 0
+            await runner._materialize_budget_state_async(
+                correlation_id=str(uuid4()),
+                cost_tier_name="ceiling-budgeted",
+                cost_measurement_source="budgeted_in_budget",
+                budget_headroom_consumed_usd=0.05,
+                cost_usd=0.0,
+                tenant_id=_TENANT,
+                timestamp=None,
+            )
+            assert await admin_conn.fetchval(_BUDGET_SELECT, _TENANT) == 1

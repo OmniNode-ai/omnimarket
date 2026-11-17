@@ -1880,12 +1880,17 @@ def _tenant_overlay_cost_usd(event: ModelProjectionTaskDelegatedEvent) -> float:
     if declared is None:
         return 0.0
     price_in, price_out = declared
-    return float(
-        (
-            Decimal(event.tokens_input) * price_in
-            + Decimal(event.tokens_output) * price_out
-        )
-        / Decimal(1_000_000)
+    # Rounded to ten places, as the workflow terminal rounds the same quotient, so the
+    # floor and a terminal that priced the run itself store the same figure.
+    return round(
+        float(
+            (
+                Decimal(event.tokens_input) * price_in
+                + Decimal(event.tokens_output) * price_out
+            )
+            / Decimal(1_000_000)
+        ),
+        10,
     )
 
 

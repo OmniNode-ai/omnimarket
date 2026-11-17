@@ -18,6 +18,7 @@ import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -52,6 +53,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     ModelProjectionTaskDelegatedEvent,
     _canonical_result_to_task_delegated_payload,
     _measure_actual_cost,
+    _tenant_overlay_cost_usd,
 )
 from omnimarket.pricing import build_premium_counterfactual, resolve_tier_cost
 
@@ -165,26 +167,73 @@ def test_projection_keeps_the_priced_terminal_cost_of_a_tenant_overlay_run() -> 
     assert measured.cost_tier_name == TENANT_OVERLAY_TIER_NAME
 
 
-@pytest.mark.unit
-def test_projection_still_floors_an_unpriced_unmodelled_tier_to_zero() -> None:
-    counterfactual = build_premium_counterfactual(
-        prompt_tokens=_PROMPT_TOKENS, completion_tokens=_COMPLETION_TOKENS
-    )
-    event = ModelProjectionTaskDelegatedEvent(
-        correlation_id="omn-24874-unpriced",
+def _probe_overlay_event(model: str) -> ModelProjectionTaskDelegatedEvent:
+    """A zero-cost tenant overlay terminal on the probe tenant's own endpoint, the shape the live R8 terminal has."""
+    return ModelProjectionTaskDelegatedEvent(
+        correlation_id="omn-24874-probe",
         task_type="summarization",
-        delegated_to="glm-undeclared-model",
-        model_name="glm-undeclared-model",
+        delegated_to=model,
+        model_name=model,
+        endpoint_url=_PROBE_ENDPOINT,
         quality_gate_passed=True,
         cost_usd=0.0,
         tokens_input=_PROMPT_TOKENS,
         tokens_output=_COMPLETION_TOKENS,
         cost_tier_name=TENANT_OVERLAY_TIER_NAME,
-        premium_counterfactual=counterfactual,
+        premium_counterfactual=build_premium_counterfactual(
+            prompt_tokens=_PROMPT_TOKENS, completion_tokens=_COMPLETION_TOKENS
+        ),
     )
-    measured = _measure_actual_cost(event)
+
+
+@pytest.mark.unit
+def test_projection_still_floors_an_unpriced_unmodelled_tier_to_zero() -> None:
+    # The probe carries the endpoint the real terminal carries, so the model alone decides: the declared model is priced on
+    # it (the control) and the undeclared one is not. A probe with no endpoint prices nothing and cannot tell them apart.
+    control = _measure_actual_cost(_probe_overlay_event(_MODEL))
+    assert control.cost_usd == pytest.approx(_PINNED_DECLARED_COST_USD)
+    assert control.cost_measurement_source == "metered"
+    measured = _measure_actual_cost(_probe_overlay_event("glm-undeclared-model"))
     assert measured.cost_usd == 0.0
     assert measured.cost_measurement_source == "no_cost_model"
+
+
+@pytest.mark.unit
+def test_the_probe_without_an_endpoint_prices_nothing_so_it_needs_the_endpoint() -> (
+    None
+):
+    # Why the probe sets the endpoint: with it removed even the declared model reads unpriced.
+    event = _probe_overlay_event(_MODEL).model_copy(update={"endpoint_url": None})
+    assert _measure_actual_cost(event).cost_usd == 0.0
+
+
+@pytest.mark.unit
+def test_the_projection_floor_rounds_to_ten_places_like_the_workflow_terminal() -> None:
+    # A declared price with more places than the catalogue's, so the unrounded quotient and the ten-place one differ.
+    price = (Decimal("0.123456789123"), Decimal("0.987654321987"))
+    projection = (
+        "omnimarket.nodes.node_projection_delegation.handlers."
+        "handler_projection_delegation.byok_declared_price_per_1m"
+    )
+    workflow = (
+        "omnimarket.nodes.node_delegation_orchestrator.handlers."
+        "handler_delegation_workflow.byok_declared_price_per_1m"
+    )
+    event = _probe_overlay_event(_MODEL).model_copy(
+        update={"tokens_input": 7, "tokens_output": 11}
+    )
+    with patch(projection, return_value=price), patch(workflow, return_value=price):
+        floor = _tenant_overlay_cost_usd(event)
+        terminal = HandlerDelegationWorkflow._measure_terminal_cost(
+            tier_name=TENANT_OVERLAY_TIER_NAME,
+            prompt_tokens=7,
+            completion_tokens=11,
+            premium_counterfactual=None,
+            endpoint_url=_PROBE_ENDPOINT,
+            model_id=_MODEL,
+        )
+    assert terminal.cash_cost_usd == round(terminal.cash_cost_usd, 10)
+    assert floor == terminal.cash_cost_usd
 
 
 _UNMODELLED_TIER = "a_tier_the_registry_never_declared"

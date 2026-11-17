@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import json
-import re
+import os
 import shlex
 import stat
 import subprocess
@@ -17,6 +17,9 @@ from typing import Any
 
 import pytest
 import yaml
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 from omnimarket.handlers.delegation_scenario_runtime import JournalScenarioEventSink
 from omnimarket.models.model_delegation_scenario import EnumScenarioTrigger
@@ -255,39 +258,217 @@ def test_omn24874_contract_ac5_check_needs_the_clean_row_to_name_the_head(
     assert ok.returncode == 0, ok.stderr
 
 
-@pytest.mark.unit
-def test_omn24874_contract_ac3_check_reads_the_r8_unit_and_the_dev_runtime() -> None:
+_RUNTIME_CONTAINER = "omninode-runtime"
+_RUNTIME_PROJECT = (
+    "omnibase-infra"  # the compose project the dev runtime container carries as a label
+)
+
+
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=scrub_git_location_env(os.environ),
+    ).stdout.strip()
+
+
+class _Ac3World:
+    """A temp omnimarket clone (base, the squash commit of the fix, a later dev commit tagged dev-*), the R8 unit's
+    installed.json, and ssh and hostname shims standing in for the dev runtime host and its container."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.repo = root / "omnimarket"
+        self.repo.mkdir(parents=True)
+        _git(self.repo, "init", "-q")
+        _git(self.repo, "commit", "-q", "--allow-empty", "-m", "base")
+        self.base = _git(self.repo, "rev-parse", "HEAD")
+        _git(self.repo, "commit", "-q", "--allow-empty", "-m", "OMN-24874: the fix")
+        self.fix = _git(self.repo, "rev-parse", "HEAD")
+        _git(self.repo, "commit", "-q", "--allow-empty", "-m", "a later change")
+        self.later = _git(self.repo, "rev-parse", "HEAD")
+        _git(self.repo, "tag", f"dev-20261117000000-{self.later[:12]}", self.later)
+        _git(self.repo, "update-ref", "refs/remotes/origin/dev", self.later)
+        self.installed = root / ".onex_state/delegation-scenario-r8"
+        self.installed.mkdir(parents=True)
+        self.set_installed(self.later)
+        self.bin = root / "bin"
+        self.bin.mkdir()
+        self.calls = root / "ssh-calls.txt"
+        self.set_runtime()
+
+    def set_installed(self, revision: str) -> None:
+        (self.installed / "scenario-r8-systemd.installed.json").write_text(
+            json.dumps({"revision": revision}), encoding="utf-8"
+        )
+
+    def set_runtime(
+        self,
+        *,
+        container: str = _RUNTIME_CONTAINER,
+        project: str = _RUNTIME_PROJECT,
+        commit: str | None = None,
+        dev_merge_tag: str = "dev-20261116081630-6efbe3ee5027",
+        dirty: bool = False,
+        sibling: str = "omnimarket",
+        symbols_present: bool = True,
+    ) -> None:
+        provenance = {
+            "per_repo_vcs_provenance": {
+                "siblings": {
+                    "omnibase_core": {
+                        "vcs_ref": self.later,
+                        "vcs_dirty": False,
+                        "dev_merge_tag": "dev-20261115210713-67a6d77ec939",
+                    },
+                    sibling: {
+                        "vcs_ref": commit if commit is not None else self.later,
+                        "vcs_dirty": dirty,
+                        "dev_merge_tag": dev_merge_tag,
+                    },
+                }
+            }
+        }
+        inspect = json.dumps(
+            [
+                {
+                    "Name": f"/{container}",
+                    "Config": {"Labels": {"com.docker.compose.project": project}},
+                }
+            ]
+        )
+        (self.root / "provenance.json").write_text(
+            json.dumps(provenance), encoding="utf-8"
+        )
+        shim = self.bin / "ssh"
+        shim.write_text(
+            "#!/bin/sh\n"
+            f'echo "$@" >> {shlex.quote(str(self.calls))}\n'
+            f'case "$*" in\n'
+            f"  *'cat /app/build-provenance.json'*)\n"
+            f"    case \"$*\" in *'docker inspect {_RUNTIME_CONTAINER}'*'docker exec {_RUNTIME_CONTAINER} '*) ;; *) exit 1;; esac\n"
+            f"    echo {shlex.quote(inspect)}; cat {shlex.quote(str(self.root / 'provenance.json'))};;\n"
+            f"  *'docker exec {_RUNTIME_CONTAINER} python -c'*) exit {0 if symbols_present else 1};;\n"
+            f"  *) exit 1;;\n"
+            f"esac\n",
+            encoding="utf-8",
+        )
+        shim.chmod(shim.stat().st_mode | stat.S_IXUSR)
+
+    def run(
+        self,
+        command: str,
+        *,
+        gate_host: str = _PINNED_HOST,
+        ssh_host: str | None = "dev@runtime",
+    ) -> int:
+        hostname = _hostname_shim(self.root, gate_host)
+        env = {
+            "PATH": f"{self.bin}:{hostname['PATH']}",
+            "OMNI_HOME": str(self.root),
+            "HOME": str(self.root),
+            # The operator variable the previous reading took its container from; the pinned reading must not follow it.
+            "RUNTIME_CONTAINER": _RUNTIME_CONTAINER,
+        }
+        if ssh_host is not None:
+            env["ONEX_RUNTIME_SSH_HOST"] = ssh_host
+        return subprocess.run(
+            shlex.split(command),
+            cwd=self.repo,
+            env=env,
+            check=False,
+            capture_output=True,
+        ).returncode
+
+
+def _ac3_command() -> str:
     item = _items()["dod-omn24874-ac3-running-revision"]
     assert item["binds_ac"] == ["AC3"]
-    command = str(item["checks"][0]["check_value"])
-    # Host pinned, the revision read is the R8 unit's installed revision (not the gate host's checkout HEAD), a dev-merge tag
-    # must contain it, and the newest dev-merge tag must be at most a day old.
-    assert f'test "$(hostname -s)" = {_PINNED_HOST}' in command
-    assert "scenario-r8-systemd.installed.json" in command
-    assert "merge-base --is-ancestor" in command
-    assert re.search(r'tag --contains "\$R" --list "dev-\*"', command)
-    assert "86400" in command
-    assert not re.search(r"is-ancestor \"\$F\" HEAD", command)
-    # The squash merge method is read (repository settings), so the commit looked up is a non-merge commit on the first-parent
-    # line of origin/dev and cannot be an unsquashed branch commit.
-    assert "--first-parent --no-merges" in command
-    # The dev runtime is read too: over ssh, in the runtime container, importing the handler that only the fix gives the
-    # declared-price function; either variable unset fails the command instead of skipping the reading.
-    assert "ssh -o BatchMode=yes" in command
-    assert "${ONEX_RUNTIME_SSH_HOST:?" in command
-    assert "${RUNTIME_CONTAINER:?" in command
-    assert "handler_delegation_workflow" in command
-    assert "m.byok_declared_price_per_1m" in command
+    return str(item["checks"][0]["check_value"])
 
 
 @pytest.mark.unit
-def test_omn24874_contract_ac3_dev_runtime_symbol_exists_only_with_the_fix() -> None:
-    # The name the dev-runtime reading asserts is imported by the workflow handler of this change.
+def test_omn24874_contract_ac3_check_passes_when_host_container_revision_and_symbols_hold(
+    tmp_path: Path,
+) -> None:
+    world = _Ac3World(tmp_path)
+    assert world.run(_ac3_command()) == 0
+    # The reading went to the pinned container, not to whichever container the operator variables name.
+    calls = world.calls.read_text(encoding="utf-8")
+    assert f"docker exec {_RUNTIME_CONTAINER} cat /app/build-provenance.json" in calls
+    assert f"docker exec {_RUNTIME_CONTAINER} python -c" in calls
+
+
+@pytest.mark.unit
+def test_omn24874_contract_ac3_check_fails_when_the_running_revision_lacks_the_fix(
+    tmp_path: Path,
+) -> None:
+    # The container holds the code of an older dev-merge tag: the fix is not its ancestor, so any container that merely
+    # imports the symbol (the previous reading) is not enough.
+    world = _Ac3World(tmp_path)
+    world.set_runtime(commit=world.base)
+    assert world.run(_ac3_command()) != 0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "runtime",
+    [
+        {"project": "omnibase-infra-stability"},
+        {"container": "omninode-runtime-lane"},
+        {"dev_merge_tag": ""},
+        {"dirty": True},
+        {"sibling": "omnibase_infra"},
+        {"symbols_present": False},
+    ],
+)
+def test_omn24874_contract_ac3_check_fails_on_the_wrong_container_build_record_or_missing_symbol(
+    tmp_path: Path, runtime: dict[str, object]
+) -> None:
+    world = _Ac3World(tmp_path)
+    world.set_runtime(**runtime)  # type: ignore[arg-type]
+    assert world.run(_ac3_command()) != 0
+
+
+@pytest.mark.unit
+def test_omn24874_contract_ac3_check_fails_on_the_unpinned_inputs(
+    tmp_path: Path,
+) -> None:
+    command = _ac3_command()
+    world = _Ac3World(tmp_path)
+    assert world.run(command, ssh_host=None) != 0  # no runtime host named
+    assert world.run(command, gate_host="some-other-host") != 0
+    # The R8 unit installed at a revision before the fix.
+    world.set_installed(world.base)
+    assert world.run(command) != 0
+
+
+@pytest.mark.unit
+def test_omn24874_contract_ac3_check_fails_before_the_fix_is_merged(
+    tmp_path: Path,
+) -> None:
+    world = _Ac3World(tmp_path)
+    _git(world.repo, "update-ref", "refs/remotes/origin/dev", world.base)
+    assert world.run(_ac3_command()) != 0
+
+
+@pytest.mark.unit
+def test_omn24874_contract_ac3_dev_runtime_symbols_exist_only_with_the_fix() -> None:
+    # The two names the dev-runtime reading asserts: the workflow's declared-price function and the projection's overlay floor.
     from omnimarket.nodes.node_delegation_orchestrator.handlers import (
         handler_delegation_workflow as workflow,
     )
+    from omnimarket.nodes.node_projection_delegation.handlers import (
+        handler_projection_delegation as projection,
+    )
 
     assert callable(workflow.byok_declared_price_per_1m)
+    assert callable(projection._tenant_overlay_cost_usd)
+    command = _ac3_command()
+    assert "w.byok_declared_price_per_1m" in command
+    assert "p._tenant_overlay_cost_usd" in command
 
 
 @pytest.mark.unit
