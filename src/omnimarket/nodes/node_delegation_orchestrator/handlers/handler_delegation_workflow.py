@@ -5491,16 +5491,22 @@ class HandlerDelegationWorkflow:
         not double-counted. Returns the measured metered cost for the caller to
         bank when it knows the attempt is non-terminal.
         """
+        # OMN-25411: price the attempt at its OWN endpoint: the decision it names by
+        # routing_decision_id. A different (re-issued) decision prices nothing.
+        own_route = workflow.routing_decision
+        own_endpoint = (
+            own_route.endpoint_url
+            if own_route is not None
+            and attempt.routing_decision_id is not None
+            and attempt.routing_decision_id == own_route.selected_backend_id
+            else None
+        )
         measurement = self._measure_terminal_cost(
             tier_name=attempt.tier_name,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             premium_counterfactual=None,
-            endpoint_url=(
-                workflow.routing_decision.endpoint_url
-                if workflow.routing_decision is not None
-                else None
-            ),
+            endpoint_url=own_endpoint,
             model_id=attempt.model_used,
         )
         priced_attempt = attempt.model_copy(

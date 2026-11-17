@@ -6,11 +6,6 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-- id: req-omn25378-ac1
-  statement: 'AC1: the AC4 alarm reading and its tests are on omnimarket#6353 or the ticket is shown amended on Linear, and contracts/[OMN-25186](https://linear.app/omninode/issue/OMN-25186).yaml line 29 and contracts/[OMN-25306](https://linear.app/omninode/issue/OMN-25306).yaml agree with where the reading lives -- falsifier: `uv run --frozen pytest tests -k "omn24874 and contract" -q` passes with contracts/[OMN-25186](https://linear.app/omninode/issue/OMN-25186).yaml still saying 6353 carries no AC4 reading'
-  acceptance:
-  - id: AC1
-    statement: 'AC1: the AC4 alarm reading and its tests are on omnimarket#6353 or the ticket is shown amended on Linear, and contracts/[OMN-25186](https://linear.app/omninode/issue/OMN-25186).yaml line 29 and contracts/[OMN-25306](https://linear.app/omninode/issue/OMN-25306).yaml agree with where the reading lives -- falsifier: `uv run --frozen pytest tests -k "omn24874 and contract" -q` passes with contracts/[OMN-25186](https://linear.app/omninode/issue/OMN-25186).yaml still saying 6353 carries no AC4 reading'
 - id: req-omn25378-ac2
   statement: 'AC2: each deleted or kept criterion of [OMN-24918](https://linear.app/omninode/issue/OMN-24918), [OMN-24978](https://linear.app/omninode/issue/OMN-24978), [OMN-25168](https://linear.app/omninode/issue/OMN-25168) and [OMN-25186](https://linear.app/omninode/issue/OMN-25186) is shown amended on Linear or restored, and tests/ci/test_repo_evidence_caller_workflow.py is shown to refuse a declared criterion with no hosted binding -- falsifier: `uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q` passes with a declared criterion that has no hosted binding'
   acceptance:
@@ -50,21 +45,23 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn25378-ac1
-  description: 'The contract text tests read OMN-25186 and OMN-25306 and assert both say the AC4 alarm reading is owed to a lane on omnimarket#6353, which does not carry it at its read head. The Linear amendment is not shown: this lane has no Linear tool.'
+- id: dod-omn25378-ac1-alarm-reading-live
+  description: 'Not declared in this contract, because it is not met: omnimarket#6353 at its head 856b0c8f54d6 carries the alarm node, its golden-chain tests and the installer''s timer declaration, and no reading of the alarm unit''s install record or of a row newer than it, and no amendment of the criterion is on Linear (read 2026-11-17). The criterion stands unchanged on its ticket, which stays open. The AC4 reading lives in contracts/OMN-24874.yaml as the unbound local item dod-omn24874-ac4-alarm-ledger-row; this item runs the same live command, local Done gate only, and fails until omnimarket#6353 is merged, its unit is installed on h053 and it has written an alarm row. No hosted text test binds this criterion.'
   source: manual
-  binds_ac:
-  - AC1
+  execution_scope: local_done_gate
   checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
+  - check_type: command
+    check_value: 'sh -c ''test "$(hostname -s)" = hp-gen9 && A=$(git log origin/dev -1 --first-parent --no-merges --format=%H --grep="(#6353)$") && test -n "$A" && I="${OMNI_HOME:?}/.onex_state/delegation-scenario-alarm/scenario-alarm-systemd.installed.json" && R=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])" "$I" revision) && git -C "${OMNI_HOME:?}/omnimarket" merge-base --is-ancestor "$A" "$R" && python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "src=alarm.*alarm=delegation-scenario-r[89]-failed" | python3 -c "import re,sys,json,datetime as D; t=D.datetime.fromisoformat(json.load(open(sys.argv[1]))[sys.argv[3]]); sys.exit(0 if any((m:=re.search(sys.argv[2],l)) and D.datetime.fromisoformat(m.group(1))>=t for l in sys.stdin) else 1)" "$I" "^(?:\S+:\d+:)?(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ) \| STATUS \|(?=.* \| src=alarm )(?=.* \| alarm=delegation-scenario-r[89]-failed )" installed_at'''
     cwd: .
 - id: dod-omn25378-ac2
-  description: The repo contract binds test refuses a declared criterion that no hosted test binds, with a positive control. The kept alarm items of OMN-24918 and OMN-24978 stay unbound local_done_gate readings whose tests exist on omnimarket#6353.
+  description: 'Both halves of AC2. First half: no amendment of OMN-24918, OMN-24978, OMN-25168, OMN-25186 or OMN-24874 is on Linear (read 2026-11-17, each criterion unchanged, no comment), so each criterion a contract does not declare is kept as a named local reading, never dropped; the test fails on a criterion that is neither declared nor kept (the AC4 reading of OMN-24874 was dropped outright and is restored). Second half: the repo contract binds test refuses a declared criterion with no hosted binding, with a positive control.'
   source: manual
   binds_ac:
   - AC2
   checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn24874_contract_checks.py -k "declared_or_kept_as_a_reading or criteria_kept_check" -q --no-cov -n 0 -p no:randomly
+    cwd: .
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly
     cwd: .
@@ -87,7 +84,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/delegation/test_omn24874_pricing_tier_lookup.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25378-ac5
-  description: The attempt-pricing site reads the endpoint from the routing decision, so a tenant_overlay attempt is priced at the declared price, with a platform-tier control.
+  description: The attempt-pricing site takes the endpoint only from the decision the attempt names by routing_decision_id (another decision prices nothing), a driven run of retries on the customer's own route reaches a terminal whose cumulative cost counts every attempt at the declared price over a non-empty escalation_history and draws no ceiling budget row, and a tenant_overlay run has no platform successor tier, with a platform-tier control.
   source: manual
   binds_ac:
   - AC5

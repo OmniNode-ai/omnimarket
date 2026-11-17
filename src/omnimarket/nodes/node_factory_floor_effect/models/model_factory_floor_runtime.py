@@ -139,7 +139,7 @@ class ModelLedgerArchiveWindow(BaseModel):
 
 
 class ModelLedgerProjectionWindow(BaseModel):
-    """The window read from the work ledger projection instead of the ledger file: one UTC day at a time through a named reader.
+    """The declared shape of a work ledger projection window: one UTC day at a time through a named reader (accepted, not read yet).
 
     ``reader`` is the name the work ledger reader overlay lists in its moved_readers. A closed day's rows are kept for
     ``cache_ttl_seconds``; ``read_workers`` days are read at once; yesterday is read live until ``settle_seconds`` after midnight UTC.
@@ -255,7 +255,8 @@ class ModelFactoryFloorOverlay(BaseModel):
     # Where the file ledger's split archives are, so the window read keeps each archive's rows in the source read cache and reads only
     # the live ledger each cycle (OMN-19998). Absent: the window is read as before.
     ledger_archives: ModelLedgerArchiveWindow | None = None
-    # Present, the window is read from the work ledger projection and replaces ledger_source and ledger_archives (OMN-24490).
+    # Accepted so an overlay that declares it is not refused (OMN-23963, OMN-24490). No reader in this tree reads it yet: the
+    # window is still read from ledger_source and ledger_archives whether or not it is present.
     ledger_projection: ModelLedgerProjectionWindow | None = None
     # The line board's declarations (OMN-22368). No default: an overlay without them is refused by name.
     processes: tuple[ModelFloorProcessDecl, ...]

@@ -31,11 +31,6 @@ requirements:
   acceptance:
   - id: AC5
     statement: 'AC5: the probe endpoint and the R8 terminal model_used in the test are literals read from the overlay row on h053 and an R8 terminal there, and the expected cost is a pinned literal, with a test -- falsifier: `uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q` passes with a pinned literal changed'
-- id: req-omn24978-ac6
-  statement: a test ties the alarm contract's max ages to the R8 and R9 start_interval, the ledger takes the out-of-order stamp of a backdated row, discovery never builds the alarm handler without arguments, and organic_run_has_values means cost above 0 on a real R8 writer row
-  acceptance:
-  - id: AC6
-    statement: 'AC6: a test ties the alarm contract''s max ages to the R8 and R9 start_interval, the ledger takes the out-of-order stamp of a backdated row, discovery never builds the alarm handler without arguments, and organic_run_has_values means cost above 0 on a real R8 writer row -- falsifier: `uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q` passes with a max age in contract.yaml changed'
 evidence_requirements:
 - kind: tests
   description: The tenant overlay pricing tests, the contract check tests, the alarm node tests and the real-Postgres file through the lab-work command.
@@ -91,10 +86,8 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24978-ac6
-  description: The contract-check test reads organic_run_has_values as cost above 0 on a row the real R8 handler and journal sink wrote.
+  description: The contract-check test reads organic_run_has_values as cost above 0 on a row the real R8 handler and journal sink wrote. This is one of the four parts of AC6; the other three (the alarm contract's max ages, the backdated stamp, discovery) are tests of the alarm node on omnimarket#6353, so AC6 is not declared here and is kept as the reading dod-omn24978-ac6-alarm (review finding 8, OMN-25411). This item binds no criterion.
   source: manual
-  binds_ac:
-  - AC6
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/test_omn24874_contract_checks.py -k real_writer_row -q --no-cov -n 0 -p no:randomly
@@ -108,12 +101,12 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24978-ac7
-  description: 'The lane''s STATUS row on the ledger names the full head of the pushed change, the lab-work command and exit=0 (the Lab: head= comment and the check-runs at that head are read from the pull request with onex scm pr-checks). Local Done gate only: it reads the ledger and a sha.'
+  description: 'A STATUS row on the ledger that names omnimarket#6335 (any fixer lane, no lane name pinned) names the full head of the pushed change, the lab-work command and exit=0 (the Lab: head= comment and the check-runs at that head are read from the pull request with onex scm pr-checks). Local Done gate only: it reads the ledger and a sha.'
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: sh -c 'python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "lane=fix6335-2005" | grep -F "$(git rev-parse HEAD)" | grep -F "exit=0" | grep -q STATUS'
+    check_value: sh -c 'python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "omnimarket#6335" | grep -F "$(git rev-parse HEAD)" | grep -F "exit=0" | grep -q STATUS'
     cwd: .
 - id: dod-omn24978-integration-proof
   description: The focused tests of this change (the overlay terminal cost tests, the contract check tests, the alarm node tests) run on a lab host at the pushed head through the lab work runner; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The real-Postgres file runs through the lab-work command of dod-omn24874-real-postgres in contracts/OMN-24874.yaml.

@@ -308,7 +308,7 @@ def _run_ac5(
     ).returncode
 
 
-_CLEAN = "2026-11-16T21:00:00Z | STATUS | lane=x | pr=OmniNode-ai/omnimarket#{pr} | head={head} | verdict=CLEAN"
+_CLEAN = "2026-11-16T21:00:00Z | STATUS | lane=fable-omnimarket-{pr}-2100 | actor=fable-reviewer | model=fable | pr=OmniNode-ai/omnimarket#{pr} | head={head} | verdict=CLEAN"
 
 
 @pytest.mark.unit
@@ -332,6 +332,14 @@ def test_omn24874_contract_ac5_check_needs_a_clean_row_at_the_head_of_each_pull_
     assert _run_ac5(tmp_path / "wrong-head", [this, wrong]) != 0
     # A head the watcher cannot read fails closed.
     assert _run_ac5(tmp_path / "unreadable", [this, alarm], alarm_pr_state=None) != 0
+    # Review finding 8 (OMN-25411): a CLEAN row another lane wrote (not the review lane of
+    # that pull request) at the right head passes nothing.
+    for pr, head, kept in ((6335, "<HEAD>", alarm), (6353, "<ALARM>", this)):
+        other = (
+            f"2026-11-16T21:00:00Z | STATUS | lane=fix6335-2005 | pr=omnimarket#{pr} "
+            f"| head={head} | verdict=CLEAN"
+        )
+        assert _run_ac5(tmp_path / f"other-lane-{pr}", [other, kept]) != 0, pr
 
 
 _RUNTIME_CONTAINER = "omninode-runtime"
@@ -583,11 +591,20 @@ def test_omn24874_contract_ac3_check_fails_when_the_dev_merge_tag_names_another_
     tmp_path: Path,
 ) -> None:
     # A tag that merely starts with dev- but names a commit other than the build's vcs_ref passes nothing.
+    # Review finding 5 (OMN-25411): each tag exists in the clone and names the base commit,
+    # so rev-parse succeeds and the reading fails on the comparison with the vcs_ref.
     world = _Ac3World(tmp_path)
-    world.set_runtime(dev_merge_tag="dev-20261116081630-6efbe3ee5027")
-    assert world.run(_ac3_command()) != 0
-    world.set_runtime(dev_merge_tag=f"dev-20261117000000-{world.base[:12]}")
-    assert world.run(_ac3_command()) != 0
+    for tag in (
+        "dev-20261116081630-6efbe3ee5027",
+        f"dev-20261117000000-{world.base[:12]}",
+    ):
+        _git(world.repo, "tag", tag, world.base)
+        assert _git(world.repo, "rev-parse", f"{tag}^{{commit}}") == world.base
+        world.set_runtime(dev_merge_tag=tag)
+        assert world.run(_ac3_command()) != 0, tag
+    # Control: the world's own tag, naming the build's vcs_ref, passes.
+    world.set_runtime()
+    assert world.run(_ac3_command()) == 0
 
 
 @pytest.mark.unit
@@ -625,6 +642,160 @@ def test_omn24874_contract_ac3_dev_runtime_symbols_exist_only_with_the_fix() -> 
     command = _ac3_command()
     assert "w.byok_declared_price_per_1m" in command
     assert "p._tenant_overlay_cost_usd" in command
+
+
+_ALARM_INSTALLED_AT = "2026-11-17T04:00:00Z"
+_ALARM_ROW = "{ts} | STATUS | lane=delegation-scenario-alarm | src=alarm | alarm={alarm} | req=r1 | the run failed"
+
+
+class _Ac4World:
+    """A temp omnimarket clone (base, the squash commit of the alarm pull request ending (#6353), a later commit), the alarm
+    unit's installed.json, a lane_brief.py printing ledger rows, and a hostname shim."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.repo = root / "omnimarket"
+        self.repo.mkdir(parents=True)
+        _git(self.repo, "init", "-q")
+        _git(self.repo, "commit", "-q", "--allow-empty", "-m", "base")
+        self.base = _git(self.repo, "rev-parse", "HEAD")
+        _git(
+            self.repo,
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "OMN-25071: add the alarm node (#6353)",
+        )
+        self.alarm = _git(self.repo, "rev-parse", "HEAD")
+        _git(self.repo, "commit", "-q", "--allow-empty", "-m", "a later change")
+        self.later = _git(self.repo, "rev-parse", "HEAD")
+        _git(self.repo, "update-ref", "refs/remotes/origin/dev", self.later)
+        self.set_install(self.later)
+        self.set_rows(
+            [
+                _ALARM_ROW.format(
+                    ts="2026-11-17T05:00:00Z", alarm="delegation-scenario-r8-failed"
+                )
+            ]
+        )
+
+    def set_install(
+        self, revision: str | None, installed_at: str | None = None
+    ) -> None:
+        record = self.root / ".onex_state/delegation-scenario-alarm"
+        record.mkdir(parents=True, exist_ok=True)
+        target = record / "scenario-alarm-systemd.installed.json"
+        if revision is None:
+            target.unlink(missing_ok=True)
+            return
+        target.write_text(
+            json.dumps(
+                {
+                    "revision": revision,
+                    "installed_at": installed_at or _ALARM_INSTALLED_AT,
+                    "unit": "scenario-alarm-systemd",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def set_rows(self, rows: list[str], *, prefix: str = "") -> None:
+        script = self.root / "plugin/skills/lane-brief/scripts/lane_brief.py"
+        script.parent.mkdir(parents=True, exist_ok=True)
+        script.write_text(
+            f"for row in {rows!r}:\n    print({prefix!r} + row)\n", encoding="utf-8"
+        )
+
+    def run(self, *, gate_host: str = _PINNED_HOST) -> int:
+        item = _items()["dod-omn24874-ac4-alarm-ledger-row"]
+        assert item["execution_scope"] == "local_done_gate"
+        env = {
+            **_hostname_shim(self.root, gate_host),
+            "OMNI_HOME": str(self.root),
+            "OMNI_PLUGIN_ROOT": str(self.root / "plugin"),
+            "HOME": str(self.root),
+        }
+        return subprocess.run(
+            shlex.split(str(item["checks"][0]["check_value"])),
+            cwd=self.repo,
+            env=env,
+            check=False,
+            capture_output=True,
+        ).returncode
+
+
+@pytest.mark.unit
+def test_omn24874_contract_ac4_check_passes_on_a_row_left_after_the_unit_was_installed(
+    tmp_path: Path,
+) -> None:
+    assert _Ac4World(tmp_path / "bare").run() == 0
+    # The ledger reader prints each row behind its file and line, as lane_brief.py grep does.
+    world = _Ac4World(tmp_path / "prefixed")
+    world.set_rows(
+        [
+            _ALARM_ROW.format(
+                ts="2026-11-17T05:00:00Z", alarm="delegation-scenario-r9-failed"
+            )
+        ],
+        prefix="ROLLING_WORK_LEDGER.md:3322:",
+    )
+    assert world.run() == 0
+
+
+@pytest.mark.unit
+def test_omn24874_contract_ac4_check_fails_on_a_row_older_than_the_unit_install(
+    tmp_path: Path,
+) -> None:
+    # The old reading passed on any src=alarm row: one left by an earlier alarm unit, or a hand-written one, before the
+    # alarm pull request was installed on the host.
+    world = _Ac4World(tmp_path)
+    world.set_rows(
+        [
+            _ALARM_ROW.format(
+                ts="2026-11-16T03:00:00Z", alarm="delegation-scenario-r8-failed"
+            )
+        ]
+    )
+    assert world.run() != 0
+
+
+@pytest.mark.unit
+def test_omn24874_contract_ac4_check_fails_when_the_alarm_pull_request_is_not_merged_or_installed(
+    tmp_path: Path,
+) -> None:
+    # The squash commit of #6353 is not on origin/dev yet.
+    unmerged = _Ac4World(tmp_path / "unmerged")
+    _git(unmerged.repo, "update-ref", "refs/remotes/origin/dev", unmerged.base)
+    assert unmerged.run() != 0
+    # The unit was installed at a revision that predates the alarm merge.
+    stale = _Ac4World(tmp_path / "stale-install")
+    stale.set_install(stale.base)
+    assert stale.run() != 0
+    # No install record of the alarm unit on the host.
+    uninstalled = _Ac4World(tmp_path / "uninstalled")
+    uninstalled.set_install(None)
+    assert uninstalled.run() != 0
+    # Another host.
+    assert _Ac4World(tmp_path / "elsewhere").run(gate_host="some-other-host") != 0
+
+
+@pytest.mark.unit
+def test_omn24874_contract_ac4_check_fails_on_rows_that_are_not_alarm_rows_of_r8_or_r9(
+    tmp_path: Path,
+) -> None:
+    world = _Ac4World(tmp_path)
+    after = "2026-11-17T05:00:00Z"
+    for row in (
+        f"{after} | STATUS | lane=x | src=alarm | alarm=delegation-scenario-r4-failed | req=r1 | text",
+        f"{after} | STATUS | lane=x | src=lane | req=r1 | text says src=alarm alarm=delegation-scenario-r8-failed",
+        f"{after} | MSG | lane=x | src=alarm | alarm=delegation-scenario-r8-failed | req=r1 | text",
+    ):
+        world.set_rows([row])
+        assert world.run() != 0, row
+    # Positive control: the same shape of row for r9 passes.
+    world.set_rows([_ALARM_ROW.format(ts=after, alarm="delegation-scenario-r9-failed")])
+    assert world.run() == 0
 
 
 @pytest.mark.unit
@@ -669,7 +840,12 @@ def test_omn24874_contract_text_names_no_rule_the_code_no_longer_has() -> None:
     text = _CONTRACT.read_text(encoding="utf-8")
     assert "by their own rule" not in text
     assert "resolve_tier_cost returns None for the tenant_overlay tier" in text
-    assert "AC4" not in text, "the alarm criterion is omnimarket#6353's contract"
+    # AC4 (the alarm, omnimarket#6353) is not declared here: it is unmet, and only its
+    # unbound live reading is kept (review finding 2, OMN-25411).
+    document = yaml.safe_load(text)
+    assert "AC4" not in _declared(document)
+    assert _items()[_ALARM_READING_ITEM]["execution_scope"] == "local_done_gate"
+    assert not _items()[_ALARM_READING_ITEM].get("binds_ac")
 
 
 _CONTRACTS = _CONTRACT.parent
@@ -705,32 +881,164 @@ _STALE_TIER_RULE_TEXT = (
 def test_omn24874_contract_stale_tier_rule_text_is_gone_from_all_three_files(
     path: Path,
 ) -> None:
-    text = path.read_text(encoding="utf-8")
+    text = _prose_outside_quoted_criteria(path)
     assert text, path
     found = [stale for stale in _STALE_TIER_RULE_TEXT if stale in text]
     assert not found, (path.name, found)
 
 
-@pytest.mark.unit
-def test_omn24874_contract_stale_tier_rule_text_check_sees_the_old_text() -> None:
-    # Positive control: the phrases are the ones the files carried at the reviewed head.
-    old = "ceiling budget readers skip the tenant_overlay tier by their own rule"
-    assert any(stale in old for stale in _STALE_TIER_RULE_TEXT)
+def _prose_outside_quoted_criteria(path: Path) -> str:
+    """The file's text, less a contract's requirement statements.
+
+    A requirement statement quotes the ticket's criterion line as it stands on Linear,
+    so a line number it names is the ticket's wording, not this tree's prose.
+    """
+    text = path.read_text(encoding="utf-8")
+    if path.suffix != ".yaml":
+        return text
+    document = yaml.safe_load(text)
+    document.pop("requirements", None)
+    return yaml.safe_dump(document, sort_keys=True)
 
 
 @pytest.mark.unit
-def test_omn24874_contract_alarm_reading_is_owed_to_a_lane_on_6353_in_both_contracts() -> (
-    None
-):
-    # omnimarket#6353 carries the alarm node and its tests, not the AC4 reading of the alarm unit's install record and a newer
-    # row (read at its head). Both contracts say the reading is owed to a lane on that pull request, in the same words.
-    owed = "owed to a lane on omnimarket#6353"
-    for ticket in ("OMN-25186", "OMN-25306"):
-        text = (_CONTRACTS / f"{ticket}.yaml").read_text(encoding="utf-8")
-        assert owed in text, ticket
-    assert "does not carry that reading or those tests at its read head" not in (
+def test_omn24874_contract_omn25186_ac2_falsifier_is_the_linear_wording() -> None:
+    # Review finding 2 (OMN-25411): the AC2 falsifier was edited in the contract
+    # alone. Read on Linear 2026-11-17, the criterion names handler_delegation.py
+    # lines 1657 and 1658; the contract quotes it unchanged.
+    document = yaml.safe_load(
+        (_CONTRACTS / "OMN-25186.yaml").read_text(encoding="utf-8")
+    )
+    statements = [
+        a["statement"]
+        for r in document["requirements"]
+        for a in r["acceptance"]
+        if a["id"] == "AC2"
+    ]
+    assert statements
+    for statement in statements:
+        assert "passes with handler_delegation.py lines 1657 and 1658 reverted" in (
+            statement
+        )
+        assert "(src/omnimarket/pricing.py) reverted" not in statement
+    # The stale-text scan still reads every other field of the same file.
+    assert "1657 and 1658" not in _prose_outside_quoted_criteria(
         _CONTRACTS / "OMN-25186.yaml"
-    ).read_text(encoding="utf-8")
+    )
+
+
+@pytest.mark.unit
+def test_omn24874_contract_stale_tier_rule_text_check_sees_the_old_text(
+    tmp_path: Path,
+) -> None:
+    # Positive control (review finding 5, OMN-25411): the scan reads a real contract file,
+    # not a literal of its own; the OMN-25186 contract with one stale prose line put back
+    # into an item description is caught, and the unchanged file is not.
+    source = _CONTRACTS / "OMN-25186.yaml"
+    document = yaml.safe_load(source.read_text(encoding="utf-8"))
+    assert not [
+        s for s in _STALE_TIER_RULE_TEXT if s in _prose_outside_quoted_criteria(source)
+    ]
+    document["dod_evidence"][0]["description"] += (
+        " The ceiling budget readers skip the tenant_overlay tier by their own rule."
+    )
+    stale = tmp_path / "OMN-25186.yaml"
+    stale.write_text(yaml.safe_dump(document), encoding="utf-8")
+    assert "by their own rule" in _prose_outside_quoted_criteria(stale)
+
+
+def _contract(ticket: str) -> dict[str, Any]:
+    return cast(
+        "dict[str, Any]",
+        yaml.safe_load((_CONTRACTS / f"{ticket}.yaml").read_text(encoding="utf-8")),
+    )
+
+
+def _declared(document: Mapping[str, Any]) -> set[str]:
+    return {
+        str(a["id"])
+        for r in document.get("requirements") or []
+        for a in r.get("acceptance") or []
+    }
+
+
+_ALARM_READING_ITEM = "dod-omn24874-ac4-alarm-ledger-row"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("ticket", "criterion", "item_id"),
+    [
+        ("OMN-25306", "AC4", "dod-omn25306-ac4-alarm-reading-live"),
+        ("OMN-25378", "AC1", "dod-omn25378-ac1-alarm-reading-live"),
+    ],
+)
+def test_omn24874_contract_no_hosted_item_binds_a_criterion_on_the_alarm_reading(
+    ticket: str, criterion: str, item_id: str
+) -> None:
+    # Review finding 1 (OMN-25411): omnimarket#6353 does not carry the AC4 reading and
+    # no amendment is on Linear, so these criteria are unmet. They are not declared,
+    # no item binds them, and each is kept as the live AC4 reading, local Done gate only.
+    document = _contract(ticket)
+    assert criterion not in _declared(document)
+    items = {str(i["id"]): i for i in document["dod_evidence"]}
+    assert not any(criterion in (i.get("binds_ac") or []) for i in items.values())
+    item = items[item_id]
+    assert item["execution_scope"] == "local_done_gate"
+    assert not item.get("binds_ac")
+    assert [c["check_value"] for c in item["checks"]] == [
+        _items()[_ALARM_READING_ITEM]["checks"][0]["check_value"]
+    ]
+
+
+# Read from Linear on 2026-11-17 with the host's key: every criterion id of each ticket
+# whose contract this pull request carries, none amended (no comment on any of them).
+_LINEAR_CRITERIA: dict[str, int] = {
+    "OMN-24874": 5,
+    "OMN-24918": 10,
+    "OMN-24978": 7,
+    "OMN-25168": 4,
+    "OMN-25186": 3,
+    "OMN-25306": 5,
+    "OMN-25378": 7,
+}
+
+
+def _criteria_kept(document: Mapping[str, Any]) -> set[str]:
+    """Criteria the contract declares, plus those it keeps as a named local reading."""
+    kept = set(_declared(document))
+    for item in document.get("dod_evidence") or []:
+        if item.get("execution_scope") != "local_done_gate":
+            continue
+        for part in str(item["id"]).split("-"):
+            if part.startswith("ac") and part[2:].isdigit():
+                kept.add(f"AC{int(part[2:])}")
+    return kept
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("ticket", sorted(_LINEAR_CRITERIA))
+def test_omn24874_contract_every_linear_criterion_is_declared_or_kept_as_a_reading(
+    ticket: str,
+) -> None:
+    # Review finding 2 (OMN-25411): a criterion the contract stops declaring is kept as a
+    # named local reading, never dropped; the AC4 reading of OMN-24874 was dropped outright.
+    wanted = {f"AC{n}" for n in range(1, _LINEAR_CRITERIA[ticket] + 1)}
+    missing = sorted(wanted - _criteria_kept(_contract(ticket)))
+    assert not missing, (ticket, missing)
+
+
+@pytest.mark.unit
+def test_omn24874_contract_criteria_kept_check_sees_a_dropped_criterion() -> None:
+    # Positive control: a contract that neither declares AC2 nor keeps a reading of it is caught.
+    document = {
+        "requirements": [{"acceptance": [{"id": "AC1"}]}],
+        "dod_evidence": [
+            {"id": "dod-x-ac3-live", "execution_scope": "local_done_gate"},
+            {"id": "dod-x-ac4-hosted", "binds_ac": ["AC1"]},
+        ],
+    }
+    assert _criteria_kept(document) == {"AC1", "AC3"}
 
 
 @pytest.mark.unit
@@ -773,10 +1081,34 @@ _UNDECLARED_CRITERIA_EVIDENCE = {
         "AC9": "dod-omn24918-ac9",
         "AC10": "dod-omn24918-ac10",
     },
-    "OMN-24978": {"AC7": "dod-omn24978-ac7"},
+    "OMN-24874": {"AC4": "dod-omn24874-ac4-alarm-ledger-row"},
+    "OMN-24978": {"AC6": "dod-omn24978-ac6-alarm", "AC7": "dod-omn24978-ac7"},
     "OMN-25168": {"AC4": "dod-omn25168-ac4-lab-comment-names-head"},
     "OMN-25186": {"AC3": "dod-omn25186-ac3-comments-name-findings-and-head"},
+    "OMN-25306": {"AC4": "dod-omn25306-ac4-alarm-reading-live"},
+    "OMN-25378": {"AC1": "dod-omn25378-ac1-alarm-reading-live"},
 }
+
+
+@pytest.mark.unit
+def test_omn24874_contract_omn24978_ac7_reading_pins_no_lane_and_ac6_is_not_one_test() -> (
+    None
+):
+    # Review finding 8 (OMN-25411): the AC7 reading grepped one fixer lane's name, and AC6
+    # was bound to -k real_writer_row, one of its four parts.
+    document = yaml.safe_load(
+        (_CONTRACTS / "OMN-24978.yaml").read_text(encoding="utf-8")
+    )
+    items = {item["id"]: item for item in document["dod_evidence"]}
+    ac7 = str(items["dod-omn24978-ac7"]["checks"][0]["check_value"])
+    assert "lane=" not in ac7
+    assert "omnimarket#6335" in ac7
+    for item in items.values():
+        if "AC6" not in (item.get("binds_ac") or []):
+            continue
+        assert not all(
+            "-k real_writer_row" in str(c["check_value"]) for c in item["checks"]
+        ), item["id"]
 
 
 @pytest.mark.unit

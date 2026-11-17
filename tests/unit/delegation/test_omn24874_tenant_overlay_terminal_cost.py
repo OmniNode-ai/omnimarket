@@ -660,6 +660,7 @@ def test_omn24874_tenant_overlay_attempt_is_priced_at_the_declared_price() -> No
         attempted_at=datetime.now(UTC),
         acceptance_decision=EnumDelegationAcceptanceDecision.CLIMB,
         acceptance_reason=EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED,
+        routing_decision_id=decision.selected_backend_id,
     )
     handler = HandlerDelegationWorkflow()
     cost = handler._record_escalation_attempt(
@@ -688,3 +689,248 @@ def test_omn24874_tenant_overlay_attempt_is_priced_at_the_declared_price() -> No
         prompt_tokens=_PROMPT_TOKENS,
         completion_tokens=_COMPLETION_TOKENS,
     ) == pytest.approx(0.0)
+
+
+def _escalation_attempt(routing_decision_id: Any) -> Any:
+    from omnimarket.enums.enum_delegation_acceptance import (
+        EnumDelegationAcceptanceDecision,
+        EnumDelegationAcceptanceReason,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_escalation_attempt import (
+        ModelDelegationEscalationAttempt,
+    )
+
+    return ModelDelegationEscalationAttempt(
+        tier_name=TENANT_OVERLAY_TIER_NAME,
+        model_used=_R8_MODEL_USED,
+        quality_score=0.0,
+        latency_ms=10,
+        fallback_recommended=True,
+        attempted_at=datetime.now(UTC),
+        acceptance_decision=EnumDelegationAcceptanceDecision.CLIMB,
+        acceptance_reason=EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED,
+        routing_decision_id=routing_decision_id,
+    )
+
+
+@pytest.mark.unit
+def test_omn24874_an_attempt_is_priced_at_its_own_endpoint_not_the_current_one() -> (
+    None
+):
+    # Review finding 3 (OMN-25411): the attempt was priced from whatever decision
+    # the workflow held, not the decision the attempt names. An attempt whose
+    # routing_decision_id names another decision takes no endpoint from the
+    # current one, so it is not priced at the current route's declared price.
+    from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
+        DelegationWorkflowState,
+    )
+
+    decision = _overlay_decision()
+    workflow = DelegationWorkflowState(
+        correlation_id=uuid4(),
+        routing_decision=decision,
+        current_tier_name=TENANT_OVERLAY_TIER_NAME,
+    )
+    handler = HandlerDelegationWorkflow()
+    foreign = handler._record_escalation_attempt(
+        workflow,
+        _escalation_attempt(uuid4()),
+        prompt_tokens=_PROMPT_TOKENS,
+        completion_tokens=_COMPLETION_TOKENS,
+    )
+    assert foreign == 0.0
+    assert workflow.escalation_history[-1].cost_usd == 0.0
+    # Positive control: the attempt that names the current decision is priced.
+    own = handler._record_escalation_attempt(
+        workflow,
+        _escalation_attempt(decision.selected_backend_id),
+        prompt_tokens=_PROMPT_TOKENS,
+        completion_tokens=_COMPLETION_TOKENS,
+    )
+    assert own == pytest.approx(_declared_cost())
+
+
+_GLM_BACKEND_REF = "byok-glm-general"
+_TENANT_ID = "a0ea038d-8538-494c-b004-4ceaf9677fac"
+_TENANT_KEY_REF = f"cred_{_TENANT_ID}_glm_911110ccc89c4b6db98203024ba23371"
+
+
+def _glm_customer_route(correlation_id: Any) -> Any:
+    from uuid import NAMESPACE_DNS, uuid5
+
+    from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
+        ModelRoutingDecision,
+    )
+
+    return ModelRoutingDecision(
+        correlation_id=correlation_id,
+        task_type="summarization",
+        selected_model=_R8_MODEL_USED,
+        selected_backend_id=uuid5(
+            NAMESPACE_DNS, f"omninode.ai/backends/{_GLM_BACKEND_REF}"
+        ),
+        selected_backend_ref=_GLM_BACKEND_REF,
+        endpoint_url=_PROBE_ENDPOINT,
+        api_key_ref=_TENANT_KEY_REF,
+        cost_tier="tenant_byok",
+        tier_name=TENANT_OVERLAY_TIER_NAME,
+        max_context_tokens=128000,
+        timeout_ms=300000,
+        max_tokens=65536,
+        system_prompt="s",
+        rationale="tenant overlay",
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("stub_provider_quota_reader")
+def test_omn24874_driven_tenant_overlay_retries_reach_the_terminal_cumulative_and_skip_the_budget() -> (
+    None
+):
+    # Review finding 3 (OMN-25411): drive the real call site (an inference error on
+    # the customer's own route, retried through _maybe_retry_customer_route until
+    # the catalogue's retry budget ends), emit the terminal, and read the
+    # cumulative cost over a non-empty escalation_history and the budget row it
+    # would draw.
+    from omnibase_core.models.delegation.wire import ModelDelegationFailed
+
+    from omnimarket.handlers.routing.byok_provider_backends import (
+        byok_backend_max_retries,
+    )
+    from omnimarket.inference.provider_response_error import provider_error_from_body
+    from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
+        ModelDelegationRequest as OrchestratorRequest,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
+        ModelInferenceResponseData,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
+        ModelRoutingIntent,
+    )
+    from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
+        TABLE,
+        ModelDelegationBudgetStateEvent,
+        materialize_budget_state,
+    )
+    from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+
+    budget = byok_backend_max_retries(_GLM_BACKEND_REF)
+    assert budget is not None
+    assert budget >= 1
+    error = provider_error_from_body(
+        {
+            "id": "gen-omn25411",
+            "error": {
+                "message": "Upstream error: Service temporarily overloaded",
+                "code": 502,
+                "metadata": {"error_type": "provider_unavailable"},
+            },
+        }
+    )
+    assert error is not None
+    handler = HandlerDelegationWorkflow()
+    cid = uuid4()
+    handler.handle_delegation_request(
+        OrchestratorRequest(
+            prompt="Reply with the single word OK.",
+            task_type="summarization",  # type: ignore[arg-type]
+            correlation_id=cid,
+            emitted_at=datetime.now(UTC),
+            tenant_id=_TENANT_ID,
+        )
+    )
+
+    def attempt() -> list[Any]:
+        handler.handle_routing_decision(_glm_customer_route(cid))
+        return list(
+            handler.handle_inference_response(
+                ModelInferenceResponseData(
+                    correlation_id=cid,
+                    content="",
+                    model_used=_R8_MODEL_USED,
+                    latency_ms=900,
+                    error_message=error.as_error_message(),
+                    prompt_tokens=_PROMPT_TOKENS,
+                    completion_tokens=_COMPLETION_TOKENS,
+                    total_tokens=_PROMPT_TOKENS + _COMPLETION_TOKENS,
+                )
+            )
+        )
+
+    for _ in range(budget):
+        assert any(isinstance(e, ModelRoutingIntent) for e in attempt())
+    events = attempt()
+    terminal = next(e for e in events if isinstance(e, ModelDelegationResult))
+    assert isinstance(terminal, ModelDelegationFailed)
+
+    history = handler.workflows[cid].escalation_history
+    assert len(history) == budget + 1
+    for priced in history:
+        assert priced.tier_name == TENANT_OVERLAY_TIER_NAME
+        assert priced.cost_usd == pytest.approx(_declared_cost())
+    # Cumulative: every banked retry plus the final attempt the terminal re-prices.
+    assert terminal.cumulative_attempt_cost == pytest.approx(
+        _declared_cost() * (budget + 1)
+    )
+
+    # Budget row: the own-key cumulative never draws the platform ceiling, even
+    # over a registry that (wrongly) caps the tenant_overlay tier.
+    from types import SimpleNamespace
+
+    from omnibase_core.models.delegation.wire import EnumTierCostType, ModelTierCost
+
+    capped = ModelTierCost(
+        cost_type=EnumTierCostType.BUDGETED,
+        rate_per_1k_usd=0.01,
+        monthly_cap_usd=100.0,
+        overage_rate_per_1k_usd=0.02,
+    )
+    registry = SimpleNamespace(
+        tiers=[SimpleNamespace(name=TENANT_OVERLAY_TIER_NAME, cost=capped)]
+    )
+    db = InmemoryDatabaseAdapter()
+    with patch("omnimarket.pricing._load_routing_config", return_value=registry):
+        result = materialize_budget_state(
+            ModelDelegationBudgetStateEvent(
+                correlation_id=str(cid),
+                cost_tier_name=TENANT_OVERLAY_TIER_NAME,
+                cost_measurement_source="metered",
+                budget_headroom_consumed_usd=Decimal("0"),
+                cost_usd=Decimal(str(terminal.cumulative_attempt_cost)),
+                tenant_id=_TENANT_ID,
+                timestamp="2026-11-17T16:00:00+00:00",
+            ),
+            db,
+        )
+    assert result.rows_upserted == 0
+    assert result.skipped_reason == "tier_not_budgeted"
+    assert db.query(TABLE, {"tenant_id": _TENANT_ID}) == []
+
+
+@pytest.mark.unit
+def test_omn24874_a_tenant_overlay_run_has_no_platform_successor_tier() -> None:
+    # Review finding 3 (OMN-25411), the mixed case: a run whose tenant_overlay
+    # attempt then ends on a platform tier would book own-key cost against that
+    # tier's ceiling. The ladder walk never leaves tenant_overlay for any task
+    # class the routing contract declares, so the case is unreachable.
+    from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+        _get_task_class_contract,
+        next_eligible_tier,
+    )
+
+    contract = _get_task_class_contract()
+    assert contract is not None
+    task_classes = contract.get("task_classes")
+    assert isinstance(task_classes, dict)
+    task_types = sorted(str(name) for name in task_classes)
+    assert task_types, "the routing contract declares no task class to walk"
+    assert TENANT_OVERLAY_TIER_NAME not in {
+        tier.name for tier in _load_routing_config().tiers
+    }
+    for task_type in task_types:
+        assert (
+            next_eligible_tier(
+                TENANT_OVERLAY_TIER_NAME, frozenset(), task_type=task_type
+            )
+            is None
+        ), task_type

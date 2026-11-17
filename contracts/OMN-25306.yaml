@@ -21,11 +21,6 @@ requirements:
   acceptance:
   - id: AC3
     statement: 'AC3: the cost logic since 12df04bf is restored or kept with every resolve_tier_cost caller shown to treat None as skip or no cost model, the stale texts are corrected, and a Lab comment at the new head includes the real-Postgres run, with a test -- falsifier: `uv run --frozen pytest tests -k "omn24874 and tenant_overlay" -q` passes with the reader guards reverted and the stale text kept'
-- id: req-omn25306-ac4
-  statement: 'AC4: each requirement deleted from the contracts of [OMN-24918](https://linear.app/omninode/issue/OMN-24918), [OMN-24978](https://linear.app/omninode/issue/OMN-24978), [OMN-25168](https://linear.app/omninode/issue/OMN-25168) and [OMN-25186](https://linear.app/omninode/issue/OMN-25186) is restored or shown amended on its ticket, and [OMN-25186](https://linear.app/omninode/issue/OMN-25186)''s AC4 reading is confirmed on 6353 with its text rewritten, with a test -- falsifier: `uv run --frozen pytest tests/test_omn24874_contract_checks.py -q` passes with a deleted requirement absent'
-  acceptance:
-  - id: AC4
-    statement: 'AC4: each requirement deleted from the contracts of [OMN-24918](https://linear.app/omninode/issue/OMN-24918), [OMN-24978](https://linear.app/omninode/issue/OMN-24978), [OMN-25168](https://linear.app/omninode/issue/OMN-25168) and [OMN-25186](https://linear.app/omninode/issue/OMN-25186) is restored or shown amended on its ticket, and [OMN-25186](https://linear.app/omninode/issue/OMN-25186)''s AC4 reading is confirmed on 6353 with its text rewritten, with a test -- falsifier: `uv run --frozen pytest tests/test_omn24874_contract_checks.py -q` passes with a deleted requirement absent'
 evidence_requirements:
 - kind: tests
   description: The contract check tests, the ceiling budget reader tests and the tenant overlay pricing tests.
@@ -65,14 +60,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn25306-ac4-undeclared-readings-kept
-  description: Each criterion that the contracts of OMN-24918, OMN-24978, OMN-25168 and OMN-25186 no longer declare keeps its unbound local_done_gate reading; the descriptions that cited the alarm or tests no longer in the tree are corrected. The half of AC4 that asks the AC4 reading of OMN-25186 to be confirmed on 6353 is open, because omnimarket#6353 does not carry that reading (read at its head 43bc9673d0c1), the reading is owed to a lane on omnimarket#6353, and OMN-25186 says so in its own words, so this item's tests show the texts agree, not that the reading passes.
+- id: dod-omn25306-ac4-alarm-reading-live
+  description: 'Not declared in this contract, because it is not met: omnimarket#6353 at its head 856b0c8f54d6 carries the alarm node, its golden-chain tests and the installer''s timer declaration, and no reading of the alarm unit''s install record or of a row newer than it, and no amendment of the criterion is on Linear (read 2026-11-17). The criterion stands unchanged on its ticket, which stays open. The AC4 reading lives in contracts/OMN-24874.yaml as the unbound local item dod-omn24874-ac4-alarm-ledger-row; this item runs the same live command, local Done gate only, and fails until omnimarket#6353 is merged, its unit is installed on h053 and it has written an alarm row. No hosted text test binds this criterion.'
   source: manual
-  binds_ac:
-  - AC4
+  execution_scope: local_done_gate
   checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
+  - check_type: command
+    check_value: 'sh -c ''test "$(hostname -s)" = hp-gen9 && A=$(git log origin/dev -1 --first-parent --no-merges --format=%H --grep="(#6353)$") && test -n "$A" && I="${OMNI_HOME:?}/.onex_state/delegation-scenario-alarm/scenario-alarm-systemd.installed.json" && R=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])" "$I" revision) && git -C "${OMNI_HOME:?}/omnimarket" merge-base --is-ancestor "$A" "$R" && python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "src=alarm.*alarm=delegation-scenario-r[89]-failed" | python3 -c "import re,sys,json,datetime as D; t=D.datetime.fromisoformat(json.load(open(sys.argv[1]))[sys.argv[3]]); sys.exit(0 if any((m:=re.search(sys.argv[2],l)) and D.datetime.fromisoformat(m.group(1))>=t for l in sys.stdin) else 1)" "$I" "^(?:\S+:\d+:)?(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ) \| STATUS \|(?=.* \| src=alarm )(?=.* \| alarm=delegation-scenario-r[89]-failed )" installed_at'''
     cwd: .
 - id: dod-omn25306-ac5-lab-comment-and-findings
   description: 'The PR holds a comment starting Lab: head= with the full head of the checkout, and a comment naming each of findings 7 and 8. Local Done gate only: it reads the pull request comments and a sha.'
