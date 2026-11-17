@@ -1557,12 +1557,21 @@ def test_the_dod_commands_that_compare_the_deployed_register_name_the_deployed_o
 
 
 def _repo_ledger_hints() -> tuple[str, ...]:
-    """The names that reach the work-ledger service, read from the repository: the node packages whose name holds
-    ``work_ledger`` and the console scripts whose name holds ``ledger`` (not a guessed list)."""
+    """The names that reach the work-ledger query service, read from the repository: the node packages whose source
+    resolves the query transport, the query node itself and the console scripts whose name holds ``ledger`` (not a
+    guessed list)."""
+    nodes_dir = ROOT / "src/omnimarket/nodes"
     nodes = sorted(
         p.name
-        for p in (ROOT / "src/omnimarket/nodes").iterdir()
-        if p.is_dir() and "work_ledger" in p.name
+        for p in nodes_dir.iterdir()
+        if p.is_dir()
+        and (
+            "work_ledger_query" in p.name
+            or any(
+                "resolve_work_ledger_query_transport" in f.read_text("utf-8")
+                for f in p.rglob("*.py")
+            )
+        )
     )
     scripts = []
     in_scripts = False
