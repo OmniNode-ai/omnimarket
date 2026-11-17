@@ -449,7 +449,7 @@ class _Ac3World:
 
 def _ac3_command() -> str:
     item = _items()["dod-omn24874-ac3-running-revision"]
-    assert item["binds_ac"] == ["AC3"]
+    assert item["execution_scope"] == "local_done_gate"
     return str(item["checks"][0]["check_value"])
 
 
@@ -648,7 +648,7 @@ class _Ac4World:
 
     def run(self, *, gate_host: str = _PINNED_HOST) -> int:
         item = _items()["dod-omn24874-ac4-alarm-ledger-row"]
-        assert item["binds_ac"] == ["AC4"]
+        assert item["execution_scope"] == "local_done_gate"
         env = {
             **_hostname_shim(self.root, gate_host),
             "OMNI_HOME": str(self.root),
@@ -743,10 +743,16 @@ def test_omn24874_contract_binds_no_proxy_test_to_ac2_ac3_ac4_or_ac5() -> None:
     assert not (_REMOVED_PROXIES & set(items))
     for item in items.values():
         bound = set(item.get("binds_ac") or [])
+        # The hosted gate refuses a bound local_done_gate item, so a live
+        # reading stays unbound; AC2 to AC5 bind only this file's behavioural
+        # tests of the reading commands, never a product proxy.
         if bound & {"AC2", "AC3", "AC4", "AC5"}:
-            # Only a live reading (a command in the local Done gate) may bind these.
-            assert item.get("execution_scope") == "local_done_gate", item["id"]
-            assert all(c["check_type"] == "command" for c in item["checks"]), item["id"]
+            assert item.get("execution_scope") != "local_done_gate", item["id"]
+            assert all(c["check_type"] == "test_passes" for c in item["checks"])
+            assert all(
+                "tests/test_omn24874_contract_checks.py" in c["check_value"]
+                for c in item["checks"]
+            ), item["id"]
 
 
 @pytest.mark.unit

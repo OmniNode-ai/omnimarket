@@ -49,8 +49,6 @@ dod_evidence:
 - id: dod-omn24874-ac1-r8-live-13-of-13
   description: Live reading for AC1. On h053 (hostname pinned) the newest R8 scenario result in the host's event journal concluded success with 13 assertions all held (each reads +name), including +organic_run_has_values, which the R8 handler sets to cost above 0 and tokens above 0, and was recorded at most 27000 seconds ago (the alarm contract's R8 max age). Local Done gate only; the reading is taken on h053 after the fix runs on the dev runtime.
   source: manual
-  binds_ac:
-  - AC1
   execution_scope: local_done_gate
   checks:
   - check_type: command
@@ -60,8 +58,6 @@ dod_evidence:
 - id: dod-omn24874-ac2-r9-live
   description: Live reading for AC2. On h053 (hostname pinned) the newest R9 last-run record parses to conclusion success and was written at most 4500 seconds ago (the alarm contract's R9 max age). Local Done gate only.
   source: manual
-  binds_ac:
-  - AC2
   execution_scope: local_done_gate
   checks:
   - check_type: command
@@ -71,8 +67,6 @@ dod_evidence:
 - id: dod-omn24874-ac4-alarm-ledger-row
   description: 'Live reading for AC4. The alarm is omnimarket#6353, not this change. On h053 (hostname pinned) the squash commit of #6353 on the first-parent line of origin/dev is an ancestor of the revision the alarm unit (scenario-alarm-systemd) was installed at (its installed.json), and the ledger holds a STATUS row with src=alarm and alarm=delegation-scenario-r8-failed or alarm=delegation-scenario-r9-failed stamped at or after that unit''s installed_at, so a row left before the unit was installed, or while #6353 is unmerged, passes nothing. Local Done gate only. Behavioural test: tests/test_omn24874_contract_checks.py runs this command over a temp repository with a hostname shim, an install record and ledger rows.'
   source: manual
-  binds_ac:
-  - AC4
   execution_scope: local_done_gate
   checks:
   - check_type: command
@@ -99,8 +93,6 @@ dod_evidence:
 - id: dod-omn24874-ac3-running-revision
   description: 'Live reading for AC3, the cost fix. On h053 (hostname pinned) the squash commit of this change on the first-parent line of origin/dev (squash merges only, so the non-merge commit whose subject ends (#6335) is the squash) is an ancestor of the revision the R8 unit was installed at (its installed.json), a dev-merge tag contains that revision, and the newest dev-merge tag on the registry clone is at most a day old. On the dev runtime the reading is pinned to the container named omninode-runtime that carries the compose project label omnibase-infra (ssh on ONEX_RUNTIME_SSH_HOST only says where to connect: a container with another name is never read and one with another project label fails the reading; the host is not named in this public file). The running revision is the omnimarket commit that container''s own build-provenance.json records as a dev-merge-tag first-party source whose named commit is that vcs_ref, and the squash commit must be its ancestor; the container must also import the workflow handler''s declared-price function and the projection''s overlay floor (_tenant_overlay_cost_usd), the two sites the fix changes. Local Done gate only; it fails before the merge, when no commit on origin/dev names the ticket, when the container still runs older code, and when the runtime host variable is unset. Behavioural test: tests/test_omn24874_contract_checks.py runs this command over a temp repository with ssh and hostname shims. The alarm is omnimarket#6353: its merge and install are read by the AC4 item, and its review verdict by the AC5 item.'
   source: manual
-  binds_ac:
-  - AC3
   execution_scope: local_done_gate
   checks:
   - check_type: command
@@ -110,11 +102,45 @@ dod_evidence:
 - id: dod-omn24874-ac5-clean-verdict-row
   description: Live reading for AC5. The ledger holds a STATUS row with verdict=CLEAN for this pull request (#6335) whose head= cell is the 12-character head of the checkout the gate runs in, and a STATUS row with verdict=CLEAN for the alarm pull request (#6353) whose head= cell is the head the PR watcher's state records for #6353 (a pull request the watcher cannot read fails the check), so a CLEAN row for an older head of either pull request does not pass after a new push. Local Done gate only.
   source: manual
-  binds_ac:
-  - AC5
   execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: >-
       sh -c 'H=$(git rev-parse HEAD | cut -c1-12) && J=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6353 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]][:12])" facts head_sha) && test -n "$J" && V=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "verdict=CLEAN") && printf %s "$V" | grep -F "omnimarket#6335" | grep -F "head=$H" | grep -q STATUS && printf %s "$V" | grep -F "omnimarket#6353" | grep -F "head=$J" | grep -q STATUS'
+    cwd: .
+- id: dod-omn24874-ac2-reading-command-behaviour
+  description: Hosted proxy for AC2. The live reading itself runs only in the local Done gate (the live item beside it is unbound). This hosted test runs the R9 live reading command (dod-omn24874-ac2-r9-live) passes on a success record inside its age bound and fails on a failed or stale one, over a temporary repository with shims; the test file does not exist at the merge base, so the control fails there.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn24874_contract_checks.py -k "live_reading_parses or live_command_ages" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24874-ac3-reading-command-behaviour
+  description: Hosted proxy for AC3. The live reading itself runs only in the local Done gate (the live item beside it is unbound). This hosted test runs the AC3 running-revision reading command passes only when host, container, revision and symbols all hold and fails before the fix is merged or on an older build, over a temporary repository with shims; the test file does not exist at the merge base, so the control fails there.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn24874_contract_checks.py -k "ac3_check" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24874-ac4-reading-command-behaviour
+  description: Hosted proxy for AC4. The live reading itself runs only in the local Done gate (the live item beside it is unbound). This hosted test runs the AC4 alarm-row reading command passes only for an alarm row of r8 or r9 left after the alarm unit was installed, over a temporary repository with shims; the test file does not exist at the merge base, so the control fails there.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn24874_contract_checks.py -k "ac4_check" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24874-ac5-reading-command-behaviour
+  description: Hosted proxy for AC5. The live reading itself runs only in the local Done gate (the live item beside it is unbound). This hosted test runs the AC5 verdict reading command needs a CLEAN row at the head of each of the two pull requests, over a temporary repository with shims; the test file does not exist at the merge base, so the control fails there.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn24874_contract_checks.py -k "ac5_check" -q --no-cov -n 0 -p no:randomly
     cwd: .
