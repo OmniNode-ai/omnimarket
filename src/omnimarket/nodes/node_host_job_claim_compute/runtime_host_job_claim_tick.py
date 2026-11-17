@@ -41,6 +41,7 @@ from omnimarket.nodes.node_host_job_claim_compute.runtime_host_job_claim import 
 NODE = "node_host_job_claim_compute"
 EVIDENCE_FILE = "last-run.json"
 HOST_ENV = "ONEX_LEDGER_HOST_NAME"
+EVENT_TYPE = "host_job_claim.run_completed"
 EXIT_DRIFTED = 1
 EXIT_NO_ROLE = 2
 EXIT_INDETERMINATE = 3
@@ -137,7 +138,7 @@ def main(
     topic = str(_contract()["topics"]["host_job_claim_run_completed"])
     emitted = (publisher or EmitEffectTopicPublisher()).publish(
         topic=topic,
-        event_type=topic,
+        event_type=EVENT_TYPE,
         payload=evidence_for(result, stamp, emitted=True),
         event_id=result.correlation_id,
         correlation_id=result.correlation_id,

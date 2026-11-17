@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_host_job_claim_compute import (
     runtime_host_job_claim_tick as tick,
@@ -184,3 +185,23 @@ def test_a_host_with_no_declared_role_exits_two(
     assert publisher.sent == []
     evidence = json.loads((wired / "last-run.json").read_text(encoding="utf-8"))
     assert evidence["status"] == "no_declared_role"
+
+
+def test_the_event_the_tick_publishes_is_registered_for_the_contract_topic() -> None:
+    """Seam: the emit effect refuses a topic whose event type the registry does not declare (read on h051, 2026-11-17)."""
+    root = Path(tick.__file__).resolve().parents[1]
+    registry = yaml.safe_load(
+        (root / "node_emit_daemon/registries/topics.yaml").read_text(encoding="utf-8")
+    )
+    fan_out = registry["events"][tick.EVENT_TYPE]["fan_out"]
+    topic = tick._contract()["topics"]["host_job_claim_run_completed"]
+    assert [row["topic"] for row in fan_out] == [topic]
+
+
+def test_the_tick_publishes_under_the_registered_event_type(
+    wired: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install(monkeypatch, ())
+    publisher = Publisher()
+    assert tick.main(["--state-dir", str(wired)], publisher=publisher) == 0
+    assert publisher.sent[0]["event_type"] == tick.EVENT_TYPE
