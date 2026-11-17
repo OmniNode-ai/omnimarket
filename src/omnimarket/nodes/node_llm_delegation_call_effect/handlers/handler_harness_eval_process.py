@@ -25,6 +25,7 @@ class HandlerHarnessEvalProcess:
         timeout: int,
         log: Path,
         prompt_file: Path | None = None,
+        cwd: Path | None = None,
     ) -> int:
         with (
             log.open("w") as output,
@@ -32,6 +33,7 @@ class HandlerHarnessEvalProcess:
         ):
             process = subprocess.Popen(
                 command,
+                cwd=cwd,
                 env=env,
                 stdin=prompt,
                 stdout=output,
