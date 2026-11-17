@@ -3,7 +3,7 @@
 name: node_runtime_boot_set_compute
 lifecycle: experimental
 node_type: COMPUTE_GENERIC
-runtime_profiles: []
+runtime_profiles: [main]
 contract_version:
   major: 1
   minor: 0
@@ -30,12 +30,16 @@ handler_routing:
   default_handler: omnimarket.nodes.node_runtime_boot_set_compute.handlers.handler_runtime_boot_set:HandlerRuntimeBootSet
   handlers:
   - operation: handle
+    topic: onex.cmd.omnimarket.runtime-boot-set-judge-requested.v1
     handler:
       name: HandlerRuntimeBootSet
       module: omnimarket.nodes.node_runtime_boot_set_compute.handlers.handler_runtime_boot_set
+terminal_event: onex.evt.omnimarket.runtime-boot-set-judged.v1
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+  - onex.cmd.omnimarket.runtime-boot-set-judge-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.runtime-boot-set-judged.v1
 topics:
   boot_set_judge_requested: onex.cmd.omnimarket.runtime-boot-set-judge-requested.v1
   boot_set_judged: onex.evt.omnimarket.runtime-boot-set-judged.v1
@@ -46,12 +50,13 @@ externally_consumed_topics:
   - onex.evt.omnimarket.runtime-boot-set-violated.v1
   - onex.evt.omnimarket.runtime-boot-set-judge-failed.v1
 runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.runtime-boot-set-judge-requested.v1
   external_trigger: Direct Python invocation, or the judge-requested command, with the deployment's declared boot set,
     the contract catalog and one boot's observation.
 descriptor:
   node_archetype: compute
   purity: pure
-  runtime_profiles: []
+  runtime_profiles: [main]
   idempotent: true
   timeout_ms: 5000
 replay:
@@ -70,3 +75,10 @@ metadata:
   - OMN-23366
   related_tickets:
   - OMN-23366
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.runtime-boot-set-judge-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.runtime-boot-set-judge-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.runtime-boot-set-judged.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.runtime-boot-set-judged.v1, operation: DESCRIBE}
