@@ -99,5 +99,5 @@ dod_evidence:
   - AC6
   checks:
   - check_type: command
-    check_value: 'gh pr view omn-24927-floor-fill-temporal-schedule --repo OmniNode-ai/omnimarket --json body --jq .body | grep -Eq ''^Lab: '''
+    check_value: 'test -f src/omnimarket/nodes/node_floor_fill_temporal_workflow/contract.yaml && gh pr view omn-24927-floor-fill-temporal-schedule --repo OmniNode-ai/omnimarket --json body --jq .body | grep -Eq ''^Lab: '''
     cwd: .
