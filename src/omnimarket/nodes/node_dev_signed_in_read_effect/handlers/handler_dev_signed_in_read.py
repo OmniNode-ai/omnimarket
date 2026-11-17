@@ -11,6 +11,7 @@ HTTP call, when the lane or realm is not the one the contract declares.
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ from omnimarket.handlers.delegation_scenario_settings import (
     ProtocolSettingStore,
     SecretStoreSettingsReader,
 )
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.model_dev_identity_http import (
     ModelIdentityHttpRequest,
 )
@@ -70,36 +72,44 @@ class HandlerDevSignedInRead:
         self._transport = transport
         self._settings_store = settings_store
         self._contract_path = contract_path
+        self._lock = threading.Lock()
 
-    def _resolve(
-        self,
-    ) -> tuple[
-        ModelDevSignedInReadOverlay,
-        ProtocolDevIdentityTransport,
-        ProtocolSettingStore,
-    ]:
-        """Resolve runtime dependencies on the first request and cache them."""
-        if self._overlay is None:
-            self._overlay = load_overlay()
-        if self._transport is None:
-            self._transport = UrllibIdentityTransport()
-        if self._settings_store is None:
-            self._settings_store = SecretStoreSettingsReader(
-                overlay=self._overlay.secret_store
-            )
-        return self._overlay, self._transport, self._settings_store
+    def _resolve_overlay(self) -> ModelDevSignedInReadOverlay:
+        """Resolve the overlay on the first request and cache it; a missing overlay raises ``NodeOverlayError``.
+
+        The lock makes the first resolution one build even when two requests arrive together (the resolution
+        itself awaits nothing, so one event loop never interleaves it; the lock covers a second thread).
+        """
+        with self._lock:
+            if self._overlay is None:
+                self._overlay = load_overlay()
+            return self._overlay
+
+    def _resolve_io(
+        self, overlay: ModelDevSignedInReadOverlay
+    ) -> tuple[ProtocolDevIdentityTransport, ProtocolSettingStore]:
+        """Resolve the transport and the secret store; called only after the dev guard has passed."""
+        with self._lock:
+            if self._transport is None:
+                self._transport = UrllibIdentityTransport()
+            if self._settings_store is None:
+                self._settings_store = SecretStoreSettingsReader(
+                    overlay=overlay.secret_store
+                )
+            return self._transport, self._settings_store
 
     def _result(
         self,
         outcome: EnumDevSignedInReadOutcome,
         *,
         detail: str,
+        lane: str,
+        realm: str | None,
         user_name: str | None = None,
         http_status: int | None = None,
         data_state: str | None = None,
         expected_secret: str | None = None,
     ) -> ModelDevSignedInReadResult:
-        overlay, _, _ = self._resolve()
         ok = outcome in (
             EnumDevSignedInReadOutcome.READ_ACCEPTED,
             EnumDevSignedInReadOutcome.READY,
@@ -107,8 +117,8 @@ class HandlerDevSignedInRead:
         logger.info(
             "dev signed-in read outcome=%s realm=%s lane=%s user=%s status=%s",
             outcome.value,
-            overlay.keycloak.realm,
-            overlay.lane,
+            realm,
+            lane,
             user_name,
             http_status,
         )
@@ -116,8 +126,8 @@ class HandlerDevSignedInRead:
             ok=ok,
             outcome=outcome,
             detail=detail,
-            realm=overlay.keycloak.realm,
-            lane=overlay.lane,
+            realm=realm,
+            lane=lane,
             user_name=user_name,
             http_status=http_status,
             data_state=data_state,
@@ -125,51 +135,76 @@ class HandlerDevSignedInRead:
         )
 
     def _dev_guard(
-        self, command: ModelDevSignedInReadCommand
+        self, command: ModelDevSignedInReadCommand, overlay: ModelDevSignedInReadOverlay
     ) -> ModelDevSignedInReadResult | None:
-        overlay, _, _ = self._resolve()
         dev_only = _load_dev_only(self._contract_path)
         declared_lane = dev_only["lane"]
         declared_realms = dev_only["realms"]
+        realm = overlay.keycloak.realm
         if command.lane != declared_lane:
             return self._result(
                 EnumDevSignedInReadOutcome.REFUSED_NOT_DEV,
                 detail=f"command lane {command.lane!r} is not the declared dev lane {declared_lane!r}",
+                lane=overlay.lane,
+                realm=realm,
             )
         if overlay.lane != declared_lane:
             return self._result(
                 EnumDevSignedInReadOutcome.REFUSED_NOT_DEV,
                 detail=f"overlay lane {overlay.lane!r} is not the declared dev lane {declared_lane!r}",
+                lane=overlay.lane,
+                realm=realm,
             )
-        if overlay.keycloak.realm not in declared_realms:
+        if realm not in declared_realms:
             return self._result(
                 EnumDevSignedInReadOutcome.REFUSED_NOT_DEV,
-                detail=f"realm {overlay.keycloak.realm!r} is not in the declared realms {declared_realms}",
+                detail=f"realm {realm!r} is not in the declared realms {declared_realms}",
+                lane=overlay.lane,
+                realm=realm,
             )
         return None
 
     async def handle(
         self, command: ModelDevSignedInReadCommand
     ) -> ModelDevSignedInReadResult:
-        overlay, _, settings_store = self._resolve()
+        try:
+            overlay = self._resolve_overlay()
+        except NodeOverlayError as exc:
+            # No overlay, nothing to refuse or read with: a typed failed result the runtime emits as the failed event,
+            # never a raise out of ``handle``. The error text names the source and fields, never a document value.
+            return self._result(
+                EnumDevSignedInReadOutcome.OVERLAY_UNAVAILABLE,
+                detail=f"the node overlay is unavailable: {exc}",
+                lane=command.lane,
+                realm=None,
+            )
         kc = overlay.keycloak
         user = overlay.user
         read = overlay.read
 
-        guard = self._dev_guard(command)
+        guard = self._dev_guard(command, overlay)
         if guard is not None:
             return guard
 
+        # Only past the guard are the transport and the secret store built: nothing before this line reads a secret
+        # or opens a connection.
+        _, settings_store = self._resolve_io(overlay)
+
+        def result(
+            outcome: EnumDevSignedInReadOutcome, **fields: Any
+        ) -> ModelDevSignedInReadResult:
+            return self._result(outcome, lane=overlay.lane, realm=kc.realm, **fields)
+
         password = await settings_store.read(user.password_folder, user.password_key)
         if password is None:
-            return self._result(
+            return result(
                 EnumDevSignedInReadOutcome.PASSWORD_MISSING,
                 detail=f"the user password {user.password_folder}/{user.password_key} is not in the store",
                 user_name=user.username,
                 expected_secret=f"{user.password_folder}/{user.password_key}",
             )
         if not command.write:
-            return self._result(
+            return result(
                 EnumDevSignedInReadOutcome.READY,
                 detail="the user password is present; the probe verb wrote nothing and called nothing",
                 user_name=user.username,
@@ -178,13 +213,13 @@ class HandlerDevSignedInRead:
         token_url = f"{kc.base_url}{kc.token_path_template.format(realm=kc.realm)}"
         token = await self._user_token(token_url, password)
         if token is None:
-            return self._result(
+            return result(
                 EnumDevSignedInReadOutcome.USER_TOKEN_REFUSED,
                 detail="the Keycloak password grant refused the dev user",
                 user_name=user.username,
             )
         if isinstance(token, str):
-            return self._result(
+            return result(
                 EnumDevSignedInReadOutcome.KEYCLOAK_UNREACHABLE,
                 detail=token,
                 user_name=user.username,
@@ -203,20 +238,20 @@ class HandlerDevSignedInRead:
             )
         )
         if isinstance(response, str):
-            return self._result(
+            return result(
                 EnumDevSignedInReadOutcome.API_UNREACHABLE,
                 detail=response,
                 user_name=user.username,
             )
         if response.status in _UNAUTHORIZED_STATUSES:
-            return self._result(
+            return result(
                 EnumDevSignedInReadOutcome.READ_UNAUTHORIZED,
                 detail=f"the read answered {response.status} to the signed-in bearer",
                 user_name=user.username,
                 http_status=response.status,
             )
         if response.status != 200:
-            return self._result(
+            return result(
                 EnumDevSignedInReadOutcome.READ_REFUSED,
                 detail=f"the read answered {response.status}",
                 user_name=user.username,
@@ -225,13 +260,13 @@ class HandlerDevSignedInRead:
         body = response.json_body
         state = body.get(read.data_state_field) if isinstance(body, dict) else None
         if not isinstance(state, str) or state not in read.data_states:
-            return self._result(
+            return result(
                 EnumDevSignedInReadOutcome.READ_RESPONSE_INVALID,
                 detail=f"the read answered 200 without a {read.data_state_field} among {list(read.data_states)}",
                 user_name=user.username,
                 http_status=response.status,
             )
-        return self._result(
+        return result(
             EnumDevSignedInReadOutcome.READ_ACCEPTED,
             detail="the signed-in read was accepted",
             user_name=user.username,
@@ -240,14 +275,14 @@ class HandlerDevSignedInRead:
         )
 
     async def _send(self, request: ModelIdentityHttpRequest) -> Any:
-        _, transport, _ = self._resolve()
+        transport, _ = self._resolve_io(self._resolve_overlay())
         try:
             return await transport.send(request)
         except ConnectionError as exc:
             return f"no response arrived: {type(exc).__name__}"
 
     async def _user_token(self, token_url: str, password: SecretStr) -> Any:
-        overlay, _, _ = self._resolve()
+        overlay = self._resolve_overlay()
         user = overlay.user
         response = await self._send(
             ModelIdentityHttpRequest(

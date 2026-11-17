@@ -25,6 +25,7 @@ class EnumDevSignedInReadOutcome(StrEnum):
     READ_UNAUTHORIZED = "read_unauthorized"
     READ_REFUSED = "read_refused"
     READ_RESPONSE_INVALID = "read_response_invalid"
+    OVERLAY_UNAVAILABLE = "overlay_unavailable"
 
 
 class ModelDevSignedInReadCommand(BaseModel):
@@ -44,7 +45,7 @@ class ModelDevSignedInReadResult(BaseModel):
     ok: bool
     outcome: EnumDevSignedInReadOutcome
     detail: str
-    realm: str
+    realm: str | None = None
     lane: str
     user_name: str | None = None
     http_status: int | None = None
