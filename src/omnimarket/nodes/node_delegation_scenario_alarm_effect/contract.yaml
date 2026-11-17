@@ -8,7 +8,7 @@
 # row is stamped at that run time. Thus ticks across a bucket boundary submit the identical row and request id. Missing,
 # unreadable and stale readings also name their conclusion and six-hour bucket, allowing another outage reading each
 # bucket. A missing or unreadable record is stamped at the bucket start; a stale record at the later of the bucket start
-# and its ran_at plus max_age_seconds (the moment it went stale); no stamp is after the tick that writes the row. A successful,
+# and its ran_at plus max_age_seconds (the moment it went stale); no stamp depends on the tick that writes the row (a run time ahead of the tick, and a fresh record that concludes the literal stale, are bucketed readings stamped at the bucket start). A successful,
 # recent run writes nothing.
 # Ledger dedup (read in node_work_ledger_append_effect, handler_work_ledger_append_effect.py): a request id is found by its
 # req= cell in the live ledger file's text and in the bus ledger store; once a row rolls into the archive the id is no longer

@@ -382,6 +382,76 @@ def test_the_tick_without_an_append_route_refuses(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_omn24874_alarm_last_run_record_is_written_when_the_tick_exits_two(
+    tmp_path: Path,
+) -> None:
+    # Review of head 43bc9673d0c1, finding 7: exit 2 (no append route) left no last-run record, so R9 read the previous
+    # tick's record, which said success.
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "last-run.json").write_text(
+        json.dumps({"conclusion": "success", "ran_at": "2026-11-16T14:00:00+00:00"}),
+        encoding="utf-8",
+    )
+    code = main(["--home", str(tmp_path), "--state-dir", str(state)], environ={})
+    assert code == 2
+    record = json.loads((state / "last-run.json").read_text(encoding="utf-8"))
+    assert record["conclusion"] == "failure"
+    assert "ONEX_LEDGER_BUS_APPEND_COMMAND" in record["error"]
+    assert record["ran_at"] != "2026-11-16T14:00:00+00:00"
+
+
+@pytest.mark.unit
+def test_omn24874_alarm_last_run_record_is_written_when_the_appender_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An exception out of the handler (the appender raised) also left no record.
+    tick_module = importlib.import_module(
+        "omnimarket.nodes.node_delegation_scenario_alarm_effect.runtime_delegation_scenario_alarm_tick"
+    )
+
+    class _Raising:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def append(self, rows: str, request_id: str) -> ModelAppendOutcome:
+            raise RuntimeError("the appender broke")
+
+    monkeypatch.setattr(tick_module, "CommandLedgerAppender", _Raising)
+    state = tmp_path / "state"
+    code = main(
+        ["--home", str(tmp_path), "--state-dir", str(state)],
+        environ={"ONEX_LEDGER_BUS_APPEND_COMMAND": "true", "ONEX_HOST_NAME": "h053"},
+    )
+    assert code == 1
+    record = json.loads((state / "last-run.json").read_text(encoding="utf-8"))
+    assert record["conclusion"] == "failure"
+    assert "the appender broke" in record["error"]
+
+
+@pytest.mark.unit
+def test_omn24874_alarm_last_run_record_is_written_when_the_append_command_times_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Review finding 7's check: CommandLedgerAppender catches a timeout, so the record was already written for it.
+    _record(tmp_path, "r8", "failure", "2026-11-16T14:48:29+00:00", monkeypatch)
+
+    def _timeout(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(argv, 1)
+
+    monkeypatch.setattr(subprocess, "run", _timeout)
+    state = tmp_path / "state"
+    code = main(
+        ["--home", str(tmp_path), "--state-dir", str(state)],
+        environ={"ONEX_LEDGER_BUS_APPEND_COMMAND": "append", "ONEX_HOST_NAME": "h053"},
+    )
+    assert code == 1
+    record = json.loads((state / "last-run.json").read_text(encoding="utf-8"))
+    assert record["conclusion"] == "failure"
+    assert "R8" in record["unappended"]
+
+
+@pytest.mark.unit
 def test_the_installer_declares_the_alarm_timer() -> None:
     contract = yaml.safe_load(
         (
@@ -999,6 +1069,31 @@ def test_omn24874_golden_chain_tick_exit_zero_on_a_duplicate_receipt(
 
 
 @pytest.mark.unit
+def test_omn24874_golden_chain_tick_exit_one_when_the_append_command_of_the_rendered_unit_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The negative control of the exit-zero tests above: on the same rendered argv and environment, an append command
+    # that exits 1 leaves the alarm unappended and the tick exits 1 (so a tick that exits 1 fails `-k tick_exit`'s peers).
+    now = datetime.now(UTC)
+    home = tmp_path / "records"
+    _record(
+        home, "r8", "failure", (now - timedelta(seconds=300)).isoformat(), monkeypatch
+    )
+    _record(home, "r9", "success", now.isoformat(), monkeypatch)
+
+    def _fail(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 1, "", "refused")
+
+    monkeypatch.setattr(subprocess, "run", _fail)
+    argv, environ = _rendered_tick(tmp_path, home)
+    assert main(argv, environ=environ) == 1
+    state_dir = Path(argv[argv.index("--state-dir") + 1])
+    record = json.loads((state_dir / "last-run.json").read_text(encoding="utf-8"))
+    assert (record["alarms"], record["unappended"]) == (["R8"], ["R8"])
+    assert record["conclusion"] == "failure"
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("scenario", ["r8", "r9"])
 @pytest.mark.parametrize(
     ("overdue_seconds", "stamp_is_bucket_start"), [(600, False), (30000, True)]
@@ -1048,20 +1143,49 @@ def _stamp_of_r8_row(appender: _Appender) -> datetime:
     )
 
 
+def _write_literal_stale_record(home: Path, ran_at: datetime) -> None:
+    """A hand-written fresh record that concludes the literal ``stale`` (the writer's enum has no such value)."""
+    watch = next(w for w in load_alarm_settings().scenarios if w.scenario == "R8")
+    record = home / watch.evidence_file
+    record.parent.mkdir(parents=True)
+    record.write_text(
+        json.dumps({"conclusion": "stale", "ran_at": ran_at.isoformat()}),
+        encoding="utf-8",
+    )
+
+
+_SECOND_TICK_CASES = {
+    # case: (first tick, second tick) over one record; the record is fixed per case (see the test body).
+    "future_ran_at": (_NOW, _NOW + timedelta(seconds=900)),
+    "fresh_literal_stale": (_NOW, _NOW + timedelta(seconds=900)),
+    "fractional_ran_at_read_in_its_own_second": (
+        _NOW + timedelta(microseconds=700000),
+        _NOW + timedelta(seconds=900, microseconds=700000),
+    ),
+}
+
+
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    "case",
-    ["round_up_of_a_fractional_run_time", "future_ran_at", "fresh_literal_stale"],
-)
-def test_omn24874_alarm_stamp_is_never_after_the_tick_that_writes_the_row(
+@pytest.mark.parametrize("case", list(_SECOND_TICK_CASES))
+def test_omn24874_alarm_second_tick_is_a_duplicate_through_the_real_append_handler(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
 ) -> None:
-    # Review finding 8: the round-up of a fractional run time, a run time in the future (clock skew) and a fresh record
-    # that concludes the literal `stale` (EnumScenarioConclusion has no such value, so only a hand-written record can)
-    # each stamped a row after the moment of the tick that wrote it.
-    now = _NOW + timedelta(microseconds=900000)
-    settings = load_alarm_settings()
-    if case == "round_up_of_a_fractional_run_time":
+    # Review of head 43bc9673d0c1, finding 1: the stamp was `min(moment, now)`, so a failed record with a future ran_at,
+    # a fresh record concluding the literal `stale` and a fractional ran_at read in its own second were stamped at each
+    # tick's own second while the request id stayed fixed. The ledger answers a repeated id duplicate only for identical
+    # bytes, so the second tick read a conflict and the tick exited 1. The stamp now comes from the record and the bucket.
+    first_tick, second_tick = _SECOND_TICK_CASES[case]
+    if case == "future_ran_at":
+        _record(
+            tmp_path,
+            "r8",
+            "failure",
+            (_NOW + timedelta(seconds=3600)).isoformat(),
+            monkeypatch,
+        )
+    elif case == "fresh_literal_stale":
+        _write_literal_stale_record(tmp_path, _NOW - timedelta(seconds=600))
+    else:
         _record(
             tmp_path,
             "r8",
@@ -1069,27 +1193,90 @@ def test_omn24874_alarm_stamp_is_never_after_the_tick_that_writes_the_row(
             (_NOW + timedelta(microseconds=400000)).isoformat(),
             monkeypatch,
         )
-    elif case == "future_ran_at":
+    _record(tmp_path, "r9", "success", _NOW.isoformat(), monkeypatch)
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text(
+        f"{_NOW + timedelta(days=1):%Y-%m-%dT%H:%M:%SZ} | STATUS | lane=newer | principal=alarm-principal | "
+        "ticket=OMN-24874 | actor=claude:sonnet:remote-lane | model=sonnet | a row newer than the alarm\n",
+        encoding="utf-8",
+    )
+    appender = _WorkLedgerAppender(ledger, _NOW + timedelta(days=1))
+    clocks = iter((first_tick, second_tick))
+    handler = HandlerDelegationScenarioAlarm(
+        load_alarm_settings(), appender, clock=clocks.__next__
+    )
+    request_ = ModelScenarioAlarmRequest(home=tmp_path, host="h053")
+    first = handler.handle(request_)
+    second = handler.handle(request_)
+    assert [r.append_status for r in first.alarms] == ["accepted"]
+    assert [r.append_status for r in second.alarms] == ["duplicate"]
+    assert second.unappended == ()
+    assert (
+        len(
+            [
+                line
+                for line in ledger.read_text(encoding="utf-8").splitlines()
+                if "alarm=delegation-scenario-r8-failed" in line
+            ]
+        )
+        == 1
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("case", list(_SECOND_TICK_CASES))
+def test_omn24874_alarm_second_tick_stamp_is_a_function_of_the_record_and_bucket_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    # The same three records, read at two tick moments of one bucket: the identical row bytes and request id.
+    first_tick, second_tick = _SECOND_TICK_CASES[case]
+    if case == "future_ran_at":
         _record(
             tmp_path,
             "r8",
             "failure",
-            (_NOW + timedelta(seconds=600)).isoformat(),
+            (_NOW + timedelta(seconds=3600)).isoformat(),
             monkeypatch,
         )
+    elif case == "fresh_literal_stale":
+        _write_literal_stale_record(tmp_path, _NOW - timedelta(seconds=600))
     else:
-        watch = next(w for w in settings.scenarios if w.scenario == "R8")
-        record = tmp_path / watch.evidence_file
-        record.parent.mkdir(parents=True)
-        record.write_text(
-            json.dumps({"conclusion": "stale", "ran_at": _NOW.isoformat()}),
-            encoding="utf-8",
+        _record(
+            tmp_path,
+            "r8",
+            "failure",
+            (_NOW + timedelta(microseconds=400000)).isoformat(),
+            monkeypatch,
         )
-    appender = _Appender()
-    HandlerDelegationScenarioAlarm(settings, appender, clock=lambda: now).handle(
-        ModelScenarioAlarmRequest(home=tmp_path, host="h053")
+    first = _r8_tick(tmp_path, first_tick)
+    second = _r8_tick(tmp_path, second_tick)
+    assert first == second
+    if case == "fractional_ran_at_read_in_its_own_second":
+        # Rounded up from the record's own time, never clamped to the tick's second.
+        assert first[0].startswith("2026-11-16T15:00:01Z | STATUS")
+    else:
+        # A future ran_at and a fresh literal `stale` are bucketed readings: stamped at the bucket start (12:00).
+        assert first[0].startswith("2026-11-16T12:00:00Z | STATUS")
+
+
+@pytest.mark.unit
+def test_omn24874_alarm_future_ran_at_is_not_read_as_the_run_it_cites(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A run time ahead of the tick cannot identify a run: it reads as unreadable (bucketed), so its row is never stamped
+    # after the tick, and it names its own conclusion in the request id.
+    _record(
+        tmp_path,
+        "r8",
+        "failure",
+        (_NOW + timedelta(seconds=600)).isoformat(),
+        monkeypatch,
     )
-    assert _stamp_of_r8_row(appender) <= now
+    appender = _Appender()
+    HandlerDelegationScenarioAlarm(
+        load_alarm_settings(), appender, clock=lambda: _NOW
+    ).handle(ModelScenarioAlarmRequest(home=tmp_path, host="h053"))
+    assert _stamp_of_r8_row(appender) <= _NOW
 
 
 @pytest.mark.unit

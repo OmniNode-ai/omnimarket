@@ -5,7 +5,10 @@
 The scheduled tick of the delegation scenario alarm: read each watched scenario's last-run record under the home directory
 and append one alarm row per failed run through the bus append command the unit names. ``--home`` replaces the home
 directory (a sandbox run over a forced failing record). Prints one JSON line per scenario. Exits 1 when an alarm row could
-not be appended, so the unit itself reads failed and the liveness reading sees it; a failed scenario alone exits 0.
+not be appended or the handler raised, and 2 when the tick has no ledger route, so the unit itself reads failed and the
+liveness reading sees it; a failed scenario alone exits 0. Every exit writes the tick's own last-run record under
+``--state-dir``: the liveness reading of this tick (R9) reads that record, so a tick that ended in exit 1 or 2 must leave
+one that says ``failure``, never the previous tick's ``success``.
 """
 
 from __future__ import annotations
@@ -29,6 +32,27 @@ from omnimarket.nodes.node_delegation_scenario_alarm_effect.handlers.handler_del
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     CommandLedgerAppender,
 )
+
+
+def _write_last_run(
+    state_dir: Path | None,
+    *,
+    alarms: Sequence[str],
+    unappended: Sequence[str],
+    error: str | None = None,
+) -> None:
+    """Write this tick's last-run record; ``error`` (a tick that could not read or append) makes it a failure."""
+    if state_dir is None:
+        return
+    record: dict[str, object] = {
+        "alarms": list(alarms),
+        "conclusion": "failure" if unappended or error else "success",
+        "ran_at": datetime.now(UTC).isoformat(),
+        "unappended": list(unappended),
+    }
+    if error is not None:
+        record["error"] = error
+    write_atomic(state_dir / "last-run.json", json.dumps(record, sort_keys=True))
 
 
 def main(
@@ -55,6 +79,12 @@ def main(
         sys.stderr.write(
             f"{settings.ledger_append_command_env} is not set; an alarm has no ledger route\n"
         )
+        _write_last_run(
+            args.state_dir,
+            alarms=(),
+            unappended=(),
+            error=f"{settings.ledger_append_command_env} is not set",
+        )
         return 2
     home = args.home or Path(env.get(settings.home_env, "") or Path.home())
     host = env.get(settings.host_env, "").strip() or socket.gethostname()
@@ -64,24 +94,28 @@ def main(
             append_argv, settings.lane, host, settings.ledger_append_timeout_seconds
         ),
     )
-    result = handler.handle(ModelScenarioAlarmRequest(home=home, host=host))
+    try:
+        result = handler.handle(ModelScenarioAlarmRequest(home=home, host=host))
+    except (
+        Exception
+    ) as exc:  # the tick's own record must say failure whatever the appender raised
+        _write_last_run(
+            args.state_dir,
+            alarms=(),
+            unappended=(),
+            error=f"{type(exc).__name__}: {exc}"[:300],
+        )
+        sys.stderr.write(f"the alarm tick failed: {type(exc).__name__}: {exc}\n")
+        return 1
     for reading in result.readings:
         sys.stdout.write(
             json.dumps(reading.model_dump(mode="json"), sort_keys=True) + "\n"
         )
-    if args.state_dir is not None:
-        write_atomic(
-            args.state_dir / "last-run.json",
-            json.dumps(
-                {
-                    "alarms": [r.scenario for r in result.alarms],
-                    "conclusion": "failure" if result.unappended else "success",
-                    "ran_at": datetime.now(UTC).isoformat(),
-                    "unappended": [r.scenario for r in result.unappended],
-                },
-                sort_keys=True,
-            ),
-        )
+    _write_last_run(
+        args.state_dir,
+        alarms=[r.scenario for r in result.alarms],
+        unappended=[r.scenario for r in result.unappended],
+    )
     return 1 if result.unappended else 0
 
 

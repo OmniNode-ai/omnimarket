@@ -12,7 +12,9 @@ scenario, the host, the run's own time, the conclusion and the alarm time bucket
 A failed run with a readable time that is still inside ``max_age_seconds`` is keyed on that time alone and stamped with it, so
 ticks on either side of a bucket boundary submit the identical row and request id. A missing record uses the bucket start,
 allowing another outage reading in each bucket; a stale record is stamped at the later of the bucket start and the moment it
-went stale (its ``ran_at`` plus ``max_age_seconds``), so a reader window that starts at the run it cites finds the row. The pattern is the deploy-job-failed alarm row of omnibase_infra's
+went stale (its ``ran_at`` plus ``max_age_seconds``), so a reader window that starts at the run it cites finds the row. A run
+time ahead of the tick, and a fresh record that concludes the literal ``stale``, read as bucketed readings stamped at the
+bucket start. No stamp depends on the tick's own second: a second tick submits the identical row. The pattern is the deploy-job-failed alarm row of omnibase_infra's
 deploy job reading.
 """
 
@@ -174,13 +176,16 @@ def build_alarm_row(
     ran_at: str,
     bucket: int | None,
     last_conclusion: str | None = None,
-    now: datetime | None = None,
 ) -> str:
     """Stamp a failed run at its own time, or a recurring outage at its bucket start.
 
-    ``last_conclusion`` is the conclusion of the record a stale reading replaced. ``now`` is the moment of the tick that
-    writes the row: the stamp is never after it (a fractional run time rounded up, a run time in the future and a fresh
-    record that concludes the literal ``stale`` would otherwise stamp the row ahead of the tick).
+    The stamp is a function of the record and the bucket only, never of the tick that writes the row: the request id is
+    fixed for one record and one bucket, and the ledger answers a repeated id duplicate only for identical bytes, so a
+    stamp tied to the tick's own second would turn the second tick's row into a conflict.
+
+    ``last_conclusion`` is the conclusion of the record a stale reading replaced; it is set only for a record the handler
+    read as older than its declared age, which is the only record whose ``ran_at`` plus ``max_age_seconds`` is behind
+    the tick.
     """
     if bucket is None:
         moment = _read_run_time(ran_at)
@@ -191,15 +196,15 @@ def build_alarm_row(
         # A stale reading cites a run that went stale at ran_at + max_age. The bucket start is usually before that
         # run (R9's max_age is far inside the bucket), and a reader window that starts at ran_at would miss a row
         # stamped before it, so the stamp is the later of the two. Both are fixed for one record and one bucket.
+        # A fresh record that concludes the literal ``stale`` has no such moment (it is not older than its age), so it
+        # is stamped at the bucket start like any other bucketed reading.
         ran = _read_run_time(ran_at)
-        if conclusion == "stale" and ran is not None:
+        if conclusion == "stale" and last_conclusion is not None and ran is not None:
             moment = max(moment, ran + timedelta(seconds=watch.max_age_seconds))
     # Ledger stamps have second precision. Round a fractional run time up so a
     # reader whose window starts at ran_at cannot exclude this run's alarm.
     if moment.microsecond:
         moment = moment.replace(microsecond=0) + timedelta(seconds=1)
-    if now is not None:
-        moment = min(moment, now.astimezone(UTC).replace(microsecond=0))
     stamp = moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     if conclusion == "no-record":
         reason = "no readable last-run record"
@@ -271,10 +276,14 @@ class HandlerDelegationScenarioAlarm:
                 continue
             # A failed run remains the same run across later ticks. Only missing,
             # unreadable and stale records represent recurring outage readings.
+            # A run time ahead of the tick (clock skew, a hand-written record) cannot identify a run either: it reads
+            # as unreadable, so its row is bucketed and stamped at the bucket start, never at the tick.
+            run_time = _read_run_time(ran_at)
             row_bucket = (
                 bucket
                 if conclusion in ("no-record", "stale")
-                or _read_run_time(ran_at) is None
+                or run_time is None
+                or run_time > now
                 else None
             )
             row = build_alarm_row(
@@ -285,7 +294,6 @@ class HandlerDelegationScenarioAlarm:
                 ran_at=ran_at,
                 bucket=row_bucket,
                 last_conclusion=last_conclusion,
-                now=now,
             )
             outcome = self._appender.append(
                 row,

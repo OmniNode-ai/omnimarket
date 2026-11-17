@@ -63,25 +63,23 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -k "omn24874 and tick_exit" -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25319-ac2
-  description: Every falsifier and check command of the three alarm contracts names a test path that exists in the tree (the cost pull request's own files are named by the committed fixture), and the old
-    OMN-25281 path is gone.
+  description: Every falsifier and check command of the alarm contracts names a file that exists in the tree (the cost pull request's files left the OMN-25071 contract), a missing path is reported by
+    the same reader, and the old OMN-25281 path is gone.
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "every_falsifier_command or falsifier_path_check" -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "contract_checks_omn25071_paths or old_omn25281_falsifier_path" -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25319-ac3
-  description: The shims print exactly the keys of the committed real output of pr_state_local.py (open and merged) and onex scm pr-checks for 6335, the shim refuses an unknown --source, the cost files
-    are absent on dev tip and the merge base per the committed reading, the Done gate fixture names every item, and the dev tests are read in the working tree too.
+  description: The shims print exactly the keys of the committed real output of pr_state_local.py (open and merged) and onex scm pr-checks for 6335, and the shim refuses an unknown --source.
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "shim_reading or shim_state or merged_pull_request or refuses_a_source or c1_checks
-      or done_gate_fixture or cost_files or dev_tests_are_also" -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "shim_reading or shim_state or merged_pull_request or refuses_a_source or c1_checks" -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25319-ac4
   description: The Lab check fails a comment that names no exit 0, no lab command or an old head; the Lab comment of the new head is read as a local Done gate item (findings 1 to 8 of this review, the lab
@@ -107,7 +105,7 @@ dod_evidence:
       --head "$H" --finding 1 --finding 2 --finding 3 --finding 4 --finding 5 --finding 6 --finding 7 --finding 8 --round 1139 --lab'
     cwd: .
 - id: dod-omn25319-ac5
-  description: The stamp of an alarm row is never after the tick that writes it (round-up, future ran_at, literal stale), the contract's discovery entry is skipped by the effects runtime's wiring in both
+  description: The stamp of an alarm row at head 37fe44a7a8ef was never after the tick that writes it; OMN-25376 replaced that rule with a stamp that depends on the record and the bucket only. The contract's discovery entry is skipped by the effects runtime's wiring in both
     modes, the rendered unit environment leaves the state dir and the lane login to the real append, and the comment check reads exit lines, the lab command word, truncation, the author, the review round
     and the tree head.
   source: manual

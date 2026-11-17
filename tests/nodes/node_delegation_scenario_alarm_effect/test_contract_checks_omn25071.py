@@ -43,13 +43,29 @@ from omnimarket.models.scm.model_scm_command import (
     ModelScmAnswer,
     ModelScmBusReceipt,
 )
+from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
+from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
+    EnumGithubGatewayOperation,
+    ModelGithubGatewayRequest,
+)
+from tests.nodes.node_github_repo_gateway_effect.recorded_transport import (
+    REPO as _GATEWAY_REPO,
+)
+from tests.nodes.node_github_repo_gateway_effect.recorded_transport import (
+    JsonExchange,
+    RecordedGatewayTransport,
+    get,
+    issue_comment,
+    json_response,
+    pull_request,
+)
 
 _REPO = Path(__file__).resolve().parents[3]
 _CONTRACTS = {
     name: yaml.safe_load(
         (_REPO / "contracts" / f"{name}.yaml").read_text(encoding="utf-8")
     )
-    for name in ("OMN-25071", "OMN-25206", "OMN-25281", "OMN-25319")
+    for name in ("OMN-25071", "OMN-25206", "OMN-25281", "OMN-25319", "OMN-25376")
 }
 _HEAD = "0123456789abcdef0123456789abcdef01234567"
 _OLD = "89abcdef0123456789abcdef0123456789abcdef"
@@ -508,65 +524,11 @@ def test_ac6_pr_checks_check_reads_the_required_check_runs_at_the_head(
     assert world.run(command) != 0
 
 
-def _git(*args: str) -> None:
-    subprocess.run(["git", *args], check=True, env=scrub_git_location_env(os.environ))
-
-
-def _repo(path: Path, files: dict[str, str]) -> None:
-    _git("init", "-q", str(path))
-    for name, text in files.items():
-        target = path / name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text, encoding="utf-8")
-    ident = ("-c", "user.name=t", "-c", "user.email=t@example.com")
-    _git("-C", str(path), *ident, "add", "-A")
-    _git("-C", str(path), *ident, "commit", "-q", "--allow-empty", "-m", "base")
-    _git("-C", str(path), "update-ref", "refs/remotes/origin/dev", "HEAD")
-
-
-@pytest.mark.unit
-def test_ac3_and_ac4_check_that_the_cost_pr_test_files_are_on_dev_and_ac3_selects_a_test(
-    tmp_path: Path,
-) -> None:
-    ac3_exists, ac3_selects = (
-        _commands("dod-omn25071-ac3", "cat-file")[0],
-        _commands("dod-omn25071-ac3", "collect-only")[0],
-    )
-    ac4_exists = _commands("dod-omn25071-ac4", "cat-file")[0]
-    absent = tmp_path / "absent"
-    world = _World(tmp_path / "w1")
-    _repo(absent, {"README.md": "x"})
-    assert world.run(ac3_exists, cwd=absent) != 0
-    assert world.run(ac4_exists, cwd=absent) != 0
-
-    present = tmp_path / "present"
-    _repo(
-        present,
-        {
-            "tests/test_omn24874_contract_checks.py": "def test_ac3_reads():\n    pass\n",
-            "contracts/OMN-24874.yaml": "ticket_id: OMN-24874\n",
-            "tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py": "",
-        },
-    )
-    assert world.run(ac3_exists, cwd=present) == 0
-    assert world.run(ac4_exists, cwd=present) == 0
-    assert world.run(ac3_selects, cwd=present) == 0
-
-    none = tmp_path / "none"
-    _repo(
-        none,
-        {"tests/test_omn24874_contract_checks.py": "def test_other():\n    pass\n"},
-    )
-    assert world.run(ac3_selects, cwd=none) != 0
-
-
 @pytest.mark.unit
 def test_the_contracts_name_the_plain_contract_path_and_no_link() -> None:
-    for name in ("OMN-25071", "OMN-25206", "OMN-25281"):
+    for name in _CONTRACTS:
         text = (_REPO / "contracts" / f"{name}.yaml").read_text(encoding="utf-8")
         assert "](https://" not in text
-    text = (_REPO / "contracts" / "OMN-25071.yaml").read_text(encoding="utf-8")
-    assert "contracts/OMN-24874.yaml" in text
 
 
 _PYTEST_CHECK = re.compile(r"pytest\s+(?P<rest>[^|;&]*)")
@@ -746,18 +708,90 @@ def test_the_ticket_falsifier_for_the_tick_exit_collects_a_test() -> None:
     assert _selected([_ALARM_TESTS], "omn24874 and no_such_token_xyz") == 0
 
 
+_NAMED_PATH = re.compile(
+    r"(?<![\w/.-])(?:tests|contracts|src|scripts)/[\w./-]*[\w]\.(?:py|yaml|json)"
+)
+
+
+def _named_paths(contract: dict[str, Any]) -> set[str]:
+    """Every repository file the contract's check commands and falsifier commands name (a test path, a script, a contract)."""
+    commands = _falsifier_commands(contract) + [
+        str(check["check_value"])
+        for item in contract["dod_evidence"]
+        for check in item["checks"]
+    ]
+    return {
+        match.group(0)
+        for command in commands
+        for match in _NAMED_PATH.finditer(command)
+    }
+
+
+def _missing_paths(contract: dict[str, Any], root: Path) -> list[str]:
+    """The files the contract names that do not exist under ``root`` (the head's tree)."""
+    return sorted(path for path in _named_paths(contract) if not (root / path).exists())
+
+
 @pytest.mark.unit
-def test_every_falsifier_command_in_the_contracts_names_a_test_path_that_exists() -> (
+@pytest.mark.parametrize("name", list(_CONTRACTS))
+def test_contract_checks_omn25071_paths_named_by_each_contract_exist_at_the_head(
+    name: str,
+) -> None:
+    # Review of head 43bc9673d0c1, finding 2: the OMN-25071 contract named the cost pull request's files, absent at this
+    # head, so `git cat-file -e HEAD:<path>` failed and the items were unmet. Every named path exists in this tree.
+    assert _missing_paths(_CONTRACTS[name], _REPO) == []
+    # The reading is real: the contract names paths, and each is also tracked by git at this head.
+    named = _named_paths(_CONTRACTS[name])
+    assert named
+    listed = subprocess.run(
+        ["git", "ls-files", "--", *sorted(named)],
+        cwd=_REPO,
+        env=scrub_git_location_env(os.environ),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if listed.returncode == 0 and listed.stdout.strip():
+        assert set(listed.stdout.split()) == named
+
+
+@pytest.mark.unit
+def test_contract_checks_omn25071_paths_check_fails_on_a_missing_falsifier_path() -> (
     None
 ):
-    # Review finding 2: the OMN-25281 falsifiers named tests/test_contract_checks_omn25071.py, which is not in the tree.
-    cost_files = {
-        path
-        for path, present in _fixture("cost_files_on_dev.json")["refs"][
-            "pr_head_37fe44a7a8ef"
-        ]["files"].items()
-        if not present
+    # The negative control, through the same reader: a contract whose falsifier names the cost pull request's test file
+    # (absent here), and one whose check names a file that is not in the tree, are both reported.
+    contract = {
+        "requirements": [
+            {
+                "acceptance": [
+                    {
+                        "statement": "falsifier: `uv run --frozen pytest tests/test_omn24874_contract_checks.py -k ac3 -q` fails"
+                    }
+                ]
+            }
+        ],
+        "dod_evidence": [
+            {
+                "checks": [
+                    {
+                        "check_value": "sh -c 'git cat-file -e HEAD:contracts/OMN-24874.yaml'"
+                    }
+                ]
+            }
+        ],
     }
+    assert _missing_paths(contract, _REPO) == [
+        "contracts/OMN-24874.yaml",
+        "tests/test_omn24874_contract_checks.py",
+    ]
+    assert _missing_paths({"requirements": [], "dod_evidence": []}, _REPO) == []
+
+
+@pytest.mark.unit
+def test_contract_checks_omn25071_paths_every_selector_path_selects_at_this_head() -> (
+    None
+):
     seen = 0
     for name, contract in _CONTRACTS.items():
         commands = _falsifier_commands(contract) + [
@@ -768,19 +802,13 @@ def test_every_falsifier_command_in_the_contracts_names_a_test_path_that_exists(
         for command in commands:
             for paths, _ in _selectors(command):
                 seen += 1
-                for path in paths:
-                    # The cost pull request's own files are read from dev once it merges (their absence is the
-                    # committed reading in fixtures/cost_files_on_dev.json); every other path exists here.
-                    assert path in cost_files or (_REPO / path).exists(), (
-                        name,
-                        path,
-                    )
+                assert all((_REPO / p).exists() for p in paths), (name, paths)
     assert seen > 10
 
 
 @pytest.mark.unit
-def test_a_falsifier_path_check_fails_on_a_missing_test_file() -> None:
-    # The negative control: the old OMN-25281 falsifier path is not a file in the tree.
+def test_the_old_omn25281_falsifier_path_is_not_a_file_in_the_tree() -> None:
+    # The old OMN-25281 falsifier path is not a file in the tree (the negative control of the path reading).
     assert not (_REPO / "tests" / "test_contract_checks_omn25071.py").exists()
     assert (
         _REPO
@@ -869,59 +897,6 @@ def test_the_c1_checks_pass_a_source_the_tool_accepts() -> None:
         for check in _ITEMS[item]["checks"]:
             for source in re.findall(r"--source (\S+)", str(check["check_value"])):
                 assert source in {"auto", "local", "bus"}, source
-
-
-@pytest.mark.unit
-def test_the_done_gate_fixture_reads_every_evidence_item_of_the_alarm_contract() -> (
-    None
-):
-    gate = _fixture("done_gate_dry_run_omn25071.json")
-    assert gate["ticket_id"] == "OMN-25071"
-    assert gate["contract_repo_path"] == "contracts/OMN-25071.yaml"
-    assert [c["evidence_id"] for c in gate["checks"]] == [
-        item["id"] for item in _CONTRACTS["OMN-25071"]["dod_evidence"]
-    ]
-    assert {c["status"] for c in gate["checks"]} == {"skipped"}
-
-
-@pytest.mark.unit
-def test_the_cost_files_the_contracts_read_are_not_on_dev_or_the_merge_base(
-    tmp_path: Path,
-) -> None:
-    # Review finding 3: contracts/OMN-25071.yaml AC3 and AC4 test origin/dev and run pytest in the working tree.
-    refs = _fixture("cost_files_on_dev.json")["refs"]
-    for name in ("dev_tip_13a7e30415fa", "merge_base_3102bd1c"):
-        assert not any(refs[name]["files"].values()), name
-    ac3_exists = _commands("dod-omn25071-ac3", "cat-file")[0]
-    ac4_exists = _commands("dod-omn25071-ac4", "cat-file")[0]
-    world = _World(tmp_path / "w")
-    bare = tmp_path / "bare"
-    _repo(bare, {"README.md": "x"})
-    assert world.run(ac3_exists, cwd=bare) != 0
-    assert world.run(ac4_exists, cwd=bare) != 0
-
-
-@pytest.mark.unit
-def test_the_dev_tests_are_also_read_in_the_working_tree_before_pytest_runs_them(
-    tmp_path: Path,
-) -> None:
-    # The checks read origin/dev for the file and then run pytest on the working tree: a branch cut before the cost
-    # pull request merged has the file on dev and not in its tree, and the check must fail there, not pass.
-    files = {
-        "tests/test_omn24874_contract_checks.py": "def test_ac3_reads():\n    pass\n",
-        "contracts/OMN-24874.yaml": "ticket_id: OMN-24874\n",
-        "tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py": "",
-    }
-    behind = tmp_path / "behind"
-    _repo(behind, files)
-    ident = ("-c", "user.name=t", "-c", "user.email=t@example.com")
-    for name in files:
-        _git("-C", str(behind), *ident, "rm", "-q", name)
-    _git("-C", str(behind), *ident, "commit", "-q", "-m", "tree without the files")
-    world = _World(tmp_path / "w")
-    for item in ("dod-omn25071-ac3", "dod-omn25071-ac4"):
-        exists = _commands(item, "cat-file")[0]
-        assert world.run(exists, cwd=behind) != 0, item
 
 
 _REVIEW_FINDING_5 = [
@@ -1046,3 +1021,122 @@ def test_the_watcher_head_of_6353_is_compared_with_the_head_of_the_tree(
     assert world.run(command) == 0
     world.git_head(_OLD)
     assert world.run(command) != 0
+
+
+# --- The bus read with comments, as the real reader prints it (review of head 43bc9673d0c1, finding 4) ---------------
+
+_REAL_BUS_FIXTURE = "pr_view_bus_with_comments_6353.json"
+_REAL_BUS_HEAD = "43bc9673d0c1db0f70d8497d12983757ed85649d"
+
+
+def _real_reader_bus_answer() -> dict[str, Any]:
+    """What ``onex scm pr-view --source bus`` prints: the gateway's own ``read_pr_text`` over recorded GitHub answers.
+
+    No lab host reaches the bus from a lane (``--source bus`` there answers from the watcher with no comments), so the
+    reader that builds ``result`` (``read_pr_text`` through the gateway's ``dispatch``) runs over recorded GitHub REST
+    answers, and its typed result is wrapped by the real ``ModelScmAnswer`` and ``ModelScmBusReceipt``.
+    """
+    base = f"/repos/{_GATEWAY_REPO}"
+    pr = pull_request(6353, body="")
+    pr["head"] = {
+        "ref": "alarm",
+        "sha": _REAL_BUS_HEAD,
+        "repo": {"full_name": _GATEWAY_REPO},
+    }
+    pr["draft"] = True
+    pr["comments"] = 2
+    older = issue_comment(
+        101, body=f"Lab: head={_OLD}\nhost h053, command: {_LAB}\nresult: exit 0\n"
+    )
+    newer = issue_comment(
+        102,
+        body=f"Lab: head={_REAL_BUS_HEAD}\nhost h053, command: {_LAB}\nresult: exit 0\n"
+        "[round 1345] finding 1: fixed\n",
+    )
+    older["user"] = newer["user"] = {"login": "lane-writer", "id": 9}
+    older["created_at"] = "2026-11-17T13:00:00Z"
+    newer["created_at"] = "2026-11-17T15:00:00Z"
+    request = ModelGithubGatewayRequest.model_validate(
+        {
+            "operation": EnumGithubGatewayOperation.PR_TEXT,
+            "repo": _GATEWAY_REPO,
+            "pr_number": 6353,
+            "limit": 100,
+        }
+    )
+    transport = RecordedGatewayTransport(
+        [
+            JsonExchange(get(f"{base}/pulls/6353"), json_response(pr)),
+            JsonExchange(
+                get(f"{base}/issues/6353/comments?per_page=100"),
+                json_response([older, newer]),
+            ),
+        ]
+    )
+    result = dispatch(request, transport)
+    transport.assert_drained()
+    answer = ModelScmAnswer(
+        verb="pr-view",
+        node=EnumScmNode.GATEWAY,
+        operation="pr_text",
+        repo=_GATEWAY_REPO,
+        source="bus",
+        outcome="completed",
+        watcher_tick=None,
+        bus=ModelScmBusReceipt(
+            correlation_id=UUID(int=1),
+            command_topic="onex.cmd.x.v1",
+            command_envelope_id=UUID(int=2),
+            terminal_topic="onex.evt.x.v1",
+        ),
+        result=result.model_dump(mode="json"),
+    )
+    return dict(json.loads(answer.model_dump_json()))
+
+
+def _key_shape(value: Any) -> Any:
+    """The keys of a JSON document at every depth (a list reads as the shape of its first item)."""
+    if isinstance(value, dict):
+        return {key: _key_shape(item) for key, item in sorted(value.items())}
+    if isinstance(value, list):
+        return [_key_shape(value[0])] if value else []
+    return None
+
+
+@pytest.mark.unit
+def test_pr_comment_check_real_fixture_is_what_the_real_reader_prints() -> None:
+    # The committed answer is regenerated by the real reader: a hand edit, or a reader change, fails here.
+    assert _fixture(_REAL_BUS_FIXTURE) == _real_reader_bus_answer()
+
+
+@pytest.mark.unit
+def test_pr_comment_check_real_fixture_has_the_shape_the_shim_prints(
+    world: _World,
+) -> None:
+    # The shim of every comment check prints the keys of the real reader's answer, to the last nested key.
+    world.comments(f"Lab: head={_REAL_BUS_HEAD}\nx", head=_REAL_BUS_HEAD)
+    shim = json.loads((world.root / "comments.json").read_text(encoding="utf-8"))
+    real = _fixture(_REAL_BUS_FIXTURE)
+    assert _key_shape(shim) == _key_shape(real)
+    assert real["source"] == "bus"
+    assert real["bus"] is not None
+
+
+@pytest.mark.unit
+def test_pr_comment_check_real_fixture_is_read_by_the_checker(world: _World) -> None:
+    # The checker reads the real answer itself, not only the shim's: the newest Lab comment for the head is the one read.
+    (world.root / "comments.json").write_text(
+        json.dumps(_fixture(_REAL_BUS_FIXTURE)), encoding="utf-8"
+    )
+    world.git_head(_REAL_BUS_HEAD)
+    pipe = (
+        f"onex scm pr-view --source bus OmniNode-ai/omnimarket#6353 | {sys.executable} "
+        f"{_REPO}/tests/nodes/node_delegation_scenario_alarm_effect/pr_comment_check.py"
+    )
+    assert (
+        world.run(f"{pipe} --head {_REAL_BUS_HEAD} --lab --finding 1 --round 1345") == 0
+    )
+    assert (
+        world.run(f"{pipe} --head {_REAL_BUS_HEAD} --lab --finding 2 --round 1345") != 0
+    )
+    assert world.run(f"{pipe} --head {_HEAD} --lab") != 0
