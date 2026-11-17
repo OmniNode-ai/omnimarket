@@ -43,6 +43,22 @@ additional_handlers:
     class: HandlerScopeCheck
     input_model: omnimarket.nodes.node_review_lock_effect.models.model_review_lock.ModelScopeCheckRequest
 
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerReviewLock
+        module: omnimarket.nodes.node_review_lock_effect.handlers.handler_review_lock
+      event_model:
+        name: ModelReviewLockRequest
+        module: omnimarket.nodes.node_review_lock_effect.models.model_review_lock
+    - handler:
+        name: HandlerScopeCheck
+        module: omnimarket.nodes.node_review_lock_effect.handlers.handler_scope_check
+      event_model:
+        name: ModelScopeCheckRequest
+        module: omnimarket.nodes.node_review_lock_effect.models.model_review_lock
+
 descriptor:
   node_archetype: effect
   runtime_profiles: [effects]
