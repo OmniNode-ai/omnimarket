@@ -676,6 +676,44 @@ class DodEvidenceLocalSource:
                 found.append(repo)
         return found
 
+    def product_repositories(self) -> list[str] | None:
+        """``owner/name`` of every product clone under ``$OMNI_HOME`` (OMN-25366),
+        sorted, whether or not it carries any contract.
+
+        ``None`` when ``$OMNI_HOME`` is unset, so the caller can tell "no
+        repository" from "no clone could be asked".
+        """
+        registry_root = os.environ.get("OMNI_HOME")
+        if not registry_root or not Path(registry_root).is_dir():
+            return None
+        found: list[str] = []
+        for clone in sorted(Path(registry_root).iterdir()):
+            if clone.name == _GOVERNANCE_REPO_NAME or not (clone / ".git").exists():
+                continue
+            repo = self.cwd_repo(clone)
+            if repo is not None and canonical_clone(repo) == clone:
+                found.append(repo)
+        return found
+
+    def default_branch_contract(
+        self, repo: str, ticket_id: str
+    ) -> tuple[str, ModelRepoContractRead | None]:
+        """``contracts/<ticket_id>.yaml`` at the head of ``repo``'s default branch
+        (OMN-25366), with the commit it was read at.
+
+        ``("", None)`` when the clone or its default branch is not readable.
+        """
+        clone = canonical_clone(repo)
+        branch = self._default_branch(repo)
+        ref = self._clone_ref(clone, branch) if clone is not None and branch else None
+        if clone is None or ref is None:
+            return "", None
+        rc, out = _git(clone, "rev-parse", f"{ref}^{{commit}}")
+        sha = out.strip() if rc == 0 else ""
+        if not sha:
+            return "", None
+        return sha, self.repo_contract_at(repo, sha, ticket_id)
+
     def repo_contract_at(
         self, repo: str, sha: str, ticket_id: str
     ) -> ModelRepoContractRead | None:

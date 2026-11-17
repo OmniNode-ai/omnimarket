@@ -4,6 +4,8 @@ version: "1.0.0"
 # OMN-20858: the criteria check reads the live ticket from Linear (network, LINEAR_API_KEY).
 # OMN-20917: occ-difference replay classifies a repository's merged PRs (S7).
 # OMN-21146: a merged PR that cites a ticket is verified at merge time.
+# OMN-25366: with no repo-evidence run on the merged PR, the contract is read from
+# the merged PR's repository (merge commit, then default branch).
 description: >-
   DoD evidence verification — contract-driven evidence checks, run on a start
   command and at merge time for the ticket a merged PR cites, and OCC retirement

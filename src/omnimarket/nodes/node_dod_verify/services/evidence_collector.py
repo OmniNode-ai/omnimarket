@@ -2548,9 +2548,40 @@ class EvidenceCollector:
                 ticket_id,
                 resolved.detail,
             )
-            return None
+            return self._collect_merged_pr_repo_contracts(ticket_id, execution_audience)
 
         governing = sorted(resolved, key=lambda engaged: engaged.pr.repo)
+        results = self._run_governing_contracts(
+            ticket_id,
+            execution_audience,
+            [
+                (
+                    engaged.pr.repo,
+                    engaged.pr.pr_number,
+                    engaged.pr.merge_commit_sha,
+                    dict(engaged.contract),
+                )
+                for engaged in governing
+            ],
+        )
+        self._durable_gate_inputs = ModelDurableEvidenceGateRunCommand(
+            ticket_id=ticket_id,
+            contract=dict(governing[0].contract),
+            merged_prs=self._repo_merged_prs,
+        )
+        return results
+
+    def _run_governing_contracts(
+        self,
+        ticket_id: str,
+        execution_audience: EnumDodVerifyExecutionAudience,
+        governing: list[tuple[str, int, str, dict[str, Any]]],
+    ) -> list[ModelEvidenceCheckResult]:
+        """Run the checks of each ``(repo, pr_number, commit, contract)`` entry.
+
+        One verdict per repository, kept apart by repository name when more than
+        one contract governs.
+        """
         multi = len(governing) > 1
         results: list[ModelEvidenceCheckResult] = []
         summaries: list[ModelDodAcceptanceSummary] = []
@@ -2560,26 +2591,25 @@ class EvidenceCollector:
         pin_parts: list[tuple[str, ModelCriteriaPins]] = []
         first_criteria_read: ModelTicketCriteriaRead | None = None
         any_delegated = False
-        for engaged in governing:
-            pr = engaged.pr
+        for repo, pr_number, commit_sha, contract in governing:
             logger.info(
-                "Resolved %s contract for %s from %s#%d at merge %s",
-                pr.repo,
+                "Resolved %s contract for %s from %s#%d at %s",
+                repo,
                 ticket_id,
-                pr.repo,
-                pr.pr_number,
-                pr.merge_commit_sha,
+                repo,
+                pr_number,
+                commit_sha,
             )
             item_results = self._collect_impl(
                 ticket_id,
                 None,
                 execution_audience,
                 loaded_contract=(
-                    dict(engaged.contract),
-                    _repo_contract_subject(pr.repo, pr.merge_commit_sha, ticket_id),
+                    dict(contract),
+                    _repo_contract_subject(repo, commit_sha, ticket_id),
                 ),
             )
-            name = pr.repo.split("/", 1)[-1]
+            name = repo.split("/", 1)[-1]
             if self._criteria_pins is not None:
                 pin_parts.append((name, self._criteria_pins))
                 if first_criteria_read is None:
@@ -2614,12 +2644,145 @@ class EvidenceCollector:
             self._criteria_read_before = first_criteria_read if pin_parts else None
         elif subjects:
             self.contract_subject = subjects[0]
-        self._durable_gate_inputs = ModelDurableEvidenceGateRunCommand(
-            ticket_id=ticket_id,
-            contract=dict(governing[0].contract),
-            merged_prs=self._repo_merged_prs,
-        )
         return results
+
+    def _collect_merged_pr_repo_contracts(
+        self,
+        ticket_id: str,
+        execution_audience: EnumDodVerifyExecutionAudience,
+    ) -> list[ModelEvidenceCheckResult] | None:
+        """OMN-25366: the contract of the repository a ticket's merged PR landed in.
+
+        Reached only when :func:`resolve_repo_contracts` engaged nothing: no
+        repository's default branch carried a contract for the ticket, or the
+        deciding PR's head ran no ``repo-evidence / dod-verify`` check. That
+        resolution answers the Done gate's question (has the repository adopted
+        the repo-evidence path); this one answers the closeout's (what does the
+        ticket's contract say, wherever its merged PR lives).
+
+        Every merged PR naming the ticket in any product clone is listed. Per
+        repository, the newest PR's merge commit is read first, then the head of
+        the repository's default branch. A contract found runs through the node's
+        own checks, so the verdict stays the contract's; the durable gate is not
+        run on this path, because it never resolved the repository. When none is
+        found the result is CONTRACT_MISSING naming which of the two it is: no
+        merged PR, or a merged PR in a repository holding no contract for it.
+        """
+        listed = self._github_lookup(
+            ModelDodEvidenceGithubLookupCommand(
+                operation=EnumDodEvidenceGithubOperation.LIST_TICKET_MERGED_PRS,
+                ticket_id=ticket_id,
+            )
+        )
+        if not listed.resolved:
+            return [self._repo_contract_refusal(ticket_id, listed.detail or "")]
+        if not listed.merged_prs:
+            return [
+                self._contract_missing_result(
+                    ticket_id,
+                    f"no merged pull request names {ticket_id} in any product "
+                    "repository clone.",
+                )
+            ]
+        by_repo: dict[str, list[ModelTicketMergedPr]] = {}
+        for pr in listed.merged_prs:
+            by_repo.setdefault(pr.repo, []).append(pr)
+        found: list[tuple[str, int, str, dict[str, Any]]] = []
+        absent: list[str] = []
+        for repo in sorted(by_repo):
+            prs = sorted(by_repo[repo], key=lambda p: (p.merged_at, p.pr_number))
+            prs.reverse()
+            hit: tuple[str, int, str, dict[str, Any]] | None = None
+            for pr in prs:
+                read = self._read_repo_contract(repo, pr.merge_commit_sha, ticket_id)
+                if read.status is EnumRepoContractReadStatus.ABSENT:
+                    continue
+                if read.status is not EnumRepoContractReadStatus.FOUND or (
+                    read.contract is None
+                ):
+                    return [
+                        self._repo_contract_refusal(
+                            ticket_id,
+                            f"{repo}#{pr.pr_number} at merge {pr.merge_commit_sha}: "
+                            f"contract read is {read.status.value} "
+                            f"({read.error or 'no contract returned'}).",
+                        )
+                    ]
+                hit = (repo, pr.pr_number, pr.merge_commit_sha, dict(read.contract))
+                break
+            if hit is None:
+                head = self._github_lookup(
+                    ModelDodEvidenceGithubLookupCommand(
+                        operation=(
+                            EnumDodEvidenceGithubOperation.READ_REPO_DEFAULT_BRANCH_CONTRACT
+                        ),
+                        repo=repo,
+                        ticket_id=ticket_id,
+                    )
+                )
+                head_read = head.repo_contract
+                if (
+                    head_read is None
+                    or head_read.status is EnumRepoContractReadStatus.ERROR
+                ):
+                    detail = head_read.error if head_read else None
+                    return [
+                        self._repo_contract_refusal(
+                            ticket_id,
+                            f"{repo} default branch: "
+                            f"{detail or 'contract read returned nothing'}.",
+                        )
+                    ]
+                if (
+                    head_read.status is EnumRepoContractReadStatus.FOUND
+                    and head_read.contract
+                ):
+                    hit = (
+                        repo,
+                        prs[0].pr_number,
+                        head.read_commit_sha,
+                        dict(head_read.contract),
+                    )
+            if hit is None:
+                absent.append(
+                    f"{repo}#{prs[0].pr_number} merged at {prs[0].merge_commit_sha[:12]}"
+                )
+                continue
+            named = hit[3].get("ticket_id")
+            if named is not None and named != ticket_id:
+                return [
+                    self._repo_contract_refusal(
+                        ticket_id,
+                        f"{hit[0]}: contract names ticket_id {named!r}, not "
+                        f"{ticket_id}; correct the ticket binding.",
+                    )
+                ]
+            found.append(hit)
+        if not found:
+            return [
+                self._contract_missing_result(
+                    ticket_id,
+                    "merged pull request(s) name the ticket but their repository "
+                    f"holds no contracts/{ticket_id}.yaml at the merge commit or on "
+                    f"its default branch: {'; '.join(absent)}.",
+                )
+            ]
+        return self._run_governing_contracts(ticket_id, execution_audience, found)
+
+    @staticmethod
+    def _contract_missing_result(
+        ticket_id: str, reason: str
+    ) -> ModelEvidenceCheckResult:
+        return ModelEvidenceCheckResult(
+            evidence_id="contract",
+            description=f"No product-repository contract found for {ticket_id}",
+            status=EnumEvidenceCheckStatus.FAILED,
+            message=(
+                "CONTRACT_MISSING: no product repository carries "
+                f"contracts/{ticket_id}.yaml in a merged pull request for "
+                f"{ticket_id}; onex_change_control is not consulted. Reason: {reason}"
+            ),
+        )
 
     @staticmethod
     def _repo_contract_refusal(ticket_id: str, detail: str) -> ModelEvidenceCheckResult:
