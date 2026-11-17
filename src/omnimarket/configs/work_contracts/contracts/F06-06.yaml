@@ -22,7 +22,7 @@ acceptance:
     - '{answer}'
     environment:
       path: uv.lock
-      sha256: d2a7bf7991ae214c6103b65951afe9cbde7a076f8cf3a4d43068e8bc27745520
+      sha256: 1d4c0d1d7bf8b1bebbb32c0bfe6f4a98bda1a94faade759d679c2a66c2d5e11b
     expected_exit: 0
     target: src/omnibase_core/models/core/model_extracted_block.py
     patch:
