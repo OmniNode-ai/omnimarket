@@ -391,6 +391,18 @@ def test_contract_pr_checks_check_reads_the_required_list_at_head(
     assert run(_checks(head, drop="state-coverage-gate")) != 0
     assert run(_checks(head, skip="state-coverage-gate")) != 0
     assert run(_checks(head, drop="repo-evidence / dod-verify")) != 0
+    # Only the newest row of a context counts: a failed rerun after a success
+    # fails, and a success rerun after a failure passes.
+    rerun_red = _checks(head)
+    rerun_red["result"]["runs"].append(
+        ["state-coverage-gate", "completed", "failure", "2099-01-01T00:00:00Z"]
+    )
+    assert run(rerun_red) != 0
+    rerun_green = _checks(head)
+    rerun_green["result"]["runs"].insert(
+        0, ["state-coverage-gate", "completed", "failure", "2000-01-01T00:00:00Z"]
+    )
+    assert run(rerun_green) == 0
 
 
 @pytest.mark.unit
@@ -562,3 +574,58 @@ def test_omn25309_ac2_falsifier_names_a_stub_answer_not_the_pull_request() -> No
         in falsifier
     )
     assert "PR holds no" not in falsifier
+
+
+# Every text a contract's local Lab-comment command greps for. The one Lab comment
+# posted at a head holds all of them, so each command reads the same comment.
+_LAB_COMMENT_TEXTS = (
+    "Findings 5-10",
+    "Findings 1-9",
+    "Exclusion count: 61",
+    "Integration-proof gate:",
+    "F821,F401",
+    "Ratchet refusal scripts/ci:",
+    "Ratchet refusal scripts/validation:",
+    "Callers:",
+)
+
+
+def _lab_comment_items() -> list[tuple[str, str, str]]:
+    found = []
+    for path in sorted((_REPO_ROOT / "contracts").glob("*.yaml")):
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        for item in document.get("dod_evidence") or []:
+            for check in item.get("checks") or []:
+                value = str(check.get("check_value", ""))
+                if "pr_state_checks.py lab-comment" in value:
+                    found.append((path.stem, str(item["id"]), value))
+    return found
+
+
+@pytest.mark.unit
+def test_lab_comment_texts_are_every_text_the_contract_commands_grep_for() -> None:
+    """The stated list is the union of every ``--contains`` text, no more, no less."""
+    grepped: set[str] = set()
+    for _contract, _item_id, value in _lab_comment_items():
+        rest = value.split(" lab-comment ", 1)[1]
+        grepped.update(part.split('"', 1)[0] for part in rest.split('--contains "')[1:])
+    assert grepped == set(_LAB_COMMENT_TEXTS)
+
+
+@pytest.mark.unit
+def test_one_lab_comment_with_every_text_passes_every_lab_comment_command(
+    tmp_path: Path,
+) -> None:
+    head = _head()
+    full = f"Lab: head={head} host=h053 exit=0\n" + "".join(
+        f"{text} stated\n" for text in _LAB_COMMENT_TEXTS
+    )
+    items = _lab_comment_items()
+    assert len(items) >= 7
+    for contract, item_id, command in items:
+        result = _run(command, tmp_path, {"pr-view": _view(head, full)})
+        assert result.returncode == 0, (contract, item_id, result.stderr)
+    # The review's falsifier: a Lab comment without `Integration-proof gate:` fails.
+    lacking = full.replace("Integration-proof gate: stated\n", "")
+    command = _command("OMN-25309", "dod-omn25309-gate-comment-local")
+    assert _run(command, tmp_path, {"pr-view": _view(head, lacking)}).returncode != 0

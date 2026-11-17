@@ -247,7 +247,14 @@ def test_stale_baseline_entry_for_now_imported_class_is_reported(
 
 @pytest.mark.parametrize(
     "test_rel",
-    ["nodes/node_x/tests/test_handler_x.py", "nodes/node_x/tests/helpers.py"],
+    [
+        "nodes/node_x/tests/test_handler_x.py",
+        "nodes/node_x/tests/helpers.py",
+        # Outside any tests package, so only the test_ prefix rule excludes it.
+        "nodes/node_x/test_handler_x.py",
+        # Outside any tests package, so only the conftest.py rule excludes it.
+        "nodes/node_x/conftest.py",
+    ],
 )
 @pytest.mark.unit
 def test_src_resident_test_is_no_evidence_for_a_stale_baseline_entry(

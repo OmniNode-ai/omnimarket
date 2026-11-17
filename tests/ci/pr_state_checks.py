@@ -57,15 +57,20 @@ def required_checks(checks: dict[str, Any], head: str, required_file: str) -> in
     """Every required context reads success at ``head`` (the shared red is exempt).
 
     The names come from the file (the branch-protection contexts and the ruleset
-    context); a name that never reported, was skipped or was cancelled has no
-    ``success`` row in ``runs`` and fails.
+    context). Only the newest row of each name counts (``runs`` rows are
+    ``[name, status, conclusion, completed_at]``), so a success followed by a
+    failed rerun fails; a name that never reported, was skipped or was cancelled
+    has no newest ``success`` row and fails.
     """
     result = checks.get("result", {})
     if result.get("head_sha") != head:
         return _fail(f"the check-runs are for {result.get('head_sha')!r}, not {head}")
-    conclusions: dict[str, set[str]] = {}
-    for name, _status, conclusion, *_rest in result.get("runs", []):
-        conclusions.setdefault(name, set()).add(str(conclusion))
+    newest: dict[str, tuple[str, str]] = {}
+    for name, _status, conclusion, *rest in result.get("runs", []):
+        stamp = str(rest[0]) if rest and rest[0] else ""
+        if name not in newest or stamp >= newest[name][0]:
+            newest[name] = (stamp, str(conclusion))
+    conclusions = {name: {conclusion} for name, (_stamp, conclusion) in newest.items()}
     required = [
         line.strip()
         for line in Path(required_file).read_text(encoding="utf-8").splitlines()
