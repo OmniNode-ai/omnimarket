@@ -372,6 +372,21 @@ class HandlerSetupClaude:
                 fix="The Claude installation or plugin registry could not be verified. Preserve its settings and repair the reported component.",
             )
 
+    def _known_developer_marketplace(self) -> bool:
+        """Claude Code already knows the developer marketplace, at a folder that exists."""
+        raw = _read(self._claude / "plugins" / "known_marketplaces.json")
+        try:
+            known = json.loads(raw) if raw is not None else {}
+        except ValueError:
+            return False
+        entry = known.get("omninode-tools-dev") if isinstance(known, dict) else None
+        location = entry.get("installLocation") if isinstance(entry, dict) else None
+        return (
+            isinstance(location, str)
+            and Path(location).is_absolute()
+            and Path(location).is_dir()
+        )
+
     @staticmethod
     def _developer_marketplace(workspace: Path) -> Path:
         root = workspace / "omniclaude" / "plugins"
@@ -552,6 +567,21 @@ class HandlerSetupClaude:
         # Resolve the selected installed assets before any vendor command. This
         # optional plugin package is never imported during non-Claude setup.
         if plan.developer:
+            if (
+                not (plan.workspace / "omniclaude" / "plugins").is_dir()
+                and self._known_developer_marketplace()
+            ):
+                # onex delegation on plans with home as the workspace. A developer
+                # registration whose install folder is gone is reinstalled from the
+                # marketplace Claude Code already knows: `plugin install` restores the
+                # folder, `plugin update` does not (Claude Code 2.1.326, 2026-11-17).
+                if not self._claude_code_installed():
+                    return self._not_installed()
+                self._run(
+                    (str(self._binary), "plugin", "install", "onex@omninode-tools-dev"),
+                    network=True,
+                )
+                return None
             marketplace = self._developer_marketplace(plan.workspace)
         else:
             try:

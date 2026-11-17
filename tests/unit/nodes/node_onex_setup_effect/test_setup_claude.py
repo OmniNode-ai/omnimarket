@@ -370,3 +370,67 @@ def test_a_registered_developer_profile_is_reported(tmp_path: Path) -> None:
     )
     registry.write_text(json.dumps(data))
     assert step.developer_registered() is True
+
+
+def _developer_without_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, known: bool
+) -> tuple[HandlerSetupClaude, ModelSetupPlan, Path, list[tuple[str, ...]]]:
+    claude, _, binary = fixture(tmp_path)
+    if known:
+        source = tmp_path / "dev marketplace"
+        source.mkdir()
+        (claude / "plugins" / "known_marketplaces.json").write_text(
+            json.dumps(
+                {
+                    "omninode-tools-dev": {
+                        "source": {"source": "directory", "path": str(source)},
+                        "installLocation": str(source),
+                    }
+                }
+            )
+        )
+    commands: list[tuple[str, ...]] = []
+
+    def run(
+        _self: HandlerSetupClaude, argv: tuple[str, ...], *, network: bool = False
+    ) -> str:
+        assert network
+        commands.append(argv)
+        return ""
+
+    monkeypatch.setattr(HandlerSetupClaude, "_run", run)
+    home = tmp_path / "home without a workspace"
+    home.mkdir()
+    plan = ModelSetupPlan(workspace=home, developer=True, components=("claude-plugin",))
+    return (
+        HandlerSetupClaude(claude_home=claude, executable=binary),
+        plan,
+        binary,
+        commands,
+    )
+
+
+def test_a_known_developer_marketplace_is_repaired_without_a_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-11-17: onex delegation on plans with home as the workspace, so a
+    developer registration whose install folder was removed could never be
+    repaired and the claude-plugin step failed. The marketplace Claude Code
+    already knows is reinstalled from instead; on Claude Code 2.1.326,
+    `plugin install` restored the missing folder and `plugin update` did not."""
+    step, plan, binary, commands = _developer_without_workspace(
+        tmp_path, monkeypatch, known=True
+    )
+    assert step.apply(plan) is None
+    assert commands == [(str(binary), "plugin", "install", "onex@omninode-tools-dev")]
+
+
+def test_an_unknown_developer_marketplace_still_needs_a_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    step, plan, _, commands = _developer_without_workspace(
+        tmp_path, monkeypatch, known=False
+    )
+    with pytest.raises(ValueError, match="developer workspace"):
+        step.apply(plan)
+    assert commands == []
