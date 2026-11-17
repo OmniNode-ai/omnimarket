@@ -66,6 +66,9 @@ event_bus:
     - onex.cmd.omnimarket.andon-start-guard-requested.v1
   publish_topics:
     - onex.evt.omnimarket.shared-blocker-escalation-completed.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.andon-start-guard-requested.v1
+    producer: "the onex node dispatcher (`onex run-node`), which publishes this operation's command directly -- not a node contract"
 externally_consumed_topics:
   - onex.evt.omnimarket.shared-blocker-escalation-completed.v1
 broker_acl_grants:
