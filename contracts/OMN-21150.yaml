@@ -49,3 +49,31 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator tests/nodes/node_generated_code_validator tests/nodes/node_mypy_check_effect -q"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21150-ac1-missing-import-rejected-accepted"
+    description: "AC1: the real-handler golden chain with the LLM response pinned to source importing omnimarket.does_not_exist ends rejected_typecheck, never reaches serialize, and writes zero files. Re-run by the accepting lane at omnimarket dev 3102bd1c11: 3 passed in 7.06s (with the two OMN-21151 golden-chain nodes). With the product change of 2f356ffc6688 reverted at dev it fails: the run ends rejected_handler_test, not rejected_typecheck."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator/test_golden_chain_composition.py::test_missing_import_rejected_by_real_mypy -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21150-ac2-codegen-suites-pass-accepted"
+    description: "AC2: the orchestrator, validator and mypy-effect codegen suites still pass. Re-run by the accepting lane at omnimarket dev 3102bd1c11: 74 passed, 1 skipped in 11.97s. A non-regression criterion that predates the change; the suite includes the AC1 golden-chain node, so it fails with the fix reverted."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator tests/nodes/node_generated_code_validator tests/nodes/node_mypy_check_effect -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+context:
+  ac_binding_provenance:
+    dod-omn21150-ac1-missing-import-rejected-accepted:
+      - label: "AC1"
+        criterion_hash: "5bcbf4ed56862af96043ad4493751d3a9524ff9b89456db7b4534cf1cbd84285"
+        proposed_by: "lane=dod-closeout-bind-2026-11-16T2345Z-c2"
+        accepted_by: "lane=dod-closeout-accept-2026-11-16T2345Z-c2"
+    dod-omn21150-ac2-codegen-suites-pass-accepted:
+      - label: "AC2"
+        criterion_hash: "17b9d9385bb33ac3befab9ab454c7a353e06a3d4e43f7e1fef0c6889ca6e1c71"
+        proposed_by: "lane=dod-closeout-bind-2026-11-16T2345Z-c2"
+        accepted_by: "lane=dod-closeout-accept-2026-11-16T2345Z-c2"
