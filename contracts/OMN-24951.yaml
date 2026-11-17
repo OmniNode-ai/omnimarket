@@ -31,23 +31,119 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24951-ac1
-  description: 'Hosted proxy for the runtime reading, which needs the h051 serve and the ledger and which hosted CI cannot reach: the contract file itself pins AC1 to the per-host serve on h051 and to a ledger grep that finds no row until the row exists, and the contract declares no subscribe_topics. The reading itself is checked by dod-omn24951-ac1-ledger.'
+  description: 'Hosted proxy for the runtime reading, which needs the h051 serve, the h201 dev runtime and the ledger, none of which hosted CI reaches: the contract tests pin every ledger check below against scratch ledgers (row 2214 among them), and the golden chain shows the shared runtime wires nothing from the node contract. The reading itself is checked by dod-omn24951-ac1-ledger and dod-omn24951-ac1-h201.'
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_ci_checkout_effect/test_omn_24951_contract.py -k OMN_24951_contract -q -p no:cacheprovider --no-cov
+    check_value: uv run --frozen pytest tests/nodes/node_ci_checkout_effect/test_omn_24951_contract.py tests/nodes/node_ci_checkout_effect/test_golden_chain_node_ci_checkout_effect.py -k "omn_24951_contract or shared_runtime" -q -p no:cacheprovider --no-cov
     cwd: .
 - id: dod-omn24951-ac1-ledger
-  description: A STATUS row on the rolling ledger names the install on h051 and one answered request. The check fails until that row exists.
+  description: 'A STATUS row of the form `pr=omnimarket#6062 | deployed=h201:<dev runtime revision> | deployed_at=<UTC> | installed=h051:<revision> | observed=<the answered request line, status=served> | correlation_id=<the new request> | h201_consumers=0 | h201_failed_terminals=0 | read_at=<UTC after deployed_at> | receipt=installed onex-ci-checkout-serve.service on h051 | receipt_rev=<revision the installer ran from> | unit_rev=<revision read from the installed unit>` names the install on h051 and one answered request, read after the h201 dev runtime was deployed at a revision whose node contract declares no subscribe_topics (read with git show at that revision). The check fails until that row exists; it fails for a row whose observed cell names h201, a read before the deploy, or a deploy at a revision that still subscribes, so ledger row 2214 (2026-11-17T14:03:00Z, written before this change) fails it.'
   source: manual
   execution_scope: local_done_gate
   binds_ac:
   - AC1
   checks:
   - check_type: command
-    check_value: bash -o pipefail -c 'grep -F "pr=omnimarket#6062" "$ONEX_LEDGER_PATH" | grep -F "installed=h051:" | grep -F "observed=" | grep -F "read_at="'
+    check_value: |-
+      python3 - "$ONEX_LEDGER_PATH" ac1 <<'PY'
+      import re, subprocess, sys
+      from datetime import datetime
+      ledger, mode = sys.argv[1], sys.argv[2]
+      HEX = re.compile(r"[0-9a-f]{7,40}")
+      def cells(row):
+          out = {}
+          for part in row.rstrip("\n").split(" | ")[2:]:
+              key, sep, value = part.partition("=")
+              if sep and re.fullmatch(r"[a-z0-9_]+", key):
+                  out.setdefault(key, value.strip())
+          return out
+      def when(value):
+          try:
+              return datetime.strptime(value or "", "%Y-%m-%dT%H:%M:%SZ")
+          except ValueError:
+              return None
+      def holds_contract(rev):
+          path = f"{rev}:src/omnimarket/nodes/node_ci_checkout_effect/contract.yaml"
+          shown = subprocess.run(["git", "show", path], capture_output=True, text=True, check=False)
+          return shown.returncode == 0 and re.search(r"^  subscribe_topics: \[\]$", shown.stdout, re.M) is not None
+      def after_deploy(c):
+          host, _, rev = c.get("deployed", "").partition(":")
+          deployed_at, read_at = when(c.get("deployed_at")), when(c.get("read_at"))
+          return (host == "h201" and HEX.fullmatch(rev) is not None and holds_contract(rev)
+                  and deployed_at is not None and read_at is not None and read_at > deployed_at)
+      def served(c):
+          observed = c.get("observed", "")
+          return (c.get("installed", "").startswith("h051:") and "status=served" in observed
+                  and "h201" not in observed and after_deploy(c))
+      def h201_quiet(c):
+          return (after_deploy(c) and re.fullmatch(r"[0-9a-f-]{36}", c.get("correlation_id", "")) is not None
+                  and c.get("h201_consumers") == "0" and c.get("h201_failed_terminals") == "0")
+      def receipt_matches(c):
+          host, _, rev = c.get("installed", "").partition(":")
+          revs = [rev, c.get("receipt_rev", ""), c.get("unit_rev", "")]
+          return (host == "h051" and c.get("receipt") == "installed onex-ci-checkout-serve.service on h051"
+                  and all(HEX.fullmatch(r) for r in revs) and all(a.startswith(b) or b.startswith(a) for a in revs for b in revs))
+      CHECKS = {"ac1": served, "ac1-h201": h201_quiet, "ac3": receipt_matches,
+                "ac2": lambda c: served(c) or bool(c.get("cause") and c.get("must_act"))}
+      rows = [cells(r) for r in open(ledger, encoding="utf-8") if " | STATUS | " in r]
+      sys.exit(0 if any(c.get("pr") == "omnimarket#6062" and CHECKS[mode](c) for c in rows) else 1)
+      PY
+    cwd: .
+- id: dod-omn24951-ac1-h201
+  description: 'The reading this change makes on h201: after the deploy the dev runtime wires no consumer for the command topic (h201_consumers=0) and publishes no failed terminal for a new correlation id (h201_failed_terminals=0), on the same row as dod-omn24951-ac1-ledger. The check stays red until that read exists.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |-
+      python3 - "$ONEX_LEDGER_PATH" ac1-h201 <<'PY'
+      import re, subprocess, sys
+      from datetime import datetime
+      ledger, mode = sys.argv[1], sys.argv[2]
+      HEX = re.compile(r"[0-9a-f]{7,40}")
+      def cells(row):
+          out = {}
+          for part in row.rstrip("\n").split(" | ")[2:]:
+              key, sep, value = part.partition("=")
+              if sep and re.fullmatch(r"[a-z0-9_]+", key):
+                  out.setdefault(key, value.strip())
+          return out
+      def when(value):
+          try:
+              return datetime.strptime(value or "", "%Y-%m-%dT%H:%M:%SZ")
+          except ValueError:
+              return None
+      def holds_contract(rev):
+          path = f"{rev}:src/omnimarket/nodes/node_ci_checkout_effect/contract.yaml"
+          shown = subprocess.run(["git", "show", path], capture_output=True, text=True, check=False)
+          return shown.returncode == 0 and re.search(r"^  subscribe_topics: \[\]$", shown.stdout, re.M) is not None
+      def after_deploy(c):
+          host, _, rev = c.get("deployed", "").partition(":")
+          deployed_at, read_at = when(c.get("deployed_at")), when(c.get("read_at"))
+          return (host == "h201" and HEX.fullmatch(rev) is not None and holds_contract(rev)
+                  and deployed_at is not None and read_at is not None and read_at > deployed_at)
+      def served(c):
+          observed = c.get("observed", "")
+          return (c.get("installed", "").startswith("h051:") and "status=served" in observed
+                  and "h201" not in observed and after_deploy(c))
+      def h201_quiet(c):
+          return (after_deploy(c) and re.fullmatch(r"[0-9a-f-]{36}", c.get("correlation_id", "")) is not None
+                  and c.get("h201_consumers") == "0" and c.get("h201_failed_terminals") == "0")
+      def receipt_matches(c):
+          host, _, rev = c.get("installed", "").partition(":")
+          revs = [rev, c.get("receipt_rev", ""), c.get("unit_rev", "")]
+          return (host == "h051" and c.get("receipt") == "installed onex-ci-checkout-serve.service on h051"
+                  and all(HEX.fullmatch(r) for r in revs) and all(a.startswith(b) or b.startswith(a) for a in revs for b in revs))
+      CHECKS = {"ac1": served, "ac1-h201": h201_quiet, "ac3": receipt_matches,
+                "ac2": lambda c: served(c) or bool(c.get("cause") and c.get("must_act"))}
+      rows = [cells(r) for r in open(ledger, encoding="utf-8") if " | STATUS | " in r]
+      sys.exit(0 if any(c.get("pr") == "omnimarket#6062" and CHECKS[mode](c) for c in rows) else 1)
+      PY
     cwd: .
 - id: dod-omn24951-ac2
   description: 'Hosted proxy: the golden chain answers through the per-host serve with exactly one terminal for the correlation id and none on the failure topic, and the shared runtime wires nothing from the contract. The answered request on h051 is checked by dod-omn24951-ac2-ledger.'
@@ -59,14 +155,57 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_ci_checkout_effect/test_golden_chain_node_ci_checkout_effect.py -k ci_checkout_golden -q -p no:cacheprovider --no-cov
     cwd: .
 - id: dod-omn24951-ac2-ledger
-  description: The ledger row for the install carries the answered request line, or names the cause and the actor. The check fails when the row carries neither.
+  description: The ledger row carries the answered request read after the deploy, as dod-omn24951-ac1-ledger reads it, or names the cause (cause=) and who must act (must_act=). An executor cell (actor=) is not who must act. The check fails when the row carries neither.
   source: manual
   execution_scope: local_done_gate
   binds_ac:
   - AC2
   checks:
   - check_type: command
-    check_value: bash -o pipefail -c 'grep -F "pr=omnimarket#6062" "$ONEX_LEDGER_PATH" | grep -E "(observed=[^|]*status=served|cause=[^|]+ \| actor=[^|]+)"'
+    check_value: |-
+      python3 - "$ONEX_LEDGER_PATH" ac2 <<'PY'
+      import re, subprocess, sys
+      from datetime import datetime
+      ledger, mode = sys.argv[1], sys.argv[2]
+      HEX = re.compile(r"[0-9a-f]{7,40}")
+      def cells(row):
+          out = {}
+          for part in row.rstrip("\n").split(" | ")[2:]:
+              key, sep, value = part.partition("=")
+              if sep and re.fullmatch(r"[a-z0-9_]+", key):
+                  out.setdefault(key, value.strip())
+          return out
+      def when(value):
+          try:
+              return datetime.strptime(value or "", "%Y-%m-%dT%H:%M:%SZ")
+          except ValueError:
+              return None
+      def holds_contract(rev):
+          path = f"{rev}:src/omnimarket/nodes/node_ci_checkout_effect/contract.yaml"
+          shown = subprocess.run(["git", "show", path], capture_output=True, text=True, check=False)
+          return shown.returncode == 0 and re.search(r"^  subscribe_topics: \[\]$", shown.stdout, re.M) is not None
+      def after_deploy(c):
+          host, _, rev = c.get("deployed", "").partition(":")
+          deployed_at, read_at = when(c.get("deployed_at")), when(c.get("read_at"))
+          return (host == "h201" and HEX.fullmatch(rev) is not None and holds_contract(rev)
+                  and deployed_at is not None and read_at is not None and read_at > deployed_at)
+      def served(c):
+          observed = c.get("observed", "")
+          return (c.get("installed", "").startswith("h051:") and "status=served" in observed
+                  and "h201" not in observed and after_deploy(c))
+      def h201_quiet(c):
+          return (after_deploy(c) and re.fullmatch(r"[0-9a-f-]{36}", c.get("correlation_id", "")) is not None
+                  and c.get("h201_consumers") == "0" and c.get("h201_failed_terminals") == "0")
+      def receipt_matches(c):
+          host, _, rev = c.get("installed", "").partition(":")
+          revs = [rev, c.get("receipt_rev", ""), c.get("unit_rev", "")]
+          return (host == "h051" and c.get("receipt") == "installed onex-ci-checkout-serve.service on h051"
+                  and all(HEX.fullmatch(r) for r in revs) and all(a.startswith(b) or b.startswith(a) for a in revs for b in revs))
+      CHECKS = {"ac1": served, "ac1-h201": h201_quiet, "ac3": receipt_matches,
+                "ac2": lambda c: served(c) or bool(c.get("cause") and c.get("must_act"))}
+      rows = [cells(r) for r in open(ledger, encoding="utf-8") if " | STATUS | " in r]
+      sys.exit(0 if any(c.get("pr") == "omnimarket#6062" and CHECKS[mode](c) for c in rows) else 1)
+      PY
     cwd: .
 - id: dod-omn24951-ac3
   description: 'Hosted proxy: the installer group (`ci-checkout unit install`) renders the unit from the overlay, writes nothing for an undeclared host and refuses a unit that runs from a worktree; it does not show that a host file was never hand-edited. That is checked by dod-omn24951-ac3-receipt.'
@@ -78,14 +217,57 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_ci_checkout_effect/test_ci_checkout_unit.py -q -p no:cacheprovider --no-cov
     cwd: .
 - id: dod-omn24951-ac3-receipt
-  description: The ledger row cites the installer's own receipt line (`installed <service> on h051`) and the unit status read, so a unit edited by hand has no such receipt. The check fails when the row cites none.
+  description: 'The ledger row carries the installer''s own receipt line as its own receipt= cell (installed onex-ci-checkout-serve.service on h051; an installer_receipt= cell does not count), the revision the installer ran from (receipt_rev=) and the revision read from the installed unit (unit_rev=), and both agree with installed=h051:<revision>. A receipt with no revisions, or a unit read at another revision, fails.'
   source: manual
   execution_scope: local_done_gate
   binds_ac:
   - AC3
   checks:
   - check_type: command
-    check_value: bash -o pipefail -c 'grep -F "pr=omnimarket#6062" "$ONEX_LEDGER_PATH" | grep -F "installed=h051:" | grep -E "receipt=[^|]*installed [^|]*on h051"'
+    check_value: |-
+      python3 - "$ONEX_LEDGER_PATH" ac3 <<'PY'
+      import re, subprocess, sys
+      from datetime import datetime
+      ledger, mode = sys.argv[1], sys.argv[2]
+      HEX = re.compile(r"[0-9a-f]{7,40}")
+      def cells(row):
+          out = {}
+          for part in row.rstrip("\n").split(" | ")[2:]:
+              key, sep, value = part.partition("=")
+              if sep and re.fullmatch(r"[a-z0-9_]+", key):
+                  out.setdefault(key, value.strip())
+          return out
+      def when(value):
+          try:
+              return datetime.strptime(value or "", "%Y-%m-%dT%H:%M:%SZ")
+          except ValueError:
+              return None
+      def holds_contract(rev):
+          path = f"{rev}:src/omnimarket/nodes/node_ci_checkout_effect/contract.yaml"
+          shown = subprocess.run(["git", "show", path], capture_output=True, text=True, check=False)
+          return shown.returncode == 0 and re.search(r"^  subscribe_topics: \[\]$", shown.stdout, re.M) is not None
+      def after_deploy(c):
+          host, _, rev = c.get("deployed", "").partition(":")
+          deployed_at, read_at = when(c.get("deployed_at")), when(c.get("read_at"))
+          return (host == "h201" and HEX.fullmatch(rev) is not None and holds_contract(rev)
+                  and deployed_at is not None and read_at is not None and read_at > deployed_at)
+      def served(c):
+          observed = c.get("observed", "")
+          return (c.get("installed", "").startswith("h051:") and "status=served" in observed
+                  and "h201" not in observed and after_deploy(c))
+      def h201_quiet(c):
+          return (after_deploy(c) and re.fullmatch(r"[0-9a-f-]{36}", c.get("correlation_id", "")) is not None
+                  and c.get("h201_consumers") == "0" and c.get("h201_failed_terminals") == "0")
+      def receipt_matches(c):
+          host, _, rev = c.get("installed", "").partition(":")
+          revs = [rev, c.get("receipt_rev", ""), c.get("unit_rev", "")]
+          return (host == "h051" and c.get("receipt") == "installed onex-ci-checkout-serve.service on h051"
+                  and all(HEX.fullmatch(r) for r in revs) and all(a.startswith(b) or b.startswith(a) for a in revs for b in revs))
+      CHECKS = {"ac1": served, "ac1-h201": h201_quiet, "ac3": receipt_matches,
+                "ac2": lambda c: served(c) or bool(c.get("cause") and c.get("must_act"))}
+      rows = [cells(r) for r in open(ledger, encoding="utf-8") if " | STATUS | " in r]
+      sys.exit(0 if any(c.get("pr") == "omnimarket#6062" and CHECKS[mode](c) for c in rows) else 1)
+      PY
     cwd: .
 - id: dod-omn24951-integration-proof
   description: The node tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.

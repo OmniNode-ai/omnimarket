@@ -60,6 +60,9 @@ from tests.nodes.node_ci_checkout_effect.planted import HOST, deployment_documen
 
 pytestmark = pytest.mark.unit
 BOOTSTRAP_ENV = "CI_CHECKOUT_REDPANDA_BOOTSTRAP"
+# A broker that takes SASL (the lab dev lane) is opened by its lane declaration, which carries the credentials;
+# the declaration is read under the workspace root in OMNIBASE_PATH.
+LANE_ENV = "CI_CHECKOUT_REDPANDA_LANE"
 NODE = "node_ci_checkout_effect"
 
 
@@ -143,7 +146,7 @@ class _Wired:
 
 @contextlib.asynccontextmanager
 async def _wired(
-    bus_args: tuple[str, str | None, str | None, None], contract_path: Path
+    bus_args: tuple[str, str | None, str | None, Path | None], contract_path: Path
 ) -> AsyncIterator[tuple[ProtocolLabRunBus, _Wired]]:
     """Wire one contract the way the runtime kernel does, on an open bus, and yield what it did."""
     manifest = discover_contracts_from_paths([contract_path])
@@ -195,7 +198,22 @@ async def _assert_shared_runtime_wires_nothing(
     assert skipped[0].reason is EnumContractAttachExclusionReason.NOT_WIRED
     assert "No event_bus.subscribe_topics declared" in skipped[0].detail
     assert not wired.attached.get(NODE)
-    assert await bus.get_subscriber_count(command) == 0  # type: ignore[attr-defined]
+    assert await _consumers_on(bus, command) == 0
+
+
+async def _consumers_on(bus: ProtocolLabRunBus, topic: str) -> int:
+    """How many consumers this bus client holds on ``topic``, read the way each bus exposes it.
+
+    The in-memory bus counts subscribers (``get_subscriber_count``); the Kafka bus has no such call and
+    exposes its live group consumers keyed by (topic, group) through ``get_consumer_groups``. Neither is on
+    ProtocolLabRunBus, so a bus with neither read fails here instead of passing as "no consumer".
+    """
+    count_subscribers = getattr(bus, "get_subscriber_count", None)
+    if count_subscribers is not None:
+        return int(await count_subscribers(topic))
+    consumer_groups = getattr(bus, "get_consumer_groups", None)
+    assert consumer_groups is not None, f"{type(bus).__name__} exposes no consumer read"
+    return sum(1 for (consumed, _group) in consumer_groups() if consumed == topic)
 
 
 class _TerminalCollector:
@@ -235,7 +253,7 @@ class _TerminalCollector:
 
 
 async def _chain(
-    bus_args: tuple[str, str | None, str | None, None],
+    bus_args: tuple[str, str | None, str | None, Path | None],
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -366,6 +384,19 @@ async def test_ci_checkout_golden_collector_sees_a_failed_terminal_racing_the_an
     )
 
 
+def _count_handlers_built(monkeypatch: pytest.MonkeyPatch) -> list[object]:
+    """Record every HandlerCiCheckout built from here on."""
+    built: list[object] = []
+    original = HandlerCiCheckout.__init__
+
+    def counting_init(self: HandlerCiCheckout, *args: Any, **kwargs: Any) -> None:
+        built.append(self)
+        original(self, *args, **kwargs)
+
+    monkeypatch.setattr(HandlerCiCheckout, "__init__", counting_init)
+    return built
+
+
 @pytest.mark.asyncio
 async def test_ci_checkout_golden_control_a_non_empty_subscribe_topics_attaches(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -376,6 +407,7 @@ async def test_ci_checkout_golden_control_a_non_empty_subscribe_topics_attaches(
     "wires nothing" assertion above could not tell a contract that is empty from a runtime that never looks.
     """
     monkeypatch.setenv(hch.HOST_NAME_ENV, HOST)
+    built = _count_handlers_built(monkeypatch)
     node = resources.files(f"omnimarket.nodes.{NODE}")
     contract = yaml.safe_load(node.joinpath("contract.yaml").read_text())
     command = contract["runtime_dispatch"]["command_topic"]
@@ -387,9 +419,13 @@ async def test_ci_checkout_golden_control_a_non_empty_subscribe_topics_attaches(
         assert wired.contract_names == (NODE,)
         assert wired.outcomes.get(NODE) is EnumWiringOutcome.WIRED, wired.outcomes
         assert wired.attached.get(NODE) == (command,), wired.attached
-        assert await bus.get_subscriber_count(command) == 1  # type: ignore[attr-defined]
+        assert await _consumers_on(bus, command) == 1
         with pytest.raises(AssertionError):
             await _assert_shared_runtime_wires_nothing(bus, wired)
+    # Control for the "builds no handler" test below: the counter sees the runtime build the handler.
+    assert built, (
+        "the runtime built no HandlerCiCheckout from a contract that subscribes"
+    )
 
 
 @pytest.mark.asyncio
@@ -398,14 +434,7 @@ async def test_ci_checkout_golden_shared_runtime_builds_no_handler(
 ) -> None:
     """With the host name set the runtime still builds no HandlerCiCheckout from this contract."""
     monkeypatch.setenv(hch.HOST_NAME_ENV, HOST)
-    built: list[object] = []
-    original = HandlerCiCheckout.__init__
-
-    def counting_init(self: HandlerCiCheckout, *args: Any, **kwargs: Any) -> None:
-        built.append(self)
-        original(self, *args, **kwargs)
-
-    monkeypatch.setattr(HandlerCiCheckout, "__init__", counting_init)
+    built = _count_handlers_built(monkeypatch)
     node = resources.files(f"omnimarket.nodes.{NODE}")
     with resources.as_file(node.joinpath("contract.yaml")) as path:
         async with _wired(("inmemory", None, None, None), path) as (bus, wired):
@@ -422,11 +451,34 @@ async def test_ci_checkout_golden_and_error_chains_on_a_redpanda_bus(
     bootstrap = os.environ.get(BOOTSTRAP_ENV)
     if not bootstrap:
         pytest.skip(f"Kafka not reachable: {BOOTSTRAP_ENV} names no lab broker")
-    golden, _, _ = await _chain(
-        ("kafka", None, bootstrap, None), tmp_path / "g", monkeypatch, sha_held=True
+    lane = os.environ.get(LANE_ENV)
+    bus_args: tuple[str, str | None, str | None, Path | None] = (
+        ("kafka", lane, None, Path(os.environ["OMNIBASE_PATH"]))
+        if lane
+        else ("kafka", None, bootstrap, None)
     )
-    error, _, _ = await _chain(
-        ("kafka", None, bootstrap, None), tmp_path / "e", monkeypatch, sha_held=False
+    golden, golden_terminal, golden_published = await _chain(
+        bus_args, tmp_path / "g", monkeypatch, sha_held=True
+    )
+    error, error_terminal, error_published = await _chain(
+        bus_args, tmp_path / "e", monkeypatch, sha_held=False
     )
     assert golden.status is EnumCiCheckoutStatus.SERVED
     assert error.status is EnumCiCheckoutStatus.NOT_FOUND
+    # The bus with real consumer groups: any other consumer of the command topic on this broker (a
+    # shared runtime that auto-wired the node) would put a second terminal, on the failure topic, here.
+    success = load_topics().success
+    assert not golden_terminal.failed
+    assert not error_terminal.failed
+    assert golden_published == [success], golden_published
+    assert error_published == [success], error_published
+
+
+@pytest.mark.asyncio
+async def test_ci_checkout_golden_consumer_read_works_on_the_kafka_bus() -> None:
+    """The redpanda chain reads its consumers through the same helper; the Kafka bus must answer it, not raise."""
+    from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
+
+    bus = EventBusKafka.from_bootstrap("127.0.0.1:1")
+    assert not hasattr(bus, "get_subscriber_count")
+    assert await _consumers_on(bus, load_topics().command) == 0  # type: ignore[arg-type]

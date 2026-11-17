@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
-import signal
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -214,8 +213,18 @@ def test_the_bus_options_come_from_the_overlay_profile_and_the_named_variable() 
 COMMAND_TOPIC_LITERAL = "onex.cmd.omnimarket.ci-checkout-requested.v1"
 
 
+class _InjectedStop(asyncio.Event):
+    """The serve's stop event, recorded as it is made so the test sets it instead of signalling a process."""
+
+    made: list[_InjectedStop] = []
+
+    def __init__(self) -> None:
+        super().__init__()
+        _InjectedStop.made.append(self)
+
+
 class _RecordingBus:
-    """An open bus that records each subscription, then asks the serve process to stop (SIGTERM, as a unit does)."""
+    """An open bus that records each subscription, then sets the serve's own stop event (what SIGTERM sets)."""
 
     def __init__(self, bus: ProtocolLabRunBus) -> None:
         self._bus = bus
@@ -229,7 +238,10 @@ class _RecordingBus:
             topic, on_message=on_message, group_id=group_id
         )
         self.subscribed.append(topic)
-        os.kill(os.getpid(), signal.SIGTERM)
+        assert len(_InjectedStop.made) == 1, (
+            "serve made no stop event before it subscribed"
+        )
+        _InjectedStop.made[0].set()
         return unsubscribe
 
 
@@ -251,6 +263,20 @@ def _run_serve_entry_point(
             yield recorder
 
     monkeypatch.setattr(adapter_ci_checkout_serve, "_open_bus", open_bus)
+
+    def refuse_signal(pid: int, sig: int) -> None:
+        raise AssertionError(f"the test sent signal {sig} to process {pid}")
+
+    # A signal sent to the pytest process kills the whole run when it lands before serve installs its
+    # handler; the serve is stopped through its own stop event instead.
+    monkeypatch.setattr(os, "kill", refuse_signal)
+    _InjectedStop.made.clear()
+    # Only the serve module's own name for asyncio sees the recording Event; asyncio itself is untouched.
+    monkeypatch.setattr(
+        adapter_ci_checkout_serve,
+        "asyncio",
+        SimpleNamespace(**{**vars(asyncio), "Event": _InjectedStop}),
+    )
     result = CliRunner().invoke(
         serve_group,
         ["serve", "--overlay", str(overlay), "--host-name", HOST],
