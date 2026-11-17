@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import asyncio
 from decimal import Decimal
+from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -34,14 +36,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
-_SYNC_RESOLVE = (
-    "omnimarket.nodes.node_projection_delegation.handlers."
-    "handler_budget_state.resolve_tier_cost"
-)
-_ASYNC_RESOLVE = (
-    "omnimarket.nodes.node_projection_delegation.handlers."
-    "handler_delegation.resolve_tier_cost"
-)
+_LOAD_REGISTRY = "omnimarket.pricing._load_routing_config"
 # A registry that (wrongly) declares a monthly cap for every tier name it is asked about, the case the explicit rule guards.
 _CAPPED = ModelTierCost(
     cost_type=EnumTierCostType.BUDGETED,
@@ -50,6 +45,12 @@ _CAPPED = ModelTierCost(
     overage_rate_per_1k_usd=0.02,
 )
 _OWN_KEY_COST = Decimal("0.000145")
+_REGISTRY = SimpleNamespace(
+    tiers=[
+        SimpleNamespace(name=name, cost=_CAPPED)
+        for name in (TENANT_OVERLAY_TIER_NAME, "cheap_cloud", "ceiling-budgeted")
+    ]
+)
 
 
 def _event(tier: str) -> ModelDelegationBudgetStateEvent:
@@ -67,10 +68,10 @@ def _event(tier: str) -> ModelDelegationBudgetStateEvent:
 @pytest.mark.unit
 def test_tenant_overlay_run_never_draws_the_platform_ceiling_budget_state() -> None:
     db = InmemoryDatabaseAdapter()
-    with patch(_SYNC_RESOLVE, return_value=_CAPPED):
+    with patch(_LOAD_REGISTRY, return_value=_REGISTRY):
         result = materialize_budget_state(_event(TENANT_OVERLAY_TIER_NAME), db)
     assert result.rows_upserted == 0
-    assert result.skipped_reason == "tenant_overlay_not_platform_spend"
+    assert result.skipped_reason == "tier_not_budgeted"
     assert db.query(TABLE, {"tenant_id": "readiness-probe"}) == []
 
 
@@ -78,7 +79,7 @@ def test_tenant_overlay_run_never_draws_the_platform_ceiling_budget_state() -> N
 def test_a_budgeted_tier_still_draws_the_ceiling_when_the_overlay_rule_exists() -> None:
     # Positive control: the same patched registry and event shape on a real budgeted tier writes its row.
     db = InmemoryDatabaseAdapter()
-    with patch(_SYNC_RESOLVE, return_value=_CAPPED):
+    with patch(_LOAD_REGISTRY, return_value=_REGISTRY):
         result = materialize_budget_state(_event("cheap_cloud"), db)
     assert result.rows_upserted == 1
     row = db.query(TABLE, {"tenant_id": "readiness-probe"})[0]
@@ -95,8 +96,8 @@ def _run_async_twin(tier: str) -> AsyncMock:
     db = AsyncMock()
     db.execute = AsyncMock(return_value=[])
     db.fetchval = AsyncMock(return_value=None)
-    runner._db = db  # type: ignore[assignment]
-    with patch(_ASYNC_RESOLVE, return_value=_CAPPED):
+    runner._db = cast(Any, db)
+    with patch(_LOAD_REGISTRY, return_value=_REGISTRY):
         asyncio.run(
             runner._materialize_budget_state_async(
                 correlation_id="omn24874-own-key-run",

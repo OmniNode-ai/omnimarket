@@ -10,6 +10,7 @@ stores NULL. The database is the INTEGRATION_POSTGRES_* one CI configures; the m
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -20,7 +21,6 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
 )
 from omnimarket.projection.runner import MessageMeta
 from tests.test_omn15909_real_postgres_projection_write_path_gate import (
-    _HANDLER_MODULE,
     _budgeted_tier,
     _provisioned_runner,
     _real_delegation_completed_payload,
@@ -131,9 +131,13 @@ async def test_own_key_spend_never_draws_the_ceiling_budget_state_on_postgres() 
     # writes no delegation_budget_state row for tenant_overlay. The control is the same call with only the tier changed
     # (``metered``, headroom 0.0, the same cost), so a row it writes is down to the tier rule alone.
     async with _provisioned_runner() as (runner, admin_conn, _schema):
-        with patch(
-            f"{_HANDLER_MODULE}.resolve_tier_cost", return_value=_budgeted_tier()
-        ):
+        registry = SimpleNamespace(
+            tiers=[
+                SimpleNamespace(name=name, cost=_budgeted_tier())
+                for name in (_TIER, "ceiling-budgeted")
+            ]
+        )
+        with patch("omnimarket.pricing._load_routing_config", return_value=registry):
             for tier in (_TIER, "ceiling-budgeted"):
                 await runner._materialize_budget_state_async(
                     correlation_id=str(uuid4()),

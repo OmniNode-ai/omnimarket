@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -492,7 +492,7 @@ def test_omn24874_contract_ac3_check_fails_on_the_wrong_container_build_record_o
     tmp_path: Path, runtime: dict[str, object]
 ) -> None:
     world = _Ac3World(tmp_path)
-    world.set_runtime(**runtime)  # type: ignore[arg-type]
+    world.set_runtime(**cast(dict[str, Any], runtime))
     assert world.run(_ac3_command()) != 0
 
 

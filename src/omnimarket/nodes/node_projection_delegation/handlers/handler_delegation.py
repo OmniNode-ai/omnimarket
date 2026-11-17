@@ -43,9 +43,6 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
 from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
 from omnimarket.models.model_projection_derived_write import ModelProjectionDerivedWrite
 from omnimarket.models.model_projection_request import ModelProjectionRequest
-from omnimarket.models.model_tenant_routing_overlay_backend import (
-    TENANT_OVERLAY_TIER_NAME,
-)
 from omnimarket.nodes.node_projection_delegation.handlers.delegation_aggregate_coalescer import (
     AggregateCoalescer,
     window_s_from_contract,
@@ -1652,10 +1649,6 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
         math (``resolve_tier_cost`` is pure and reused unmodified) with the
         SELECT-then-UPSERT I/O ported to async ``self.db.execute()`` calls.
         """
-        # OMN-24874: own-key (tenant overlay) spend is not the platform's; it
-        # never draws a ceiling, whatever the registry declares for the tier.
-        if cost_tier_name == TENANT_OVERLAY_TIER_NAME:
-            return
         cost = resolve_tier_cost(cost_tier_name)
         if cost is None or cost.monthly_cap_usd is None:
             return

@@ -18,6 +18,7 @@ import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -161,8 +162,9 @@ def test_the_terminal_cost_measure_takes_the_endpoint_and_model_with_no_default(
     None
 ):
     # A caller that leaves them out is a TypeError, not a silent "" that reads as an unpriced model.
+    measure: Any = HandlerDelegationWorkflow._measure_terminal_cost
     with pytest.raises(TypeError):
-        HandlerDelegationWorkflow._measure_terminal_cost(  # type: ignore[call-arg]
+        measure(
             tier_name=TENANT_OVERLAY_TIER_NAME,
             prompt_tokens=_PROMPT_TOKENS,
             completion_tokens=_COMPLETION_TOKENS,
@@ -272,7 +274,7 @@ def test_the_projection_floor_rounds_to_ten_places_like_the_workflow_terminal() 
 _UNMODELLED_TIER = "a_tier_the_registry_never_declared"
 
 
-def _overlay_decision() -> object:
+def _overlay_decision() -> Any:
     """The decision a tenant overlay row yields: the catalogue's default GLM backend, as the probe tenant's route is minted."""
     backend = resolve_byok_provider_backend("glm", plan=None)
     assert backend is not None
@@ -308,9 +310,9 @@ def _overlay_decision() -> object:
 def test_the_probe_tenant_route_endpoint_resolves_a_declared_price() -> None:
     # The probe tenant's route is minted from the catalogue's default GLM plan; its endpoint must resolve a price.
     decision = _overlay_decision()
-    assert decision.tier_name == TENANT_OVERLAY_TIER_NAME  # type: ignore[attr-defined]
-    assert decision.endpoint_url == _PROBE_ENDPOINT  # type: ignore[attr-defined]
-    assert decision.selected_model == _R8_MODEL_USED  # type: ignore[attr-defined]
+    assert decision.tier_name == TENANT_OVERLAY_TIER_NAME
+    assert decision.endpoint_url == _PROBE_ENDPOINT
+    assert decision.selected_model == _R8_MODEL_USED
     assert byok_declared_price_per_1m(_PROBE_ENDPOINT, _R8_MODEL_USED) is not None
 
 
@@ -366,7 +368,7 @@ def test_the_terminal_builder_prices_a_real_tenant_overlay_decision() -> None:
     decision = _overlay_decision()
     events = HandlerDelegationWorkflow()._emit_terminal(
         _terminal_inputs(
-            tier_name=decision.tier_name,  # type: ignore[attr-defined]
+            tier_name=decision.tier_name,
             endpoint_url=_PROBE_ENDPOINT,
             model=_R8_MODEL_USED,
         )
@@ -476,7 +478,7 @@ def test_headroom_on_the_emit_terminal_result_of_an_overlay_run_is_not_stored() 
     decision = _overlay_decision()
     events = HandlerDelegationWorkflow()._emit_terminal(
         _terminal_inputs(
-            tier_name=decision.tier_name,  # type: ignore[attr-defined]
+            tier_name=decision.tier_name,
             endpoint_url=_PROBE_ENDPOINT,
             model=_R8_MODEL_USED,
         )
@@ -507,7 +509,7 @@ def _zero_cost_terminal_event(
     decision = _overlay_decision()
     events = HandlerDelegationWorkflow()._emit_terminal(
         _terminal_inputs(
-            tier_name=decision.tier_name,  # type: ignore[attr-defined]
+            tier_name=decision.tier_name,
             endpoint_url=endpoint_url,
             model=model,
         )
@@ -566,9 +568,9 @@ def test_the_canonical_terminal_cost_reaches_the_projection_from_the_overlay_dec
     decision = _overlay_decision()
     events = HandlerDelegationWorkflow()._emit_terminal(
         _terminal_inputs(
-            tier_name=decision.tier_name,  # type: ignore[attr-defined]
-            endpoint_url=decision.endpoint_url,  # type: ignore[attr-defined]
-            model=decision.selected_model,  # type: ignore[attr-defined]
+            tier_name=decision.tier_name,
+            endpoint_url=decision.endpoint_url,
+            model=decision.selected_model,
         )
     )
     canonical = next(e for e in events if isinstance(e, ModelDelegationResult))
