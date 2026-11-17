@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """The ruling register read: ``handle(ModelRulingReadRequest) -> ModelRulingReadResult`` (OMN-24478).
 
-Reads each row of the standing-rulings register in order through the port and emits one
-event per row: ``answered`` (golden) for an OK reading, ``refused`` (error) for UNREAD.
+Reads rows of the standing-rulings register concurrently through the port, returning
+readings and emitting events in row order: ``answered`` (golden) for an OK reading,
+``refused`` (error) for UNREAD.
 The port never raises and a refused read is never an answer; judging the readings into
 verdicts belongs to ``node_ruling_register_compute``. A journal write that fails costs
 its row's event only: the remaining rows still read, and the failed rows come back in
@@ -14,6 +15,7 @@ them from the contract -- so no topic string is in this file.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -35,6 +37,7 @@ from omnimarket.nodes.node_ruling_register_effect.protocols import (
 )
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
+MAX_CONCURRENT_READS = 8
 
 
 def load_topics(path: Path = CONTRACT) -> dict[str, str]:
@@ -61,15 +64,20 @@ class HandlerRulingRegisterRead:
     def handle(self, request: ModelRulingReadRequest) -> ModelRulingReadResult:
         readings = []
         sink_errors = []
-        for row in request.policy.rows:
-            reading = self._port.read(row)
-            readings.append(reading)
-            try:
-                self._emit(request, row, reading)
-            except OSError as exc:
-                # A journal write that fails loses its row's event, not the
-                # remaining rows' reads; the failures come back by row.
-                sink_errors.append(f"{row.row_id}: {type(exc).__name__}")
+        rows = request.policy.rows
+        with ThreadPoolExecutor(
+            max_workers=max(1, min(len(rows), MAX_CONCURRENT_READS))
+        ) as executor:
+            for row, reading in zip(
+                rows, executor.map(self._port.read, rows), strict=True
+            ):
+                readings.append(reading)
+                try:
+                    self._emit(request, row, reading)
+                except OSError as exc:
+                    # A journal write that fails loses its row's event, not the
+                    # remaining rows' reads; the failures come back by row.
+                    sink_errors.append(f"{row.row_id}: {type(exc).__name__}")
         return ModelRulingReadResult(
             correlation_id=request.correlation_id,
             readings=tuple(readings),

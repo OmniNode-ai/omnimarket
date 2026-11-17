@@ -25,6 +25,7 @@ import json
 import shlex
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -197,6 +198,65 @@ def test_a_row_without_a_fixture_reads_unread_never_answered() -> None:
     assert event.topic == TOPICS["ruling_read_refused"]
     assert event.status is EnumReadStatus.UNREAD
     assert event.detail == "no reading fixture"
+
+
+def test_six_slow_rows_read_concurrently_in_under_1_2_seconds() -> None:
+    class SlowPort:
+        def read(self, row: ModelRulingRow) -> ModelRulingReading:
+            time.sleep(0.3)
+            return fixture(row.row_id)
+
+    rows = tuple(row(f"row-{index}") for index in range(6))
+    h, sink = handler(SlowPort())
+    request = ModelRulingReadRequest(correlation_id="read-1", policy=policy(*rows))
+    started = time.monotonic()
+    result = h.handle(request)
+    elapsed = time.monotonic() - started
+    assert elapsed < 1.2
+    assert len(result.readings) == 6
+    assert len(sink.events) == 6
+    assert result.sink_errors == ()
+
+
+def test_readings_and_events_stay_in_row_order_when_the_first_read_is_slower() -> None:
+    completed: list[str] = []
+
+    class SlowFirstPort:
+        def read(self, row: ModelRulingRow) -> ModelRulingReading:
+            time.sleep(0.3 if row.row_id == "row-a" else 0.01)
+            completed.append(row.row_id)
+            return fixture(row.row_id)
+
+    h, sink = handler(SlowFirstPort())
+    result = h.handle(
+        ModelRulingReadRequest(
+            correlation_id="read-1",
+            policy=policy(row("row-a"), row("row-b"), row("row-c")),
+        )
+    )
+    assert completed[-1] == "row-a"
+    assert [reading.row_id for reading in result.readings] == [
+        "row-a",
+        "row-b",
+        "row-c",
+    ]
+    assert [event.row_id for event in sink.events] == ["row-a", "row-b", "row-c"]
+    assert result.sink_errors == ()
+
+
+def test_an_empty_register_returns_no_readings_or_events() -> None:
+    h, sink = handler(InMemoryRulingReadPort({}, clock=lambda: NOW))
+    # Policy validation requires rows; exercise the handler's empty-input boundary.
+    empty_policy = ModelRulingRegisterPolicy.model_construct(
+        max_reading_age_seconds=600, rows=()
+    )
+    result = h.handle(
+        ModelRulingReadRequest(correlation_id="read-1", policy=empty_policy)
+    )
+    assert result.correlation_id == "read-1"
+    assert result.readings == ()
+    assert result.sink_errors == ()
+    assert sink.events == []
 
 
 # ---- error chain ---------------------------------------------------------------------------------
