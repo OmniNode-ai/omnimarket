@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerSetupShell is built from a factory: entry in setup_plugins.yaml, by module path, not by a Python import
 """Survey shell conflicts statically and recover only with invocation consent."""
 
 from __future__ import annotations

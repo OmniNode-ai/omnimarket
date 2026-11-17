@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerSetupCompletion is built from a factory: entry in setup_plugins.yaml, by module path, not by a Python import
 """Deliver an explicitly selected completion once through an installed OS tool."""
 
 from __future__ import annotations

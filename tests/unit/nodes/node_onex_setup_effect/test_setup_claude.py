@@ -17,6 +17,9 @@ import pytest
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_claude import (
     HandlerSetupClaude,
 )
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_command_request import (
+    ModelSetupCommandRequest,
+)
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
     ModelSetupPlan,
 )
@@ -293,8 +296,8 @@ def test_setup_never_installs_claude_code_and_says_so(
     monkeypatch.setattr(module.shutil, "which", lambda _name: None)
     ran: list[tuple[str, ...]] = []
 
-    def handle(_self: object, request: object) -> SimpleNamespace:
-        ran.append(request.argv)  # type: ignore[attr-defined]
+    def handle(_self: object, request: ModelSetupCommandRequest) -> SimpleNamespace:
+        ran.append(request.argv)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(module.HandlerSetupCommand, "handle", handle)

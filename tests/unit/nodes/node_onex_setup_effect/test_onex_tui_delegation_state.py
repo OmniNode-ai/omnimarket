@@ -24,10 +24,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 import click
 import pytest
+from textual.pilot import Pilot
 from textual.widgets import Input
 
 from omnimarket.nodes.node_onex_setup_effect import cli_tui
@@ -111,12 +112,12 @@ class _CodedRunner(_Runner):
         return self._codes.get(argv[:2], 0)
 
 
-async def _settle(pilot, times: int = 8) -> None:  # type: ignore[no-untyped-def]
+async def _settle(pilot: Pilot[int], times: int = 8) -> None:
     for _ in range(times):
         await pilot.pause()
 
 
-async def _open_tab(pilot) -> None:  # type: ignore[no-untyped-def]
+async def _open_tab(pilot: Pilot[int]) -> None:
     await _type(pilot, "/delegation")
     await pilot.press("enter")
     await _settle(pilot, 6)
@@ -324,7 +325,7 @@ async def test_a_tab_after_a_failed_read_says_so_and_save_sends_nothing(
         async def status() -> ModelTuiStatus:
             raise RuntimeError("onex was not found")
 
-        loader: Callable[[], object] | None = status
+        loader: Callable[[], Awaitable[ModelTuiStatus]] | None = status
     else:
         lines, code = _FAILED_READS[case]
         monkeypatch.setattr(
@@ -332,7 +333,7 @@ async def test_a_tab_after_a_failed_read_says_so_and_save_sends_nothing(
         )
         loader = None  # the real load_status
     runner = _Runner([], by_command=_selected_rows(connection=False))
-    app = OnexTui(root=_root, runner=runner, load_status=loader)  # type: ignore[arg-type]
+    app = OnexTui(root=_root, runner=runner, load_status=loader)
     async with app.run_test(size=(160, 46)) as pilot:
         await _settle(pilot, 4)
         bar = _bar(app)

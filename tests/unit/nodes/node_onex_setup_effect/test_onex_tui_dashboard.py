@@ -168,7 +168,9 @@ async def test_enter_opens_it_and_x_stops_it() -> None:
         assert "Not running." in _state(app)
 
 
-async def test_a_failed_start_shows_the_fix_and_pops_up_failed() -> None:
+async def test_a_failed_start_shows_the_fix_and_pops_up_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """D7."""
     app = _app(_Dashboard(running=False, start_fails=True))
     shown: list[tuple[str, str]] = []
@@ -178,7 +180,7 @@ async def test_a_failed_start_shows_the_fix_and_pops_up_failed() -> None:
     ) -> None:
         shown.append((title, severity))
 
-    app.notify = notify  # type: ignore[method-assign]
+    monkeypatch.setattr(app, "notify", notify)
     async with app.run_test(size=(160, 44)) as pilot:
         await _open_dashboard(pilot)
         await pilot.press("s")

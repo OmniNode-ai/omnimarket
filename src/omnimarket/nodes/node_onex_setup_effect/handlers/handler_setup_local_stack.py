@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerSetupLocalStack is built from a factory: entry in setup_plugins.yaml, by module path, not by a Python import
 """Optional supplied stack reconciliation through the existing infra owners.
 
 The authoritative setup journal retains the applied input digest. No separate

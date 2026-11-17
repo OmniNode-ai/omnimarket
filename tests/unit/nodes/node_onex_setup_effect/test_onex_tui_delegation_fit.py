@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from textual.pilot import Pilot
 from textual.widget import Widget
 
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import ModelTuiStatus, OnexTui
@@ -59,7 +60,7 @@ def _app(
     return OnexTui(root=_root, runner=runner, load_status=status)
 
 
-async def _open(pilot) -> None:  # type: ignore[no-untyped-def]
+async def _open(pilot: Pilot[int]) -> None:
     for _ in range(4):
         await pilot.pause()
     await _type(pilot, "/delegation")

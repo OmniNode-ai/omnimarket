@@ -20,10 +20,12 @@ from __future__ import annotations
 import json
 
 import pytest
+from textual.pilot import Pilot
 from textual.widgets import Switch
 
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
     ModelTuiStatus,
+    OnexTui,
     _delegation_read,
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import tui_design
@@ -43,11 +45,11 @@ def _on(hooks: dict[str, str] | None = None) -> ModelTuiStatus:
     return ModelTuiStatus(models=1, delegation="hook", hooks=hooks or _ON)
 
 
-def _sent(app) -> list[tuple[str, ...]]:  # type: ignore[no-untyped-def]
+def _sent(app: OnexTui) -> list[tuple[str, ...]]:
     return [call for call in app._runner.calls if call[:1] == ("delegation",)]
 
 
-async def _settle(pilot) -> None:  # type: ignore[no-untyped-def]
+async def _settle(pilot: Pilot[int]) -> None:
     for _ in range(8):
         await pilot.pause()
 

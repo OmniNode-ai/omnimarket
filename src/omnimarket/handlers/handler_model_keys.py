@@ -144,7 +144,7 @@ LOCAL_HOW = (
 )
 
 
-class ModelProviderChoice(click.Choice):  # type: ignore[type-arg]
+class ModelProviderChoice(click.Choice[str]):
     """The PROVIDER argument of ``onex models``: the listed providers, one name
     each, the same set and names the TUI's /config uses (OMN-23413)."""
 

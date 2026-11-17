@@ -837,7 +837,9 @@ async def test_config_says_when_a_server_cannot_be_read() -> None:
 #   X3  Add on /config showed nothing but the note line.
 
 
-def _record_toasts(app: OnexTui) -> list[tuple[str, str, str]]:
+def _record_toasts(
+    app: OnexTui, monkeypatch: pytest.MonkeyPatch
+) -> list[tuple[str, str, str]]:
     shown: list[tuple[str, str, str]] = []
 
     def notify(
@@ -845,11 +847,11 @@ def _record_toasts(app: OnexTui) -> list[tuple[str, str, str]]:
     ) -> None:
         shown.append((title, severity, message))
 
-    app.notify = notify  # type: ignore[method-assign]
+    monkeypatch.setattr(app, "notify", notify)
     return shown
 
 
-async def test_saving_a_model_pops_up_done() -> None:
+async def test_saving_a_model_pops_up_done(monkeypatch: pytest.MonkeyPatch) -> None:
     """X1."""
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
 
@@ -866,7 +868,7 @@ async def test_saving_a_model_pops_up_done() -> None:
         },
     )
     app = _app(runner)
-    toasts = _record_toasts(app)
+    toasts = _record_toasts(app, monkeypatch)
     async with app.run_test(size=(170, 46)) as pilot:
         await _open(pilot, "/config")
         app.screen.query_one("#provider").value = "local"
@@ -882,12 +884,14 @@ async def test_saving_a_model_pops_up_done() -> None:
         assert "Ready" in done[-1][2]
 
 
-async def test_a_failed_remove_pops_up_failed_with_the_reason() -> None:
+async def test_a_failed_remove_pops_up_failed_with_the_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """X2."""
     reason = "that would leave your openrouter key with no model"
     runner = _Removes(_rows(), _rows(), refuse=reason)
     app = _app(runner)
-    toasts = _record_toasts(app)
+    toasts = _record_toasts(app, monkeypatch)
     async with app.run_test(size=(170, 46)) as pilot:
         await _remove_ready(pilot, app, _LLAMA)
         await pilot.press("r")
@@ -900,14 +904,14 @@ async def test_a_failed_remove_pops_up_failed_with_the_reason() -> None:
         assert reason in failed[-1][2]
 
 
-async def test_adding_on_config_pops_up_added() -> None:
+async def test_adding_on_config_pops_up_added(monkeypatch: pytest.MonkeyPatch) -> None:
     """X3."""
     found = json.dumps({"status": "ready", "models": ["llama3.2"]})
     runner = _Runner(
         [], by_command={("models", "list"): _rows(), ("models", "discover"): found}
     )
     app = _app(runner)
-    toasts = _record_toasts(app)
+    toasts = _record_toasts(app, monkeypatch)
     async with app.run_test(size=(170, 46)) as pilot:
         await _open(pilot, "/config")
         app.screen.query_one("#provider").value = "local"

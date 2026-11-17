@@ -13,6 +13,7 @@ unpriced, a paid models.dev price, and a model models.dev does not list.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from decimal import Decimal
 
 import pytest
@@ -38,8 +39,11 @@ def _index(models: dict[tuple[str, str], dict[str, object]]) -> ModelsDevIndex:
     )
 
 
+ServeModelsDev = Callable[[dict[tuple[str, str], dict[str, object]]], None]
+
+
 @pytest.fixture
-def models_dev(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+def models_dev(monkeypatch: pytest.MonkeyPatch) -> ServeModelsDev:
     def serve(models: dict[tuple[str, str], dict[str, object]]) -> None:
         monkeypatch.setattr(
             model_catalog, "pricing_models_dev_index", lambda: _index(models)
@@ -49,8 +53,8 @@ def models_dev(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
 
 
 def test_models_dev_zero_price_books_a_beam_call_as_free_and_measured(
-    models_dev,
-) -> None:  # type: ignore[no-untyped-def]
+    models_dev: ServeModelsDev,
+) -> None:
     models_dev(
         {
             ("reflection", BEAM): {
@@ -73,7 +77,9 @@ def test_models_dev_zero_price_books_a_beam_call_as_free_and_measured(
     assert _cost_usage_source(cost_basis) is EnumUsageSource.MEASURED
 
 
-def test_a_paid_models_dev_price_is_booked_as_cloud_cost(models_dev) -> None:  # type: ignore[no-untyped-def]
+def test_a_paid_models_dev_price_is_booked_as_cloud_cost(
+    models_dev: ServeModelsDev,
+) -> None:
     models_dev(
         {("reflection", BEAM): {"id": BEAM, "cost": {"input": 0.3, "output": 1.0}}}
     )
@@ -89,7 +95,9 @@ def test_a_paid_models_dev_price_is_booked_as_cloud_cost(models_dev) -> None:  #
     assert cost_basis is EnumCostBasis.CLOUD_API_COST
 
 
-def test_a_model_models_dev_does_not_list_stays_unpriced(models_dev) -> None:  # type: ignore[no-untyped-def]
+def test_a_model_models_dev_does_not_list_stays_unpriced(
+    models_dev: ServeModelsDev,
+) -> None:
     models_dev({})
     actual, _opus, savings, cost_basis = _compute_cost(
         BEAM,
@@ -105,7 +113,9 @@ def test_a_model_models_dev_does_not_list_stays_unpriced(models_dev) -> None:  #
     assert _cost_usage_source(cost_basis) is EnumUsageSource.UNKNOWN
 
 
-def test_a_models_dev_entry_without_a_price_stays_unpriced(models_dev) -> None:  # type: ignore[no-untyped-def]
+def test_a_models_dev_entry_without_a_price_stays_unpriced(
+    models_dev: ServeModelsDev,
+) -> None:
     models_dev({("reflection", BEAM): {"id": BEAM}})
     _actual, _opus, _savings, cost_basis = _compute_cost(
         BEAM,

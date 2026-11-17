@@ -21,6 +21,7 @@ import os
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
@@ -32,6 +33,10 @@ from omnimarket.handlers.model_catalog import (
     catalog_entry,
     load_models_dev,
     stored_entries,
+)
+from omnimarket.handlers.routing.byok_model_listing import (
+    ModelByokListedModel,
+    ModelByokModelListing,
 )
 
 pytestmark = pytest.mark.unit
@@ -52,6 +57,9 @@ _DOC = {
     },
     "not-an-onex-provider": {"models": {"x": {"name": "X"}}},
 }
+
+
+ListingOutcome = Literal["listed", "rejected", "billing", "unsupported", "inconclusive"]
 
 
 def _index() -> ModelsDevIndex:
@@ -346,12 +354,7 @@ def test_every_hosted_provider_config_offers_and_only_those_get_models_dev() -> 
     assert set(catalog_config()["provider_ids"]) == hosted
 
 
-def _listing(outcome: str = "listed") -> object:
-    from omnimarket.handlers.routing.byok_model_listing import (
-        ModelByokListedModel,
-        ModelByokModelListing,
-    )
-
+def _listing(outcome: ListingOutcome = "listed") -> ModelByokModelListing:
     return ModelByokModelListing(
         provider="openrouter",
         outcome=outcome,
@@ -372,7 +375,7 @@ def _listing(outcome: str = "listed") -> object:
 def test_a_read_provider_list_is_recalled_until_it_is_too_old(tmp_path: Path) -> None:
     """AC34: the list the explorer read reaches a later call, within its age."""
     assert model_catalog.recalled_provider_listing("openrouter", tmp_path) is None
-    model_catalog.remember_provider_listing(_listing(), tmp_path)  # type: ignore[arg-type]
+    model_catalog.remember_provider_listing(_listing(), tmp_path)
     recalled = model_catalog.recalled_provider_listing("openrouter", tmp_path)
     assert recalled is not None
     assert [m.id for m in recalled.models] == ["vendor/big"]
@@ -389,8 +392,10 @@ def test_a_read_provider_list_is_recalled_until_it_is_too_old(tmp_path: Path) ->
 @pytest.mark.parametrize(
     "outcome", ["rejected", "billing", "unsupported", "inconclusive"]
 )
-def test_a_list_that_was_not_read_is_never_kept(tmp_path: Path, outcome: str) -> None:
-    model_catalog.remember_provider_listing(_listing(outcome), tmp_path)  # type: ignore[arg-type]
+def test_a_list_that_was_not_read_is_never_kept(
+    tmp_path: Path, outcome: ListingOutcome
+) -> None:
+    model_catalog.remember_provider_listing(_listing(outcome), tmp_path)
     assert model_catalog.recalled_provider_listing("openrouter", tmp_path) is None
 
 
@@ -415,7 +420,7 @@ def test_a_delegation_call_never_lists_models_itself(
         ).max_output_tokens
         is None
     )
-    model_catalog.remember_provider_listing(_listing(), tmp_path)  # type: ignore[arg-type]
+    model_catalog.remember_provider_listing(_listing(), tmp_path)
     assert (
         model_catalog.runtime_catalog_entry(
             "openrouter", "vendor/big"

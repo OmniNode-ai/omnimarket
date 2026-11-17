@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerSetupEnvironment is built from a factory: entry in setup_plugins.yaml, by module path, not by a Python import
 """Reconcile native setup using the surviving config, identity and model owners.
 
 The workflow alone writes setup.json. Runtime configuration reuses the original

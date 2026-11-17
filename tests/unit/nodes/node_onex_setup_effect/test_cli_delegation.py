@@ -41,6 +41,9 @@ from omnimarket.nodes.node_onex_setup_effect import cli_delegation
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_observation import (
     ModelSetupObservation,
 )
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
+    ModelSetupPlan,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -53,7 +56,7 @@ class _Claude:
     ) -> None:
         self.seen = {"claude-plugin": list(plugin), "claude-hooks": list(hooks)}
         self.applied: list[str] = []
-        self.plans: list[object] = []
+        self.plans: list[ModelSetupPlan] = []
         self.developer = False
         self.replace: dict[str, bool] = {}
         self.removed: list[str] = []
@@ -65,7 +68,7 @@ class _Claude:
         self.replace[name] = self.replace.get(name, False) or replace
 
         class _Step:
-            def observe(self, plan: object) -> ModelSetupObservation:
+            def observe(self, plan: ModelSetupPlan) -> ModelSetupObservation:
                 outer.plans.append(plan)
                 queue = outer.seen[name]
                 return queue.pop(0) if len(queue) > 1 else queue[0]
@@ -255,7 +258,7 @@ def test_on_uses_the_onex_plugin_profile_already_registered(
     code, document, _ = _run(monkeypatch, tmp_path, claude, "on")
     assert code == 0, document
     assert "claude-plugin" not in claude.applied
-    assert {plan.developer for plan in claude.plans} == {developer}  # type: ignore[attr-defined]
+    assert {plan.developer for plan in claude.plans} == {developer}
 
 
 @pytest.mark.parametrize("flag", [True, False])

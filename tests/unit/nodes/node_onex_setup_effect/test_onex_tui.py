@@ -174,9 +174,9 @@ def test_command_tree_of_the_real_onex_has_the_setup_and_models_commands() -> No
 _SETUP_READS = {("models", "list", "--json"), ("models", "connections", "--json")}
 
 
-def _commands(runner: object) -> list[tuple[str, ...]]:
+def _commands(runner: _Runner) -> list[tuple[str, ...]]:
     """The runner's calls without the start-up setup read."""
-    return [c for c in runner.calls if c not in _SETUP_READS]  # type: ignore[attr-defined]
+    return [c for c in runner.calls if c not in _SETUP_READS]
 
 
 class _Runner:
