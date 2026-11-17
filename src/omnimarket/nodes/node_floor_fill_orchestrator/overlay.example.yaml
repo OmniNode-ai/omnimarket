@@ -58,6 +58,10 @@ floor_fill:
 floor_fill_live:
   # The NAME of the environment variable that holds the state store DSN (the DSN itself is never in an overlay).
   store_dsn_env: EXAMPLE_FLOOR_FILL_DSN
+  # Optional. The absolute path of an environment file holding ``<store_dsn_env>=<the DSN>``; the tick unit the schedule
+  # install renders reads it as ``EnvironmentFile=-<path>`` so the unit carries the DSN without it entering the
+  # overlay or the unit text. Leave the key out when the unit's environment already carries the variable.
+  store_dsn_env_file: /srv/example/secrets/floor-fill.env
   store_schema_name: public
   store_table_name: floor_fill_state
   store_connect_timeout_seconds: 5

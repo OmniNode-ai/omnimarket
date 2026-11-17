@@ -138,7 +138,14 @@ def test_default_install_unit_is_unchanged_by_the_live_option(
     assert "--profile" not in default_out
 
 
-@pytest.mark.parametrize("key", sorted(ModelFloorFillLiveSettings.model_fields))
+@pytest.mark.parametrize(
+    "key",
+    sorted(
+        name
+        for name, field in ModelFloorFillLiveSettings.model_fields.items()
+        if field.is_required()
+    ),
+)
 def test_live_profile_missing_key_refuses_naming_it(key: str, tmp_path: Path) -> None:
     section = {
         name: value for name, value in live_section(tmp_path).items() if name != key
@@ -182,3 +189,39 @@ def test_live_profile_installed_unit_equals_dry_run(tmp_path: Path) -> None:
     service = (unit_dir / f"{schedule.unit_name}.service").read_text(encoding="utf-8")
     timer = (unit_dir / f"{schedule.unit_name}.timer").read_text(encoding="utf-8")
     assert service + "\n" + timer + "\n" == dry
+
+
+def _unit_lines(rendered: str, key: str) -> list[str]:
+    return [line for line in rendered.splitlines() if line.startswith(f"{key}=")]
+
+
+def test_live_profile_unit_reads_the_store_dsn_from_the_declared_environment_file(
+    tmp_path: Path,
+) -> None:
+    """The unit carries the DSN by file path only: the overlay names the file, never the value."""
+    env_file = str(tmp_path / "floor-fill.env")
+    section = live_section(tmp_path, store_dsn_env_file=env_file)
+    code, out, _ = _install_live(tmp_path, section, "--dry-run", "--profile", "live")
+    assert code == 0
+    assert _unit_lines(out, "EnvironmentFile") == [f"EnvironmentFile=-{env_file}"]
+
+
+def test_live_profile_unit_without_the_environment_file_key_renders_no_line(
+    tmp_path: Path,
+) -> None:
+    section = live_section(tmp_path)
+    code, out, _ = _install_live(tmp_path, section, "--dry-run", "--profile", "live")
+    assert code == 0
+    assert _unit_lines(out, "EnvironmentFile") == []
+
+
+@pytest.mark.parametrize(
+    "bad_path", ["relative/floor-fill.env", "/srv/has space/floor-fill.env"]
+)
+def test_live_profile_refuses_an_environment_file_a_unit_line_cannot_carry(
+    tmp_path: Path, bad_path: str
+) -> None:
+    section = live_section(tmp_path, store_dsn_env_file=bad_path)
+    code, _, err = _install_live(tmp_path, section, "--dry-run", "--profile", "live")
+    assert code == 1
+    assert "floor_fill_live.store_dsn_env_file" in err

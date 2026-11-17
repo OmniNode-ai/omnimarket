@@ -24,6 +24,11 @@ class ModelFloorFillLiveSettings(BaseModel):
 
     ``store_dsn_env`` is the NAME of the environment variable that holds the store DSN, never the DSN
     itself; the binding site reads it, so the secret never lands in the overlay.
+
+    ``store_dsn_env_file`` is optional: the absolute path of an environment file (``<store_dsn_env>=<value>`` lines)
+    that the rendered tick unit reads as ``EnvironmentFile=-<path>``, so a unit the schedule install writes can carry
+    the variable without the value ever entering the overlay, the unit text or the install's argv. Absent, the unit
+    carries no such line and the variable must come from the unit's own environment.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -36,12 +41,17 @@ class ModelFloorFillLiveSettings(BaseModel):
     plan_file_pattern: str = Field(min_length=1)
     ledger_path: str = Field(min_length=1)
     process_output_dir: str = Field(min_length=1)
+    store_dsn_env_file: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="before")
     @classmethod
     def _keys_are_supplied(cls, data: Any) -> Any:
         if isinstance(data, dict):
-            missing = [name for name in cls.model_fields if data.get(name) is None]
+            missing = [
+                name
+                for name, field in cls.model_fields.items()
+                if field.is_required() and data.get(name) is None
+            ]
             if missing:
                 keys = tuple(f"{_PREFIX}{name}" for name in missing)
                 raise ValueError("no overlay supplies " + ", ".join(keys))

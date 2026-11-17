@@ -65,6 +65,15 @@ def _assignment(name: str, value: str) -> str:
     return f'Environment="{name}={escaped}"\n'
 
 
+def _environment_file_line(path: str) -> str:
+    """The unit's ``EnvironmentFile=-`` line: an absolute path a unit line carries unquoted, or a refusal naming the key."""
+    if not path.startswith("/") or not _SAFE_PATH.match(path):
+        raise ValueError(
+            f"floor_fill_live.store_dsn_env_file {path!r} is not an absolute path a unit line can carry unquoted"
+        )
+    return f"EnvironmentFile=-{path}\n"
+
+
 def _quote(value: str) -> str:
     """One systemd command-line word: quoted, with the backslash, quote, ``%`` and ``$`` escaped."""
     escaped = (
@@ -97,7 +106,7 @@ def overlay_json(
         "lab_hosts": rows,
     }
     if live is not None:
-        document[LIVE_OVERLAY_SECTION] = live.model_dump(mode="json")
+        document[LIVE_OVERLAY_SECTION] = live.model_dump(mode="json", exclude_none=True)
     return json.dumps(document, sort_keys=True, separators=(",", ":"))
 
 
@@ -143,6 +152,11 @@ def render_systemd(
         "PATH": f"{user_home}/.local/bin:/usr/local/bin:/usr/bin:/bin",
     }
     interval = f"{config.tick_interval_seconds}s"
+    environment_file = (
+        ""
+        if live is None or live.store_dsn_env_file is None
+        else _environment_file_line(live.store_dsn_env_file)
+    )
     service = (
         "# Rendered by the floor fill node (schedule install); the node contract owns the unit's name and\n"
         "# deadline and the overlay the interval, so change those and install again rather than editing this file.\n"
@@ -151,6 +165,7 @@ def render_systemd(
         "\n[Service]\nType=oneshot\n"
         f"TimeoutStartSec={schedule.timeout_seconds}\n"
         + "".join(_assignment(name, value) for name, value in environment.items())
+        + environment_file
         + f"WorkingDirectory={root}\n"
         f"ExecStart={exec_start(schedule, config, omni_root, hosts, live)}\n"
         f"SyslogIdentifier={schedule.unit_name}\n"

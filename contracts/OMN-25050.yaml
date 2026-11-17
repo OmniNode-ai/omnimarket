@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-25050
+title: The floor fill tick unit carries its store DSN from a declared environment file
+summary: The tick unit the floor fill schedule install renders sets only HOME, OMNI_HOME and PATH, so the live profile on the fill host exits 4 with fill-state:store-dsn-unset before it reaches node_remote_lane_start_effect or node_remote_lane_start_orchestrator. The overlay's floor_fill_live section gains an optional store_dsn_env_file, the absolute path of an environment file; the rendered service unit reads it as EnvironmentFile=-<path>. The value never enters the overlay, the unit text or the install argv. A unit without the key renders as before. Not in this change - writing the environment file, the overlay entry on the fill host and any credential.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25050-env-file
+  statement: The live profile's rendered tick unit reads the store DSN variable from the environment file the overlay names, and renders nothing new when the overlay names none.
+  acceptance:
+  - id: AC1
+    statement: "AC1: schedule install --profile live renders exactly one EnvironmentFile=-<path> line in the service unit when floor_fill_live.store_dsn_env_file is set, and none when it is not -- falsifier: pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_schedule_live.py -k environment_file fails on the unchanged renderer"
+  - id: AC2
+    statement: "AC2: a store_dsn_env_file that is relative or holds a character a unit line cannot carry unquoted is refused with a message naming floor_fill_live.store_dsn_env_file and nothing is written -- falsifier: the same test file, test_live_profile_refuses_an_environment_file_a_unit_line_cannot_carry, fails when the check is removed"
+evidence_requirements:
+- kind: tests
+  description: The floor fill node tests at the pushed head; the new environment_file tests fail against the renderer before this change.
+  command: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25050-ac1
+  description: 'AC1: the unit carries the EnvironmentFile line only when the overlay names the file.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_schedule_live.py -q -n 0 --no-cov -p no:cacheprovider -k environment_file
+    cwd: .
+- id: dod-omn25050-ac2
+  description: 'AC2: an environment file path a unit line cannot carry is refused naming the key.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_schedule_live.py -q -n 0 --no-cov -p no:cacheprovider -k refuses_an_environment_file
+    cwd: .
+- id: dod-omn25050-integration-proof
+  description: 'Lab proxy: the floor fill node tests run on a lab host at the pushed head; the unit rendered with the key is read on the fill host in the pull request comment and is not claimed by this local check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25050 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -q --no-cov -p no:randomly
+    cwd: .
