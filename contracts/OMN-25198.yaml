@@ -19,8 +19,8 @@ interface_change: false
 interfaces_touched: []
 context:
   run_receipts:
-    host: "h053"
-    lab_run: "One placement on h053 of the head the third review read (9dd698b581f3) ran the control pair, both ancestry checks and the AC2-binding timing, so every receipt below is one host; the logs are in the pull request comment starting Lab: head= for the head that carries this contract."
+    host: "h051"
+    lab_run: "One placement on h051 of baae469bb006, the head whose tests this change carries, ran the control pair, the merge-base control of every bound check and the evidence test files, so every receipt below is one host; the logs are in the pull request comment starting Lab: head= for the head that carries this contract."
     control_revert:
       claim: "With the product paths of baa835fa277a reverted at the merge base, the AC2 test fails on an assertion about the dispatched models; with them in place it passes. The test file is kept in both runs."
       reverted_paths: "src/ of baa835fa277a (git diff baa835fa27^ baa835fa27 -- src, reversed with git apply -R)"
@@ -28,14 +28,18 @@ context:
       reverted_run:
         command: "uv run --frozen pytest tests/nodes/node_delegation_routing_reducer/test_hosted_ordered_models_omn21217.py::test_hosted_retry_walks_only_the_selected_keys_ordered_models -q -n 0 --no-cov -rs -p no:cacheprovider"
         exit_code: 1
-        summary_line: "2 failed in 5.16s"
+        summary_line: "2 failed in 6.59s"
         assertion: "AssertionError: assert ['chosen-a'] == ['chosen-a', 'chosen-b'] at test_hosted_ordered_models_omn21217.py:155; no ImportError and no collection error"
         log: "attached in the pull request comment starting Lab: head= for the head that carries this contract, under control-reverted"
       unreverted_run:
         command: "uv run --frozen pytest tests/nodes/node_delegation_routing_reducer/test_hosted_ordered_models_omn21217.py::test_hosted_retry_walks_only_the_selected_keys_ordered_models -q -n 0 --no-cov -rs -p no:cacheprovider"
         exit_code: 0
-        summary_line: "2 passed in 5.51s"
+        summary_line: "2 passed in 8.05s"
         log: "attached in the pull request comment starting Lab: head= for the head that carries this contract, under control-unreverted"
+    merge_base_control:
+      claim: "Run under the gate's own verifier (python -m omnimarket.nodes.node_dod_verify with the head's contract and --execution-audience hosted) in an export of 13a7e30415, every bound check of the four contracts of this change failed with pytest exit 5, nothing selected: 7 of 7, 8 of 8, 9 of 9 and 7 of 7. The runner at the verifier tag fails any non-zero status, so exit 5 is the failed control, and the tests of the head are not run on the base's sources because the base holds none of the selected tests."
+      base: "13a7e30415faf3707eb4225d569fd1c31014efa9"
+      log: "attached in the pull request comment starting Lab: head= for the head that carries this contract, under merge-base-control"
     exclusion_rule:
       claim: "The must-fail control binds only evidence of the pull request's own; an item carried unchanged from the merge base's contract is exempt, and an id the head repeats is never carried."
       repository: "omnibase_core"
