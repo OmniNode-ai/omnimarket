@@ -106,13 +106,20 @@ dod_evidence:
       start --target-host "$ONEX_TEMPORAL_TARGET" --batch "$PROVE_RUNNING_BATCH" --limit 3 --wait'
     cwd: .
 - id: dod-omn24901-ac7-lab-line
-  description: 'The pull request body carries a Lab: line. The body is not part of the tree, so it cannot differ between the merge base and this head; only the local Done gate reads it, as a local Done gate
+  description: 'The pull request body carries a Lab: line. The body is not part of the tree, so it cannot differ between the merge base and this head; only the local Done gate reads it, as an unbound local Done gate
     check.'
   source: manual
-  binds_ac:
-  - AC7
   execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: "onex scm pr-view OmniNode-ai/omnimarket#6336 | grep -Eq 'Lab: '"
+    cwd: .
+- id: dod-omn24901-ac7-lab-command
+  description: 'The command the Lab: line cites is the focused workflow and starter test run; hosted CI runs that same command and it passes only with the change in place.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow -q --no-cov -p no:randomly
     cwd: .
