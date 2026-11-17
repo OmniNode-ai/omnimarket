@@ -204,3 +204,16 @@ def test_queue_status_shared_cause_age_prints_age_count_and_question_state() -> 
         f"shared-cause {CHECK} | age=9.3h | prs=7 | question=open",
     )
     assert replay[0][1].status_lines == ()
+
+
+def test_contract_declares_terminal_event_topic() -> None:
+    import yaml
+
+    contract_path = (
+        Path(__file__).resolve().parents[3]
+        / "src/omnimarket/nodes/node_shared_blocker_escalation_compute/contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text())
+    terminal = "onex.evt.omnimarket.shared-blocker-escalation-completed.v1"
+    assert contract["terminal_event"] == terminal
+    assert terminal in contract["event_bus"]["publish_topics"]
