@@ -17,16 +17,15 @@ from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
 from omnimarket.handlers.schedule_gate import ScheduleGate
 from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
+from omnimarket.models.model_daily_line import ModelDailyLinePublication
 from omnimarket.models.schedule_trigger.model_schedule_trigger import (
     ModelScheduleRunEvent,
 )
-from omnimarket.nodes.node_daily_line_compute.handlers.handler_daily_line import (
-    HandlerDailyLine,
-)
-from omnimarket.nodes.node_daily_line_effect.handlers.handler_daily_line_run import (
+from omnimarket.nodes.node_daily_line_compute import HandlerDailyLine
+from omnimarket.nodes.node_daily_line_effect import (
     HandlerDailyLineRun,
 )
-from omnimarket.nodes.node_daily_line_effect.handlers.handler_daily_line_run import (
+from omnimarket.nodes.node_daily_line_effect import (
     build_runner as build_daily_line_runner,
 )
 from omnimarket.nodes.node_daily_line_scheduled_effect.models import (
@@ -34,6 +33,8 @@ from omnimarket.nodes.node_daily_line_scheduled_effect.models import (
 )
 
 NODE_NAME = "node_daily_line_scheduled_effect"
+#: The most characters one run event's detail carries.
+DETAIL_LIMIT = 300
 
 
 class HandlerDailyLineScheduled:
@@ -86,12 +87,26 @@ class HandlerDailyLineScheduled:
         self._gate.mark(now)
         try:
             publication = self._build_runner().run()
-        except (KeyError, RuntimeError, OSError, ValueError) as exc:
-            return self._event(request, "failed", f"{type(exc).__name__}: {exc}"[:300])
-        detail = publication.line.splitlines()[0][:300]
-        if publication.unknown_parts:
-            detail += f" (unknown: {','.join(publication.unknown_parts)})"
+            detail = self._detail(publication)
+        except Exception as exc:
+            return self._event(
+                request, "failed", f"{type(exc).__name__}: {exc}"[:DETAIL_LIMIT]
+            )
         return self._event(request, "completed", detail)
+
+    @staticmethod
+    def _detail(publication: ModelDailyLinePublication) -> str:
+        """The published line's first line, then the unknown parts, in at most DETAIL_LIMIT characters."""
+        lines = publication.line.splitlines()
+        first = lines[0] if lines else ""
+        if not first.strip():
+            raise ValueError("the published daily line is empty")
+        suffix = (
+            f" (unknown: {','.join(publication.unknown_parts)})"
+            if publication.unknown_parts
+            else ""
+        )
+        return first[: max(DETAIL_LIMIT - len(suffix), 0)] + suffix
 
 
 __all__: list[str] = ["HandlerDailyLineScheduled"]

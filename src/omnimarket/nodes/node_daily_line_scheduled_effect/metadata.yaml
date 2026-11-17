@@ -1,6 +1,6 @@
 name: node_daily_line_scheduled_effect
 version: "0.1.0"
-description: "Runs one daily line on the runtime tick"
+description: "Runs one daily line on the runtime tick: reads the ledger over the bus and the floor record, writes daily-line.json, appends one STATUS row"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -8,11 +8,11 @@ entry_points:
 capabilities:
   standalone: true
   full_runtime: true
-  requires_network: false
-  requires_repo: false
+  requires_network: true
+  requires_repo: true
   requires_secrets: false
   requires_docker: false
-  side_effect_class: none
+  side_effect_class: write
 dependencies:
   - "omnibase_core>=0.39.0"
   - "omnibase-infra>=0.38.3"
