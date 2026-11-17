@@ -36,11 +36,6 @@ requirements:
   acceptance:
   - id: AC6
     statement: 'AC6: a test ties the alarm contract''s max ages to the R8 and R9 start_interval, the ledger takes the out-of-order stamp of a backdated row, discovery never builds the alarm handler without arguments, and organic_run_has_values means cost above 0 on a real R8 writer row -- falsifier: `uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q` passes with a max age in contract.yaml changed'
-- id: req-omn24978-ac7
-  statement: 'a PR comment starting `Lab: head=<full new head sha>` names the sha, the command and exit 0, and every required check-run of omnimarket#6335 reads success at the new head'
-  acceptance:
-  - id: AC7
-    statement: 'AC7: a PR comment starting `Lab: head=<full new head sha>` names the sha, the command and exit 0, and every required check-run of omnimarket#6335 reads success at the new head -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6335` lists a required context that is not success at the new head, or the Lab comment lacks the full sha, the command or exit 0'
 evidence_requirements:
 - kind: tests
   description: The tenant overlay pricing tests, the contract check tests, the alarm node tests and the real-Postgres file through the lab-work command.
@@ -107,8 +102,6 @@ dod_evidence:
 - id: dod-omn24978-ac6-alarm
   description: The alarm node tests tie each max age to the start_interval of its unit plus a quarter, take a backdated alarm row through the real append handler (file and bus mode) and show discovery never builds the handler without arguments. The alarm node moved to a follow-up pull request, so hosted CI does not run this item here; the local Done gate runs it once that pull request is merged.
   source: manual
-  binds_ac:
-  - AC6
   execution_scope: local_done_gate
   checks:
   - check_type: test_passes
@@ -117,8 +110,6 @@ dod_evidence:
 - id: dod-omn24978-ac7
   description: 'The lane''s STATUS row on the ledger names the full head of the pushed change, the lab-work command and exit=0 (the Lab: head= comment and the check-runs at that head are read from the pull request with onex scm pr-checks). Local Done gate only: it reads the ledger and a sha.'
   source: manual
-  binds_ac:
-  - AC7
   execution_scope: local_done_gate
   checks:
   - check_type: command

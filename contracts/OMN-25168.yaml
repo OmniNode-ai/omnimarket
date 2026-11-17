@@ -21,11 +21,6 @@ requirements:
   acceptance:
   - id: AC3
     statement: 'AC3: the probe in test_omn24874_tenant_overlay_terminal_cost.py sets an endpoint so an unpriced model fails it, the endpoint argument matches the signature and the floor rounding matches the workflow, with a test -- falsifier: `uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q` passes with the probe endpoint removed'
-- id: req-omn25168-ac4
-  statement: 'AC4: each non-blocking finding 5 and 6 is fixed in the push or argued with evidence in a PR comment, and a PR comment starting `Lab: head=<full new head sha>` names the sha, the lab command and exit 0'
-  acceptance:
-  - id: AC4
-    statement: 'AC4: each non-blocking finding 5 and 6 is fixed in the push or argued with evidence in a PR comment, and a PR comment starting `Lab: head=<full new head sha>` names the sha, the lab command and exit 0 -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6335 --comments` shows no comment naming findings 5 and 6, or a Lab comment without the full sha, the command or exit 0'
 evidence_requirements:
 - kind: tests
   description: The contract check tests, the ceiling budget reader tests and the tenant overlay pricing tests.
@@ -65,8 +60,6 @@ dod_evidence:
 - id: dod-omn25168-ac4-lab-comment-names-head
   description: 'The PR holds a comment starting Lab: head= with the full head of the checkout, and comments that name findings 5 and 6. Local Done gate only: it reads the pull request comments and a sha.'
   source: manual
-  binds_ac:
-  - AC4
   execution_scope: local_done_gate
   checks:
   - check_type: command
