@@ -667,6 +667,7 @@ node_dod_closeout_sweep_compute = "omnimarket.nodes.node_dod_closeout_sweep_comp
 node_dod_criteria_check_effect = "omnimarket.nodes.node_dod_criteria_check_effect"
 node_dod_sweep_orchestrator = "omnimarket.nodes.node_dod_sweep_orchestrator"
 node_dod_verify = "omnimarket.nodes.node_dod_verify"
+node_done_items_compute = "omnimarket.nodes.node_done_items_compute"
 node_duplication_sweep = "omnimarket.nodes.node_duplication_sweep"
 node_e2e_bridge_effect = "omnimarket.nodes.node_e2e_bridge_effect"
 node_e2e_orchestrator = "omnimarket.nodes.node_e2e_orchestrator"
