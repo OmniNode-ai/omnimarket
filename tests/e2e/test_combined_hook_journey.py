@@ -169,8 +169,8 @@ def test_installed_combined_switch_preserves_configuration_and_returns_answers(
     assert receipt["run_id"] in answered["reason"]
     forwarded = json.loads(calls.read_text().splitlines()[0])
     assert "--system-prompt" in forwarded
-    assert forwarded[forwarded.index("--criteria-mode") + 1] == "replace-task-class"
-    assert forwarded[forwarded.index("--max-tokens") + 1] == "2048"
+    for flag in ("--criteria", "--criteria-mode", "--max-tokens", "--task-type"):
+        assert flag not in forwarded
 
     def count() -> int:
         return len(calls.read_text().splitlines())

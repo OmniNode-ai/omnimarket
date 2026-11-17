@@ -9,6 +9,7 @@ No model endpoint, user profile, notification or real Claude session is used.
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -33,6 +34,8 @@ def test_installed_cli_legacy_closure_and_owned_disposal(tmp_path: Path) -> None
     cli, wheel = Path(selected).resolve(), Path(wheel_value).resolve()
     assert cli.is_file()
     assert wheel.is_file()
+    real_claude = shutil.which("claude")
+    assert real_claude, "Real Claude CLI required for native plugin lifecycle proof"
     home, profile, tools = (
         tmp_path / "home",
         tmp_path / "custom profile",
@@ -56,7 +59,9 @@ def test_installed_cli_legacy_closure_and_owned_disposal(tmp_path: Path) -> None
     }
     artifact.write_text(json.dumps(evidence))
 
-    def run(*args, executable=cli, answer=None):
+    def run(
+        *args: str, executable: Path = cli, answer: str | None = None
+    ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [str(executable), *args],
             cwd=tmp_path,
@@ -105,7 +110,9 @@ def test_installed_cli_legacy_closure_and_owned_disposal(tmp_path: Path) -> None
         )
         vendor = tools / "claude"
         vendor.write_text(
-            f'#!{cli.parent / "python"}\nimport json,sys\nif sys.argv[1:]==["--version"]: print("controlled Claude fixture")\nelif sys.argv[1:]==["auth","status","--json"]: print(json.dumps({{"loggedIn":True}}))\nelse: sys.exit(91)\n'
+            f"#!{cli.parent / 'python'}\nimport json,os,sys\n"
+            'if sys.argv[1:]==["auth","status","--json"]: print(json.dumps({"loggedIn":True}))\n'
+            f"else: os.execv({real_claude!r}, [{real_claude!r}, *sys.argv[1:]])\n"
         )
         vendor.chmod(0o700)
         default = home / ".claude/settings.json"
@@ -118,6 +125,19 @@ def test_installed_cli_legacy_closure_and_owned_disposal(tmp_path: Path) -> None
                 {
                     "customer_owned": True,
                     "env": {"ANTHROPIC_BASE_URL": "http://127.0.0.1:9876"},
+                    "hooks": {
+                        "PreToolUse": [
+                            {
+                                "matcher": "Bash",
+                                "hooks": [
+                                    {
+                                        "type": "command",
+                                        "command": "echo existing-user-hook",
+                                    }
+                                ],
+                            }
+                        ]
+                    },
                 }
             )
         )
@@ -147,17 +167,18 @@ def test_installed_cli_legacy_closure_and_owned_disposal(tmp_path: Path) -> None
             == "success"
         )
         actual = json.loads(settings.read_text())
-        rows = actual["hooks"]
-        assert any(
-            "pre_tool_use_delegation.sh" in hook.get("command", "")
-            for group in rows["PreToolUse"]
-            for hook in group["hooks"]
-        )
-        assert any(
-            "post_tool_use_cost_accounting.sh" in hook.get("command", "")
-            for group in rows["PostToolUse"]
-            for hook in group["hooks"]
-        )
+        native_id = "onex-delegation@onex-delegation-local"
+        assert actual["enabledPlugins"][native_id] is True
+        assert "pre_tool_use_delegation.sh" not in settings.read_text()
+        assert "existing-user-hook" in settings.read_text()
+        registry = json.loads((profile / "plugins/installed_plugins.json").read_text())
+        native = registry["plugins"][native_id]
+        assert len(native) == 1
+        loaded = Path(native[0]["installPath"])
+        assert (loaded / "hooks/lib/native_delegation_mod.js").is_file()
+        native_hooks = json.loads((loaded / "hooks/hooks.json").read_text())
+        assert native_hooks.get("hooks", {}) == {}
+        assert native_hooks["modules"] == ["./lib/native_delegation_mod.js"]
         before = {
             str(p): (p.read_bytes(), p.stat().st_mtime_ns)
             for p in root.rglob("*")
@@ -186,8 +207,16 @@ def test_installed_cli_legacy_closure_and_owned_disposal(tmp_path: Path) -> None
         assert remaining["customer_owned"] is True
         assert remaining["env"] == actual["env"]
         assert "later-user-hook" in settings.read_text()
+        assert "existing-user-hook" in settings.read_text()
         assert "pre_tool_use_delegation.sh" not in settings.read_text()
         assert "post_tool_use_cost_accounting.sh" not in settings.read_text()
+        assert remaining.get("enabledPlugins", {}).get(native_id) is not True
+        assert (
+            native_id
+            not in json.loads((profile / "plugins/installed_plugins.json").read_text())[
+                "plugins"
+            ]
+        )
         assert default.read_bytes() == original_default
         evidence.update(
             outcome="passed",
@@ -195,6 +224,8 @@ def test_installed_cli_legacy_closure_and_owned_disposal(tmp_path: Path) -> None
             unchanged_rerun=True,
             selected_profile_only=True,
             owned_disposal=True,
+            native_registration=True,
+            vendor_registration="real Claude CLI; auth only is controlled",
         )
     finally:
         artifact.write_text(json.dumps(evidence, indent=2))
