@@ -140,7 +140,9 @@ def test_clamp_max_tokens_leaves_an_admitted_prompt_and_other_tiers_alone() -> N
     small = "summarise this" * 10
     assert clamp_max_tokens(small, "local", "local-coder", 65536) == 65536
     assert clamp_max_tokens(hex_words(6000), "cheap_frontier", "x", 65536) == 65536
-    assert clamp_max_tokens(hex_words(60000), "local", "local-coder", 65536) == 1
+    # No room left: refused, never sent with max_tokens 1 (finding 9).
+    with pytest.raises(ValueError, match="no output room"):
+        clamp_max_tokens(hex_words(60000), "local", "local-coder", 65536)
 
 
 def test_clamp_max_tokens_uses_the_peer_window_not_the_rung_window() -> None:
@@ -285,7 +287,8 @@ def test_prompt_required_the_production_dispatch_path_carries_the_prompt() -> No
         )
     )
     assert seen == [text]
-    assert port_mod._ACTIVE_PROMPT.get() == ""
+    with pytest.raises(LookupError):
+        port_mod._ACTIVE_PROMPT.get()
 
 
 # ---- finding 5: the bound comes from the resolved backend -------------------
@@ -335,3 +338,103 @@ def test_placement_spread_never_substitutes_the_peer_above_its_bound(
     # Control: a prompt inside the peer's bound still reaches it.
     control, _ = local_choices("summarization", hex_words(1000))
     assert PEER["backend_id"] in control
+
+
+# ---- review of c9f3605f3e04, findings 2, 5, 8 and 9 --------------------------
+
+# Read from the lab endpoint (POST /tokenize on the local rungs' vLLM, model
+# Qwen3.8-27B, 2026-11-17T16:10Z). The texts come from seeded generators chosen
+# without reference to the counting rule; the counts are the endpoint's, not the
+# function's.
+
+
+def _seeded_words(seed: int, alphabet: str, count: int, length: int = 12) -> str:
+    rng = random.Random(seed)
+    return "".join(
+        "".join(rng.choice(alphabet) for _ in range(length)) + " " for _ in range(count)
+    )
+
+
+def _short_digit_words() -> str:
+    rng = random.Random(25418)
+    for _ in range(3000):  # the uuid draw the reading took first
+        rng.getrandbits(128)
+    return " ".join(
+        f"v{rng.randrange(10)}{rng.choice('xyz')}{rng.randrange(100)}"
+        for _ in range(12000)
+    )
+
+
+LAB_METERED_SAMPLES: dict[str, tuple[Any, int]] = {
+    "digit_word_a1b2c3d": (lambda: "a1b2c3d " * 10752, 75265),
+    "lower_run_12": (
+        lambda: _seeded_words(25414, string.ascii_lowercase, 9216),
+        60340,
+    ),
+    "upper_run_12": (
+        lambda: _seeded_words(25415, string.ascii_uppercase, 9216),
+        66478,
+    ),
+    "short_digit_words": (_short_digit_words, 58829),
+}
+
+
+@pytest.mark.parametrize("name", sorted(LAB_METERED_SAMPLES))
+def test_input_token_bound_holds_lab_metered_samples_the_rule_did_not_choose(
+    name: str,
+) -> None:
+    build, metered = LAB_METERED_SAMPLES[name]
+    text = build()
+    bound = input_token_upper_bound(text)
+    # metered tokens are at or below the bound, so a prompt the gate admits at
+    # bound 64512 meters at most 64512.
+    assert metered <= bound, (name, metered, bound)
+    if bound <= RUNG:
+        assert metered <= RUNG
+
+
+def test_clamp_refuses_a_prompt_with_no_output_room() -> None:
+    # 17000 copies bound at 136000 tokens, above 131072 - 1024: no room at all.
+    with pytest.raises(ValueError, match="no output room"):
+        clamp_max_tokens("a1b2c3d " * 17000, "local", "local-coder", 65536)
+
+
+def _bare_port() -> port_mod.LocalDelegationDispatchPort:
+    class _Capture(port_mod.LocalDelegationDispatchPort):
+        async def _dispatch_rungs(self, **kwargs: Any) -> dict[str, object]:
+            return {}
+
+    return object.__new__(_Capture)
+
+
+def test_prompt_required_a_missing_prompt_raises_and_leaks_no_rung_skips() -> None:
+    before = port_mod._RUNG_SKIPS.get()
+    with pytest.raises(ValueError, match="needs a prompt"):
+        asyncio.run(_bare_port()._dispatch_rungs_naming_skips(task_type="test"))
+    assert port_mod._RUNG_SKIPS.get() is before
+
+
+def test_prompt_required_a_non_string_prompt_is_refused() -> None:
+    with pytest.raises(ValueError, match="must be a str"):
+        asyncio.run(_bare_port()._dispatch_rungs_naming_skips(prompt=None))
+
+
+def test_prompt_required_the_active_prompt_raises_outside_a_dispatch() -> None:
+    with pytest.raises(LookupError):
+        port_mod._ACTIVE_PROMPT.get()
+
+
+def test_none_request_has_one_rule_at_every_routing_site() -> None:
+    from types import SimpleNamespace
+
+    from omnimarket.nodes.node_delegation_orchestrator.handlers import (
+        handler_delegation_workflow as workflow_mod,
+    )
+
+    with pytest.raises(ValueError, match="no request"):
+        workflow_mod._routing_prompt(
+            SimpleNamespace(request=None, correlation_id="c-1")  # type: ignore[arg-type]
+        )
+    source = inspect.getsource(workflow_mod)
+    assert "workflow.request.prompt if workflow.request" not in source
+    assert source.count("_routing_prompt(workflow)") == 2

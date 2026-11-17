@@ -12,12 +12,13 @@ with the backend's full ``max_tokens`` reserved, be refused by the endpoint.
 ``input_token_upper_bound`` never undercounts the readings taken on the lab
 endpoint (``tests/nodes/node_delegation_routing_reducer/fixtures/
 metered_token_readings.json``): digits, floats and punctuation count one token
-each, a word of 8 or more characters that holds a digit (UUIDs, hashes,
-base64, long identifiers) counts one token per byte, a non-ASCII byte counts
-one token, whitespace counts one token per character, a run of ASCII letters
-that is not a plain word counts one token per letter (a run of 13 or more
-letters, or a run that switches case twice or more, overlapping switches
-counted, as random mixed-case text does), and only the remaining short single-case or capitalised letter runs are
+each, a word that holds a digit (``a1b2c3d``, UUIDs, hashes, base64, numbered
+identifiers) counts one token per byte, a non-ASCII byte counts one token,
+whitespace counts one token per character, a run of ASCII letters that is not
+a plain word counts one token per letter (a run of 13 or more letters, a run of
+two or more upper-case letters, or a run that switches case twice or more,
+overlapping switches counted, as random mixed-case text does), and only the
+remaining lower-case or capitalised letter runs of up to 12 letters are
 discounted, at two per token.
 
 Each local member declares the bound it can take (``LOCAL_MEMBER_INPUT_BOUNDS``,
@@ -78,10 +79,9 @@ LOCAL_MEMBER_INPUT_BOUNDS: Mapping[str, int] = {
 DEFAULT_LOCAL_MEMBER_INPUT_BOUND = min(LOCAL_MEMBER_INPUT_BOUNDS.values())
 _DEFAULT_LOCAL_MEMBER_WINDOW = min(LOCAL_MEMBER_WINDOWS.values())
 
-# A whitespace-delimited word at least this long that holds a digit is treated
-# as an identifier, hash or encoded blob: one token per byte. A 12-character
-# hexadecimal word is such a word, so the length is below 12.
-_DENSE_WORD_MIN_LENGTH = 8
+# A whitespace-delimited word that holds a digit is treated as an identifier,
+# hash or encoded blob: one token per byte, whatever its length (``a1b2c3d ``
+# meters 7.5 tokens per copy on the lab endpoint).
 # A run of ASCII letters longer than a natural word is counted per letter.
 _LETTER_RUN_MAX_NATURAL = 12
 _LETTER_TOKENS = 0.5
@@ -95,6 +95,9 @@ _CASE_SWITCH = re.compile(r"(?=[a-z][A-Z]|[A-Z][a-z])")
 def _letter_run_tokens(run: str) -> float:
     """Tokens an ASCII letter run can meter: per letter unless it is a plain word."""
     if len(run) > _LETTER_RUN_MAX_NATURAL:
+        return float(len(run))
+    # Upper-case runs (``ABCDEFGHIJKL``) meter above two letters per token.
+    if len(run) >= 2 and run.isupper():
         return float(len(run))
     # ``Word`` has one upper-to-lower switch; ``aBc`` has two, ``aBcD`` has three.
     if len(_CASE_SWITCH.findall(run)) >= 2:
@@ -110,7 +113,7 @@ def input_token_upper_bound(text: str) -> int:
         total += match.start() - last
         last = match.end()
         word = match.group()
-        if len(word) >= _DENSE_WORD_MIN_LENGTH and any(c.isdigit() for c in word):
+        if any(c.isdigit() for c in word):
             total += len(word.encode())
             continue
         position = 0
@@ -160,14 +163,20 @@ def clamp_max_tokens(
     Applied at dispatch to the resolved backend (its tier, id and ``max_tokens``),
     so a prompt the counting undercounts still cannot take the endpoint past its
     window: ``window - wrapper margin - input bound`` is the most output it may
-    reserve. A tier other than the local one is returned unchanged; the result is
-    never below 1.
+    reserve. A tier other than the local one is returned unchanged. A prompt that
+    leaves no room for one output token is refused with ``ValueError`` rather
+    than sent with ``max_tokens`` 1.
     """
     if tier_name != LOCAL_TIER_NAME:
         return max_tokens
     window = LOCAL_MEMBER_WINDOWS.get(backend_ref, _DEFAULT_LOCAL_MEMBER_WINDOW)
     room = window - WRAPPER_MARGIN_TOKENS - input_token_upper_bound(prompt)
-    return max(1, min(max_tokens, room))
+    if room < 1:
+        raise ValueError(
+            f"prompt input bound leaves no output room on {backend_ref}: "
+            f"window {window}, margin {WRAPPER_MARGIN_TOKENS}, room {room}"
+        )
+    return min(max_tokens, room)
 
 
 class _TierMember(Protocol):

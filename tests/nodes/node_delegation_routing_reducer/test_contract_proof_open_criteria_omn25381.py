@@ -27,6 +27,7 @@ OPEN = {
     "OMN-24980": ["AC1", "AC2", "AC3"],
     "OMN-25284": ["AC1", "AC5"],
     "OMN-25320": ["AC7"],
+    "OMN-25381": ["AC1", "AC2", "AC5", "AC7"],
 }
 
 
@@ -148,3 +149,20 @@ def test_contract_proof_ac1_runs_in_the_named_owning_repository_not_a_stand_in_n
     )
     assert refused.returncode != 0
     assert "does not exist" in refused.stderr
+
+
+def test_open_criteria_no_hosted_check_of_omn25381_binds_an_unmet_criterion() -> None:
+    # Review of c9f3605f3e04, finding 6: AC1 (full run, owner ruling) and AC2
+    # (null owner tickets, null hosted run) were bound to hosted checks that pass
+    # while both are unmet; AC5 likewise while the gate reads the declared table.
+    data = yaml.safe_load((CONTRACTS / "OMN-25381.yaml").read_text())
+    unmet = set(data["context"]["open_criteria"])
+    declared = {
+        entry["id"]
+        for requirement in data["requirements"]
+        for entry in requirement["acceptance"]
+    }
+    assert {"AC1", "AC2", "AC5"} <= unmet
+    assert not unmet & declared
+    for item in data["dod_evidence"]:
+        assert not set(item.get("binds_ac") or ()) & unmet, item["id"]

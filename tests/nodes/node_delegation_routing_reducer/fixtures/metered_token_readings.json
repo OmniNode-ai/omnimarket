@@ -104,62 +104,52 @@
    "code_digit_named_140000": {
     "characters": 140000,
     "sha256": "c92da4ee0ade5a37cc98563ce10e7b90e7c8ed23883c1bbd1069f3b5b48aeb29",
-    "upper_bound": 114794,
     "metered_input_tokens": 69445
    },
    "code_digit_named_61000": {
     "characters": 61000,
     "sha256": "a56bbfe6ccfdf6cb83ec7cab653cd42bc32fe27f98d2ec3450aea48c0d83b13d",
-    "upper_bound": 49898,
     "metered_input_tokens": 29945
    },
    "code_digit_named_58000": {
     "characters": 58000,
     "sha256": "06288a46d8d568766bd4ac4942aad6b11e059df4579bcf319457be345a673848",
-    "upper_bound": 47434,
     "metered_input_tokens": 28445
    },
    "code_letter_named_140000": {
     "characters": 140000,
     "sha256": "32f0fc73c2a75717c49c8f8988e881c0dcdd61fa0c8d317ef2f6c5aeefb00e26",
-    "upper_bound": 101111,
     "metered_input_tokens": 57171
    },
    "code_letter_named_61000": {
     "characters": 61000,
     "sha256": "92ea68a488e8ab643edea6da95e7be4fa77235b9cb0b9d96861ae0c078cb2b4c",
-    "upper_bound": 44055,
     "metered_input_tokens": 24859
    },
    "digits_140000": {
     "characters": 140000,
     "sha256": "ae2a4d539b5b9c3cb46ae17ece5edc33bd218ee116dece91b7b32df09f8d2582",
-    "upper_bound": 140000,
     "refused": "HTTP 400",
     "at_least_input_tokens": 131020
    },
    "hex_lines_140000": {
     "characters": 140000,
     "sha256": "2afca7aa407cc692117109f47f8608e87553616411ab9e01838e0fc160a99b3d",
-    "upper_bound": 140000,
     "metered_input_tokens": 124025
    },
    "uuid_lines_140000": {
     "characters": 140000,
     "sha256": "2e57dab3238be2f4179312f33b37f43a646d61f74551a65f63bea2e43dcaec40",
-    "upper_bound": 140000,
     "metered_input_tokens": 124052
    },
    "base64_blob_140000": {
     "characters": 140000,
     "sha256": "c640c8b8708ac27a58ccf71c5764bda3c2a64d12ee0fb5e23f1569c3a6e46fb5",
-    "upper_bound": 140000,
     "metered_input_tokens": 102870
    },
    "json_floats_140000": {
     "characters": 140000,
     "sha256": "173ebafd3f7d1157646ab852836fb585c7664fac64ffffd0c29a6b729a924902",
-    "upper_bound": 140000,
     "refused": "HTTP 400",
     "at_least_input_tokens": 131020
    }

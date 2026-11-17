@@ -1590,7 +1590,22 @@ _ACTIVE_PROBE_LADDER: ContextVar[_ProbeLadderWalk | None] = ContextVar(
 # The prompt of the dispatch running in this context. Every tier and backend
 # resolution of the run (first tier, sibling, escalation) reads it, so a local
 # member whose input bound is below the prompt's is not picked on any hop.
-_ACTIVE_PROMPT: ContextVar[str] = ContextVar("active_routing_prompt", default="")
+# No default: a resolution that runs outside a dispatch raises ``LookupError``
+# instead of routing on an empty prompt every local member would admit.
+_ACTIVE_PROMPT: ContextVar[str] = ContextVar("active_routing_prompt")
+
+
+def _required_prompt(kwargs: Mapping[str, object]) -> str:
+    """The dispatch's ``prompt``: a ``str``, or a ``ValueError`` naming the fault."""
+    if "prompt" not in kwargs:
+        raise ValueError("a delegation dispatch needs a prompt; none was given")
+    prompt = kwargs["prompt"]
+    if not isinstance(prompt, str):
+        raise ValueError(
+            f"a delegation dispatch prompt must be a str, got {type(prompt).__name__}"
+        )
+    return prompt
+
 
 # OMN-23162: the transport faults of the faults-mode probe running in this
 # context, if any. Unlike a probe ladder they replace no rung: the production
@@ -2068,15 +2083,21 @@ class LocalDelegationDispatchPort:
     async def _dispatch_rungs_naming_skips(self, **kwargs: Any) -> dict[str, object]:
         """Run the ladder; name each rung it skipped on the result (OMN-21310)."""
         skipped_rungs: list[dict[str, object]] = []
-        token = _RUNG_SKIPS.set(skipped_rungs)
         # Every tier and backend resolution of the run reads the prompt from here,
-        # on the production path (no probe ladder) as on the probe path.
-        prompt_token = _ACTIVE_PROMPT.set(str(kwargs["prompt"]))
+        # on the production path (no probe ladder) as on the probe path. It is
+        # read before the rung-skip record is set, so a call with no prompt
+        # raises without leaving that record set, and a prompt that is not a
+        # string is refused instead of routed as its ``str()``.
+        prompt = _required_prompt(kwargs)
+        prompt_token = _ACTIVE_PROMPT.set(prompt)
         try:
-            result = await self._dispatch_rungs(**kwargs)
+            token = _RUNG_SKIPS.set(skipped_rungs)
+            try:
+                result = await self._dispatch_rungs(**kwargs)
+            finally:
+                _RUNG_SKIPS.reset(token)
         finally:
             _ACTIVE_PROMPT.reset(prompt_token)
-            _RUNG_SKIPS.reset(token)
         if skipped_rungs and "skipped_rungs" not in result:
             result = {**result, "skipped_rungs": skipped_rungs}
         return result

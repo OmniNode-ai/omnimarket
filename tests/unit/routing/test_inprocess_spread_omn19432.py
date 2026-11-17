@@ -22,7 +22,7 @@ What must hold, and what each test pins:
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
 
@@ -46,6 +46,21 @@ from tests.unit.routing.test_same_model_spread_omn19215 import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _routing_prompt_set() -> Iterator[None]:
+    """These tests resolve backends outside a dispatch, so they set its prompt."""
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+        port_local_delegation_dispatch as _dispatch_port,
+    )
+
+    prompt_token = _dispatch_port._ACTIVE_PROMPT.set("route this short prompt")
+    try:
+        yield
+    finally:
+        _dispatch_port._ACTIVE_PROMPT.reset(prompt_token)
+
 
 _KEYS: tuple[UUID, ...] = tuple(
     uuid5(NAMESPACE_DNS, f"omn-19432-inprocess-{i}") for i in range(200)

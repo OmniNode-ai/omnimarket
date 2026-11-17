@@ -579,8 +579,10 @@ def test_recorded_dense_prompts_are_the_generated_texts(key: str) -> None:
 
 @pytest.mark.parametrize("key", sorted(DENSE_READINGS))
 def test_the_bound_never_undercounts_a_metered_prompt(key: str) -> None:
+    # The fixture records only what the endpoint metered; no bound computed by
+    # the function under test is stored beside it.
+    assert "upper_bound" not in DENSE_READINGS[key]
     bound = input_token_upper_bound(reading_text(key))
-    assert bound == DENSE_READINGS[key]["upper_bound"]
     assert bound >= metered_or_at_least(key), key
 
 
