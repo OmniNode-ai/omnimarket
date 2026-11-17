@@ -208,8 +208,7 @@ def _resolve_tier_cost_callers() -> set[tuple[str, str]]:
     [
         "def reader():\n    return resolve_tier_cost('x')\n",
         "def reader():\n    return pricing.resolve_tier_cost('x')\n",
-        "from omnimarket.pricing import resolve_tier_cost as price\n"
-        "def reader():\n    return price('x')\n",
+        "from omnimarket.pricing import resolve_tier_cost as price\ndef reader():\n    return price('x')\n",
         "import omnimarket.pricing as p\ndef reader():\n    return p.resolve_tier_cost('x')\n",
         "lookup = pricing.resolve_tier_cost\ndef reader():\n    return lookup('x')\n",
         "async def reader():\n    return pricing.resolve_tier_cost('x')\n",
