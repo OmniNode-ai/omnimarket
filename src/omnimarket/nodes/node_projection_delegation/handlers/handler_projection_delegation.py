@@ -70,6 +70,9 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
 from omnimarket.models.delegation.wire.model_quality_gate import (
     ModelQualityGateResult,
 )
+from omnimarket.models.model_tenant_routing_overlay_backend import (
+    TENANT_OVERLAY_TIER_NAME,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
     ModelDelegationBudgetStateEvent,
     materialize_budget_state,
@@ -146,7 +149,6 @@ from omnimarket.projection.tenant_registry_resolution import (
     resolve_registry_tenant_uuid_or_none,
     sync_registry_tenant_uuid,
 )
-from omnimarket.routing.tenant_overlay_resolver import TENANT_OVERLAY_TIER_NAME
 
 TABLE = "delegation_events"
 CONFLICT_KEY = "correlation_id"
@@ -1874,7 +1876,7 @@ def _tenant_overlay_cost_usd(event: ModelProjectionTaskDelegatedEvent) -> float:
     """
     if event.cost_usd > 0.0:
         return event.cost_usd
-    declared = byok_declared_price_per_1m(event.endpoint_url, event.model_name)
+    declared = byok_declared_price_per_1m(event.endpoint_url, event.model_name or "")
     if declared is None:
         return 0.0
     price_in, price_out = declared

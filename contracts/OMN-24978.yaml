@@ -44,7 +44,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The tenant overlay pricing tests, the contract check tests, the alarm node tests and the real-Postgres file through the lab-work command.
-  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/test_omn24874_contract_checks.py tests/test_omn24918_contract_checks.py tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/test_omn24874_contract_checks.py tests/test_omn24918_contract_checks.py -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -69,7 +69,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/delegation -k headroom -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24978-ac3
-  description: The AC5 check of contracts/OMN-24874.yaml greps the 12-character head (behavioural test over a temp repo), and the AC3 check reads the R8 unit's installed revision on the pinned host with a dev-merge tag and an age; the live readings pin host and age.
+  description: The AC5 check of contracts/OMN-24874.yaml greps the 12-character head (behavioural test over a temp repo), and the AC3 item reads the R8 unit's installed revision and the dev runtime's running source on the pinned host; the live readings pin host and age.
   source: manual
   binds_ac:
   - AC3
@@ -96,16 +96,23 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24978-ac6
-  description: The alarm node tests tie each max age to the start_interval of its unit plus a quarter, take a backdated alarm row through the real append handler (file and bus mode), show discovery never builds the handler without arguments, and the contract-check test reads organic_run_has_values as cost above 0 on a row the real R8 handler and journal sink wrote.
+  description: The contract-check test reads organic_run_has_values as cost above 0 on a row the real R8 handler and journal sink wrote.
   source: manual
   binds_ac:
   - AC6
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
-    cwd: .
-  - check_type: test_passes
     check_value: uv run --frozen pytest tests/test_omn24874_contract_checks.py -k real_writer_row -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24978-ac6-alarm
+  description: The alarm node tests tie each max age to the start_interval of its unit plus a quarter, take a backdated alarm row through the real append handler (file and bus mode) and show discovery never builds the handler without arguments. The alarm node moved to a follow-up pull request, so hosted CI does not run this item here; the local Done gate runs it once that pull request is merged.
+  source: manual
+  binds_ac:
+  - AC6
+  execution_scope: local_done_gate
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24978-ac7
   description: 'The lane''s STATUS row on the ledger names the full head of the pushed change, the lab-work command and exit=0 (the Lab: head= comment and the check-runs at that head are read from the pull request with onex scm pr-checks). Local Done gate only: it reads the ledger and a sha.'
@@ -123,5 +130,5 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24978 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/test_omn24874_contract_checks.py tests/test_omn24918_contract_checks.py tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24978 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/test_omn24874_contract_checks.py tests/test_omn24918_contract_checks.py -q --no-cov -n 0 -p no:randomly
     cwd: .

@@ -59,7 +59,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The pricing, projection, alarm and contract tests pass at the pushed head.
-  command: uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/nodes/node_delegation_scenario_alarm_effect tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
+  command: uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -84,8 +84,9 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24918-ac3
-  description: A record whose last run is older than the scenario's contract-declared max_age_seconds, or whose time cannot be read, raises the alarm as stale; the writer's refused record raises it too.
+  description: 'A record whose last run is older than the scenario''s contract-declared max_age_seconds, or whose time cannot be read, raises the alarm as stale; the writer''s refused record raises it too. The alarm node moved to a follow-up pull request, so hosted CI does not run this item here; the local Done gate runs it once that pull request is merged.'
   source: manual
+  execution_scope: local_done_gate
   binds_ac:
   - AC3
   checks:
@@ -93,8 +94,9 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24918-ac4
-  description: A missing record carries the alarm time bucket in its request id and the row is stamped with the bucket start, so a later outage has its own row and a repeated tick in one bucket is an identical row; the dedup read is stated in the node contract.
+  description: 'A missing record carries the alarm time bucket in its request id and the row is stamped with the bucket start, so a later outage has its own row and a repeated tick in one bucket is an identical row; the dedup read is stated in the node contract. The alarm node moved to a follow-up pull request, so hosted CI does not run this item here; the local Done gate runs it once that pull request is merged.'
   source: manual
+  execution_scope: local_done_gate
   binds_ac:
   - AC4
   checks:
@@ -102,8 +104,9 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24918-ac5
-  description: The alarm tests write the last-run record through scenario_tick_main, the writer R8 and R9 use, and pin the keys of the record read on h053 (conclusion, ran_at, scenario).
+  description: 'The alarm tests write the last-run record through scenario_tick_main, the writer R8 and R9 use, and pin the keys of the record read on h053 (conclusion, ran_at, scenario). The alarm node moved to a follow-up pull request, so hosted CI does not run this item here; the local Done gate runs it once that pull request is merged.'
   source: manual
+  execution_scope: local_done_gate
   binds_ac:
   - AC5
   checks:
@@ -120,7 +123,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24918-ac8
-  description: The projection prices a tenant overlay terminal that arrives with cost_usd 0 from the declared price of the BYOK catalogue backend it names (the case of omnimarket#6331); a house backend and an undeclared model stay unpriced.
+  description: The projection prices a tenant overlay terminal that arrives with cost_usd 0 from the declared price of its endpoint_url and model_used through the canonical terminal converter (the case of omnimarket#6331; the terminal has no backend_id); a house backend and an undeclared model stay unpriced.
   source: manual
   binds_ac:
   - AC8
@@ -137,7 +140,7 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: >-
-      env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-real-postgres-24874 --kind test -- sh -c 'PW=$(head -c 18 /dev/urandom | base64 | tr -dc A-Za-z0-9); N=dod-omn24874-pg-$$; OUT=/tmp/$N.out; docker run -d --rm --name "$N" -e POSTGRES_PASSWORD="$PW" -e POSTGRES_DB=omnibase_infra -p 127.0.0.1::5432 postgres:16-alpine >/dev/null; trap "docker rm -f $N >/dev/null; rm -f $OUT" EXIT; for i in $(seq 1 40); do docker exec "$N" pg_isready -U postgres -q && break; sleep 1; done; PORT=$(docker port "$N" 5432/tcp | head -1 | sed "s/.*://"); INTEGRATION_POSTGRES_PASSWORD="$PW" INTEGRATION_POSTGRES_HOST=127.0.0.1 INTEGRATION_POSTGRES_PORT="$PORT" env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn24874_tenant_overlay_cost_real_postgres.py -q --no-cov -n 0 -p no:randomly -rs > "$OUT" 2>&1; R=$?; cat "$OUT"; ! grep -q skipped "$OUT" && exit $R'
+      env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path "${OMNI_HOME:?}" --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-real-postgres-24874 --kind test -- sh -c 'PW=$(head -c 18 /dev/urandom | base64 | tr -dc A-Za-z0-9); N=dod-omn24874-pg-$$; OUT=/tmp/$N.out; docker run -d --rm --name "$N" -e POSTGRES_PASSWORD="$PW" -e POSTGRES_DB=omnibase_infra -p 127.0.0.1::5432 postgres:16-alpine >/dev/null; trap "docker rm -f $N >/dev/null; rm -f $OUT" EXIT; for i in $(seq 1 40); do docker exec "$N" pg_isready -U postgres -q && break; sleep 1; done; PORT=$(docker port "$N" 5432/tcp | head -1 | sed "s/.*://"); INTEGRATION_POSTGRES_PASSWORD="$PW" INTEGRATION_POSTGRES_HOST=127.0.0.1 INTEGRATION_POSTGRES_PORT="$PORT" env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn24874_tenant_overlay_cost_real_postgres.py -q --no-cov -n 0 -p no:randomly -rs > "$OUT" 2>&1; R=$?; cat "$OUT"; ! grep -q skipped "$OUT" && exit $R'
     cwd: .
 - id: dod-omn24918-ac9
   description: The ledger holds a STATUS row with src=alarm and alarm=delegation-scenario-r8-failed or -r9-failed, left by the alarm tick run once over a forced failure. Local Done gate only.
@@ -155,15 +158,15 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24918 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/nodes/node_delegation_scenario_alarm_effect tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path "${OMNI_HOME:?}" --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24918 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24918-ac10
-  description: 'The hand-off of the new head to the landing controller is on the ledger for omnimarket#6335. The Lab: head= comment and the check-runs at that head are read from the pull request. Local Done gate only.'
+  description: 'The hand-off of the full checkout head to the landing controller is on the ledger for omnimarket#6335; a row for an older head fails this check. The Lab: head= comment and the check-runs at that head are read from the pull request. Local Done gate only.'
   source: manual
   binds_ac:
   - AC10
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: sh -c 'python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "to=landing-controller" | grep -F "omnimarket#6335" | grep -q MSG'
+    check_value: sh -c 'H=$(git rev-parse HEAD) && python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "to=landing-controller" | grep -F "omnimarket#6335" | grep -F "head=$H" | grep -q MSG'
     cwd: .

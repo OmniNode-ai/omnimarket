@@ -203,6 +203,9 @@ from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestRunResult,
     ModelNamedTestSpec,
 )
+from omnimarket.models.model_tenant_routing_overlay_backend import (
+    TENANT_OVERLAY_TIER_NAME,
+)
 from omnimarket.models.routing.model_escalation_decision_request import (
     ModelEscalationDecisionRequest,
 )
@@ -282,7 +285,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     NO_HIGHER_TIER_REASON_TOKEN,
-    TENANT_OVERLAY_TIER_NAME,
     describe_no_higher_tier_available,
     is_free_tier,
     lead_backend_refs,

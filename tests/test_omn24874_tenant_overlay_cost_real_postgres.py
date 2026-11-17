@@ -95,3 +95,22 @@ async def test_a_zero_cost_terminal_on_a_byok_endpoint_is_priced_and_stored_mete
         assert row["cost_measurement_source"] == "metered"
         assert row["cost_usd"] is not None
         assert float(row["cost_usd"]) > 0.0
+
+
+@pytest.mark.integration
+async def test_a_zero_cost_terminal_naming_an_endpoint_but_no_model_is_stored_unpriced() -> (
+    None
+):
+    # A terminal that carries the catalogue BYOK endpoint but no model identity has no declared price to read: the projection
+    # must hand the price lookup an empty model (never None) and store the run unpriced, as it does for an undeclared model.
+    async with _provisioned_runner() as (runner, admin_conn, _schema):
+        cid = await _complete(
+            runner,
+            cost=0.0,
+            model="",
+            endpoint_url="https://api.z.ai/api/paas/v4/chat/completions",
+        )
+        row = await admin_conn.fetchrow(_SELECT, cid)
+        assert row is not None
+        assert row["cost_measurement_source"] == "no_cost_model"
+        assert row["cost_usd"] is None

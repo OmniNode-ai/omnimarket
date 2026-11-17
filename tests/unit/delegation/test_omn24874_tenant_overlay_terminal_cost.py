@@ -14,8 +14,10 @@ no table prices stays unpriced.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -30,6 +32,7 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     resolve_byok_provider_backend,
 )
 from omnimarket.models.model_tenant_routing_overlay_backend import (
+    TENANT_OVERLAY_TIER_NAME,
     ModelTenantRoutingOverlayBackend,
 )
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
@@ -51,15 +54,15 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     _measure_actual_cost,
 )
 from omnimarket.pricing import build_premium_counterfactual, resolve_tier_cost
-from omnimarket.routing.tenant_overlay_resolver import TENANT_OVERLAY_TIER_NAME
 
 _GENERAL_ENDPOINT = "https://api.z.ai/api/paas/v4/chat/completions"
 _MODEL = "glm-5.3-flash"
-# Pinned literals (review finding 5), not copied from the decision at run time:
-#  * _PROBE_ENDPOINT is the endpoint_url of the probe tenant's overlay row, the catalogue's default GLM plan (the
-#    ``glm`` row of byok_provider_backends.v1.yaml); the test below pins the same string on the decision it builds.
-#  * _R8_MODEL_USED is the model_used of the R8 organic terminal: the probe tenant's newest 20 delegation rows read
-#    from h053 on 2026-11-16T15:26:39Z (ledger STATUS 2026-11-16T15:58:52Z) were all glm-5.3-flash.
+# Read on h053 during this review (2026-11-16): psql on the dev analytics store selected
+# endpoint_url and model_name from delegation_routing_tenant_overlay for the
+# R8 probe tenant. The canonical delegation-completed topic was consumed from
+# its broker through rpk; terminal cdee0cf7-683e-4b67-8e6c-d981b8fd1422 carries
+# the same endpoint_url and model_used. Sanitized fields and source commands
+# are recorded in tests/fixtures/delegation_scenario_alarm/probe_route.json.
 _PROBE_ENDPOINT = "https://api.z.ai/api/paas/v4/chat/completions"
 _R8_MODEL_USED = "glm-5.3-flash"
 _PROMPT_TOKENS = 300
@@ -191,6 +194,7 @@ def _overlay_decision() -> object:
     """The decision a tenant overlay row yields: the catalogue's default GLM backend, as the probe tenant's route is minted."""
     backend = resolve_byok_provider_backend("glm", plan=None)
     assert backend is not None
+    assert backend.endpoint_url == _PROBE_ENDPOINT
     overlay = ModelTenantRoutingOverlayBackend(
         tenant_id="readiness-probe",
         task_type="summarization",
@@ -401,8 +405,8 @@ def test_headroom_on_the_emit_terminal_result_of_an_overlay_run_is_not_stored() 
         canonical.model_dump(mode="json")
     )
     assert converted.get("budget_headroom_consumed_usd") in (None, 0, 0.0)
-    stamped = ModelProjectionTaskDelegatedEvent(
-        **{**converted, "budget_headroom_consumed_usd": 1.75}
+    stamped = ModelProjectionTaskDelegatedEvent.model_validate(
+        {**converted, "budget_headroom_consumed_usd": 1.75}
     )
     measured = _measure_actual_cost(stamped)
     assert measured.cost_usd == pytest.approx(_declared_cost())
@@ -430,8 +434,8 @@ def _zero_cost_terminal_event(
     payload = canonical.model_dump(mode="json")
     payload["cumulative_attempt_cost"] = 0.0
     payload["final_attempt_cost"] = 0.0
-    return ModelProjectionTaskDelegatedEvent(
-        **_canonical_result_to_task_delegated_payload(payload)
+    return ModelProjectionTaskDelegatedEvent.model_validate(
+        _canonical_result_to_task_delegated_payload(payload)
     )
 
 
@@ -489,6 +493,39 @@ def test_the_canonical_terminal_cost_reaches_the_projection_from_the_overlay_dec
     converted = _canonical_result_to_task_delegated_payload(
         canonical.model_dump(mode="json")
     )
-    measured = _measure_actual_cost(ModelProjectionTaskDelegatedEvent(**converted))
+    measured = _measure_actual_cost(
+        ModelProjectionTaskDelegatedEvent.model_validate(converted)
+    )
     assert measured.cost_usd == pytest.approx(_declared_cost())
     assert measured.cost_measurement_source == "metered"
+
+
+@pytest.mark.unit
+def test_probe_literals_match_the_host_overlay_and_terminal_reading() -> None:
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "fixtures/delegation_scenario_alarm/probe_route.json"
+    )
+    reading = json.loads(path.read_text(encoding="utf-8"))
+    assert reading["overlay"]["endpoint_url"] == _PROBE_ENDPOINT
+    assert reading["terminal"]["endpoint_url"] == _PROBE_ENDPOINT
+    assert reading["terminal"]["model_used"] == _R8_MODEL_USED
+    backend = resolve_byok_provider_backend("glm", plan=None)
+    assert backend is not None
+    assert backend.endpoint_url == reading["overlay"]["endpoint_url"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("endpoint", "model"), [(None, _MODEL), (_GENERAL_ENDPOINT, None)]
+)
+def test_projection_with_missing_route_identity_stays_unpriced(
+    endpoint: str | None, model: str | None
+) -> None:
+    event = _projection_event(
+        tier=TENANT_OVERLAY_TIER_NAME, cost=0.0, source="no_cost_model"
+    )
+    event = event.model_copy(update={"endpoint_url": endpoint, "model_name": model})
+    measured = _measure_actual_cost(event)
+    assert measured.cost_usd == 0.0
+    assert measured.cost_measurement_source == "no_cost_model"

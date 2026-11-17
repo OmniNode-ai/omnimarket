@@ -116,13 +116,6 @@ BYOK_ALL_TASK_TYPES = "*"
 #: until someone reads a bill and finds house GPU time in a customer's column.
 HOUSE_OVERLAY_COST_TIER = "house_overlay"
 
-#: The tier name a decision built from a tenant overlay row carries. The routing
-#: registry declares no cost model for it, so cost sites price it from the
-#: catalogue's declared model price (OMN-24874). Shared here so the routing
-#: reducer, the workflow terminal and the delegation projection read one name
-#: without importing each other's node packages.
-TENANT_OVERLAY_TIER_NAME = "tenant_overlay"
-
 
 def resolve_tenant_overlay_db() -> ProtocolTenantOverlayReader | None:
     """Resolve a read-only adapter for ``delegation_routing_tenant_overlay``.
@@ -313,7 +306,6 @@ __all__: list[str] = [
     "HOUSE_OVERLAY_COST_TIER",
     "TENANT_CREDENTIALS_TABLE",
     "TENANT_OVERLAY_TABLE",
-    "TENANT_OVERLAY_TIER_NAME",
     "ModelTenantRoutingOverlayBackend",
     "ProtocolTenantOverlayReader",
     "resolve_tenant_overlay",

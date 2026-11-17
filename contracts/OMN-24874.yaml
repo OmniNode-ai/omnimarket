@@ -22,7 +22,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The tenant overlay pricing tests, the existing cost path tests, the alarm node tests and the registry unit tests.
-  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/unit/delegation/test_escalation_metered_cost_reaches_projection_omn13535.py tests/unit/delegation/test_omn24562_glm_53_flash_priced_cost_row.py tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py tests/nodes/node_host_installer_registry_units/test_registry_units.py -q --no-cov -n 0 -p no:randomly
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/unit/delegation/test_escalation_metered_cost_reaches_projection_omn13535.py tests/unit/delegation/test_omn24562_glm_53_flash_priced_cost_row.py tests/nodes/node_host_installer_registry_units/test_registry_units.py -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -36,15 +36,6 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q --no-cov -n 0 -p no:randomly
-    cwd: .
-- id: dod-omn24874-ac4-alarm-row
-  description: A failed or missing R8 or R9 last-run record yields one STATUS row with src=alarm and alarm=delegation-scenario-r8-failed or -r9-failed, a passing record yields none, one failed run keeps one request id, an unappended alarm fails the tick, and the installer declares the 900-second timer.
-  source: manual
-  binds_ac:
-  - AC4
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24874-live-readings
   description: 'Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check. It fails unless it runs on h053 (hostname pinned), and parses the conclusion field of the newest R8 and R9 last-run records there, read at most the alarm contract''s max_age_seconds ago (R8 27000, R9 4500), and both read success; a record whose conclusion is failure or refused, or whose time is older, fails it.'
@@ -94,7 +85,7 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24874 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py tests/nodes/node_host_installer_registry_units/test_registry_units.py -q --no-cov -n 0 -p no:randomly
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path "${OMNI_HOME:?}" --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24874 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/nodes/node_host_installer_registry_units/test_registry_units.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24874-real-postgres
   description: The real-Postgres file of this change runs on a lab host against a disposable postgres:16-alpine container that the command starts (random password, loopback port) and removes; it fails when any of the file's tests is skipped, so a host without Docker or a database cannot pass it. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
@@ -103,10 +94,10 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: >-
-      env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-real-postgres-24874 --kind test -- sh -c 'PW=$(head -c 18 /dev/urandom | base64 | tr -dc A-Za-z0-9); N=dod-omn24874-pg-$$; OUT=/tmp/$N.out; docker run -d --rm --name "$N" -e POSTGRES_PASSWORD="$PW" -e POSTGRES_DB=omnibase_infra -p 127.0.0.1::5432 postgres:16-alpine >/dev/null; trap "docker rm -f $N >/dev/null; rm -f $OUT" EXIT; for i in $(seq 1 40); do docker exec "$N" pg_isready -U postgres -q && break; sleep 1; done; PORT=$(docker port "$N" 5432/tcp | head -1 | sed "s/.*://"); INTEGRATION_POSTGRES_PASSWORD="$PW" INTEGRATION_POSTGRES_HOST=127.0.0.1 INTEGRATION_POSTGRES_PORT="$PORT" env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn24874_tenant_overlay_cost_real_postgres.py -q --no-cov -n 0 -p no:randomly -rs > "$OUT" 2>&1; R=$?; cat "$OUT"; ! grep -q skipped "$OUT" && exit $R'
+      env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path "${OMNI_HOME:?}" --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-real-postgres-24874 --kind test -- sh -c 'PW=$(head -c 18 /dev/urandom | base64 | tr -dc A-Za-z0-9); N=dod-omn24874-pg-$$; OUT=/tmp/$N.out; docker run -d --rm --name "$N" -e POSTGRES_PASSWORD="$PW" -e POSTGRES_DB=omnibase_infra -p 127.0.0.1::5432 postgres:16-alpine >/dev/null; trap "docker rm -f $N >/dev/null; rm -f $OUT" EXIT; for i in $(seq 1 40); do docker exec "$N" pg_isready -U postgres -q && break; sleep 1; done; PORT=$(docker port "$N" 5432/tcp | head -1 | sed "s/.*://"); INTEGRATION_POSTGRES_PASSWORD="$PW" INTEGRATION_POSTGRES_HOST=127.0.0.1 INTEGRATION_POSTGRES_PORT="$PORT" env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn24874_tenant_overlay_cost_real_postgres.py -q --no-cov -n 0 -p no:randomly -rs > "$OUT" 2>&1; R=$?; cat "$OUT"; ! grep -q skipped "$OUT" && exit $R'
     cwd: .
-- id: dod-omn24874-ac3-fix-ancestry
-  description: Live reading for AC3, h053 half. On h053 (hostname pinned) the merge commit of this change on origin/dev is an ancestor of the revision the R8 unit was installed at (its installed.json), a dev-merge tag contains that revision, and the newest dev-merge tag on the registry clone is at most a day old. Local Done gate only; it fails before the merge, when no commit on origin/dev names the ticket. The dev runtime's own running tag is not read by this check (no tool on h053 reads it), so the dev half of AC3 stays unbound here.
+- id: dod-omn24874-ac3-running-revision
+  description: Live reading for AC3, the pricing fix. On h053 (hostname pinned) the squash commit of this change on the first-parent line of origin/dev (the repository allows squash merges only, read 2026-11-16T22:07Z as allow_squash_merge=True, allow_merge_commit=False, allow_rebase_merge=False, so a non-merge commit naming the ticket is the squash) is an ancestor of the revision the R8 unit was installed at (its installed.json), a dev-merge tag contains that revision and the newest dev-merge tag on the registry clone is at most a day old; and the dev runtime container named by RUNTIME_CONTAINER, read over ssh on ONEX_RUNTIME_SSH_HOST, imports the delegation workflow handler with the declared-price function that only this fix adds. Local Done gate only; it fails before the merge, when no commit on origin/dev names the ticket, and fails when either host variable is unset. The alarm unit moved to a follow-up pull request and is not read here.
   source: manual
   binds_ac:
   - AC3
@@ -114,7 +105,7 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: >-
-      sh -c 'test "$(hostname -s)" = hp-gen9 && F=$(git log origin/dev -1 --format=%H --grep="^OMN-24874") && test -n "$F" && R=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])" "${OMNI_HOME:?}/.onex_state/delegation-scenario-r8/scenario-r8-systemd.installed.json" revision) && git -C "${OMNI_HOME:?}/omnimarket" merge-base --is-ancestor "$F" "$R" && test -n "$(git -C "${OMNI_HOME:?}/omnimarket" tag --contains "$R" --list "dev-*")" && T=$(git -C "${OMNI_HOME:?}/omnimarket" for-each-ref --sort=-creatordate --count=1 --format="%(creatordate:unix)" "refs/tags/dev-*") && test $(( $(date +%s) - T )) -le 86400'
+      sh -c 'test "$(hostname -s)" = hp-gen9 && F=$(git log origin/dev -1 --first-parent --no-merges --format=%H --grep="^OMN-24874") && test -n "$F" && R=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])" "${OMNI_HOME:?}/.onex_state/delegation-scenario-r8/scenario-r8-systemd.installed.json" revision) && git -C "${OMNI_HOME:?}/omnimarket" merge-base --is-ancestor "$F" "$R" && test -n "$(git -C "${OMNI_HOME:?}/omnimarket" tag --contains "$R" --list "dev-*")" && T=$(git -C "${OMNI_HOME:?}/omnimarket" for-each-ref --sort=-creatordate --count=1 --format="%(creatordate:unix)" "refs/tags/dev-*") && test $(( $(date +%s) - T )) -le 86400 && ssh -o BatchMode=yes "${ONEX_RUNTIME_SSH_HOST:?set ONEX_RUNTIME_SSH_HOST to the dev runtime host}" "docker exec ${RUNTIME_CONTAINER:?set RUNTIME_CONTAINER to the dev runtime container} python -c \"import omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow as m; assert m.byok_declared_price_per_1m\""'
     cwd: .
 - id: dod-omn24874-ac5-clean-verdict-row
   description: Live reading for AC5. The ledger holds a STATUS row with verdict=CLEAN for this pull request whose row also names the 12-character head of the checkout the gate runs in, so a CLEAN row for an older head does not pass after a new push. Local Done gate only.
