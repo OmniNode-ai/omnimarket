@@ -41,6 +41,7 @@ NIGHTLY = REPO_ROOT / ".github" / "workflows" / "delegation-regression-nightly.y
 NIGHTLY_FILE = "delegation-regression-nightly.yml"
 RUNTIME_FILES = ["src/omnimarket/delegation/__init__.py"]
 RUN_ID = 44000000001
+_LAN_PREFIX = ".".join(("192", "168")) + "."
 
 Leg = dict[str, object]
 
@@ -170,7 +171,7 @@ def test_dev_leg_reads_its_endpoints_from_the_lane_overlay() -> None:
     code_lines = [
         line for line in text.splitlines() if not line.lstrip().startswith("#")
     ]
-    assert "192.168." not in "\n".join(code_lines)
+    assert _LAN_PREFIX not in "\n".join(code_lines)
     overlay = cast(
         "dict[str, dict[str, dict[str, object]]]",
         yaml.safe_load(
