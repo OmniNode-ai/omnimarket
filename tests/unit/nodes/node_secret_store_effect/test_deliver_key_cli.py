@@ -21,6 +21,9 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.models.secret_store.model_deliver_key_request import (
+    ModelDeliverKeyRequest,
+)
 from omnimarket.models.secret_store.model_deliver_key_result import (
     EnumDeliverKeyOutcome,
     ModelDeliverKeyResult,
@@ -415,13 +418,14 @@ def test_cli_an_unreadable_named_overlay_file_is_exit_3_not_a_traceback(
     assert json.loads(captured.err)["outcome"] == "key_unreadable"
 
 
-class _RaisingHandler:
+class _RaisingHandler(HandlerDeliverKeyToEnvFile):
     """A handler whose ``handle`` raises with a value-shaped message (OMN-25210)."""
 
     def __init__(self, message: str) -> None:
+        super().__init__()
         self._message = message
 
-    async def handle(self, request: Any) -> Any:
+    async def handle(self, request: ModelDeliverKeyRequest) -> ModelDeliverKeyResult:
         raise RuntimeError(self._message)
 
 
@@ -430,10 +434,7 @@ def test_cli_a_handler_that_raises_is_exit_3_with_a_typed_refusal_and_no_value(
 ) -> None:
     """``main`` runs in process, so an uncaught error would raise out of it; it must not."""
     leaked = "s3cr3t-" + secrets.token_hex(16)
-    code = main(
-        ["--name", _ID],
-        handler=_RaisingHandler(f"boom {leaked}"),  # type: ignore[arg-type]
-    )
+    code = main(["--name", _ID], handler=_RaisingHandler(f"boom {leaked}"))
     captured = capsys.readouterr()
     assert code == 3
     assert captured.out == ""
