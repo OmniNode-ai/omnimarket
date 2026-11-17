@@ -18,7 +18,7 @@ requirements:
   - id: AC4
     statement: 'AC4: every deployed row that reaches the query service carries node_work_ledger_reader_effect in its argv (count 8), and a serial run with the 8 rows answered is recorded -- falsifier: `uv run pytest tests -k ruling_register_unit -q -p no:cacheprovider` fails when a row lacks the substring or the count is not 8'
   - id: AC5
-    statement: 'AC5: the effect and unit tests read the 16 rows, the 8 ledger rows and the 90 s from the deployed overlay, and a lab run prints deployed=True with the three values -- falsifier: `uv run pytest tests -k ruling_register -q -p no:cacheprovider` fails when the tests fall back to overlay.example.yaml'
+    statement: 'AC5: the effect and unit tests read the 16 rows, the 8 ledger rows and the 90 s from the deployed overlay, and a lab run prints deployed=True with the three values -- falsifier: the local Done gate command `ONEX_RULING_REGISTER_DEPLOYED_ROOTS=/data/omninode/overlays/overlays uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "register_values or lab_run_with_no_deployed" -q -p no:cacheprovider` fails when the deployed overlay is absent or the tests fall back to overlay.example.yaml'
   - id: AC6
     statement: 'AC6: the test reads LAB_WORK_HOST_NAME from the dev container as empty and H201_ROWS match the deployed overlay -- falsifier: `uv run pytest tests -k ruling_register_unit -q -p no:cacheprovider` fails when an H201_ROWS entry differs from the overlay'
   - id: AC7
@@ -69,7 +69,7 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: sh -c 'ONEX_RULING_REGISTER_DEPLOYED_ROOTS="${OMNI_HOME:?}/overlays/overlays" uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "query_service or one_at_a_time or at_once or two_processes or ledger_lock" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider'
+    check_value: sh -c 'ONEX_RULING_REGISTER_DEPLOYED_ROOTS="/data/omninode/overlays/overlays" uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "query_service or one_at_a_time or at_once or two_processes or ledger_lock" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider'
     cwd: .
 - id: dod-omn25318-ac5
   description: The tests read the register from the deployed overlay roots a lab run names and print deployed=True with the three values; with no deployed overlay a lab run fails. Run on a lab host that holds the deployed overlays, so only the local Done gate runs the unbound check.
@@ -79,10 +79,10 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: sh -c 'ONEX_RULING_REGISTER_DEPLOYED_ROOTS="${OMNI_HOME:?}/overlays/overlays" uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "register_values or lab_run_with_no_deployed" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider'
+    check_value: sh -c 'ONEX_RULING_REGISTER_DEPLOYED_ROOTS="/data/omninode/overlays/overlays" uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "register_values or lab_run_with_no_deployed" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider'
     cwd: .
   - check_type: command
-    check_value: sh -c 'set -eu; out=$(ONEX_RULING_REGISTER_DEPLOYED_ROOTS="${OMNI_HOME:?}/overlays/overlays" uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k register_values_are_read -s -q --no-cov -n 0 -p no:randomly -p no:cacheprovider); printf "%s\n" "$out"; printf "%s\n" "$out" | grep -F "REGISTER-VALUES deployed=True rows=16 ledger_rows=8 timeout=90"'
+    check_value: sh -c 'set -eu; out=$(ONEX_RULING_REGISTER_DEPLOYED_ROOTS="/data/omninode/overlays/overlays" uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k register_values_are_read -s -q --no-cov -n 0 -p no:randomly -p no:cacheprovider); printf "%s\n" "$out"; printf "%s\n" "$out" | grep -F "REGISTER-VALUES deployed=True rows=16 ledger_rows=8 timeout=90"'
     cwd: .
 - id: dod-omn25318-ac6
   description: The AC4 check fails when the dev runtime container carries LAB_WORK_HOST_NAME, and the H201_ROWS entries and the journal variable are compared with the deployed overlay (the command names ONEX_RULING_REGISTER_DEPLOYED_ROOTS, so the tests never read overlay.example.yaml) on a lab host that holds it, which is why only the local Done gate runs it.
@@ -92,7 +92,7 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: sh -c 'ONEX_RULING_REGISTER_DEPLOYED_ROOTS="${OMNI_HOME:?}/overlays/overlays" uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -k "dev_container or h201_rows_of_the_test_match or unit_names_the_journal" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider'
+    check_value: sh -c 'ONEX_RULING_REGISTER_DEPLOYED_ROOTS="/data/omninode/overlays/overlays" uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -k "dev_container or h201_rows_of_the_test_match or unit_names_the_journal" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider'
     cwd: .
 - id: dod-omn25318-ac7
   description: contracts/OMN-25207.yaml no longer states the 600 s limit, the Lab checks of the two earlier contracts fail on a failed command, and the effect timing tests use a barrier and events.
@@ -132,7 +132,8 @@ dod_evidence:
       sh -c '
       set -eu
       d=$(mktemp -d)
-      if ssh h201 pgrep -f "[r]untime_ruling_register_tick" > /dev/null; then echo "h201 is mid-tick: its unit reads the query service now"; exit 1; fi
+      rc=0; ssh h201 pgrep -f "[r]untime_ruling_register_tick" > /dev/null || rc=$?
+      case "$rc" in 1) ;; 0) echo "h201 is mid-tick: its unit reads the query service now"; exit 1 ;; *) echo "pgrep on h201 did not answer (exit $rc): whether h201 is mid-tick is unread"; exit 1 ;; esac
       start=$(date +%s)
       env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_ruling_register_effect.runtime_ruling_register_tick --state-dir "$d" --omni-home "$OMNI_HOME" > "$d/out.txt"
       seconds=$(( $(date +%s) - start ))
@@ -145,7 +146,8 @@ dod_evidence:
       for id in new-work-lands-with-a-fable-verdict dev-holds-ready merged-means-running lanes-placed-bottom-up fable-reviews-run-on-the-mac holds-have-an-owner-and-an-unexpired-expiry plan-slice-round-four-needs-a-scope-cut lab-fill-skips-under-a-fifth; do
         printf "%s" "$rec" | grep -qE "\"$id\": \"(TRUE|FALSE)\"" || { echo "row $id is not answered: it is missing or reads UNREAD"; exit 1; }
       done
-      if ssh h201 pgrep -f "[r]untime_ruling_register_tick" > /dev/null; then echo "h201 went mid-tick during the proof: the runs may overlap"; exit 1; fi
+      rc=0; ssh h201 pgrep -f "[r]untime_ruling_register_tick" > /dev/null || rc=$?
+      case "$rc" in 1) ;; 0) echo "h201 went mid-tick during the proof: the runs may overlap"; exit 1 ;; *) echo "pgrep on h201 did not answer (exit $rc): whether the runs overlapped is unread"; exit 1 ;; esac
       '
     cwd: .
   - check_type: command

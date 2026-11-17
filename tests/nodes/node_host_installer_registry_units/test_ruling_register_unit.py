@@ -31,6 +31,8 @@ from omnimarket.nodes.node_ruling_register_compute.overlay import (
     load_ruling_register_policy,
 )
 from omnimarket.nodes.node_ruling_register_effect.handlers.handler_ruling_register_read import (
+    DEFAULT_LEDGER_LOCK,
+    LEDGER_LOCK_ENV,
     is_ledger_reader_row,
 )
 from omnimarket.nodes.node_ruling_register_effect.overlay import load_route
@@ -331,7 +333,8 @@ def test_the_ac4_check_reads_the_installed_status_on_h201_and_asserts_the_head_a
     # Rerunning the unit tests passes whether or not the unit is installed; the check reads the install itself.
     assert "-m pytest" not in command
     assert "uv run" not in command
-    assert "onex-host-install-units ruling-register-systemd --status" in command
+    assert '"$installer" ruling-register-systemd --status' in command
+    assert "${RULING_REGISTER_INSTALLER:?" in command
     assert "h201" in command
     # The head: the installer's recorded revision is compared with the checked-out head.
     assert "git rev-parse HEAD" in command
@@ -626,9 +629,9 @@ def _h201_row_mismatches(by_id: dict[str, ModelRulingRow]) -> list[str]:
 def test_the_h201_rows_of_the_test_match_the_deployed_overlay(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Each H201_ROWS entry is the deployed row verbatim (argv, host and expectation); the one row the deployment still
-    carries as it was before the docker list failed loud may equal that earlier text instead. A hosted runner holds no
-    deployed overlay and checks only that the entries are well formed."""
+    """Each H201_ROWS entry is the deployed row verbatim (argv, host and expectation), with no earlier text allowed: a
+    deployed overlay that still carries the docker row as it was before the docker list failed loud fails it. A hosted
+    runner holds no deployed overlay and checks only that the entries are well formed."""
     environ, deployed = register_environ(tmp_path, monkeypatch)
     assert set(H201_ROWS) == set(H201_ROW_IDS)
     # The docker list row is the hardened one wherever the test runs (a docker that fails ends it with 4, UNREAD).
@@ -679,6 +682,7 @@ class Ac4World:
         self.monkeypatch = monkeypatch
         self.checkout, self.revision = _checkout(tmp_path)
         self.bin = tmp_path / "bin"
+        self.installer = tmp_path / "installer-venv" / "bin" / "onex-host-install-units"
         self.home = tmp_path / "home"
         self.evidence = self.home / str(load_units()[UNIT]["evidence_file"])
         self.journal = (
@@ -753,9 +757,10 @@ class Ac4World:
         self.status = result.stdout
         status_file = self.tmp_path / "status.txt"
         status_file.write_text(self.status, encoding="utf-8")
+        # The installer is named by its absolute path on h201; it is not on the PATH ssh gives a command there.
         _write_stub(
-            self.bin,
-            "onex-host-install-units",
+            self.installer.parent,
+            self.installer.name,
             f'[ "$*" = "ruling-register-systemd --status" ] || exit 2\ncat "{status_file}"\n',
         )
         return self.status
@@ -781,6 +786,7 @@ class Ac4World:
                         if k != "RULING_REGISTER_UNIT_PATH"
                     },
                     "PATH": f"{self.bin}:{os.environ['PATH']}",
+                    "RULING_REGISTER_INSTALLER": str(self.installer),
                     **unit_path,
                     **env,
                 }
@@ -1002,8 +1008,8 @@ def test_the_ac4_check_fails_for_another_revision_a_stale_record_or_another_firs
     assert world.run_check().returncode == 0
     # The first "N s old" line is another file than last-run.json.
     _write_stub(
-        world.bin,
-        "onex-host-install-units",
+        world.installer.parent,
+        world.installer.name,
         f'printf "%s\\n" "{world.tmp_path}/other.json: 5 s old" "installed revision {world.revision} of x"\n',
     )
     assert world.run_check().returncode != 0
@@ -1166,6 +1172,8 @@ class ProofWorld:
         self.set_record(dict.fromkeys(LEDGER_ROW_IDS, "TRUE"))
         self.pgrep_rc = 1
         self.ssh_fail = False
+        # The pgrep call (1 = the guard before the tick, 2 = the guard after it) whose ssh exits 255; None fails none.
+        self.ssh_fail_pgrep_call: int | None = None
         self.container_env = "PATH=/usr/bin:/bin\n"
         self.write()
 
@@ -1191,10 +1199,19 @@ class ProofWorld:
             f'cp "{self.record}" "$d/last-run.json"\n'
             'echo "RULING-REGISTER rows=16 TRUE=8 FALSE=0 UNREAD=8"\n',
         )
+        counter = self.tmp_path / "pgrep-calls.txt"
+        counter.write_text("0", encoding="utf-8")
+        fail_at = self.ssh_fail_pgrep_call or 0
         _write_stub(
             self.bin,
             "ssh",
-            "shift\n" + ("exit 255\n" if self.ssh_fail else 'exec "$@"\n'),
+            "shift\n"
+            + ("exit 255\n" if self.ssh_fail else "")
+            + 'if [ "$1" = pgrep ]; then\n'
+            f'  n=$(( $(cat "{counter}") + 1 )); echo "$n" > "{counter}"\n'
+            f'  [ "$n" = {fail_at} ] && exit 255\n'
+            "fi\n"
+            'exec "$@"\n',
         )
         _write_stub(self.bin, "pgrep", f"exit {self.pgrep_rc}\n")
         _write_stub(self.bin, "docker", f'cat "{env_file}"\n')
@@ -1303,3 +1320,208 @@ def test_the_title_check_reads_the_title_field_and_not_a_comment(
         check=False,
     )
     assert old.returncode == 0
+
+
+# ---- review of head 024cb329a9ab -------------------------------------------------------------------------------------
+
+# The output of ``onex scm pr-view OmniNode-ai/omnimarket#6345`` as the reader printed it on 2026-11-17T16:04Z (the
+# author is scrubbed): the watcher's PR record, with the title and no body and no comments.
+PR_VIEW_FIXTURE = Path(__file__).parent / "fixtures" / "pr_view_omnimarket_6345.json"
+
+
+def test_the_ac4_check_names_the_installer_by_its_path_and_never_bare_on_the_ssh_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """onex-host-install-units is not on h201's non-interactive ssh PATH, so the check names it by absolute path; the
+    stub stands only at that path (nothing on PATH answers the bare name) and the check passes."""
+    command = _check_command("OMN-24944.yaml", "AC4")
+    assert not re.search(r"(ssh|on_host)\s+(\S+\s+)?onex-host-install-units", command)
+    world = Ac4World(tmp_path, monkeypatch)
+    world.tick(PASSING_ROWS)
+    world.render_status()
+    assert not (world.bin / "onex-host-install-units").exists()
+    ok = world.run_check()
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+    # A bare name is refused before ssh runs it.
+    bare = world.run_check(RULING_REGISTER_INSTALLER="onex-host-install-units")
+    assert bare.returncode != 0
+    assert "absolute path" in bare.stdout
+    # With no installer path named the check fails; it never falls back to the bare name.
+    unnamed = world.run_check(RULING_REGISTER_INSTALLER="")
+    assert unnamed.returncode != 0
+    assert "RULING_REGISTER_INSTALLER" in unnamed.stderr
+
+
+def test_the_ac4_check_fails_loud_when_the_host_alias_does_not_answer_and_reads_h201_locally_on_h201(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The alias h201 resolves on neither h053 nor h201 itself: an alias that does not answer fails the check with the
+    variable to set, and RULING_REGISTER_HOST=local reads the host the check runs on without ssh."""
+    world = Ac4World(tmp_path, monkeypatch)
+    world.tick(PASSING_ROWS)
+    world.render_status()
+    unreachable = world.run_check(AC4_SSH_FAIL="1")
+    assert unreachable.returncode != 0
+    assert "RULING_REGISTER_HOST" in unreachable.stdout
+    local = world.run_check(AC4_SSH_FAIL="1", RULING_REGISTER_HOST="local")
+    assert local.returncode == 0, local.stdout + local.stderr
+
+
+def test_the_ac4_check_fails_when_last_run_json_was_written_before_the_install(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = Ac4World(tmp_path, monkeypatch)
+    world.tick(PASSING_ROWS)
+    world.render_status()
+    record = world.journal.parent / f"{UNIT}.installed.json"
+    installed = json.loads(record.read_text(encoding="utf-8"))
+    assert world.run_check().returncode == 0  # control: the tick ran after the install
+    installed["installed_at"] = (
+        "2999-01-01T00:00:00Z"  # an install after the tick that wrote the record
+    )
+    record.write_text(json.dumps(installed, indent=1), encoding="utf-8")
+    stale = world.run_check()
+    assert stale.returncode != 0
+    assert "before the install" in stale.stdout
+
+
+@pytest.mark.parametrize("contract_file", ["OMN-25318.yaml", "OMN-25377.yaml"])
+def test_the_overlap_guard_passes_only_on_pgrep_exit_1_and_fails_when_ssh_fails_on_each_guard(
+    tmp_path: Path, contract_file: str
+) -> None:
+    """``if ssh h201 pgrep`` read ssh exit 255 as not mid-tick; the guard now passes only on pgrep's exit 1 (no
+    process), and ssh failing on either guard call, or pgrep failing, fails the proof."""
+    contract = yaml.safe_load(
+        (base.ROOT / "contracts" / contract_file).read_text(encoding="utf-8")
+    )
+    proof_id = (
+        "dod-omn25318-integration-proof"
+        if contract_file == "OMN-25318.yaml"
+        else "dod-omn25377-integration-proof"
+    )
+    entry = next(d for d in contract["dod_evidence"] if d["id"] == proof_id)
+    command = str(entry["checks"][0]["check_value"])
+    assert "if ssh h201 pgrep" not in command
+    world = ProofWorld(tmp_path)
+
+    def run() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            shlex.split(command),
+            cwd=tmp_path,
+            env={
+                **os.environ,
+                "PATH": f"{world.bin}:{os.environ['PATH']}",
+                "OMNI_HOME": str(tmp_path),
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    ok = run()
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+    guards = 2 if contract_file == "OMN-25318.yaml" else 1
+    for call in range(1, guards + 1):
+        world.ssh_fail_pgrep_call = call
+        world.write()
+        failed = run()
+        assert failed.returncode != 0, call
+        assert "did not answer (exit 255)" in failed.stdout, call
+    world.ssh_fail_pgrep_call = None
+    world.pgrep_rc = 2  # pgrep itself fails: unread, never "not mid-tick"
+    world.write()
+    assert run().returncode != 0
+
+
+def test_the_unit_sets_the_ledger_lock_under_its_state_directory_not_the_temp_directory(
+    tmp_path: Path,
+) -> None:
+    rendered, _home = _rendered_dry_run(tmp_path)
+    state_directory = str(load_units()[UNIT]["state_directory"])
+    lock = tmp_path / "omni" / state_directory / "ledger-reader.lock"
+    assert f'"ONEX_RULING_REGISTER_LEDGER_LOCK={lock}"' in rendered
+    # The handler's default (the temp directory) is not what the unit runs with.
+    assert str(DEFAULT_LEDGER_LOCK) not in rendered
+    assert LEDGER_LOCK_ENV == "ONEX_RULING_REGISTER_LEDGER_LOCK"
+
+
+def test_the_real_pr_view_output_carries_the_title_field_with_no_space_and_no_comments(
+    tmp_path: Path,
+) -> None:
+    """The fixture is the reader's own output: the title check matches it, and the Lab-comment checks cannot match it
+    because pr-view prints no body and no comments (they fail closed until a reader shows the comment)."""
+    view = PR_VIEW_FIXTURE.read_text(encoding="utf-8")
+    record = json.loads(view)
+    assert record["verb"] == "pr-view"
+    assert '"title":"' in view
+    assert '"title": "' not in view
+    assert "comments" not in record["result"]
+    assert "Lab: head=" not in view
+    contract = yaml.safe_load(
+        (base.ROOT / "contracts/OMN-25318.yaml").read_text(encoding="utf-8")
+    )
+    entry = next(d for d in contract["dod_evidence"] if d["id"] == "dod-omn25318-ac8")
+    lab_check, title_check = (str(c["check_value"]) for c in entry["checks"])
+
+    def run(command: str, tmp: Path) -> int:
+        bin_dir = tmp / "bin"
+        _write_stub(bin_dir, "onex", f'cat "{PR_VIEW_FIXTURE}"\n')
+        return subprocess.run(
+            shlex.split(command),
+            cwd=base.ROOT,
+            env=scrub_git_location_env(
+                {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+            ),
+            capture_output=True,
+            text=True,
+            check=False,
+        ).returncode
+
+    assert run(title_check, tmp_path) == 0
+    assert run(lab_check, tmp_path) != 0
+
+
+def test_the_omn25377_ac1_and_ac2_bind_only_to_local_gate_checks_that_read_h201_and_the_deployed_overlay() -> (
+    None
+):
+    contract = yaml.safe_load(
+        (base.ROOT / "contracts/OMN-25377.yaml").read_text(encoding="utf-8")
+    )
+    for ac, needle in (
+        ("AC1", "ruling-register-systemd.installed.json"),
+        (
+            "AC2",
+            "ONEX_RULING_REGISTER_DEPLOYED_ROOTS=/data/omninode/overlays/overlays ",
+        ),
+    ):
+        entries = [d for d in contract["dod_evidence"] if ac in d["binds_ac"]]
+        assert entries, ac
+        for entry in entries:
+            assert entry.get("execution_scope") == "local_done_gate", entry["id"]
+            for check in entry["checks"]:
+                assert check["check_type"] == "command", entry["id"]
+        assert any(
+            needle in str(c["check_value"]) for e in entries for c in e["checks"]
+        ), ac
+
+
+@pytest.mark.parametrize(
+    ("contract_file", "ac"), [("OMN-25318.yaml", "AC5"), ("OMN-25377.yaml", "AC3")]
+)
+def test_the_deployed_overlay_falsifiers_name_the_local_gate_command(
+    contract_file: str, ac: str
+) -> None:
+    """Plain pytest passes on the example overlay, so a falsifier that names it cannot fail; it names the local Done
+    gate command that sets the deployed overlay root."""
+    contract = yaml.safe_load(
+        (base.ROOT / "contracts" / contract_file).read_text(encoding="utf-8")
+    )
+    (acceptance,) = (
+        a for r in contract["requirements"] for a in r["acceptance"] if a["id"] == ac
+    )
+    falsifier = acceptance["statement"].split(" -- falsifier: ", 1)[1]
+    assert not falsifier.startswith("`uv run pytest")
+    assert (
+        "ONEX_RULING_REGISTER_DEPLOYED_ROOTS=/data/omninode/overlays/overlays "
+        in falsifier
+    )

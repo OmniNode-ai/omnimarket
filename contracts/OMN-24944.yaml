@@ -76,7 +76,12 @@ dod_evidence:
       sh -c '
       set -eu
       head=$(git rev-parse HEAD)
-      out=$(ssh h201 onex-host-install-units ruling-register-systemd --status)
+      host=${RULING_REGISTER_HOST:-h201}
+      installer=${RULING_REGISTER_INSTALLER:?set RULING_REGISTER_INSTALLER to the absolute path of onex-host-install-units on the host, under the installed checkout .venv/bin}
+      case "$installer" in /*) ;; *) echo "name the installer by its absolute path on the host, not $installer"; exit 1 ;; esac
+      on_host() { if [ "$host" = local ]; then "$@"; else ssh "$host" "$@"; fi; }
+      on_host true || { echo "$host does not answer from $(hostname): set RULING_REGISTER_HOST to the alias of h201 on this gate host (local on h201 itself)"; exit 1; }
+      out=$(on_host "$installer" ruling-register-systemd --status)
       printf "%s\n" "$out"
       printf "%s\n" "$out" | grep -qF "installed revision $head of "
       line=$(printf "%s\n" "$out" | grep -m1 -E " [0-9]+ s old$")
@@ -85,7 +90,7 @@ dod_evidence:
       age=${age% s old}
       case "$path" in */last-run.json) ;; *) echo "the first age line is not last-run.json: $line"; exit 1 ;; esac
       test "$age" -lt 7200
-      rec=$(ssh h201 cat "$path")
+      rec=$(on_host cat "$path")
       printf "%s\n" "$rec"
       rows=$(printf "%s" "$rec" | sed -n "s/.*\"rows\": \([0-9][0-9]*\).*/\1/p")
       unread=$(printf "%s" "$rec" | sed -n "s/.*\"UNREAD\": \([0-9][0-9]*\).*/\1/p")
@@ -97,17 +102,26 @@ dod_evidence:
       for id in new-work-lands-with-a-fable-verdict dev-holds-ready merged-means-running lanes-placed-bottom-up fable-reviews-run-on-the-mac holds-have-an-owner-and-an-unexpired-expiry plan-slice-round-four-needs-a-scope-cut lab-fill-skips-under-a-fifth one-runtime-no-foreign-containers no-onex-api-container-on-dev boot-wires-only-attached-contracts boot-joins-only-required-contracts; do
         printf "%s" "$rec" | grep -qE "\"$id\": \"(TRUE|FALSE)\"" || { echo "row $id is not read: it is missing or reads UNREAD"; exit 1; }
       done
+      read_at=$(printf "%s" "$rec" | sed -n "s/.*\"read_at\": \"\([^\"]*\)\".*/\1/p")
       test -n "$journal"
-      ssh h201 find "$journal" -mmin -120 | grep -q .
-      ssh h201 tail -n 1 "$journal" | grep -q "\"row_id\":"
-      container_env=$(ssh h201 docker exec omninode-runtime env)
+      installed=$(on_host cat "${journal%/*}/ruling-register-systemd.installed.json")
+      printf "%s\n" "$installed"
+      installed_at=$(printf "%s" "$installed" | tr -d "\n" | sed -n "s/.*\"installed_at\": \"\([^\"]*\)\".*/\1/p")
+      test -n "$read_at"
+      test -n "$installed_at"
+      read_n=$(printf "%s" "$read_at" | cut -c1-19 | tr -dc 0-9)
+      installed_n=$(printf "%s" "$installed_at" | cut -c1-19 | tr -dc 0-9)
+      if [ "$read_n" -lt "$installed_n" ]; then echo "last-run.json was written at $read_at, before the install at $installed_at"; exit 1; fi
+      on_host find "$journal" -mmin -120 | grep -q .
+      on_host tail -n 1 "$journal" | grep -q "\"row_id\":"
+      container_env=$(on_host docker exec omninode-runtime env)
       if printf "%s\n" "$container_env" | grep -q "^LAB_WORK_HOST_NAME="; then echo "the dev runtime container carries LAB_WORK_HOST_NAME"; exit 1; fi
-      owner=$(ssh h201 stat -c %U "$path")
-      ssh_user=$(ssh h201 id -un)
+      owner=$(on_host stat -c %U "$path")
+      ssh_user=$(on_host id -un)
       if [ "$owner" != "$ssh_user" ]; then echo "the ssh user $ssh_user is not the user of the unit ($owner owns last-run.json)"; exit 1; fi
-      home=$(ssh h201 printenv HOME)
+      home=$(on_host printenv HOME)
       unit_path=${RULING_REGISTER_UNIT_PATH:-$home/.local/bin:/usr/local/bin:/usr/bin:/bin}
-      ssh h201 env PATH="$unit_path" docker ps -q > /dev/null
-      ssh h201 env PATH="$unit_path" curl --version > /dev/null
+      on_host env PATH="$unit_path" docker ps -q > /dev/null
+      on_host env PATH="$unit_path" curl --version > /dev/null
       '
     cwd: .

@@ -14,7 +14,7 @@ requirements:
   - id: AC2
     statement: 'AC2: the deployed docker row is the hardened row and the match test no longer accepts DEPLOYED_FOREIGN_CONTAINERS, so a failing docker on h201 reads UNREAD and never TRUE -- falsifier: `uv run pytest tests -k ruling_register_unit -q -p no:cacheprovider` fails when the unhardened row matches the deployed row'
   - id: AC3
-    statement: 'AC3: the dod commands of contracts/OMN-25318.yaml (lines 71, 81, 93) and the effect, unit and journal_env tests set ONEX_RULING_REGISTER_DEPLOYED_ROOTS under local_done_gate, so the H201_ROWS comparison and the marker count read the deployed overlay -- falsifier: `uv run pytest tests -k ruling_register -q -p no:cacheprovider` fails when the tests read overlay.example.yaml'
+    statement: 'AC3: the dod commands of contracts/OMN-25318.yaml (lines 71, 81, 93) and the effect, unit and journal_env tests set ONEX_RULING_REGISTER_DEPLOYED_ROOTS under local_done_gate, so the H201_ROWS comparison and the marker count read the deployed overlay -- falsifier: the local Done gate command `ONEX_RULING_REGISTER_DEPLOYED_ROOTS=/data/omninode/overlays/overlays uv run --frozen pytest tests -k "dod_commands_that_compare or h201_rows_of_the_test_match" -q -p no:cacheprovider` fails when the deployed overlay is absent or the tests read overlay.example.yaml'
   - id: AC4
     statement: 'AC4: AC3 of contracts/OMN-25318.yaml and its falsifier state the span-aware bound that register_bound asserts, not the claim that the worst case is under max_reading_age_seconds -- falsifier: `uv run pytest tests -k ruling_register_effect -q -p no:cacheprovider` fails when the stated bound and the asserted bound differ'
   - id: AC5
@@ -35,22 +35,44 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn25377-ac1
-  description: 'The AC4 check of contracts/OMN-24944.yaml is executed against the installer''s real status output and a real tick''s record: it passes with no Lab comment at all (it does not read the Lab line it records), fails when any required row reads UNREAD, and prints the status and last-run.json the Lab comment of the head records. The install on h201 is read only from here: the status, last-run.json, serial-run record and REGISTER-VALUES line are recorded in the Lab comment of the head when it is installed and read, and the check fails without them.'
+  description: 'The AC4 evidence is read on h201 itself, not from a test that passes without it: the installer''s record names the checked-out head as the installed revision, last-run.json was written after that install and the 8 ledger rows read TRUE or FALSE in it. It fails until the head is installed through the declared installer and its tick has run, so only the local Done gate runs it (hosted CI cannot reach h201). The unit tests of the AC4 check run under contracts/OMN-24944.yaml AC3 and AC4.'
   source: manual
   binds_ac:
   - AC1
+  execution_scope: local_done_gate
   checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -k "ac4_check" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+  - check_type: command
+    check_value: |-
+      sh -c '
+      set -eu
+      host=${RULING_REGISTER_HOST:-h201}
+      on_host() { if [ "$host" = local ]; then "$@"; else ssh "$host" "$@"; fi; }
+      rec=$(on_host cat "$(on_host printenv HOME)/.local/state/omni/ruling-register/last-run.json")
+      printf "%s\n" "$rec"
+      journal=$(printf "%s" "$rec" | sed -n "s/.*\"journal\": \"\([^\"]*\)\".*/\1/p")
+      test -n "$journal"
+      installed=$(on_host cat "${journal%/*}/ruling-register-systemd.installed.json")
+      printf "%s\n" "$installed"
+      printf "%s" "$installed" | grep -qF "\"revision\": \"$(git rev-parse HEAD)\""
+      read_at=$(printf "%s" "$rec" | sed -n "s/.*\"read_at\": \"\([^\"]*\)\".*/\1/p")
+      installed_at=$(printf "%s" "$installed" | tr -d "\n" | sed -n "s/.*\"installed_at\": \"\([^\"]*\)\".*/\1/p")
+      test -n "$read_at"
+      test -n "$installed_at"
+      test "$(printf "%s" "$read_at" | cut -c1-19 | tr -dc 0-9)" -ge "$(printf "%s" "$installed_at" | cut -c1-19 | tr -dc 0-9)"
+      for id in new-work-lands-with-a-fable-verdict dev-holds-ready merged-means-running lanes-placed-bottom-up fable-reviews-run-on-the-mac holds-have-an-owner-and-an-unexpired-expiry plan-slice-round-four-needs-a-scope-cut lab-fill-skips-under-a-fifth; do
+        printf "%s" "$rec" | grep -qE "\"$id\": \"(TRUE|FALSE)\"" || { echo "row $id is not answered on h201"; exit 1; }
+      done
+      '
     cwd: .
 - id: dod-omn25377-ac2
-  description: 'The match test compares each deployed h201 row with the test''s row verbatim and allows no earlier text: an unhardened docker row is a mismatch (control: the hardened row matches). On a lab host the match test names the deployed overlay, and it reads the hardened row only once the overlays repository carries it.'
+  description: 'The match test compares each deployed h201 row with the test''s row verbatim and allows no earlier text: an unhardened docker row is a mismatch (control: the hardened row matches). The command names h201''s deployed overlay root (the unit''s ONEX_SKILL_OVERLAY_ROOTS), so it fails while the deployed overlay carries the unhardened docker row and passes only once the overlays repository carries the hardened row and it is deployed; only the local Done gate runs it.'
   source: manual
   binds_ac:
   - AC2
+  execution_scope: local_done_gate
   checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -k "failing_docker_row or docker" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+  - check_type: command
+    check_value: sh -c 'ONEX_RULING_REGISTER_DEPLOYED_ROOTS=/data/omninode/overlays/overlays uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -k "h201_rows_of_the_test_match or failing_docker_row" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider'
     cwd: .
 - id: dod-omn25377-ac3
   description: The dod commands of contracts/OMN-25318.yaml that compare the deployed register all set ONEX_RULING_REGISTER_DEPLOYED_ROOTS and run under local_done_gate.
@@ -119,5 +141,5 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: "sh -c '\nset -eu\nrec=$(ssh h201 cat .local/state/omni/ruling-register/last-run.json)\nprintf \"%s\\n\" \"$rec\"\nfor id in new-work-lands-with-a-fable-verdict dev-holds-ready merged-means-running lanes-placed-bottom-up fable-reviews-run-on-the-mac holds-have-an-owner-and-an-unexpired-expiry plan-slice-round-four-needs-a-scope-cut lab-fill-skips-under-a-fifth; do\n  printf \"%s\" \"$rec\" | grep -qE \"\\\"$id\\\": \\\"(TRUE|FALSE)\\\"\" || { echo \"row $id is not answered on h201\"; exit 1; }\ndone\nif ssh h201 pgrep -f \"[r]untime_ruling_register_tick\" > /dev/null; then echo \"h201 is mid-tick\"; exit 1; fi\n'"
+    check_value: "sh -c '\nset -eu\nrec=$(ssh h201 cat .local/state/omni/ruling-register/last-run.json)\nprintf \"%s\\n\" \"$rec\"\nfor id in new-work-lands-with-a-fable-verdict dev-holds-ready merged-means-running lanes-placed-bottom-up fable-reviews-run-on-the-mac holds-have-an-owner-and-an-unexpired-expiry plan-slice-round-four-needs-a-scope-cut lab-fill-skips-under-a-fifth; do\n  printf \"%s\" \"$rec\" | grep -qE \"\\\"$id\\\": \\\"(TRUE|FALSE)\\\"\" || { echo \"row $id is not answered on h201\"; exit 1; }\ndone\nrc=0; ssh h201 pgrep -f \"[r]untime_ruling_register_tick\" > /dev/null || rc=$?\ncase \"$rc\" in 1) ;; 0) echo \"h201 is mid-tick\"; exit 1 ;; *) echo \"pgrep on h201 did not answer (exit $rc)\"; exit 1 ;; esac\n'"
     cwd: .

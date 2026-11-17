@@ -22,6 +22,7 @@ judges FALSE, never UNREAD.
 from __future__ import annotations
 
 import copy
+import functools
 import json
 import os
 import shlex
@@ -1554,12 +1555,19 @@ def test_the_dod_commands_that_compare_the_deployed_register_name_the_deployed_o
     assert checks
     for check in checks:
         assert "ONEX_RULING_REGISTER_DEPLOYED_ROOTS=" in check["check_value"], check
+        # h201's deployed overlay root is the unit's ONEX_SKILL_OVERLAY_ROOTS, not the registry clone's overlays.
+        assert (
+            'ONEX_RULING_REGISTER_DEPLOYED_ROOTS="/data/omninode/overlays/overlays" '
+            in check["check_value"]
+        ), check
+        assert "OMNI_HOME" not in check["check_value"], check
 
 
+@functools.cache
 def _repo_ledger_hints() -> tuple[str, ...]:
     """The names that reach the work-ledger query service, read from the repository: the node packages whose source
     resolves the query transport, the query node itself and the console scripts whose name holds ``ledger`` (not a
-    guessed list)."""
+    guessed list). Read once per session: the callers ask for it per argv token."""
     nodes_dir = ROOT / "src/omnimarket/nodes"
     nodes = sorted(
         p.name
@@ -1595,3 +1603,15 @@ def test_the_query_service_hints_are_read_from_the_repository_not_guessed() -> N
     )
     assert not is_ledger_reader_row(wrapper)
     assert any(h in token for token in wrapper.read.argv for h in hints)
+
+
+def test_the_repository_ledger_hints_are_scanned_once_not_per_argv_token() -> None:
+    """The callers ask for the hints inside a loop over every argv token of every row; the scan of every node source
+    runs once and each later call is a cache hit."""
+    _repo_ledger_hints.cache_clear()
+    first = _repo_ledger_hints()
+    for _ in range(5):
+        assert _repo_ledger_hints() is first
+    info = _repo_ledger_hints.cache_info()
+    assert info.misses == 1
+    assert info.hits == 5
