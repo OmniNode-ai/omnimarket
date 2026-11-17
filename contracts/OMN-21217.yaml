@@ -18,6 +18,21 @@ summary: >-
 is_seam_ticket: true
 interface_change: true
 interfaces_touched: [events, protocols, public_api]
+context:
+  ac_binding_provenance:
+    dod-omn21217-ac2-accepted-20261117t0145z:
+      - label: "AC2"
+        criterion_hash: "08bc4215e732d3427c66f80caa5ae09ed98f3650c4888447fa2ec5905a98ae27"
+        proposed_by: "lane=dod-closeout-bind-2026-11-17T0145Z-c2"
+        accepted_by: "lane=dod-closeout-accept-2026-11-17T0145Z-c2"
+        accepted_at: "2026-11-17T02:21:53Z"
+  ac_binding_followups:
+    AC5: >-
+      No accepted binding in this change. The existing item
+      dod-omn21217-composed-boot-demand-start-probe binds AC5 to merged fix
+      e1bf8670195dfefea5c0d9f9ed12d098eb5ae11d, and the gate allows one
+      Binds-Merged-Fix per ticket in a pull request, so the accepted binding
+      for AC5 needs its own pull request.
 requirements:
   - id: "req-hosted-ordered-model-list"
     statement: "The hosted credential path retains the customer's ordered choices and refuses stale whole-list replacements."
@@ -242,6 +257,26 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/docker/test_composed_runtime_boot_delegate_probe_omn21279.py -q -n 0 --no-cov -k 'not (never_passes or no_offsets or no_member or stops_short or completed_topic or another_request or no_terminal or another_terminals_text or no_group_owns or joins_on_demand)'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21217-ac2-accepted-20261117t0145z"
+    description: >-
+      AC2 binding, closeout window 2026-11-17T0145Z (the window label in this
+      item's id; the acceptance time is accepted_at in
+      context.ac_binding_provenance). A retryable failure on chosen-a dispatches
+      chosen-b on the same key, endpoint and backend identity, and exhaustion
+      never reaches a model outside the stored list or the house key, even after
+      the overlay is mutated. The test resolves the tenant overlay, round-trips
+      the routing decision through JSON, drives the real orchestrator workflow
+      handler, and asserts the dispatched models, key, endpoint, and the backend
+      id and ref. The check refuses a skipped or expected-failure run and
+      requires exactly 2 passed, so it cannot pass with a parametrization not
+      run. The control and re-run receipts are in
+      contracts/OMN-25198.yaml under context.run_receipts.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest \"tests/nodes/node_delegation_routing_reducer/test_hosted_ordered_models_omn21217.py::test_hosted_retry_walks_only_the_selected_keys_ordered_models\" -q -n 0 --no-cov --refuse-skips | grep -E '^2 passed( |,)'"
         cwd: "${OMNI_HOME}/omnimarket"
 emergency_bypass:
   enabled: false

@@ -24,11 +24,14 @@ decides the outcome.
 
 from __future__ import annotations
 
+import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -184,3 +187,100 @@ def test_the_shared_conftest_offers_the_option(request: pytest.FixtureRequest) -
     assert conftest.pytest_addoption is refuse_skips.pytest_addoption
     assert conftest.pytest_sessionfinish is refuse_skips.pytest_sessionfinish
     assert conftest.pytest_terminal_summary is refuse_skips.pytest_terminal_summary
+
+
+# The AC2 binding of contracts/OMN-21217.yaml is one test with two
+# parametrizations. Its check is the case this option exists for: before it asked
+# for --refuse-skips, a run in which both parametrizations skipped exited 0.
+_AC2_CONTRACT = _ROOT / "contracts" / "OMN-21217.yaml"
+_AC2_ITEM = "dod-omn21217-ac2-accepted-20261117t0145z"
+_SKIP_EVERY_TEST = """
+import pytest
+
+def pytest_collection_modifyitems(items):
+    for item in items:
+        item.add_marker(pytest.mark.skip(reason="every test skipped by the control"))
+"""
+
+
+def _ac2_check_value() -> str:
+    contract = yaml.safe_load(_AC2_CONTRACT.read_text(encoding="utf-8"))
+    items = [i for i in contract["dod_evidence"] if i["id"] == _AC2_ITEM]
+    assert len(items) == 1, "the AC2 binding item is missing or repeated"
+    assert items[0]["binds_ac"] == ["AC2"]
+    checks = items[0]["checks"]
+    assert len(checks) == 1
+    value = checks[0]["check_value"]
+    assert isinstance(value, str)
+    return value
+
+
+def _run_check(
+    tmp_path: Path, check_value: str, *extra: str
+) -> subprocess.CompletedProcess[str]:
+    """Run a contract check as the verifier does (bash, pipefail), with this interpreter."""
+    assert check_value.startswith("uv run pytest ")
+    (tmp_path / "skip_every_test.py").write_text(_SKIP_EVERY_TEST, encoding="utf-8")
+    command = check_value.replace(
+        "uv run pytest",
+        f"{shlex.quote(sys.executable)} -m pytest -p no:cacheprovider {' '.join(extra)}",
+        1,
+    )
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(
+        part for part in (str(tmp_path), env.get("PYTHONPATH", "")) if part
+    )
+    return subprocess.run(
+        ["bash", "-o", "pipefail", "-c", command],
+        cwd=_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+        env=env,
+    )
+
+
+def test_the_ac2_binding_check_asks_for_the_refusal_and_the_count() -> None:
+    value = _ac2_check_value()
+    assert "--refuse-skips" in value
+    assert "2 passed" in value
+
+
+def test_the_ac2_binding_check_passes_when_both_parametrizations_run(
+    tmp_path: Path,
+) -> None:
+    # The positive control: the check is not one that always fails.
+    done = _run_check(tmp_path, _ac2_check_value())
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "2 passed" in done.stdout
+
+
+def test_the_ac2_binding_check_fails_when_both_parametrizations_skip(
+    tmp_path: Path,
+) -> None:
+    value = _ac2_check_value()
+    # The old check, as it stood before the option: no refusal, no count.
+    old = value.split(" --refuse-skips")[0]
+    assert "--refuse-skips" not in old
+    control = _run_check(tmp_path, old, "-p", "skip_every_test")
+    assert control.returncode == 0, control.stdout + control.stderr
+    assert "2 skipped" in control.stdout
+    new = _run_check(tmp_path, value, "-p", "skip_every_test")
+    assert new.returncode != 0, new.stdout + new.stderr
+
+
+def test_the_ac2_binding_check_fails_when_only_one_parametrization_runs(
+    tmp_path: Path,
+) -> None:
+    value = _ac2_check_value()
+    # One parametrization selected: pytest exits 0 with one test run and nothing
+    # skipped, so only the count in the check can refuse it.
+    only_one = value.split(" --refuse-skips")[0] + " --refuse-skips -k False"
+    control = _run_check(tmp_path, only_one)
+    assert control.returncode == 0, control.stdout + control.stderr
+    assert "1 passed" in control.stdout
+    selected = value.replace(" --refuse-skips |", " --refuse-skips -k False |", 1)
+    assert selected != value
+    done = _run_check(tmp_path, selected)
+    assert done.returncode != 0, done.stdout + done.stderr
