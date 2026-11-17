@@ -383,3 +383,74 @@ def test_model_scope_respects_resolved_named_connection_tier(
     )
     reason = model_scope_skip_reason(backend, rule, is_local_rung=lambda _: False)
     assert (reason is None) is allowed
+
+
+def _named_connection(tier: str) -> ModelResolvedDelegationBackend:
+    return ModelResolvedDelegationBackend(
+        backend_id="connection-customer-unknown-model",
+        model_id="customer-unknown-model",
+        endpoint_ref="http://127.0.0.1:1/v1/chat/completions",
+        tier=tier,
+        max_tokens=128,
+        timeout_ms=1000,
+    )
+
+
+def test_local_tiers_come_from_the_deployment_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Which resolved tiers count as local is configuration, not code.
+
+    A deployment that pins its own config decides; the packaged default names
+    only the local tier.
+    """
+    from omnimarket.handlers.delegation_model_scope import (
+        MODEL_SCOPE_CONFIG_PATH_ENV_KEY,
+        is_local_model,
+    )
+
+    monkeypatch.delenv(MODEL_SCOPE_CONFIG_PATH_ENV_KEY, raising=False)
+    assert not is_local_model(
+        _named_connection("cheap_cloud"), is_local_rung=lambda _: False
+    )
+    pinned = tmp_path / "model_scope.yaml"
+    pinned.write_text(
+        "schema: delegation_model_scope.v1\nlocal_tiers:\n  - cheap_cloud\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(MODEL_SCOPE_CONFIG_PATH_ENV_KEY, str(pinned))
+    assert is_local_model(
+        _named_connection("cheap_cloud"), is_local_rung=lambda _: False
+    )
+    assert not is_local_model(_named_connection("local"), is_local_rung=lambda _: False)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "schema: delegation_model_scope.v1\n",
+        "schema: delegation_model_scope.v1\nlocal_tiers: local\n",
+        "schema: delegation_model_scope.v1\nlocal_tiers:\n  - 3\n",
+        "schema: delegation_model_scope.v1\nlocal_tiers:\n  - ''\n",
+        "schema: other.v1\nlocal_tiers:\n  - local\n",
+        "local_tiers: [local\n",
+        None,
+    ],
+)
+def test_a_malformed_local_tier_config_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, text: str | None
+) -> None:
+    """A config that cannot say which tiers are local refuses, never guesses."""
+    from omnibase_infra.errors import ProtocolConfigurationError
+
+    from omnimarket.handlers.delegation_model_scope import (
+        MODEL_SCOPE_CONFIG_PATH_ENV_KEY,
+        is_local_model,
+    )
+
+    pinned = tmp_path / "model_scope.yaml"
+    if text is not None:
+        pinned.write_text(text, encoding="utf-8")
+    monkeypatch.setenv(MODEL_SCOPE_CONFIG_PATH_ENV_KEY, str(pinned))
+    with pytest.raises(ProtocolConfigurationError):
+        is_local_model(_named_connection("local"), is_local_rung=lambda _: False)
