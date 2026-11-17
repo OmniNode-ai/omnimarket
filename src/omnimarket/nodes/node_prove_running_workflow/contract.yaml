@@ -45,6 +45,10 @@ handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_rows:HandlerProveRunningRows
   handlers:
+    - operation: start_batch
+      handler:
+        name: HandlerProveRunningStarter
+        module: omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_starter
     - operation: build_row
       handler:
         name: HandlerProveRunningRows
