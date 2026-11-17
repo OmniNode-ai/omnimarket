@@ -833,7 +833,7 @@ def test_omn24874_driven_tenant_overlay_retries_reach_the_terminal_cumulative_an
     handler.handle_delegation_request(
         OrchestratorRequest(
             prompt="Reply with the single word OK.",
-            task_type="summarization",  # type: ignore[arg-type]
+            task_type="summarization",
             correlation_id=cid,
             emitted_at=datetime.now(UTC),
             tenant_id=_TENANT_ID,
