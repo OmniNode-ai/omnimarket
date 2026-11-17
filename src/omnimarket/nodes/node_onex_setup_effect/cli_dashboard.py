@@ -16,7 +16,9 @@ from omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_local_d
 )
 
 
-def _dashboard_lifecycle(action: str, json_output: bool) -> None:
+def _dashboard_lifecycle(
+    action: str, json_output: bool, correlation_id: str | None = None
+) -> None:
     from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_dashboard import (
         HandlerSetupDashboard,
     )
@@ -59,10 +61,15 @@ def _dashboard_lifecycle(action: str, json_output: bool) -> None:
                 raise click.ClickException(
                     "Dashboard session is unavailable; run onex dashboard start."
                 )
+            # A named run opens its own Workflow page (OMN-23413 AC47); the
+            # token is accepted on any path and traded for this port's cookie.
+            query: dict[str, str] = {DASHBOARD_TOKEN_PARAM: token}
+            page = "/"
+            if correlation_id is not None:
+                page = "/workflow"
+                query = {"correlation_id": correlation_id, **query}
             url = (
-                observation.evidence["url"]
-                + "/?"
-                + urllib.parse.urlencode({DASHBOARD_TOKEN_PARAM: token})
+                observation.evidence["url"] + page + "?" + urllib.parse.urlencode(query)
             )
             if click.launch(url) != 0:
                 raise click.ClickException("The browser could not open the dashboard.")
@@ -105,9 +112,19 @@ def dashboard_stop(json_output: bool) -> None:
 
 @click.command("open")
 @click.option("--json", "json_output", is_flag=True)
-def dashboard_open(json_output: bool) -> None:
+@click.option(
+    "--correlation-id",
+    "correlation_id",
+    default=None,
+    help="Open this run's Workflow page instead of the front page.",
+)
+def dashboard_open(json_output: bool, correlation_id: str | None) -> None:
     """Open the running dashboard's authenticated session in the browser."""
-    _dashboard_lifecycle("open", json_output)
+    if correlation_id is not None:
+        correlation_id = correlation_id.strip()
+        if not correlation_id:
+            raise click.UsageError("--correlation-id must not be blank")
+    _dashboard_lifecycle("open", json_output, correlation_id)
 
 
 def attach_dashboard_lifecycle(group: click.Group) -> None:

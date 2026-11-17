@@ -25,6 +25,10 @@ DELEGATION_SUMMARY_VIEW_STEPS = (
         "omn23169_delegation_summary_excludes_experiment",
         "sqlite/delegation_summary_view_v2.sql",
     ),
+    (
+        "omn23413_delegation_summary_counts_unclassified",
+        "sqlite/delegation_summary_view_v3.sql",
+    ),
 )
 
 
