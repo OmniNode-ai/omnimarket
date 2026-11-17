@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Review Lock Effect (OMN-25407)
+#
+# Two calls the review workflow makes through the command line (python -m): `acquire` takes one
+# review lock per (repo#pr, head), recorded as one STATUS row written through the ledger writer, and
+# refuses a second review of a head that holds a lock or a verdict row; `check-scope` holds a fixer
+# push that adds files outside the first reviewed head's file set (or the ticket contract's paths)
+# unless the fixer comment names the finding that asked for each added file.
+#
+# HandlerReviewLock takes the ledger reader, the ledger writer and the clock as constructor
+# parameters, and HandlerScopeCheck is pure, so a caller runs both through the CLI, not
+# handler_routing. The node publishes no event: its answer is the exit code and one JSON line.
+name: node_review_lock_effect
+contract_name: node_review_lock_effect
+node_name: node_review_lock_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Review lock and scope check for the review workflow. acquire reads the repository's STATUS rows
+  from the ledger (live file and archive rolls), refuses with the first lock's or verdict's
+  pointer (the verdict file path or the ledger row id) and exit code 3 when the key repo, pull
+  request and 12-character head already holds a verdict row (lane fable-<repo>-<n>-<tag> with
+  verdict= and head=) or a lock row, and otherwise writes one lock row through the ledger writer
+  and confirms it is the first lock row for the key. A ledger that cannot be read or written is
+  undecided (exit code 4), never acquired. check-scope compares the first reviewed head's file set
+  with the new head's file set and the fixer comment: an added file outside the scope (the first
+  head's file set, or the paths the ticket contract names when it is passed) must appear in the
+  comment on a line that also holds a finding token, else the push is held (exit code 3) with the
+  file list; the result names the scope source it used.
+
+handler:
+  module: omnimarket.nodes.node_review_lock_effect.handlers.handler_review_lock
+  class: HandlerReviewLock
+  input_model: omnimarket.nodes.node_review_lock_effect.models.model_review_lock.ModelReviewLockRequest
+
+additional_handlers:
+  - module: omnimarket.nodes.node_review_lock_effect.handlers.handler_scope_check
+    class: HandlerScopeCheck
+    input_model: omnimarket.nodes.node_review_lock_effect.models.model_review_lock.ModelScopeCheckRequest
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: false
+  side_effects: [ledger-append]
+  timeout_ms: 130000
+
+input_model:
+  name: ModelReviewLockRequest
+  module: omnimarket.nodes.node_review_lock_effect.models.model_review_lock
+  description: One review about to be dispatched, keyed repo, pull request number and head.
+output_model:
+  name: ModelReviewLockResult
+  module: omnimarket.nodes.node_review_lock_effect.models.model_review_lock
+  description: acquired, refused_lock, refused_verdict or undecided, with the first review's pointer.
+
+runtime_dispatch:
+  external_trigger: true
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  ticket: OMN-25407
+  transport_type: inmemory

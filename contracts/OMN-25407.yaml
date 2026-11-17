@@ -1,0 +1,76 @@
+schema_version: 1.0.0
+ticket_id: OMN-25407
+title: One review lock per pull request head refuses a second review of the same head, and a fixer push that adds files is held for a scope check
+summary: node_review_lock_effect is the command the review workflow calls before it dispatches a review. acquire takes one lock keyed repo, pull request and head, recorded as one STATUS row written through
+  the ledger writer; a second acquire for the same key, or a key whose head already has a verdict STATUS row, is refused with the first review's pointer and exit code 3. check-scope compares the first reviewed
+  head's file set with the new head's and the fixer comment, and holds a push (exit code 3, the added files listed) that adds files outside the scope unless the comment names a finding for each added file;
+  the scope is the paths the ticket contract names when it is passed, else the first head's file set, and the result says which. This pull request adds the node and its tests only; the orchestrator wires
+  the two call lines into the fill tick and review-act after it merges, and AC3 is read 24 hours after that install.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25407-ac1
+  statement: a review lock keyed repo, pull request and head refuses a second review of the same head
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every review dispatcher (the fill tick and review-act) takes one lock keyed repo, pull request and head before dispatching, and refuses when that lock or a verdict for that head exists
+      -- falsifier: `node --test` over a fixture replaying the 2026-11-17 dispatch order for omnibase_infra 6047 (1139, 1225, 1243, 1310, 1340, 1345, 1448) dispatches four reviews, not seven'
+- id: req-omn25407-ac2
+  statement: a fixer push that adds files outside the first reviewed head's file set is held until the comment names the finding for each
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a fixer push whose diff adds files outside the file set of the first reviewed head is held from review until the fixer comment names the finding that asked for each added file -- falsifier:
+      `node --test` with the 6047 file lists at 7ce37985d13c and fca8c3ea6891 holds the push and releases it when the finding is named'
+- id: req-omn25407-ac3
+  statement: no two verdict files share repository, pull request and head 24 hours after install
+  acceptance:
+  - id: AC3
+    statement: 'AC3: 24 hours after install no two verdict files share repository, pull request and head -- falsifier: a group-by-head count over the scratchpad verdict files, quoted in a STATUS row'
+evidence_requirements:
+- kind: tests
+  description: The review lock node tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_review_lock_effect -q --no-cov -p no:cacheprovider --refuse-skips
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25407-ac1
+  description: The replay of the 2026-11-17 dispatch order for omnibase_infra 6047 accepts four acquires (1139, 1243, 1340, 1448) and refuses three (1225, 1310, 1345), with a verdict row or a lock row as
+    the first holder; the control with a blind ledger accepts seven; the seven real verdict rows refuse every reviewed head with the first verdict's pointer; the command exits 0, 3 and 4 as documented.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_review_lock_effect/test_review_lock.py tests/nodes/node_review_lock_effect/test_cli.py -q --no-cov -p no:cacheprovider --refuse-skips
+    cwd: .
+- id: dod-omn25407-ac2
+  description: With the real 6047 file lists at 7ce37985d13c (6 files) and fca8c3ea6891 (12 files) the scope check holds the push and lists the six added files, and releases it once the comment names a
+    finding for each; the contract scope is used and named when passed.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_review_lock_effect/test_scope_check.py tests/nodes/node_review_lock_effect/test_cli.py -q --no-cov -p no:cacheprovider --refuse-skips
+    cwd: .
+- id: dod-omn25407-ac3
+  description: 'hosted proxy for AC3: the lock refuses a second review of a head, so a second verdict file for one repository, pull request and head cannot start; the group-by-head count over the scratchpad
+    verdict files 24 hours after the orchestrator installs the call lines is read by the orchestrator and quoted in a STATUS row, and AC3 stays open until then.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_review_lock_effect/test_review_lock.py tests/nodes/node_review_lock_effect/test_contract.py -q --no-cov -p no:cacheprovider --refuse-skips
+    cwd: .
+- id: dod-omn25407-integration-proof
+  description: the node tests run on a lab host at the pushed head, and the command is run there as the workflow calls it; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-review-lock --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/nodes/node_review_lock_effect -q --no-cov -p no:cacheprovider
