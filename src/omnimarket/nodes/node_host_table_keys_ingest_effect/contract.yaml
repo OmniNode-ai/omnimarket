@@ -41,6 +41,8 @@ event_bus:
   - onex.evt.omnimarket.overlay-store-loaded.v1
   publish_topics:
   - onex.evt.omnimarket.host-table-keys-ingested.v1
+# Read by the contract topic graph as the result topic's sink. The reading of this node's runs (the merged-change
+# reading) reads the runtime container's log line for the publish, not the topic, so no bus reader principal exists.
 externally_consumed_topics:
 - onex.evt.omnimarket.host-table-keys-ingested.v1
 broker_acl_grants:
@@ -50,6 +52,9 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-loaded.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-table-keys-ingested.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-table-keys-ingested.v1, operation: DESCRIBE}
+# Top-level key the runtime's discovery reads (it picks the result applier's output topic) and the publish parity gate
+# exempts; runtime_dispatch.terminal_events below is the key the terminal-topic reader and the applier's failure
+# routing read. Both name the same topic.
 terminal_event: onex.evt.omnimarket.host-table-keys-ingested.v1
 runtime_dispatch:
   command_topic: onex.evt.omnimarket.overlay-store-loaded.v1
