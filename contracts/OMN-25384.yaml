@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-25384
+title: The Delegation Health Check gates dev on a nightly run against dev; stability's run alarms and never gates dev
+summary: The Delegation Health Check that gates omnimarket merges into dev reads the newest run of delegation-regression-nightly.yml by file name. That workflow measured the stability lane, so a broken stability environment froze the merge queue for about 12 hours while dev was healthy. The nightly's gating leg now measures the dev lane (same golden tasks and assertions; the lane's broker, transport and mechanism come from the lane overlay), and the stability measurement is a second, alarm-only leg of the same job (continue-on-error) that cannot turn the run's conclusion, which the check reads, red.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25384-dev-gate
+  statement: The check that gates dev reads a nightly run against dev, and a failed stability run never fails it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a resolved, wired mechanism enforces the ruling of 2026-11-17T14:08:49Z -- the run the check reads measures the dev lane, the stability measurement is an alarm-only leg that cannot turn that run red, a failed stability leg with a green dev leg passes the check and a failed dev leg fails it -- falsifier: uv run pytest tests/ci/test_delegation_gate_reads_dev_omn25384.py -q (red against the workflows at the merge base)'
+evidence_requirements:
+- kind: tests
+  description: The gate tests and the nightly placement tests at the pushed head.
+  command: uv run --frozen pytest tests/ci/test_delegation_gate_reads_dev_omn25384.py tests/test_delegation_nightly_placement.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25384-ac1-gate-reads-dev
+  description: The workflow-shape tests pass at the pushed head; at the merge base the nightly measures the stability lane with no gating and alarm-only legs, so eleven of the thirteen tests in the new file read red there. The replay tests run the pinned check reader over the run conclusion of a failed alarm-only leg with a green dev leg (passes) and of a failed dev leg (fails).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_delegation_gate_reads_dev_omn25384.py tests/test_delegation_nightly_placement.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

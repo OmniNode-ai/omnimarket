@@ -9,6 +9,25 @@
 # delegation_events projection, asserts the expected behavioral block, and
 # uploads the scoreboard artifact. Fails on any HARD (non-xfail) assertion break.
 #
+# TARGET LANE: THE DEV LANE (the dev runtime on h201). The Delegation Health
+# Check (delegation-health-check.yml) reads the newest run of THIS workflow by
+# file name, so the lane this run measures is the lane that gates omnimarket
+# merges into dev. A broken stability environment froze that gate for about 12
+# hours on 2026-11-17 while dev was healthy. The gating leg of this job is the
+# dev lane now; the same golden tasks and assertions run against it, and its
+# broker address, transport and SASL mechanism come from the lane overlay
+# config/ci_bus_lanes.yaml, never from this file.
+#
+# THE ALARM-ONLY LEG. The measurement of the stability lane is the second leg
+# of the same job's matrix. It runs the same corpus, but its job is
+# continue-on-error: a red stability leg shows red in the run and never turns
+# the run's conclusion red, and the conclusion is what the Delegation Health
+# Check reads. Its failure is an alarm, never a merge gate. The leg names no
+# lane: the runner's own default lane is the stability lane, so the lane name
+# is written once, in the runner. This repository's public-repo gates refuse a
+# second self-hosted job and a second workflow file for it, which is why it is
+# a matrix leg of the one baselined job and not a workflow of its own.
+#
 # NIGHTLY (not pre-merge). The Layer-1 contract/unit gate runs on every PR via
 # the existing ci.yml pytest job (tests under tests/delegation_golden/ that are
 # NOT gated on OMN_ALLOW_LIVE_E2E_PROBE).
@@ -98,7 +117,8 @@
 # all six partitions. Its delegation_events projection is frozen at
 # 2026-09-06T10:17:59Z because nothing has published a delegation to it since —
 # which is what (1) guarantees — not because nothing would consume one. The lane
-# therefore stays the default target. One honest caveat, named rather than
+# was the default target when this was written; it is the alarm-only leg now (see
+# THE ALARM-ONLY LEG above). One honest caveat, named rather than
 # assumed away: `omninode-stability-test-runtime` has reported unhealthy for 46
 # hours, and whether that affects this probe is not established here.
 #
@@ -111,33 +131,22 @@
 
 name: Delegation Regression (nightly)
 
-# OMN-19311 -- THE RUN TITLE NAMES THE LANE, and staging delivery reads it.
+# OMN-19311 -- THE RUN TITLE NAMES THE LANE.
 #
-# This workflow's verdict blocks staging delivery (operator ruling
-# 2026-09-23T17:12:15Z; omnibase_infra deliver-dev-candidate-to-staging.yml and
-# omninode_infra lab_pass_gate.py both read the newest completed run on dev).
-# The verdict that binds is the stability-test measurement. A dispatch takes a
-# `lane` input, and a green dispatch against the dev lane would otherwise read
-# exactly like a green stability-test night -- the red would be dropped by
-# changing what is measured rather than by fixing it. The run API does not carry
-# dispatch inputs, so the lane is rendered into the run title here, and the
-# delivery gates count a dispatched run only when its title carries
-# `lane=stability-test`. A scheduled run takes no inputs and measures the
-# default lane, so its title says so too. Do not drop the `lane=` token:
-# tests/test_delegation_nightly_placement.py asserts it.
-run-name: Delegation Regression (nightly) lane=${{ github.event.inputs.lane || 'stability-test' }}
+# The title carries `lane=<lane>` so a reader of the run list can tell which lane
+# the gating leg measured. The run API does not carry dispatch inputs, so the lane
+# is rendered into the title here. This workflow's gating lane is dev, and a
+# dispatch takes no lane input, so no run of this file can carry the stability
+# lane's name in its title: the pinned Delegation Health Check admits a dispatched
+# run only on a title naming that lane. tests/test_delegation_nightly_placement.py
+# asserts the `lane=` token and the shared lane expression.
+run-name: Delegation Regression (nightly) lane=dev
 
 on:
   schedule:
     # 07:30 UTC nightly — after the dev/stability redeploy window settles.
     - cron: '30 7 * * *'
   workflow_dispatch:
-    inputs:
-      lane:
-        description: 'Lane to probe (stability-test | dev)'
-        type: string
-        required: false
-        default: 'stability-test'
 
 permissions:
   contents: read
@@ -158,6 +167,24 @@ jobs:
     # on the LAN amd64 pools. If an off-LAN runner ever gains arch-amd64, this
     # pin needs a dedicated LAN label instead.
     runs-on: [self-hosted, omnibase-ci, arch-amd64]
+    # One job, two legs. `gating` is the dev leg the Delegation Health Check
+    # reads. `alarm_only` is the stability leg: continue-on-error keeps its red
+    # out of the run's conclusion. fail-fast is off so a red leg never cancels
+    # the other. `lane` is the ONEX_E2E_LANE value; the alarm-only leg leaves it
+    # empty, which the runner reads as its default lane.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: gating
+            lane: dev
+            alarm_only: false
+            artifact_suffix: ''
+          - leg: alarm_only
+            lane: ''
+            alarm_only: true
+            artifact_suffix: '-alarm-only'
+    continue-on-error: ${{ matrix.alarm_only }}
     # Sized to the probe's OWN derived ceiling, not to a habit. The corpus is
     # published in waves of the lane's declared serving concurrency (1), each
     # wave bounded by the delegate-skill orchestrator's declared handler
@@ -169,7 +196,7 @@ jobs:
     # night with no scoreboard, which is the AC3 failure by another route.
     timeout-minutes: 70
     env:
-      ONEX_E2E_LANE: ${{ github.event.inputs.lane || 'stability-test' }}
+      ONEX_E2E_LANE: ${{ matrix.lane }}
       # The BROKER is resolved from config/ci_bus_lanes.yaml by the runner and
       # is deliberately not wired here — see "(3) THE TRANSPORT" above.
       #
@@ -184,8 +211,8 @@ jobs:
       ONEX_E2E_POSTGRES_USER: postgres
       ONEX_E2E_POSTGRES_PASSWORD: ${{ secrets.STABILITY_TEST_POSTGRES_PASSWORD || secrets.POSTGRES_PASSWORD }}
       # The lane-declared SASL principal (OMN-18012), used only by lanes whose
-      # overlay entry declares a SASL protocol — today that is `dev` and not
-      # `stability-test`. The overlay declares the protocol and the mechanism;
+      # overlay entry declares a SASL protocol — today that is `dev`, the lane
+      # the gating leg measures. The overlay declares the protocol and the mechanism;
       # only the principal is a secret, and a PLAINTEXT lane ignores it.
       KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
       KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
@@ -290,7 +317,7 @@ jobs:
         # sites, and the majority convention for this action here.
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: delegation-regression-junit
+          name: delegation-regression-junit${{ matrix.artifact_suffix }}
           path: delegation_regression_junit.xml
           if-no-files-found: warn
           retention-days: 30
@@ -299,7 +326,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
-          name: delegation-regression-scoreboard
+          name: delegation-regression-scoreboard${{ matrix.artifact_suffix }}
           path: delegation_regression_scoreboard.json
           if-no-files-found: error
           retention-days: 30
+
+      - name: Alarm-only leg is red (an alarm, never a merge gate)
+        if: failure() && matrix.alarm_only
+        run: |
+          echo "::error::The alarm-only leg of the delegation regression is red."
+          echo "The alarm-only leg measures the runner's default lane. Its red is an alarm" >> "${GITHUB_STEP_SUMMARY}"
+          echo "signal about that lane and does not change this run's conclusion." >> "${GITHUB_STEP_SUMMARY}"
