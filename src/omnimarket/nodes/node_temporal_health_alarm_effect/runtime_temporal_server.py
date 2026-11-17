@@ -26,8 +26,9 @@ from typing import Any
 import yaml
 
 CONTRACT = Path(__file__).with_name("contract.yaml")
-RELEASE_URL = "https://github.com/temporalio/cli/releases/download/{release}/{asset}"  # url-authority-ok: the official temporalio CLI release asset; the contract pins release, asset and sha256
 REQUIRED = (
+    "release_host",
+    "release_path",
     "release",
     "asset",
     "sha256",
@@ -54,7 +55,8 @@ def server_settings() -> dict[str, Any]:
 
 
 def release_url(settings: Mapping[str, Any]) -> str:
-    return RELEASE_URL.format(release=settings["release"], asset=settings["asset"])
+    host, path = settings["release_host"], settings["release_path"]
+    return f"https://{host}/{path}/{settings['release']}/{settings['asset']}"
 
 
 def sha256_of(path: Path) -> str:

@@ -77,6 +77,8 @@ config:
 # the official temporalio CLI, fetched once into a durable directory under the home and checked against the sha256
 # its release's own checksums.txt publishes on every start (the release URL is built from release and asset); its SQLite store is in the same directory, never scratch.
 server:
+  release_host: github.com
+  release_path: temporalio/cli/releases/download
   release: v1.10.1
   asset: temporal_cli_1.10.1_linux_amd64.tar.gz
   sha256: 4c1500e2ce2d4de136e5fe8852d9b7f82eb62f19b6b383b3e0c040519a9d20b1
