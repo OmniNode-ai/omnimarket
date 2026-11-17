@@ -44,7 +44,6 @@ __all__ = ["world"]
 
 # Pasted verbatim from overlays/node_factory_floor_effect/overlay.yaml (lines 220 to 224) at the overlays repository's main commit
 # a951d8554d2f6dd3d78db46b04cc1184fef5c8bf ("OMN-24490: The factory floor reads its ledger window from the projection (overlay)", #542).
-OVERLAYS_MAIN_COMMIT = "a951d8554d2f6dd3d78db46b04cc1184fef5c8bf"
 OVERLAYS_MAIN_BLOCK_YAML = """\
 ledger_projection:
   reader: factory-floor
@@ -60,6 +59,8 @@ FLOOR_MODEL_SPEC = (
     "omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runtime"
     ":ModelFactoryFloorOverlay"
 )
+# The floor document's line of the overlays repository's .omnimarket-node-pins at the same commit, verbatim.
+FLOOR_PIN_LINE = f"node_factory_floor_effect 3b8c55d1277fe1963c78da3c041038f5452f4b3a {FLOOR_MODEL_SPEC}"
 
 
 def _document(**extra: Any) -> dict[str, Any]:
@@ -82,12 +83,11 @@ def _check_the_floor_document(tmp_path: Path, block_yaml: str) -> Any:
         yaml.safe_dump(OVERLAY, sort_keys=True) + block_yaml, encoding="utf-8"
     )
     pins = tmp_path / "pins.txt"
-    pins.write_text(
-        f"# pins\nnode_factory_floor_effect 3b8c55d1277fe1963c78da3c041038f5452f4b3a {FLOOR_MODEL_SPEC}\n",
-        encoding="utf-8",
-    )
+    pins.write_text(f"# pins\n{FLOOR_PIN_LINE}\n", encoding="utf-8")
     handler = HandlerOverlayMainLoadCheck(
         resolve=lambda spec: resolve_spec(spec, default_search_roots()),
+        # The production floor_check (check_overlays) loads only the floor-simple, lab-state and alarm overlays, never the
+        # node_factory_floor_effect document under test; this root holds none of the three, so the stub leaves out an unrelated refusal.
         floor_check=lambda _root: [],
     )
     return handler.handle(
@@ -177,6 +177,30 @@ def test_the_floor_effect_accepts_the_ledger_projection_block_and_still_reads_th
     health = record["sources"]["health"]
     ledger = next(entry for entry in health if entry["source"] == "ledger")
     assert ledger["state"] == "read", ledger
+
+
+@pytest.mark.parametrize(
+    "at_bound",
+    [
+        {**PROJECTION_BLOCK, "read_workers": 1},
+        {**PROJECTION_BLOCK, "settle_seconds": 0},
+        {**PROJECTION_BLOCK, "cache_ttl_seconds": 1},
+        {k: v for k, v in PROJECTION_BLOCK.items() if k != "read_workers"},
+    ],
+    ids=[
+        "read-workers-one",
+        "settle-seconds-zero",
+        "cache-ttl-seconds-one",
+        "read-workers-absent",
+    ],
+)
+def test_a_block_at_each_bound_is_accepted(at_bound: dict[str, Any]) -> None:
+    """The other side of each bound the error chain below pins: the smallest accepted value, and read_workers left out."""
+    overlay = ModelFactoryFloorOverlay.model_validate(
+        _document(ledger_projection=at_bound)
+    )
+    assert overlay.ledger_projection is not None
+    assert overlay.ledger_projection.model_dump() == {"read_workers": None, **at_bound}
 
 
 @pytest.mark.parametrize(
