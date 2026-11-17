@@ -129,6 +129,10 @@ class ModelHookDelegateResult(BaseModel):
     answer: str = Field(default="", description="The delegated answer.")
     model: str = Field(default="", description="The model that answered.")
     run_id: str = Field(default="", description="The onex delegate run id.")
+    correlation_id: str = Field(
+        default="",
+        description="The distinct projection/trace correlation UUID, when recorded.",
+    )
 
     @property
     def answered(self) -> bool:

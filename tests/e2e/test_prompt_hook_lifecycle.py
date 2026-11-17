@@ -10,6 +10,7 @@ No inference or operator configuration is used.
 import copy
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -22,7 +23,7 @@ from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_claude impor
     HandlerSetupClaude,
 )
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.release_proof]
 
 
 @pytest.mark.parametrize(
@@ -38,7 +39,16 @@ def test_cli_on_off_owns_both_registrations_and_preserves_settings(
         )
     )
     installer = source / "scripts/install-delegation.sh"
-    assert installer.is_file(), "Set ONEX_COMBINED_HOOK_SOURCE to the customer bundle"
+    if not installer.is_file():
+        message = "Set ONEX_COMBINED_HOOK_SOURCE to the customer bundle"
+        if os.environ.get("ONEX_E2E_REQUIRE_COMPLETE") == "1":
+            pytest.fail(message)
+        pytest.skip(message)
+    real_claude = shutil.which("claude")
+    if real_claude is None:
+        if os.environ.get("ONEX_E2E_REQUIRE_COMPLETE") == "1":
+            pytest.fail("Real Claude CLI required for native plugin lifecycle proof")
+        pytest.skip("Real Claude CLI required for native plugin lifecycle proof")
     home, config = tmp_path / "home", tmp_path / "claude"
     config.mkdir(parents=True)
     home.mkdir()
@@ -46,9 +56,9 @@ def test_cli_on_off_owns_both_registrations_and_preserves_settings(
     binary.mkdir()
     claude = binary / "claude"
     claude.write_text(
-        f"#!{sys.executable}\nimport json,sys\n"
-        "print('2.1.323 (Claude Code)' if '--version' in sys.argv "
-        "else json.dumps({'loggedIn':True}))\n"
+        f"#!{sys.executable}\nimport json,os,sys\n"
+        "if sys.argv[1:3] == ['auth','status']: print(json.dumps({'loggedIn':True}))\n"
+        f"else: os.execv({real_claude!r}, [{real_claude!r}, *sys.argv[1:]])\n"
     )
     claude.chmod(0o755)
     cache = tmp_path / "plugin"
@@ -121,15 +131,24 @@ def test_cli_on_off_owns_both_registrations_and_preserves_settings(
             )
         }
 
+    plugin_id = "onex-delegation@onex-delegation-local"
+
+    def unrelated(data: dict) -> dict:
+        data = copy.deepcopy(data)
+        for key, name in (
+            ("enabledPlugins", plugin_id),
+            ("extraKnownMarketplaces", "onex-delegation-local"),
+        ):
+            data.get(key, {}).pop(name, None)
+            if not data.get(key):
+                data.pop(key, None)
+        return data
+
     assert invoke("on")["status"] == "on"
     once = json.loads(settings.read_text())
-    expected_events = set(
-        json.loads(
-            (source / "plugins/onex/hooks/hooks-delegation.v1.json").read_text()
-        )["hooks"]
-    )
-    assert set(owned(once)) == expected_events
-    assert {"UserPromptSubmit", "PreToolUse"} <= expected_events
+    assert owned(once) == {}
+    assert once["enabledPlugins"][plugin_id] is True
+    assert unrelated(once) == original
     assert invoke("on")["status"] == "on"
     assert json.loads(settings.read_text()) == once
     if refusal not in (None, "older"):
@@ -153,81 +172,52 @@ def test_cli_on_off_owns_both_registrations_and_preserves_settings(
             moved[1].rename(moved[0])
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
         assert invoke("on")["status"] == "on"
-    for mutation in ("duplicate", "edited_timeout"):
-        changed = copy.deepcopy(once)
-        group = next(
-            g
-            for g in changed["hooks"]["UserPromptSubmit"]
-            if any(".omninode/delegation/" in h.get("command", "") for h in g["hooks"])
-        )
-        if mutation == "duplicate":
-            changed["hooks"]["UserPromptSubmit"].append(copy.deepcopy(group))
-        else:
-            group["hooks"][0]["timeout"] = 999
-        settings.write_text(json.dumps(changed))
-        assert invoke("on", expected_exit=1)["status"] == "not_ready"
-        assert json.loads(settings.read_text()) == changed
-        settings.write_text(json.dumps(once))
+    registry_path = config / "plugins/installed_plugins.json"
+    registry = json.loads(registry_path.read_text())
+    changed = copy.deepcopy(registry)
+    changed["plugins"][plugin_id].append(
+        copy.deepcopy(changed["plugins"][plugin_id][0])
+    )
+    registry_path.write_text(json.dumps(changed))
+    assert invoke("on", expected_exit=1)["status"] == "not_ready"
+    assert json.loads(registry_path.read_text()) == changed
+    registry_path.write_text(json.dumps(registry))
+    loaded = Path(registry["plugins"][plugin_id][0]["installPath"])
+    module = loaded / "hooks/lib/native_delegation_mod.js"
+    before_module = module.read_bytes()
+    module.write_bytes(before_module + b"\n// external cache edit\n")
+    assert invoke("on", expected_exit=1)["status"] == "not_ready"
+    assert module.read_bytes() == before_module + b"\n// external cache edit\n"
+    module.write_bytes(before_module)
     if refusal == "older":
-        # An owned pre-amendment bundle has no context registration. OFF must
-        # upgrade that safe installation before removing its delegation hooks.
         from omnimarket.nodes.node_onex_setup_effect.setup_legacy_hooks import (
             record_installed_hooks,
         )
 
-        for path in (settings, home / ".omninode/delegation/hooks-delegation.json"):
-            older = json.loads(path.read_text())
-            for group in older["hooks"]["UserPromptSubmit"]:
-                group["hooks"] = [
-                    h
-                    for h in group["hooks"]
-                    if "--history-only" not in h.get("command", "")
-                ]
-            older["hooks"]["UserPromptSubmit"] = [
-                g for g in older["hooks"]["UserPromptSubmit"] if g["hooks"]
-            ]
-            path.write_text(json.dumps(older))
+        copied = (
+            home
+            / ".omninode/delegation/plugin/plugins/onex/hooks/lib/native_delegation_mod.js"
+        )
+        copied.write_bytes(copied.read_bytes() + b"\n// recorded older bundle\n")
         record_installed_hooks(config)
     assert invoke("off")["status"] == "off"
     after = json.loads(settings.read_text())
-    remaining_owned = owned(after)
-    assert set(remaining_owned) == {"UserPromptSubmit"}
-    assert len(remaining_owned["UserPromptSubmit"]) == 1
-    assert "--history-only" in remaining_owned["UserPromptSubmit"][0]["command"]
-    assert {k: v for k, v in after.items() if k != "hooks"} == {
-        k: v for k, v in original.items() if k != "hooks"
-    }
-    assert (
-        original["hooks"]["UserPromptSubmit"][0] in after["hooks"]["UserPromptSubmit"]
-    )
-    # The user hook and the context-only hook remain.
-    retained = [
-        hook
-        for groups in after["hooks"].values()
-        for group in groups
-        for hook in group["hooks"]
-    ]
-    assert len(retained) == 2
+    assert owned(after) == {}
+    assert after.get("enabledPlugins", {}).get(plugin_id) is not True
+    assert "onex-delegation-local" not in after.get("extraKnownMarketplaces", {})
+    assert unrelated(after) == original
     assert invoke("off")["status"] == "off"
     assert json.loads(settings.read_text()) == after
     assert invoke("on")["status"] == "on"
     reinstalled = json.loads(settings.read_text())
-    assert {k: v for k, v in reinstalled.items() if k != "hooks"} == {
-        k: v for k, v in once.items() if k != "hooks"
-    }
-    # Re-added ONEX rows may follow the retained user row. Compare the full
-    # groups, including multiplicity, while repeated ON above stays byte-equal.
-    assert set(reinstalled["hooks"]) == set(once["hooks"])
-    for event, groups in once["hooks"].items():
-        assert sorted(
-            json.dumps(g, sort_keys=True) for g in reinstalled["hooks"][event]
-        ) == sorted(json.dumps(g, sort_keys=True) for g in groups)
+    assert unrelated(reinstalled) == original
+    assert owned(reinstalled) == {}
+    assert reinstalled["enabledPlugins"][plugin_id] is True
     (tmp_path / "hook-lifecycle-evidence.json").write_text(
         json.dumps(
             {
                 "on_idempotent": True,
-                "off_unregisters_both_boundaries": True,
-                "off_retains_context_only": True,
+                "off_removes_native_and_classic_entrypoints": True,
                 "off_idempotent": True,
                 "reinstall_preserved": True,
                 "unrelated_settings_preserved": True,

@@ -61,11 +61,30 @@ _CONTROL = re.compile(
 # consume them even when it can produce a plausible answer (2026-11-16).
 _WORK_REQUEST = re.compile(
     r"(?:(?:please|now|and)\s+)*"
-    r"(?:(?:can|could|would|will)\s+you\s+|help\s+me\s+"
+    r"(?:(?:can|could|would|will)\s+(?:you|we)\s+"
+    r"|you\s+(?:can|could|should|may)\s+|help\s+me\s+"
     r"|i\s+(?:want|need)\s+you\s+to\s+)?(?:please\s+)?"
     r"(?:fix|check|inspect|update|edit|change|remove|delete|close|reopen|merge"
     r"|push|commit|deploy|install|uninstall|enable|disable|run|implement|build"
-    r"|test|verify|read|open|move|revert|restore)\b",
+    r"|test|verify|read|open|move|revert|restore|coordinate|message|send"
+    r"|approve|authorize|grant|allow)\b",
+    re.IGNORECASE,
+)
+# Permission requests steer the operator's session. A delegate cannot approve
+# an action for the person; conceptual permission questions remain eligible.
+_PERMISSION_REQUEST = re.compile(
+    r"(?:(?:one|a|single)\s+command\s+for\s+(?:all\s+)?(?:permissions?|approvals?)\b"
+    r"|(?:can|may)\s+(?:i|we)\b"
+    r"|(?:i|we)\s+(?:need|want|request|require)\s+(?:permission|approval|authorization)\b"
+    r"|(?:generate|give|write|send)\b.*\b(?:permission|approval|authorization|YES)\b)",
+    re.IGNORECASE,
+)
+# These questions need the working session's installation evidence.
+_LOCAL_STATE_QUESTION = re.compile(
+    r"(?:why|what|how|where|which)\b.*\b(?:my|our|this|current)\b.*"
+    r"\b(?:installation|hook|dashboard|onex|claude|terminal|answer|text)\b"
+    r"|why\b.*(?:\byellow\b.*\b(?:text|answer)\b"
+    r"|\b(?:text|answer)\b.*\byellow\b)",
     re.IGNORECASE,
 )
 _CORRECTION = re.compile(
@@ -141,7 +160,11 @@ def skip_reason(prompt: str) -> EnumPromptDelegateOutcome | None:
         return EnumPromptDelegateOutcome.HAS_IMAGE
     if _CONTROL.match(text) or len(text.split()) <= _SHORT_WORDS:
         return EnumPromptDelegateOutcome.CONTROL
-    if _WORK_REQUEST.match(text):
+    if (
+        _WORK_REQUEST.match(text)
+        or _LOCAL_STATE_QUESTION.match(text)
+        or _PERMISSION_REQUEST.match(text)
+    ):
         return EnumPromptDelegateOutcome.CONTROL
     if not _INFORMATION.match(text) and "?" not in text and _CORRECTION.search(text):
         return EnumPromptDelegateOutcome.CONTROL
@@ -204,12 +227,19 @@ def transcript_excerpt(path: str, limit: int = CONTEXT_CHARS) -> str:
     return cut_turns(transcript_turns(path), limit)[0]
 
 
-def block_output(answer: str, model: str, run_id: str) -> str:
+def block_output(answer: str, model: str, run_id: str, correlation_id: str = "") -> str:
     """decision "block" stops Claude Code before any model call (verified
     2026-11-13: num_turns 0, total_cost_usd 0) and shows the reason to the user."""
     reason = (
         answer.rstrip("\n") + f"\n\n[Answered by {model} through ONEX delegation, "
-        f"run {run_id}. Start a prompt with {SKIP_PREFIX} to ask Claude instead.]"
+        f"run {run_id}"
+        + (
+            f", correlation {correlation_id}. Dashboard: /workflow?correlation_id={correlation_id}"
+            f" (onex dashboard open --correlation-id {correlation_id})"
+            if correlation_id
+            else ""
+        )
+        + f". Start a prompt with {SKIP_PREFIX} to ask Claude instead.]"
     )
     return json.dumps({"decision": "block", "reason": reason})
 
@@ -279,8 +309,11 @@ class HandlerPromptDelegate:
             outcome=EnumPromptDelegateOutcome.ANSWERED,
             model=result.model,
             run_id=result.run_id,
+            correlation_id=result.correlation_id,
             excerpt=excerpt,
-            hook_output=block_output(result.answer, result.model, result.run_id),
+            hook_output=block_output(
+                result.answer, result.model, result.run_id, result.correlation_id
+            ),
         )
 
     def _excerpt(self, transcript_path: str) -> tuple[str, EnumPromptExcerpt]:

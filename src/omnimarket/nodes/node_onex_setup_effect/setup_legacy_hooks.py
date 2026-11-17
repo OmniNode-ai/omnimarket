@@ -9,7 +9,7 @@ import shutil
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from omnibase_core.cli.cli_user_config import user_config_path
 
@@ -205,6 +205,126 @@ def _hook_presence(owned: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def _observe_native_hooks(source: Path, claude_home: Path) -> ModelSetupObservation:
+    """Verify both the copied bundle and the cache Claude actually loads."""
+    root = _root()
+    target = root / "plugin/plugins/onex"
+    plugin_id = "onex-delegation@onex-delegation-local"
+    evidence = {"display": "native", "prompt_hook": "missing"}
+
+    def result(
+        status: Literal["success", "unavailable", "action_required"], fix: str
+    ) -> ModelSetupObservation:
+        return ModelSetupObservation(
+            step="claude-hooks", status=status, evidence=evidence, fix=fix
+        )
+
+    settings = read_claude_settings(claude_home)
+    registry_path = claude_home / "plugins/installed_plugins.json"
+    registry = json.loads(registry_path.read_text()) if registry_path.is_file() else {}
+    rows = [
+        row
+        for row in registry.get("plugins", {}).get(plugin_id, [])
+        if row.get("scope") == "user"
+    ]
+    if len(rows) > 1:
+        return result(
+            "action_required",
+            "Resolve duplicate ONEX delegation plugin registrations before retrying.",
+        )
+    expected = {name: path.read_bytes() for name, path in _files(source).items()}
+    expected[Path("hooks/hooks.json")] = (
+        json.dumps({"modules": ["./lib/native_delegation_mod.js"]}, indent=2).encode()
+        + b"\n"
+    )
+    expected[Path("hooks/delegation-runtime.json")] = (
+        json.dumps({"python": sys.executable}, indent=2).encode() + b"\n"
+    )
+
+    def matches(folder: Path) -> bool:
+        actual = _files(folder)
+        return set(actual) == set(expected) and all(
+            not path.is_symlink() and path.read_bytes() == expected[name]
+            for name, path in actual.items()
+        )
+
+    if not matches(target):
+        if _unchanged_since_recorded(claude_home):
+            evidence["installed"] = "older"
+            return result(
+                "unavailable",
+                "Run onex delegation on to upgrade the recorded delegation bundle to native output.",
+            )
+        if not target.exists() and not rows:
+            return result(
+                "unavailable",
+                "Run onex delegation on to install native delegation output.",
+            )
+        return result(
+            "action_required",
+            "The delegation bundle differs from this onex. Preserve edited files, then run onex delegation on --replace.",
+        )
+    if not rows:
+        return result(
+            "unavailable",
+            "Run onex delegation on to register native delegation output.",
+        )
+    cache = Path(rows[0].get("installPath", ""))
+    # A relative/foreign profile path is not proof of this profile's installed
+    # plugin. The local installer always uses Claude's cache in this profile.
+    if (
+        not cache.is_absolute()
+        or not cache.is_relative_to(claude_home)
+        or not matches(cache)
+    ):
+        return result(
+            "action_required",
+            "The native delegation plugin cache changed; preserve it and repair the installation.",
+        )
+    digest = hashlib.sha256()
+    for name, content in sorted(expected.items()):
+        digest.update(str(name).encode())
+        digest.update(content)
+    metadata = {
+        "name": "onex-delegation",
+        "version": "0.0.1-r" + digest.hexdigest()[:16],
+    }
+    for folder in (target, cache):
+        path = folder / ".claude-plugin/plugin.json"
+        if not path.is_file() or json.loads(path.read_text()) != metadata:
+            return result(
+                "action_required",
+                "The native delegation plugin revision cannot be verified; repair the installation.",
+            )
+    owned = _owned_rows(hook_rows(settings), root)
+    if any(group.get("hooks") for groups in owned.values() for group in groups):
+        return result(
+            "action_required",
+            "Classic and native delegation registrations coexist; repair to retain one entry point.",
+        )
+    config = root / "hooks-delegation.json"
+    if (
+        not config.is_file()
+        or json.loads(config.read_text()).get("entrypoint") != "native"
+    ):
+        return result(
+            "action_required",
+            "The native delegation ownership record is missing or changed.",
+        )
+    if settings.get("enabledPlugins", {}).get(plugin_id) is not True:
+        return result(
+            "unavailable",
+            "Run onex delegation on to enable the native delegation plugin.",
+        )
+    evidence.update(
+        prompt_hook="installed",
+        plugin_id=plugin_id,
+        version=metadata["version"],
+        install_path=str(cache),
+    )
+    return result("success", "")
+
+
 def observe_legacy_hooks(
     installer: Path, claude_home: Path, *, require_both: bool = True
 ) -> ModelSetupObservation:
@@ -215,6 +335,16 @@ def observe_legacy_hooks(
     what was installed (OMN-23413 review 2026-11-15)."""
     source = installer.parent.parent / "plugins" / "onex"
     root = _root()
+    config = root / "hooks-delegation.json"
+    native = (source / "hooks/lib/native_delegation_mod.js").is_file()
+    # Removal of a pre-native installation still uses its classic ownership
+    # contract; a newer source bundle must not prevent switching an old one off.
+    installed_native = (
+        config.is_file()
+        and json.loads(config.read_text()).get("entrypoint") == "native"
+    )
+    if native and (require_both or installed_native):
+        return _observe_native_hooks(source, claude_home)
     target = root / "plugin" / "plugins" / "onex"
     manifest = json.loads((source / "hooks" / "hooks-delegation.v1.json").read_text())
 

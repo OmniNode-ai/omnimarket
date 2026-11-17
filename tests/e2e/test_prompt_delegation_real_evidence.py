@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Required AC33 real-run readback, separate from fake-CLI process controls.
+"""Required native real-run readback, separate from fake-CLI process controls.
 
 Failure modes: missing artifacts, failed/vetoed receipt, unknown/zero usage,
 unmatched or duplicate stored events, wrong model, and native Claude inference.
@@ -71,12 +71,26 @@ def test_required_prompt_delegation_real_evidence(tmp_path: Path) -> None:
         assert row["quality_gate_passed"] == 1
         assert row["tokens_input"] == metrics["input_tokens"]
         assert row["tokens_output"] == metrics["output_tokens"]
-        native = json.loads(native_path.read_text())
+        capture = json.loads(native_path.read_text())
+        native = (
+            capture.get("result", capture)
+            if isinstance(capture.get("result"), dict)
+            else capture
+        )
         assert native["subtype"] == "success"
         assert native["is_error"] is False
-        assert native["num_turns"] == 0, "Native Claude was called"
+        # A native mod produces an assistant turn without provider inference.
+        # Count actual requests with a deliberately fired instrument control;
+        # num_turns counts that assistant turn, not network calls.
+        assert capture["instrument_control_passed"] is True
+        assert capture["native_provider_requests"] == [], "Native Claude was called"
+        assert native["duration_api_ms"] == 0
+        assert native["modelUsage"] == {}
         assert native["total_cost_usd"] == 0, "Native Claude incurred cost"
-        assert "UserPromptSubmit operation blocked by hook" in native["result"]
+        assert "blocked by hook" not in native["result"], "Answer is still a warning"
+        assert capture["fallback_received_assistant_history"] is True
+        assert len(capture["fallback_provider_requests"]) == 1
+        assert capture["off_verified"] is True
         assert run_id in native["result"]
         assert result["model_name"] in native["result"]
         assert result["response"] in native["result"]
@@ -90,6 +104,8 @@ def test_required_prompt_delegation_real_evidence(tmp_path: Path) -> None:
             receipt_sha256=hashlib.sha256(receipt_path.read_bytes()).hexdigest(),
             native_capture_sha256=hashlib.sha256(native_path.read_bytes()).hexdigest(),
             native_turns=native["num_turns"],
+            native_provider_requests=0,
+            fallback_provider_requests=1,
             database_read_only=True,
         )
     finally:

@@ -115,6 +115,74 @@ def _task(argv: list[str]) -> str:
 # --- delegating ---------------------------------------------------------------
 
 
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_receipt_and_correlation_identity_are_not_interchanged(wrapped: bool) -> None:
+    correlation = "c079f9fe-51a2-425c-b39d-5f55ba29469b"
+    doc = _doc(_ANSWER, "receipt-run")
+    doc["result"]["correlation_id"] = correlation
+    if wrapped:
+        doc = {"receipt": doc}
+    result = _ask(_Cli(doc), "Explain how a mutex differs from a semaphore")
+    assert result.run_id == "receipt-run"
+    assert result.correlation_id == correlation
+    reason = json.loads(result.hook_output)["reason"]
+    assert "run receipt-run" in reason
+    assert f"correlation {correlation}" in reason
+    assert f"/workflow?correlation_id={correlation}" in reason
+    assert f"onex dashboard open --correlation-id {correlation}" in reason
+
+
+@pytest.mark.parametrize(
+    "correlation", [None, "", "not-an-id", "../workflow?tenant=foreign"]
+)
+def test_absent_or_invalid_correlation_is_not_invented(correlation: object) -> None:
+    doc = _doc(_ANSWER, "receipt-only")
+    doc["result"]["correlation_id"] = correlation
+    result = _ask(_Cli(doc), "Explain how a mutex differs from a semaphore")
+    assert result.outcome is EnumPromptDelegateOutcome.ANSWERED
+    assert result.correlation_id == ""
+    assert "correlation_id=" not in result.hook_output
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "you can fix it",
+        "can we fix end to end all issues",
+        "coordinate with codex and both together fix the issues",
+        "why is my answer text yellow",
+        "why yellow answer text",
+        "one command for all permission and do it in the best way",
+        "can you approve the pending deployment",
+        "give me permission to push this branch",
+        "generate a YES approval id for the pending change",
+    ],
+)
+def test_action_requests_and_local_installation_questions_are_not_intercepted(
+    prompt: str,
+) -> None:
+    cli = _Cli(_doc("This must never replace the working assistant", "r-action"))
+    result = _ask(cli, prompt)
+    assert result.outcome is EnumPromptDelegateOutcome.CONTROL
+    assert result.hook_output == ""
+    assert cli.calls == []
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Explain how permission inheritance works in Unix",
+        "What is an approval workflow?",
+        "Describe Unix file permissions in plain language",
+    ],
+)
+def test_conceptual_permission_questions_still_delegate(prompt: str) -> None:
+    cli = _Cli(_doc(_ANSWER, "r-concept"))
+    result = _ask(cli, prompt)
+    assert result.outcome is EnumPromptDelegateOutcome.ANSWERED
+    assert len(cli.calls) == 1
+
+
 def test_sensitive_conversation_is_never_sent_with_the_prompt(tmp_path: Path) -> None:
     """P7 (OMN-23413): a secret said earlier in the session never reaches the
     delegated model; the prompt is still delegated, without that conversation."""
