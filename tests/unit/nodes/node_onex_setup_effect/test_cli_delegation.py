@@ -316,3 +316,27 @@ def test_an_older_hook_without_the_prompt_hook_is_reported_off(
     _, document, _ = _run(monkeypatch, tmp_path, claude, "status")
     assert document["status"] == "off"
     assert "prompt" in str(document["fix"])
+
+
+@pytest.mark.parametrize("flag", ["--prompts", "--no-prompts"])
+def test_on_sets_only_the_prompt_switch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, flag: str
+) -> None:
+    """AC33: the prompt switch pauses only prompts; a paused subagent switch stays paused."""
+    from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_hook_delegate import (
+        read_switches,
+        switches_path,
+    )
+
+    claude = _Claude(
+        plugin=[_obs("claude-plugin", "success")],
+        hooks=[_obs("claude-hooks", "success")],
+    )
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir(exist_ok=True)
+    switches_path().parent.mkdir(parents=True, exist_ok=True)
+    switches_path().write_text(json.dumps({"prompts": True, "subagents": False}))
+    code, document, _ = _run(monkeypatch, tmp_path, claude, "on", flag)
+    assert code == 0, document
+    assert read_switches().prompts is (flag == "--prompts")
+    assert read_switches().subagents is False

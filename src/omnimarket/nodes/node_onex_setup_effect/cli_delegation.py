@@ -25,7 +25,6 @@ from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_hook_delegate i
     read_switches,
     write_switches,
 )
-from omnimarket.nodes.node_hook_delegate_effect.models import ModelDelegationSwitches
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_claude import (
     SWITCH_OVERRIDE_FIX,
     HandlerSetupClaude,
@@ -258,7 +257,8 @@ def on_command(replace: bool, prompts: bool, json_output: bool) -> None:
         failed = _switch_failed(True)
         _report([plugin, hooks, failed], "not_ready", json_output, cause=failed)
         raise SystemExit(1) from None
-    write_switches(ModelDelegationSwitches(prompts=prompts))
+    # AC33: the prompt switch sets only prompts; the subagent switch stays as it is.
+    write_switches(read_switches().model_copy(update={"prompts": prompts}))
     _report([plugin, hooks], "on", json_output)
 
 

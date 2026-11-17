@@ -64,18 +64,13 @@ from omnimarket.handlers.model_catalog import (
     load_models_dev,
     stored_entries,
 )
+from omnimarket.handlers.models_cli_output import connection_rows, model_status_rows
 from omnimarket.handlers.routing.byok_model_listing import (
     ModelByokListedModel,
     ModelByokModelListing,
 )
 from omnimarket.models.model_catalog_entry import Deployment, ModelCatalogEntry
 from omnimarket.models.model_local_server_details import ModelLocalServerDetails
-from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_connection import (
-    ModelEndpointConnectionResult,
-)
-from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
-    ModelModelStatus,
-)
 from omnimarket.nodes.node_onex_setup_effect.cli_model_table import (
     ModelTable,
     entry_key,
@@ -376,28 +371,22 @@ async def load_status() -> ModelTuiStatus:
     if connected_code != 0:
         raise RuntimeError("models connections could not be read")
     try:
-        rows = [
-            ModelModelStatus.model_validate_json(line).model_dump(mode="json")
-            for line in lines
-            if line.strip()
-        ]
+        rows = model_status_rows(lines)
     except ValueError as error:
         raise RuntimeError("models list returned invalid model status") from error
     try:
-        connections = ModelEndpointConnectionResult.model_validate_json(
-            "\n".join(connected)
-        )
+        connection_status, connection_list = connection_rows("\n".join(connected))
     except ValueError as error:
         raise RuntimeError(
             "models connections returned invalid configuration"
         ) from error
-    if connections.status != "ready":
+    if connection_status != "ready":
         raise RuntimeError("models connections could not be read")
     # The footer counts the same selection as the tables. Supplemental model
     # metadata is unnecessary for this count and must not trigger a network read.
     selection = selected_models(
         rows,
-        [row.model_dump(mode="json") for row in connections.connections],
+        connection_list,
         EMPTY_INDEX,
     )
     hook: list[str] = []
