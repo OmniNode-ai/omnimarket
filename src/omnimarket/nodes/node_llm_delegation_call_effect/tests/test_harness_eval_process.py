@@ -6,7 +6,6 @@ Failure modes: the child inherits the operator project instead of its private
 profile, a parent chdir leaks into concurrent work, or existing callers change.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -32,9 +31,9 @@ def test_fixture_process_uses_its_cwd_without_changing_parent(
     ]
     run = HandlerHarnessEvalProcess().handle
     if private_cwd:
-        code = run(command, env=dict(os.environ), timeout=10, log=log, cwd=home)
+        code = run(command, env={}, timeout=10, log=log, cwd=home)
     else:
-        code = run(command, env=dict(os.environ), timeout=10, log=log)
+        code = run(command, env={}, timeout=10, log=log)
     assert code == 0
     assert log.read_text().splitlines() == [
         str(home if private_cwd else before),
