@@ -13,6 +13,7 @@ read, the cache) are data in configs/model_catalog.yaml.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import tempfile
@@ -30,6 +31,7 @@ from pydantic import SecretStr
 from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.handlers.routing.byok_model_listing import (
     ModelByokListedModel,
+    ModelByokModelListing,
     list_byok_models,
 )
 from omnimarket.models.model_catalog_entry import (
@@ -157,15 +159,84 @@ def _decimal(value: Any) -> Decimal | None:
     return number if number.is_finite() and number >= 0 else None
 
 
+def _onex_home() -> Path:
+    """The ONEX home folder the model table and the delegation call share."""
+    from omnibase_core.cli.cli_user_config import user_config_path
+
+    return user_config_path().parent
+
+
 def pricing_models_dev_index() -> ModelsDevIndex:
     """models.dev as the delegation call reads it to price a model (OMN-23413 AC35).
 
     The same cached index the model table reads, refetched when older than its
     configured age. Tests replace this function so no unit test reads the network.
     """
-    from omnibase_core.cli.cli_user_config import user_config_path
+    return load_models_dev(_onex_home())
 
-    return load_models_dev(user_config_path().parent)
+
+def _pricing_index() -> ModelsDevIndex:
+    """The models.dev index a call may price from, or the empty index.
+
+    Supplemental metadata cannot prevent a provider call, so a read failure is
+    no index. A failed refresh may be shown as stale in the explorer, but must
+    not price a new call with metadata older than the configured maximum age.
+    """
+    try:
+        index = pricing_models_dev_index()
+    except Exception:  # Any failure reading optional metadata: price unknown.
+        return EMPTY_INDEX
+    return EMPTY_INDEX if index.stale else index
+
+
+def _listing_path(provider: str, onex_home: Path) -> Path:
+    pattern = str(catalog_config()["provider_listing"]["cache_file"])
+    return onex_home / pattern.format(provider=provider)
+
+
+def remember_provider_listing(
+    listing: ModelByokModelListing, onex_home: Path | None = None
+) -> None:
+    """Keep a provider list that was read, for later calls to price from (AC34).
+
+    Only a list that was actually read is kept; a refused or failed read leaves
+    the earlier copy as it was.
+    """
+    if listing.outcome != "listed":
+        return
+    path = _listing_path(listing.provider, onex_home or _onex_home())
+    _write_atomic(path, listing.model_dump_json().encode("utf-8"))
+
+
+def recalled_provider_listing(
+    provider: str, onex_home: Path | None = None, *, now: datetime | None = None
+) -> ModelByokModelListing | None:
+    """The kept list for ``provider`` while younger than its age, else None."""
+    path = _listing_path(provider, onex_home or _onex_home())
+    try:
+        kept_at = datetime.fromtimestamp(path.stat().st_mtime, UTC)
+    except OSError:
+        return None
+    max_age = timedelta(
+        hours=float(catalog_config()["provider_listing"]["max_age_hours"])
+    )
+    if (now or datetime.now(UTC)) - kept_at >= max_age:
+        return None
+    try:
+        return ModelByokModelListing.model_validate_json(path.read_text("utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def list_and_remember_models(
+    provider: str, api_key: str | SecretStr
+) -> ModelByokModelListing:
+    """Read ``provider``'s model list for the table and keep it for later calls."""
+    listing = list_byok_models(provider, api_key)
+    # A list that cannot be kept is still shown; calls fall back to models.dev.
+    with contextlib.suppress(OSError):
+        remember_provider_listing(listing)
+    return listing
 
 
 def models_dev_price_per_1m(
@@ -182,7 +253,7 @@ def models_dev_price_per_1m(
     md_provider = catalog_config()["provider_ids"].get(provider)
     if not md_provider:
         return None
-    metadata = pricing_models_dev_index().models.get((str(md_provider), model_id))
+    metadata = _pricing_index().models.get((str(md_provider), model_id))
     cost = metadata.get("cost") if metadata else None
     if not isinstance(cost, dict):
         return None
@@ -329,22 +400,16 @@ def listed_catalog_entry(
     )
 
 
-def runtime_catalog_entry(
-    provider: str,
-    model_id: str,
-    api_key: SecretStr | None,
-) -> ModelCatalogEntry:
-    """Read provider facts for this key and the same supplemental cache as the UI."""
-    try:
-        index = pricing_models_dev_index()
-    except Exception:  # Supplemental metadata cannot prevent a provider call.
-        index = EMPTY_INDEX
-    # A failed refresh may be shown as stale in the explorer, but must not price
-    # a new call with metadata older than the configured maximum age.
-    if index.stale:
-        index = EMPTY_INDEX
-    if api_key is not None:
-        listing = list_byok_models(provider, api_key)
+def runtime_catalog_entry(provider: str, model_id: str) -> ModelCatalogEntry:
+    """Provider facts as the explorer last read them, and the same supplemental cache.
+
+    Reads only what is kept: the provider list the table last read (AC34) and
+    the cached models.dev index. It never lists models itself, so a delegation
+    call makes no request beyond the call (OMN-20157).
+    """
+    index = _pricing_index()
+    listing = recalled_provider_listing(provider)
+    if listing is not None:
         for model in listing.models:
             if model.id == model_id:
                 return listed_catalog_entry(

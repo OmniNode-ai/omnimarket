@@ -392,16 +392,24 @@ def _compute_cost(
     missing or the tier is not declared.
     """
     if byok_backend_provider(provider) is not None:
-        model_price = (
-            (model_entry.input_usd_per_million, model_entry.output_usd_per_million)
-            if model_entry is not None
+        # OMN-23413 AC35/AC34: the catalogue's and the registry's declared price
+        # come first; then the combined entry (the provider's kept list over
+        # models.dev), so a catalog row with no price never hides a declared one
+        # and models.dev alone never outranks the provider's own list.
+        model_price = byok_model_price_per_1m(
+            provider, endpoint_url, model_id, supplemental=model_entry is None
+        )
+        if (
+            model_price is None
+            and model_entry is not None
             and model_entry.input_usd_per_million is not None
             and model_entry.output_usd_per_million is not None
-            else None
-        )
-        if model_entry is None:
-            model_price = byok_model_price_per_1m(provider, endpoint_url, model_id)
-        if model_price is None and model_entry is None:
+        ):
+            model_price = (
+                model_entry.input_usd_per_million,
+                model_entry.output_usd_per_million,
+            )
+        if model_price is None:
             # OMN-23751: an eval arm on the registered key keeps the arm's model
             # and is booked at the arm's declared price.
             model_price = load_delegation_routing_overlay().eval_arm_price_per_1m(
@@ -1028,10 +1036,8 @@ class HandlerLlmDelegationCall:
             outbound_headers, secret_source = self._resolve_outbound_headers(request)
             provider = byok_backend_provider(request.provider)
             if provider is not None and provider in catalog_config()["provider_ids"]:
-                api_key, _ = resolve_api_key_with_source_loop_safe(
-                    request.secret_ref, env_var_fallback=request.api_key_env
-                )
-                model_entry = runtime_catalog_entry(provider, request.model_id, api_key)
+                # What the explorer last read, never a live listing per call.
+                model_entry = runtime_catalog_entry(provider, request.model_id)
                 if model_entry.max_output_tokens is not None:
                     token_field = (
                         "max_tokens"

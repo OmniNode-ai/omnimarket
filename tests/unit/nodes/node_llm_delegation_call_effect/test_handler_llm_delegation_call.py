@@ -263,17 +263,21 @@ class TestHandlerLlmDelegationCall:
     def test_live_combined_model_entry_controls_call_limit_and_price(
         self,
         monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
         output_limit: int,
         input_price: int,
         output_price: int,
         expected_cost: str,
     ) -> None:
-        """AC34: provider and supplemental changes reach table and actual call."""
+        """AC34: provider and supplemental changes reach table and actual call.
+
+        The table reads the provider's list live and keeps it; the call prices
+        and limits from that kept list and never lists models itself (OMN-20157).
+        """
         from pydantic import SecretStr
 
         from omnimarket.handlers import model_catalog
         from omnimarket.handlers.routing import byok_model_discovery
-        from omnimarket.handlers.routing.byok_model_listing import list_byok_models
         from omnimarket.nodes.node_onex_setup_effect.cli_tui import _listed_entry
 
         document = {
@@ -308,10 +312,20 @@ class TestHandlerLlmDelegationCall:
                 EnumSecretSource.LOCAL_STORE,
             ),
         )
+        monkeypatch.setattr(model_catalog, "_onex_home", lambda: tmp_path)
         table_entry = _listed_entry(
             "openrouter",
-            list_byok_models("openrouter", "synthetic-key").models[0],
+            model_catalog.list_and_remember_models(
+                "openrouter", "synthetic-key"
+            ).models[0],
             index,
+        )
+
+        def no_listing_on_a_call(**_: object) -> object:
+            raise AssertionError("the delegation call listed models itself")
+
+        monkeypatch.setattr(
+            byok_model_discovery, "get_models_json", no_listing_on_a_call
         )
         captured = _patch_post(
             monkeypatch,

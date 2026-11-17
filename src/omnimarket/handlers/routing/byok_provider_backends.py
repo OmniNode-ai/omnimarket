@@ -1163,14 +1163,19 @@ def byok_backend_provider(backend_id: str | None) -> str | None:
 
 
 def byok_model_price_per_1m(
-    backend_id: str | None, endpoint_url: str | None, model_name: str
+    backend_id: str | None,
+    endpoint_url: str | None,
+    model_name: str,
+    *,
+    supplemental: bool = True,
 ) -> tuple[Decimal, Decimal] | None:
     """The ``(input, output)`` USD per 1M tokens of a model on a customer's key.
 
     The catalogue's declared price for the endpoint and model first, then the
     model registry's price for the same provider and model, then models.dev's
     (OMN-23413 AC35). ``None`` means the model has no known price: the call is
-    unpriced, never booked at a tier rate.
+    unpriced, never booked at a tier rate. ``supplemental=False`` stops before
+    models.dev, for a caller that holds the provider's combined entry (AC34).
     """
     declared = byok_declared_price_per_1m(endpoint_url, model_name)
     if declared is not None:
@@ -1185,6 +1190,8 @@ def byok_model_price_per_1m(
     for profile in ModelLlmModelRegistryLoader().load().models.values():
         if profile.provider == provider and profile.model_name == model_name:
             return (profile.pricing_per_1m_input, profile.pricing_per_1m_output)
+    if not supplemental:
+        return None
     # OMN-23413 AC35: a model neither the catalogue nor the registry prices is
     # priced from models.dev, read live; still None when models.dev states none.
     from omnimarket.handlers.model_catalog import models_dev_price_per_1m

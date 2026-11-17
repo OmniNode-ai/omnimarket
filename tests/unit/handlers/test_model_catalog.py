@@ -344,3 +344,81 @@ def test_every_hosted_provider_config_offers_and_only_those_get_models_dev() -> 
     offered = {entry.provider for entry in _picker()}
     hosted = {provider for provider in offered if _hosted(provider)}
     assert set(catalog_config()["provider_ids"]) == hosted
+
+
+def _listing(outcome: str = "listed") -> object:
+    from omnimarket.handlers.routing.byok_model_listing import (
+        ModelByokListedModel,
+        ModelByokModelListing,
+    )
+
+    return ModelByokModelListing(
+        provider="openrouter",
+        outcome=outcome,
+        models=(
+            [
+                ModelByokListedModel(
+                    id="vendor/big", name="Big", max_output_tokens=32_000
+                )
+            ]
+            if outcome == "listed"
+            else []
+        ),
+        message="",
+    )
+
+
+@pytest.mark.unit
+def test_a_read_provider_list_is_recalled_until_it_is_too_old(tmp_path: Path) -> None:
+    """AC34: the list the explorer read reaches a later call, within its age."""
+    assert model_catalog.recalled_provider_listing("openrouter", tmp_path) is None
+    model_catalog.remember_provider_listing(_listing(), tmp_path)  # type: ignore[arg-type]
+    recalled = model_catalog.recalled_provider_listing("openrouter", tmp_path)
+    assert recalled is not None
+    assert [m.id for m in recalled.models] == ["vendor/big"]
+    later = datetime.now(UTC) + timedelta(
+        hours=float(model_catalog.catalog_config()["provider_listing"]["max_age_hours"])
+    )
+    assert (
+        model_catalog.recalled_provider_listing("openrouter", tmp_path, now=later)
+        is None
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "outcome", ["rejected", "billing", "unsupported", "inconclusive"]
+)
+def test_a_list_that_was_not_read_is_never_kept(tmp_path: Path, outcome: str) -> None:
+    model_catalog.remember_provider_listing(_listing(outcome), tmp_path)  # type: ignore[arg-type]
+    assert model_catalog.recalled_provider_listing("openrouter", tmp_path) is None
+
+
+@pytest.mark.unit
+def test_a_delegation_call_never_lists_models_itself(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """OMN-20157: no discovery GET on a call; only a kept list is read."""
+    from omnimarket.handlers.routing import byok_model_discovery
+
+    def refuse(**_: object) -> object:
+        raise AssertionError("a delegation call read the provider's model list")
+
+    monkeypatch.setattr(byok_model_discovery, "get_models_json", refuse)
+    monkeypatch.setattr(model_catalog, "_onex_home", lambda: tmp_path)
+    monkeypatch.setattr(
+        model_catalog, "pricing_models_dev_index", lambda: model_catalog.EMPTY_INDEX
+    )
+    assert (
+        model_catalog.runtime_catalog_entry(
+            "openrouter", "vendor/big"
+        ).max_output_tokens
+        is None
+    )
+    model_catalog.remember_provider_listing(_listing(), tmp_path)  # type: ignore[arg-type]
+    assert (
+        model_catalog.runtime_catalog_entry(
+            "openrouter", "vendor/big"
+        ).max_output_tokens
+        == 32_000
+    )

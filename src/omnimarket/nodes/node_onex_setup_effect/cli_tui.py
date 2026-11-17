@@ -59,6 +59,7 @@ from omnimarket.handlers.model_catalog import (
     ModelsDevIndex,
     catalog_config,
     catalog_entry,
+    list_and_remember_models,
     listed_catalog_entry,
     load_models_dev,
     stored_entries,
@@ -66,7 +67,6 @@ from omnimarket.handlers.model_catalog import (
 from omnimarket.handlers.routing.byok_model_listing import (
     ModelByokListedModel,
     ModelByokModelListing,
-    list_byok_models,
 )
 from omnimarket.models.model_catalog_entry import Deployment, ModelCatalogEntry
 from omnimarket.models.model_local_server_details import ModelLocalServerDetails
@@ -819,7 +819,7 @@ class SetupScreen(_TabbedScreen[None]):
         super().__init__()
         self._runner = runner
         self._selection = selection or ModelTuiSelection()
-        self._list_models: ListModels = list_models or list_byok_models
+        self._list_models: ListModels = list_models or list_and_remember_models
         self._load: LoadIndex = load_index or _default_index
         self._read_server: ReadServer = read_server or _default_read_server
         self._basket: dict[str, ModelTuiSetupChoice] = {}
