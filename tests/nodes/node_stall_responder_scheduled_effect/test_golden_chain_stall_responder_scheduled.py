@@ -8,7 +8,6 @@ The ledger rows are the stall responder's own replay fixture of 2026-11-07 (the 
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -18,7 +17,6 @@ import pytest
 import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
-from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.schedule_run_store import InMemoryScheduleRunStore
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     InMemoryLedger,
@@ -28,6 +26,12 @@ from omnimarket.nodes.node_reading_writer_effect.overlay import (
 )
 from omnimarket.nodes.node_schedule_run_reducer.handlers.handler_schedule_run_reducer import (
     HandlerScheduleRunReducer,
+)
+from omnimarket.nodes.node_stall_responder_compute.handlers.handler_stall_cause_responder import (
+    HandlerStallCauseResponder,
+)
+from omnimarket.nodes.node_stall_responder_compute.models import (
+    ModelStallResponderRequest,
 )
 from omnimarket.nodes.node_stall_responder_scheduled_effect.handlers.handler_stall_responder_scheduled import (
     HandlerStallResponderScheduled,
@@ -51,7 +55,20 @@ FIXTURE = (
 )
 STALL_ROWS = tuple(FIXTURE.read_text(encoding="utf-8").splitlines())
 T0 = datetime(2026, 11, 7, 0, 30, tzinfo=UTC)
-DONE = ModelStallResponderTickOutcome(False, "stall_rows=2 dispatches=3", {"k": "v"})
+DONE = ModelStallResponderTickOutcome(False, "stall_rows=2 dispatches=3")
+LEDGER_ENV = "ONEX_STALL_LEDGER_FILE"
+FILE_ROUTE: dict[str, Any] = {
+    "route": "file",
+    "path_env": LEDGER_ENV,
+    "timeout_seconds": 120,
+    "row_limit": 20000,
+}
+COMMAND_ROUTE: dict[str, Any] = {
+    "route": "command",
+    "command_env": "ONEX_LEDGER_BUS_READ_COMMAND",
+    "timeout_seconds": 120,
+    "row_limit": 20000,
+}
 
 
 def tick(at: datetime) -> ModelRuntimeTick:
@@ -66,13 +83,18 @@ def tick(at: datetime) -> ModelRuntimeTick:
     )
 
 
-def overlay(window_seconds: int = 3600) -> ModelStallResponderScheduleOverlay:
+def overlay(
+    window_seconds: int = 3600,
+    claim_lookback_seconds: int = 86400,
+    redispatch_after_hours: float = 24,
+) -> ModelStallResponderScheduleOverlay:
     return ModelStallResponderScheduleOverlay(
         job_id="stall_responder",
         run_interval_seconds=600,
         grace_seconds=600,
         window_seconds=window_seconds,
-        redispatch_after_hours=24,
+        claim_lookback_seconds=claim_lookback_seconds,
+        redispatch_after_hours=redispatch_after_hours,
         ledger_read=ModelCommandLedgerReadRoute(
             route="command",
             command_env="ONEX_LEDGER_BUS_READ_COMMAND",
@@ -82,54 +104,75 @@ def overlay(window_seconds: int = 3600) -> ModelStallResponderScheduleOverlay:
     )
 
 
-def environ(tmp_path: Path) -> dict[str, str]:
-    (tmp_path / NODE).mkdir()
+def overlay_doc(route: dict[str, Any] | None = None, **changes: Any) -> dict[str, Any]:
+    doc: dict[str, Any] = {
+        "job_id": "stall_responder",
+        "run_interval_seconds": 600,
+        "grace_seconds": 600,
+        "window_seconds": 3600,
+        "claim_lookback_seconds": 86400,
+        "redispatch_after_hours": 24,
+        "ledger_read": dict(route or COMMAND_ROUTE),
+    }
+    doc.update(changes)
+    return {key: value for key, value in doc.items() if value is not _ABSENT}
+
+
+_ABSENT = object()
+
+
+def environ(
+    tmp_path: Path, doc: dict[str, Any] | None = None, **extra: str
+) -> dict[str, str]:
+    """An environment whose overlay root holds the node's overlay.yaml (the command-route one by default)."""
+    (tmp_path / NODE).mkdir(exist_ok=True)
     (tmp_path / NODE / "overlay.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "job_id": "stall_responder",
-                "run_interval_seconds": 600,
-                "grace_seconds": 600,
-                "window_seconds": 3600,
-                "redispatch_after_hours": 24,
-                "ledger_read": {
-                    "route": "command",
-                    "command_env": "ONEX_LEDGER_BUS_READ_COMMAND",
-                    "timeout_seconds": 120,
-                    "row_limit": 20000,
-                },
-            }
-        ),
-        encoding="utf-8",
+        yaml.safe_dump(overlay_doc() if doc is None else doc), encoding="utf-8"
     )
-    return {"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)}
+    return {"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path), **extra}
+
+
+def ledger_environ(
+    tmp_path: Path, lines: tuple[str, ...] = STALL_ROWS
+) -> dict[str, str]:
+    """An environment whose overlay reads the ledger file it names: the file route, a readable ledger."""
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return environ(tmp_path, overlay_doc(FILE_ROUTE), **{LEDGER_ENV: str(ledger)})
 
 
 class _RecordingTick:
-    """The injected tick: returns the fixed outcome and records the dispatched map it was given."""
+    """The injected tick: returns the fixed outcome."""
 
     def __init__(self, outcome: ModelStallResponderTickOutcome) -> None:
         self._outcome = outcome
-        self.seen: list[dict[str, str]] = []
+        self.calls = 0
 
     def __call__(self, **kwargs: Any) -> ModelStallResponderTickOutcome:
-        self.seen.append(dict(kwargs["dispatched"]))
+        self.calls += 1
         return self._outcome
 
 
 def _raising(error: Exception) -> Any:
-    def run(**kwargs: Mapping[str, str]) -> ModelStallResponderTickOutcome:
+    def run(**kwargs: Any) -> ModelStallResponderTickOutcome:
         raise error
 
     return run
 
 
+def _errors(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.levelname == "ERROR"]
+
+
+def _count(detail: str, name: str) -> int:
+    return int(detail.split(f"{name}=")[1].split()[0])
+
+
 def test_golden_a_due_tick_runs_the_responder_and_returns_its_detail(
     tmp_path: Path,
 ) -> None:
-    recorded = _RecordingTick(DONE)
     event = HandlerStallResponderScheduled(
-        environ=environ(tmp_path), tick=recorded
+        environ=environ(tmp_path), tick=_RecordingTick(DONE)
     ).handle(tick(T0))
     assert event is not None
     assert (event.job_id, event.node_name, event.outcome) == (
@@ -149,64 +192,107 @@ def test_golden_a_tick_inside_the_interval_returns_none(tmp_path: Path) -> None:
     assert h.handle(tick(T0 + timedelta(seconds=600))) is not None
 
 
-def test_golden_the_dispatched_map_of_a_completed_run_reaches_the_next_run(
-    tmp_path: Path,
-) -> None:
-    recorded = _RecordingTick(DONE)
-    h = HandlerStallResponderScheduled(environ=environ(tmp_path), tick=recorded)
-    h.handle(tick(T0))
-    h.handle(tick(T0 + timedelta(seconds=600)))
-    assert recorded.seen == [{}, {"k": "v"}]
-
-
-def test_error_a_failed_run_keeps_the_dispatched_map(tmp_path: Path) -> None:
-    failed = ModelStallResponderTickOutcome(True, "the ledger could not be read: x", {})
-    recorded = _RecordingTick(DONE)
-    h = HandlerStallResponderScheduled(environ=environ(tmp_path), tick=recorded)
-    h.handle(tick(T0))
-    h._tick = _RecordingTick(failed)
-    event = h.handle(tick(T0 + timedelta(seconds=600)))
+def test_error_a_failed_pass_is_a_failed_run_with_its_detail(tmp_path: Path) -> None:
+    failed = ModelStallResponderTickOutcome(True, "the ledger could not be read: x")
+    event = HandlerStallResponderScheduled(
+        environ=environ(tmp_path), tick=_RecordingTick(failed)
+    ).handle(tick(T0))
     assert event is not None
     assert (event.outcome, event.detail) == ("failed", failed.detail)
-    h._tick = recorded
-    h.handle(tick(T0 + timedelta(seconds=1200)))
-    assert recorded.seen[-1] == {"k": "v"}
 
 
-def test_error_an_unreadable_overlay_is_a_failed_run(tmp_path: Path) -> None:
+def test_error_a_tick_exception_is_a_failed_run_carrying_its_text(
+    tmp_path: Path,
+) -> None:
+    """Any exception after the interval is marked costs the interval, so it must still end in an event."""
     h = HandlerStallResponderScheduled(
-        environ=environ(tmp_path),
-        tick=_raising(NodeOverlayError("boom: the overlay is invalid")),
+        environ=environ(tmp_path), tick=_raising(RuntimeError("kaput: row 17"))
     )
     event = h.handle(tick(T0))
     assert event is not None
-    assert (event.outcome, event.detail) == (
-        "failed",
-        "the stall responder overlay could not be read",
-    )
+    assert event.outcome == "failed"
+    assert "kaput: row 17" in event.detail
 
 
-def test_error_an_unbound_ledger_route_is_a_failed_run(tmp_path: Path) -> None:
+def test_error_an_unbound_ledger_route_is_a_failed_run_naming_the_variable(
+    tmp_path: Path,
+) -> None:
     h = HandlerStallResponderScheduled(
         environ=environ(tmp_path),
         tick=_raising(LedgerRouteError("ONEX_LEDGER_BUS_READ_COMMAND is not set")),
     )
     event = h.handle(tick(T0))
     assert event is not None
-    assert (event.outcome, event.detail) == (
-        "failed",
-        "the ledger route of the stall responder is not bound in the runtime",
-    )
+    assert event.outcome == "failed"
+    assert "ledger route of the stall responder is not bound" in event.detail
+    assert "ONEX_LEDGER_BUS_READ_COMMAND is not set" in event.detail
 
 
-def test_error_no_overlay_refuses_once_and_returns_none(
+def test_error_no_overlay_refuses_once_and_names_the_cause(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     h = HandlerStallResponderScheduled(environ={})
     with caplog.at_level(logging.ERROR):
         assert h.handle(tick(T0)) is None
         assert h.handle(tick(T0 + timedelta(seconds=1))) is None
-    assert len([r for r in caplog.records if r.levelname == "ERROR"]) == 1
+    errors = _errors(caplog)
+    assert len(errors) == 1
+    assert NODE in errors[0]
+    assert "the overlay file is not configured" in errors[0]
+
+
+def test_error_an_invalid_overlay_file_is_refused_naming_the_cause_through_the_real_gate(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A present overlay that fails validation raises NodeOverlayError from the real gate, not the not-found error."""
+    h = HandlerStallResponderScheduled(
+        environ=environ(tmp_path, overlay_doc(window_seconds=0)),
+        tick=_RecordingTick(DONE),
+    )
+    with caplog.at_level(logging.ERROR):
+        assert h.handle(tick(T0)) is None
+        assert h.handle(tick(T0 + timedelta(seconds=1))) is None
+    errors = _errors(caplog)
+    assert len(errors) == 1
+    assert "is invalid for node_stall_responder_scheduled_effect" in errors[0]
+    assert "window_seconds" in errors[0]
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "job_id",
+        "run_interval_seconds",
+        "grace_seconds",
+        "window_seconds",
+        "claim_lookback_seconds",
+        "redispatch_after_hours",
+        "ledger_read",
+    ],
+)
+def test_required_each_overlay_field_is_refused_when_absent_from_the_file(
+    field: str, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    recorded = _RecordingTick(DONE)
+    h = HandlerStallResponderScheduled(
+        environ=environ(tmp_path, overlay_doc(**{field: _ABSENT})), tick=recorded
+    )
+    with caplog.at_level(logging.ERROR):
+        assert h.handle(tick(T0)) is None
+    errors = _errors(caplog)
+    assert len(errors) == 1
+    assert field in errors[0]
+    assert recorded.calls == 0
+
+
+def test_required_the_overlay_model_holds_no_default() -> None:
+    for name, info in ModelStallResponderScheduleOverlay.model_fields.items():
+        assert info.is_required(), name
+
+
+def test_required_the_lookback_must_cover_the_window() -> None:
+    with pytest.raises(ValueError, match="claim_lookback_seconds"):
+        overlay(window_seconds=7200, claim_lookback_seconds=3600)
 
 
 def test_seam_the_run_event_folds_into_the_reducer_and_the_topics_match(
@@ -232,48 +318,52 @@ def test_seam_the_run_event_folds_into_the_reducer_and_the_topics_match(
     assert producer["terminal_event"] == reducer["input_subscriptions"][0]["topic"]
 
 
-def test_real_chain_stall_rows_in_the_window_answer_dispatches() -> None:
-    outcome = run_stall_responder_tick(
-        overlay=overlay(),
-        dispatched={},
+def _run(
+    overlay_in: ModelStallResponderScheduleOverlay,
+    lines: tuple[str, ...] = STALL_ROWS,
+    dispatched: dict[str, str] | None = None,
+) -> ModelStallResponderTickOutcome:
+    return run_stall_responder_tick(
+        overlay=overlay_in,
+        dispatched=dispatched or {},
         environ={},
         now=T0,
-        ledger=InMemoryLedger(STALL_ROWS),
+        ledger=InMemoryLedger(lines),
+        responder=HandlerStallCauseResponder(),
     )
+
+
+def test_real_chain_stall_rows_in_the_window_answer_dispatches() -> None:
+    outcome = _run(overlay())
     assert outcome.failed is False
     assert "stall_rows=2 " in outcome.detail
     assert "dispatches=0" not in outcome.detail
-    assert outcome.dispatched != {}
 
 
 def test_control_rows_outside_the_window_are_not_read() -> None:
     """The failing control of the window: a tick that ignored window_seconds would answer the old rows on the narrow run."""
-    outcome = run_stall_responder_tick(
-        overlay=overlay(window_seconds=60),
-        dispatched={},
-        environ={},
-        now=T0,
-        ledger=InMemoryLedger(STALL_ROWS),
-    )
+    outcome = _run(overlay(window_seconds=60, claim_lookback_seconds=60))
     assert outcome.failed is False
     assert "stall_rows=0 " in outcome.detail
-    assert outcome.dispatched == {}
 
 
-def test_control_a_key_dispatched_inside_the_bound_is_not_dispatched_again() -> None:
-    ledger = InMemoryLedger(STALL_ROWS)
-    first = run_stall_responder_tick(
-        overlay=overlay(), dispatched={}, environ={}, now=T0, ledger=ledger
+def test_bound_a_key_dispatched_inside_the_bound_is_not_dispatched_again() -> None:
+    first = HandlerStallCauseResponder().handle(
+        ModelStallResponderRequest(rows=STALL_ROWS[:2])
     )
-    second = run_stall_responder_tick(
-        overlay=overlay(),
-        dispatched=first.dispatched,
-        environ={},
-        now=T0,
-        ledger=ledger,
+    assert first.dispatched
+    inside = _run(overlay(redispatch_after_hours=24), dispatched=first.dispatched)
+    assert "dispatches=0 " in inside.detail
+
+
+def test_bound_a_key_dispatched_past_the_bound_is_dispatched_again() -> None:
+    """redispatch_after_hours reaches the responder: dropped at the tick it falls back to 24 h and this fails."""
+    first = HandlerStallCauseResponder().handle(
+        ModelStallResponderRequest(rows=STALL_ROWS[:2])
     )
-    assert "dispatches=0 " in second.detail
-    assert second.dispatched == first.dispatched
+    past = _run(overlay(redispatch_after_hours=0.1), dispatched=first.dispatched)
+    assert past.failed is False
+    assert _count(past.detail, "dispatches") > 0
 
 
 def test_error_an_unreadable_ledger_is_a_failed_pass_not_an_empty_answer() -> None:
@@ -281,34 +371,96 @@ def test_error_an_unreadable_ledger_is_a_failed_pass_not_an_empty_answer() -> No
     ledger.read_error = "ledger-unreadable:down"
     outcome = run_stall_responder_tick(
         overlay=overlay(),
-        dispatched={"k": "v"},
+        dispatched={},
         environ={},
         now=T0,
         ledger=ledger,
+        responder=HandlerStallCauseResponder(),
     )
     assert outcome.failed is True
     assert outcome.detail == "the ledger could not be read: ledger-unreadable:down"
-    assert outcome.dispatched == {"k": "v"}
 
 
 def test_control_a_live_lane_covers_its_cause_key() -> None:
     """A CLAIM with no TERMINAL names a live lane; the responder skips the key that lane's stem covers."""
-    bare = run_stall_responder_tick(
-        overlay=overlay(),
-        dispatched={},
-        environ={},
-        now=T0,
-        ledger=InMemoryLedger(STALL_ROWS),
-    )
+    bare = _run(overlay())
     claim = "2026-11-07T00:09:00Z | CLAIM | lane=stall-floor-omnibase-core-20261107T0009Z | ticket=OMN-20800 | live"
-    covered = run_stall_responder_tick(
-        overlay=overlay(),
-        dispatched={},
-        environ={},
-        now=T0,
-        ledger=InMemoryLedger((claim, *STALL_ROWS)),
-    )
+    covered = _run(overlay(), (claim, *STALL_ROWS))
     assert covered.failed is False
     assert "skipped=0 " in bare.detail
     assert "skipped=1 " in covered.detail
-    assert "dispatches=7 " in covered.detail
+    assert _count(covered.detail, "dispatches") == _count(bare.detail, "dispatches") - 1
+
+
+OLD_CLAIM = "2026-11-06T22:00:00Z | CLAIM | lane=stall-floor-omnibase-core-20261106T2200Z | ticket=OMN-20800 | live"
+OLD_TERMINAL = "2026-11-06T23:00:00Z | TERMINAL | lane=stall-floor-omnibase-core-20261106T2200Z | ticket=OMN-20800 | done"
+
+
+def test_open_claim_before_the_window_still_covers_its_key_over_the_lookback() -> None:
+    """A lane claimed two hours before the window and still open is live: its key is skipped, not counted a dispatch."""
+    bare = _run(overlay())
+    covered = _run(overlay(claim_lookback_seconds=86400), (OLD_CLAIM, *STALL_ROWS))
+    assert "skipped=1 " in covered.detail
+    assert _count(covered.detail, "dispatches") == _count(bare.detail, "dispatches") - 1
+
+
+def test_open_claim_older_than_the_lookback_does_not_cover_its_key() -> None:
+    narrow = _run(
+        overlay(window_seconds=3600, claim_lookback_seconds=3600),
+        (OLD_CLAIM, *STALL_ROWS),
+    )
+    assert "skipped=0 " in narrow.detail
+
+
+def test_open_claim_with_a_terminal_in_the_lookback_is_not_live() -> None:
+    closed = _run(overlay(), (OLD_CLAIM, OLD_TERMINAL, *STALL_ROWS))
+    assert "skipped=0 " in closed.detail
+
+
+def test_keys_are_not_stored_between_runs_so_a_standing_stall_reports_again(
+    tmp_path: Path,
+) -> None:
+    """Nothing starts a lane, so a dispatched key must not suppress the next run's count while the stall stands."""
+    h = HandlerStallResponderScheduled(environ=ledger_environ(tmp_path))
+    first = h.handle(tick(T0))
+    second = h.handle(tick(T0 + timedelta(seconds=600)))
+    assert first is not None
+    assert second is not None
+    assert first.outcome == second.outcome == "completed"
+    assert _count(first.detail, "dispatches") > 0
+    assert _count(second.detail, "dispatches") >= _count(first.detail, "dispatches")
+
+
+def test_default_tick_file_overlay_over_a_readable_ledger_completes(
+    tmp_path: Path,
+) -> None:
+    """The handler's own call into the real tick: wrong argument names or a skipped build_row_source fail here."""
+    event = HandlerStallResponderScheduled(environ=ledger_environ(tmp_path)).handle(
+        tick(T0)
+    )
+    assert event is not None
+    assert event.outcome == "completed"
+    assert "stall_rows=2 " in event.detail
+    assert _count(event.detail, "dispatches") > 0
+
+
+def test_default_tick_unset_command_env_is_a_failed_run_naming_it(
+    tmp_path: Path,
+) -> None:
+    """The command route's variable is unset: build_row_source raises LedgerRouteError, which becomes a failed event."""
+    event = HandlerStallResponderScheduled(environ=environ(tmp_path)).handle(tick(T0))
+    assert event is not None
+    assert event.outcome == "failed"
+    assert "ONEX_LEDGER_BUS_READ_COMMAND is not set" in event.detail
+
+
+def test_default_tick_environ_none_reads_the_process_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """environ=None falls back to os.environ for the gate and for the ledger route."""
+    for key, value in ledger_environ(tmp_path).items():
+        monkeypatch.setenv(key, value)
+    event = HandlerStallResponderScheduled().handle(tick(T0))
+    assert event is not None
+    assert event.outcome == "completed"
+    assert "stall_rows=2 " in event.detail

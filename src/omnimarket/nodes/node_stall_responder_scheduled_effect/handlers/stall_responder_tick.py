@@ -3,9 +3,10 @@
 """One stall responder pass over the ledger: read the stall rows and the live lanes, decide, report counts.
 
 The responder starts nothing and writes nothing (node_stall_responder_compute): this pass reads the throughput tick's
-THROUGHPUT STALL MSG rows and the lanes with a CLAIM and no TERMINAL in the window, asks the responder which cause keys
-still need a lane, and returns the counts as the run's detail. A ledger that cannot be read is a failed run, never an
-empty answer.
+THROUGHPUT STALL MSG rows of the window and the lanes with a CLAIM and no TERMINAL over a separate, longer look-back (a
+lane claimed before the window and still open is live), asks the responder which cause keys still need a lane, and returns
+the counts as the run's detail. A ledger that cannot be read is a failed run, never an empty answer. No dispatched key is
+kept between runs: nothing here starts a lane, so a key is not dispatched until something does.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from omnimarket.nodes.node_stall_responder_compute.handlers.handler_stall_cause_
 )
 from omnimarket.nodes.node_stall_responder_compute.models import (
     ModelStallResponderRequest,
+    ModelStallResponderResult,
 )
 from omnimarket.nodes.node_stall_responder_scheduled_effect.models import (
     ModelStallResponderScheduleOverlay,
@@ -38,11 +40,10 @@ STALL_TERM = "THROUGHPUT STALL"
 
 @dataclass(frozen=True)
 class ModelStallResponderTickOutcome:
-    """The pass's answer: whether the run failed, why or what it read, and the responder's updated dispatched map."""
+    """The pass's answer: whether the run failed, and why or what it read."""
 
     failed: bool
     detail: str
-    dispatched: Mapping[str, str]
 
 
 def _live_lanes(
@@ -58,32 +59,39 @@ def _live_lanes(
 def run_stall_responder_tick(
     *,
     overlay: ModelStallResponderScheduleOverlay,
-    dispatched: Mapping[str, str],
+    responder: HandlerStallCauseResponder,
     environ: Mapping[str, str] | None,
     now: datetime,
+    dispatched: Mapping[str, str] | None = None,
     ledger: ProtocolLedgerRowSource | None = None,
 ) -> ModelStallResponderTickOutcome:
-    """Read the window, ask the responder, return the counts; a failed read keeps the dispatched map."""
+    """Read the stall window and the open-claim look-back, ask the responder, return the counts.
+
+    dispatched is the map of keys a caller has already dispatched; the handler passes none, as nothing starts a lane yet.
+    """
     if ledger is None:
         ledger = build_row_source(overlay.ledger_read, environ)
     until = now.astimezone(UTC) + timedelta(seconds=1)
     since = until - timedelta(seconds=overlay.window_seconds)
+    claims_since = until - timedelta(seconds=overlay.claim_lookback_seconds)
     stalls = ledger.read(
         ModelLedgerQuery(since=since, until=until, row_type="MSG", term=STALL_TERM)
     )
-    claims = ledger.read(ModelLedgerQuery(since=since, until=until, row_type="CLAIM"))
+    claims = ledger.read(
+        ModelLedgerQuery(since=claims_since, until=until, row_type="CLAIM")
+    )
     terminals = ledger.read(
-        ModelLedgerQuery(since=since, until=until, row_type="TERMINAL")
+        ModelLedgerQuery(since=claims_since, until=until, row_type="TERMINAL")
     )
     errors = [r.error for r in (stalls, claims, terminals) if r.error]
     if errors:
         return ModelStallResponderTickOutcome(
-            True, f"the ledger could not be read: {errors[0]}", dispatched
+            True, f"the ledger could not be read: {errors[0]}"
         )
-    result = HandlerStallCauseResponder().handle(
+    result: ModelStallResponderResult = responder.handle(
         ModelStallResponderRequest(
             rows=tuple(row.raw for row in stalls.rows),
-            dispatched=dict(dispatched),
+            dispatched=dict(dispatched or {}),
             covered_lanes=_live_lanes(claims.rows, terminals.rows),
             redispatch_after_hours=overlay.redispatch_after_hours,
         )
@@ -93,7 +101,7 @@ def run_stall_responder_tick(
         f"skipped={len(result.skipped)} unreadable_rows={result.unreadable_rows} "
         f"truncated_findings={result.truncated_findings} refusals={len(result.refusals)}"
     )
-    return ModelStallResponderTickOutcome(False, detail, result.dispatched)
+    return ModelStallResponderTickOutcome(False, detail)
 
 
 __all__: list[str] = [

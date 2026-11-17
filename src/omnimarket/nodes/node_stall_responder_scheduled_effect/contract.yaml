@@ -5,7 +5,7 @@
 #
 # Runs the stall responder (node_stall_responder_compute) on the runtime tick, so its stall-row answer has a trigger inside the runtime.
 # Shape of node_lane_result_sweep_scheduled_effect: it subscribes to the runtime scheduler's tick, gates on its own
-# overlay (run_interval_seconds, grace_seconds, window_seconds, redispatch_after_hours, ledger_read) and returns its terminal event for the runtime to publish.
+# overlay (run_interval_seconds, grace_seconds, window_seconds, claim_lookback_seconds, redispatch_after_hours, ledger_read) and returns its terminal event for the runtime to publish.
 name: node_stall_responder_scheduled_effect
 contract_name: node_stall_responder_scheduled_effect
 node_name: node_stall_responder_scheduled_effect
@@ -49,9 +49,9 @@ descriptor:
   node_archetype: effect
   purity: effectful
   idempotent: false
-  timeout_ms: 30000
+  timeout_ms: 600000
   side_effects:
-    - runs one stall responder pass over the ledger window on the runtime tick
+    - reads the ledger window and the open claims over the bus on the runtime tick
 
 input_subscriptions:
   - topic: "onex.intent.platform.runtime-tick.v1"

@@ -4,9 +4,9 @@
 
 handle takes the runtime tick. A tick inside the overlay's interval returns nothing and does not move the last-run
 time; the tick that is due loads the schedule overlay, reads the ledger window it names, asks the stall responder which
-cause keys need a lane and returns the run event with the counts. The handler keeps the responder's dispatched map for
-the life of the runtime process. A refused overlay or an unbound ledger route is a failed run event that names it,
-never a silent skip.
+cause keys need a lane and returns the run event with the counts. The handler keeps no dispatched key: nothing here starts
+a lane. A missing or invalid overlay is refused once by name, and any failure of a run after its interval is marked is a
+failed run event carrying the cause, never a silent skip.
 """
 
 from __future__ import annotations
@@ -25,6 +25,9 @@ from omnimarket.handlers.schedule_gate import ScheduleGate
 from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
 from omnimarket.models.schedule_trigger.model_schedule_trigger import (
     ModelScheduleRunEvent,
+)
+from omnimarket.nodes.node_stall_responder_compute.handlers.handler_stall_cause_responder import (
+    HandlerStallCauseResponder,
 )
 from omnimarket.nodes.node_stall_responder_scheduled_effect.handlers.stall_responder_tick import (
     LedgerRouteError,
@@ -48,6 +51,7 @@ class HandlerStallResponderScheduled:
         tick: Callable[..., ModelStallResponderTickOutcome] = run_stall_responder_tick,
         environ: Mapping[str, str] | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        responder: HandlerStallCauseResponder | None = None,
     ) -> None:
         self._gate = gate or ScheduleGate(
             NODE_NAME, model=ModelStallResponderScheduleOverlay, environ=environ
@@ -56,7 +60,7 @@ class HandlerStallResponderScheduled:
         self._environ = environ
         self._clock = clock
         self._refusals = ScheduledOverlayRefusalLatch(NODE_NAME)
-        self._dispatched: Mapping[str, str] = {}
+        self._responder = responder or HandlerStallCauseResponder()
 
     def _event(
         self,
@@ -79,7 +83,9 @@ class HandlerStallResponderScheduled:
                 raise NodeOverlayNotFoundError(
                     f"{NODE_NAME}: the overlay is not a stall responder schedule overlay"
                 )
-        except NodeOverlayNotFoundError as exc:
+        except NodeOverlayError as exc:
+            # Absent, or present and invalid: the gate raises NodeOverlayError for a file that fails validation. No job id
+            # is known then, so no run event can be built; the refusal log names the cause once.
             self._refusals.refuse(exc)
             return None
         now = request.now.astimezone(UTC)
@@ -89,23 +95,24 @@ class HandlerStallResponderScheduled:
         try:
             outcome = self._tick(
                 overlay=overlay,
-                dispatched=self._dispatched,
+                responder=self._responder,
                 environ=self._environ,
                 now=now,
             )
-        except NodeOverlayError:
-            return self._event(
-                request, "failed", "the stall responder overlay could not be read"
-            )
-        except LedgerRouteError:
+        except LedgerRouteError as exc:
             return self._event(
                 request,
                 "failed",
-                "the ledger route of the stall responder is not bound in the runtime",
+                f"the ledger route of the stall responder is not bound in the runtime: {exc}",
+            )
+        except Exception as exc:
+            return self._event(
+                request,
+                "failed",
+                f"the stall responder run failed: {type(exc).__name__}: {str(exc)[:400]}",
             )
         if outcome.failed:
             return self._event(request, "failed", outcome.detail)
-        self._dispatched = outcome.dispatched
         return self._event(request, "completed", outcome.detail)
 
 
