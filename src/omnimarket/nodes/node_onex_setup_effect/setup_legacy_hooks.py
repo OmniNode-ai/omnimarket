@@ -82,7 +82,7 @@ def hook_rows(
 
 
 def _files(root: Path) -> dict[Path, Path]:
-    return {
+    files = {
         path.relative_to(root): path
         for tree in (root / "hooks", root / "lib")
         for path in tree.rglob("*")
@@ -91,6 +91,13 @@ def _files(root: Path) -> dict[Path, Path]:
         and not path.is_relative_to(root / "hooks" / "tests")
         and path.suffix != ".pyc"
     }
+    # Wheels contain the vendor .js artifact in the customer closure. A source
+    # checkout keeps its JavaScript-compatible TypeScript in the handler tree.
+    module = Path("hooks/lib/native_delegation_mod.js")
+    source_module = root.parents[1] / "src/handlers/native_delegation.ts"
+    if module not in files and source_module.is_file():
+        files[module] = source_module
+    return files
 
 
 def _root() -> Path:
@@ -336,7 +343,7 @@ def observe_legacy_hooks(
     source = installer.parent.parent / "plugins" / "onex"
     root = _root()
     config = root / "hooks-delegation.json"
-    native = (source / "hooks/lib/native_delegation_mod.js").is_file()
+    native = Path("hooks/lib/native_delegation_mod.js") in _files(source)
     # Removal of a pre-native installation still uses its classic ownership
     # contract; a newer source bundle must not prevent switching an old one off.
     installed_native = (
