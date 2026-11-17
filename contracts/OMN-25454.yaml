@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-25454
+title: Make omnimarket line run where it belongs; nodes with no subscribe topic or no caller get a shared wiring change and one run is read on the dev runtime
+summary: 'node_ci_red_kind_rule_compute declared no subscribe topic and no runtime profile, so the runtime never attached it and nothing on the dev lane could hand it a demand. Its contract now declares one command topic, one terminal event, its own broker grants and the main profile, the same form node_ticket_contract_render_compute already uses.'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn25454-bus-trigger
+  statement: A node that is called in process only is given its command topic, terminal event and broker grants in its own contract, so the runtime attaches it and a demand on the topic is handled.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the nodes of the listed PRs that declare no subscribe topic or have no caller on dev are listed with the contract or wiring gap of each, read from the contracts at the merged head -- falsifier: a grep of the list for a PR number named in the ticket description that has no row or whose row names no gap'
+  - id: AC2
+    statement: 'AC2: the shared contract or wiring pattern is changed in one change, and a test built from the real contract of one listed node fails before the change and passes after it -- falsifier: uv run pytest on the new test at the merge base exits non-zero'
+  - id: AC3
+    statement: 'AC3: the change is installed on the dev runtime on h201 through the declared dev install and one run line of a listed node is read handled there, with a STATUS row carrying pr=, installed=<host>:<revision>, observed= and read_at= -- falsifier: a grep of the dev runtime log on h201 for the node name finds no handled line after the install time'
+evidence_requirements:
+- kind: tests
+  description: The node tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_ci_red_kind_rule_compute -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25454-ac1
+  description: 'AC1: the node list with each gap is in the lane report and the pull request body; hosted proxy is the contract test of the one node changed.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_ci_red_kind_rule_compute/test_rule_golden.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25454-ac2
+  description: 'AC2: the runtime wiring test loads the real contract, wires it through wire_from_manifest, publishes one command on the declared topic and reads the answer on the terminal event.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_ci_red_kind_rule_compute/test_golden_chain_runtime_wiring.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25454-ac3
+  description: 'hosted proxy for AC3: the runtime wiring test passes; the dev runtime reading is taken on h201 from the branch install and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_ci_red_kind_rule_compute -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25454-integration-proof
+  description: 'Run the node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion: the dev runtime reading on h201 is taken from the branch install and named in the pull request.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25454 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_ci_red_kind_rule_compute -q --no-cov
+    cwd: .
