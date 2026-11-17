@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-25266
+title: 'node_pr_handoff_install_proof_compute declares the runtime broker grants for its command and decided topics'
+summary: The install-proof node's contract declared no broker_acl_grants, so the dev runtime login held no READ or DESCRIBE row on the command topic and no WRITE or DESCRIBE row on the decided topic, and a demand ended "Kafka topic metadata unavailable". The contract now declares the four runtime grants, as node_start_path_census_compute does.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25266-runtime-grants
+  statement: The install-proof node's contract declares the runtime principal's broker grants for its command topic and its decided topic.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the contract declares READ and DESCRIBE on onex.cmd.omnimarket.pr-handoff-install-proof-requested.v1 and WRITE and DESCRIBE on onex.evt.omnimarket.pr-handoff-install-proof-decided.v1 for the runtime principal, and no other grant -- falsifier: uv run pytest tests/nodes/node_pr_handoff_install_proof_compute/test_contract_broker_grants.py -q fails'
+  - id: AC2
+    statement: 'AC2: the contract still subscribes to the command topic, publishes the decided topic and names it as its terminal event -- falsifier: the same test file fails on test_the_contract_subscribes_to_the_command_and_publishes_the_decided_event'
+evidence_requirements:
+- kind: tests
+  description: The focused contract grant tests.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_pr_handoff_install_proof_compute/test_contract_broker_grants.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25266-ac1-grants
+  description: The contract declares exactly the four runtime grants.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_pr_handoff_install_proof_compute/test_contract_broker_grants.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25266-ac2-topics
+  description: The contract's command topic, decided topic and terminal event are unchanged.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_pr_handoff_install_proof_compute/test_contract_broker_grants.py -q --no-cov -n 0 -p no:randomly -k subscribes_to_the_command
+    cwd: .
+- id: dod-omn25266-integration-proof
+  description: Hosted CI cannot reach the dev runtime, so only the local Done gate runs this unbound check. It sends one install proof demand with onex run-node on a lab login and exits non-zero while the runtime answers "Kafka topic metadata unavailable" (the state before the grants are applied).
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex run-node node_pr_handoff_install_proof_compute --timeout 30 --input '{"repo":"OmniNode-ai/overlays","head":"0ac3c4ba0d2c9fdf78197280d760c11737ed4585","files":["overlays/node_pr_handoff_install_proof_compute/overlay.yaml"],"exempt_kind":"","sources":[],"ancestry":[]}'
+    cwd: .

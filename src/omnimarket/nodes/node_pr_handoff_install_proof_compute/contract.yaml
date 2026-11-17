@@ -45,6 +45,13 @@ runtime_dispatch:
   command_topic: onex.cmd.omnimarket.pr-handoff-install-proof-requested.v1
 externally_consumed_topics:
 - onex.evt.omnimarket.pr-handoff-install-proof-decided.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.pr-handoff-install-proof-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.pr-handoff-install-proof-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.pr-handoff-install-proof-decided.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.pr-handoff-install-proof-decided.v1, operation: DESCRIBE}
 metadata:
   ticket: OMN-23616
   transport_type: kafka
