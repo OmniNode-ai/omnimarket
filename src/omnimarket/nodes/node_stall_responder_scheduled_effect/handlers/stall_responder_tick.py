@@ -50,9 +50,24 @@ def _live_lanes(
     claims: tuple[ModelLedgerEvidenceRow, ...],
     terminals: tuple[ModelLedgerEvidenceRow, ...],
 ) -> tuple[str, ...]:
-    closed = {row.lane for row in terminals if row.lane}
+    """A lane is live when its latest CLAIM is later than its latest TERMINAL: a lane claimed again is open again."""
+    last_terminal: dict[str, datetime] = {}
+    for row in terminals:
+        if row.lane and (
+            row.lane not in last_terminal or row.stamp > last_terminal[row.lane]
+        ):
+            last_terminal[row.lane] = row.stamp
     return tuple(
-        sorted({row.lane for row in claims if row.lane and row.lane not in closed})
+        sorted(
+            {
+                row.lane
+                for row in claims
+                if row.lane
+                and (
+                    row.lane not in last_terminal or row.stamp > last_terminal[row.lane]
+                )
+            }
+        )
     )
 
 
@@ -67,7 +82,10 @@ def run_stall_responder_tick(
 ) -> ModelStallResponderTickOutcome:
     """Read the stall window and the open-claim look-back, ask the responder, return the counts.
 
-    dispatched is the map of keys a caller has already dispatched; the handler passes none, as nothing starts a lane yet.
+    dispatched is the map of keys a caller has already dispatched; the handler passes none, as nothing starts a lane yet, so
+    redispatch_after_hours has no effect on a scheduled run until dispatched keys are stored (the node contract says so).
+    A command-route read that hits its row_limit answers read-answer-truncated, which is a failed run here, never a short
+    answer.
     """
     if ledger is None:
         ledger = build_row_source(overlay.ledger_read, environ)

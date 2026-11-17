@@ -17,6 +17,7 @@ runtime_profiles: [effects]
 
 description: >
   Runs one stall responder pass on the runtime's tick: reads the THROUGHPUT STALL rows and the live lanes from the ledger window the overlay names, asks the responder which cause keys need a lane and returns a typed run event with the counts. It starts no lane. It fails by name when the ledger route cannot be read.
+  redispatch_after_hours is read from the overlay and passed to the responder, but it has no effect on a scheduled run yet: the handler stores no dispatched key between runs, so no key is ever inside the bound. It takes effect when dispatched keys are stored. Each run logs one line `schedule-run job_id=<job> outcome=<outcome> detail=<detail>`.
 
 handler:
   module: omnimarket.nodes.node_stall_responder_scheduled_effect.handlers.handler_stall_responder_scheduled

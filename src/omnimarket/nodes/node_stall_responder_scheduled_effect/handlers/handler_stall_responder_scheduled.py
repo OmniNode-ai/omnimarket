@@ -5,12 +5,15 @@
 handle takes the runtime tick. A tick inside the overlay's interval returns nothing and does not move the last-run
 time; the tick that is due loads the schedule overlay, reads the ledger window it names, asks the stall responder which
 cause keys need a lane and returns the run event with the counts. The handler keeps no dispatched key: nothing here starts
-a lane. A missing or invalid overlay is refused once by name, and any failure of a run after its interval is marked is a
-failed run event carrying the cause, never a silent skip.
+a lane. A missing, invalid, malformed or unreadable overlay, or overlay roots that cannot be searched, is refused once by
+name, and any failure of a run after its interval is marked is a failed run event carrying the cause, never a silent skip.
+Each run event's detail is cut to DETAIL_LIMIT characters, and each run logs one line naming the job and the outcome
+(SCHEDULE_RUN_LOG), the line the dev-runtime reading of this job matches.
 """
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Literal
@@ -39,6 +42,19 @@ from omnimarket.nodes.node_stall_responder_scheduled_effect.models import (
 )
 
 NODE_NAME = "node_stall_responder_scheduled_effect"
+#: The longest run event detail; a longer one is cut and ends in TRUNCATED_MARK.
+DETAIL_LIMIT = 1000
+TRUNCATED_MARK = " [truncated]"
+#: The one log line per run: job and outcome together, so a log read can tell this job's completed run from any other line.
+SCHEDULE_RUN_LOG = "schedule-run job_id=%s outcome=%s detail=%s"
+
+_log = logging.getLogger(__name__)
+
+
+def _bounded(detail: str) -> str:
+    if len(detail) <= DETAIL_LIMIT:
+        return detail
+    return detail[: DETAIL_LIMIT - len(TRUNCATED_MARK)] + TRUNCATED_MARK
 
 
 class HandlerStallResponderScheduled:
@@ -68,13 +84,15 @@ class HandlerStallResponderScheduled:
         outcome: Literal["completed", "failed"],
         detail: str,
     ) -> ModelScheduleRunEvent:
-        return self._gate.run_event(
+        event = self._gate.run_event(
             tick_id=str(request.tick_id),
             scheduled_for=request.now,
             fired_at=self._clock(),
             outcome=outcome,
-            detail=detail,
+            detail=_bounded(detail),
         )
+        _log.info(SCHEDULE_RUN_LOG, event.job_id, event.outcome, event.detail)
+        return event
 
     def handle(self, request: ModelRuntimeTick) -> ModelScheduleRunEvent | None:
         try:
@@ -87,6 +105,15 @@ class HandlerStallResponderScheduled:
             # Absent, or present and invalid: the gate raises NodeOverlayError for a file that fails validation. No job id
             # is known then, so no run event can be built; the refusal log names the cause once.
             self._refusals.refuse(exc)
+            return None
+        except OSError as exc:
+            # The overlay roots cannot be searched (a root that cannot be entered, a name too long): find_node_overlay's
+            # is_file raises before the loader's own read catch. Refused by name, never an exception out of handle().
+            self._refusals.refuse(
+                NodeOverlayError(
+                    f"{NODE_NAME}: the overlay roots cannot be searched ({type(exc).__name__})"
+                )
+            )
             return None
         now = request.now.astimezone(UTC)
         if not self._gate.due(now):
