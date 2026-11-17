@@ -123,7 +123,7 @@ def test_named_observation_requires_every_model_proof_and_does_not_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from omnimarket.handlers.handler_endpoint_connections import HandlerModelConnections
-    from omnimarket.inference.local_byok_credential_adapter import (
+    from omnimarket.nodes.node_model_setup_effect.connection_storage import (
         register_named_connection,
     )
     from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_connection import (
@@ -262,7 +262,9 @@ def test_setup_observe_does_not_skip_requested_connection_change(
     from pydantic import SecretStr
 
     from omnimarket.handlers.handler_endpoint_connections import HandlerModelConnections
-    from omnimarket.inference import local_byok_credential_adapter as credential_owner
+    from omnimarket.nodes.node_model_setup_effect import (
+        connection_storage as credential_owner,
+    )
     from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_connection import (
         ModelEndpointConnection,
     )
@@ -271,7 +273,6 @@ def test_setup_observe_does_not_skip_requested_connection_change(
     )
 
     db = tmp_path / "store.sqlite"
-    monkeypatch.setattr(credential_owner, "default_evidence_db_path", lambda: db)
     credential_owner.register_named_connection(
         "mine",
         "openai_compatible",
