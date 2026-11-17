@@ -27,13 +27,13 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24928-ac1-credentials
-  description: The channel credentials resolve through the declared secret path and a refused channel is a typed failure naming why.
+  description: A refused channel is a typed failure naming why and is retried on the next tick; this test fails at the merge base.
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_lab_alarm_deliver_effect/test_lab_alarm_delivery_credentials.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run pytest tests/nodes/node_lab_alarm_deliver_effect/test_lab_alarm_delivery.py -k test_a_refused_channel_is_a_typed_failure_and_is_retried_on_the_next_tick -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24928-ac2-active-after-delivered
   description: A failed post leaves the subject not active and is posted again on the next tick; a delivered post marks it active and the next tick suppresses it; an already-active subject stays suppressed.
