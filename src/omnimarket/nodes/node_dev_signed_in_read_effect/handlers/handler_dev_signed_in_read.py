@@ -17,9 +17,15 @@ from typing import Any
 import yaml
 from pydantic import SecretStr
 
-from omnimarket.handlers.delegation_scenario_settings import ProtocolSettingStore
+from omnimarket.handlers.delegation_scenario_settings import (
+    ProtocolSettingStore,
+    SecretStoreSettingsReader,
+)
 from omnimarket.models.model_dev_identity_http import (
     ModelIdentityHttpRequest,
+)
+from omnimarket.nodes.node_dev_identity_provision_effect.adapters import (
+    UrllibIdentityTransport,
 )
 from omnimarket.nodes.node_dev_identity_provision_effect.protocols.protocol_dev_identity_transport import (
     ProtocolDevIdentityTransport,
@@ -31,6 +37,7 @@ from omnimarket.nodes.node_dev_signed_in_read_effect.models.model_dev_signed_in_
 )
 from omnimarket.nodes.node_dev_signed_in_read_effect.overlay import (
     ModelDevSignedInReadOverlay,
+    load_overlay,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,15 +61,33 @@ class HandlerDevSignedInRead:
     def __init__(
         self,
         *,
-        overlay: ModelDevSignedInReadOverlay,
-        transport: ProtocolDevIdentityTransport,
-        settings_store: ProtocolSettingStore,
+        overlay: ModelDevSignedInReadOverlay | None = None,
+        transport: ProtocolDevIdentityTransport | None = None,
+        settings_store: ProtocolSettingStore | None = None,
         contract_path: Path | None = None,
     ) -> None:
         self._overlay = overlay
         self._transport = transport
         self._settings_store = settings_store
         self._contract_path = contract_path
+
+    def _resolve(
+        self,
+    ) -> tuple[
+        ModelDevSignedInReadOverlay,
+        ProtocolDevIdentityTransport,
+        ProtocolSettingStore,
+    ]:
+        """Resolve runtime dependencies on the first request and cache them."""
+        if self._overlay is None:
+            self._overlay = load_overlay()
+        if self._transport is None:
+            self._transport = UrllibIdentityTransport()
+        if self._settings_store is None:
+            self._settings_store = SecretStoreSettingsReader(
+                overlay=self._overlay.secret_store
+            )
+        return self._overlay, self._transport, self._settings_store
 
     def _result(
         self,
@@ -74,6 +99,7 @@ class HandlerDevSignedInRead:
         data_state: str | None = None,
         expected_secret: str | None = None,
     ) -> ModelDevSignedInReadResult:
+        overlay, _, _ = self._resolve()
         ok = outcome in (
             EnumDevSignedInReadOutcome.READ_ACCEPTED,
             EnumDevSignedInReadOutcome.READY,
@@ -81,8 +107,8 @@ class HandlerDevSignedInRead:
         logger.info(
             "dev signed-in read outcome=%s realm=%s lane=%s user=%s status=%s",
             outcome.value,
-            self._overlay.keycloak.realm,
-            self._overlay.lane,
+            overlay.keycloak.realm,
+            overlay.lane,
             user_name,
             http_status,
         )
@@ -90,8 +116,8 @@ class HandlerDevSignedInRead:
             ok=ok,
             outcome=outcome,
             detail=detail,
-            realm=self._overlay.keycloak.realm,
-            lane=self._overlay.lane,
+            realm=overlay.keycloak.realm,
+            lane=overlay.lane,
             user_name=user_name,
             http_status=http_status,
             data_state=data_state,
@@ -101,6 +127,7 @@ class HandlerDevSignedInRead:
     def _dev_guard(
         self, command: ModelDevSignedInReadCommand
     ) -> ModelDevSignedInReadResult | None:
+        overlay, _, _ = self._resolve()
         dev_only = _load_dev_only(self._contract_path)
         declared_lane = dev_only["lane"]
         declared_realms = dev_only["realms"]
@@ -109,22 +136,22 @@ class HandlerDevSignedInRead:
                 EnumDevSignedInReadOutcome.REFUSED_NOT_DEV,
                 detail=f"command lane {command.lane!r} is not the declared dev lane {declared_lane!r}",
             )
-        if self._overlay.lane != declared_lane:
+        if overlay.lane != declared_lane:
             return self._result(
                 EnumDevSignedInReadOutcome.REFUSED_NOT_DEV,
-                detail=f"overlay lane {self._overlay.lane!r} is not the declared dev lane {declared_lane!r}",
+                detail=f"overlay lane {overlay.lane!r} is not the declared dev lane {declared_lane!r}",
             )
-        if self._overlay.keycloak.realm not in declared_realms:
+        if overlay.keycloak.realm not in declared_realms:
             return self._result(
                 EnumDevSignedInReadOutcome.REFUSED_NOT_DEV,
-                detail=f"realm {self._overlay.keycloak.realm!r} is not in the declared realms {declared_realms}",
+                detail=f"realm {overlay.keycloak.realm!r} is not in the declared realms {declared_realms}",
             )
         return None
 
     async def handle(
         self, command: ModelDevSignedInReadCommand
     ) -> ModelDevSignedInReadResult:
-        overlay = self._overlay
+        overlay, _, settings_store = self._resolve()
         kc = overlay.keycloak
         user = overlay.user
         read = overlay.read
@@ -133,9 +160,7 @@ class HandlerDevSignedInRead:
         if guard is not None:
             return guard
 
-        password = await self._settings_store.read(
-            user.password_folder, user.password_key
-        )
+        password = await settings_store.read(user.password_folder, user.password_key)
         if password is None:
             return self._result(
                 EnumDevSignedInReadOutcome.PASSWORD_MISSING,
@@ -215,13 +240,15 @@ class HandlerDevSignedInRead:
         )
 
     async def _send(self, request: ModelIdentityHttpRequest) -> Any:
+        _, transport, _ = self._resolve()
         try:
-            return await self._transport.send(request)
+            return await transport.send(request)
         except ConnectionError as exc:
             return f"no response arrived: {type(exc).__name__}"
 
     async def _user_token(self, token_url: str, password: SecretStr) -> Any:
-        user = self._overlay.user
+        overlay, _, _ = self._resolve()
+        user = overlay.user
         response = await self._send(
             ModelIdentityHttpRequest(
                 method="POST",
@@ -232,7 +259,7 @@ class HandlerDevSignedInRead:
                     "username": SecretStr(user.username),
                     "password": password,
                 },
-                timeout_seconds=self._overlay.keycloak.timeout_seconds,
+                timeout_seconds=overlay.keycloak.timeout_seconds,
             )
         )
         if isinstance(response, str):

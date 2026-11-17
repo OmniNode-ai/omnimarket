@@ -1,0 +1,79 @@
+schema_version: 1.0.0
+ticket_id: OMN-25342
+title: Make the dev signed-in read node routable on the dev runtime
+summary: 'node_dev_signed_in_read_effect declared no subscribed command topic and a handler that cannot be built without arguments, so the dev runtime on the lab answered unknown_command for it and the node could only run as a command line verb. The contract now subscribes the command topic and publishes the completed and failed topics, declares the handler routing and the runtime dispatch terminals, and the handler resolves its overlay, transport and secret store on the first request so the runtime can build it with no arguments.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25342-runtime-route
+  statement: A merged node of the dev signed-in read is reachable through the dev runtime's own ingress, so one call is handled there and leaves a run line, instead of running only from a command line.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a STATUS row on the rolling ledger reads kv pr=omnimarket#6132 installed=<host>:<revision> observed=<what ran> read_at=<UTC>, written by the lane after it read one run on h201 itself (a log line, a dispatch, a health read or a job record) -- falsifier: `grep -F ''pr=omnimarket#6132'' $ONEX_LEDGER_PATH | grep -F ''installed=''` finds no row'
+  - id: AC2
+    statement: 'AC2: one call of node_dev_signed_in_read_effect reaches the dev runtime on h201 and is handled (one run line), or the STATUS row names the single measured cause that keeps it from running and who must act -- falsifier: the dev runtime log and job record on h201 show no run line of node_dev_signed_in_read_effect and the STATUS row names no cause and no actor'
+  - id: AC3
+    statement: 'AC3: no host file, unit or plist was edited by hand: every change went through the declared installer, read from the installer own receipt -- falsifier: the STATUS row cites no installer receipt, or the installed unit differs from the revision the receipt names'
+evidence_requirements:
+- kind: tests
+  description: The node focused tests at the pushed head. The failing control is the contract at the merge base, where the command topic is not subscribed and the handler needs three arguments (the route tests fail).
+  command: uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25342-ac1-status-row
+  description: The lane's STATUS row for omnimarket#6132 names the installed host and revision and what ran. Hosted CI cannot read the rolling ledger, so only the local Done gate runs this unbound check.
+  source: manual
+  binds_ac:
+  - AC1
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: grep -F 'pr=omnimarket#6132' "$ONEX_LEDGER_PATH" | grep -F 'installed=' | grep -qF 'observed='
+    cwd: .
+- id: dod-omn25342-ac2-route
+  description: The contract subscribes the command topic, publishes the completed and failed topics and routes one handler, and the handler is built with no arguments and resolves its overlay on the first request (a missing overlay is a typed error, never a silent pass).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect/test_runtime_route.py -q --no-cov -n 0 -p no:randomly --refuse-skips
+    cwd: .
+- id: dod-omn25342-ac2-prior-behaviour
+  description: The golden chain, error chain and seam tests of the node still pass with the handler's arguments optional, so the command line verb and the tests that pass all three arguments behave as before.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25342-ac3-no-hand-edit
+  description: The change is source only, in the node's contract, its handler and its tests plus this contract file; no host file, unit or plist is in the diff. The changed paths are read at the head; a hosted checkout may be shallow, so only the local Done gate runs this unbound check.
+  source: manual
+  binds_ac:
+  - AC3
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: "! git diff --name-only HEAD~1 HEAD | grep -E '(^|/)(\\.service|\\.plist|\\.timer)$|^(etc|usr|Library)/'"
+    cwd: .
+- id: dod-omn25342-deploy-route-smoke
+  description: 'Hosted checkout deploy-scope smoke: the node contract subscribes its command topic with a routed handler, and the handler class is constructed with no arguments without touching the environment or the network. Fails on the merge base because the contract subscribes nothing and the constructor requires three keyword arguments. No service, broker, host path or credential required; this proves the package shape the runtime reads to build its ingress route, not a live rollout.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect/test_runtime_route.py -q --no-cov -n 0 -p no:randomly --refuse-skips -k "contract_routes_the_declared_command or no_arg_construction"
+    cwd: .
+- id: dod-omn25342-integration-proof
+  description: The pushed head ran the node tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25342 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect -q --no-cov
+    cwd: .
