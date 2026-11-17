@@ -70,7 +70,15 @@ def main(
         )
     if handler is None:
         overlay = None
-        if args.overlay_id:
+        if args.overlay_id is not None:
+            if not args.overlay_id.strip():
+                return _refusal(
+                    args.name,
+                    EnumDeliverKeyOutcome.KEY_UNREADABLE,
+                    "--overlay-id is empty (an unset shell variable?); the host env "
+                    "file store is not used in its place; nothing was read and "
+                    "nothing was written",
+                )
             try:
                 overlay = load_store_overlay(args.overlay_id)
             except NodeOverlayError as exc:

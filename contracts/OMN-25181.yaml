@@ -54,13 +54,25 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_secret_store_effect -q -n 0 --no-cov -p no:cacheprovider -k cli
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn25181-ac4-binding
-  description: AC4 of the OMN-24611 contract is bound to the h051 and h201 reading (a check on the pull request comments), not to a grep of the contract. The Lab comment naming the pushed head is read with onex scm pr-view, which a hosted runner cannot run.
+  description: 'AC4 is bound to the pull request comments, not to a grep of another contract. The check passes only when a comment that starts `Lab: head=<40 hex>` names HEAD of this checkout (or, on a hosted merge checkout, its second parent, the pull request head) and states the merge order against overlays#571; with no Lab comment, or a Lab comment at an older head, it fails. It fails on every head until the Lab comment of that head is posted. The binding of AC4 and AC3 of the OMN-24611 contract to the per host readings is checked by the own checks of that contract.'
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: command
-    check_value: 'python3 -c ''import yaml; d=yaml.safe_load(open("contracts/OMN-24611.yaml")); i=[x for x in d["dod_evidence"] if "AC4" in x.get("binds_ac",[])]; c=" ".join(k["check_value"] for x in i for k in x["checks"]); assert i and "issues/6297/comments" in c and "unit_digest_before" in c and "deliver_key_to_env_file" not in c; print("AC4 bound to the reading: PASS")'''
+    check_value: |-
+      gh api repos/OmniNode-ai/omnimarket/issues/6297/comments --paginate --jq '.[].body | @json' | python3 -c '
+      import json, re, subprocess, sys
+      bodies = [json.loads(line) for line in sys.stdin.read().splitlines() if line.strip()]
+      def rev(ref):
+          r = subprocess.run(["git", "rev-parse", "--verify", "--quiet", ref], capture_output=True, text=True)
+          return r.stdout.strip() if r.returncode == 0 else ""
+      heads = {h for h in (rev("HEAD"), rev("HEAD^2")) if h}
+      named = [(re.match(r"Lab: head=([0-9a-f]{40})", b), b) for b in bodies]
+      ok = [b for m, b in named if m and m.group(1) in heads and "overlays#571" in b and re.search(r"merge order", b, re.I)]
+      assert ok, "no comment that starts Lab: head= and names HEAD with the merge order against overlays#571"
+      print("AC4 Lab comment: PASS")
+      '
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn25181-integration-proof
   description: Run the focused tests of the secret store node and of the sender node on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion.

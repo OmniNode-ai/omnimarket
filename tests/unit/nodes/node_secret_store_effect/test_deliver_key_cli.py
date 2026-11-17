@@ -303,8 +303,21 @@ def test_cli_a_bad_name_is_exit_3_not_a_traceback(
         "env_file_deliveries:\n  deploy_agent_dev_signing_key: broken\n",
         "env_file_deliveries:\n  deploy_agent_dev_signing_key:\n    key_id: x\n",
         "generated_keys: [unclosed\n",
+        "generated_keys:\n  - deploy_agent_dev_signing_key\n",
+        "generated_keys: deploy_agent_dev_signing_key\n",
+        "env_file_deliveries:\n  - deploy_agent_dev_signing_key\n",
+        "env_file_deliveries: deploy_agent_dev_signing_key\n",
     ],
-    ids=["not-a-mapping", "entry-not-a-mapping", "entry-missing-keys", "invalid-yaml"],
+    ids=[
+        "not-a-mapping",
+        "entry-not-a-mapping",
+        "entry-missing-keys",
+        "invalid-yaml",
+        "non_mapping-generated-keys-list",
+        "non_mapping-generated-keys-string",
+        "non_mapping-env-file-deliveries-list",
+        "non_mapping-env-file-deliveries-string",
+    ],
 )
 def test_cli_a_malformed_contract_is_exit_3_not_a_traceback(
     tmp_path: Path,
@@ -322,3 +335,84 @@ def test_cli_a_malformed_contract_is_exit_3_not_a_traceback(
     payload = json.loads(captured.err)
     assert payload["outcome"] == "not_declared"
     assert "Traceback" not in captured.err
+
+
+@pytest.mark.parametrize("empty", ["", "  "], ids=["empty", "blank"])
+def test_cli_an_empty_overlay_id_is_exit_3_and_never_the_host_env_file_store(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    empty: str,
+) -> None:
+    """An unset shell variable gives ``--overlay-id ""``: a refusal, not the host env file store."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(cli_module, "HandlerDeliverKeyToEnvFile", _NeverBuilt)
+    code = main(["--name", _ID, "--overlay-id", empty])
+    captured = capsys.readouterr()
+    assert code == 3
+    assert captured.out == ""
+    payload = json.loads(captured.err)
+    assert payload["outcome"] == "key_unreadable"
+    assert "empty" in payload["detail"]
+    assert "Traceback" not in captured.err
+    assert list(home.rglob("*")) == []
+
+
+def test_cli_a_non_mapping_contract_block_writes_nothing_to_the_host_env_file_store(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    broken = tmp_path / "contract.yaml"
+    broken.write_text("generated_keys:\n  - a_list\n", encoding="utf-8")
+    monkeypatch.setattr(handler_deliver_key, "_CONTRACT_PATH", broken)
+    code = main(["--name", _ID])
+    captured = capsys.readouterr()
+    assert code == 3
+    assert captured.out == ""
+    assert "Traceback" not in captured.err
+    assert list(home.rglob("*")) == []
+
+
+@pytest.mark.parametrize(
+    "document_text",
+    ["secret_store: [unclosed\n", "secret_store: just a string\n"],
+    ids=["invalid-yaml", "wrong-shape"],
+)
+def test_cli_an_unparsable_named_overlay_is_exit_3_not_a_traceback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    document_text: str,
+) -> None:
+    root = _overlay_root(tmp_path, {})
+    (root / _OVERLAY_ID / "overlay.yaml").write_text(document_text, encoding="utf-8")
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+    monkeypatch.setattr(cli_module, "HandlerDeliverKeyToEnvFile", _NeverBuilt)
+    code = main(["--name", _ID, "--overlay-id", _OVERLAY_ID])
+    captured = capsys.readouterr()
+    assert code == 3
+    assert captured.out == ""
+    assert json.loads(captured.err)["outcome"] == "key_unreadable"
+    assert "Traceback" not in captured.err
+
+
+def test_cli_an_unreadable_named_overlay_file_is_exit_3_not_a_traceback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _overlay_root(tmp_path, {})
+    (root / _OVERLAY_ID / "overlay.yaml").write_bytes(b"\xff\xfe\x00 not utf-8 \x80")
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+    monkeypatch.setattr(cli_module, "HandlerDeliverKeyToEnvFile", _NeverBuilt)
+    code = main(["--name", _ID, "--overlay-id", _OVERLAY_ID])
+    captured = capsys.readouterr()
+    assert code == 3
+    assert captured.out == ""
+    assert json.loads(captured.err)["outcome"] == "key_unreadable"

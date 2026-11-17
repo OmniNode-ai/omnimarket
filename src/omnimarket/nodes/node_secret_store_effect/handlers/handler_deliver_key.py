@@ -56,6 +56,7 @@ import stat
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -114,20 +115,35 @@ class _DeclaredDelivery:
     mode: int
 
 
+def _mapping_block(
+    raw: dict[str, Any], key: str, contract_path: Path
+) -> dict[Any, Any]:
+    """The contract's ``key`` block: absent or null is empty, anything but a mapping is refused."""
+    block = raw.get(key)
+    if block is None:
+        return {}
+    if not isinstance(block, dict):
+        raise ValueError(
+            f"{contract_path}: {key} is a {type(block).__name__}, not a mapping"
+        )
+    return block
+
+
 def _load_contract(
     contract_path: Path,
 ) -> tuple[dict[str, _DeclaredDelivery], dict[str, _GeneratedFolderKey]]:
     """The contract's env file deliveries, its generated keys alongside them.
 
     Raises:
-        ValueError: the contract is not a mapping, a delivery entry is
+        ValueError: the contract is not a mapping, its ``generated_keys`` or
+            ``env_file_deliveries`` block is not a mapping, a delivery entry is
             malformed, its ``home_relative_path`` is absolute or contains
             ``..``, or its ``mode`` is anything but 0600 or 0400.
     """
     raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise ValueError(f"{contract_path}: the contract is not a mapping")
-    generated_block = raw.get("generated_keys") or {}
+    generated_block = _mapping_block(raw, "generated_keys", contract_path)
     generated: dict[str, _GeneratedFolderKey] = {}
     for name, spec in generated_block.items():
         if not isinstance(spec, dict):
@@ -136,7 +152,7 @@ def _load_contract(
             folder=str(spec["folder"]),
             key=str(spec["key"]),
         )
-    block = raw.get("env_file_deliveries") or {}
+    block = _mapping_block(raw, "env_file_deliveries", contract_path)
     declared: dict[str, _DeclaredDelivery] = {}
     for name, spec in block.items():
         if not isinstance(spec, dict):
