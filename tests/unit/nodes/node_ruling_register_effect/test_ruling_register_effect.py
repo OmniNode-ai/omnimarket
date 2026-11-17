@@ -1478,6 +1478,39 @@ def test_read_register_holds_the_ledger_lock_its_environment_names(
     assert verdicts["plain-row"] is EnumRulingVerdict.TRUE
 
 
+def test_a_hand_run_and_the_units_tick_take_one_lock_under_onex_state_dir_and_exclude_each_other(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The unit and a hand run (the serial proof's tick) name no lock file of their own: both carry ONEX_STATE_DIR (on
+    h201 the unit's {registry_root}/.onex_state and a lane's $OMNI_HOME/.onex_state are one directory), so both take
+    <ONEX_STATE_DIR>/ruling-register/ledger-reader.lock. While the unit's tick holds that lock a hand run reads its
+    ledger rows UNREAD; once it lets go the hand run reads them. A temp-directory default would let the two overlap."""
+    state_dir = tmp_path / "state"
+    unit_lock = state_dir / "ruling-register" / "ledger-reader.lock"
+    unit_lock.parent.mkdir(parents=True)
+    ledger = cli_row(
+        "ledger-row", "pass  # node_work_ledger_reader_effect", {"kind": "exit_zero"}
+    )
+    plain = cli_row("plain-row", "pass", {"kind": "exit_zero"})
+    environ = cli_env(tmp_path, monkeypatch, [ledger, plain])
+    monkeypatch.delenv("ONEX_RULING_REGISTER_LEDGER_LOCK", raising=False)
+    assert "ONEX_RULING_REGISTER_LEDGER_LOCK" not in environ
+    hand_run = {**environ, "ONEX_STATE_DIR": str(state_dir)}
+
+    class Port:
+        def read(self, r: ModelRulingRow) -> ModelRulingReading:
+            return fixture(r.row_id).model_copy(update={"read_at": NOW})
+
+    with ForeignLockHolder(unit_lock):
+        held, _ = read_register(hand_run, port=Port(), clock=lambda: NOW, now=NOW)
+    verdicts = {v.row_id: v.verdict for v in held.verdicts}
+    assert verdicts["ledger-row"] is EnumRulingVerdict.UNREAD
+    assert verdicts["plain-row"] is EnumRulingVerdict.TRUE
+    # Control: with the unit's tick done, the same hand run reads its ledger row.
+    free, _ = read_register(hand_run, port=Port(), clock=lambda: NOW, now=NOW)
+    assert {v.verdict for v in free.verdicts} == {EnumRulingVerdict.TRUE}
+
+
 def test_read_register_does_not_widen_the_bound_when_now_is_given() -> None:
     """The span widens the age bound only for the judgement the tick makes itself (``now`` unset). A caller that names
     ``now`` judges at that instant against the policy's own bound: a reading 650 s old at ``now`` is UNREAD under 600 s

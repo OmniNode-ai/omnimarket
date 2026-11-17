@@ -30,10 +30,14 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
-from omnimarket.models.model_ruling_register import EnumRulingVerdict
+from omnimarket.models.model_ruling_register import (
+    EnumRulingVerdict,
+    ModelRulingRegisterPolicy,
+)
 from omnimarket.nodes.node_ruling_register_compute.overlay import (
     load_ruling_register_policy,
 )
+from omnimarket.nodes.node_ruling_register_effect.models import ModelRulingRoute
 from omnimarket.nodes.node_ruling_register_effect.overlay import load_route
 from omnimarket.nodes.node_ruling_register_effect.runtime_ruling_register import (
     read_register,
@@ -68,14 +72,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--probe", action="store_true")
     args = parser.parse_args(list(sys.argv[1:] if argv is None else argv))
     try:
-        load_ruling_register_policy(os.environ)
+        policy = load_ruling_register_policy(os.environ)
         route = load_route(os.environ)
     except LOADER_ERRORS as exc:
         return _indeterminate(exc)
     if args.probe:
         sys.stdout.write("PROBE ok\n")
         return EXIT_OK
-    return _run(args.state_dir, os.environ.get(route.journal_env, "").strip())
+    return _run(args.state_dir, policy, route)
 
 
 def _indeterminate(exc: BaseException) -> int:
@@ -83,9 +87,13 @@ def _indeterminate(exc: BaseException) -> int:
     return EXIT_UNREADABLE
 
 
-def _run(state_dir: str, journal: str) -> int:
-    """One pass: read the register, print the MISSING lines and the summary, record the reading under ``state_dir``."""
-    judged, sink_errors = read_register(os.environ)
+def _run(
+    state_dir: str, policy: ModelRulingRegisterPolicy, route: ModelRulingRoute
+) -> int:
+    """One pass: read the register under the policy and the route ``main`` loaded (never a second load outside its
+    loader guard), print the MISSING lines and the summary, record the reading under ``state_dir``."""
+    journal = os.environ.get(route.journal_env, "").strip()
+    judged, sink_errors = read_register(os.environ, policy=policy, route=route)
     for error in sink_errors:
         sys.stderr.write(f"RULING-REGISTER-JOURNAL-ERROR {error}\n")
     for line in judged.lines():

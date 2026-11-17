@@ -10,9 +10,9 @@ requirements:
   statement: Every blocking finding of the fifth review is fixed with a test that fails at the reviewed head, or argued with evidence in a PR comment.
   acceptance:
   - id: AC1
-    statement: 'AC1: contracts/OMN-24944.yaml AC4 records the install status output, last-run.json, a Lab line, the serial-run record and a REGISTER-VALUES deployed=True line at the new head, and its check does not need the Lab line it records -- falsifier: `uv run pytest tests -k ruling_register_unit -q -p no:cacheprovider` fails when the AC4 evidence is missing or the check reads its own Lab line'
+    statement: 'AC1: contracts/OMN-24944.yaml AC4 records the install status output, last-run.json, a Lab line, the serial-run record and a REGISTER-VALUES deployed=True line at the new head, and its check does not need the Lab line it records -- falsifier: the local Done gate check dod-omn25377-integration-proof, run on the gate host with RULING_REGISTER_HOST set, exits non-zero when the AC4 evidence on h201 is missing or a ledger row reads UNREAD'
   - id: AC2
-    statement: 'AC2: the deployed docker row is the hardened row and the match test no longer accepts DEPLOYED_FOREIGN_CONTAINERS, so a failing docker on h201 reads UNREAD and never TRUE -- falsifier: `uv run pytest tests -k ruling_register_unit -q -p no:cacheprovider` fails when the unhardened row matches the deployed row'
+    statement: 'AC2: the deployed docker row is the hardened row and the match test no longer accepts DEPLOYED_FOREIGN_CONTAINERS, so a failing docker on h201 reads UNREAD and never TRUE -- falsifier: the local Done gate command `ONEX_RULING_REGISTER_DEPLOYED_ROOTS=/data/omninode/overlays/overlays uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -k "h201_rows_of_the_test_match or failing_docker_row" -q -p no:cacheprovider` fails while the deployed docker row is the unhardened row'
   - id: AC3
     statement: 'AC3: the dod commands of contracts/OMN-25318.yaml (lines 71, 81, 93) and the effect, unit and journal_env tests set ONEX_RULING_REGISTER_DEPLOYED_ROOTS under local_done_gate, so the H201_ROWS comparison and the marker count read the deployed overlay -- falsifier: the local Done gate command `ONEX_RULING_REGISTER_DEPLOYED_ROOTS=/data/omninode/overlays/overlays uv run --frozen pytest tests -k "dod_commands_that_compare or h201_rows_of_the_test_match" -q -p no:cacheprovider` fails when the deployed overlay is absent or the tests read overlay.example.yaml'
   - id: AC4
@@ -47,6 +47,7 @@ dod_evidence:
       set -eu
       host=${RULING_REGISTER_HOST:-h201}
       on_host() { if [ "$host" = local ]; then "$@"; else ssh "$host" "$@"; fi; }
+      on_host true || { echo "$host does not answer from $(hostname): set RULING_REGISTER_HOST to the alias of h201 on this gate host (local on h201 itself)"; exit 1; }
       rec=$(on_host cat "$(on_host printenv HOME)/.local/state/omni/ruling-register/last-run.json")
       printf "%s\n" "$rec"
       journal=$(printf "%s" "$rec" | sed -n "s/.*\"journal\": \"\([^\"]*\)\".*/\1/p")
@@ -130,7 +131,35 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: 'sh -c ''set -eu; lab=$(onex scm pr-view OmniNode-ai/omnimarket#6345 | grep -F "Lab: head=$(git rev-parse HEAD)"); printf "%s\n" "$lab"; printf "%s\n" "$lab" | grep -q "exit=0"; if printf "%s\n" "$lab" | grep -qE "exit[= ][1-9]"; then echo "the Lab line reports a failed command"; exit 1; fi'''
+    check_value: |-
+      sh -c '
+      set -eu
+      head=$(git rev-parse HEAD)
+      view=$(mktemp)
+      trap "rm -f $view" EXIT
+      onex scm pr-view OmniNode-ai/omnimarket#6345 --source bus > "$view"
+      python3 - "$head" "$view" <<"PY"
+      import json, re, sys
+      head, path = sys.argv[1], sys.argv[2]
+      answer = json.load(open(path, encoding="utf-8"))
+      if answer.get("source") != "bus":
+          sys.exit("pr-view answered from " + str(answer.get("source")) + ", which carries no comments: the Lab comment is unread")
+      comments = (answer.get("result") or {}).get("comments") or []
+      labs = [c for c in comments if str(c.get("body", "")).startswith("Lab: head=")]
+      if not labs:
+          sys.exit("the PR carries no comment starting Lab: head=")
+      newest = max(labs, key=lambda c: (str(c.get("created_at", "")), int(c.get("id") or 0)))
+      body = str(newest["body"])
+      first = body.splitlines()[0]
+      print(first)
+      if not first.startswith("Lab: head=" + head):
+          sys.exit("the newest Lab comment names another head than " + head)
+      if "exit=0" not in body:
+          sys.exit("the newest Lab comment names no command with exit=0")
+      if re.search(r"exit[= ][1-9]", body):
+          sys.exit("the newest Lab comment reports a failed command")
+      PY
+      '
     cwd: .
 - id: dod-omn25377-integration-proof
   description: 'An asserted read of the live register record on h201 (read only): the 8 ledger rows are answered TRUE or FALSE in last-run.json and h201''s unit is not mid-tick. It fails while the install on h201 reads the ledger rows UNREAD, so only the local Done gate runs it, after the head is installed through the declared installer.'
@@ -141,5 +170,18 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: "sh -c '\nset -eu\nrec=$(ssh h201 cat .local/state/omni/ruling-register/last-run.json)\nprintf \"%s\\n\" \"$rec\"\nfor id in new-work-lands-with-a-fable-verdict dev-holds-ready merged-means-running lanes-placed-bottom-up fable-reviews-run-on-the-mac holds-have-an-owner-and-an-unexpired-expiry plan-slice-round-four-needs-a-scope-cut lab-fill-skips-under-a-fifth; do\n  printf \"%s\" \"$rec\" | grep -qE \"\\\"$id\\\": \\\"(TRUE|FALSE)\\\"\" || { echo \"row $id is not answered on h201\"; exit 1; }\ndone\nrc=0; ssh h201 pgrep -f \"[r]untime_ruling_register_tick\" > /dev/null || rc=$?\ncase \"$rc\" in 1) ;; 0) echo \"h201 is mid-tick\"; exit 1 ;; *) echo \"pgrep on h201 did not answer (exit $rc)\"; exit 1 ;; esac\n'"
+    check_value: |-
+      sh -c '
+      set -eu
+      host=${RULING_REGISTER_HOST:-h201}
+      on_host() { if [ "$host" = local ]; then "$@"; else ssh "$host" "$@"; fi; }
+      on_host true || { echo "$host does not answer from $(hostname): set RULING_REGISTER_HOST to the alias of h201 on this gate host (local on h201 itself)"; exit 1; }
+      rec=$(on_host cat .local/state/omni/ruling-register/last-run.json)
+      printf "%s\n" "$rec"
+      for id in new-work-lands-with-a-fable-verdict dev-holds-ready merged-means-running lanes-placed-bottom-up fable-reviews-run-on-the-mac holds-have-an-owner-and-an-unexpired-expiry plan-slice-round-four-needs-a-scope-cut lab-fill-skips-under-a-fifth; do
+        printf "%s" "$rec" | grep -qE "\"$id\": \"(TRUE|FALSE)\"" || { echo "row $id is not answered on h201"; exit 1; }
+      done
+      rc=0; on_host pgrep -f "[r]untime_ruling_register_tick" > /dev/null || rc=$?
+      case "$rc" in 1) ;; 0) echo "h201 is mid-tick"; exit 1 ;; *) echo "pgrep on h201 did not answer (exit $rc)"; exit 1 ;; esac
+      '
     cwd: .

@@ -106,5 +106,32 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: |-
-      sh -c 'set -eu; lab=$(onex scm pr-view OmniNode-ai/omnimarket#6345 | grep -F "Lab: head=$(git rev-parse HEAD)"); printf "%s\n" "$lab"; printf "%s\n" "$lab" | grep -q "exit=0"; if printf "%s\n" "$lab" | grep -qE "exit[= ][1-9]"; then echo "the Lab line reports a failed command"; exit 1; fi'
+      sh -c '
+      set -eu
+      head=$(git rev-parse HEAD)
+      view=$(mktemp)
+      trap "rm -f $view" EXIT
+      onex scm pr-view OmniNode-ai/omnimarket#6345 --source bus > "$view"
+      python3 - "$head" "$view" <<"PY"
+      import json, re, sys
+      head, path = sys.argv[1], sys.argv[2]
+      answer = json.load(open(path, encoding="utf-8"))
+      if answer.get("source") != "bus":
+          sys.exit("pr-view answered from " + str(answer.get("source")) + ", which carries no comments: the Lab comment is unread")
+      comments = (answer.get("result") or {}).get("comments") or []
+      labs = [c for c in comments if str(c.get("body", "")).startswith("Lab: head=")]
+      if not labs:
+          sys.exit("the PR carries no comment starting Lab: head=")
+      newest = max(labs, key=lambda c: (str(c.get("created_at", "")), int(c.get("id") or 0)))
+      body = str(newest["body"])
+      first = body.splitlines()[0]
+      print(first)
+      if not first.startswith("Lab: head=" + head):
+          sys.exit("the newest Lab comment names another head than " + head)
+      if "exit=0" not in body:
+          sys.exit("the newest Lab comment names no command with exit=0")
+      if re.search(r"exit[= ][1-9]", body):
+          sys.exit("the newest Lab comment reports a failed command")
+      PY
+      '
     cwd: .

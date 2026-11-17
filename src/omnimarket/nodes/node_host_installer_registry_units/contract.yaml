@@ -334,10 +334,10 @@ units:
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_PR_WATCHER_STATE: "{home}/.local/state/onex/pr-watcher-readonly/state.json"
       ONEX_RULING_REGISTER_JOURNAL: "{registry_root}/.onex_state/ruling-register/journal.jsonl"
-      # The cross-process ledger-reader lock sits in the unit's own state directory, not the temp directory: a lock file
-      # another user created in a sticky temp directory cannot be opened for writing under fs.protected_regular=2 (h201),
-      # and a hand run shares this lock with the unit only when both name the same file.
-      ONEX_RULING_REGISTER_LEDGER_LOCK: "{registry_root}/.onex_state/ruling-register/ledger-reader.lock"
+      # No ledger-lock variable: the register derives the cross-process ledger-reader lock from ONEX_STATE_DIR above
+      # (<ONEX_STATE_DIR>/ruling-register/ledger-reader.lock, the unit's state directory, never the temp directory, where
+      # a lock file another user created cannot be opened under fs.protected_regular=2 on h201). A hand run on the same
+      # host carries the same ONEX_STATE_DIR and so takes the same lock: the two exclude each other.
     evidence_file: .local/state/omni/ruling-register/last-run.json
     state_directory: .onex_state/ruling-register
   # The same reader on a Linux pool host (OMN-22878): a systemd user service and timer, so every lab host keeps the

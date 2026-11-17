@@ -22,7 +22,9 @@ import pytest
 import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
+from omnimarket.models.model_github_gateway_io import ModelPrComment, ModelPrTextResult
 from omnimarket.models.model_ruling_register import ModelRulingRow
+from omnimarket.models.scm.model_scm_command import EnumScmNode, ModelScmAnswer
 from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units import (
     HandlerRegistryUnits,
     load_units,
@@ -34,6 +36,7 @@ from omnimarket.nodes.node_ruling_register_effect.handlers.handler_ruling_regist
     DEFAULT_LEDGER_LOCK,
     LEDGER_LOCK_ENV,
     is_ledger_reader_row,
+    resolve_ledger_lock,
 )
 from omnimarket.nodes.node_ruling_register_effect.overlay import load_route
 from omnimarket.nodes.node_ruling_register_effect.runtime_ruling_register import (
@@ -1015,15 +1018,79 @@ def test_the_ac4_check_fails_for_another_revision_a_stale_record_or_another_firs
     assert world.run_check().returncode != 0
 
 
+def _bus_view(head: str, comments: list[tuple[int, str, str]]) -> str:
+    """What ``onex scm pr-view <pr> --source bus`` prints, built through the reader's own answer and result models (the
+    gateway's ``pr_text`` read: the PR with its conversation comments). ``comments`` are (id, created_at, body)."""
+    result = ModelPrTextResult(
+        repo="OmniNode-ai/omnimarket",
+        pr_number=6345,
+        title="t",
+        body="b",
+        body_truncated=False,
+        state="open",
+        is_draft=True,
+        merged=False,
+        author="<author>",
+        head_ref="omn-24944-ruling-register-tick",
+        head_sha=head,
+        base_ref="dev",
+        truncated=False,
+        comments=[
+            ModelPrComment(
+                id=cid,
+                author="<author>",
+                created_at=at,
+                updated_at=at,
+                body=body,
+                body_truncated=False,
+            )
+            for cid, at, body in comments
+        ],
+    )
+    answer = ModelScmAnswer(
+        verb="pr-view",
+        node=EnumScmNode("node_github_repo_gateway_effect"),
+        operation="pr_text",
+        repo="OmniNode-ai/omnimarket",
+        source="bus",
+        outcome="completed",
+        result=result.model_dump(mode="json"),
+    )
+    return json.dumps(answer.model_dump(mode="json"), separators=(",", ":")) + "\n"
+
+
+def _lab_check(contract_file: str, ac: str) -> str:
+    contract = yaml.safe_load(
+        (base.ROOT / "contracts" / contract_file).read_text(encoding="utf-8")
+    )
+    entry = next(
+        item
+        for item in contract["dod_evidence"]
+        if ac in item["binds_ac"] and "Lab" in str(item)
+    )
+    assert entry["execution_scope"] == "local_done_gate"
+    (check,) = (c for c in entry["checks"] if "Lab: head=" in str(c["check_value"]))
+    return str(check["check_value"])
+
+
 @pytest.mark.parametrize(
     ("contract_file", "ac"),
-    [("OMN-25207.yaml", "AC6"), ("OMN-25283.yaml", "AC8")],
-    ids=["round-two", "round-three"],
+    [
+        ("OMN-25207.yaml", "AC6"),
+        ("OMN-25283.yaml", "AC8"),
+        ("OMN-25318.yaml", "AC8"),
+        ("OMN-25377.yaml", "AC8"),
+    ],
+    ids=["round-two", "round-three", "round-four", "round-five"],
 )
-def test_the_lab_comment_check_of_the_earlier_rounds_fails_without_the_lab_line_for_the_head_or_with_a_failed_command(
+def test_the_lab_comment_check_reads_the_comments_and_matches_only_the_newest_lab_comment(
     tmp_path: Path, contract_file: str, ac: str
 ) -> None:
-    command = _check_command(contract_file, ac)
+    """The Lab checks read the PR's comments through the gateway (``pr-view --source bus``; the watcher's local answer
+    carries none) and judge only the newest comment starting ``Lab: head=``: it must name the head, an exit=0 and no
+    failed exit. An older Lab comment for the head does not stand in for a newer one at another head."""
+    command = _lab_check(contract_file, ac)
+    assert "--source bus" in command
     head = base._git(
         ["git", "rev-parse", "HEAD"],
         cwd=base.ROOT,
@@ -1031,11 +1098,17 @@ def test_the_lab_comment_check_of_the_earlier_rounds_fails_without_the_lab_line_
         text=True,
         check=True,
     ).stdout.strip()
+    other = "0" * 40
     bin_dir = tmp_path / "bin"
 
-    def run(pr_view_output: str) -> int:
-        (tmp_path / "view.txt").write_text(pr_view_output, encoding="utf-8")
-        _write_stub(bin_dir, "onex", f'cat "{tmp_path}/view.txt"\n')
+    def run(view: str) -> int:
+        (tmp_path / "view.txt").write_text(view, encoding="utf-8")
+        _write_stub(
+            bin_dir,
+            "onex",
+            '[ "$*" = "scm pr-view OmniNode-ai/omnimarket#6345 --source bus" ] || exit 2\n'
+            f'cat "{tmp_path}/view.txt"\n',
+        )
         return subprocess.run(
             shlex.split(command),
             cwd=base.ROOT,
@@ -1047,28 +1120,37 @@ def test_the_lab_comment_check_of_the_earlier_rounds_fails_without_the_lab_line_
             check=False,
         ).returncode
 
-    bare_head = f'{{"head_sha":"{head}","comments":[]}}\n'
-    other_head = f'Lab: head={"0" * 40} host=h053\n{{"head_sha":"{head}"}}\n'
-    with_lab = f'{{"head_sha":"{head}"}}\nLab: head={head} host=h053 exit=0\n'
-    failed = f'{{"head_sha":"{head}"}}\nLab: head={head} host=h053 cmd=a exit=0 cmd=b exit=1\n'
-    no_exit = f'{{"head_sha":"{head}"}}\nLab: head={head} host=h053 cmd=a\n'
-    # The old check (grep for the sha alone) passes on a PR with no Lab comment; the new one does not.
-    old = subprocess.run(
-        ["sh", "-c", 'printf "%s" "$1" | grep -F "$2"', "_", bare_head, head],
-        check=False,
+    old_at, new_at = "2026-11-17T10:00:00Z", "2026-11-17T12:00:00Z"
+    good = f"Lab: head={head} host=h053 cmd=pytest exit=0"
+    # The watcher's own answer (the committed reader output) carries no comments: unread, never passed.
+    assert run(PR_VIEW_FIXTURE.read_text(encoding="utf-8")) != 0
+    assert run(_bus_view(head, [])) != 0
+    assert run(_bus_view(head, [(1, new_at, "a review, no Lab line")])) != 0
+    assert run(_bus_view(head, [(1, new_at, f"Lab: head={other} exit=0")])) != 0
+    # Control: the newest Lab comment names the head with exit=0.
+    assert (
+        run(
+            _bus_view(
+                head, [(1, old_at, f"Lab: head={other} exit=0"), (2, new_at, good)]
+            )
+        )
+        == 0
     )
-    assert old.returncode == 0
-    assert run(bare_head) != 0
-    assert run(other_head) != 0
-    # The grep alone passed on a Lab line that reports a failed command; the check also rejects a non-zero exit.
-    grep_only = subprocess.run(
-        ["sh", "-c", 'printf "%s" "$1" | grep -F "Lab: head=$2"', "_", failed, head],
-        check=False,
+    assert run(_bus_view(head, [(2, new_at, good), (3, new_at, "a later review")])) == 0
+    # Only the newest Lab comment counts: an older one for the head does not pass a newer one at another head.
+    assert (
+        run(
+            _bus_view(
+                head, [(1, old_at, good), (2, new_at, f"Lab: head={other} exit=0")]
+            )
+        )
+        != 0
     )
-    assert grep_only.returncode == 0
-    assert run(failed) != 0
-    assert run(no_exit) != 0
-    assert run(with_lab) == 0
+    assert (
+        run(_bus_view(head, [(1, old_at, good), (2, new_at, f"{good} cmd=b exit=1")]))
+        != 0
+    )
+    assert run(_bus_view(head, [(1, new_at, f"Lab: head={head} host=h053 cmd=a")])) != 0
 
 
 # ---- review of head 438e88419fa9 --------------------------------------------------------------------------------
@@ -1195,6 +1277,7 @@ class ProofWorld:
         _write_stub(
             self.bin,
             "uv",
+            f'printf "%s\\n" "ONEX_STATE_DIR=${{ONEX_STATE_DIR:-}}" "LOCK=${{ONEX_RULING_REGISTER_LEDGER_LOCK:-}}" > "{self.tmp_path}/uv-env.txt"\n'
             'while [ "$#" -gt 0 ]; do [ "$1" = --state-dir ] && d=$2; shift; done\n'
             f'cp "{self.record}" "$d/last-run.json"\n'
             'echo "RULING-REGISTER rows=16 TRUE=8 FALSE=0 UNREAD=8"\n',
@@ -1216,15 +1299,22 @@ class ProofWorld:
         _write_stub(self.bin, "pgrep", f"exit {self.pgrep_rc}\n")
         _write_stub(self.bin, "docker", f'cat "{env_file}"\n')
 
-    def run(self, index: int) -> subprocess.CompletedProcess[str]:
+    def run(
+        self, index: int, *, drop: tuple[str, ...] = ()
+    ) -> subprocess.CompletedProcess[str]:
+        env = {
+            **os.environ,
+            "PATH": f"{self.bin}:{os.environ['PATH']}",
+            "OMNI_HOME": str(self.tmp_path),
+            "ONEX_STATE_DIR": str(self.tmp_path / "state"),
+            "ONEX_RULING_REGISTER_LEDGER_LOCK": str(self.tmp_path / "stray.lock"),
+        }
+        for name in drop:
+            env.pop(name, None)
         return subprocess.run(
             shlex.split(_proof_check(index)),
             cwd=self.tmp_path,
-            env={
-                **os.environ,
-                "PATH": f"{self.bin}:{os.environ['PATH']}",
-                "OMNI_HOME": str(self.tmp_path),
-            },
+            env=env,
             capture_output=True,
             text=True,
             check=False,
@@ -1436,11 +1526,21 @@ def test_the_overlap_guard_passes_only_on_pgrep_exit_1_and_fails_when_ssh_fails_
 def test_the_unit_sets_the_ledger_lock_under_its_state_directory_not_the_temp_directory(
     tmp_path: Path,
 ) -> None:
+    """The unit names no lock file: the lock derives from the ONEX_STATE_DIR it renders, which is the installer's state
+    directory, so a hand run carrying the same ONEX_STATE_DIR takes the same file."""
     rendered, _home = _rendered_dry_run(tmp_path)
     state_directory = str(load_units()[UNIT]["state_directory"])
     lock = tmp_path / "omni" / state_directory / "ledger-reader.lock"
-    assert f'"ONEX_RULING_REGISTER_LEDGER_LOCK={lock}"' in rendered
-    # The handler's default (the temp directory) is not what the unit runs with.
+    assert f"{LEDGER_LOCK_ENV}=" not in rendered
+    match = re.search(r'"ONEX_STATE_DIR=([^"]+)"', rendered)
+    assert match is not None
+    assert resolve_ledger_lock({"ONEX_STATE_DIR": match.group(1)}) == lock
+    assert (
+        resolve_ledger_lock({"ONEX_STATE_DIR": match.group(1), LEDGER_LOCK_ENV: ""})
+        == lock
+    )
+    # The handler's last-resort default (the temp directory) is not what the unit runs with.
+    assert resolve_ledger_lock({}) == DEFAULT_LEDGER_LOCK
     assert str(DEFAULT_LEDGER_LOCK) not in rendered
     assert LEDGER_LOCK_ENV == "ONEX_RULING_REGISTER_LEDGER_LOCK"
 
@@ -1506,7 +1606,14 @@ def test_the_omn25377_ac1_and_ac2_bind_only_to_local_gate_checks_that_read_h201_
 
 
 @pytest.mark.parametrize(
-    ("contract_file", "ac"), [("OMN-25318.yaml", "AC5"), ("OMN-25377.yaml", "AC3")]
+    ("contract_file", "ac"),
+    [
+        ("OMN-25318.yaml", "AC5"),
+        ("OMN-25377.yaml", "AC3"),
+        ("OMN-25318.yaml", "AC4"),
+        ("OMN-25318.yaml", "AC6"),
+        ("OMN-25377.yaml", "AC2"),
+    ],
 )
 def test_the_deployed_overlay_falsifiers_name_the_local_gate_command(
     contract_file: str, ac: str
@@ -1525,3 +1632,87 @@ def test_the_deployed_overlay_falsifiers_name_the_local_gate_command(
         "ONEX_RULING_REGISTER_DEPLOYED_ROOTS=/data/omninode/overlays/overlays "
         in falsifier
     )
+
+
+# ---- review of head a92ec8dfc09d -------------------------------------------------------------------------------------
+
+ROUND_CONTRACTS = (
+    "OMN-24944.yaml",
+    "OMN-25207.yaml",
+    "OMN-25283.yaml",
+    "OMN-25318.yaml",
+    "OMN-25377.yaml",
+)
+
+
+def _acceptance(contract_file: str, ac: str) -> str:
+    contract = yaml.safe_load(
+        (base.ROOT / "contracts" / contract_file).read_text(encoding="utf-8")
+    )
+    (acceptance,) = (
+        a for r in contract["requirements"] for a in r["acceptance"] if a["id"] == ac
+    )
+    return str(acceptance["statement"])
+
+
+@pytest.mark.parametrize("contract_file", ROUND_CONTRACTS)
+def test_no_check_of_the_rounds_names_ssh_h201_and_every_host_read_goes_through_on_host(
+    contract_file: str,
+) -> None:
+    """``ssh h201`` resolves on neither the gate host h053 nor h201 itself; a host read names RULING_REGISTER_HOST
+    (the gate host's alias of h201, ``local`` on h201) through ``on_host``, which fails loud when the alias does not
+    answer."""
+    contract = yaml.safe_load(
+        (base.ROOT / "contracts" / contract_file).read_text(encoding="utf-8")
+    )
+    for entry in contract["dod_evidence"]:
+        for check in entry["checks"]:
+            value = str(check["check_value"])
+            assert not re.search(r"\bssh\s+h201\b", value), entry["id"]
+            if "on_host " in value:
+                assert "host=${RULING_REGISTER_HOST:-h201}" in value, entry["id"]
+                assert "on_host true ||" in value, entry["id"]
+
+
+@pytest.mark.parametrize(
+    ("contract_file", "ac", "gate_check"),
+    [
+        ("OMN-25318.yaml", "AC1", "dod-omn24944-ac4-integration-proof"),
+        ("OMN-25377.yaml", "AC1", "dod-omn25377-integration-proof"),
+    ],
+)
+def test_the_evidence_falsifiers_name_the_local_gate_check_and_no_lab_line(
+    contract_file: str, ac: str, gate_check: str
+) -> None:
+    """Plain pytest reads stubs and the example overlay and passes, so it cannot falsify evidence on h201: the falsifier
+    names the local Done gate check that reads it, and the AC4 check is not said to need a Lab line."""
+    statement = _acceptance(contract_file, ac)
+    falsifier = statement.split(" -- falsifier: ", 1)[1]
+    assert not falsifier.startswith("`uv run pytest")
+    assert f"the local Done gate check {gate_check}" in falsifier
+    if contract_file == "OMN-25318.yaml":
+        assert "Lab" not in statement
+        contract = yaml.safe_load(
+            (base.ROOT / "contracts" / contract_file).read_text(encoding="utf-8")
+        )
+        entry = next(
+            d for d in contract["dod_evidence"] if d["id"] == "dod-omn25318-ac1"
+        )
+        assert "without a Lab line" not in str(entry["description"])
+
+
+def test_the_serial_proof_runs_under_this_hosts_onex_state_dir_and_drops_a_named_lock(
+    tmp_path: Path,
+) -> None:
+    """The serial proof's tick takes the lock the unit takes: it runs under ONEX_STATE_DIR with no lock variable of its
+    own, so on h201 it and the unit's tick exclude each other; with no ONEX_STATE_DIR it refuses to run."""
+    world = ProofWorld(tmp_path)
+    ok = world.run(0)
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+    seen = (tmp_path / "uv-env.txt").read_text(encoding="utf-8").splitlines()
+    assert seen == [f"ONEX_STATE_DIR={tmp_path / 'state'}", "LOCK="]
+    (tmp_path / "uv-env.txt").unlink()
+    refused = world.run(0, drop=("ONEX_STATE_DIR",))
+    assert refused.returncode != 0
+    assert "ONEX_STATE_DIR" in refused.stderr
+    assert not (tmp_path / "uv-env.txt").exists()

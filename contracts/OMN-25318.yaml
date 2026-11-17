@@ -10,17 +10,17 @@ requirements:
   statement: Every blocking finding of the fourth review is fixed with a test that fails at the reviewed head, or argued with evidence in a PR comment.
   acceptance:
   - id: AC1
-    statement: 'AC1: the AC4 check of contracts/OMN-24944.yaml records the install status output and last-run.json at the new head and a Lab comment, and requires every ledger-reader row and the h201 rows not UNREAD -- falsifier: `uv run pytest tests -k ruling_register_unit -q -p no:cacheprovider` fails when one row is read and the rest are UNREAD'
+    statement: 'AC1: the AC4 check of contracts/OMN-24944.yaml records the install status output and last-run.json at the new head, and requires every ledger-reader row and the h201 rows not UNREAD -- falsifier: the local Done gate check dod-omn24944-ac4-integration-proof of contracts/OMN-24944.yaml, run on the gate host with RULING_REGISTER_HOST and RULING_REGISTER_INSTALLER set, exits non-zero when one row is read and the rest are UNREAD'
   - id: AC2
     statement: 'AC2: the row one-runtime-no-foreign-containers exits 4 when docker fails and the unit test asserts it reads UNREAD, and docker and curl resolve on the unit PATH for the unit user on h201 -- falsifier: `uv run pytest tests -k ruling_register_unit -q -p no:cacheprovider` fails when the row reads TRUE with docker failing'
   - id: AC3
     statement: 'AC3: register_bound asserts the worst-case read time (720 s for the 16 rows at the 90 s route timeout) is under the unit''s run limit of 900 s, not under max_reading_age_seconds (600 s), and read_register takes its now and adds the tick''s own span to the age bound only when now is unset, so fast rows are not judged stale -- falsifier: `uv run pytest tests -k ruling_register -q -p no:cacheprovider` fails when the worst case reaches the run limit or when the span widens the bound with now given'
   - id: AC4
-    statement: 'AC4: every deployed row that reaches the query service carries node_work_ledger_reader_effect in its argv (count 8), and a serial run with the 8 rows answered is recorded -- falsifier: `uv run pytest tests -k ruling_register_unit -q -p no:cacheprovider` fails when a row lacks the substring or the count is not 8'
+    statement: 'AC4: every deployed row that reaches the query service carries node_work_ledger_reader_effect in its argv (count 8), and a serial run with the 8 rows answered is recorded -- falsifier: the local Done gate command `ONEX_RULING_REGISTER_DEPLOYED_ROOTS=/data/omninode/overlays/overlays uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "query_service or one_at_a_time or at_once or two_processes or ledger_lock" -q -p no:cacheprovider` fails when a deployed row lacks the substring or the count is not 8'
   - id: AC5
     statement: 'AC5: the effect and unit tests read the 16 rows, the 8 ledger rows and the 90 s from the deployed overlay, and a lab run prints deployed=True with the three values -- falsifier: the local Done gate command `ONEX_RULING_REGISTER_DEPLOYED_ROOTS=/data/omninode/overlays/overlays uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "register_values or lab_run_with_no_deployed" -q -p no:cacheprovider` fails when the deployed overlay is absent or the tests fall back to overlay.example.yaml'
   - id: AC6
-    statement: 'AC6: the test reads LAB_WORK_HOST_NAME from the dev container as empty and H201_ROWS match the deployed overlay -- falsifier: `uv run pytest tests -k ruling_register_unit -q -p no:cacheprovider` fails when an H201_ROWS entry differs from the overlay'
+    statement: 'AC6: the test reads LAB_WORK_HOST_NAME from the dev container as empty and H201_ROWS match the deployed overlay -- falsifier: the local Done gate command `ONEX_RULING_REGISTER_DEPLOYED_ROOTS=/data/omninode/overlays/overlays uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -k "dev_container or h201_rows_of_the_test_match" -q -p no:cacheprovider` fails when an H201_ROWS entry differs from the deployed overlay'
   - id: AC7
     statement: 'AC7: contracts/OMN-25207.yaml states the 900 s limit, the grep in contracts/OMN-25207.yaml and contracts/OMN-25283.yaml also rejects a non-zero exit, and the effect timing tests gate on events -- falsifier: `uv run pytest tests -k ruling_register_effect -q -p no:cacheprovider` fails when a grace sleep replaces an event'
   - id: AC8
@@ -35,7 +35,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn25318-ac1
-  description: 'The AC4 check is executed against the installer''s real status output and a real tick''s record: it fails when one row is read and the rest are UNREAD, when any one of the 12 ledger-reader and h201 rows reads UNREAD, and without a Lab line for the head.'
+  description: 'The AC4 check is executed against the installer''s real status output and a real tick''s record: it fails when one row is read and the rest are UNREAD, and when any one of the 12 ledger-reader and h201 rows reads UNREAD; it does not read a Lab line.'
   source: manual
   binds_ac:
   - AC1
@@ -114,7 +114,35 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: 'sh -c ''set -eu; lab=$(onex scm pr-view OmniNode-ai/omnimarket#6345 | grep -F "Lab: head=$(git rev-parse HEAD)"); printf "%s\n" "$lab"; printf "%s\n" "$lab" | grep -q "exit=0"; if printf "%s\n" "$lab" | grep -qE "exit[= ][1-9]"; then echo "the Lab line reports a failed command"; exit 1; fi'''
+    check_value: |-
+      sh -c '
+      set -eu
+      head=$(git rev-parse HEAD)
+      view=$(mktemp)
+      trap "rm -f $view" EXIT
+      onex scm pr-view OmniNode-ai/omnimarket#6345 --source bus > "$view"
+      python3 - "$head" "$view" <<"PY"
+      import json, re, sys
+      head, path = sys.argv[1], sys.argv[2]
+      answer = json.load(open(path, encoding="utf-8"))
+      if answer.get("source") != "bus":
+          sys.exit("pr-view answered from " + str(answer.get("source")) + ", which carries no comments: the Lab comment is unread")
+      comments = (answer.get("result") or {}).get("comments") or []
+      labs = [c for c in comments if str(c.get("body", "")).startswith("Lab: head=")]
+      if not labs:
+          sys.exit("the PR carries no comment starting Lab: head=")
+      newest = max(labs, key=lambda c: (str(c.get("created_at", "")), int(c.get("id") or 0)))
+      body = str(newest["body"])
+      first = body.splitlines()[0]
+      print(first)
+      if not first.startswith("Lab: head=" + head):
+          sys.exit("the newest Lab comment names another head than " + head)
+      if "exit=0" not in body:
+          sys.exit("the newest Lab comment names no command with exit=0")
+      if re.search(r"exit[= ][1-9]", body):
+          sys.exit("the newest Lab comment reports a failed command")
+      PY
+      '
     cwd: .
   - check_type: command
     check_value: |-
@@ -131,11 +159,15 @@ dod_evidence:
     check_value: |-
       sh -c '
       set -eu
+      host=${RULING_REGISTER_HOST:-h201}
+      on_host() { if [ "$host" = local ]; then "$@"; else ssh "$host" "$@"; fi; }
+      on_host true || { echo "$host does not answer from $(hostname): set RULING_REGISTER_HOST to the alias of h201 on this gate host (local on h201 itself)"; exit 1; }
       d=$(mktemp -d)
-      rc=0; ssh h201 pgrep -f "[r]untime_ruling_register_tick" > /dev/null || rc=$?
+      rc=0; on_host pgrep -f "[r]untime_ruling_register_tick" > /dev/null || rc=$?
       case "$rc" in 1) ;; 0) echo "h201 is mid-tick: its unit reads the query service now"; exit 1 ;; *) echo "pgrep on h201 did not answer (exit $rc): whether h201 is mid-tick is unread"; exit 1 ;; esac
       start=$(date +%s)
-      env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_ruling_register_effect.runtime_ruling_register_tick --state-dir "$d" --omni-home "$OMNI_HOME" > "$d/out.txt"
+      state=${ONEX_STATE_DIR:?set ONEX_STATE_DIR to the state directory of this host: the unit derives its ledger-reader lock from it, and this run shares that lock only under the same directory}
+      env -u PYTHONPATH -u ONEX_RULING_REGISTER_LEDGER_LOCK ONEX_STATE_DIR="$state" uv run --frozen python -m omnimarket.nodes.node_ruling_register_effect.runtime_ruling_register_tick --state-dir "$d" --omni-home "$OMNI_HOME" > "$d/out.txt"
       seconds=$(( $(date +%s) - start ))
       cat "$d/out.txt"
       echo "serial tick seconds=$seconds"
@@ -146,7 +178,7 @@ dod_evidence:
       for id in new-work-lands-with-a-fable-verdict dev-holds-ready merged-means-running lanes-placed-bottom-up fable-reviews-run-on-the-mac holds-have-an-owner-and-an-unexpired-expiry plan-slice-round-four-needs-a-scope-cut lab-fill-skips-under-a-fifth; do
         printf "%s" "$rec" | grep -qE "\"$id\": \"(TRUE|FALSE)\"" || { echo "row $id is not answered: it is missing or reads UNREAD"; exit 1; }
       done
-      rc=0; ssh h201 pgrep -f "[r]untime_ruling_register_tick" > /dev/null || rc=$?
+      rc=0; on_host pgrep -f "[r]untime_ruling_register_tick" > /dev/null || rc=$?
       case "$rc" in 1) ;; 0) echo "h201 went mid-tick during the proof: the runs may overlap"; exit 1 ;; *) echo "pgrep on h201 did not answer (exit $rc): whether the runs overlapped is unread"; exit 1 ;; esac
       '
     cwd: .
@@ -154,10 +186,13 @@ dod_evidence:
     check_value: |-
       sh -c '
       set -eu
-      rec=$(ssh h201 cat .local/state/omni/ruling-register/last-run.json)
+      host=${RULING_REGISTER_HOST:-h201}
+      on_host() { if [ "$host" = local ]; then "$@"; else ssh "$host" "$@"; fi; }
+      on_host true || { echo "$host does not answer from $(hostname): set RULING_REGISTER_HOST to the alias of h201 on this gate host (local on h201 itself)"; exit 1; }
+      rec=$(on_host cat .local/state/omni/ruling-register/last-run.json)
       printf "%s\n" "$rec"
       printf "%s" "$rec" | grep -q "\"rows\": 16"
-      container_env=$(ssh h201 docker exec omninode-runtime env)
+      container_env=$(on_host docker exec omninode-runtime env)
       if printf "%s\n" "$container_env" | grep -q "^LAB_WORK_HOST_NAME="; then echo "the dev runtime container carries LAB_WORK_HOST_NAME"; exit 1; fi
       '
     cwd: .

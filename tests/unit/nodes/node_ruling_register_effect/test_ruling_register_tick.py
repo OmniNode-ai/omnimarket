@@ -178,6 +178,32 @@ def test_the_probe_and_the_run_exit_3_when_a_loader_raises_and_never_traceback(
     assert not (tmp_path / "state" / "last-run.json").exists()
 
 
+def test_an_overlay_changed_after_the_tick_loaded_it_is_not_reloaded_and_never_tracebacks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The tick loads the policy and the route once, under its loader guard, and hands them to the read: a register
+    overlay rewritten between that load and the read is never loaded a second time outside the guard, so the tick
+    neither tracebacks nor reads another policy than the one it loaded."""
+    cli_env(tmp_path, monkeypatch, [cli_row("row-true", "pass", {"kind": "exit_zero"})])
+    (overlay,) = tmp_path.glob("node_ruling_register_compute/**/*.yaml")
+    real_load_route = tick.load_route
+
+    def load_route_then_break_the_register(*args: object, **kwargs: object) -> object:
+        route = real_load_route(*args, **kwargs)  # type: ignore[arg-type]
+        overlay.write_text("rows: [not, a, register]\n", encoding="utf-8")
+        return route
+
+    monkeypatch.setattr(tick, "load_route", load_route_then_break_the_register)
+    state_dir = tmp_path / "state"
+    assert main(["--state-dir", str(state_dir)]) == 0
+    captured = capsys.readouterr()
+    assert "Traceback" not in captured.err
+    assert "RULING-REGISTER rows=1 " in captured.out
+    assert _record(state_dir)["verdicts"] == {"row-true": "TRUE"}
+
+
 @pytest.mark.parametrize(
     "bug",
     [ValueError("a bug in the read"), OSError("a bug in the read")],

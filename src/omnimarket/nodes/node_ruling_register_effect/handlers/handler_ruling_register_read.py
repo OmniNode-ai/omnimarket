@@ -49,10 +49,27 @@ LEDGER_READER_MARKER = "node_work_ledger_reader_effect"
 # Serialization inside one process cannot keep a second process (the hourly unit's tick and a hand run, say) off the same
 # query service, so the chain also holds an exclusive lock on this file for as long as it reads. The lock is taken without
 # waiting: a chain that finds it held reads its rows UNREAD (a refused read, never TRUE) and the next tick reads them.
+# The lock's default is derived from ONEX_STATE_DIR, which the unit and every lane on a host carry (on h201 the unit's
+# {registry_root}/.onex_state and a lane's $OMNI_HOME/.onex_state are one directory), so a hand run and the unit's tick
+# take the same file and exclude each other with no lock variable of their own. ONEX_RULING_REGISTER_LEDGER_LOCK names
+# another file outright; with neither set the temp directory is the last resort.
 LEDGER_LOCK_ENV = "ONEX_RULING_REGISTER_LEDGER_LOCK"
+STATE_DIR_ENV = "ONEX_STATE_DIR"
+LEDGER_LOCK_UNDER_STATE_DIR = Path("ruling-register") / "ledger-reader.lock"
 DEFAULT_LEDGER_LOCK = (
     Path(tempfile.gettempdir()) / "onex-ruling-register-ledger-reader.lock"
 )
+
+
+def resolve_ledger_lock(environ: Mapping[str, str]) -> Path:
+    """The ledger-reader lock file ``environ`` names: the lock variable, else under ONEX_STATE_DIR, else the temp file."""
+    named = environ.get(LEDGER_LOCK_ENV, "").strip()
+    if named:
+        return Path(named)
+    state_dir = environ.get(STATE_DIR_ENV, "").strip()
+    if state_dir:
+        return Path(state_dir) / LEDGER_LOCK_UNDER_STATE_DIR
+    return DEFAULT_LEDGER_LOCK
 
 
 def is_ledger_reader_row(row: ModelRulingRow) -> bool:
@@ -207,10 +224,13 @@ class HandlerRulingRegisterRead:
 __all__ = [
     "DEFAULT_LEDGER_LOCK",
     "LEDGER_LOCK_ENV",
+    "LEDGER_LOCK_UNDER_STATE_DIR",
     "LEDGER_READER_MARKER",
     "MAX_CONCURRENT_READS",
+    "STATE_DIR_ENV",
     "HandlerRulingRegisterRead",
     "is_ledger_reader_row",
     "load_topics",
+    "resolve_ledger_lock",
     "worst_case_seconds",
 ]

@@ -27,6 +27,7 @@ from pathlib import Path
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.model_ruling_register import (
     ModelRulingReadRequest,
+    ModelRulingRegisterPolicy,
     ModelRulingRegisterRequest,
     ModelRulingRegisterResult,
 )
@@ -43,12 +44,14 @@ from omnimarket.nodes.node_ruling_register_effect.adapters import (
     JournalRulingSink,
 )
 from omnimarket.nodes.node_ruling_register_effect.handlers.handler_ruling_register_read import (
-    DEFAULT_LEDGER_LOCK,
-    LEDGER_LOCK_ENV,
     HandlerRulingRegisterRead,
     load_topics,
+    resolve_ledger_lock,
 )
-from omnimarket.nodes.node_ruling_register_effect.models import EnumRouteKind
+from omnimarket.nodes.node_ruling_register_effect.models import (
+    EnumRouteKind,
+    ModelRulingRoute,
+)
 from omnimarket.nodes.node_ruling_register_effect.overlay import load_route
 from omnimarket.nodes.node_ruling_register_effect.protocols import (
     ProtocolRulingReadPort,
@@ -62,6 +65,8 @@ def utc_now() -> datetime:
 def read_register(
     environ: Mapping[str, str],
     *,
+    policy: ModelRulingRegisterPolicy | None = None,
+    route: ModelRulingRoute | None = None,
     port: ProtocolRulingReadPort | None = None,
     clock: Callable[[], datetime] = utc_now,
     now: datetime | None = None,
@@ -81,8 +86,12 @@ def read_register(
     than the tick, so the tick's own span is added to it (only when ``now`` is unset): a reading taken inside the tick is never stale for the
     tick's length, and a reading older than the bound before the tick began still is.
     """
-    policy = load_ruling_register_policy(environ)
-    route = load_route(environ)
+    # A caller that loaded the policy and the route under its own loader guard (the tick) passes them in, so an overlay
+    # changed after that load is never loaded again here, outside the guard.
+    if policy is None:
+        policy = load_ruling_register_policy(environ)
+    if route is None:
+        route = load_route(environ)
     if port is not None:
         read_port = port
     elif route.kind is EnumRouteKind.INMEMORY:
@@ -101,7 +110,7 @@ def read_register(
     sink = JournalRulingSink(Path(journal)) if journal else InMemoryRulingSink()
     correlation_id = uuid.uuid4().hex
     started = clock()
-    ledger_lock = Path(environ.get(LEDGER_LOCK_ENV, "").strip() or DEFAULT_LEDGER_LOCK)
+    ledger_lock = resolve_ledger_lock(environ)
     read = HandlerRulingRegisterRead(
         read_port, sink, load_topics(), clock=clock, ledger_lock=ledger_lock
     ).handle(ModelRulingReadRequest(correlation_id=correlation_id, policy=policy))
