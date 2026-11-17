@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+name: projection_done_items
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_type: reducer
+lifecycle: experimental
+description: >
+  Done items for the dashboard's Done figure: one row per ticket with the work-ledger TERMINAL row
+  that made it done. The writer re-parses each TERMINAL message's ledger row, asks the pure fold
+  node_done_items_compute which tickets it makes done, and upserts them; a held row is replaced only
+  by a newer done event (done_at, then done_row_id), so replays and out-of-order delivery converge.
+  Merged is not done: a merge is a STATUS row and never reaches this writer.
+handler:
+  module: omnimarket.nodes.node_projection_done_items.handlers.handler_done_items_writer
+  class: DoneItemsProjectionWriter
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: done_items_projection_writer
+      handler:
+        name: DoneItemsProjectionWriter
+        module: omnimarket.nodes.node_projection_done_items.handlers.handler_done_items_writer
+      handler_module: omnimarket.nodes.node_projection_done_items.handlers.handler_done_items_writer
+db_io:
+  db_tables:
+    - name: done_items
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_done_items.sql"
+      access: read_write
+      role: done_items
+  dedupe_key:
+    - ticket
+  ordering_key: projected_at
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.work-ledger-terminal.v1
+    - onex.evt.omnimarket.work-ledger-terminal.v2
+  publish_topics:
+    - onex.snapshot.projection.done-items.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-done-items-malformed.v1
+externally_consumed_topics:
+  - onex.snapshot.projection.done-items.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.done-items.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          cleanup.policy: compact
+      key_grain: mutable
+      table: done_items
+      # The loader's schema field records the DATABASE the relation lives in;
+      # the physical relation is omninode_internal.done_items (db_io above).
+      schema: omnidash_analytics
+      columns:
+        - ticket
+        - done_at
+        - done_row_id
+        - lane
+        - pr
+        - closes
+        - projected_at
+      order_by: "done_at DESC"
+      freshness_column: projected_at
+      cursor_column: ticket
+      limit: 500
+      bus_backed: true
+      key_columns:
+        - ticket
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-terminal.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-terminal.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-terminal.v2, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-terminal.v2, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.done-items.v1, operation: WRITE}  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.done-items.v1, operation: DESCRIBE}  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.projection-done-items-malformed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.projection-done-items-malformed.v1, operation: DESCRIBE}
+
+metadata:
+  transport_type: kafka
+  ticket: OMN-25104

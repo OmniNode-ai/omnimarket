@@ -4,7 +4,12 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import TypeAdapter
 
+from omnimarket.events.model_ledger_row_event import (
+    ModelLedgerRowEvent,
+    ModelLedgerTerminalEvent,
+)
 from omnimarket.models.done_items import ModelDoneItemsRequest
 from omnimarket.nodes.node_done_items_compute.handlers.handler_done_items import (
     HandlerDoneItems,
@@ -15,9 +20,16 @@ from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
 
 pytestmark = pytest.mark.unit
 
+_EVENT: TypeAdapter[ModelLedgerRowEvent] = TypeAdapter(ModelLedgerRowEvent)
 
-def _events(*rows: str):
-    return tuple(parse_ledger_row(row) for row in rows)
+
+def _events(*rows: str) -> tuple[ModelLedgerRowEvent, ...]:
+    return tuple(_EVENT.validate_python(parse_ledger_row(row)) for row in rows)
+
+
+def _terminal(event: ModelLedgerRowEvent) -> ModelLedgerTerminalEvent:
+    assert isinstance(event, ModelLedgerTerminalEvent)
+    return event
 
 
 def test_done_items_from_ledger_events() -> None:
@@ -29,7 +41,7 @@ def test_done_items_from_ledger_events() -> None:
     events = _events(*rows)
     projection = HandlerDoneItems().handle(ModelDoneItemsRequest(events=events))
 
-    terminal_event = events[0]
+    terminal_event = _terminal(events[0])
     assert projection.done == 1
     assert len(projection.items) == 1
 
@@ -53,7 +65,7 @@ def test_done_items_newest_done_event_wins() -> None:
     events = _events(early, late)
     projection = HandlerDoneItems().handle(ModelDoneItemsRequest(events=events))
 
-    late_event = events[1]
+    late_event = _terminal(events[1])
     assert projection.done == 1
     assert len(projection.items) == 1
 
