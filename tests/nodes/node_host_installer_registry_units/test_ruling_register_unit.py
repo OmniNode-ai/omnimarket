@@ -22,6 +22,7 @@ import pytest
 import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
+from omnimarket.models.model_ruling_register import ModelRulingRow
 from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units import (
     HandlerRegistryUnits,
     load_units,
@@ -605,6 +606,23 @@ def test_failing_control_the_row_as_deployed_before_the_hardening_reads_true_whe
         assert (result.returncode, result.stdout) == (code, ""), script
 
 
+def _h201_row_mismatches(by_id: dict[str, ModelRulingRow]) -> list[str]:
+    """The ids of the h201 rows whose deployed row is not the test's row verbatim (argv, host and expectation).
+
+    No earlier text is allowed: the row deployed before the docker list failed loud reads TRUE when docker fails.
+    """
+    bad = []
+    for row_id, (script, expect) in H201_ROWS.items():
+        deployed_row = by_id[row_id]
+        if not (
+            deployed_row.read.host == "h201"
+            and deployed_row.read.argv == ("sh", "-c", script)
+            and deployed_row.read.expect.kind == expect["kind"]
+        ):
+            bad.append(row_id)
+    return bad
+
+
 def test_the_h201_rows_of_the_test_match_the_deployed_overlay(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -613,20 +631,16 @@ def test_the_h201_rows_of_the_test_match_the_deployed_overlay(
     deployed overlay and checks only that the entries are well formed."""
     environ, deployed = register_environ(tmp_path, monkeypatch)
     assert set(H201_ROWS) == set(H201_ROW_IDS)
+    # The docker list row is the hardened one wherever the test runs (a docker that fails ends it with 4, UNREAD).
+    assert (
+        H201_ROWS["one-runtime-no-foreign-containers"][0] == HARDENED_FOREIGN_CONTAINERS
+    )
+    assert "|| exit 4" in HARDENED_FOREIGN_CONTAINERS.splitlines()[0]
     if not deployed:
         assert all(script.strip() for script, _ in H201_ROWS.values())
         return
     by_id = {r.row_id: r for r in load_ruling_register_policy(environ).rows}
-    for row_id, (script, expect) in H201_ROWS.items():
-        deployed_row = by_id[row_id]
-        assert deployed_row.read.host == "h201", row_id
-        allowed = {script}
-        if row_id == "one-runtime-no-foreign-containers":
-            allowed.add(DEPLOYED_FOREIGN_CONTAINERS)
-        assert deployed_row.read.argv[:2] == ("sh", "-c"), row_id
-        assert len(deployed_row.read.argv) == 3, row_id
-        assert deployed_row.read.argv[2] in allowed, row_id
-        assert deployed_row.read.expect.kind == expect["kind"], row_id
+    assert _h201_row_mismatches(by_id) == []
     # The eight ledger rows the AC4 check names are the deployed rows that run the ledger reader.
     assert {r.row_id for r in by_id.values() if is_ledger_reader_row(r)} == set(
         LEDGER_ROW_IDS
@@ -681,7 +695,14 @@ class Ac4World:
             )
         )
         assert result.status == "success", result.stderr
-        _write_stub(self.bin, "ssh", 'shift\nexec "$@"\n')
+        _write_stub(
+            self.bin,
+            "ssh",
+            "shift\n"
+            '[ -z "${AC4_SSH_FAIL:-}" ] || exit 255\n'
+            '[ "$1" = id ] && [ -n "${AC4_SSH_USER:-}" ] && { echo "$AC4_SSH_USER"; exit 0; }\n'
+            'exec "$@"\n',
+        )
         # The shell expression of the checked-out head, evaluated when the stubbed PR view runs.
         self.head_expr = f"$(git -C {self.checkout} rev-parse HEAD)"
         self.container_env = "PATH=/usr/bin:/bin\nHOME=/root\n"
@@ -739,17 +760,29 @@ class Ac4World:
         )
         return self.status
 
-    def run_check(self) -> subprocess.CompletedProcess[str]:
+    def run_check(
+        self, *, override_path: bool = True, **env: str
+    ) -> subprocess.CompletedProcess[str]:
         command = _check_command("OMN-24944.yaml", "AC4")
+        unit_path = (
+            # The unit's PATH on h201, with the stubs standing for /usr/bin/docker and /usr/bin/curl.
+            {"RULING_REGISTER_UNIT_PATH": f"{self.bin}:/usr/bin:/bin"}
+            if override_path
+            else {}
+        )
         return subprocess.run(
             shlex.split(command),
             cwd=self.checkout,
             env=scrub_git_location_env(
                 {
-                    **os.environ,
+                    **{
+                        k: v
+                        for k, v in os.environ.items()
+                        if k != "RULING_REGISTER_UNIT_PATH"
+                    },
                     "PATH": f"{self.bin}:{os.environ['PATH']}",
-                    # The unit's PATH on h201, with the stubs standing for /usr/bin/docker and /usr/bin/curl.
-                    "RULING_REGISTER_UNIT_PATH": f"{self.bin}:/usr/bin:/bin",
+                    **unit_path,
+                    **env,
                 }
             ),
             capture_output=True,
@@ -811,8 +844,8 @@ def test_the_ac4_check_passes_with_the_head_installed_a_fresh_record_the_require
     # The check prints the status and last-run.json it judged, so the PR can record them.
     assert f"installed revision {world.revision} of " in result.stdout
     assert '"UNREAD": 1' in result.stdout
-    # ... and the Lab line it judged.
-    assert f"Lab: head={world.revision} " in result.stdout
+    # The Lab line is the PR comment's, recorded from this output; the check does not read it.
+    assert "Lab: head=" not in result.stdout
 
 
 def test_the_ac4_check_fails_when_one_row_is_read_and_the_rest_are_unread(
@@ -868,23 +901,25 @@ def test_the_ac4_check_fails_when_the_dev_container_carries_the_host_name_or_doc
     assert world.run_check().returncode == 0
 
 
-def test_the_ac4_check_fails_without_a_lab_line_for_the_head_or_with_one_that_reports_a_failed_command(
+def test_the_ac4_check_does_not_read_the_lab_line_it_records_its_output_in(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The check's output is what the Lab line records, so it cannot need a Lab line (with exit=0) to first pass:
+    it passes with no Lab comment at all and whatever the comment says. The Lab line of the head is checked by its
+    own check (contracts/OMN-25318.yaml, AC8)."""
     world = Ac4World(tmp_path, monkeypatch)
     world.tick(PASSING_ROWS)
     world.render_status()
-    assert world.run_check().returncode == 0
     for line in (
-        f"Lab: head={'0' * 40} host=h053 exit=0",  # another head
-        f"Lab: head={world.head_expr} host=h053 cmd=a exit=0 cmd=b exit=1",
-        f"Lab: head={world.head_expr} host=h053 cmd=a exit=2",
-        f"Lab: head={world.head_expr} host=h053 cmd=a",  # names no exit 0
         "no lab comment here",
+        f"Lab: head={'0' * 40} host=h053 exit=0",
+        f"Lab: head={world.head_expr} host=h053 cmd=a exit=0 cmd=b exit=1",
     ):
         world.lab_line = line
         world.write_host_stubs()
-        assert world.run_check().returncode != 0, line
+        assert world.run_check().returncode == 0, line
+    assert "pr-view" not in _check_command("OMN-24944.yaml", "AC4")
+    assert "Lab: head" not in _check_command("OMN-24944.yaml", "AC4")
 
 
 def test_the_ac4_check_fails_when_every_row_reads_unread(
@@ -1028,3 +1063,243 @@ def test_the_lab_comment_check_of_the_earlier_rounds_fails_without_the_lab_line_
     assert run(failed) != 0
     assert run(no_exit) != 0
     assert run(with_lab) == 0
+
+
+# ---- review of head 438e88419fa9 --------------------------------------------------------------------------------
+
+
+def test_the_failing_docker_row_the_deployed_overlay_still_carries_is_not_accepted_as_the_deployed_row() -> (
+    None
+):
+    """The match test no longer allows the row as it was before the hardening: a deployed docker row that reads TRUE
+    when docker fails is a mismatch, and the hardened row is not."""
+
+    def deployed(docker_row_script: str) -> dict[str, ModelRulingRow]:
+        rows: dict[str, ModelRulingRow] = {}
+        for row_id, (script, expect) in H201_ROWS.items():
+            chosen = (
+                docker_row_script
+                if row_id == "one-runtime-no-foreign-containers"
+                else script
+            )
+            rows[row_id] = ModelRulingRow.model_validate(
+                {
+                    "row_id": row_id,
+                    "ruling": "2026-07-01T10:00:00Z",
+                    "must_be_true": "the dev runtime holds",
+                    "read": {
+                        "host": "h201",
+                        "argv": ["sh", "-c", chosen],
+                        "ok_exit_codes": [0],
+                        "expect": expect,
+                    },
+                    "owner": "example-lane",
+                    "fix": f"fix {row_id}",
+                }
+            )
+        return rows
+
+    assert _h201_row_mismatches(deployed(HARDENED_FOREIGN_CONTAINERS)) == []
+    assert _h201_row_mismatches(deployed(DEPLOYED_FOREIGN_CONTAINERS)) == [
+        "one-runtime-no-foreign-containers"
+    ]
+
+
+def test_the_ac4_check_default_path_starts_with_the_unit_users_local_bin_and_the_ssh_user_is_the_units_user(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no override the check resolves docker and curl on the PATH the rendered unit has: the unit user's
+    ``.local/bin`` first (the home of the ssh user), then /usr/local/bin:/usr/bin:/bin. It also fails when the ssh user is
+    not the user that owns last-run.json (the unit's user)."""
+    world = Ac4World(tmp_path, monkeypatch)
+    world.tick(PASSING_ROWS)
+    world.render_status()
+    unit_bin = world.home / ".local" / "bin"
+    _write_stub(
+        unit_bin, "docker", "exit 1\n"
+    )  # the unit user's docker fails: found first on the default PATH
+    _write_stub(unit_bin, "curl", "exit 0\n")
+    result = world.run_check(override_path=False, HOME=str(world.home))
+    assert result.returncode != 0
+    _write_stub(unit_bin, "docker", "exit 0\n")
+    assert world.run_check(override_path=False, HOME=str(world.home)).returncode == 0, (
+        "the check reads docker from the unit user's .local/bin"
+    )
+    me = subprocess.run(
+        ["id", "-un"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    other = world.run_check(
+        override_path=False, HOME=str(world.home), AC4_SSH_USER=f"not-{me}"
+    )
+    assert other.returncode != 0
+    assert "not the user of the unit" in other.stdout
+    assert (
+        world.run_check(
+            override_path=False, HOME=str(world.home), AC4_SSH_USER=me
+        ).returncode
+        == 0
+    )
+
+
+def _proof_check(index: int) -> str:
+    contract = yaml.safe_load(
+        (base.ROOT / "contracts/OMN-25318.yaml").read_text(encoding="utf-8")
+    )
+    entry = next(
+        item
+        for item in contract["dod_evidence"]
+        if item["id"] == "dod-omn25318-integration-proof"
+    )
+    return str(entry["checks"][index]["check_value"])
+
+
+class ProofWorld:
+    """Stand-ins for the serial proof: ``uv`` writes a last-run.json under the state dir the check passes, ``ssh`` runs
+    the rest here, ``pgrep`` answers whether h201's unit is mid-tick, ``docker`` answers the container's environment."""
+
+    def __init__(self, tmp_path: Path) -> None:
+        self.tmp_path = tmp_path
+        self.bin = tmp_path / "bin"
+        self.record = tmp_path / "record.json"
+        self.h201_record = tmp_path / ".local/state/omni/ruling-register/last-run.json"
+        self.h201_record.parent.mkdir(parents=True)
+        self.set_record(dict.fromkeys(LEDGER_ROW_IDS, "TRUE"))
+        self.pgrep_rc = 1
+        self.ssh_fail = False
+        self.container_env = "PATH=/usr/bin:/bin\n"
+        self.write()
+
+    def set_record(self, verdicts: dict[str, str]) -> None:
+        text = json.dumps(
+            {
+                "rows": 16,
+                "counts": {"TRUE": 8, "FALSE": 0, "UNREAD": 8},
+                "verdicts": verdicts,
+            },
+            sort_keys=True,
+        )
+        self.record.write_text(text, encoding="utf-8")
+        self.h201_record.write_text(text, encoding="utf-8")
+
+    def write(self) -> None:
+        env_file = self.tmp_path / "container-env.txt"
+        env_file.write_text(self.container_env, encoding="utf-8")
+        _write_stub(
+            self.bin,
+            "uv",
+            'while [ "$#" -gt 0 ]; do [ "$1" = --state-dir ] && d=$2; shift; done\n'
+            f'cp "{self.record}" "$d/last-run.json"\n'
+            'echo "RULING-REGISTER rows=16 TRUE=8 FALSE=0 UNREAD=8"\n',
+        )
+        _write_stub(
+            self.bin,
+            "ssh",
+            "shift\n" + ("exit 255\n" if self.ssh_fail else 'exec "$@"\n'),
+        )
+        _write_stub(self.bin, "pgrep", f"exit {self.pgrep_rc}\n")
+        _write_stub(self.bin, "docker", f'cat "{env_file}"\n')
+
+    def run(self, index: int) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            shlex.split(_proof_check(index)),
+            cwd=self.tmp_path,
+            env={
+                **os.environ,
+                "PATH": f"{self.bin}:{os.environ['PATH']}",
+                "OMNI_HOME": str(self.tmp_path),
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+
+def test_the_serial_proof_requires_the_eight_ledger_rows_answered_in_its_own_record(
+    tmp_path: Path,
+) -> None:
+    """A row that timed out reads UNREAD in last-run.json (the runner writes no ``TimeoutExpired`` on stdout), so the
+    check reads the eight ids from the record: TRUE or FALSE for each, and a missing id fails too."""
+    world = ProofWorld(tmp_path)
+    ok = world.run(0)
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+    world.set_record(
+        {**dict.fromkeys(LEDGER_ROW_IDS, "TRUE"), LEDGER_ROW_IDS[2]: "FALSE"}
+    )
+    assert world.run(0).returncode == 0  # a FALSE reading is an answer
+    for row_id in LEDGER_ROW_IDS:
+        world.set_record({**dict.fromkeys(LEDGER_ROW_IDS, "TRUE"), row_id: "UNREAD"})
+        result = world.run(0)
+        assert result.returncode != 0, row_id
+        assert f"row {row_id} is not answered" in result.stdout
+    world.set_record(dict.fromkeys(LEDGER_ROW_IDS[:7], "TRUE"))  # the eighth is absent
+    assert world.run(0).returncode != 0
+
+
+def test_the_serial_proof_fails_when_h201_is_mid_tick_and_the_container_read_fails_when_ssh_or_docker_fails(
+    tmp_path: Path,
+) -> None:
+    world = ProofWorld(tmp_path)
+    assert world.run(0).returncode == 0
+    # h201's own unit is running a tick while the proof reads the same query service: the runs overlap.
+    world.pgrep_rc = 0
+    world.write()
+    overlap = world.run(0)
+    assert overlap.returncode != 0
+    assert "mid-tick" in overlap.stdout
+    world.pgrep_rc = 1
+    world.write()
+    # The container read: control first, then ssh failing, then a container that carries the host name.
+    assert world.run(1).returncode == 0
+    world.ssh_fail = True
+    world.write()
+    assert world.run(1).returncode != 0  # grep -c printed 0 here and passed
+    world.ssh_fail = False
+    world.container_env = "PATH=/usr/bin:/bin\nLAB_WORK_HOST_NAME=h201\n"
+    world.write()
+    assert world.run(1).returncode != 0
+
+
+def test_the_title_check_reads_the_title_field_and_not_a_comment(
+    tmp_path: Path,
+) -> None:
+    contract = yaml.safe_load(
+        (base.ROOT / "contracts/OMN-25318.yaml").read_text(encoding="utf-8")
+    )
+    entry = next(d for d in contract["dod_evidence"] if d["id"] == "dod-omn25318-ac8")
+    command = str(entry["checks"][1]["check_value"])
+    bin_dir = tmp_path / "bin"
+
+    def run(view: str) -> int:
+        (tmp_path / "view.txt").write_text(view, encoding="utf-8")
+        _write_stub(bin_dir, "onex", f'cat "{tmp_path}/view.txt"\n')
+        return subprocess.run(
+            shlex.split(command),
+            cwd=tmp_path,
+            env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"},
+            capture_output=True,
+            text=True,
+            check=False,
+        ).returncode
+
+    titled = (
+        '{"result":{"title":"OMN-24944: ruling-register tick, systemd unit, host-local reads and more",'
+        '"state":"OPEN"}}\n'
+    )
+    comment_only = (
+        '{"result":{"title":"OMN-24944: something else","state":"OPEN",'
+        '"comments":["a reviewer wrote: tick, unit, local reads"]}}\n'
+    )
+    assert run(titled) == 0
+    assert run(comment_only) != 0
+    # Control: the whole-view grep this replaces passed on the comment.
+    old = subprocess.run(
+        [
+            "sh",
+            "-c",
+            'printf "%s" "$1" | grep -E "tick, .*unit, .*local reads"',
+            "_",
+            comment_only,
+        ],
+        check=False,
+    )
+    assert old.returncode == 0

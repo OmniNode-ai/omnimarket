@@ -43,6 +43,8 @@ from omnimarket.nodes.node_ruling_register_effect.adapters import (
     JournalRulingSink,
 )
 from omnimarket.nodes.node_ruling_register_effect.handlers.handler_ruling_register_read import (
+    DEFAULT_LEDGER_LOCK,
+    LEDGER_LOCK_ENV,
     HandlerRulingRegisterRead,
     load_topics,
 )
@@ -76,7 +78,7 @@ def read_register(
     ``now`` is the instant the readings are judged at; unset, it is the clock once the reads have ended. A tick
     reads for as long as its slowest row (the ledger-reader rows one after another: 720 s at most), so a fast row's
     reading is that much older than ``now`` by the time it is judged. The age bound guards against a reading older
-    than the tick, so the tick's own span is added to it: a reading taken inside the tick is never stale for the
+    than the tick, so the tick's own span is added to it (only when ``now`` is unset): a reading taken inside the tick is never stale for the
     tick's length, and a reading older than the bound before the tick began still is.
     """
     policy = load_ruling_register_policy(environ)
@@ -99,11 +101,16 @@ def read_register(
     sink = JournalRulingSink(Path(journal)) if journal else InMemoryRulingSink()
     correlation_id = uuid.uuid4().hex
     started = clock()
+    ledger_lock = Path(environ.get(LEDGER_LOCK_ENV, "").strip() or DEFAULT_LEDGER_LOCK)
     read = HandlerRulingRegisterRead(
-        read_port, sink, load_topics(), clock=clock
+        read_port, sink, load_topics(), clock=clock, ledger_lock=ledger_lock
     ).handle(ModelRulingReadRequest(correlation_id=correlation_id, policy=policy))
     ended = clock()
-    span_seconds = max(0, math.ceil((ended - started).total_seconds()))
+    # The tick's own span widens the bound only when the tick judges at its own instant; a caller that names ``now``
+    # judges at that instant against the policy's bound as it stands.
+    span_seconds = (
+        max(0, math.ceil((ended - started).total_seconds())) if now is None else 0
+    )
     judged = HandlerRulingRegister().handle(
         ModelRulingRegisterRequest(
             correlation_id=correlation_id,

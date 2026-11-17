@@ -65,7 +65,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "concurrent or at_once or one_at_a_time or run_limit or each_input or row_order or wave_bound" -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24944-ac4-integration-proof
-  description: Read the installed unit on h201 through the declared installer and print what was read, the status output and last-run.json. The check passes only when the status read exits 0, names the installed revision equal to the checked-out head ("installed revision <sha> of "), its first "N s old" line is last-run.json and N is under 7200 (two intervals of the 3600 s timer), last-run.json holds fewer UNREAD rows than rows, and every row that runs the ledger reader (8) and every h201 row (4) reads TRUE or FALSE and none UNREAD (one row read with the rest UNREAD fails), and last-run.json names a journal file on h201 that was written within 120 minutes and ends in an event line. It also reads the dev runtime container on h201 and passes only when the container carries no LAB_WORK_HOST_NAME (the h201 rows would run inside it and read themselves), and when docker answers and curl is found on the unit's PATH for the unit's user. The PR carries a Lab comment line for the head and that line reports no command with a non-zero exit. Rerunning the unit tests proves nothing about the install, so the check does not; the unit tests run this same check against the installer's real status output and a real tick's record (every row UNREAD, one row read, a ledger row or an h201 row UNREAD, no journal, an old journal, another revision, a stale heartbeat, another first age line, a container that carries the host name, a docker that fails and a Lab line with a failed command each fail it). Hosted CI cannot reach h201, so only the local Done gate runs this unbound check; its output is recorded in the Lab line and a STATUS row.
+  description: Read the installed unit on h201 through the declared installer and print what was read, the status output and last-run.json. The check passes only when the status read exits 0, names the installed revision equal to the checked-out head ("installed revision <sha> of "), its first "N s old" line is last-run.json and N is under 7200 (two intervals of the 3600 s timer), last-run.json holds fewer UNREAD rows than rows, and every row that runs the ledger reader (8) and every h201 row (4) reads TRUE or FALSE and none UNREAD (one row read with the rest UNREAD fails), and last-run.json names a journal file on h201 that was written within 120 minutes and ends in an event line. It also reads the dev runtime container on h201 and passes only when the container carries no LAB_WORK_HOST_NAME (the h201 rows would run inside it and read themselves), and when docker answers and curl is found on the unit's PATH for the unit's user (the PATH starts with the ssh user's .local/bin, the unit's own first entry, and the check fails unless the ssh user is the user that owns last-run.json, which is the unit's user). The check does not read the Lab line (its output is what the Lab comment of the head records, and the Lab line of the head is checked by its own check, contracts/OMN-25318.yaml AC8). Rerunning the unit tests proves nothing about the install, so the check does not; the unit tests run this same check against the installer's real status output and a real tick's record (every row UNREAD, one row read, a ledger row or an h201 row UNREAD, no journal, an old journal, another revision, a stale heartbeat, another first age line, a container that carries the host name, a docker that fails, an ssh user that is not the unit's user and a unit user's docker that fails first on the default PATH each fail it; and no Lab line is needed for it to pass). Hosted CI cannot reach h201, so only the local Done gate runs this unbound check; its output is recorded in the Lab line and a STATUS row.
   source: manual
   binds_ac:
   - AC4
@@ -102,12 +102,12 @@ dod_evidence:
       ssh h201 tail -n 1 "$journal" | grep -q "\"row_id\":"
       container_env=$(ssh h201 docker exec omninode-runtime env)
       if printf "%s\n" "$container_env" | grep -q "^LAB_WORK_HOST_NAME="; then echo "the dev runtime container carries LAB_WORK_HOST_NAME"; exit 1; fi
-      unit_path=${RULING_REGISTER_UNIT_PATH:-/usr/local/bin:/usr/bin:/bin}
+      owner=$(ssh h201 stat -c %U "$path")
+      ssh_user=$(ssh h201 id -un)
+      if [ "$owner" != "$ssh_user" ]; then echo "the ssh user $ssh_user is not the user of the unit ($owner owns last-run.json)"; exit 1; fi
+      home=$(ssh h201 printenv HOME)
+      unit_path=${RULING_REGISTER_UNIT_PATH:-$home/.local/bin:/usr/local/bin:/usr/bin:/bin}
       ssh h201 env PATH="$unit_path" docker ps -q > /dev/null
       ssh h201 env PATH="$unit_path" curl --version > /dev/null
-      lab=$(onex scm pr-view OmniNode-ai/omnimarket#6345 | grep -F "Lab: head=$head")
-      printf "%s\n" "$lab"
-      printf "%s\n" "$lab" | grep -q "exit=0"
-      if printf "%s\n" "$lab" | grep -qE "exit[= ][1-9]"; then echo "the Lab line reports a failed command"; exit 1; fi
       '
     cwd: .

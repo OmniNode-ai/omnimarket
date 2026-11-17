@@ -14,7 +14,7 @@ requirements:
   - id: AC2
     statement: 'AC2: the row one-runtime-no-foreign-containers exits 4 when docker fails and the unit test asserts it reads UNREAD, and docker and curl resolve on the unit PATH for the unit user on h201 -- falsifier: `uv run pytest tests -k ruling_register_unit -q -p no:cacheprovider` fails when the row reads TRUE with docker failing'
   - id: AC3
-    statement: 'AC3: register_bound asserts the worst-case read time is under max_reading_age_seconds, and read_register takes its now so fast rows are not judged stale -- falsifier: `uv run pytest tests -k ruling_register -q -p no:cacheprovider` fails when the worst case reaches max_reading_age_seconds'
+    statement: 'AC3: register_bound asserts the worst-case read time (720 s for the 16 rows at the 90 s route timeout) is under the unit''s run limit of 900 s, not under max_reading_age_seconds (600 s), and read_register takes its now and adds the tick''s own span to the age bound only when now is unset, so fast rows are not judged stale -- falsifier: `uv run pytest tests -k ruling_register -q -p no:cacheprovider` fails when the worst case reaches the run limit or when the span widens the bound with now given'
   - id: AC4
     statement: 'AC4: every deployed row that reaches the query service carries node_work_ledger_reader_effect in its argv (count 8), and a serial run with the 8 rows answered is recorded -- falsifier: `uv run pytest tests -k ruling_register_unit -q -p no:cacheprovider` fails when a row lacks the substring or the count is not 8'
   - id: AC5
@@ -62,13 +62,14 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "stale or older_than_the_bound or now_it_is_given or inside_the_unit_run_limit or each_input" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
     cwd: .
 - id: dod-omn25318-ac4
-  description: Every row that names the query service carries the marker (count 8 on the deployed overlay) and the cap and chain tests gate on events. The serial run of the 8 ledger rows is recorded in the Lab comment of the head.
+  description: Every row that names the query service carries the marker (count 8 on the deployed overlay; the names that reach the service are read from the repository) and the cap, chain and cross-process lock tests gate on events. The serial run of the 8 ledger rows is recorded in the Lab comment of the head. The command names the deployed overlay, so only the local Done gate runs it.
   source: manual
   binds_ac:
   - AC4
+  execution_scope: local_done_gate
   checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "query_service or one_at_a_time or at_once" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+  - check_type: command
+    check_value: sh -c 'ONEX_RULING_REGISTER_DEPLOYED_ROOTS="${OMNI_HOME:?}/overlays/overlays" uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "query_service or one_at_a_time or at_once or two_processes or ledger_lock" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider'
     cwd: .
 - id: dod-omn25318-ac5
   description: The tests read the register from the deployed overlay roots a lab run names and print deployed=True with the three values; with no deployed overlay a lab run fails. Run on a lab host that holds the deployed overlays, so only the local Done gate runs the unbound check.
@@ -77,20 +78,21 @@ dod_evidence:
   - AC5
   execution_scope: local_done_gate
   checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "register_values or lab_run_with_no_deployed" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+  - check_type: command
+    check_value: sh -c 'ONEX_RULING_REGISTER_DEPLOYED_ROOTS="${OMNI_HOME:?}/overlays/overlays" uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "register_values or lab_run_with_no_deployed" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider'
     cwd: .
   - check_type: command
     check_value: sh -c 'set -eu; out=$(ONEX_RULING_REGISTER_DEPLOYED_ROOTS="${OMNI_HOME:?}/overlays/overlays" uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k register_values_are_read -s -q --no-cov -n 0 -p no:randomly -p no:cacheprovider); printf "%s\n" "$out"; printf "%s\n" "$out" | grep -F "REGISTER-VALUES deployed=True rows=16 ledger_rows=8 timeout=90"'
     cwd: .
 - id: dod-omn25318-ac6
-  description: The AC4 check fails when the dev runtime container carries LAB_WORK_HOST_NAME, and the H201_ROWS entries are compared with the deployed overlay on a lab host that holds it.
+  description: The AC4 check fails when the dev runtime container carries LAB_WORK_HOST_NAME, and the H201_ROWS entries and the journal variable are compared with the deployed overlay (the command names ONEX_RULING_REGISTER_DEPLOYED_ROOTS, so the tests never read overlay.example.yaml) on a lab host that holds it, which is why only the local Done gate runs it.
   source: manual
   binds_ac:
   - AC6
+  execution_scope: local_done_gate
   checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -k "dev_container or h201_rows_of_the_test_match" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+  - check_type: command
+    check_value: sh -c 'ONEX_RULING_REGISTER_DEPLOYED_ROOTS="${OMNI_HOME:?}/overlays/overlays" uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -k "dev_container or h201_rows_of_the_test_match or unit_names_the_journal" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider'
     cwd: .
 - id: dod-omn25318-ac7
   description: contracts/OMN-25207.yaml no longer states the 600 s limit, the Lab checks of the two earlier contracts fail on a failed command, and the effect timing tests use a barrier and events.
@@ -115,7 +117,8 @@ dod_evidence:
     check_value: 'sh -c ''set -eu; lab=$(onex scm pr-view OmniNode-ai/omnimarket#6345 | grep -F "Lab: head=$(git rev-parse HEAD)"); printf "%s\n" "$lab"; printf "%s\n" "$lab" | grep -q "exit=0"; if printf "%s\n" "$lab" | grep -qE "exit[= ][1-9]"; then echo "the Lab line reports a failed command"; exit 1; fi'''
     cwd: .
   - check_type: command
-    check_value: sh -c 'onex scm pr-view OmniNode-ai/omnimarket#6345 | grep -E "tick, .*unit, .*local reads"'
+    check_value: |-
+      sh -c 'onex scm pr-view OmniNode-ai/omnimarket#6345 | grep -o "\"title\":\"[^\"]*\"" | grep -E "tick, .*unit, .*local reads"'
     cwd: .
 - id: dod-omn25318-integration-proof
   description: 'One serial run of the register tick against the deployed overlays on a lab host that holds them (the deployed overlay roots are the host''s own ONEX_SKILL_OVERLAY_ROOTS): the 8 rows that run the ledger reader read one after another through the work-ledger query service, the tick ends inside the unit''s 900 s run limit and no row ends unanswered by a timeout. It runs the tick on the live query service, so only the local Done gate runs it. Rows that exit 4 under their own judge (source not yet present) are reported in the output, not hidden. It also reads the register''s record and the dev runtime container on h201 (read only).'
@@ -125,42 +128,34 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: 'sh -c ''set -eu
-
+    check_value: |-
+      sh -c '
+      set -eu
       d=$(mktemp -d)
-
+      if ssh h201 pgrep -f "[r]untime_ruling_register_tick" > /dev/null; then echo "h201 is mid-tick: its unit reads the query service now"; exit 1; fi
       start=$(date +%s)
-
       env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_ruling_register_effect.runtime_ruling_register_tick --state-dir "$d" --omni-home "$OMNI_HOME" > "$d/out.txt"
-
       seconds=$(( $(date +%s) - start ))
-
       cat "$d/out.txt"
-
       echo "serial tick seconds=$seconds"
-
-      cat "$d/last-run.json"
-
-      echo
-
+      rec=$(cat "$d/last-run.json")
+      printf "%s\n" "$rec"
       test "$seconds" -lt 900
-
       grep -q "^RULING-REGISTER rows=16 " "$d/out.txt"
-
-      if grep -q TimeoutExpired "$d/out.txt"; then echo "a ledger-reader row timed out"; exit 1; fi
-
-      '''
+      for id in new-work-lands-with-a-fable-verdict dev-holds-ready merged-means-running lanes-placed-bottom-up fable-reviews-run-on-the-mac holds-have-an-owner-and-an-unexpired-expiry plan-slice-round-four-needs-a-scope-cut lab-fill-skips-under-a-fifth; do
+        printf "%s" "$rec" | grep -qE "\"$id\": \"(TRUE|FALSE)\"" || { echo "row $id is not answered: it is missing or reads UNREAD"; exit 1; }
+      done
+      if ssh h201 pgrep -f "[r]untime_ruling_register_tick" > /dev/null; then echo "h201 went mid-tick during the proof: the runs may overlap"; exit 1; fi
+      '
     cwd: .
   - check_type: command
-    check_value: 'sh -c ''set -eu
-
+    check_value: |-
+      sh -c '
+      set -eu
       rec=$(ssh h201 cat .local/state/omni/ruling-register/last-run.json)
-
       printf "%s\n" "$rec"
-
       printf "%s" "$rec" | grep -q "\"rows\": 16"
-
-      test "$(ssh h201 docker exec omninode-runtime env | grep -c "^LAB_WORK_HOST_NAME=")" = "0"
-
-      '''
+      container_env=$(ssh h201 docker exec omninode-runtime env)
+      if printf "%s\n" "$container_env" | grep -q "^LAB_WORK_HOST_NAME="; then echo "the dev runtime container carries LAB_WORK_HOST_NAME"; exit 1; fi
+      '
     cwd: .

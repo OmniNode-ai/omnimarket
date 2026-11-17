@@ -3,7 +3,8 @@
 """The ruling register read: ``handle(ModelRulingReadRequest) -> ModelRulingReadResult`` (OMN-24478).
 
 Reads rows of the standing-rulings register concurrently through the port (the rows that run the
-ledger reader one after another, because the query service they share answers one window at a time),
+ledger reader one after another, because the query service they share answers one window at a time, holding a
+cross-process lock so a second process's chain reads UNREAD instead of overlapping),
 returning readings and emitting events in row order: ``answered`` (golden) for an OK reading,
 ``refused`` (error) for UNREAD.
 The port never raises and a refused read is never an answer; judging the readings into
@@ -15,6 +16,8 @@ them from the contract -- so no topic string is in this file.
 
 from __future__ import annotations
 
+import fcntl
+import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -43,6 +46,13 @@ MAX_CONCURRENT_READS = 8
 # that service answers one window at a time: measured on 2026-11-17 (one 24 h window read in 69 s, eight at once
 # all unanswered at 115 s). Those rows therefore run one after another, in row order, beside the concurrent rest.
 LEDGER_READER_MARKER = "node_work_ledger_reader_effect"
+# Serialization inside one process cannot keep a second process (the hourly unit's tick and a hand run, say) off the same
+# query service, so the chain also holds an exclusive lock on this file for as long as it reads. The lock is taken without
+# waiting: a chain that finds it held reads its rows UNREAD (a refused read, never TRUE) and the next tick reads them.
+LEDGER_LOCK_ENV = "ONEX_RULING_REGISTER_LEDGER_LOCK"
+DEFAULT_LEDGER_LOCK = (
+    Path(tempfile.gettempdir()) / "onex-ruling-register-ledger-reader.lock"
+)
 
 
 def is_ledger_reader_row(row: ModelRulingRow) -> bool:
@@ -87,11 +97,13 @@ class HandlerRulingRegisterRead:
         sink: ProtocolRulingEventSink,
         topics: Mapping[str, str],
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        ledger_lock: Path | None = None,
     ) -> None:
         self._port = port
         self._sink = sink
         self._topics = dict(topics)
         self._clock = clock
+        self._ledger_lock = ledger_lock
 
     def handle(self, request: ModelRulingReadRequest) -> ModelRulingReadResult:
         readings = []
@@ -104,7 +116,9 @@ class HandlerRulingRegisterRead:
         ]
 
         def read_task(indexes: list[int]) -> list[tuple[int, ModelRulingReading]]:
-            return [(i, self._port.read(rows[i])) for i in indexes]
+            if self._ledger_lock is None or not is_ledger_reader_row(rows[indexes[0]]):
+                return [(i, self._port.read(rows[i])) for i in indexes]
+            return self._read_chain(rows, indexes)
 
         by_index: dict[int, ModelRulingReading] = {}
         with ThreadPoolExecutor(
@@ -126,6 +140,46 @@ class HandlerRulingRegisterRead:
             readings=tuple(readings),
             sink_errors=tuple(sink_errors),
         )
+
+    def _read_chain(
+        self, rows: Sequence[ModelRulingRow], indexes: list[int]
+    ) -> list[tuple[int, ModelRulingReading]]:
+        """The ledger-reader rows in row order while this process holds the cross-process lock."""
+        assert self._ledger_lock is not None
+        try:
+            self._ledger_lock.parent.mkdir(parents=True, exist_ok=True)
+            handle = self._ledger_lock.open("a+")
+        except OSError as exc:
+            return self._unread_chain(
+                rows, indexes, f"ledger lock unopened: {type(exc).__name__}"
+            )
+        with handle:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                return self._unread_chain(
+                    rows, indexes, "ledger lock held by another process"
+                )
+            try:
+                return [(i, self._port.read(rows[i])) for i in indexes]
+            finally:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+
+    def _unread_chain(
+        self, rows: Sequence[ModelRulingRow], indexes: list[int], detail: str
+    ) -> list[tuple[int, ModelRulingReading]]:
+        return [
+            (
+                i,
+                ModelRulingReading(
+                    row_id=rows[i].row_id,
+                    status=EnumReadStatus.UNREAD,
+                    read_at=self._clock(),
+                    detail=detail,
+                ),
+            )
+            for i in indexes
+        ]
 
     def _emit(
         self,
@@ -151,6 +205,8 @@ class HandlerRulingRegisterRead:
 
 
 __all__ = [
+    "DEFAULT_LEDGER_LOCK",
+    "LEDGER_LOCK_ENV",
     "LEDGER_READER_MARKER",
     "MAX_CONCURRENT_READS",
     "HandlerRulingRegisterRead",

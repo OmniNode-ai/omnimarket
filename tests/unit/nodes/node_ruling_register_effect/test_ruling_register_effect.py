@@ -66,6 +66,7 @@ from omnimarket.nodes.node_ruling_register_effect.adapters import (
     InMemoryRulingSink,
 )
 from omnimarket.nodes.node_ruling_register_effect.handlers.handler_ruling_register_read import (
+    LEDGER_READER_MARKER,
     MAX_CONCURRENT_READS,
     HandlerRulingRegisterRead,
     is_ledger_reader_row,
@@ -445,9 +446,9 @@ def test_the_register_ends_inside_the_unit_run_limit_when_every_row_waits_the_ro
 DEPLOYED_ROWS = 16
 DEPLOYED_LEDGER_ROWS = 8
 DEPLOYED_ROUTE_TIMEOUT = 90
-# Argv words that reach the work-ledger query service. A row carrying one of these without the marker the handler
-# serializes on would run beside the chain and make the measured 115 s of eight at once.
-QUERY_SERVICE_HINTS = ("ledger_reader", "onex-ledger", "work_ledger_query")
+# The argv words that reach the work-ledger query service are read from the repository (``_repo_ledger_hints``): a row
+# carrying one of them without the marker the handler serializes on would run beside the chain and make the measured
+# 115 s of eight at once.
 
 
 def register_values(environ: dict[str, str]) -> tuple[int, int, int, int]:
@@ -506,7 +507,7 @@ def test_every_row_that_reaches_the_query_service_carries_the_serialization_mark
     reaching = [
         r.row_id
         for r in rows
-        if any(h in token for token in r.read.argv for h in QUERY_SERVICE_HINTS)
+        if any(h in token for token in r.read.argv for h in _repo_ledger_hints())
     ]
     assert reaching == [r.row_id for r in rows if is_ledger_reader_row(r)]
     if deployed:
@@ -516,9 +517,16 @@ def test_every_row_that_reaches_the_query_service_carries_the_serialization_mark
 def test_failing_control_a_wrapper_row_that_reaches_the_query_service_without_the_marker_is_found() -> (
     None
 ):
-    wrapper = row("wrapper", argv=("sh", "-c", "onex-ledger rows --window-hours 24"))
+    wrapper = row(
+        "wrapper",
+        argv=(
+            "sh",
+            "-c",
+            "python -m omnimarket.nodes.node_work_ledger_query_effect rows",
+        ),
+    )
     assert not is_ledger_reader_row(wrapper)
-    assert any(h in token for token in wrapper.read.argv for h in QUERY_SERVICE_HINTS)
+    assert any(h in token for token in wrapper.read.argv for h in _repo_ledger_hints())
 
 
 def test_fast_rows_are_not_judged_stale_when_the_tick_reads_for_longer_than_the_age_bound() -> (
@@ -1370,3 +1378,211 @@ def test_failing_control_an_accepted_nonzero_exit_judges_false_not_unread() -> N
     assert judged_result.verdicts[0].verdict is EnumRulingVerdict.FALSE
     assert judged_result.verdicts[0].detail == "exit 1"
     assert judged_result.false_count == 1
+
+
+# ---- review of head 438e88419fa9 --------------------------------------------------------------------------------
+
+HOLD_THE_LOCK = (
+    "import fcntl, sys\n"
+    "handle = open(sys.argv[1], 'a+')\n"
+    "fcntl.flock(handle, fcntl.LOCK_EX)\n"
+    "print('locked', flush=True)\n"
+    "sys.stdin.readline()\n"
+)
+
+
+class ForeignLockHolder:
+    """A second process that holds the ledger-reader lock until the context ends (a tick of another process)."""
+
+    def __init__(self, path: Path) -> None:
+        self._process = subprocess.Popen(
+            [sys.executable, "-c", HOLD_THE_LOCK, str(path)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+
+    def __enter__(self) -> ForeignLockHolder:
+        assert self._process.stdout is not None
+        assert self._process.stdout.readline().strip() == "locked"
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        assert self._process.stdin is not None
+        self._process.stdin.close()
+        self._process.wait(timeout=30)
+        assert self._process.stdout is not None
+        self._process.stdout.close()
+
+
+def test_two_processes_never_read_the_ledger_rows_at_once_and_the_plain_rows_still_read(
+    tmp_path: Path,
+) -> None:
+    """The serialization of the ledger-reader rows holds across processes: while another process holds the lock the
+    ledger rows read UNREAD (never TRUE, and the reader is never started), the plain rows read, and once the other
+    process lets go the same handler reads the ledger rows."""
+    lock = tmp_path / "ledger-reader.lock"
+    called: list[str] = []
+
+    class RecordingPort:
+        def read(self, r: ModelRulingRow) -> ModelRulingReading:
+            called.append(r.row_id)
+            return fixture(r.row_id)
+
+    rows = (ledger_row("ledger-1"), row("plain-1"), ledger_row("ledger-2"))
+    sink = InMemoryRulingSink()
+    h = HandlerRulingRegisterRead(
+        RecordingPort(), sink, TOPICS, clock=lambda: NOW, ledger_lock=lock
+    )
+    request = ModelRulingReadRequest(correlation_id="read-1", policy=policy(*rows))
+    with ForeignLockHolder(lock):
+        busy = h.handle(request)
+    assert called == ["plain-1"]
+    assert {r.row_id: r.status for r in busy.readings} == {
+        "ledger-1": EnumReadStatus.UNREAD,
+        "plain-1": EnumReadStatus.OK,
+        "ledger-2": EnumReadStatus.UNREAD,
+    }
+    assert all("lock" in r.detail for r in busy.readings if r.row_id != "plain-1")
+    # Control: with no other process holding it, the same handler reads every row and lets the lock go again.
+    called.clear()
+    free = h.handle(request)
+    assert sorted(called) == ["ledger-1", "ledger-2", "plain-1"]
+    assert {r.status for r in free.readings} == {EnumReadStatus.OK}
+    again = h.handle(request)
+    assert {r.status for r in again.readings} == {EnumReadStatus.OK}
+
+
+def test_read_register_holds_the_ledger_lock_its_environment_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lock = tmp_path / "named.lock"
+    ledger = cli_row(
+        "ledger-row", "pass  # node_work_ledger_reader_effect", {"kind": "exit_zero"}
+    )
+    plain = cli_row("plain-row", "pass", {"kind": "exit_zero"})
+    environ = cli_env(tmp_path, monkeypatch, [ledger, plain])
+    environ["ONEX_RULING_REGISTER_LEDGER_LOCK"] = str(lock)
+
+    class Port:
+        def read(self, r: ModelRulingRow) -> ModelRulingReading:
+            return fixture(r.row_id).model_copy(update={"read_at": NOW})
+
+    with ForeignLockHolder(lock):
+        judged_result, _ = read_register(
+            environ, port=Port(), clock=lambda: NOW, now=NOW
+        )
+    verdicts = {v.row_id: v.verdict for v in judged_result.verdicts}
+    assert verdicts["ledger-row"] is EnumRulingVerdict.UNREAD
+    assert verdicts["plain-row"] is EnumRulingVerdict.TRUE
+
+
+def test_read_register_does_not_widen_the_bound_when_now_is_given() -> None:
+    """The span widens the age bound only for the judgement the tick makes itself (``now`` unset). A caller that names
+    ``now`` judges at that instant against the policy's own bound: a reading 650 s old at ``now`` is UNREAD under 600 s
+    even when the tick that read it ran for 100 s."""
+    state = {"now": NOW}
+
+    class SlowPort:
+        def read(self, r: ModelRulingRow) -> ModelRulingReading:
+            state["now"] = NOW + timedelta(seconds=100)
+            return fixture(r.row_id).model_copy(update={"read_at": NOW})
+
+    later = NOW + timedelta(seconds=650)
+    given, _ = read_register_with(
+        [cli_row_dict("row")], SlowPort(), lambda: state["now"], bound=600, now=later
+    )
+    assert [v.verdict for v in given.verdicts] == [EnumRulingVerdict.UNREAD]
+    # Control: with no ``now`` the tick's own 100 s span is added and a reading taken inside the tick reads TRUE.
+    state["now"] = NOW
+    unset, _ = read_register_with(
+        [cli_row_dict("row")], SlowPort(), lambda: state["now"], bound=600
+    )
+    assert [v.verdict for v in unset.verdicts] == [EnumRulingVerdict.TRUE]
+
+
+def _ac_statement(contract_file: str, ac: str) -> str:
+    contract = yaml.safe_load((ROOT / "contracts" / contract_file).read_text("utf-8"))
+    return str(
+        next(
+            item["statement"]
+            for req in contract["requirements"]
+            for item in req["acceptance"]
+            if item["id"] == ac
+        )
+    )
+
+
+def test_ac3_of_the_review_round_states_the_span_aware_bound_register_bound_asserts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``register_bound`` asserts the worst case is under the unit's run limit; the 720 s worst case of the register is
+    over its 600 s ``max_reading_age_seconds``, and the span-aware bound (the age bound plus the tick's span) is what
+    keeps a fast row's reading from being judged stale. The contract states that, not the opposite."""
+    statement = _ac_statement("OMN-25318.yaml", "AC3")
+    assert "worst-case read time is under max_reading_age_seconds" not in statement
+    assert "run limit" in statement
+    assert "span" in statement
+    # The asserted bound, with the review's own figures.
+    environ = synthetic_register_environ(
+        tmp_path, monkeypatch, ledger_rows=8, plain_rows=8, route_timeout=90
+    )
+    limit, _timeout, worst_case = register_bound(environ)
+    assert worst_case == 720
+    assert worst_case < limit
+    assert worst_case > max_reading_age(environ)
+
+
+def _dod(contract_file: str, dod_id: str) -> dict[str, object]:
+    contract = yaml.safe_load((ROOT / "contracts" / contract_file).read_text("utf-8"))
+    return dict(next(d for d in contract["dod_evidence"] if d["id"] == dod_id))
+
+
+@pytest.mark.parametrize(
+    "dod_id", ["dod-omn25318-ac4", "dod-omn25318-ac5", "dod-omn25318-ac6"]
+)
+def test_the_dod_commands_that_compare_the_deployed_register_name_the_deployed_overlay_under_the_local_gate(
+    dod_id: str,
+) -> None:
+    """Without ``ONEX_RULING_REGISTER_DEPLOYED_ROOTS`` the tests read the shipped example, so a dod command that
+    compares the deployed register sets it on every check and runs under the local Done gate (hosted CI holds no
+    deployed overlay and the tests there read the example)."""
+    entry = _dod("OMN-25318.yaml", dod_id)
+    assert entry["execution_scope"] == "local_done_gate"
+    checks = entry["checks"]
+    assert isinstance(checks, list)
+    assert checks
+    for check in checks:
+        assert "ONEX_RULING_REGISTER_DEPLOYED_ROOTS=" in check["check_value"], check
+
+
+def _repo_ledger_hints() -> tuple[str, ...]:
+    """The names that reach the work-ledger service, read from the repository: the node packages whose name holds
+    ``work_ledger`` and the console scripts whose name holds ``ledger`` (not a guessed list)."""
+    nodes = sorted(
+        p.name
+        for p in (ROOT / "src/omnimarket/nodes").iterdir()
+        if p.is_dir() and "work_ledger" in p.name
+    )
+    scripts = []
+    in_scripts = False
+    for line in (ROOT / "pyproject.toml").read_text("utf-8").splitlines():
+        if line.startswith("["):
+            in_scripts = line.strip() == "[project.scripts]"
+            continue
+        if in_scripts and "=" in line and "ledger" in line.split("=")[0]:
+            scripts.append(line.split("=")[0].strip().strip('"'))
+    return tuple(nodes + scripts)
+
+
+def test_the_query_service_hints_are_read_from_the_repository_not_guessed() -> None:
+    hints = _repo_ledger_hints()
+    assert "node_work_ledger_reader_effect" in hints
+    assert "node_work_ledger_query_effect" in hints
+    assert LEDGER_READER_MARKER == "node_work_ledger_reader_effect"
+    wrapper = row(
+        "wrapper",
+        argv=("sh", "-c", "python -m omnimarket.nodes.node_work_ledger_query_effect"),
+    )
+    assert not is_ledger_reader_row(wrapper)
+    assert any(h in token for token in wrapper.read.argv for h in hints)
