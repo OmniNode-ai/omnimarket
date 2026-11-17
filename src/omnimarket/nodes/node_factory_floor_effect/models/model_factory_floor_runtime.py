@@ -212,6 +212,17 @@ class ModelFactoryFloorContainerHost(BaseModel):
     ssh_target: str = Field(min_length=1)
 
 
+class ModelFactoryFloorLedgerProjection(BaseModel):
+    """The window read from the work ledger projection instead of the ledger file (OMN-24490), one UTC day at a time."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    reader: str = Field(min_length=1)
+    cache_ttl_seconds: int = Field(gt=0)
+    read_workers: int = Field(default=1, gt=0)
+    settle_seconds: int = Field(default=0, ge=0)
+
+
 class ModelFactoryFloorOverlay(BaseModel):
     """Deployment choice: which plans are lines and which machines are bays. There is no packaged default."""
 
@@ -240,6 +251,8 @@ class ModelFactoryFloorOverlay(BaseModel):
     # Where the file ledger's split archives are, so the window read keeps each archive's rows in the source read cache and reads only
     # the live ledger each cycle (OMN-19998). Absent: the window is read as before.
     ledger_archives: ModelLedgerArchiveWindow | None = None
+    # Declared by the overlay to read the window from the ledger projection; accepted here so the overlay loads.
+    ledger_projection: ModelFactoryFloorLedgerProjection | None = None
     # The line board's declarations (OMN-22368). No default: an overlay without them is refused by name.
     processes: tuple[ModelFloorProcessDecl, ...]
     roles: tuple[str, ...]
