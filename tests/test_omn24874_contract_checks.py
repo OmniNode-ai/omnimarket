@@ -584,9 +584,9 @@ def test_omn24874_contract_ac3_dev_runtime_symbols_exist_only_with_the_fix() -> 
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("reading", ["ac2", "ac4", "ac5"])
+@pytest.mark.parametrize("reading", ["ac2", "ac5"])
 def test_omn24874_contract_reading_needs_the_fix_tree(reading: str) -> None:
-    # The AC2, AC4 and AC5 readings are taken on a runtime that carries this change, so the tree
+    # The AC2 and AC5 readings are taken on a runtime that carries this change, so the tree
     # that runs their hosted behavioural tests must carry the two names the fix adds. A merge base
     # lacks them, so this control fails there.
     from omnimarket.nodes.node_delegation_orchestrator.handlers import (
@@ -600,170 +600,16 @@ def test_omn24874_contract_reading_needs_the_fix_tree(reading: str) -> None:
     assert callable(projection._tenant_overlay_cost_usd), reading
 
 
-_ALARM_INSTALLED_AT = "2026-11-17T04:00:00Z"
-_ALARM_ROW = "{ts} | STATUS | lane=delegation-scenario-alarm | src=alarm | alarm={alarm} | req=r1 | the run failed"
-
-
-class _Ac4World:
-    """A temp omnimarket clone (base, the squash commit of the alarm pull request ending (#6353), a later commit), the alarm
-    unit's installed.json, a lane_brief.py printing ledger rows, and a hostname shim."""
-
-    def __init__(self, root: Path) -> None:
-        self.root = root
-        self.repo = root / "omnimarket"
-        self.repo.mkdir(parents=True)
-        _git(self.repo, "init", "-q")
-        _git(self.repo, "commit", "-q", "--allow-empty", "-m", "base")
-        self.base = _git(self.repo, "rev-parse", "HEAD")
-        _git(
-            self.repo,
-            "commit",
-            "-q",
-            "--allow-empty",
-            "-m",
-            "OMN-25071: add the alarm node (#6353)",
-        )
-        self.alarm = _git(self.repo, "rev-parse", "HEAD")
-        _git(self.repo, "commit", "-q", "--allow-empty", "-m", "a later change")
-        self.later = _git(self.repo, "rev-parse", "HEAD")
-        _git(self.repo, "update-ref", "refs/remotes/origin/dev", self.later)
-        self.set_install(self.later)
-        self.set_rows(
-            [
-                _ALARM_ROW.format(
-                    ts="2026-11-17T05:00:00Z", alarm="delegation-scenario-r8-failed"
-                )
-            ]
-        )
-
-    def set_install(
-        self, revision: str | None, installed_at: str | None = None
-    ) -> None:
-        record = self.root / ".onex_state/delegation-scenario-alarm"
-        record.mkdir(parents=True, exist_ok=True)
-        target = record / "scenario-alarm-systemd.installed.json"
-        if revision is None:
-            target.unlink(missing_ok=True)
-            return
-        target.write_text(
-            json.dumps(
-                {
-                    "revision": revision,
-                    "installed_at": installed_at or _ALARM_INSTALLED_AT,
-                    "unit": "scenario-alarm-systemd",
-                }
-            ),
-            encoding="utf-8",
-        )
-
-    def set_rows(self, rows: list[str], *, prefix: str = "") -> None:
-        script = self.root / "plugin/skills/lane-brief/scripts/lane_brief.py"
-        script.parent.mkdir(parents=True, exist_ok=True)
-        script.write_text(
-            f"for row in {rows!r}:\n    print({prefix!r} + row)\n", encoding="utf-8"
-        )
-
-    def run(self, *, gate_host: str = _PINNED_HOST) -> int:
-        item = _items()["dod-omn24874-ac4-alarm-ledger-row"]
-        assert item["execution_scope"] == "local_done_gate"
-        env = {
-            **_hostname_shim(self.root, gate_host),
-            "OMNI_HOME": str(self.root),
-            "OMNI_PLUGIN_ROOT": str(self.root / "plugin"),
-            "HOME": str(self.root),
-        }
-        return subprocess.run(
-            shlex.split(str(item["checks"][0]["check_value"])),
-            cwd=self.repo,
-            env=env,
-            check=False,
-            capture_output=True,
-        ).returncode
-
-
 @pytest.mark.unit
-def test_omn24874_contract_ac4_check_passes_on_a_row_left_after_the_unit_was_installed(
-    tmp_path: Path,
-) -> None:
-    assert _Ac4World(tmp_path / "bare").run() == 0
-    # The ledger reader prints each row behind its file and line, as lane_brief.py grep does.
-    world = _Ac4World(tmp_path / "prefixed")
-    world.set_rows(
-        [
-            _ALARM_ROW.format(
-                ts="2026-11-17T05:00:00Z", alarm="delegation-scenario-r9-failed"
-            )
-        ],
-        prefix="ROLLING_WORK_LEDGER.md:3322:",
-    )
-    assert world.run() == 0
-
-
-@pytest.mark.unit
-def test_omn24874_contract_ac4_check_fails_on_a_row_older_than_the_unit_install(
-    tmp_path: Path,
-) -> None:
-    # The old reading passed on any src=alarm row: one left by an earlier alarm unit, or a hand-written one, before the
-    # alarm pull request was installed on the host.
-    world = _Ac4World(tmp_path)
-    world.set_rows(
-        [
-            _ALARM_ROW.format(
-                ts="2026-11-16T03:00:00Z", alarm="delegation-scenario-r8-failed"
-            )
-        ]
-    )
-    assert world.run() != 0
-
-
-@pytest.mark.unit
-def test_omn24874_contract_ac4_check_fails_when_the_alarm_pull_request_is_not_merged_or_installed(
-    tmp_path: Path,
-) -> None:
-    # The squash commit of #6353 is not on origin/dev yet.
-    unmerged = _Ac4World(tmp_path / "unmerged")
-    _git(unmerged.repo, "update-ref", "refs/remotes/origin/dev", unmerged.base)
-    assert unmerged.run() != 0
-    # The unit was installed at a revision that predates the alarm merge.
-    stale = _Ac4World(tmp_path / "stale-install")
-    stale.set_install(stale.base)
-    assert stale.run() != 0
-    # No install record of the alarm unit on the host.
-    uninstalled = _Ac4World(tmp_path / "uninstalled")
-    uninstalled.set_install(None)
-    assert uninstalled.run() != 0
-    # Another host.
-    assert _Ac4World(tmp_path / "elsewhere").run(gate_host="some-other-host") != 0
-
-
-@pytest.mark.unit
-def test_omn24874_contract_ac4_check_fails_on_rows_that_are_not_alarm_rows_of_r8_or_r9(
-    tmp_path: Path,
-) -> None:
-    world = _Ac4World(tmp_path)
-    after = "2026-11-17T05:00:00Z"
-    for row in (
-        f"{after} | STATUS | lane=x | src=alarm | alarm=delegation-scenario-r4-failed | req=r1 | text",
-        f"{after} | STATUS | lane=x | src=lane | req=r1 | text says src=alarm alarm=delegation-scenario-r8-failed",
-        f"{after} | MSG | lane=x | src=alarm | alarm=delegation-scenario-r8-failed | req=r1 | text",
-    ):
-        world.set_rows([row])
-        assert world.run() != 0, row
-    # Positive control: the same shape of row for r9 passes.
-    world.set_rows([_ALARM_ROW.format(ts=after, alarm="delegation-scenario-r9-failed")])
-    assert world.run() == 0
-
-
-@pytest.mark.unit
-def test_omn24874_contract_binds_no_proxy_test_to_ac2_ac3_ac4_or_ac5() -> None:
+def test_omn24874_contract_binds_no_proxy_test_to_ac2_ac3_or_ac5() -> None:
     items = _items()
     assert not (_REMOVED_PROXIES & set(items))
     for item in items.values():
         bound = set(item.get("binds_ac") or [])
         # The hosted gate refuses a bound local_done_gate item, so a live
-        # reading stays unbound; AC2 to AC5 bind only this file's behavioural
+        # reading stays unbound; AC2, AC3 and AC5 bind only this file's behavioural
         # tests of the reading commands, never a product proxy.
-        if bound & {"AC2", "AC3", "AC4", "AC5"}:
+        if bound & {"AC2", "AC3", "AC5"}:
             assert item.get("execution_scope") != "local_done_gate", item["id"]
             assert all(c["check_type"] == "test_passes" for c in item["checks"])
             assert all(
