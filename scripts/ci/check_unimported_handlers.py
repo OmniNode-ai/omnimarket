@@ -29,33 +29,63 @@ import importlib.util
 import pathlib
 import re
 import sys
-from typing import Any
+from typing import Protocol, cast
+
+_SCAN_MODULE_NAME = "_omnimarket_unimported_handler_scan"
+_SCAN_HELPER = (
+    pathlib.Path(__file__).resolve().parents[2]
+    / "src"
+    / "omnimarket"
+    / "handlers"
+    / "unimported_handler_baseline.py"
+)
 
 
-def _load_scan_module() -> Any:
+class _ScanModule(Protocol):
+    """The part of the stdlib-only scan helper this gate uses."""
+
+    def repo_relative(
+        self, path: pathlib.Path, repo_root: pathlib.Path
+    ) -> pathlib.Path: ...
+
+    def load_baseline(self, baseline_path: pathlib.Path | None) -> set[str]: ...
+
+    def find_dead_handlers(
+        self, src_root: pathlib.Path, baseline_path: pathlib.Path | None = None
+    ) -> list[str]: ...
+
+    def find_stale_baseline_entries(
+        self, src_root: pathlib.Path, baseline_path: pathlib.Path | None
+    ) -> list[str]: ...
+
+    def scan_unimported_handlers(
+        self, src_root: pathlib.Path, baseline_path: pathlib.Path | None = None
+    ) -> tuple[list[str], list[str]]: ...
+
+
+def _load_scan_module() -> _ScanModule:
     """Load the stdlib-only scan helper by file path.
 
     Importing it as ``omnimarket.handlers.<name>`` would run the handlers package
     ``__init__`` (pydantic and two unrelated handlers) and need ``omnimarket`` on
     the path; this gate stays a stdlib script that runs from any working directory.
+    Every caller (the pre-commit hooks, the CI lint steps and the transport hook)
+    runs it from a full checkout, where the helper is present.
     """
-    path = (
-        pathlib.Path(__file__).resolve().parents[2]
-        / "src"
-        / "omnimarket"
-        / "handlers"
-        / "unimported_handler_baseline.py"
-    )
-    spec = importlib.util.spec_from_file_location("unimported_handler_baseline", path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"cannot load {path}")
+    spec = importlib.util.spec_from_file_location(_SCAN_MODULE_NAME, _SCAN_HELPER)
+    if not _SCAN_HELPER.is_file() or spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {_SCAN_HELPER}")
     module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
+    sys.modules[_SCAN_MODULE_NAME] = module
     spec.loader.exec_module(module)
-    return module
+    return cast(_ScanModule, module)
 
 
-_scan: Any = _load_scan_module()
+try:
+    _scan = _load_scan_module()
+except (ImportError, OSError, SyntaxError) as exc:
+    print(f"ERROR: unimported-handler scan helper unavailable: {exc}", file=sys.stderr)
+    raise SystemExit(2) from exc
 repo_relative = _scan.repo_relative
 load_baseline = _scan.load_baseline
 find_dead_handlers = _scan.find_dead_handlers

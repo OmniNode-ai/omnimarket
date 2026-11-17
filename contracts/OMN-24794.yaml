@@ -14,7 +14,7 @@ requirements:
   - id: AC2
     statement: 'AC2: the fix is made on the pull request''s own branch with no check widened, skipped or bypassed, and a PR comment starting `Lab: head=<full head sha>` carries the lab proof for the new head -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#5609` comments contain a `Lab: head=` line whose sha equals the head, and the diff against the base touches no check or ratchet file beyond the baseline entries the PR already prunes'
   - id: AC3
-    statement: 'AC3: when the cause is outside the pull request, the lane writes a STATUS row with `cause=<one line> shared=yes` and the evidence, and patches nothing around it -- falsifier: `grep -F ''shared=yes'' "$ONEX_LEDGER_PATH" | grep -F ''unblk5609-1125''` returns the row, or AC1 holds'
+    statement: 'AC3: when the cause is outside the pull request, the lane writes a STATUS row with `cause=<one line> shared=yes` and the evidence, and patches nothing around it -- falsifier: `grep -F ''shared=yes'' "$ONEX_LEDGER_PATH" | grep -F ''unblk5609-0751''` returns the row, or AC1 holds'
 evidence_requirements:
 - kind: tests
   description: The repo-evidence binding tests over every contract under contracts/ pass.
@@ -25,25 +25,31 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24794-ac1-hosted-proxy
-  description: 'hosted proxy for AC1: every contract under contracts/ binds each acceptance criterion to a hosted item and none to a local_done_gate item, which is the check that read red in Tests (Split 2/20) at the previous head. The check-run reading of the new head is the unbound local_done_gate item below.'
+  description: "hosted proxy for AC1. It proves only that every contract under contracts/ binds each acceptance criterion to a hosted item and none to a local_done_gate item (the check that read red in Tests (Split 2/20) at the previous head), and that the local required-checks and mergeability commands of this contract exit non-zero on a red required context, a pending one, a blocked or draft PR and another head. It does not read the PR check-runs or its mergeability; those are the unbound local_done_gate items dod-omn24794-required-checks-local and dod-omn24794-mergeable-local."
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -p no:randomly -k 'every_repo_contract_binds_every_criterion or no_repo_contract_binds_a_local_done_gate_item'
+    check_value: "uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -p no:randomly -k 'every_repo_contract_binds_every_criterion or no_repo_contract_binds_a_local_done_gate_item'"
+    cwd: .
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/ci/test_omn25309_local_check_assertions.py -q -n 0 --no-cov -p no:randomly -k 'pr_checks or mergeable'"
     cwd: .
 - id: dod-omn24794-ac2-hosted-proxy
-  description: 'hosted proxy for AC2: the whole file of repo-evidence tests passes, so the contract check itself is unchanged and still enforced; the Lab comment is the unbound local_done_gate item below.'
+  description: "hosted proxy for AC2. It proves only that the whole file of repo-evidence tests passes, so the contract check itself is unchanged and still enforced, and that the local Lab-comment command exits non-zero when the PR has no Lab: head= comment naming the head. It does not read the PR; the comment reading is the unbound local_done_gate item dod-omn24794-lab-comment-local. That no check was widened, skipped or bypassed is shown by the diff against the base touching no check, ratchet or hook file, not by this item."
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -p no:randomly
+    check_value: "uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -p no:randomly "
+    cwd: .
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/ci/test_omn25309_local_check_assertions.py -q -n 0 --no-cov -p no:randomly -k 'lab_comment or fixer_lane'"
     cwd: .
 - id: dod-omn24794-ac3-hosted-proxy
-  description: 'hosted proxy for AC3: a criterion bound to a local_done_gate item is still refused by the checker, so a shared cause is reported in the ledger and never patched around in a contract; the ledger STATUS row is read only by the local Done gate.'
+  description: 'hosted proxy for AC3: a criterion bound to a local_done_gate item is still refused by the checker, so a shared cause is reported in the ledger and never patched around in a contract; no hosted test reads the ledger, so this item proves only the refusal and the ledger STATUS row stays a reading taken by the lane.'
   source: manual
   binds_ac:
   - AC3
@@ -58,4 +64,28 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24794 --kind test -- uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn24794-lab-comment-local
+  description: "The PR holds a comment starting Lab: head= with the pushed head sha; the command exits non-zero when the comment is absent or names another head. Only the local Done gate runs it; it binds no criterion."
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: "onex scm pr-view OmniNode-ai/omnimarket#5609 | grep -F \"Lab: head=$(git rev-parse HEAD)\""
+    cwd: .
+- id: dod-omn24794-required-checks-local
+  description: "Every required context of the PR at the pushed head reads success except the shared Delegation Health Check, which is red on dev too; the command exits non-zero on any other red or pending context or on another head. Only the local Done gate runs it; it binds no criterion."
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: "onex scm pr-checks OmniNode-ai/omnimarket#5609 | python3 -c \"import json,sys; r=json.load(sys.stdin)['result']; red=[n for n in r['red'] if n!='delegation-health-check / Delegation Health Check']; sys.exit(0 if r['head_sha']==sys.argv[1] and not red and not r['pending'] else 1)\" \"$(git rev-parse HEAD)\""
+    cwd: .
+- id: dod-omn24794-mergeable-local
+  description: "The PR is open, not a draft and not blocked at the pushed head; the command exits non-zero on a blocked or draft PR or on another head. Only the local Done gate runs it; it binds no criterion."
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: "onex scm pr-status OmniNode-ai/omnimarket#5609 | python3 -c \"import json,sys; r=json.load(sys.stdin)['result']; sys.exit(0 if r['state']=='OPEN' and r['head_sha']==sys.argv[1] and not r['draft'] and not r['blocked'] else 1)\" \"$(git rev-parse HEAD)\""
     cwd: .

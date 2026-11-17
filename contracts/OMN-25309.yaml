@@ -1,0 +1,105 @@
+schema_version: 1.0.0
+ticket_id: OMN-25309
+title: Review findings 1 to 4 on omnimarket PR 5609 at head 21d21f062ab6 are fixed or argued
+summary: The local Done-gate checks of the unimported-handler contracts assert the Lab comment, findings 5-10, the required check-runs and the PR state, each with a hosted test that runs the command against a stub and requires it to fail when the fact is absent. The scan helper stays under src/omnimarket/handlers because the canonical-file-shape ratchet refuses a new code file under scripts/ci; a checkout without it exits 2 with a message. The non-blocking findings are fixed in the test file and the script, and the integration-proof item of the OMN-20201 contract is argued in a PR comment.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25309-review-findings
+  statement: Each blocking finding of the review of omnimarket#5609 at 21d21f062ab6 is fixed or argued with evidence, and each non-blocking one is settled.
+  acceptance:
+  - id: AC1
+    statement: "AC1: every required check-run of omnimarket#5609 reads success at the new head (Delegation Health Check, red on dev too, is the one stated exception) and a PR comment starting `Lab: head=<full new head sha>` gives the contract command and its pass count, with the body at contracts/OMN-23335.yaml line 15 and the comment at line 43 agreeing -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#5609` lists a required context that is not success at the new head, or `onex scm pr-view OmniNode-ai/omnimarket#5609` shows no comment starting `Lab: head=` with that sha"
+  - id: AC2
+    statement: "AC2: the local checks in contracts/OMN-24837.yaml and contracts/OMN-24794.yaml assert that the Lab comment, findings 5-10 and pr-checks exist, and each criterion binds only to what its check proves -- falsifier: `uv run pytest tests/ci -q -k contract` still passes when the PR holds no `Lab: head=` comment, or a criterion is bound to a test run that says nothing about comments, check-runs or mergeability"
+  - id: AC3
+    statement: "AC3: the unimported-handler helper sits in scripts/ci/ (or every caller is shown) and a missing helper exits 2 with a message instead of a traceback, with ruff F821 and F401 clean -- falsifier: `uv run pytest tests/ci/test_check_unimported_handlers.py -q` passes with the helper path absent and the exit status is not 2, or `uv run ruff check scripts/ci/check_unimported_handlers.py --select F821,F401` reports a finding"
+  - id: AC4
+    statement: "AC4: the PR's edit to contracts/OMN-20201.yaml is reverted, or a PR comment names the gate that required it -- falsifier: `git diff origin/dev...HEAD -- contracts/OMN-20201.yaml` lists a change and `onex scm pr-view OmniNode-ai/omnimarket#5609` shows no comment naming the gate"
+  - id: AC5
+    statement: "AC5: the five non-blocking findings are settled: the falsifier lane id in contracts/OMN-24794.yaml reads unblk5609-0751, the -k selection matches test_main_exits_0_when_baseline_is_clean or the wording is fixed, a test reaches the repo_relative call, the helper is registered under a private name with typed re-exports, and the never-grow path is documented in the test -- falsifier: `grep -c unblk5609-1125 contracts/OMN-24794.yaml` prints a non-zero count, or `uv run pytest tests/ci/test_check_unimported_handlers.py -q` leaves the repo_relative call unreached"
+evidence_requirements:
+- kind: tests
+  description: The unimported-handler gate tests and the local-check assertion tests pass.
+  command: uv run --frozen pytest tests/ci/test_check_unimported_handlers.py tests/ci/test_omn25309_local_check_assertions.py -q -n 0 --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25309-ac1-hosted-proxy
+  description: "hosted proxy for AC1. It proves only that the local commands that read the PR checks and the Lab comment exit non-zero on a red required context, a pending one, another head, or no Lab: head= comment naming the head. It does not read the PR; those readings are the unbound local_done_gate items dod-omn25309-required-checks-local and dod-omn25309-lab-comment-local. The agreement of the body line 15 and the comment line 43 of the OMN-23335 contract is stated in the PR comment and is not tested here."
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/ci/test_omn25309_local_check_assertions.py -q -n 0 --no-cov -p no:randomly -k 'pr_checks or lab_comment'"
+    cwd: .
+- id: dod-omn25309-required-checks-local
+  description: "Every required context of the PR at the pushed head reads success except the shared Delegation Health Check, which is red on dev too. Exits non-zero on any other red or pending context or another head. Only the local Done gate runs it; it binds no criterion."
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: "onex scm pr-checks OmniNode-ai/omnimarket#5609 | python3 -c \"import json,sys; r=json.load(sys.stdin)['result']; red=[n for n in r['red'] if n!='delegation-health-check / Delegation Health Check']; sys.exit(0 if r['head_sha']==sys.argv[1] and not red and not r['pending'] else 1)\" \"$(git rev-parse HEAD)\""
+    cwd: .
+- id: dod-omn25309-lab-comment-local
+  description: "The PR holds a comment starting Lab: head= with the pushed head sha; exits non-zero when it is absent or names another head. Only the local Done gate runs it; it binds no criterion."
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: "onex scm pr-view OmniNode-ai/omnimarket#5609 | grep -F \"Lab: head=$(git rev-parse HEAD)\""
+    cwd: .
+- id: dod-omn25309-ac2-local-checks-can-fail
+  description: "Runs the whole file of local-check assertion tests: the Lab comment, findings 5-10, required checks and mergeability commands of the OMN-24837 and OMN-24794 contracts each exit 0 on a stub PR that holds the fact and non-zero on one that does not. It fails at the merge base, where the commands are the bare pr-view and the test file is absent."
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/ci/test_omn25309_local_check_assertions.py -q -n 0 --no-cov -p no:randomly"
+    cwd: .
+- id: dod-omn25309-ac3-helper-missing-exits-2
+  description: "Runs the gate script from a checkout without its helper, for the gate and for the transport hook, and requires exit 2 with a message and no traceback; the ruff undefined-name and unused-import check on the script is the second check. The helper stays under src/omnimarket/handlers because the canonical-file-shape ratchet refuses a new code file under scripts/ci."
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/ci/test_check_unimported_handlers.py -q -n 0 --no-cov -p no:randomly -k helper_is_missing"
+    cwd: .
+  - check_type: command
+    check_value: "uv run --frozen ruff check scripts/ci/check_unimported_handlers.py --select F821,F401"
+    cwd: .
+- id: dod-omn25309-ac4-integration-proof-gate
+  description: "Runs the test of the gate that required the integration-proof item in contracts/OMN-20201.yaml: a change under src/omnimarket/handlers on a ticket-named branch is refused unless that ticket's contract carries an integration-proof item, and accepted with it."
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/ci/test_omn25309_local_check_assertions.py -q -n 0 --no-cov -p no:randomly -k runtime_handler_path"
+    cwd: .
+- id: dod-omn25309-ac5-non-blocking
+  description: "Runs the tests of the non-blocking findings: the clean-baseline main() test is selected by stale_baseline_entry, the repo-relative path form is printed by the transport hook, the helper is registered under a private module name, and the OMN-24794 contract names the fixer lane unblk5609-0751. The never-grow path is the comment above the count constant in the test file."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/ci/test_check_unimported_handlers.py -q -n 0 --no-cov -p no:randomly -k 'stale_baseline_entry or print_paths_relative or private_name'"
+    cwd: .
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/ci/test_omn25309_local_check_assertions.py -q -n 0 --no-cov -p no:randomly -k fixer_lane"
+    cwd: .
+- id: dod-omn25309-integration-proof
+  description: "On a lab host the two test files run at the pushed head through the lab work runner and pass there. Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check."
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-25309 --kind test -- uv run --frozen pytest tests/ci/test_check_unimported_handlers.py tests/ci/test_omn25309_local_check_assertions.py -q --no-cov -p no:randomly"
+    cwd: .

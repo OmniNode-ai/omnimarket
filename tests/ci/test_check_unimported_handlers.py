@@ -292,9 +292,14 @@ def _tmp_repo(
     tmp_path: Path,
     baseline_entries: list[str],
     files: dict[str, str],
+    *,
+    with_helper: bool = True,
 ) -> Path:
     """Copy the real gate script and helper into a standalone repo under tmp."""
-    for rel in ("scripts/ci/check_unimported_handlers.py", _HELPER_REL):
+    copied = ["scripts/ci/check_unimported_handlers.py"]
+    if with_helper:
+        copied.append(_HELPER_REL)
+    for rel in copied:
         destination = tmp_path / rel
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(_REPO_ROOT / rel, destination)
@@ -333,7 +338,7 @@ def test_main_exits_1_and_names_stale_baseline_entry(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_main_exits_0_when_baseline_is_clean(tmp_path: Path) -> None:
+def test_main_exits_0_when_no_stale_baseline_entry_exists(tmp_path: Path) -> None:
     repo = _tmp_repo(
         tmp_path,
         [f"{_HANDLER_REL}:HandlerXEffect"],
@@ -385,6 +390,92 @@ def test_script_loads_without_importing_omnimarket_or_pydantic() -> None:
 
 
 @pytest.mark.unit
+def test_main_exits_2_with_a_message_when_the_scan_helper_is_missing(
+    tmp_path: Path,
+) -> None:
+    """A checkout without the helper is an invocation error, never a traceback."""
+    repo = _tmp_repo(tmp_path, [], {"nodes/node_x/__init__.py": ""}, with_helper=False)
+    assert not (repo / _HELPER_REL).exists()
+    result = _run_gate(repo)
+    assert result.returncode == 2
+    assert "unimported_handler_baseline.py" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+@pytest.mark.unit
+def test_transport_imports_exits_2_with_a_message_when_the_scan_helper_is_missing(
+    tmp_path: Path,
+) -> None:
+    repo = _tmp_repo(tmp_path, [], {"nodes/node_x/__init__.py": ""}, with_helper=False)
+    script = repo / "scripts" / "ci" / "check_unimported_handlers.py"
+    result = subprocess.run(
+        [sys.executable, "-I", str(script), "--transport-imports"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "Traceback" not in result.stderr
+
+
+@pytest.mark.unit
+def test_script_registers_the_scan_helper_under_a_private_name() -> None:
+    code = "\n".join(
+        [
+            "import importlib.util, sys",
+            "spec = importlib.util.spec_from_file_location('gate', sys.argv[1])",
+            "module = importlib.util.module_from_spec(spec)",
+            "spec.loader.exec_module(module)",
+            "print('unimported_handler_baseline' in sys.modules)",
+        ]
+    )
+    script = _REPO_ROOT / "scripts" / "ci" / "check_unimported_handlers.py"
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", code, str(script)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "False"
+
+
+@pytest.mark.unit
+def test_transport_imports_print_paths_relative_to_the_repo_root(
+    tmp_path: Path,
+) -> None:
+    """Reaches the repo_relative call in transport_import_main (output path form)."""
+    violating = "node_x/handlers/handler_x.py"
+    repo = _tmp_repo(
+        tmp_path,
+        [],
+        {
+            f"nodes/{violating}": (
+                "import importlib\n"
+                "def load():\n"
+                "    return importlib.import_module('omnimarket.nodes.node_y.mod')\n"
+            )
+        },
+    )
+    script = repo / "scripts" / "ci" / "check_unimported_handlers.py"
+    target = repo / "src" / "omnimarket" / "nodes" / violating
+    result = subprocess.run(
+        [sys.executable, "-I", str(script), "--transport-imports", str(target)],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert (
+        f"src/omnimarket/nodes/{violating}:3: dynamic transport/node import"
+        in result.stdout
+    )
+    assert str(repo) not in result.stdout
+
+
+@pytest.mark.unit
 def test_committed_baseline_has_no_stale_baseline_entry() -> None:
     assert _COMMITTED_BASELINE.is_file(), f"missing baseline: {_COMMITTED_BASELINE}"
     stale = find_stale_baseline_entries(
@@ -394,6 +485,13 @@ def test_committed_baseline_has_no_stale_baseline_entry() -> None:
     assert stale == []
 
 
+# The baseline only shrinks, so this count only goes down. An entry that was
+# pruned because a coincidental name reference made its class look imported
+# cannot come back: if that class later has no real import again, the gate
+# reports it as a dead handler and this count refuses a re-added line. The way
+# back is to wire the handler (import it where it is used) or to mark its file
+# with an inline ``# unimported-handler-allow: <reason>`` annotation, never to
+# grow the baseline.
 _BASELINE_COUNT = 61
 
 
