@@ -17,16 +17,44 @@ description: >
   resource, DELETE on a topic, a read of the write node's commands, a duplicate)
   refuses the whole scope with finding codes and renders nothing. The apply stays an
   operator-run command; node_broker_acl_reconcile_effect is the node that drives
-  the broker admin path.
+  the broker admin path. The second operation, derive_broker_acl_rows, derives rows from the topics the contracts
+  declare and the principals an overlay names, and refuses a topic that has no row.
+  The third operation, check_broker_acl_coverage, is the merge check: a topic use a change adds to a contract that no declared
+  grant covers refuses and names the topic. A role may also name calls, the nodes its logins only send an `onex run-node`
+  request to: those logins hold a write on the called node's command topic and a read on its terminal topic, and a called
+  node that declares neither refuses.
 handler_routing:
-  routing_strategy: operation_match
+  # One command topic carries three operations, so the engine must pick the handler by the payload's model: under operation_match every
+  # dispatcher on the topic is handed every command and the two that did not ask for it raise ValidationError (OMN-25245).
+  routing_strategy: payload_type_match
   handlers:
   - operation: render_broker_acl_overlay
     handler:
       name: HandlerBrokerAclOverlayRender
       module: omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_overlay_render
-    input_model: omnimarket.nodes.node_broker_acl_overlay_render_compute.models.model_broker_acl_overlay.ModelBrokerAclRenderRequest
-    output_model: omnimarket.nodes.node_broker_acl_overlay_render_compute.models.model_broker_acl_overlay.ModelBrokerAclRenderResult
+    event_model:
+      name: ModelBrokerAclRenderRequest
+      module: omnimarket.models.broker_acl.model_broker_acl_overlay
+    input_model: omnimarket.models.broker_acl.model_broker_acl_overlay.ModelBrokerAclRenderRequest
+    output_model: omnimarket.models.broker_acl.model_broker_acl_overlay.ModelBrokerAclRenderResult
+  - operation: derive_broker_acl_rows
+    handler:
+      name: HandlerBrokerAclDerive
+      module: omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_derive
+    event_model:
+      name: ModelBrokerAclDeriveRequest
+      module: omnimarket.models.broker_acl.model_broker_acl_derive
+    input_model: omnimarket.models.broker_acl.model_broker_acl_derive.ModelBrokerAclDeriveRequest
+    output_model: omnimarket.models.broker_acl.model_broker_acl_derive.ModelBrokerAclDeriveResult
+  - operation: check_broker_acl_coverage
+    handler:
+      name: HandlerBrokerAclCoverageGate
+      module: omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_coverage_gate
+    event_model:
+      name: ModelBrokerAclCoverageRequest
+      module: omnimarket.models.broker_acl.model_broker_acl_coverage
+    input_model: omnimarket.models.broker_acl.model_broker_acl_coverage.ModelBrokerAclCoverageRequest
+    output_model: omnimarket.models.broker_acl.model_broker_acl_coverage.ModelBrokerAclCoverageResult
 descriptor:
   node_archetype: compute
   purity: pure
@@ -54,6 +82,16 @@ config:
   principal_wildcard: "User:*"
   cluster_resource_name: kafka-cluster
   delete_allowed_resource_types: [GROUP]
+  # The derivation (OMN-19998 L1-04): the rows a node needs follow from the topics its contract declares. A node that publishes a
+  # topic needs these operations on it; a node that subscribes needs these on the topic and these on its consumer group prefix.
+  derive_publish_operations: [WRITE, DESCRIBE]
+  derive_subscribe_operations: [READ, DESCRIBE]
+  derive_group_operations: [READ, DESCRIBE]
+  derive_group_prefix_template: "local.omnimarket.{node}.consume.v1."
+  # A caller is granted a write only on a command topic: a node whose first subscribe topic does not carry this kind segment (the
+  # second dot-separated part of the topic name; an event topic it reacts to) refuses, so a login is never granted a write on an
+  # event topic other consumers trust.
+  derive_caller_command_segment: cmd
   scm_command_topics:
   - onex.cmd.omnimarket.github-repo-write-requested.v1
   - onex.cmd.omnimarket.github-git-credential-requested.v1

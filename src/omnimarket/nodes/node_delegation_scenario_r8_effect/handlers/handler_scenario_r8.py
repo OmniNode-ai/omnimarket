@@ -74,6 +74,7 @@ from omnimarket.nodes.node_delegation_scenario_r8_effect.handlers.adapter_r8_lan
     ModelSendRequest,
     ModelTotals,
     ProtocolR8Lane,
+    delegate_transport_args,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     CommandLedgerAppender,
@@ -360,6 +361,8 @@ def _build_bus_lane(
         raise LaneReadError("the R8 overlay document has no tenant_read block")
     if settings.bus is None:
         raise LaneReadError("the R8 contract lane block has no bus block")
+    workspace = environment.get(settings.bus.workspace_env, "").strip() or None
+    delegate_transport_args(tenant_read, workspace)
     return BusLane(
         settings,
         tenant_read,
@@ -370,6 +373,7 @@ def _build_bus_lane(
             workspace_env=settings.bus.workspace_env,
             environment=environment,
         ),
+        workspace=workspace,
     )
 
 

@@ -6,7 +6,13 @@
 moved_readers: [inbox]
 max_watermark_age_seconds: 900
 page_size: 200
+# page_size_by_query is optional: the page size one kind of read asks for in place of
+# page_size (an open-claims page carries each claim's activity and is far larger than a
+# rows line, so its pages are smaller); absent, every read uses page_size.
+# page_size_by_query: {open-claims: 400}
 max_pages: 50
+# The real overlay sets true once the query node serves lines-only pages.
+rows_lines_only: false
 route:
   kind: inmemory
 parity:

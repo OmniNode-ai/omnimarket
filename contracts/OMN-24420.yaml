@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-24420
+title: Read every merged change against the running build in one reusable check
+summary: 'node_merged_change_reading_effect takes a list of merged pull requests and answers per change: in the running build or not, node loaded, last run time, last result and the one missing step, read from the runtime host''s build provenance, introspection manifest and container log and from each host unit''s last run. node_merged_change_reading_compute is the pure rule table; the change to node map is the merged_change_runners overlay. A source it cannot read reads UNREAD and never NOT_RUNNING.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24420-change-reading
+  statement: One reusable read answers, for each merged change in a list, whether it runs on the dev system and the single step missing when it does not.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: given a list of merged changes and the facts read from a running build, the pure rule returns one reading per change with in-build, loaded, last run, last result and the single missing step -- falsifier: pytest tests/nodes/node_merged_change_reading_compute -q'
+  - id: AC2
+    statement: 'AC2: a change that is not in the build, a node that is not loaded, a node with no subscription and a node that has not run since the build each read NOT RUNNING with its own missing-step code -- falsifier: the failing-control cases in tests/nodes/node_merged_change_reading_compute'
+  - id: AC3
+    statement: 'AC3: the runtime log reader turns real runtime log lines into loaded nodes, joined subscriptions and published results, and an unreadable log reads unread, never not running -- falsifier: pytest tests/nodes/node_merged_change_reading_effect -q'
+  - id: AC4
+    statement: 'AC4: the check run on the dev runtime reads each listed change with its reading, and the receipt is named -- falsifier: integrated: onex run of the reading node on h201 lists every change with a verdict'
+evidence_requirements:
+- kind: tests
+  description: The two reading nodes' focused tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_merged_change_reading_compute tests/nodes/node_merged_change_reading_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24420-ac1
+  description: 'AC1: given a list of merged changes and the facts read from a running build, the pure rule returns one reading per change with in-build, loaded, last run, last result and the single missing step'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_merged_change_reading_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24420-ac2
+  description: 'AC2: a change that is not in the build, a node that is not loaded, a node with no subscription and a node that has not run since the build each read NOT RUNNING with its own missing-step code'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_merged_change_reading_compute -q --no-cov -n 0 -p no:randomly -k 'error or failing_control'
+    cwd: .
+- id: dod-omn24420-ac3
+  description: 'AC3: the runtime log reader turns real runtime log lines into loaded nodes, joined subscriptions and published results, and an unreadable log reads unread, never not running'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_merged_change_reading_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24420-ac4
+  description: 'hosted proxy for AC4: the effect tests pass here; the reading of the dev runtime from a lab host is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_merged_change_reading_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24420-integration-proof
+  description: the reading nodes' focused tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24420 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_merged_change_reading_compute tests/nodes/node_merged_change_reading_effect -q --no-cov -n 0 -p no:randomly

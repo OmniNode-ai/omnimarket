@@ -11,6 +11,7 @@ bus, so the deployed gateway fills its own, shared cache.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
@@ -39,7 +40,15 @@ from omnimarket.nodes.node_github_repo_gateway_effect.transport import (
 )
 from omnimarket.nodes.node_job_log_filler_effect.protocols.protocol_job_log_reader import (
     JobLogCacheMissError,
+    JobLogNotFoundError,
 )
+
+_LOG_NOT_FOUND = re.compile(r"job log not cached: HTTP 404\b")
+
+
+def is_log_not_found(message: str) -> bool:
+    """True when a failure text says the gateway answered the job's log is not served: HTTP 404."""
+    return _LOG_NOT_FOUND.search(message) is not None
 
 
 def _request(
@@ -99,6 +108,8 @@ class InMemoryJobLogReader:
         except GitHubTransportError as exc:
             if str(exc).startswith(JOB_LOG_CACHE_MISS):
                 raise JobLogCacheMissError(str(exc)) from exc
+            if is_log_not_found(str(exc)):
+                raise JobLogNotFoundError(str(exc)) from exc
             raise
         if not isinstance(result, ModelJobLogTailResult):
             raise GatewayReadError(f"gateway answered {type(result).__name__}")
@@ -137,10 +148,12 @@ class BusJobLogReader:
         except GatewayReadError as exc:
             if JOB_LOG_CACHE_MISS in str(exc):
                 raise JobLogCacheMissError(str(exc)) from exc
+            if is_log_not_found(str(exc)):
+                raise JobLogNotFoundError(str(exc)) from exc
             raise
         if not isinstance(result, ModelJobLogTailResult):
             raise GatewayReadError(f"gateway answered {type(result).__name__}")
         return result
 
 
-__all__ = ["BusJobLogReader", "InMemoryJobLogReader"]
+__all__ = ["BusJobLogReader", "InMemoryJobLogReader", "is_log_not_found"]

@@ -19,6 +19,16 @@ from typing import Any
 
 import yaml
 
+from omnimarket.handlers.edge_bearer_jwt_identity import (
+    BearerJwtTenantIdentity,
+    JwksSigningKeyProvider,
+)
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
+from omnimarket.models.model_edge_identity_overlay import ModelEdgeIdentityOverlay
 from omnimarket.nodes.node_hook_events_by_correlation_read_effect.models.model_hook_events_by_correlation import (
     ModelHookEventsHttpConfig,
 )
@@ -38,6 +48,8 @@ from omnimarket.protocols.protocol_http_tenant_identity import (
 logger = logging.getLogger(__name__)
 
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+IDENTITY_OVERLAY_ID = "node_hook_events_by_correlation_read_effect"
 
 # Projected columns are named explicitly (no SELECT *) so a schema addition
 # upstream cannot silently widen what this route returns to a caller.
@@ -76,19 +88,49 @@ class SystemClock:
         return dt.datetime.now(dt.UTC)
 
 
-# The hosted edge binds the resolver in-process at startup. Nothing binds a
-# default: an unbound mount refuses every request.
+# The hosted edge binds the resolver in-process at startup. When nothing is
+# bound explicitly, the resolver is built from this node's own overlay document
+# and cached on success; an absent document is not cached so one that appears
+# later is used without a restart.
 _IDENTITY_RESOLVER: ProtocolHttpTenantIdentity | None = None
+_FROM_OVERLAY: ProtocolHttpTenantIdentity | None = None
+
+
+def _resolver_from_overlay() -> ProtocolHttpTenantIdentity | None:
+    """Build the resolver from the node's overlay document, or ``None``.
+
+    A missing document is not cached so a document that appears later is used
+    without a restart; any other overlay error is logged once and not cached.
+    """
+    global _FROM_OVERLAY
+    if _FROM_OVERLAY is not None:
+        return _FROM_OVERLAY
+    try:
+        overlay = load_structured_overlay(IDENTITY_OVERLAY_ID, ModelEdgeIdentityOverlay)
+    except NodeOverlayNotFoundError:
+        return None
+    except NodeOverlayError as exc:
+        logger.warning(
+            "identity overlay %s unavailable (%s)",
+            IDENTITY_OVERLAY_ID,
+            type(exc).__name__,
+        )
+        return None
+    _FROM_OVERLAY = BearerJwtTenantIdentity(overlay, JwksSigningKeyProvider(overlay))
+    return _FROM_OVERLAY
 
 
 def bind_tenant_identity_resolver(resolver: ProtocolHttpTenantIdentity | None) -> None:
     """Bind (or with ``None`` unbind) the edge's caller-tenant resolver."""
-    global _IDENTITY_RESOLVER
+    global _IDENTITY_RESOLVER, _FROM_OVERLAY
     _IDENTITY_RESOLVER = resolver
+    _FROM_OVERLAY = None
 
 
 def bound_tenant_identity_resolver() -> ProtocolHttpTenantIdentity | None:
-    return _IDENTITY_RESOLVER
+    if _IDENTITY_RESOLVER is not None:
+        return _IDENTITY_RESOLVER
+    return _resolver_from_overlay()
 
 
 def _decode_jsonb(value: Any) -> Any:
@@ -182,6 +224,7 @@ class PostgresHookEventsReader:
 
 __all__: list[str] = [
     "CONTRACT_PATH",
+    "IDENTITY_OVERLAY_ID",
     "PostgresHookEventsReader",
     "SystemClock",
     "bind_tenant_identity_resolver",

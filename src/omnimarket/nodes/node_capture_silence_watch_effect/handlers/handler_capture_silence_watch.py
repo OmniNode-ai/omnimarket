@@ -120,8 +120,12 @@ class HandlerCaptureSilenceWatch:
                 if self._reader is None:
                     # Resolve at evaluation so a missing DSN becomes UNKNOWN,
                     # and a later tick can recover once the binding is available.
+                    # A password reference is read through the secret store on its own
+                    # event loop, so the resolution runs off this one (OMN-24325).
                     self._reader = PostgresCaptureWatchReader(
-                        dsn=resolve_reads_source_dsn(self._binding)
+                        dsn=await asyncio.to_thread(
+                            resolve_reads_source_dsn, self._binding
+                        )
                     )
                 observation = ModelCaptureObservation.model_validate(
                     await asyncio.to_thread(

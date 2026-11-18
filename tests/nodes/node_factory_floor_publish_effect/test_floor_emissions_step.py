@@ -27,6 +27,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
     ModelFactoryFloorPublishRequest,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 from tests.nodes.node_factory_floor_publish_effect.test_factory_floor_publish import (
     FLOOR_EMISSIONS,
     FLOOR_SIMPLE,
@@ -37,7 +38,7 @@ from tests.nodes.node_factory_floor_publish_effect.test_factory_floor_publish im
 
 pytestmark = pytest.mark.unit
 
-RT = load_runtime()
+RT = load_runtime().with_limits(TEST_LIMITS)
 
 
 def _module_calls(runner: Scripted) -> list[tuple[str, list[str]]]:

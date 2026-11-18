@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+lane: dev
+keycloak:
+  base_url: https://keycloak.example.invalid
+  realm: omninode
+  timeout_seconds: 10.0
+  token_path_template: /realms/{realm}/protocol/openid-connect/token
+user:
+  username: dev-probe-user
+  client_id: omnidash-spa
+  password_folder: /shared/env
+  password_key: DEV_PROBE_USER_PASSWORD
+api:
+  base_url: https://api.example.invalid
+  timeout_seconds: 15.0
+read:
+  path: /v1/projections/hook-events/by-correlation
+  correlation_param: correlation_id
+  correlation_id: dev-signed-in-read-probe
+  limit_param: limit
+  limit: 1
+  data_state_field: data_state
+  data_states:
+  - found
+  - not_found
+  - projection_absent
+secret_store: null

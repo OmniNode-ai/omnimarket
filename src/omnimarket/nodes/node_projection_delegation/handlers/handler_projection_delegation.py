@@ -52,6 +52,9 @@ from omnimarket.events.topics import (
 from omnimarket.handlers.handler_modelled_terminal_savings import (
     apply_modelled_terminal_savings,
 )
+from omnimarket.handlers.routing.byok_provider_backends import (
+    byok_declared_price_per_1m,
+)
 from omnimarket.models.delegation.quality_bar_evidence import (
     extract_quality_bar_evidence,
 )
@@ -66,6 +69,9 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
 )
 from omnimarket.models.delegation.wire.model_quality_gate import (
     ModelQualityGateResult,
+)
+from omnimarket.models.model_tenant_routing_overlay_backend import (
+    TENANT_OVERLAY_TIER_NAME,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
     ModelDelegationBudgetStateEvent,
@@ -365,6 +371,9 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     answering_backend: str | None = Field(default=None)
     # OMN-20162: the backend and host of the attempt that answered.
     backend_id: str | None = Field(default=None)
+    # OMN-24874: the endpoint the terminal's answer came from (the canonical terminal's ``endpoint_url``). A real overlay
+    # terminal carries no ``backend_id`` (the canonical result has no such field); this is what prices a zero-cost one.
+    endpoint_url: str | None = Field(default=None)
     host: str | None = Field(default=None)
     # OMN-19448: the deciding terminal's stop reason and output truncation.
     finish_reason: str | None = Field(default=None)
@@ -1754,6 +1763,7 @@ def _canonical_result_to_task_delegated_payload(
         # OMN-20162: the accepting attempt's backend and host, when the
         # terminal names them; blank stays NULL, never an empty backend.
         "backend_id": _blank_to_none(payload.get("backend_id")),
+        "endpoint_url": _blank_to_none(payload.get("endpoint_url")),
         "host": _blank_to_none(payload.get("host")),
         "finish_reason": finish_reason,
         "truncated": truncated,
@@ -1852,6 +1862,38 @@ def _sum_escalation_attempt_costs(
     return total
 
 
+def _tenant_overlay_cost_usd(event: ModelProjectionTaskDelegatedEvent) -> float:
+    """The cost of a tenant overlay run: the terminal's positive cost, else the declared model price.
+
+    OMN-24874: a terminal that priced the run carries it in ``cost_usd`` and that is
+    kept. A terminal that arrives with ``cost_usd`` 0 (an older runtime, another
+    producer) is priced from the catalogue's declared per-1M price for the endpoint
+    the terminal names and its model, at the served tokens: the same lookup the
+    workflow terminal uses. The key is what a real terminal carries, its
+    ``endpoint_url`` and ``model_used``: the canonical result has no ``backend_id``.
+    An endpoint that is not a catalogue BYOK endpoint (a house rung), and a model
+    the catalogue does not price, give 0.0.
+    """
+    if event.cost_usd > 0.0:
+        return event.cost_usd
+    declared = byok_declared_price_per_1m(event.endpoint_url, event.model_name or "")
+    if declared is None:
+        return 0.0
+    price_in, price_out = declared
+    # Rounded to ten places, as the workflow terminal rounds the same quotient, so the
+    # floor and a terminal that priced the run itself store the same figure.
+    return round(
+        float(
+            (
+                Decimal(event.tokens_input) * price_in
+                + Decimal(event.tokens_output) * price_out
+            )
+            / Decimal(1_000_000)
+        ),
+        10,
+    )
+
+
 def _measure_actual_cost(
     event: ModelProjectionTaskDelegatedEvent,
 ) -> ModelActualCostProjection:
@@ -1906,6 +1948,41 @@ def _measure_actual_cost(
         completion_tokens=event.tokens_output,
         premium_counterfactual=event.premium_counterfactual,
     )
+
+    if (
+        event.cost_tier_name == TENANT_OVERLAY_TIER_NAME
+        and measurement.cost_measurement_source == "no_cost_model"
+    ):
+        tenant_overlay_cost_usd = _tenant_overlay_cost_usd(event)
+        if tenant_overlay_cost_usd > 0.0:
+            # OMN-24874: the registry has no cost model for the tenant overlay tier
+            # (a run on the customer's own key), so the re-measurement above is a
+            # zero that proves nothing. Same authority order as the OMN-13408 branch
+            # below: the terminal's own positive ``cost_usd`` is the total (it
+            # priced the run from the catalogue's declared model price), and only a
+            # terminal that arrives with ``cost_usd`` 0 is floored by pricing the
+            # served tokens from the same declared price (OMN-24859 case). Either
+            # way the stored source is ``metered``, never the zero
+            # re-measurement's ``no_cost_model``. Any other tier without a cost
+            # model is not touched here and keeps the registry re-measurement.
+            return ModelActualCostProjection(
+                cost_usd=tenant_overlay_cost_usd,
+                cost_savings_usd=(
+                    0.0
+                    if event.premium_counterfactual is None
+                    else float(
+                        event.premium_counterfactual.counterfactual_cost_usd
+                        - Decimal(str(tenant_overlay_cost_usd))
+                    )
+                ),
+                # Own-key spend never draws down the platform's ceiling headroom: a
+                # ``metered`` tier type draws none (pricing.py), the workflow terminal
+                # carries none, and a headroom a producer stamped on this run is not kept.
+                headroom_consumed_usd=0.0,
+                cost_tier_type="metered",
+                cost_tier_name=event.cost_tier_name,
+                cost_measurement_source="metered",
+            )
 
     if event.premium_counterfactual is None:
         # FAILED / escalation terminal (OMN-13408). The terminal's ``cost_usd``

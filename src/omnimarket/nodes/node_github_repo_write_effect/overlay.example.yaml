@@ -4,3 +4,41 @@
 pr_label:
   allowed_labels:
     - example:label
+repo_variables:
+  entries:
+    - repository: example/owner-repo
+      name: EXAMPLE_VAR
+      source: example/vars/EXAMPLE_VAR.txt
+    - repository: example/owner-repo
+      name: EXAMPLE_ITEMS_VAR
+      format: json_compact
+      select: items
+      source: example/docs/example.yaml
+  refuse_name_markers:
+    - SECRET
+    - TOKEN
+    - PASSWORD
+  refuse_value_markers:
+    - SECRET
+    - TOKEN
+    - PASSWORD
+required_contexts:
+  entries:
+    - repository: example/owner-repo
+      branch: main
+      context: fable-review-gate
+runner_removals:
+  entries:
+    - organization: example-org
+      name: example-runner-1
+    - organization: example-org
+      name: example-runner-2
+runner_group_reads:
+  entries:
+    - organization: example-org
+      group_id: 7
+event_bus:
+  type: kafka
+  lane: example-lane
+comment_author_logins:
+  - example-login

@@ -14,18 +14,25 @@ form names every choice and refuses, before any step runs, the one that is missi
 The command resolves the one value the walk cannot default, the workspace root,
 from ``--workspace``, ``OMNIBASE_PATH``, ``OMNI_HOME`` or the root an earlier run
 recorded, and prompts for it only when none names it and a terminal is attached.
-It then hands the typed request to ``HandlerOnexSetup`` and prints the typed
-result. A failed step exits 1 with its fix and the retry command.
+It then publishes the typed request as the node's command on the local runtime
+(the in-memory bus, ``run_node_in_process``), where ``node_onex_setup_effect``
+handles it and ends on its terminal event, and prints the typed result. The
+provider key never rides on the command, which the runtime records: it is parked
+in this process and the command carries a token for it. A failed step exits 1 with its fix and the retry command.
 """
 
 from __future__ import annotations
 
 import sys
 from getpass import getpass
+from importlib import resources
 from pathlib import Path
 
 import click
+import yaml
+from omnibase_core.cli.cli_run_node import run_node_in_process
 from omnibase_core.cli.cli_user_config import user_config_path
+from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr
 
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
@@ -33,13 +40,46 @@ from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import 
     REFUSED_PROVIDERS,
     SETUP_PROVIDERS,
     URL_PROVIDERS,
-    HandlerOnexSetup,
+    discard_key,
+    park_key,
     recorded_state,
 )
 from omnimarket.nodes.node_onex_setup_effect.models import (
     ModelOnexSetupRequest,
     ModelOnexSetupResult,
 )
+
+# Printed before the first model question (and before any step when unattended):
+# an exhausted model ladder ends returned_to_caller, so Claude Code does the task.
+LADDER_NOTICE = (
+    "If none of the models you choose can finish a task, free or paid, the task "
+    "goes back to Claude Code and Claude does it as usual. That task shows no "
+    "savings, and any attempts your models made are still billed by their provider."
+)
+
+
+NODE_PACKAGE = "omnimarket.nodes.node_onex_setup_effect"
+NODE_NAME = "node_onex_setup_effect"
+
+
+def _run_through_runtime(request: ModelOnexSetupRequest) -> ModelOnexSetupResult:
+    """Publish the walk's command on the local runtime and read its terminal result.
+
+    The contract names the topic and the time the walk may take (``descriptor.timeout_ms``).
+    """
+    contract_path = Path(str(resources.files(NODE_PACKAGE) / "contract.yaml"))
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    timeout_s = int(contract["descriptor"]["timeout_ms"]) // 1000
+    token = park_key(request.key) if request.key is not None else None
+    payload = request.model_dump(mode="json", exclude={"key"})
+    payload["key_handoff"] = token
+    try:
+        produced = run_node_in_process(NODE_NAME, contract_path, payload, timeout_s)
+    except ModelOnexError as error:
+        raise click.ClickException(error.message) from error
+    finally:
+        discard_key(token)
+    return ModelOnexSetupResult.model_validate(produced)
 
 
 def _report(result: ModelOnexSetupResult) -> None:
@@ -179,6 +219,7 @@ def setup_command(
             workspace = Path(click.prompt("Workspace root (OMNIBASE_PATH)", type=str))
     if provider is not None and provider.lower() in REFUSED_PROVIDERS:
         interactive = False  # refused by name below; never prompt for it
+    click.echo(LADDER_NOTICE)
     if interactive:
         provider, model, url = _ask_choices(provider, model, url)
     request = ModelOnexSetupRequest(
@@ -191,7 +232,7 @@ def setup_command(
         key=_read_key(provider, interactive),
         unattended=not interactive,
     )
-    result = HandlerOnexSetup().handle(request)
+    result = _run_through_runtime(request)
     _report(result)
     if result.failure is not None:
         failure = result.failure

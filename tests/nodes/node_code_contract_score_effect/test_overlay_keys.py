@@ -32,7 +32,13 @@ def test_the_example_overlay_validates_and_names_every_key() -> None:
     assert overlay.runnable_check_types == ("test_passes", "command")
 
 
-@pytest.mark.parametrize("key", sorted(ModelCodeScoreOverlay.model_fields))
+# event_bus names the bus `onex run-node` reads (OMN-24265); it is optional, every other key is required.
+OPTIONAL_KEYS = {"event_bus"}
+
+
+@pytest.mark.parametrize(
+    "key", sorted(set(ModelCodeScoreOverlay.model_fields) - OPTIONAL_KEYS)
+)
 def test_a_missing_overlay_key_is_refused_not_defaulted(key: str) -> None:
     values = _example()
     del values[key]

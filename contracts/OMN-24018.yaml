@@ -1,0 +1,83 @@
+schema_version: 1.0.0
+ticket_id: OMN-24018
+title: Ledger window reads come back from the bus through one connection
+summary: The work ledger reader reads every page of a window through one open bus session instead of one process per page, and the query node can answer a rows page with the text lines only, so a 25 hour window reads within the queue-status step budget instead of ending unreadable after 532 seconds.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24018-one-session-window-read
+  statement: node_work_ledger_reader_effect has a bus-session route that enters the infra query client once per read and answers every page of the window from that session, the handler closes the route after one read, and a rows read can ask the query node for lines-only pages through the optional overlay key rows_lines_only (absent means off).
+  acceptance:
+  - id: AC1
+    statement: "AC1: a 25 hour window read through the session route reads every row in one session within the 20 second step budget, and the one-process-per-page reading of the same window is far over it -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect -k 'one_session_under_the_step_budget or one_process_per_page' fails at the merge base"
+  - id: AC2
+    statement: "AC2: a lines-only rows page carries the lines and no typed rows, the reader asks for it only when its overlay says so, and an overlay without the key still loads -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect -k lines_only fails at the merge base"
+  - id: AC3
+    statement: "AC3: the reader against the real query node handler reads the same window the node answers directly, on the in-memory path -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect -k 'reader_seam or seam_the_reader_with_rows_lines_only' fails when the request key lines_only is removed from the node's request model"
+  - id: AC4
+    statement: "AC4: a failed page or a session that cannot open is UNREADABLE with no rows and the session is closed, never an empty list -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect -k error_chain fails when the handler returns an empty ok for a failed page"
+  - id: AC5
+    statement: "AC5: integrated: on a lab host running this revision, a 25 hour rows read through the running runtime prints source=node and finishes within the step budget -- falsifier: python -m omnimarket.nodes.node_work_ledger_reader_effect --reader drain-map --query rows --window-hours 25 on the lab host with the bus-session overlay prints a source other than node, or takes longer than the step budget"
+evidence_requirements:
+- kind: tests
+  description: The reader node tests pass at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect -q -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24018-ac1
+  description: 'AC1: the session budget test and the per-page control pass at the head; at the merge base the route and the lines-only option do not exist.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_bus_session.py -q -p no:cacheprovider -k 'one_session_under_the_step_budget or one_process_per_page'
+    cwd: .
+- id: dod-omn24018-ac2
+  description: 'AC2: the lines-only tests pass at the head and fail at the merge base, where the request has no lines_only field.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_lines_only.py -q -p no:cacheprovider
+    cwd: .
+- id: dod-omn24018-ac3
+  description: 'AC3: the seam tests run the real query node handler in process behind the session route and behind the point read port.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect -q -p no:cacheprovider -k 'reader_seam or seam_the_reader_with_rows_lines_only'
+    cwd: .
+- id: dod-omn24018-ac4
+  description: 'AC4: the error chain tests pass at the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect -q -p no:cacheprovider -k error_chain
+    cwd: .
+- id: dod-omn24018-ac5
+  description: 'hosted proxy for AC5: the golden session test passes here; the reading on a lab host is posted as a pull request comment naming the head, because hosted CI cannot reach the dev bus.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_bus_session.py -q -p no:cacheprovider -k golden
+    cwd: .
+- id: dod-omn24018-integration-proof
+  description: the reader node tests run on a lab host at the pushed head; hosted CI cannot reach the dev bus, so the 25 hour reading through the running runtime is posted as a pull request comment naming the head and only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24018 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect -q --no-cov -p no:randomly

@@ -1,0 +1,22 @@
+name: node_release_sibling_premise_compute
+version: "0.1.0"
+description: "Release sibling premise: a pure decision of whether the dev lane runs the candidate revision"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_release_sibling_premise_compute: "omnimarket.nodes.node_release_sibling_premise_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "release", "pure"]
+pack: "release_train"
+display_name: "Release Sibling Premise"
+node_role: "compute"

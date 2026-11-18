@@ -12,6 +12,9 @@ from omnimarket.models.lab_alarm_delivery import (
     ModelLabAlarmDeliveryRequest,
     ModelLabAlarmDeliveryResult,
 )
+from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_delegation_chain_canary import (
+    ModelCanaryRun,
+)
 from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_effects_held import (
     ModelEffectsGroupReading,
     ModelEscalationBrief,
@@ -111,6 +114,60 @@ class ProtocolLaneDispatcher(Protocol):
         ...
 
 
+class ListenerUnresolvableError(Exception):
+    """The address's name cannot be resolved: the alarm host's fault, not evidence about the broker."""
+
+
+class ListenerRefusedError(Exception):
+    """The address refused, timed out, closed before answering, or answered with a foreign correlation id."""
+
+
+class ProtocolListenerProbe(Protocol):
+    def probe(self, host: str, port: int, timeout: float) -> None:
+        """Return when ``host:port`` answers a Kafka ApiVersions request, or raise one of the two errors above."""
+        ...
+
+
+class HeartbeatUnreadableError(Exception):
+    """The deploy agent's heartbeat document could not be read: no answer, not HTTP 200, or not a JSON object."""
+
+
+class ProtocolHeartbeatSource(Protocol):
+    def read(self) -> Mapping[str, Any]:
+        """The agent's heartbeat document; raises HeartbeatUnreadableError when it cannot be read."""
+        ...
+
+
+class CanaryRunsUnreadableError(Exception):
+    """The canary workflow's runs could not be read: the gateway did not answer or answered something untyped."""
+
+
+class ProtocolCanaryRunSource(Protocol):
+    def read(self) -> tuple[ModelCanaryRun, ...]:
+        """The newest runs of the canary workflow; raises CanaryRunsUnreadableError when they cannot be read."""
+        ...
+
+
+class LedgerUnreadableError(Exception):
+    """The ledger file could not be read, or its tail holds no canonical row."""
+
+
+class ProjectionUnreadableError(Exception):
+    """The projection's newest row could not be read."""
+
+
+class ProtocolLedgerNewestReader(Protocol):
+    def newest(self) -> tuple[datetime, str]:
+        """The timestamp and row type of the ledger's newest canonical row; raises LedgerUnreadableError."""
+        ...
+
+
+class ProtocolProjectionNewestReader(Protocol):
+    def newest(self, since: datetime) -> datetime | None:
+        """The newest row_ts at or after ``since``, None when there is none; raises ProjectionUnreadableError."""
+        ...
+
+
 class ProtocolAlarmDelivery(Protocol):
     def handle(
         self, request: ModelLabAlarmDeliveryRequest
@@ -119,22 +176,91 @@ class ProtocolAlarmDelivery(Protocol):
         ...
 
 
+class CensusUnreadableError(Exception):
+    """The census snapshot could not be read: no file, the command failed or timed out, or the text is not JSON."""
+
+
+class ProtocolCensusSource(Protocol):
+    def read(self) -> Mapping[str, Any]:
+        """The lane census snapshot document; raises CensusUnreadableError when it cannot be read."""
+        ...
+
+
+class ShaUnresolvedError(Exception):
+    """No surface answered the sha the lane runs."""
+
+
+class ProtocolDeliveredShaSource(Protocol):
+    def read(self) -> tuple[str, str]:
+        """The sha the lane runs and the surface that answered; raises ShaUnresolvedError."""
+        ...
+
+
+class ReceiptSurfaceUnreadableError(Exception):
+    """The receipt surface could not be read: the gateway did not answer or answered something untyped."""
+
+
+class ReceiptAbsentError(Exception):
+    """The surface answered and holds no unexpired receipt for the sha."""
+
+
+class ReceiptMalformedError(Exception):
+    """A receipt was found and cannot be trusted: not a zip, not exactly one receipt.json, not JSON."""
+
+
+class ProtocolLabPassReceiptSource(Protocol):
+    def read(self, sha: str) -> Mapping[str, Any]:
+        """The receipt's JSON object for exactly this sha; raises ReceiptSurfaceUnreadableError, ReceiptAbsentError or ReceiptMalformedError."""
+        ...
+
+
+class RunRecordUnreadableError(Exception):
+    """A watched run-record file exists and cannot be read."""
+
+
+class ProtocolRunRecordReader(Protocol):
+    def recent_outcomes(self, condition: str, count: int) -> tuple[str, ...]:
+        """The outcomes of the newest ``count`` runs of the condition, newest first, fewer when fewer exist; raises RunRecordUnreadableError."""
+        ...
+
+
 __all__ = [
+    "CanaryRunsUnreadableError",
+    "CensusUnreadableError",
     "EffectsGroupReadError",
     "GroupNeverCommittedError",
     "GroupUnreadableError",
+    "HeartbeatUnreadableError",
     "LaneDispatchError",
+    "LedgerUnreadableError",
+    "ListenerRefusedError",
+    "ListenerUnresolvableError",
     "ManifestUnreachableError",
     "ManifestUnreadableError",
+    "ProjectionUnreadableError",
     "ProtocolAlarmDelivery",
+    "ProtocolCanaryRunSource",
+    "ProtocolCensusSource",
+    "ProtocolDeliveredShaSource",
     "ProtocolEffectsGroupReader",
     "ProtocolGroupLagReader",
     "ProtocolGrowthStreakStore",
+    "ProtocolHeartbeatSource",
     "ProtocolHeldStateStore",
+    "ProtocolLabPassReceiptSource",
     "ProtocolLaneDispatcher",
+    "ProtocolLedgerNewestReader",
+    "ProtocolListenerProbe",
     "ProtocolManifestCache",
     "ProtocolManifestSource",
+    "ProtocolProjectionNewestReader",
+    "ProtocolRunRecordReader",
     "ProtocolRunRecordStore",
     "ProtocolSampleStore",
+    "ReceiptAbsentError",
+    "ReceiptMalformedError",
+    "ReceiptSurfaceUnreadableError",
+    "RunRecordUnreadableError",
     "RunRecordUnwritableError",
+    "ShaUnresolvedError",
 ]

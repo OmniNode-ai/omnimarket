@@ -1,0 +1,98 @@
+schema_version: 1.0.0
+ticket_id: OMN-23992
+title: 'Consumer group guard: state in a reducer, reaps as checked commands, lag reading'
+summary: A reducer node holds the state of a bus's consumer groups (state, first census time of the current unbroken Empty run, the names Empty past the overlay bound) so no file is needed. A new reap
+  effect takes a typed command that proves a reducer decided it, refuses a command decided from a file or hand-built list, deletes in batches and reads the groups back. The guard effect gains a census
+  event producer. The old file-based reaper is retired in a following change, which stays a draft until this one runs on dev (the pair rule). The lag reading is the existing lab alarm node's broker lag
+  verb; no second lag node is built.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn23992-reducer-state
+  statement: The group state a reap decision needs is held in a reducer record, never read from a file.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a consumer-group state reducer folds each census into per-group empty-since times and names the groups past the overlay bound, with no file read or written -- falsifier: pytest
+      tests/nodes/node_consumer_group_state_reducer/test_reducer.py -q'
+  - id: AC4
+    statement: 'AC4: the lag bar and the empty-since bound come from overlay values and an absent key refuses the load -- falsifier: pytest tests/nodes/node_consumer_group_state_reducer/test_overlay.py
+      -q'
+- id: req-omn23992-reap-command
+  statement: A reap runs only on a command a reducer decided, and every delete is read back.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a reap command whose decision source is a file is refused with a typed refusal and deletes nothing, while a reducer-decided command deletes and reads the groups back as absent --
+      falsifier: pytest tests/nodes/node_consumer_group_guard_effect/test_reap_command.py -q'
+  - id: AC3
+    statement: 'AC3: a golden chain (census, state fold, reap command, read-back) and an error chain (refused command, delete failure) run on the in-memory bus -- falsifier: pytest tests/nodes/node_consumer_group_guard_effect/test_reap_chain_events.py
+      -q'
+- id: req-omn23992-integrated
+  statement: The reducer's group states and the lag per projection group are read on the running development runtime.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: integrated: the lag reading per projection group and the reducer''s group states are read on the development runtime, with the running image revision named -- falsifier: the
+      reading is absent or reports the previous image revision'
+evidence_requirements:
+- kind: tests
+  description: The reducer, reap effect and census event tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_consumer_group_state_reducer tests/nodes/node_consumer_group_reap_effect tests/nodes/node_consumer_group_guard_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23992-ac1
+  description: The golden chain names a group past the bound, the error chain refuses an empty, foreign or out-of-order census, and the control (an injected break that ignores the prior record) turns the golden tests red.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_consumer_group_state_reducer/test_reducer.py tests/nodes/node_consumer_group_state_reducer/test_no_file.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23992-ac2
+  description: A file-decided command is refused and the fake broker keeps every group; the reducer-decided command deletes and reads back absent; the control (the decided_by check switched off) deletes.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_consumer_group_guard_effect/test_reap_command.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23992-ac3
+  description: The golden chain and the error chain run on the in-memory bus, and the seams (census event to reducer, reducer record to reap command) hold the same shape.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_consumer_group_guard_effect/test_reap_chain_events.py tests/nodes/node_consumer_group_reap_effect/test_seam_reducer.py tests/nodes/node_consumer_group_guard_effect/test_census_event.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23992-ac4
+  description: Every setting is a required overlay value with no default and an absent key refuses the load, for the reducer and for the reap effect.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_consumer_group_state_reducer/test_overlay.py tests/nodes/node_consumer_group_reap_effect/test_contract.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23992-ac5
+  description: The integrated reading is taken in the running runtime after this change is deployed; the tests at the head stand behind the code half.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_consumer_group_state_reducer -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23992-integration-proof
+  description: Run the reducer, reap effect and census event tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check; it binds no criterion for the hosted check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23992 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_consumer_group_state_reducer tests/nodes/node_consumer_group_reap_effect tests/nodes/node_consumer_group_guard_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .

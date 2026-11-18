@@ -75,9 +75,11 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
-from collections import deque
 from collections.abc import Callable, Mapping, Sequence
+from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
@@ -111,6 +113,7 @@ from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_revi
     ModelReviewGatewayEventTopics,
     ModelReviewGatewayKey,
     ModelReviewGatewayKeyEvent,
+    ModelReviewGatewayKeyEventPolicy,
     ModelReviewGatewayOverlay,
     ModelReviewGatewayPlan,
     ModelReviewGatewaySetAside,
@@ -132,6 +135,8 @@ SHARED_SECRET_ENV = "LOCAL_LLM_SHARED_SECRET"
 #: The voter surface's chat route (the OpenAI-compatible path voters call).
 CHAT_ROUTE = "/v1/chat/completions"
 MODELS_ROUTE = "/v1/models"
+#: Counts only: the key-state events held for a refused or unreachable topic (OMN-24658).
+KEY_EVENTS_ROUTE = "/v1/key-events"
 #: Claude 4.7 and later refuse a temperature below 1 (and any top_p) on the
 #: compatible endpoint with HTTP 400, so the voter's sampling is not forwarded.
 _CLAUDE_TEMPERATURE = 1.0
@@ -609,6 +614,31 @@ def _error(
     return status, {"error": body}
 
 
+@dataclass
+class _PublishBudget:
+    """What one request may still spend waiting on the key-state topic (OMN-24658).
+
+    ``remaining`` is the bus wait the request has left, in seconds, starting at
+    ``wait_seconds``. Only time spent waiting on the bus is taken from it, so a slow provider
+    call never spends it (OMN-24727). After a flush fails in the request, no later flush in
+    the same request tries the bus again.
+    """
+
+    remaining: float
+    failed: bool = False
+
+
+_REQUEST_BUDGET: ContextVar[_PublishBudget | None] = ContextVar(
+    "review_gateway_request_budget", default=None
+)
+
+
+def _contract_mapping(section: object) -> Mapping[str, object]:
+    if not isinstance(section, Mapping):
+        raise ValueError(f"{_NODE_NAME}: contract config must be a mapping")
+    return section
+
+
 def _completion(model: str, outcome: ProtocolCallOutcome) -> dict[str, Any]:
     # ``max_tokens`` is the output budget cutting the reply off: answered as
     # ``length`` so the voter's parser sees a cut reply and never a finished one.
@@ -683,6 +713,76 @@ def _host_keys(
     )
 
 
+class ReviewKeyProbe:
+    """One credit read per bound key, with no event bus and no gateway state (OMN-24658).
+
+    The standing probe needs only the key catalogue, the key values and the call effect, so it
+    is built from those three and never from a gateway whose bus it would have to leave unset.
+    """
+
+    def __init__(
+        self,
+        request: ModelClaudeReviewGatewayRequest,
+        *,
+        catalog: ProtocolKeyCatalog,
+        key_values: ProtocolKeyValues,
+        call: ProtocolReviewCall,
+        endpoint_url: str,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._request = request
+        self._catalog = catalog
+        self._key_values = key_values
+        self._call = call
+        self._endpoint_url = endpoint_url
+        self._clock = clock if clock is not None else lambda: datetime.now(UTC)
+
+    async def probe_keys(self, payload: Mapping[str, Any]) -> list[tuple[str, str]]:
+        """One call per bound key, each key's display name with its credit state (OMN-24658).
+
+        States are ``funded``, ``out_of_credit``, ``refused`` (another key failure) and
+        ``unreachable`` (a failure that says nothing about the key). Nothing here sets a key
+        aside, publishes an event or returns a credential reference or a provider message.
+        """
+        states: list[tuple[str, str]] = []
+        for key in _host_keys(self._catalog, self._request, self._clock()):
+            if not await self._key_values.get_secret(key.api_key_ref):
+                states.append((key.name, "refused"))
+                continue
+            try:
+                outcome = await asyncio.to_thread(
+                    self._call, self._translate(payload, key)
+                )
+            except (ModelOnexError, OSError):
+                states.append((key.name, "unreachable"))
+                continue
+            if outcome.success:
+                states.append((key.name, "funded"))
+            elif not _is_key_failure(outcome):
+                states.append((key.name, "unreachable"))
+            elif (
+                _key_failure_cause(outcome)
+                is EnumDelegationFailureClass.PROVIDER_BILLING
+            ):
+                states.append((key.name, "out_of_credit"))
+            else:
+                states.append((key.name, "refused"))
+        return states
+
+    def _translate(
+        self, payload: Mapping[str, Any], key: ModelReviewGatewayKey
+    ) -> ModelLlmDelegationCallRequest:
+        return translate_chat_request(
+            payload,
+            model=self._request.model,
+            endpoint_url=self._endpoint_url,
+            secret_ref=key.api_key_ref,
+            timeout_seconds=self._request.upstream_timeout_seconds,
+            workspace_id=key.workspace_id,
+            thinking_mode=self._request.thinking_mode,
+        )
+
+
 class ClaudeReviewGateway:
     """Chooses this host's key and runs one review through the call effect, or 503."""
 
@@ -697,6 +797,7 @@ class ClaudeReviewGateway:
         overlay: ModelReviewGatewayOverlay,
         event_bus: ProtocolGatewayEventBus | None,
         clock: Callable[[], datetime] | None = None,
+        key_event_policy: ModelReviewGatewayKeyEventPolicy | None = None,
     ) -> None:
         self._request = request
         self._catalog = catalog
@@ -709,7 +810,22 @@ class ClaudeReviewGateway:
         self._set_aside: dict[str, ModelReviewGatewaySetAside] = {}
         self._retrying: set[str] = set()
         self._retry_announced: dict[str, datetime] = {}
-        self._pending_events: deque[ModelReviewGatewayKeyEvent] = deque()
+        # One held event per key (the newest state), so a topic that stays refused
+        # cannot grow the queue past the number of bound keys (OMN-24658).
+        self._pending_events: dict[str, ModelReviewGatewayKeyEvent] = {}
+        self._dropped_events = 0
+        self._in_flight: tuple[str, ModelReviewGatewayKeyEvent] | None = None
+        self._publish_failing = False
+        self._publish_idle_after = 0.0
+        self._publish_policy = (
+            key_event_policy
+            if key_event_policy is not None
+            else ModelReviewGatewayKeyEventPolicy.model_validate(
+                _contract_mapping(load_packaged_contract_section(_NODE_NAME, "config"))[
+                    "key_event_publish"
+                ]
+            )
+        )
         self._publish_lock = asyncio.Lock()
         self._topics = ModelReviewGatewayEventTopics.model_validate(
             load_packaged_contract_section(_NODE_NAME, "event_bus")
@@ -727,6 +843,16 @@ class ClaudeReviewGateway:
     def set_aside_records(self) -> tuple[ModelReviewGatewaySetAside, ...]:
         """Immutable snapshots containing identity, cause and refusal time only."""
         return tuple(self._set_aside.values())
+
+    @property
+    def pending_key_events(self) -> int:
+        """Key-state events held because the topic refused or could not be reached."""
+        return len(self._pending_events)
+
+    @property
+    def dropped_key_events(self) -> int:
+        """Held events replaced by a newer state of the same key, never published."""
+        return self._dropped_events
 
     @property
     def event_topics(self) -> tuple[str, str]:
@@ -758,24 +884,90 @@ class ClaudeReviewGateway:
             occurred_at=self._clock(),
             retry_after_seconds=self._overlay.key_set_aside_ttl_seconds,
         )
-        self._pending_events.append(event)
+        replaced = self._pending_events.pop(record.key_ref, None)
+        if replaced is not None and not self._is_in_flight(replaced):
+            # A replaced event whose publication is in flight is still published, so it is
+            # not a drop (an in-flight publication that then fails is counted in the flush).
+            self._dropped_events += 1
+        self._pending_events[record.key_ref] = event
         if transition == "retry":
             self._retry_announced[record.key_ref] = record.set_aside_at
         await self._flush_key_events()
 
+    def _is_in_flight(self, event: ModelReviewGatewayKeyEvent) -> bool:
+        return self._in_flight is not None and self._in_flight[1] is event
+
     async def _flush_key_events(self) -> None:
-        """Retain failed publications with stable event ids; block calls until flushed."""
+        """Replay held events oldest first; a refused or unreachable topic defers them.
+
+        A failed publication never fails the call (OMN-24658, chain of responders, RULING
+        2026-11-03T20:42:53Z). One request waits on the bus at most the declared
+        ``wait_seconds`` in all (one budget per request, however many events it emits; only time
+        spent waiting on the bus counts, never a provider call's latency), and
+        once a flush failed in the request no later flush in it tries the bus again; after a
+        wait that ran out no request waits again for ``backoff_seconds``, and a request that
+        finds another flush running skips it.
+        """
         if self._event_bus is None:
             raise RuntimeError("review gateway: key-state event bus is required")
+        if (
+            not self._pending_events
+            or self._publish_lock.locked()
+            or time.monotonic() < self._publish_idle_after
+        ):
+            return
+        policy = self._publish_policy
+        budget = _REQUEST_BUDGET.get()
+        if budget is None:
+            budget = _PublishBudget(policy.wait_seconds)
+        if budget.failed or budget.remaining <= 0:
+            return
         async with self._publish_lock:
-            while self._pending_events:
-                event = self._pending_events[0]
-                await self._event_bus.publish(
-                    topic=self._topics[0 if event.transition == "set_aside" else 1],
-                    key=event.key_ref.encode(),
-                    value=event.model_dump_json().encode(),
-                )
-                self._pending_events.popleft()
+            waited_from = time.monotonic()
+            try:
+                async with asyncio.timeout(budget.remaining):
+                    while self._pending_events:
+                        key_ref, event = next(iter(self._pending_events.items()))
+                        self._in_flight = (key_ref, event)
+                        await self._event_bus.publish(
+                            topic=self._topics[
+                                0 if event.transition == "set_aside" else 1
+                            ],
+                            key=event.key_ref.encode(),
+                            value=event.model_dump_json().encode(),
+                        )
+                        self._in_flight = None
+                        if self._pending_events.get(key_ref) is event:
+                            del self._pending_events[key_ref]
+            except (ModelOnexError, OSError) as failure:
+                budget.failed = True
+                if isinstance(failure, TimeoutError):
+                    self._publish_idle_after = time.monotonic() + policy.backoff_seconds
+                if not self._publish_failing:
+                    # Dependency exception text may include a provider message or a
+                    # secret, so none is logged. One line per failure streak.
+                    logger.warning(
+                        "review gateway: key-state event publication deferred "
+                        "(%d held, %d dropped)",
+                        len(self._pending_events),
+                        self._dropped_events,
+                    )
+                self._publish_failing = True
+                return
+            finally:
+                budget.remaining -= time.monotonic() - waited_from
+                if self._in_flight is not None:
+                    # The publication ended without finishing (refused, timed out or
+                    # cancelled). Replaced while in flight and not published: a drop.
+                    if (
+                        self._pending_events.get(self._in_flight[0])
+                        is not self._in_flight[1]
+                    ):
+                        self._dropped_events += 1
+                    self._in_flight = None
+            if self._publish_failing:
+                self._publish_failing = False
+                logger.info("review gateway: key-state event publication resumed")
 
     async def _refuse_key(
         self, key: ModelReviewGatewayKey, cause: EnumDelegationFailureClass
@@ -894,6 +1086,7 @@ class ClaudeReviewGateway:
 
     async def complete(self, payload: Mapping[str, Any]) -> tuple[int, dict[str, Any]]:
         """Serve one chat completion on this host's first key that can, else 503."""
+        token = _REQUEST_BUDGET.set(_PublishBudget(self._publish_policy.wait_seconds))
         try:
             return await self._complete(payload)
         except (ModelOnexError, OSError):
@@ -904,6 +1097,8 @@ class ClaudeReviewGateway:
                 "gateway_dependency_unavailable",
                 "a required dependency is unavailable",
             )
+        finally:
+            _REQUEST_BUDGET.reset(token)
 
     async def _complete(self, payload: Mapping[str, Any]) -> tuple[int, dict[str, Any]]:
         refusal = self._repository_refusal(payload)
@@ -1037,6 +1232,13 @@ def build_app(gateway: ClaudeReviewGateway, *, model: str) -> FastAPI:
     async def models() -> dict[str, Any]:
         return {"object": "list", "data": [{"id": model, "object": "model"}]}
 
+    @app.get(KEY_EVENTS_ROUTE)
+    async def key_events() -> dict[str, int]:
+        return {
+            "held": gateway.pending_key_events,
+            "dropped": gateway.dropped_key_events,
+        }
+
     @app.post(CHAT_ROUTE)
     async def chat_completions(request: Request) -> JSONResponse:
         status, reply = await serve_chat_call(
@@ -1092,6 +1294,20 @@ class HandlerClaudeReviewGateway:
             endpoint_url=self._endpoint_url,
             overlay=overlay,
             event_bus=event_bus if event_bus is not None else self._event_bus,
+            clock=self._clock,
+        )
+
+    def with_event_bus(
+        self, event_bus: ProtocolGatewayEventBus | None
+    ) -> HandlerClaudeReviewGateway:
+        """This handler rebuilt on the given event bus, everything else unchanged."""
+        return HandlerClaudeReviewGateway(
+            catalog=self._catalog,
+            key_values=self._key_values,
+            call=self._call,
+            endpoint_url=self._endpoint_url,
+            overlay=self._overlay,
+            event_bus=event_bus,
             clock=self._clock,
         )
 
@@ -1155,6 +1371,7 @@ __all__ = [
     "CHAT_ROUTE",
     "GATEWAY_PLAN",
     "GATEWAY_PROVIDER",
+    "KEY_EVENTS_ROUTE",
     "MODELS_ROUTE",
     "SHARED_SECRET_ENV",
     "SIGNATURE_HEADER",

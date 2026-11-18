@@ -1,0 +1,80 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-20034"
+title: "goal contract: node_projection_goal_trace folds one content-free trace per goal from contract to verdict (model-before-build)"
+summary: >
+  GC.11 of the delegation judgeability plan. node_projection_goal_trace folds the
+  claim, the revisions, the hook events of the bound agents, the delegation event,
+  the receipts and the verification attempts of one goal into an ordered trace
+  with a checksum, and a writer persists it to goal_trace_events and goal_traces.
+  The fold is a pure function of the set of events delivered; the model it was
+  built from is the GC.11 TLA+ model with its design-review verdict.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn20034-order-and-duplicate-independent"
+    statement: "The trace of a goal does not depend on arrival order or on redelivery."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: The trace is order and duplicate independent -- falsifier: `uv run pytest tests/test_golden_chain_projection_goal_trace.py -k order_and_duplicate_independent -v` selects no test, or two orderings give different checksums."
+  - id: "req-omn20034-join"
+    statement: "A hook event joins a goal only through a binding of its agent."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: At least 90 percent of the events of the lab lane agents are assigned to its goal and none to another goal -- falsifier: with the agent list from claude_agent_spans for that workflow run as denominator, the assigned-and-correct share is below 0.90 or any event is attached to a different goal."
+  - id: "req-omn20034-replay-rows"
+    statement: "A replay writes its own rows for the goal."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: The replay wrote this replay's rows -- falsifier: `select count(*) from omninode_internal.goal_trace_events where goal_id = '<the replayed lab goal id>'` returns 0 or equals the count before the replay."
+evidence_requirements:
+  - kind: "tests"
+    description: "The fold, its injected breaks and the writer replay."
+    command: "uv run pytest tests/test_golden_chain_projection_goal_trace.py tests/test_golden_chain_projection_goal_trace_writer.py -q --no-cov -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20034-order-and-duplicate-independent"
+    description: "Every ordering of the lane events and any redelivery give the same serialized rows and checksum. Fails on a fold that counts redeliveries or reads arrival order (injected breaks in the same file)."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_goal_trace.py -q --no-cov -p no:randomly -k order_and_duplicate_independent"
+        cwd: "."
+  - id: "dod-omn20034-agent-join"
+    description: "On fixtures, the events of the agents bound to two goals attach to their own goal with a share of at least 0.90 and none to the other goal; an unbound agent is unassigned, an agent bound twice is attached to neither. Fails on a fold that attaches an unbound agent (injected break). The live share against claude_agent_spans is a lab step after the migration is on the dev lane."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_goal_trace.py -q --no-cov -p no:randomly -k 'assigned_to_their_own_goal or unassigned or attach_unbound'"
+        cwd: "."
+  - id: "dod-omn20034-replay-rows"
+    description: "The writer replays a lane's events into its own rows for the goal (zero before, rows after) and a second replay adds none. Run against an in-memory stand-in for the tables; the read of the real table is a lab step after the migration is on the dev lane."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_goal_trace_writer.py -q --no-cov -p no:randomly -k 'second_replay or final_state or binding_that_arrives_last'"
+        cwd: "."
+  - id: "dod-omn20034-integration-proof"
+    description: "The pushed head ran the goal-trace golden chains on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane d20034-1220 -- uv run --frozen pytest tests/test_golden_chain_projection_goal_trace.py tests/test_golden_chain_projection_goal_trace_writer.py -q --no-cov -p no:randomly"
+        cwd: "."
+  - id: "dod-omn20034-deploy-probe-node"
+    description: "Deploy probe: the node contract GitHub serves at the checked-out commit routes GoalTraceProjectionWriter, and the checked-out migration carries the event key. The contract is absent at the merge base, so the content read fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_goal_trace/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"GoalTraceProjectionWriter\" > /dev/null'"
+        cwd: "."
+      - check_type: "command"
+        check_value: "grep -F 'PRIMARY KEY (event_id, body_digest)' src/omnimarket/nodes/node_projection_goal_trace/migrations/0000_create_goal_trace_events.sql"
+        cwd: "."

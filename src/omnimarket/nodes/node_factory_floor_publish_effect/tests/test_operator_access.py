@@ -34,6 +34,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
 from omnimarket.nodes.node_factory_floor_publish_effect.runtime_factory_floor_publish import (
     main,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 
 pytestmark = pytest.mark.unit
 
@@ -109,6 +110,7 @@ class Fleet:
 
 def _overlay(tmp_path: Path) -> ModelFactoryFloorPublishOverlay:
     return ModelFactoryFloorPublishOverlay(
+        limits=TEST_LIMITS,
         ssh_target="lab-web",
         remote_dir=str(tmp_path / "site"),
         serve_url="http://example.invalid:8088/",
@@ -271,6 +273,7 @@ def test_owner_or_non_owner_or_missing_key_a_blank_or_malformed_key_is_refused_n
     for bad in ("", "no-at-sign", "two words@example.invalid"):
         with pytest.raises(ValueError, match="owner_login"):
             ModelFactoryFloorPublishOverlay(
+                limits=TEST_LIMITS,
                 ssh_target="lab-web",
                 remote_dir="/srv/site",
                 serve_url="u",

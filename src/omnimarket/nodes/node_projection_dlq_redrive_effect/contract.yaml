@@ -1,0 +1,94 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_projection_dlq_redrive_effect
+contract_name: node_projection_dlq_redrive_effect
+node_name: node_projection_dlq_redrive_effect
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Re-projects the delegation records the projection writer refused. A refused
+  record's dead-letter envelope names the source topic, partition and offset it
+  was read from. For each dead letter, by correlation id, this node reads the
+  source record again by those coordinates with an assigned seek (no consumer
+  group, no commit, no offset reset) and projects it through the delegation
+  writer. A record whose tenant the registry still cannot resolve is skipped and
+  stays on the dead-letter topic; a dead letter written before source
+  coordinates were recorded is skipped with its own reason. Dry run reads and
+  resolves tenants and projects nothing.
+
+handler:
+  module: omnimarket.nodes.node_projection_dlq_redrive_effect.handlers.handler_projection_dlq_redrive
+  class: HandlerProjectionDlqRedrive
+  input_model: omnimarket.nodes.node_projection_dlq_redrive_effect.models.ModelProjectionDlqRedriveRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_dlq_redrive
+      handler:
+        name: HandlerProjectionDlqRedrive
+        module: omnimarket.nodes.node_projection_dlq_redrive_effect.handlers.handler_projection_dlq_redrive
+      handler_module: omnimarket.nodes.node_projection_dlq_redrive_effect.handlers.handler_projection_dlq_redrive
+      event_model: omnimarket.nodes.node_projection_dlq_redrive_effect.models.ModelProjectionDlqRedriveRequest
+
+input_model:
+  name: ModelProjectionDlqRedriveRequest
+  module: omnimarket.nodes.node_projection_dlq_redrive_effect.models
+  description: Correlation ids to redrive (empty means every dead letter), optional dead-letter topic, dry run.
+
+output_model:
+  name: ModelProjectionDlqRedriveResult
+  module: omnimarket.nodes.node_projection_dlq_redrive_effect.models
+  description: Dead letters read, re-projected, skipped and failed counts, a record per dead letter, and a verdict.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 3600000
+  runtime_profiles: [effects]
+
+config:
+  projection_dlq_redrive:
+    dlq_topic: onex.dlq.omnimarket.projection-delegation-malformed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.projection-dlq-redrive-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.projection-dlq-redrive-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.projection-dlq-redrive-completed.v1
+    failure: onex.evt.omnimarket.projection-dlq-redrive-failed.v1
+
+# The broker grants the node's topics need (OMN-24005 coverage gate): the runtime login reads the request and writes
+# the completed and failed answers.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.projection-dlq-redrive-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.projection-dlq-redrive-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.projection-dlq-redrive-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.projection-dlq-redrive-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.projection-dlq-redrive-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.projection-dlq-redrive-failed.v1, operation: DESCRIBE}
+
+dod_evidence:
+  PYTEST:
+    description: "redrive golden chain and error chain tests"
+    command: "uv run pytest tests/test_golden_chain_projection_dlq_redrive_effect.py -q"
+    pass_criteria: >
+      a refused record is re-projected from its source coordinates by
+      correlation id with no consumer offset moved; a record whose tenant is
+      still unknown is skipped and not projected; a dead letter with no source
+      coordinates, a source record gone from the broker and a projection that
+      raises are each reported and never stop the run
+
+metadata:
+  transport_type: kafka

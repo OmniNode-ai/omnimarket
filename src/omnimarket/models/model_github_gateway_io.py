@@ -14,7 +14,14 @@ from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 
 class EnumGithubGatewayOperation(StrEnum):
@@ -46,12 +53,18 @@ class EnumGithubGatewayOperation(StrEnum):
     PR_HEADS = "pr_heads"
     # OMN-21146
     COMMIT_CHECK_RUNS = "commit_check_runs"
+    # The statuses posted on a commit (the review gate's fable-review-gate is one).
+    COMMIT_STATUSES = "commit_statuses"
     MERGED_PR = "merged_pr"
     # The review threads of a PR, with the resolved state only GraphQL reports.
     PR_REVIEW_THREADS = "pr_review_threads"
     # OMN-22654: every open PR's head, base, title and fix markers, the read the
     # duplicate-fix guard makes on a host that has no PR watcher state.
     OPEN_PR_FACTS = "open_pr_facts"
+    # OMN-24187: one file's text at one commit (the contents API); dod_verify's read of a contract at a PR head the clone does not hold.
+    REPO_FILE = "repo_file"
+    # The open code-scanning alerts of one ref: a pull request's merge ref or a branch.
+    CODE_SCANNING_ALERTS = "code_scanning_alerts"
 
 
 # Operations that read one job's log and take its window fields.
@@ -108,7 +121,10 @@ class ModelGithubGatewayRequest(BaseModel):
     )
     pr_number: int | None = Field(
         default=None,
-        description="PR number; required for PR-scoped operations, ignored otherwise.",
+        description=(
+            "PR number; required for PR-scoped operations; code_scanning_alerts reads "
+            "that pull request's merge ref (give this or branch, not both); ignored otherwise."
+        ),
         gt=0,
     )
     run_id: int | None = Field(
@@ -137,14 +153,17 @@ class ModelGithubGatewayRequest(BaseModel):
     branch: str | None = Field(
         default=None,
         min_length=1,
-        description="workflow_runs: runs on this branch; pr_heads: PRs from this head branch.",
+        description=(
+            "workflow_runs: runs on this branch; pr_heads: PRs from this head branch; "
+            "code_scanning_alerts: alerts on this branch (give this or pr_number, not both)."
+        ),
     )
     head_sha: str | None = Field(
         default=None,
         pattern=r"^[0-9a-f]{40}$",
         description=(
             "workflow_runs: runs at this head commit; pr_heads: PRs whose head is this commit; "
-            "commit_check_runs: required commit to read."
+            "commit_check_runs and commit_statuses: required commit to read."
         ),
     )
     check_name: str | None = Field(
@@ -202,10 +221,30 @@ class ModelGithubGatewayRequest(BaseModel):
         le=MAX_ARTIFACT_MAX_BYTES,
         description="artifacts only: largest archive fetched; larger is refused.",
     )
+    file_path: str | None = Field(
+        default=None,
+        max_length=512,
+        description="repo_file only: the repo-relative path of the file to read.",
+    )
     correlation_id: UUID = Field(
         default_factory=uuid4,
         description="Correlation ID flowing through the pipeline (auto if omitted).",
     )
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_file_path(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        """Send ``file_path`` only when a read names one (OMN-24187).
+
+        A node that predates the field refuses every request that carries it
+        (``extra_forbid``), so a null ``file_path`` on each other read would
+        break all of them until the node is redeployed.
+        """
+        data: dict[str, object] = handler(self)
+        if data.get("file_path") is None:
+            data.pop("file_path", None)
+        return data
 
     @model_validator(mode="after")
     def _require_scope_fields(self) -> ModelGithubGatewayRequest:
@@ -241,10 +280,33 @@ class ModelGithubGatewayRequest(BaseModel):
                 "operation 'commit_check_runs' requires head_sha to be set."
             )
         if (
+            self.operation is EnumGithubGatewayOperation.COMMIT_STATUSES
+            and self.head_sha is None
+        ):
+            raise ValueError("operation 'commit_statuses' requires head_sha to be set.")
+        if self.operation is EnumGithubGatewayOperation.CODE_SCANNING_ALERTS and (
+            self.pr_number is None
+        ) == (self.branch is None):
+            raise ValueError(
+                "operation 'code_scanning_alerts' requires exactly one of "
+                "pr_number and branch to be set."
+            )
+        if (
             self.artifact_id is not None
             and self.operation is not EnumGithubGatewayOperation.ARTIFACTS
         ):
             raise ValueError("artifact_id is read only by the artifacts operation.")
+        if self.operation is EnumGithubGatewayOperation.REPO_FILE:
+            if self.head_sha is None or self.file_path is None:
+                raise ValueError(
+                    "operation 'repo_file' requires head_sha and file_path to be set."
+                )
+            if self.file_path.startswith("/") or ".." in self.file_path.split("/"):
+                raise ValueError(
+                    "file_path must be a repo-relative path with no '..' segment."
+                )
+        elif self.file_path is not None:
+            raise ValueError("file_path is read only by the repo_file operation.")
         window = {
             "offset_bytes": self.offset_bytes,
             "length_bytes": self.length_bytes,
@@ -744,6 +806,89 @@ class ModelCommitCheckRunsResult(_ModelBoundedList):
     check_runs: list[ModelCheckRun] = Field(default_factory=list)
 
 
+class ModelCommitStatus(BaseModel):
+    """One commit status posted on a commit."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: int
+    context: str
+    state: str
+    target_url: str | None = None
+    description: str | None = None
+    created_at: str | None = None
+
+
+class ModelCommitStatusesResult(_ModelBoundedList):
+    """The statuses posted on a commit, newest first (replaces ``gh api repos/<r>/commits/<sha>/statuses``)."""
+
+    operation: Literal["commit_statuses"] = "commit_statuses"
+    repo: str
+    head_sha: str
+    statuses: list[ModelCommitStatus] = Field(default_factory=list)
+
+
+class ModelCodeScanningAlert(BaseModel):
+    """One open code-scanning alert: its rule, severity and the place it was found."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    number: int = Field(..., gt=0)
+    rule_id: str
+    severity: str | None = None
+    security_severity: str | None = None
+    path: str | None = None
+    line: int | None = None
+    html_url: str | None = None
+
+
+class ModelCodeScanningAlertsResult(_ModelBoundedList):
+    """The open code-scanning alerts of one ref (replaces ``gh api .../code-scanning/alerts``).
+
+    A repository with no analysis for the ref, with scanning off, or whose token
+    cannot read alerts is an ``available=False`` answer that names the reason; it
+    is not an error and it carries no alerts.
+    """
+
+    operation: Literal["code_scanning_alerts"] = "code_scanning_alerts"
+    repo: str
+    ref: str
+    available: bool
+    unavailable_reason: Literal["no_analysis", "not_enabled", "forbidden"] | None = None
+    alerts: list[ModelCodeScanningAlert] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _reason_matches_availability(self) -> ModelCodeScanningAlertsResult:
+        if self.available and self.unavailable_reason is not None:
+            raise ValueError("an available answer carries no unavailable_reason.")
+        if not self.available and self.unavailable_reason is None:
+            raise ValueError("an unavailable answer names its unavailable_reason.")
+        if not self.available and self.alerts:
+            raise ValueError("an unavailable answer carries no alerts.")
+        return self
+
+
+class ModelRepoFileResult(BaseModel):
+    """One file's text at one commit, read through the contents API."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    operation: Literal["repo_file"] = "repo_file"
+    repo: str
+    head_sha: str
+    file_path: str
+    found: bool
+    text: str | None = None
+
+    @model_validator(mode="after")
+    def _found_matches_text(self) -> ModelRepoFileResult:
+        if self.found and self.text is None:
+            raise ValueError("a found repo_file result must carry its text.")
+        if not self.found and self.text is not None:
+            raise ValueError("a missing repo_file result must not carry text.")
+        return self
+
+
 class ModelMergedPrResult(BaseModel):
     """PR state, head refs and merge details (replaces ``gh pr view --json``)."""
 
@@ -855,7 +1000,10 @@ GithubGatewayResult = Annotated[
     | ModelReleasesResult
     | ModelPrHeadsResult
     | ModelCommitCheckRunsResult
+    | ModelCommitStatusesResult
     | ModelMergedPrResult
+    | ModelRepoFileResult
+    | ModelCodeScanningAlertsResult
     | ModelPrReviewThreadsResult
     | ModelOpenPrFactsResult,
     Field(discriminator="operation"),
@@ -893,7 +1041,11 @@ __all__: list[str] = [
     "ModelCheckContext",
     "ModelCheckRun",
     "ModelCiChecksResult",
+    "ModelCodeScanningAlert",
+    "ModelCodeScanningAlertsResult",
     "ModelCommitCheckRunsResult",
+    "ModelCommitStatus",
+    "ModelCommitStatusesResult",
     "ModelGithubGatewayRequest",
     "ModelGithubGatewayResponse",
     "ModelJobLogFillResult",
@@ -915,6 +1067,7 @@ __all__: list[str] = [
     "ModelPrTextResult",
     "ModelRelease",
     "ModelReleasesResult",
+    "ModelRepoFileResult",
     "ModelReviewGateResult",
     "ModelRunJob",
     "ModelRunJobsResult",

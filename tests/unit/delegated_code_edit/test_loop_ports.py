@@ -23,6 +23,7 @@ from omnimarket.delegated_code_edit.loop_ports import (
     deployed_lane_delegate_flags,
     score_transcript,
 )
+from omnimarket.handlers.delegate_retry_cause import QUEUED_NOT_STARTED_CAUSE
 from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     RESPONSE_CONTRACT,
     DelegatePinViolationError,
@@ -539,6 +540,200 @@ def test_a_failed_in_process_retry_names_both_causes(
         assert reply.run_id == run_id
         assert "HEADMARK" in reply.invalid_reason
         assert reply.invalid_reason.endswith("TAILMARK")
+
+
+def _queued_receipt() -> dict[str, object]:
+    """A deployed-lane receipt of a turn the consumer never started, as one written
+    on 2026-11-12: status failed, terminal_class queued_not_started, and a null
+    terminal payload inside receipt.result."""
+    return {
+        "status": "failed",
+        "terminal_class": "queued_not_started",
+        "terminal_failure_cause": None,
+        "terminal_payload": None,
+        "receipt": {"result": {"terminal_payload": None}},
+    }
+
+
+@pytest.mark.parametrize("returncode", [0, 1])
+def test_a_deployed_lane_turn_that_never_started_is_retried_once_in_process(
+    tree: Path, tmp_path: Path, returncode: int
+) -> None:
+    seen: list[list[str]] = []
+    ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        run_id = ids[len(seen) - 1]
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        if len(seen) == 1:
+            (run_dir / "receipt.json").write_text(json.dumps(_queued_receipt()))
+            return subprocess.CompletedProcess(
+                argv, returncode, json.dumps({"run_id": run_id}), ""
+            )
+        assert "--bus inmemory --locus in-process" in " ".join(argv)
+        assert "deployed-lane" not in argv
+        (run_dir / "receipt.json").write_text(json.dumps({"status": "success"}))
+        (run_dir / "result.txt").write_text('{"actions": [{"tool": "ls"}]}')
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"run_id": run_id}), "")
+
+    reply = _ports(tmp_path, runner).delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    assert reply.ok
+    assert reply.run_id == ids[1]
+    assert len(seen) == 2
+
+
+def test_after_a_never_started_turn_later_turns_go_straight_in_process(
+    tree: Path, tmp_path: Path
+) -> None:
+    seen: list[list[str]] = []
+    ids = [str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())]
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        run_id = ids[len(seen) - 1]
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        if len(seen) == 1:
+            (run_dir / "receipt.json").write_text(json.dumps(_queued_receipt()))
+            return subprocess.CompletedProcess(
+                argv, 1, json.dumps({"run_id": run_id}), ""
+            )
+        assert "--bus inmemory --locus in-process" in " ".join(argv)
+        assert "deployed-lane" not in argv
+        (run_dir / "receipt.json").write_text(json.dumps({"status": "success"}))
+        (run_dir / "result.txt").write_text('{"actions": [{"tool": "ls"}]}')
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"run_id": run_id}), "")
+
+    ports = _ports(tmp_path, runner)
+    for _ in range(2):
+        ports.delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    assert len(seen) == 3
+    assert "--bus inmemory --locus in-process" in " ".join(seen[2])
+    assert "deployed-lane" not in seen[2]
+
+
+def test_a_failed_in_process_retry_after_a_never_started_turn_names_both_causes(
+    tree: Path, tmp_path: Path
+) -> None:
+    seen: list[list[str]] = []
+    run_id = str(uuid.uuid4())
+    first_run_id = str(uuid.uuid4())
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        if len(seen) == 1:
+            run_dir = tmp_path / "state" / "runs" / first_run_id
+            run_dir.mkdir(parents=True)
+            (run_dir / "receipt.json").write_text(json.dumps(_queued_receipt()))
+            return subprocess.CompletedProcess(
+                argv, 1, json.dumps({"run_id": first_run_id}), ""
+            )
+        return subprocess.CompletedProcess(
+            argv, 1, json.dumps({"run_id": run_id}), "boom"
+        )
+
+    reply = _ports(tmp_path, runner).delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    assert not reply.ok
+    assert reply.invalid_reason.startswith(
+        f"deployed-lane {QUEUED_NOT_STARTED_CAUSE} (run {first_run_id}); "
+        "in-process retry: "
+    )
+
+
+def test_a_never_started_receipt_on_an_in_process_turn_is_not_retried(
+    tree: Path, tmp_path: Path
+) -> None:
+    seen: list[list[str]] = []
+    run_id = str(uuid.uuid4())
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "receipt.json").write_text(json.dumps(_queued_receipt()))
+        return subprocess.CompletedProcess(argv, 1, json.dumps({"run_id": run_id}), "")
+
+    ports = _ports(tmp_path, runner, delegate_flags=IN_PROCESS_DELEGATE_FLAGS)
+    reply = ports.delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    assert len(seen) == 1
+    assert not reply.ok
+
+
+def test_a_loop_whose_first_turn_never_started_is_accepted_after_the_in_process_retry(
+    tree: Path, tmp_path: Path
+) -> None:
+    replies = [
+        {"actions": [{"tool": "view", "path": "src/m.py"}]},
+        {
+            "actions": [
+                {
+                    "tool": "edit",
+                    "file_path": "src/m.py",
+                    "old_string": "return 0",
+                    "new_string": "return a + b",
+                },
+                {"tool": "run_check", "name": "tests"},
+            ]
+        },
+        {
+            "actions": [
+                {
+                    "tool": "finish",
+                    "summary": "add returns a + b; tests/test_m.py passes",
+                }
+            ]
+        },
+    ]
+    seen: list[list[str]] = []
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        run_id = str(uuid.uuid4())
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        if len(seen) == 1:
+            (run_dir / "receipt.json").write_text(json.dumps(_queued_receipt()))
+            return subprocess.CompletedProcess(
+                argv, 1, json.dumps({"run_id": run_id}), ""
+            )
+        (run_dir / "result.txt").write_text(json.dumps(replies[len(seen) - 2]))
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"run_id": run_id}), "")
+
+    ports = _ports(tmp_path, runner)
+    request = _request(tree)
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    assert result.status == EnumCodeEditStatus.ACCEPTED
+    assert result.changed_paths == ("src/m.py",)
+    for argv in seen[1:]:
+        assert "--bus inmemory --locus in-process" in " ".join(argv)
+        assert "deployed-lane" not in argv
+
+
+def test_a_loop_whose_turns_never_start_and_whose_retries_fail_ends_delegate_failed_with_a_receipt(
+    tree: Path, tmp_path: Path
+) -> None:
+    ids: list[str] = []
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        run_id = str(uuid.uuid4())
+        ids.append(run_id)
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        receipt = (
+            _queued_receipt() if "deployed-lane" in argv else _failed_receipt(run_id)
+        )
+        (run_dir / "receipt.json").write_text(json.dumps(receipt))
+        return subprocess.CompletedProcess(argv, 1, json.dumps({"run_id": run_id}), "")
+
+    ports = _ports(tmp_path, runner)
+    request = _request(tree)
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    assert result.status == EnumCodeEditStatus.DELEGATE_FAILED
+    loop_dir = tmp_path / "state" / "runs" / request.correlation_id
+    assert (loop_dir / "loop_receipt.json").is_file()
+    assert not (loop_dir / "loop_claim").exists()
 
 
 def test_an_in_process_retry_checks_the_backend_pin(tree: Path, tmp_path: Path) -> None:

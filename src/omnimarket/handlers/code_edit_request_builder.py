@@ -15,6 +15,10 @@ import sys
 import uuid
 from pathlib import Path
 
+from omnibase_core.enums.enum_delegation_traffic_class import (
+    EnumDelegationTrafficClass,
+)
+
 from omnimarket.delegated_code_edit.loop_ports import resolve_delegate_pin
 from omnimarket.handlers.code_edit_contract_checks import (
     declared_checks_from_contract,
@@ -83,9 +87,12 @@ def build_code_edit_request(
     formatter: tuple[str, ...],
     max_turns: int | None,
     check_timeout_s: int | None,
+    wall_budget_s: int | None,
     ticket_contract: Path | None,
     caller_lane: str | None,
     ticket: str | None,
+    traffic_class: EnumDelegationTrafficClass = EnumDelegationTrafficClass.UNCLASSIFIED,
+    source_surface: str | None = None,
 ) -> ModelDelegatedCodeEditRequest:
     """The request; ``ValueError`` when it is invalid or no check is declared."""
     if worktree is None or task_file is None or not writable:
@@ -107,6 +114,8 @@ def build_code_edit_request(
         if overlay
         else fields["max_no_change_finishes"].default
     )
+    if wall_budget_s is None:
+        wall_budget_s = overlay.wall_budget_seconds if overlay else None
     checks = cli_checks
     if ticket_contract is not None:
         contract_checks = declared_checks_from_contract(
@@ -135,9 +144,12 @@ def build_code_edit_request(
             checks=checks,
             formatter=tuple(tuple(shlex.split(step)) for step in formatter),
             max_turns=max_turns,
+            wall_budget_seconds=wall_budget_s,
             max_no_change_finishes=max_no_change,
             caller_lane=caller_lane,
             ticket=ticket,
+            traffic_class=traffic_class,
+            source_surface=source_surface,
         )
     except ValueError as exc:
         raise ValueError(f"invalid request: {exc}") from exc

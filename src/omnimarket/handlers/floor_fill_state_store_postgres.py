@@ -39,7 +39,10 @@ class PostgresFloorStateStore:
         self._relation = sql.Identifier(settings.schema_name, settings.table_name)
 
     def _connect(self) -> Any:
-        connection = psycopg2.connect(
+        # This class IS the ProtocolFloorStateStore I/O boundary over the table (the connection is its purpose, the DSN
+        # and timeout are injected settings), the same sanctioned per-line boundary mark as
+        # omnimarket.projection.postgres_sync_database: not a path-allowlist broadening (OMN-23002).
+        connection = psycopg2.connect(  # no-contract-check: store boundary, DSN and timeout injected
             self._settings.dsn.get_secret_value(),
             connect_timeout=self._settings.connect_timeout_seconds,
         )

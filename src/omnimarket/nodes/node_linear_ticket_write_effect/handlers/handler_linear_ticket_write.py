@@ -18,6 +18,8 @@ from collections.abc import Callable
 from typing import Protocol, TypedDict
 from uuid import UUID
 
+from omnibase_infra.handlers.done_write_receipt_guard import DoneWriteRefusedError
+
 from omnimarket.handlers.handler_lane_intake import LaneIntakeRefusedError
 from omnimarket.inference.secret_store_resolver import SecretStoreConfigurationError
 from omnimarket.models.model_ticket_io import (
@@ -28,19 +30,20 @@ from omnimarket.models.model_ticket_io import (
 from omnimarket.models.secret_store.model_secret_resolution_error import (
     SecretResolutionError,
 )
+from omnimarket.models.ticket_write_io import (
+    ModelTicketWriteCompleted,
+    ModelTicketWriteFailed,
+    ModelTicketWriteRequest,
+)
 from omnimarket.nodes.node_create_ticket import (
     HandlerCreateTicket,
     TicketGuardRefusedError,
     TicketGuardUnavailableError,
 )
-from omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io import (
-    ModelTicketWriteCompleted,
-    ModelTicketWriteFailed,
-    ModelTicketWriteRequest,
-)
 
 Result = ModelTicketWriteCompleted | ModelTicketWriteFailed
 _RECORD_LIMIT = 1024
+_CAUSE_LIMIT = 300
 _LOG = logging.getLogger(__name__)
 
 
@@ -92,12 +95,12 @@ class HandlerLinearTicketWriteEffect:
         }
 
         def failed(
-            reason: str, codes: list[str] | None = None
+            reason: str, codes: list[str] | None = None, cause: str | None = None
         ) -> ModelTicketWriteFailed:
             return ModelTicketWriteFailed(
                 **identity,
                 reason=reason,
-                terminal_failure_cause=reason,
+                terminal_failure_cause=cause if cause is not None else reason,
                 finding_codes=codes or [],
             )
 
@@ -137,13 +140,23 @@ class HandlerLinearTicketWriteEffect:
                 # exception type only (its text is never put on a terminal).
                 _LOG.warning("linear ticket write: Linear key unresolved")
                 return failed("secret_unavailable", ["linear_api_key_unresolved"])
+            except DoneWriteRefusedError as exc:
+                _LOG.warning(
+                    "linear ticket write: done write refused (%s)",
+                    type(exc).__name__,
+                )
+                return failed(
+                    "done_write_refused",
+                    ["done_write_gate_refused"],
+                    cause=exc.decision.reason[:_CAUSE_LIMIT],
+                )
             except Exception as exc:
                 # Exception text may contain HTTP headers or adapter credentials,
                 # so the log and the terminal carry the type name alone.
                 _LOG.warning(
                     "linear ticket write: operation failed (%s)", type(exc).__name__
                 )
-                return failed("operation_failed")
+                return failed("operation_failed", [f"exception:{type(exc).__name__}"])
             if result.status == "error":
                 return failed("invalid_request", result.finding_codes)
             completed = ModelTicketWriteCompleted(**identity, result=result)

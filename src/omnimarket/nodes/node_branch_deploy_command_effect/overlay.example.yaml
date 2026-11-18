@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+hmac_secret_env: EXAMPLE_DEPLOY_AGENT_SIGNING_KEY
+scope: runtime
+build_source: workspace
+detail_max_chars: 4096
+check_agent_key: true
+# The bus the node's own entry dials to send the command from outside the lane's runtime (OMN-19998); the lane id only.
+event_bus:
+  type: kafka
+  lane: example-lane

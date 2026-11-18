@@ -44,7 +44,11 @@ _NODES = _REPO_ROOT / "src" / "omnimarket" / "nodes"
 _CONTRACT = _NODES / "node_pr_landing_github_effect" / "contract.yaml"
 _CI_RERUN_CONTRACT = _NODES / "node_ci_rerun_effect" / "contract.yaml"
 _ARM_CONTRACT = _NODES / "node_merge_sweep_auto_merge_arm_effect" / "contract.yaml"
+_CREDENTIAL_CONTRACT = _NODES / "node_github_git_credential_effect" / "contract.yaml"
 _PYPROJECT = _REPO_ROOT / "pyproject.toml"
+_WRITER_APP_SECRETS = frozenset(
+    {"ONEXBOT_OCC_APP_ID", "ONEXBOT_OCC_PRIVATE_KEY", "ONEXBOT_OCC_INSTALLATION_ID"}
+)
 
 _REQUESTED = "onex.cmd.omnimarket.pr-landing-github-requested.v1"
 _COMPLETED = "onex.evt.omnimarket.pr-landing-github-completed.v1"
@@ -61,10 +65,15 @@ def _load(path: Path) -> dict[str, Any]:
 
 
 def test_secrets_block_matches_node_ci_rerun_effect() -> None:
+    """The reads keep the shared GITHUB_TOKEN ref; the writer App refs are the
+    one addition (OMN-23777), the same three the credential node declares."""
     ours = _load(_CONTRACT)["secrets"]
     theirs = _load(_CI_RERUN_CONTRACT)["secrets"]
-    assert set(ours) == set(theirs) == {"GITHUB_TOKEN"}
+    assert set(theirs) == {"GITHUB_TOKEN"}
+    assert set(ours) == set(theirs) | _WRITER_APP_SECRETS
     assert ours["GITHUB_TOKEN"]["required"] == theirs["GITHUB_TOKEN"]["required"]
+    credential = _load(_CREDENTIAL_CONTRACT)["secrets"]
+    assert {name: ours[name] for name in _WRITER_APP_SECRETS} == credential
     # The arm effect uses the same single ref.
     assert set(_load(_ARM_CONTRACT)["secrets"]) == {"GITHUB_TOKEN"}
 
@@ -73,7 +82,8 @@ def test_secrets_comparison_positive_control() -> None:
     """The comparison above must fail for a contract with a second credential."""
     ours = dict(_load(_CONTRACT)["secrets"])
     ours["OCC_APP_PRIVATE_KEY"] = {"description": "x", "required": True}
-    assert set(ours) != set(_load(_CI_RERUN_CONTRACT)["secrets"])
+    allowed = {"GITHUB_TOKEN"} | _WRITER_APP_SECRETS
+    assert set(ours) != allowed
 
 
 def test_contract_names_no_other_credential_anywhere() -> None:
@@ -154,9 +164,10 @@ def test_contract_version_is_bumped_for_the_wiring() -> None:
     """1.1.0 added read_pr_state (plan revision 1 section 5); 1.2.0 wires the bus.
 
     1.3.0 (OMN-20866): an arm of a PR GitHub reports mergeable now merges it.
+    1.4.0 (OMN-23777): the mutations are sent as the writer App.
     """
     contract = _load(_CONTRACT)
-    assert contract["contract_version"] == {"major": 1, "minor": 3, "patch": 0}
+    assert contract["contract_version"] == {"major": 1, "minor": 4, "patch": 0}
 
 
 def test_contract_models_resolve_to_the_seam_models() -> None:

@@ -3,7 +3,9 @@
 """The pool's headless probe reads a limit answer and its reset without carrying a token (OMN-23895).
 
 The call is the injected runner: a fake that returns the typed receipt the real probe module prints. The real call
-against a live token is not made here.
+against a live token is not made here. An answer that is neither a limit nor a clean reply is ``refused``, the
+token was tried and failed (OMN-19998), unless its text carries a challenge marker: a 403 challenge page is an
+``error`` that proves nothing, never a refusal.
 """
 
 from __future__ import annotations
@@ -36,6 +38,9 @@ SETTINGS = ModelLimitProbeSettings(
     reset_margin_seconds=7,
 )
 TOKEN = "sk-ant-" + "oat01-" + "x" * 90
+#: A 403 challenge page's marker (matched case-insensitively) and an output carrying it.
+MARKER = "verify you are human"
+CHALLENGE_TEXT = "Access denied: please Verify You Are Human and try again"
 
 
 def receipt(output: str, cause: str = "answered", code: int | None = 0) -> str:
@@ -62,7 +67,9 @@ class Runner:
         return self.rc, self.stdout
 
 
-def probe(runner: Runner, *, stored: bool = True) -> HeadlessLimitProbe:
+def probe(
+    runner: Runner, *, stored: bool = True, markers: Sequence[str] = ()
+) -> HeadlessLimitProbe:
     return HeadlessLimitProbe(
         secret=lambda _label: SecretStr(TOKEN) if stored else None,
         settings=SETTINGS,
@@ -70,6 +77,7 @@ def probe(runner: Runner, *, stored: bool = True) -> HeadlessLimitProbe:
         run=runner,
         now=lambda: NOW,
         python="python-under-test",
+        challenge_markers=markers,
     )
 
 
@@ -105,11 +113,43 @@ def test_a_limit_answer_naming_no_reset_is_limited_without_one() -> None:
         "not json",
         receipt("", cause="timeout", code=None),
         receipt("", cause="launch_failed", code=None),
-        receipt("something odd", cause="process_failed", code=1),
     ],
 )
 def test_control_anything_else_is_an_error_that_proves_nothing(stdout: str) -> None:
     assert probe(Runner(stdout, rc=1)).probe("onexbot").verdict == "error"
+
+
+def test_an_answered_failure_with_plain_text_is_refused() -> None:
+    text = "Authentication failure: invalid api key"
+    got = probe(Runner(receipt(text, code=1))).probe("onexbot")
+    assert got.verdict == "refused"
+    assert got.probed_at == NOW
+    assert got.reset_at is None
+
+
+def test_a_process_failed_answer_is_refused_without_a_marker() -> None:
+    stdout = receipt("something odd", cause="process_failed", code=1)
+    assert probe(Runner(stdout)).probe("onexbot").verdict == "refused"
+
+
+def test_a_challenge_page_is_an_error_that_proves_nothing() -> None:
+    runner = Runner(receipt(CHALLENGE_TEXT, code=1))
+    got = probe(runner, markers=(MARKER,)).probe("onexbot")
+    assert got.verdict == "error"
+
+
+def test_a_timeout_is_an_error_even_when_the_text_carries_a_marker() -> None:
+    runner = Runner(receipt(CHALLENGE_TEXT, cause="timeout", code=None))
+    got = probe(runner, markers=(MARKER,)).probe("onexbot")
+    assert got.verdict == "error"
+
+
+@pytest.mark.parametrize("cause", ["answered", "process_failed"])
+def test_control_a_challenge_page_is_never_refused(cause: str) -> None:
+    runner = Runner(receipt(CHALLENGE_TEXT, cause=cause, code=1))
+    got = probe(runner, markers=(MARKER,)).probe("onexbot")
+    assert got.verdict != "refused"
+    assert got.verdict == "error"
 
 
 def test_a_label_with_no_stored_token_is_an_error_and_runs_nothing() -> None:

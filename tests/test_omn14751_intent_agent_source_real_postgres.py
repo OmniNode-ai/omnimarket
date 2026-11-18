@@ -224,3 +224,50 @@ async def test_real_postgres_intent_write_path_round_trips_agent_source() -> Non
         await conn.execute("SET search_path TO public")
         await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
         await conn.close()
+
+
+@pytest.mark.integration
+async def test_real_postgres_runtime_failure_notice_writes_no_row() -> None:
+    """The runtime's failure notice (OMN-24332) stores nothing beside a real event.
+
+    A notice carries no session_id, intent_class or confidence, so it could
+    never fill the table's non-null columns; the runner must decline it
+    without a statement, and a real event handled beside it must still land.
+    """
+    from omnibase_infra.runtime.boundary_failure_terminal import (
+        ModelBoundaryFailureTerminal,
+    )
+
+    notice = ModelBoundaryFailureTerminal(
+        correlation_id=uuid4(),
+        failure_class="HandlerDispatchFailureError",
+        failure_code="ONEX_CORE_063_ITEM_NOT_REGISTERED",
+        retryable=False,
+        failure_reason="no dispatcher",
+        origin_topic="onex.cmd.omniintelligence.claude-hook-event.v1",
+    ).model_dump(mode="json")
+    schema = _unique_schema()
+    conn = await _connect_or_skip()
+    await conn.execute(f"CREATE SCHEMA {schema}")
+    adapter: AsyncpgAdapter | None = None
+    try:
+        await conn.execute(f"SET search_path TO {schema}, public")
+        for sql_file in _MIGRATION_SQL_FILES:
+            await conn.execute(sql_file.read_text(encoding="utf-8"))
+
+        runner, adapter = await _runner_on_schema(schema)
+        meta = MessageMeta(partition=0, offset=0, fallback_id="")
+
+        assert await runner.project_event("t", notice, meta) is True
+        count = await conn.fetchval("SELECT count(*) FROM intent_classification_events")
+        assert count == 0, "a runtime failure notice must not be stored as an event"
+
+        assert await runner.project_event("t", dict(_C3_EVENT), meta) is True
+        count = await conn.fetchval("SELECT count(*) FROM intent_classification_events")
+        assert count == 1
+    finally:
+        if adapter is not None:
+            await adapter.close()
+        await conn.execute("SET search_path TO public")
+        await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        await conn.close()

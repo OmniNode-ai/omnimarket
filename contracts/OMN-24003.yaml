@@ -1,0 +1,69 @@
+schema_version: "1.0.0"
+ticket_id: OMN-24003
+title: "Forwarding step carries a run's messages to the shared bus"
+summary: >-
+  New effect node node_runtime_bus_forward_effect. A runtime-local run on the in-memory bus hands the events it recorded to the one forwarder registered under the onex.runtime_bus_forwarders entry-point group; this node is that forwarder. It publishes every recorded event in order to the hosted bus lane its own overlay declares, refuses a topic outside the overlay's allowed prefixes, counts a refused publish and an unconfirmed event as failed, and answers the receipt (forwarded, failed, detail) the core runtime reads. Every setting is an overlay value.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched: [protocols, public_api]
+requirements:
+  - id: req-omn24003-forward
+    statement: A runtime-local run's recorded events reach the hosted bus its forwarder's overlay declares, and every event that does not is counted.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the forwarder node publishes every recorded event in order with its key, value and headers to the hosted bus its overlay declares, and answers a receipt of forwarded and failed counts -- falsifier: pytest tests/unit/nodes/node_runtime_bus_forward_effect -k golden in omnimarket'
+      - id: AC2
+        statement: 'AC2: an event on a topic outside the overlay''s allowed prefixes is refused and never published, an event the publisher refuses and an event the broker does not confirm inside the flush timeout are counted failed, and more events than the overlay''s maximum publish none -- falsifier: pytest tests/unit/nodes/node_runtime_bus_forward_effect -k error in omnimarket'
+      - id: AC3
+        statement: 'AC3: the forwarder is the one registered under onex.runtime_bus_forwarders and the core runtime accepts its receipt shape -- falsifier: pytest tests/unit/nodes/node_runtime_bus_forward_effect -k seam in omnimarket fails when either side changes shape'
+      - id: AC4
+        statement: 'AC4: integrated: one onex run-node on a lab host leaves its event readable on the dev bus, read from the dev bus with the running revision named -- falsifier: the same run with the forwarder uninstalled reads inmemory_unforwarded and the dev bus holds no event for its correlation id'
+evidence_requirements:
+  - kind: tests
+    description: The forwarder node tests.
+    command: uv run --frozen pytest tests/unit/nodes/node_runtime_bus_forward_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn24003-ac1
+    description: The golden chain of the forwarder node.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_runtime_bus_forward_effect -k golden -q --no-cov
+        cwd: .
+  - id: dod-omn24003-ac2
+    description: The error chains of the forwarder node.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_runtime_bus_forward_effect -k error -q --no-cov
+        cwd: .
+  - id: dod-omn24003-ac3
+    description: The seam test between the core runtime's forwarder call and this node.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_runtime_bus_forward_effect -k seam -q --no-cov
+        cwd: .
+  - id: dod-omn24003-ac4
+    description: The integrated reading is taken on a lab host and the dev bus; the receipt is recorded in the pull request.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_runtime_bus_forward_effect -q --no-cov
+        cwd: .
+  - id: dod-omn24003-integration-proof
+    description: "The change run on a live surface, on a lab host with its branch installed. onex run-node hosts a pure node in process on the in-memory bus; the forwarder carries its two recorded events toward the dev lane, and the run's stderr reads the hosted bus's own answer for each event (the dev lane's broker refuses the lab login on the two topics until the declared ACL rows are applied). The reading with the rows applied is the integrated criterion AC4, taken by the lane that applies them."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: "onex run-node node_goal_scope_admission_compute --input '{\"candidates\": {}}'"
+        cwd: .

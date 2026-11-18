@@ -1,0 +1,58 @@
+schema_version: 1.0.0
+ticket_id: OMN-24531
+title: Plan gate refuses a new plan with no clean first slice review
+summary: A new compute node, node_plan_review_ladder_compute, decides the next move of a plan's review from its history. Whole-plan rounds repeat only while an open blocking finding remains and stop in
+  favour of the first slice once none does; the first slice is reviewed until a round is clean, then each later rung when it is next. The first-slice check node's verdict is an input and any verdict but
+  ok returns the plan to its author. The knowledge base gate and the plan review skill are separate pull requests under the same ticket. AC3 is bound to a hosted proxy and read in the running runtime by
+  the unbound integration proof item.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24531-ladder-node
+  statement: A node decides the plan review ladder's next move from the review history, so the stop of whole-plan rounds and the next rung are read from a node's result.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a plan review run stops whole-plan rounds once no blocking finding remains and names the next piece to review, decided by a node in omnimarket -- falsifier: `onex run-node node_plan_review_ladder_compute`
+      with an open blocking finding returns a full-plan round, and with none returns the first-slice review'
+  - id: AC3
+    statement: 'AC3: integrated: one plan review run in the running runtime shows the stop and the next piece, read from its receipt with the time -- falsifier: the receipt read on the lab host names the
+      decision and its time; with an open blocking finding injected the same read names a full-plan round instead'
+evidence_requirements:
+- kind: tests
+  description: The ladder node tests at the pushed head; with the node absent they fail at import, and the three injected-break tests show the stop, the return to the author and the non-blocking reading
+    failing for real.
+  command: uv run pytest tests/unit/nodes/node_plan_review_ladder_compute -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24531-ac2
+  description: 'AC2: the ladder node returns a full-plan round while a blocking finding is open and the first-slice review once none is; the injected breaks turn those assertions red.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_plan_review_ladder_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24531-ac3-hosted-proxy
+  description: 'AC3 hosted proxy: the golden and chain cases show the stop and the next piece in the node''s result and its start-then-success event; the read of one plan review run in the running runtime
+    is the unbound integration proof item below and is not claimed by this check.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_plan_review_ladder_compute -q --no-cov -n 0 -p no:randomly -k "chain or golden"
+    cwd: .
+- id: dod-omn24531-integration-proof
+  description: The ladder node tests run on a lab host at the pushed head; the read of one plan review run in the running runtime (AC3) is taken after the node is installed and is not claimed here.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24531 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/unit/nodes/node_plan_review_ladder_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .

@@ -7,8 +7,8 @@ detects orphan topics (published but never subscribed with no external consumer
 declaration and no allowlist entry), and finds hardcoded topic literals in
 source files that are not declared in any contract.
 
-Topic authority: contract.yaml is the single source of truth. TopicBase enum
-is used as a best-effort cross-validation signal only (guarded with try/except).
+Topic authority: contract.yaml is the single source of truth. No enum owned by
+another package is imported to cross-check it (OMN-23141).
 """
 
 from __future__ import annotations
@@ -142,9 +142,6 @@ class ContractTopologyParser:
             search_roots, all_known_topics, allowlisted
         )
 
-        # Best-effort TopicBase cross-validation (INFO only — does not affect graph)
-        self._cross_check_topic_base(all_known_topics)
-
         return ModelTopologyGraph(
             nodes=sorted(nodes),
             pub_edges=pub_edges,
@@ -255,18 +252,3 @@ class ContractTopologyParser:
                                 topic, str(src_file.resolve())
                             )
         return undeclared, undeclared_sources
-
-    def _cross_check_topic_base(self, known_topics: set[str]) -> None:
-        """Cross-validate contract topics against TopicBase enum (INFO only)."""
-        try:
-            from omniclaude.hooks.topics import TopicBase
-
-            topic_base_values = {e.value for e in TopicBase}
-            for topic in known_topics:
-                if topic not in topic_base_values:
-                    logger.info(
-                        "Contract topic %r not found in TopicBase enum (INFO only)",
-                        topic,
-                    )
-        except ImportError:
-            pass

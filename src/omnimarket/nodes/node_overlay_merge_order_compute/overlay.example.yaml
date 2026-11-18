@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_overlay_merge_order_compute/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that
+# root. Every value here is synthetic; supply your deployment's facts. No key has a default, and an
+# overlay that cannot be found refuses the run.
+#
+#   ahead_verdicts  the merged tree's per-overlay verdicts that mean an overlay is ahead of its code. "accepted"
+#                   is the one passing verdict and is never listed. A verdict that is neither accepted nor listed
+#                   refuses the run (the overlay must rule on every verdict the merged tree can give).
+#   max_named       the most ahead overlays the decided event names; the count is always the full number
+#   injected_fault  the fault injected on purpose that must turn the decision AHEAD_OF_CODE
+#   home            where the overlay home is (the variable naming its clone) and how it is laid out; the check entry
+#                   judges every pinned overlay of this home through the models the interpreter has installed
+#   merged_ref_env  the variable naming the omnimarket ref those installed models were taken at (echoed in the decision)
+ahead_verdicts:
+- rejected
+- model_missing
+- unreadable
+- overlay_missing
+max_named: 10
+injected_fault: A touched overlay carries a key the merged tree's model refuses
+home:
+  root_env: EXAMPLE_OVERLAY_HOME
+  overlays_subdir: overlays
+  overlay_file: overlay.yaml
+  pins_file: .example-node-pins
+merged_ref_env: EXAMPLE_MERGED_REF

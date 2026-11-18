@@ -11,8 +11,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
+from omnimarket.models.floor_17a.model_mvp_launch import CronError, ModelCron
 from omnimarket.nodes.node_reading_writer_effect.overlay import (
     ModelCommandLedgerReadRoute,
     ModelFileLedgerReadRoute,
@@ -43,6 +51,19 @@ class ModelBetaProbe(BaseModel):
     max_age_seconds: int = Field(ge=1)
     # The events whose runs count as readings; an empty tuple counts every event.
     events: tuple[str, ...] = ()
+    # The workflow's schedule (five-field UTC cron). Given, the probe's read is cached for each schedule slot and read from the
+    # source again only when a slot passes; absent, the probe is read every cycle (OMN-19998).
+    cron: str | None = None
+
+    @field_validator("cron")
+    @classmethod
+    def _cron_parses(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value is not None:
+            try:
+                ModelCron.parse(value)
+            except CronError as exc:
+                raise ValueError(f"probe {info.data.get('id')}: {exc}") from exc
+        return value
 
 
 class ModelBetaLedgerReading(BaseModel):

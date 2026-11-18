@@ -68,9 +68,7 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orches
     ModelTickRequest,
     ModelTickResult,
 )
-from omnimarket.nodes.node_pr_landing_tick_reducer.handlers.handler_pr_landing_tick_reducer import (
-    HandlerPrLandingTickReducer,
-)
+from omnimarket.nodes.node_pr_landing_tick_reducer import HandlerPrLandingTickReducer
 
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
@@ -93,6 +91,14 @@ def rerun_topics() -> tuple[str, str]:
     contract = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
     section = contract["rerun_request"]
     return section["completed_topic"], section["failed_topic"]
+
+
+class _WriteRaisedError(Exception):
+    """The writer raised after this many writes had gone out; kept so the failure still accounts for them."""
+
+    def __init__(self, performed: int) -> None:
+        super().__init__(performed)
+        self.performed = performed
 
 
 class HandlerPrLandingTickOrchestrator:
@@ -141,11 +147,14 @@ class HandlerPrLandingTickOrchestrator:
         """Perform the decision's actions, in an enabled act mode only; otherwise none."""
         if request.mode is not EnumTickMode.ACT:
             return 0
-        return sum(
-            1
-            for action in decision.actions
-            if self._writer.perform(action, request.facts)
-        )
+        performed = 0
+        for action in decision.actions:
+            try:
+                if self._writer.perform(action, request.facts):
+                    performed += 1
+            except Exception as exc:
+                raise _WriteRaisedError(performed) from exc
+        return performed
 
     def _failed(
         self,
@@ -177,7 +186,26 @@ class HandlerPrLandingTickOrchestrator:
         chain = self._chain(request)
         if chain is not None:
             chain.start()
-        result = self._compare(request)
+        try:
+            result = self._compare(request)
+        except Exception as exc:
+            # a stage after the decision raised: the floor chain still ends, with the completed writes counted
+            written = exc.performed if isinstance(exc, _WriteRaisedError) else 0
+            cause = (
+                exc.__cause__
+                if isinstance(exc, _WriteRaisedError) and exc.__cause__
+                else exc
+            )
+            result = ModelTickResult(
+                correlation_id=request.correlation_id,
+                mode=request.mode,
+                status=EnumTickStatus.FAILED,
+                tick=request.facts.tick,
+                equal=False,
+                writes_performed=written,
+                failure_reason=EnumTickFailureReason.TICK_STAGE_RAISED,
+                failure_detail=f"{type(cause).__name__}; writes_performed={written}",
+            )
         if request.rerun_requests:
             result = result.model_copy(
                 update={"rerun_answers": self._answer_reruns(request)}

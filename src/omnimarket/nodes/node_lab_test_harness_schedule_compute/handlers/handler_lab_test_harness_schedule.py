@@ -6,8 +6,8 @@ The interval, offset and workflow name are the ``schedule`` key of the harness o
 (``node_lab_test_harness_effect``), found under ``ONEX_SKILL_OVERLAY_ROOTS``. The contract
 carries none of them and there is no packaged default: an absent or invalid overlay refuses.
 The overlay is read on the first tick, not when the handler is built: a runtime that loads this
-package without the harness overlay must still boot, so the refusal comes when the harness is
-asked to run, where it is seen on every tick, and never as a crash loop of the whole runtime
+package without the harness overlay must still boot, so the handler returns nothing on each
+tick and logs one ERROR per distinct cause, never a crash loop of the whole runtime
 (the composed-runtime-boot job read that crash on the first head that built the node eagerly).
 The decision reads only the tick, so the handler holds no state beyond the loaded settings.
 """
@@ -16,7 +16,11 @@ from __future__ import annotations
 
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
+from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
 from omnimarket.models.lab_test_harness import (
     ModelLabTestHarnessOverlay,
     ModelLabTestHarnessRequested,
@@ -39,10 +43,16 @@ class HandlerLabTestHarnessSchedule:
 
     def __init__(self, config: ModelRuntimeTickScheduleConfig | None = None) -> None:
         self._cfg = config
+        self._refusals = ScheduledOverlayRefusalLatch(OVERLAY_ID)
 
     def handle(self, request: ModelRuntimeTick) -> ModelLabTestHarnessRequested | None:
         if self._cfg is None:
-            self._cfg = schedule_config()
+            try:
+                self._cfg = schedule_config()
+            except NodeOverlayNotFoundError as exc:
+                self._refusals.refuse(exc)
+                return None
+            self._refusals.recovered()
         fire = scheduled_fire(
             self._cfg,
             now=request.now,

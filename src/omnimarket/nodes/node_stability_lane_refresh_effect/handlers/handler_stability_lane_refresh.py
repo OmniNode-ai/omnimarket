@@ -6,7 +6,8 @@
 build, the targeted recreate, the health gate and the rollback stay in ``refresh_stability_lane.sh``, which
 this node runs through an injected runner. A request whose tag set is not the committed pin's exits nonzero
 unless it carries ``bump``; a request for the set already applied runs nothing. Every tag is a release tag
-of a clone on the host, checked before anything is read from the lane or run.
+of a clone on the host, checked before anything is read from the lane or run, and the free space of the
+overlay's lane volume is checked against the overlay's disk floor before anything is run.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from omnimarket.nodes.node_stability_lane_refresh_effect.overlay import (
 )
 from omnimarket.nodes.node_stability_lane_refresh_effect.protocols import (
     ProtocolAppliedPinStore,
+    ProtocolDiskFree,
     ProtocolLaneHealth,
     ProtocolPinSource,
     ProtocolRefreshRunner,
@@ -41,11 +43,13 @@ from omnimarket.nodes.node_stability_lane_refresh_effect.protocols import (
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 _PIN_REPOS = ("omnibase_infra", "omnibase_core", "omnimarket")
 _TAG = re.compile(RELEASE_TAG_PATTERN)
+_GIB = 1024**3
 
 EXIT_OK = 0
 EXIT_REFUSED_NOT_RELEASE_TAG = 64
 EXIT_REFUSED_PIN_DIFFERS = 65
 EXIT_REFUSED_PIN_UNREADABLE = 66
+EXIT_REFUSED_LOW_DISK = 67
 EXIT_REFRESH_FAILED = 1
 
 
@@ -66,6 +70,7 @@ class HandlerStabilityLaneRefresh:
         applied: ProtocolAppliedPinStore,
         runner: ProtocolRefreshRunner,
         tags: ProtocolReleaseTagCheck,
+        disk: ProtocolDiskFree,
         health: ProtocolLaneHealth | None = None,
     ) -> None:
         self._overlay = overlay
@@ -73,6 +78,7 @@ class HandlerStabilityLaneRefresh:
         self._applied = applied
         self._runner = runner
         self._tags = tags
+        self._disk = disk
         self._health = health
 
     def _result(
@@ -206,6 +212,39 @@ class HandlerStabilityLaneRefresh:
                 running=running,
                 detail="the lane already runs the pinned set; nothing was run",
             )
+        disk_floor = self._overlay.disk_floor
+        if disk_floor is None:
+            return self._result(
+                command,
+                EnumStabilityRefreshOutcome.REFUSED_LOW_DISK,
+                EXIT_REFUSED_LOW_DISK,
+                pin_date=pin_date,
+                tags=target,
+                detail="no disk floor is declared in the host overlay; the refresh refuses until one is",
+            )
+        try:
+            free_bytes = self._disk.free_bytes(disk_floor.path)
+        except OSError as error:
+            return self._result(
+                command,
+                EnumStabilityRefreshOutcome.REFUSED_LOW_DISK,
+                EXIT_REFUSED_LOW_DISK,
+                pin_date=pin_date,
+                tags=target,
+                detail=f"disk floor unreadable: {type(error).__name__}",
+            )
+        if free_bytes < disk_floor.min_free_gib * _GIB:
+            return self._result(
+                command,
+                EnumStabilityRefreshOutcome.REFUSED_LOW_DISK,
+                EXIT_REFUSED_LOW_DISK,
+                pin_date=pin_date,
+                tags=target,
+                detail=(
+                    f"disk floor: {free_bytes / _GIB:.1f} GiB free on {disk_floor.path}"
+                    f" is below the {disk_floor.min_free_gib:.1f} GiB floor"
+                ),
+            )
         pin_path = self._overlay.pin_file
         if differs:
             pin_path = self._applied.render_pin_file(_pin_text(self._overlay, target))
@@ -268,6 +307,21 @@ def _pin_text(overlay: ModelStabilityHostOverlay, target: ModelReleasePinSet) ->
     return "\n".join(lines) + "\n"
 
 
+def _unwrap_envelope(raw: bytes | str) -> bytes | str:
+    """The command a bus message carries: the body of an event envelope (``payload``), else the message itself."""
+    try:
+        document = json.loads(raw)
+    except ValueError:
+        return raw
+    if (
+        isinstance(document, dict)
+        and isinstance(document.get("payload"), dict)
+        and "correlation_id" not in document
+    ):
+        return json.dumps(document["payload"])
+    return raw
+
+
 def answer_command(
     raw: bytes | str,
     handler: HandlerStabilityLaneRefresh,
@@ -275,7 +329,9 @@ def answer_command(
 ) -> list[tuple[str, bytes]]:
     """Answer one refresh command from the bus as events: (topic, body) in order, all under its correlation id."""
     try:
-        command = ModelStabilityRefreshCommand.model_validate_json(raw)
+        command = ModelStabilityRefreshCommand.model_validate_json(
+            _unwrap_envelope(raw)
+        )
     except ValidationError as error:
         body = {"failure": f"bad-payload: {error.error_count()} errors"}
         return [(topics["stability_refresh_failed"], json.dumps(body).encode())]
@@ -285,6 +341,7 @@ def answer_command(
         EnumStabilityRefreshOutcome.REFUSED_PIN_DIFFERS,
         EnumStabilityRefreshOutcome.REFUSED_NOT_RELEASE_TAG,
         EnumStabilityRefreshOutcome.REFUSED_PIN_UNREADABLE,
+        EnumStabilityRefreshOutcome.REFUSED_LOW_DISK,
     )
     if refused:
         body = {**base, "outcome": result.outcome.value, "detail": result.detail}
@@ -310,6 +367,7 @@ __all__ = [
     "CONTRACT",
     "EXIT_OK",
     "EXIT_REFRESH_FAILED",
+    "EXIT_REFUSED_LOW_DISK",
     "EXIT_REFUSED_NOT_RELEASE_TAG",
     "EXIT_REFUSED_PIN_DIFFERS",
     "EXIT_REFUSED_PIN_UNREADABLE",

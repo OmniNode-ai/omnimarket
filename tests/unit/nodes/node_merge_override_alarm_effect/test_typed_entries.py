@@ -103,8 +103,9 @@ def test_each_entry_hands_its_event_to_the_alarm_logic(
 
     entry._core = cast(HandlerMergeOverrideAlarm, _Stub())
     request = model_cls.model_construct()
-    result = entry.handle(request)
-    assert result is sentinel
+    # The entry returns nothing: the node publishes its own events, and a returned
+    # model would be published by the runtime to the first publish topic.
+    assert entry.handle(request) is None
     assert recorded == [request]
 
 
@@ -124,18 +125,16 @@ def test_golden_chain_through_the_entries(
         reader=rig.reader,
         clock=rig.clock,
     )
-    requested = entry_pr.handle(pr_merged_event())
-    assert requested.outcome.value == "read_requested"
+    assert entry_pr.handle(pr_merged_event()) is None
     assert len(rig.publisher.on(READ_SUFFIX)) == 1
-    result = entry_landing.handle(read_answer(rig))
+    assert entry_landing.handle(read_answer(rig)) is None
 
     rig2 = make_rig(monkeypatch, tmp_path)
     requested2 = rig2.handler.handle(pr_merged_event())
     assert requested2.outcome.value == "read_requested"
-    result2 = rig2.handler.handle(read_answer(rig2))
-    assert result.outcome == result2.outcome
-    assert result.reason == result2.reason
+    rig2.handler.handle(read_answer(rig2))
     assert len(rig.publisher.on(VERDICT_SUFFIX)) == 1
+    assert len(rig2.publisher.on(VERDICT_SUFFIX)) == 1
 
 
 def test_error_chain_through_the_entries(
@@ -149,9 +148,10 @@ def test_error_chain_through_the_entries(
         reader=rig.reader,
         clock=rig.clock,
     )
-    result = entry_pr.handle(pr_merged_event())
-    assert result.outcome.value != "read_requested"
+    assert entry_pr.handle(pr_merged_event()) is None
+    assert rig.publisher.on(READ_SUFFIX) == []
 
     rig2 = make_rig(monkeypatch, tmp_path, publisher=Publisher(error="broker down"))
     result2 = rig2.handler.handle(pr_merged_event())
-    assert result.outcome.value == result2.outcome.value
+    assert result2.outcome.value != "read_requested"
+    assert rig2.publisher.on(READ_SUFFIX) == []

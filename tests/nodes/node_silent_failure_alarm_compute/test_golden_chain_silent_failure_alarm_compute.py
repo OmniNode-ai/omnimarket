@@ -719,6 +719,7 @@ def test_registry_installer_points_alarm_unit_at_the_clean_branch(
         mode="install",
         home=str(tmp_path / "home"),
         registry_root=str(tmp_path / "registry"),
+        marketplace_root=str(tmp_path / "market"),
         workspace_config_root=str(tmp_path / "overlay"),
         runtime_ssh_host="lab-user@runtime.example.test",
         appender_root=str(tmp_path / "appender"),

@@ -38,7 +38,7 @@ def _git(clone: Path, *args: str) -> None:
     )
 
 
-def _host(tmp_path: Path) -> Path:
+def _host(tmp_path: Path, floor_gib: float = 0.001) -> Path:
     home = tmp_path / "home"
     for repo, tag in PIN.as_pairs():
         clone = home / repo
@@ -77,6 +77,7 @@ def _host(tmp_path: Path) -> Path:
                 "ports": {"EXAMPLE_PORT": 15436},
                 "workspace_config_root": str(tmp_path),
                 "registry_root": str(home),
+                "disk_floor": {"path": str(home), "min_free_gib": floor_gib},
                 "pin_file": str(pin),
                 "refresh_script": str(script),
                 "state_dir": str(tmp_path / "state"),
@@ -133,6 +134,19 @@ def test_cli_refuses_a_dev_tag_and_a_different_set(
         == 64
     )
     assert json.loads(capsys.readouterr().out)["outcome"] == "refused-not-release-tag"
+    assert not (tmp_path / "stub.log").exists()
+
+
+def test_cli_refuses_when_the_real_volume_is_below_the_overlay_floor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A floor no real volume can meet: the statvfs reading of this machine is below it.
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(_host(tmp_path, floor_gib=1e12)))
+    monkeypatch.setenv("STUB_LOG", str(tmp_path / "stub.log"))
+    assert main(["refresh", "--execute"]) == 67
+    result = json.loads(capsys.readouterr().out)
+    assert result["outcome"] == "refused-low-disk"
+    assert "GiB floor" in result["detail"]
     assert not (tmp_path / "stub.log").exists()
 
 

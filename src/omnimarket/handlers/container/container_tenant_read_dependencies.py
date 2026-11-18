@@ -19,7 +19,7 @@ refuses every request instead of serving it unauthenticated.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -153,6 +153,7 @@ def memory_tenant_projection_reader(config: Mapping[str, str]) -> object:
 
 def _postgres_factory(
     analytics_dsn_secret: str,
+    uncounted_data_sources: Sequence[str],
 ) -> Callable[[Mapping[str, str]], object]:
     def build(config: Mapping[str, str]) -> object:
         dsn_source = (
@@ -164,21 +165,27 @@ def _postgres_factory(
             )
         )
         return AnalyticsTenantProjectionReader(
-            Psycopg2AnalyticsQueryExecutor(dsn_source)
+            Psycopg2AnalyticsQueryExecutor(dsn_source),
+            uncounted_data_sources=uncounted_data_sources,
         )
 
     return build
 
 
 def _build_one(
-    overlay: ModelOverlayBindings | None, protocol: str, analytics_dsn_secret: str
+    overlay: ModelOverlayBindings | None,
+    protocol: str,
+    analytics_dsn_secret: str,
+    uncounted_data_sources: Sequence[str] = (),
 ) -> object | None:
     if overlay is None:
         return None
     factories: dict[str, Callable[[Mapping[str, str]], object]] = {
         "memory_http_tenant_identity": memory_http_tenant_identity,
         "memory_tenant_projection_reader": memory_tenant_projection_reader,
-        "postgres_tenant_projection_reader": _postgres_factory(analytics_dsn_secret),
+        "postgres_tenant_projection_reader": _postgres_factory(
+            analytics_dsn_secret, uncounted_data_sources
+        ),
     }
     built = overlay.build([protocol], factories)
     if built.refusal_reason is not None:
@@ -196,9 +203,15 @@ def bound_identity(
 
 def bound_reader(
     analytics_dsn_secret: str,
+    uncounted_data_sources: Sequence[str],
 ) -> ProtocolTenantDelegationProjectionReader | None:
     """The projection reader the installed overlay binds, or ``None`` when unbound."""
-    bound = _build_one(installed_overlay(), READER_PROTOCOL, analytics_dsn_secret)
+    bound = _build_one(
+        installed_overlay(),
+        READER_PROTOCOL,
+        analytics_dsn_secret,
+        uncounted_data_sources,
+    )
     return (
         bound if isinstance(bound, ProtocolTenantDelegationProjectionReader) else None
     )

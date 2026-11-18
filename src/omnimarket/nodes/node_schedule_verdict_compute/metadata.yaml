@@ -1,0 +1,24 @@
+name: node_schedule_verdict_compute
+version: "0.1.0"
+description: "Judges every declared schedule against its held state and reads red when any is never fired, overdue or failing"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_schedule_verdict_compute: "omnimarket.nodes.node_schedule_verdict_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "schedule", "verdict", "OMN-19998"]
+pack: "pipeline"
+display_name: "Schedule Verdict Compute"
+node_role: "compute"
