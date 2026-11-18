@@ -55,7 +55,7 @@ async def _connect_or_skip() -> asyncpg.Connection:
     except (
         OSError,
         asyncpg.PostgresError,
-    ) as exc:  # pragma: no cover - infra-dependent
+    ) as exc:
         pytest.skip(f"no reachable Postgres for done-items write-path proof: {exc}")
 
 

@@ -27,9 +27,9 @@ class SqliteDoneItemsStore:
         self._conn: sqlite3.Connection | None = None
 
     async def connect(self) -> None:
-        self._conn = sqlite3.connect(
+        self._conn = sqlite3.connect(  # no-contract-check: projection boundary
             str(self._db_path)
-        )  # no-contract-check: projection boundary
+        )
         self._conn.row_factory = sqlite3.Row
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS done_items (ticket TEXT NOT NULL PRIMARY KEY, done_at TEXT NOT NULL, done_row_id TEXT NOT NULL, lane TEXT, pr TEXT, closes TEXT, projected_at TEXT NOT NULL)"
