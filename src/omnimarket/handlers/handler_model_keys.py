@@ -124,14 +124,6 @@ LOCAL_HOW = (
     "vLLM, MLX) with: onex models add local --url <base url> --model <name>"
 )
 
-#: The providers the dashboard's Credentials page lists (OMN-20816 decision (b)):
-#: the ticket's four. Anthropic and a local URL are managed in the terminal.
-DASHBOARD_PROVIDERS: tuple[ModelProvider, ...] = (
-    "gemini",
-    "openrouter",
-    "openai",
-    "ollama",
-)
 #: The providers whose key ``remove_key`` deletes.
 KEYED_PROVIDERS: tuple[ModelProvider, ...] = (
     "gemini",
@@ -815,7 +807,6 @@ def remove_key(provider: str, echo: Echo = _quiet) -> None:
 
 
 __all__ = [
-    "DASHBOARD_PROVIDERS",
     "KEYED_PROVIDERS",
     "LOCAL_HOW",
     "MODEL_LABELS",

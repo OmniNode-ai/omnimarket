@@ -10,6 +10,7 @@ states only.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -21,6 +22,30 @@ class ModelPoolStatusViewRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     host: str = Field(min_length=1)
+
+
+class ModelPoolHostLogin(BaseModel):
+    """Which pool label one host's login is, as that host's own tick last published it. A label, never a token."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str = Field(min_length=1)
+    #: The pool label whose fingerprint equals the host's login; ``None`` when the login is no token of the pool.
+    label: str | None
+    at: datetime
+
+
+class ModelPoolLabelState(BaseModel):
+    """One account label as the operator reads it: its limit state, the reset it reads, and the hosts on it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label: str
+    state: Literal["usable", "limited", "revoked", "challenged"]
+    #: When a ``limited`` label's limit ends (UTC stamp); ``None`` for every other state.
+    reset: str | None
+    #: The hosts whose latest fresh login record names this label.
+    hosts: tuple[str, ...]
 
 
 class ModelPoolStatusViewResult(BaseModel):
@@ -51,6 +76,12 @@ class ModelPoolStatusViewResult(BaseModel):
     revoked: tuple[str, ...] | None
     challenged: tuple[str, ...] | None
     status_line: str
+    #: One entry per pool label, in the pool's order; empty on an ``unsynced_local_copy`` answer (no mark is named from it).
+    label_states: tuple[ModelPoolLabelState, ...] = ()
+    #: The one line naming every label with its state, reset and hosts; on an unsynced answer, the line saying so.
+    labels_line: str = ""
+    #: The overlay hosts with no login record fresh enough to place them, so no label above counts them.
+    hosts_unread: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def _unsynced_copy_names_no_mark(self) -> ModelPoolStatusViewResult:
@@ -74,6 +105,8 @@ class ModelPoolStatusViewResult(BaseModel):
 
 
 __all__ = [
+    "ModelPoolHostLogin",
+    "ModelPoolLabelState",
     "ModelPoolStatusViewRequest",
     "ModelPoolStatusViewResult",
 ]
