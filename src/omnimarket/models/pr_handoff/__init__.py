@@ -67,6 +67,9 @@ from omnimarket.models.pr_handoff.model_pr_handoff_requested import (
     ModelPrHandoffRequested,
     handoff_key_for,
 )
+from omnimarket.models.pr_handoff.model_pr_handoff_review_status import (
+    ModelPrHandoffReviewStatus,
+)
 
 __all__: list[str] = [
     "EnumPrHandoffErrorCode",
@@ -88,5 +91,6 @@ __all__: list[str] = [
     "ModelPrHandoffLedgerAppendCommand",
     "ModelPrHandoffLedgerAppended",
     "ModelPrHandoffRequested",
+    "ModelPrHandoffReviewStatus",
     "handoff_key_for",
 ]

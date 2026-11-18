@@ -441,6 +441,21 @@ class _Audit:
                 '"Lane Identity Gate" is a required status check',
                 '"Lane Identity Gate" not found in required status checks — the gate reports but cannot block (OMN-18288)',
             )
+        context = self.request.policy.review_verdict_context
+        if context and any(
+            entry.repo == repo and entry.branch == branch
+            for entry in self.request.policy.review_verdict_required
+        ):
+            self._judge(
+                repo,
+                branch,
+                "required_check_review_verdict",
+                context in contexts,
+                f"{context} required",
+                f"{context} missing",
+                f'"{context}" is a required status check',
+                f'"{context}" not found in required status checks: a pull request can merge with no clean review verdict for its head',
+            )
 
     def _check_merge_queue_bypass(self, repo: str, rulesets: JsonValue) -> None:
         judged = False
