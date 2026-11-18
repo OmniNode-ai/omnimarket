@@ -19,9 +19,12 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import yaml
+
+if TYPE_CHECKING:
+    from temporalio.client import Client
 
 from omnimarket.nodes.node_sprint_closer_effect.handlers.sprint_closer_sources import (
     live_sources_from_env,
@@ -63,7 +66,7 @@ def build_plan(
     )
 
 
-async def _client(target: str, namespace: str):  # type: ignore[no-untyped-def]
+async def _client(target: str, namespace: str) -> Client:
     from temporalio.client import Client
 
     return await Client.connect(target, namespace=namespace)

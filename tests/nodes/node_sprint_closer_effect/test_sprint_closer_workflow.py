@@ -13,6 +13,7 @@ from collections import Counter
 from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from temporalio.api.enums.v1 import EventType
@@ -167,7 +168,9 @@ async def test_one_activity_per_ticket_retry_and_collaborator(
         {"OMN-1": PASS, "OMN-2": PASS, "OMN-3": PASS, "OMN-4": FAIL},
         fail_first={"OMN-2"},
     )
-    sources = LiveSprintCloserSources(linear=linear, dod=dod, ledger_read_argv=())  # type: ignore[arg-type]
+    sources = LiveSprintCloserSources(
+        linear=cast(Any, linear), dod=cast(Any, dod), ledger_read_argv=()
+    )
     wf_id = f"closer-{uuid.uuid4()}"
     with ThreadPoolExecutor(max_workers=2) as pool:
         async with _worker(env.client, sources, pool):
@@ -197,7 +200,9 @@ async def test_repeatedly_failing_ticket_resumes_without_rerunning_finished(
     linear = FakeLinear({"OMN-1": "Owner", "OMN-2": "Owner", "OMN-3": "Owner"})
     dod = FakeDod({"OMN-1": PASS, "OMN-2": PASS, "OMN-3": PASS})
     dod.gated = {"OMN-2"}
-    sources = LiveSprintCloserSources(linear=linear, dod=dod, ledger_read_argv=())  # type: ignore[arg-type]
+    sources = LiveSprintCloserSources(
+        linear=cast(Any, linear), dod=cast(Any, dod), ledger_read_argv=()
+    )
     wf_id = f"closer-{uuid.uuid4()}"
     with ThreadPoolExecutor(max_workers=2) as pool:
         async with _worker(env.client, sources, pool):
@@ -225,8 +230,10 @@ async def test_seen_running_signal_start_records_the_mark(
 ) -> None:
     linear = FakeLinear({"OMN-1": "Owner"})
     sources = LiveSprintCloserSources(
-        linear=linear, dod=FakeDod({"OMN-1": FAIL}), ledger_read_argv=()
-    )  # type: ignore[arg-type]
+        linear=cast(Any, linear),
+        dod=cast(Any, FakeDod({"OMN-1": FAIL})),
+        ledger_read_argv=(),
+    )
     with ThreadPoolExecutor(max_workers=2) as pool:
         async with _worker(env.client, sources, pool):
             handle = await env.client.start_workflow(

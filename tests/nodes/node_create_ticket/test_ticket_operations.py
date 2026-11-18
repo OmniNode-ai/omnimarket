@@ -19,6 +19,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -174,7 +175,7 @@ class _FakeLister:
 
 def test_list_open_returns_the_projects_open_ticket_ids_sorted() -> None:
     lister = _FakeLister()
-    handler = HandlerCreateTicket(linear_client=lister)  # type: ignore[arg-type]
+    handler = HandlerCreateTicket(linear_client=cast(Any, lister))
     result = handler.handle(
         ModelCreateTicketRequest(
             operation=EnumTicketOperation.LIST_OPEN, project=" proj-1 "

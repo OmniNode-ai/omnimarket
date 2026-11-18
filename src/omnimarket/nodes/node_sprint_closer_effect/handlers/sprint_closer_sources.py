@@ -155,7 +155,7 @@ class LinearIssue:
 
 
 @dataclass
-class OnexNodeRunner:
+class HandlerOnexNodeCall:
     """Runs node_linear_ticket_write_effect as the node's declared CLI (``onex node``) and returns its terminal payload.
 
     The input is one JSON request file, the answer is the ``terminal_payload`` the runtime writes to its state root.
@@ -208,7 +208,7 @@ class OnexNodeRunner:
 
 
 @dataclass
-class LinearNodeClient:
+class HandlerLinearTicketNode:
     """Every Linear read and write of the closer, as a request to node_linear_ticket_write_effect.
 
     The node answers state, title, description and assignee; it has no comment history, so the closer keeps the body
@@ -275,7 +275,7 @@ class LinearNodeClient:
 
 
 @dataclass
-class DodVerifyRunner:
+class HandlerDodVerifyCall:
     """Runs node_dod_verify as a process, first from the registry root, then from the contract's own clone."""
 
     home_root: Path
@@ -338,8 +338,8 @@ class DodVerifyRunner:
 class LiveSprintCloserSources:
     """The production sources: Linear for tickets and writes, dod_verify for checks, the ledger for readings."""
 
-    linear: LinearNodeClient
-    dod: DodVerifyRunner
+    linear: HandlerLinearTicketNode
+    dod: HandlerDodVerifyCall
     ledger_read_argv: tuple[str, ...] = ()
 
     def list_ticket_ids(self, plan: ModelSprintCloserPlan) -> list[str]:
@@ -415,8 +415,8 @@ def live_sources_from_env(home_root: Path) -> LiveSprintCloserSources:
         )
     )
     return LiveSprintCloserSources(
-        linear=LinearNodeClient(OnexNodeRunner((onex,)), state_dir),
-        dod=DodVerifyRunner(
+        linear=HandlerLinearTicketNode(HandlerOnexNodeCall((onex,)), state_dir),
+        dod=HandlerDodVerifyCall(
             home_root=home_root,
             python=os.environ.get("ONEX_SPRINT_CLOSER_DOD_PYTHON", sys.executable),
             extra_pythonpath=os.environ.get("ONEX_SPRINT_CLOSER_DOD_PYTHONPATH"),

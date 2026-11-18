@@ -13,8 +13,8 @@ import pytest
 
 from omnimarket.nodes.node_sprint_closer_effect.handlers.sprint_closer_sources import (
     NODE_ID,
-    LinearNodeClient,
-    OnexNodeRunner,
+    HandlerLinearTicketNode,
+    HandlerOnexNodeCall,
 )
 
 pytestmark = pytest.mark.unit
@@ -54,7 +54,7 @@ def test_activities_call_nodes_every_linear_call_is_a_node_request(
     tmp_path: Path,
 ) -> None:
     runner = RecordingRunner()
-    client = LinearNodeClient(runner, tmp_path)
+    client = HandlerLinearTicketNode(runner, tmp_path)
     assert client.open_issue_ids("proj") == ["OMN-1", "OMN-2"]
     issue = client.read_issue("OMN-7")
     assert (issue.state, issue.assignee, issue.closed) == ("In Review", "Owner", False)
@@ -74,7 +74,7 @@ def test_activities_call_nodes_every_linear_call_is_a_node_request(
 def test_own_last_comment_is_kept_so_the_fingerprint_rule_can_read_it(
     tmp_path: Path,
 ) -> None:
-    client = LinearNodeClient(RecordingRunner(), tmp_path)
+    client = HandlerLinearTicketNode(RecordingRunner(), tmp_path)
     assert client.read_issue("OMN-7").comment_bodies == ()
     client.comment("OMN-7", "actor: x\nclosed by evidence")
     assert client.read_issue("OMN-7").comment_bodies == (
@@ -107,7 +107,7 @@ def test_onex_node_runner_runs_the_declared_cli_and_returns_the_result(
     script = _fake_onex(
         tmp_path, {"outcome": "completed", "result": {"ticket_status": "Done"}}
     )
-    out = OnexNodeRunner((str(script),))(
+    out = HandlerOnexNodeCall((str(script),))(
         {"operation": "read", "ticket_id": "OMN-7", "idempotency_key": "k"}
     )
     assert out == {"ticket_status": "Done"}
@@ -126,7 +126,7 @@ def test_a_failed_terminal_raises_with_the_nodes_reason_and_codes(
         {"outcome": "failed", "reason": "guard_refused", "finding_codes": ["x"]},
     )
     with pytest.raises(RuntimeError, match=r"guard_refused.*\['x'\]"):
-        OnexNodeRunner((str(script),))(
+        HandlerOnexNodeCall((str(script),))(
             {"operation": "transition", "ticket_id": "OMN-7", "idempotency_key": "k"}
         )
 
