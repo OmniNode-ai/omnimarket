@@ -181,7 +181,7 @@ WITH meta AS (
     SELECT max(projected_at) AS watermark,
            count(*) FILTER (WHERE kind = ANY(%s)) AS total,
            count(*) FILTER (WHERE kind = 'hold' AND NOT is_open AND closed_at IS NOT NULL) AS released,
-           count(*) FILTER (WHERE kind = 'hold' AND is_open AND scope_surface IS NOT NULL AND until_at < %s) AS expired,
+           count(*) FILTER (WHERE kind = 'hold' AND is_open AND until_at < %s) AS expired,
            (SELECT max(row_ts) FROM {relation}) AS ledger_newest
     FROM {state}
 ), page AS (
@@ -230,7 +230,9 @@ def _filters(query: ModelWorkLedgerStateQuery) -> tuple[str, list[object]]:
     params: list[object] = []
     point = query.point
     if point is EnumWorkLedgerQueryKind.HOLDS:
-        sql.append(" AND NOT (s.scope_surface IS NOT NULL AND s.until_at < %s)")
+        # A hold past its until_at is out of force whatever its surface; an
+        # open-ended hold (until_at NULL) stays listed (OMN-24555).
+        sql.append(" AND (s.until_at IS NULL OR s.until_at >= %s)")
         params.append(query.now)
         if query.pr:
             sql.append(
@@ -249,6 +251,11 @@ def _filters(query: ModelWorkLedgerStateQuery) -> tuple[str, list[object]]:
             )
             params.append(query.to)
     elif point is EnumWorkLedgerQueryKind.INBOX:
+        # The inbox lists msgs and holds; an expired hold drops out of it
+        # too (OMN-24555). Params stay in the order the statement binds
+        # them: the meta counts, the kinds, then these filters.
+        sql.append(" AND (s.kind <> 'hold' OR s.until_at IS NULL OR s.until_at >= %s)")
+        params.append(query.now)
         sql.append(" AND string_to_array(s.scope_to, ',') && %s::text[]")
         params.append([*query.lanes, "all"])
     elif point is EnumWorkLedgerQueryKind.OPEN_CLAIMS:

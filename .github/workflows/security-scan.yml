@@ -81,7 +81,7 @@ jobs:
           # a crash on every attempt still fails the job.
           for attempt in 1 2 3; do
             rc=0
-            safety check --file requirements.txt || rc=$?
+            safety check --file requirements.txt --policy-file config/safety-policy.yml || rc=$?
             if [ "$rc" -ne 1 ]; then exit "$rc"; fi
             echo "::warning::safety crashed (exit 1) on attempt $attempt of 3"
             sleep 20

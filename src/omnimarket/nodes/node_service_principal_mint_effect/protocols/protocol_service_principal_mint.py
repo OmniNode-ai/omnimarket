@@ -18,6 +18,14 @@ class BrokerLoginAdminError(RuntimeError):
     """Raised by the broker admin boundary on any failure. Its message never includes a password."""
 
 
+class BrokerCredentialUnresolvedError(BrokerLoginAdminError):
+    """The broker superuser credential is absent or unreadable in its declared source.
+
+    The message names the key and the source file, never a value. It is a failure of the secret
+    source, not of the broker's reachability, and the handler's detail says so.
+    """
+
+
 class PrincipalVaultError(RuntimeError):
     """Raised by the principal vault boundary when the store is unreachable or refuses."""
 
