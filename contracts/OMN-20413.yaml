@@ -36,6 +36,11 @@ requirements:
     acceptance:
       - id: AC7
         statement: 'AC7: uv.lock resolves filelock 4.2.1 -- falsifier: uv run pytest tests/ci/test_filelock_lock_pin_omn20413.py fails while the filelock entry reads version 3.32.6'
+  - id: req-omn20413-ledger-census
+    statement: The ledger file census counts no more files than its shrink-only ratchet row, so the Canonical File Shape check reads green on dev.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the ledger file census over this repository counts 186 files, the ratchet row, and exits 0 -- falsifier: the census command fails with ratchet-grew omnimarket=188>186 at the merge base'
 evidence_requirements:
   - kind: tests
     description: The deploy-gate run step hands the validator the title and the body, and the validator stays at its pin and mode.
@@ -127,3 +132,12 @@ dod_evidence:
         cwd: .
     binds_ac:
       - AC7
+  - id: dod-omn20413-ac8-ledger-census
+    description: The ledger file census, run as the Canonical File Shape step runs it, exits 0 at 186 files against the ratchet row of 186; at the merge base it counted 188 and failed.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=.
+        cwd: .
+    binds_ac:
+      - AC8
