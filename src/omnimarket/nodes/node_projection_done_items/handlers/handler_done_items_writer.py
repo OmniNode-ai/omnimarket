@@ -26,14 +26,14 @@ import yaml
 
 from omnimarket.models.done_items import ModelDoneItem, ModelDoneItemsRequest
 from omnimarket.models.model_projection_request import ModelProjectionRequest
+from omnimarket.models.model_work_ledger_projection_inbound import (
+    ModelWorkLedgerProjectionInbound,
+)
 from omnimarket.nodes.node_done_items_compute.handlers import HandlerDoneItems
 from omnimarket.nodes.node_projection_done_items.ports.done_items_store import (
     ProtocolDoneItemsStore,
     SqliteDoneItemsStore,
     StoreValue,
-)
-from omnimarket.nodes.node_projection_work_ledger.models import (
-    ModelWorkLedgerProjectionInbound,
 )
 from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
     parse_ledger_row,

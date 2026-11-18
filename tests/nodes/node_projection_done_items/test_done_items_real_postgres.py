@@ -9,6 +9,7 @@ row; and malformed done_row_id values being rejected by the database.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,13 +19,21 @@ import asyncpg
 import pytest
 
 from omnimarket.nodes.node_projection_done_items.handlers.handler_done_items_writer import (
+    DoneItemsProjectionWriter,
     upsert_statement,
+)
+from tests.nodes.node_projection_done_items.test_done_items_projection import (
+    DONE1,
+    V1,
+    V2,
+    _v1,
+    _v2,
 )
 
 _SCHEMA = "omn25104_done_items_write_path_test"
 
 
-async def _connect_or_skip() -> asyncpg.Connection:
+def _dsn_or_skip() -> str:
     password = os.environ.get(
         "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
     )
@@ -36,7 +45,11 @@ async def _connect_or_skip() -> asyncpg.Connection:
     port = int(os.environ.get("INTEGRATION_POSTGRES_PORT", "5432"))
     user = os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")
     db = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
-    dsn = f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{db}"
+    return f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{db}"
+
+
+async def _connect_or_skip() -> asyncpg.Connection:
+    dsn = _dsn_or_skip()
     try:
         return await asyncpg.connect(dsn)
     except (
@@ -189,3 +202,87 @@ async def test_real_postgres_refuses_a_malformed_row_id() -> None:
             )
     finally:
         await _teardown(conn)
+
+
+class _AsyncpgDoneItemsStore:
+    """The writer's store port over a real asyncpg connection.
+
+    The writer opens and closes the store inside its own event loop, so the
+    connection is made in ``connect``. Each query is pointed at the test schema,
+    the same rewrite ``_setup`` applies to the migration.
+    """
+
+    def __init__(self, dsn: str) -> None:
+        self._dsn = dsn
+        self._conn: asyncpg.Connection | None = None
+
+    async def connect(self) -> None:
+        self._conn = await asyncpg.connect(self._dsn)
+
+    async def close(self) -> None:
+        if self._conn is not None:
+            await self._conn.close()
+            self._conn = None
+
+    async def execute(self, query: str, *params: object) -> list[dict[str, object]]:
+        if self._conn is None:
+            raise RuntimeError("_AsyncpgDoneItemsStore is not connected")
+        rows = await self._conn.fetch(
+            query.replace("omninode_internal.", f"{_SCHEMA}."), *params
+        )
+        return [dict(row) for row in rows]
+
+
+async def _prepare() -> None:
+    conn = await _connect_or_skip()
+    try:
+        await _setup(conn)
+    finally:
+        await conn.close()
+
+
+async def _served_rows() -> list[asyncpg.Record]:
+    conn = await _connect_or_skip()
+    try:
+        return list(
+            await conn.fetch(
+                f"SELECT ticket, done_row_id, projected_at FROM {_SCHEMA}.done_items"
+            )
+        )
+    finally:
+        await conn.close()
+
+
+async def _drop() -> None:
+    await _teardown(await _connect_or_skip())
+
+
+@pytest.mark.integration
+def test_real_postgres_writer_projects_v1_and_v2_terminal_events() -> None:
+    """The writer's own path, both envelopes, into real Postgres.
+
+    Catches the OMN-15909 class on this writer: a projected_at that is not a
+    datetime fails the TIMESTAMPTZ bind, and a v2 envelope that no longer parses
+    writes nothing. The v2 copy of the same ledger row is a replay, so it must
+    not write a second time.
+    """
+    dsn = _dsn_or_skip()
+    asyncio.run(_prepare())
+    try:
+        writer = DoneItemsProjectionWriter(store=_AsyncpgDoneItemsStore(dsn))
+        first = writer.handle(
+            {**_v1(DONE1), "_topic": V1, "_partition": 0, "_offset": 0}
+        )
+        assert first["rows_upserted"] == 1
+        replay = writer.handle(
+            {**_v2(DONE1), "_topic": V2, "_partition": 0, "_offset": 1}
+        )
+        assert replay["rows_upserted"] == 0
+
+        rows = asyncio.run(_served_rows())
+        assert len(rows) == 1
+        assert rows[0]["ticket"] == "OMN-1"
+        assert isinstance(rows[0]["projected_at"], datetime)
+        assert rows[0]["projected_at"].tzinfo is not None
+    finally:
+        asyncio.run(_drop())

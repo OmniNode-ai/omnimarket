@@ -439,6 +439,9 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # auto-wiring; its pure fold does NOT declare the capability.
     # HostDiskProjectionWriter is node_projection_host_disk's only DB writer,
     # dispatched once per consumed reading by runtime auto-wiring.
+    # DoneItemsProjectionWriter is node_projection_done_items's only DB writer,
+    # dispatched once per consumed work-ledger TERMINAL event by runtime
+    # auto-wiring; its pure fold, HandlerDoneItems, does NOT declare it.
     assert declared == {
         "AgentActionsProjectionWriter",
         "AlertChannelLivenessProjectionWriter",
@@ -447,6 +450,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "ClaudeHookEventsProjectionWriter",
         "CompactionReceiptsProjectionWriter",
         "ContextAuditProjectionWriter",
+        "DoneItemsProjectionWriter",
         "MeteringSummaryProjectionWriter",
         "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",
