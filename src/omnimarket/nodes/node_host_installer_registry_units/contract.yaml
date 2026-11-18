@@ -1522,7 +1522,9 @@ units:
   # onex-prove-running) and the reader, closer and prune workflows (the also_serves entries of node_temporal_health_alarm_effect's
   # worker block, each on the queue its schedule starts it on), all against that server. The same long-running service
   # (service_type simple), started again after RestartSec on failure, so a worker that starts before the server answers
-  # retries. Its steps append rows through the bus ledger writer. The reader probes the runtime and the unit hosts over ssh,
+  # retries. Its steps append rows through the bus ledger writer. The unit sets no OMNIBASE_PATH: the closer's step runs
+  # `onex node`, whose drift guard reads that variable as the workspace root and then refuses a worker checkout that is
+  # not the canonical clone's revision. The reader probes the runtime and the unit hosts over ssh,
   # so the unit takes the runtime host's ssh target (ONEX_RUNTIME_SSH_HOST) and the unit hosts' targets from the host-owned
   # environment file of the reader; a missing file is not an error (those lines then read unread, with the cause).
   temporal-worker-systemd:
@@ -1562,8 +1564,6 @@ units:
       ONEX_TEMPORAL_ADDRESS: "127.0.0.1:7233"
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
       ONEX_TEMPORAL_WORKER_PROJECT: "{registry_root}/omnimarket"
-      OMNIBASE_PATH: "{registry_root}"
-      ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_LEDGER_WRITE_VIA: "bus"
       ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
     environment_inputs:

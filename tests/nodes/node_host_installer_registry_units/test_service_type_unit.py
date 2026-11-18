@@ -185,3 +185,12 @@ def test_installing_a_long_running_unit_restarts_its_service(
         ["restart", f"{label}.timer"],
         ["restart", f"{label}.service"],
     ]
+
+
+def test_the_worker_unit_sets_no_workspace_root_for_the_onex_drift_guard(
+    tmp_path: Path,
+) -> None:
+    """The closer's step runs ``onex node``; with OMNIBASE_PATH set its drift guard compares the worker checkout with the
+    canonical clone and refuses a checkout that is a branch, so the unit leaves the variable out."""
+    service = render(tmp_path, LONG_RUNNING[1])
+    assert "OMNIBASE_PATH" not in service
