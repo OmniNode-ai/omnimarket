@@ -46,6 +46,10 @@ from omnimarket.models.model_claude_pool_limit_recheck import (
     ModelLimitRecheckCommand,
     ModelLimitRecheckRequest,
 )
+from omnimarket.models.model_claude_pool_revoke_recheck import (
+    ModelRevokeRecheckCommand,
+    ModelRevokeRecheckRequest,
+)
 from omnimarket.models.model_claude_pool_revoke_staleness import (
     ModelClearRevokeCommand,
     ModelRevokeObservation,
@@ -53,6 +57,9 @@ from omnimarket.models.model_claude_pool_revoke_staleness import (
 )
 from omnimarket.nodes.node_claude_pool_limit_recheck_compute.handlers.handler_limit_recheck import (
     HandlerLimitRecheck,
+)
+from omnimarket.nodes.node_claude_pool_revoke_recheck_compute.handlers.handler_revoke_recheck import (
+    HandlerRevokeRecheck,
 )
 from omnimarket.nodes.node_claude_pool_revoke_staleness_compute.handlers.handler_revoke_staleness import (
     HandlerRevokeStaleness,
@@ -71,6 +78,7 @@ from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_ro
     ModelClaudeTokenRotationRequest,
     ModelClaudeTokenRotationResult,
     ModelLimitRecheckOutcome,
+    ModelRevokeRecheckOutcome,
     ModelRotationEvent,
     ModelRotationMark,
     ModelRotationMarksSync,
@@ -192,6 +200,15 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
         )
         pooled = after_clear or pooled
         (
+            revoke_rechecked,
+            revoke_rechecks,
+            revokes_rechecked_cleared,
+            revokes_confirmed,
+            revokes_rechecked_kept,
+            after_revoke_recheck,
+        ) = self._recheck_revokes(request, pooled)
+        pooled = after_revoke_recheck or pooled
+        (
             rechecked,
             limit_rechecks,
             limits_cleared,
@@ -234,6 +251,11 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
             "limits_cleared": limits_cleared,
             "limits_replaced": limits_replaced,
             "limits_kept": limits_kept,
+            "revoke_recheck": revoke_rechecked,
+            "revoke_rechecks": revoke_rechecks,
+            "revokes_rechecked_cleared": revokes_rechecked_cleared,
+            "revokes_confirmed": revokes_confirmed,
+            "revokes_rechecked_kept": revokes_rechecked_kept,
         }
         if state == "usable":
             spread = (
@@ -253,6 +275,7 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
                     f"{request.host}: login {held.label if held else ''} is usable",
                     *self._cleared_lines(request, cleared),
                     *self._limit_lines(request, base),
+                    *self._revoke_recheck_lines(request, base),
                 ),
             )
         if state == "unmanaged":
@@ -450,6 +473,24 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
                 lines.append(f"{request.host}: {verb} {', '.join(base[key])}")
         return tuple(lines)
 
+    @staticmethod
+    def _revoke_recheck_lines(
+        request: ModelClaudeTokenRotationRequest,
+        base: dict[str, Any],
+    ) -> tuple[str, ...]:
+        lines: list[str] = []
+        if base["revokes_rechecked_cleared"]:
+            lines.append(
+                f"{request.host}: cleared the revoked mark of "
+                f"{', '.join(base['revokes_rechecked_cleared'])} after a probe answered"
+            )
+        if base["revokes_confirmed"]:
+            lines.append(
+                f"{request.host}: confirmed the revocation of "
+                f"{', '.join(base['revokes_confirmed'])}"
+            )
+        return tuple(lines)
+
     def _recheck_limits(
         self,
         request: ModelClaudeTokenRotationRequest,
@@ -548,6 +589,111 @@ class HandlerClaudeTokenRotation(HandlerClaudeTokenRotationBase):
             done.limits_cleared,
             done.limits_replaced,
             done.limits_kept,
+            done,
+        )
+
+    def _recheck_revokes(
+        self,
+        request: ModelClaudeTokenRotationRequest,
+        pooled: ModelClaudeTokenPoolResult,
+    ) -> tuple[
+        Literal["not_configured", "evaluated"],
+        tuple[ModelRevokeRecheckOutcome, ...],
+        tuple[str, ...],
+        tuple[str, ...],
+        tuple[str, ...],
+        ModelClaudeTokenPoolResult | None,
+    ]:
+        """Re-test every revoked label that is due, and have the pool execute the compute's typed commands.
+
+        Marks live on the one marks-source host and sync out from it, so only that host probes; without the
+        overlay's ``revoke_recheck`` block (or on another host, or with no probe to probe with) nothing is
+        asked and nothing changes. The probe is the limit recheck's. The compute decides twice per label:
+        whether a probe is due, then what the answer means — an ok or limited answer clears the mark (the
+        token answers, so the revocation is not real), a refused answer keeps a real revoke and confirms a
+        challenged one, and an error answer proves nothing, so no probe time is recorded. A dry run decides
+        what is due and runs no probe.
+        """
+        settings = self._overlay.revoke_recheck
+        if (
+            settings is None
+            or self._limit_probe is None
+            or self._overlay.marks_source.host != request.host
+        ):
+            return "not_configured", (), (), (), (), None
+        decider = HandlerRevokeRecheck()
+        commands: list[ModelRevokeRecheckCommand] = []
+        outcomes: list[ModelRevokeRecheckOutcome] = []
+        for entry in pooled.tokens:
+            if not entry.revoked or entry.revoked_at is None:
+                continue
+            common = {
+                "label": entry.label,
+                "fingerprint": entry.fingerprint,
+                "cause": entry.revoke_cause or "revoked",
+                "revoked_at": _instant(entry.revoked_at),
+                "last_probe_at": _instant(entry.probed_at) if entry.probed_at else None,
+                "now": self._now(),
+                "policy": settings.policy,
+            }
+            due = decider.handle(ModelRevokeRecheckRequest(**common))
+            if due.action != "probe":
+                outcomes.append(
+                    ModelRevokeRecheckOutcome(
+                        label=entry.label,
+                        outcome="not_due",
+                        probed_at=_instant(entry.probed_at)
+                        if entry.probed_at
+                        else None,
+                    )
+                )
+                continue
+            if request.dry_run:
+                outcomes.append(
+                    ModelRevokeRecheckOutcome(
+                        label=entry.label,
+                        outcome="due",
+                        probed_at=_instant(entry.probed_at)
+                        if entry.probed_at
+                        else None,
+                    )
+                )
+                continue
+            probe_answer = self._limit_probe.probe(entry.label)
+            verdict = decider.handle(
+                ModelRevokeRecheckRequest(**common, probe=probe_answer)
+            )
+            if verdict.command is not None:
+                commands.append(verdict.command)
+            outcomes.append(
+                ModelRevokeRecheckOutcome(
+                    label=entry.label,
+                    outcome="kept",
+                    probed_at=probe_answer.probed_at,
+                )
+            )
+        if not commands:
+            return "evaluated", tuple(outcomes), (), (), (), None
+        done = self._pool.handle(
+            ModelClaudeTokenPoolRequest(
+                operation="apply_revoke_rechecks", revoke_commands=tuple(commands)
+            )
+        )
+        for i, o in enumerate(outcomes):
+            if o.outcome == "kept" and o.label in done.revoke_rechecks_cleared:
+                outcomes[i] = ModelRevokeRecheckOutcome(
+                    label=o.label, outcome="cleared", probed_at=o.probed_at
+                )
+            elif o.outcome == "kept" and o.label in done.revoke_rechecks_confirmed:
+                outcomes[i] = ModelRevokeRecheckOutcome(
+                    label=o.label, outcome="confirmed", probed_at=o.probed_at
+                )
+        return (
+            "evaluated",
+            tuple(outcomes),
+            done.revoke_rechecks_cleared,
+            done.revoke_rechecks_confirmed,
+            done.revoke_rechecks_kept,
             done,
         )
 

@@ -1,0 +1,24 @@
+name: ledger_rows_loader_settings_effect
+version: "1.0.0"
+description: "Resolves how a host runs the ledger rows loader: the loader command and call bound from the ledger_rows_loader_hosts overlay's row for the host, and the loader overlay's file fallback flag. A missing or malformed overlay is a refusal that names it, never a default."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ledger_rows_loader_settings_effect: omnimarket.nodes.node_ledger_rows_loader_settings_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+tags: [effect, work-ledger, rows, overlay]
+pack: "data"
+display_name: "Effect: Ledger Rows Loader Settings"
+node_role: "effect"
+license: "MIT"

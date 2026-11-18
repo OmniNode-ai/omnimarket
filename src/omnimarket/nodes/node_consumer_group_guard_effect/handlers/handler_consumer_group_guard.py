@@ -44,8 +44,8 @@ def contract_threshold() -> int:
     return value
 
 
-def read_group_states(client_config: Mapping[str, str]) -> dict[str, int]:
-    """Admin-only listing: counts by upper-case state; never joins, commits or writes."""
+def list_group_states(client_config: Mapping[str, str]) -> dict[str, str]:
+    """Admin-only listing of group name to UPPER-CASE state; never joins, commits or writes."""
     from confluent_kafka.admin import AdminClient
 
     admin = AdminClient(dict(client_config))
@@ -55,10 +55,18 @@ def read_group_states(client_config: Mapping[str, str]) -> dict[str, int]:
     if listing.errors:
         # A partial listing under-counts, so it is not a census.
         raise RuntimeError("broker group listing incomplete")
+    return {
+        g.group_id: str(getattr(g.state, "name", g.state)).rsplit(".", 1)[-1].upper()
+        for g in listing.valid
+    }
+
+
+def read_group_states(client_config: Mapping[str, str]) -> dict[str, int]:
+    """Admin-only listing: counts by upper-case state; never joins, commits or writes."""
+    states = list_group_states(client_config)
     counts: dict[str, int] = {}
-    for group in listing.valid:
-        state = str(getattr(group.state, "name", group.state)).rsplit(".", 1)[-1]
-        counts[state.upper()] = counts.get(state.upper(), 0) + 1
+    for state in states.values():
+        counts[state] = counts.get(state, 0) + 1
     return counts
 
 

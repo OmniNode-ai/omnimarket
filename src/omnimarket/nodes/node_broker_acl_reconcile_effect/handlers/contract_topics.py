@@ -22,7 +22,12 @@ _KEYS = (
 
 
 def parse_topic_uses(text: str) -> tuple[ModelContractTopicUse, ...]:
-    """The (node, topic, direction) uses one contract's event_bus declares; a contract with no name or event_bus declares none."""
+    """The (node, topic, direction) uses one contract's event_bus declares; a contract with no name or event_bus declares none.
+
+    The first subscribe topic is the node's primary command topic (the one an `onex run-node` request is sent to) and the
+    contract's top-level `terminal_event`, when it is among the publish topics, the terminal topic; a terminal_event the
+    publish topics do not carry is still a use of its own, so a caller's rows follow from the contract alone.
+    """
     loaded = yaml.load(text, Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader))
     if not isinstance(loaded, dict):
         raise ValueError("contract must be a mapping")
@@ -30,12 +35,44 @@ def parse_topic_uses(text: str) -> tuple[ModelContractTopicUse, ...]:
     bus = loaded.get("event_bus")
     if not isinstance(name, str) or not name or not isinstance(bus, dict):
         return ()
-    return tuple(
-        ModelContractTopicUse(node=name, topic=topic, direction=direction)
-        for key, direction in _KEYS
-        for topic in bus.get(key) or []
-        if isinstance(topic, str) and topic
+    topics = {
+        key: tuple(
+            topic for topic in bus.get(key) or [] if isinstance(topic, str) and topic
+        )
+        for key, _ in _KEYS
+    }
+    terminal = loaded.get("terminal_event")
+    if not isinstance(terminal, str) or not terminal:
+        terminal = None
+    uses = [
+        ModelContractTopicUse(
+            node=name,
+            topic=topic,
+            direction=EnumTopicDirection.SUBSCRIBE,
+            command=index == 0,
+        )
+        for index, topic in enumerate(topics["subscribe_topics"])
+    ]
+    uses.extend(
+        ModelContractTopicUse(
+            node=name,
+            topic=topic,
+            direction=EnumTopicDirection.PUBLISH,
+            terminal=topic == terminal,
+        )
+        for topic in topics["publish_topics"]
     )
+    if terminal is not None and terminal not in topics["publish_topics"]:
+        uses.append(
+            ModelContractTopicUse(
+                node=name,
+                topic=terminal,
+                direction=EnumTopicDirection.PUBLISH,
+                terminal=True,
+                declared=False,
+            )
+        )
+    return tuple(uses)
 
 
 def load_topic_uses(

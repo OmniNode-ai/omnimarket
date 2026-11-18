@@ -42,6 +42,16 @@ def event(**updates: object) -> ModelWorktreeReconcileRunCompletedEvent:
     ).model_copy(update=updates)
 
 
+def test_fold_keeps_the_host_row_columns_when_a_run_defers_trees() -> None:
+    row = HandlerProjectionWorktreeReconcile().handle(
+        ModelWorktreeReconcileProjectionRequest(
+            event=event(deferred=2, deferred_paths=("trees/task/a", "trees/task/b"))
+        )
+    )
+    assert (row.scanned, row.failures) == (5, 0)
+    assert "deferred" not in row.model_dump()
+
+
 def test_fold_is_idempotent_and_latest_wins() -> None:
     fold = HandlerProjectionWorktreeReconcile()
     latest = event()

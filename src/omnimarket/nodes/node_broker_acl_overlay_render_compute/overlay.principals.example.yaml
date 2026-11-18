@@ -3,7 +3,9 @@
 # The declared principals of the derivation: which broker login runs which nodes. Read as <root>/<scope>/overlay.yaml under
 # ONEX_SKILL_OVERLAY_ROOTS (scope broker_acl_principals). The rows follow from the topics each node's contract declares:
 # node_broker_acl_overlay_render_compute operation derive_broker_acl_rows, applied by node_broker_acl_reconcile_effect.
-# Every key is required; the real principals live in the overlays repository.
+# Every key is required except placeholders; the real principals live in the overlays repository.
+# A role may name the ${NAME} placeholders (a contract's broker_acl_grants principal) its single login fills, so the reconcile run
+# needs no environment variable for them; a role that names placeholders holds exactly one principal.
 scope: broker_acl_principals
 ticket: OMN-00000
 why: one line saying which logins these nodes run under
@@ -11,3 +13,9 @@ principals:
   - principal: User:example-login
     role: what the login is
     nodes: [node_example_effect]
+roles:
+  - name: example_runtime
+    role: a runtime profile and the login it connects to the broker with
+    nodes: [node_example_effect]
+    principals: [User:example-runtime-login]
+    placeholders: [ONEX_ACL_EXAMPLE_RUNTIME_PRINCIPAL]

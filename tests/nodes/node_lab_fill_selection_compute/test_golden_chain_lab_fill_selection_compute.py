@@ -25,7 +25,7 @@ def test_golden_chain_lab_fill_selection_compute() -> None:
     assert contract["name"] == name
     assert contract["node_type"] == "compute"
     assert contract["lifecycle"] == "experimental"
-    assert "event_bus" not in contract
+    assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
     assert "terminal_event" not in contract
     routing = contract["handler_routing"]
     assert routing["routing_strategy"] == "operation_match"

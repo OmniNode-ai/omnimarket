@@ -13,9 +13,11 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 import yaml
 
+from omnimarket.handlers.delegation_scenario_settings import SecretStoreSettingsReader
 from omnimarket.models.runner_group_exposure import (
     ModelRunnerGroupExposureRequest,
 )
@@ -30,6 +32,10 @@ from omnimarket.nodes.node_runner_group_exposure_effect.adapters.github_group_so
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.adapters.inmemory_group_source import (
     InMemoryGroupSource,
+)
+from omnimarket.nodes.node_runner_group_exposure_effect.adapters.write_node_group_reader import (
+    WriteNodeGroupReader,
+    bus_write_call,
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.handlers.http_transport import (
     UrllibHttpTransport,
@@ -65,29 +71,51 @@ class HandlerExposureProbe:
         http_get: ProtocolHttpGet | None = None,
         environ: Mapping[str, str] | None = None,
         token_mint: ProtocolTokenMint | None = None,
+        group_reader: WriteNodeGroupReader | None = None,
     ) -> None:
+        self._group_reader = group_reader
         self._overlay = overlay
         self._http_get = http_get
         self._environ = environ
         self._token_mint = token_mint
 
-    def _source(self, overlay: ModelExposureProbeOverlay) -> ProtocolGroupSource:
+    def _source(
+        self, overlay: ModelExposureProbeOverlay, correlation_id: str
+    ) -> ProtocolGroupSource:
         source = overlay.source
         if isinstance(source, ModelInMemorySource):
             return InMemoryGroupSource(source.fixture)
         token_mint = self._token_mint
         if token_mint is None and source.token_mint is not None:
-            token_mint = AppInstallationTokenMint()
+            store = source.token_mint.store
+            token_mint = (
+                AppInstallationTokenMint()
+                if store is None
+                else AppInstallationTokenMint(
+                    reader=SecretStoreSettingsReader(overlay=store.secret_store),
+                    folder=store.folder,
+                )
+            )
+        environ = os.environ if self._environ is None else self._environ
+        group_reader = self._group_reader
+        if group_reader is None and source.group_read is not None:
+            group_reader = WriteNodeGroupReader(
+                source.group_read,
+                bus_write_call(route=source.group_read, environ=environ),
+            )
         return GithubGroupSource(
             source,
             self._http_get or UrllibHttpTransport(),
-            os.environ if self._environ is None else self._environ,
+            environ,
             token_mint=token_mint,
+            group_reader=group_reader,
+            # A stable id of this probe, so one read is one bus command.
+            correlation_id=uuid5(NAMESPACE_URL, correlation_id),
         )
 
     def handle(self, request: ModelExposureProbeRequest) -> ModelExposureProbeResult:
         overlay = self._overlay or load_overlay(self._environ)
-        read = self._source(overlay).read(now=request.now)
+        read = self._source(overlay, request.correlation_id).read(now=request.now)
         reading = HandlerRunnerGroupExposure().handle(
             ModelRunnerGroupExposureRequest(
                 correlation_id=request.correlation_id,
@@ -105,6 +133,7 @@ class HandlerExposureProbe:
             backend=overlay.source.backend,
             calls=read.calls,
             reading=reading,
+            missing_permission=read.missing_permission,
         )
 
     @staticmethod

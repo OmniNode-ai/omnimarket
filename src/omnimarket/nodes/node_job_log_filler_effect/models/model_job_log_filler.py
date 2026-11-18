@@ -53,6 +53,9 @@ class ModelJobLogFillerOverlay(BaseModel):
     #: the bus is a round trip the gateway answers one at a time (measured 2026-11-09: about 0.25 s each,
     #: 841 probes in about four minutes), so probing every open run on every tick does not fit a tick.
     reprobe_seconds: int = Field(ge=1)
+    #: Seconds a job whose log the gateway answered HTTP 404 is not read again; absent means no hold
+    #: (the earlier behaviour), so the overlay may land after the code.
+    not_found_hold_seconds: int | None = Field(default=None, ge=1)
     #: Wall-clock seconds after which a pass starts no further probe or read and returns what it holds (OMN-22518).
     #: A probe is a round trip the gateway answers one at a time (measured 2026-11-09 on h051: median 2.4 s with
     #: six readers, 886 runs to probe), so a pass that probes every run before it fills any never ended inside
@@ -102,6 +105,16 @@ class EnumJobLogFillOutcome(StrEnum):
     FILLED = "filled"
     ALREADY_CACHED = "already_cached"
     FAILED = "failed"
+    HELD_NOT_FOUND = "held_not_found"
+
+
+class ModelJobLogHold(BaseModel):
+    """When a pass last saw the gateway answer a job's log HTTP 404, and why it held the job."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    held_at: float
+    cause: str = Field(min_length=1, max_length=500)
 
 
 class ModelJobLogFillItem(BaseModel):
@@ -159,6 +172,11 @@ class ModelJobLogFillResult(BaseModel):
         ge=0,
         description="Runs left for the next pass by the read cap or the pass budget.",
     )
+    held_not_found: int = Field(
+        default=0,
+        ge=0,
+        description="Runs not read because an earlier read of their log answered HTTP 404 and the hold interval has not passed.",
+    )
     budget_exhausted: bool = Field(
         default=False,
         description="True when the pass budget ended the pass before every run was reached.",
@@ -189,5 +207,6 @@ __all__ = [
     "ModelJobLogFillResult",
     "ModelJobLogFillerBusProfile",
     "ModelJobLogFillerOverlay",
+    "ModelJobLogHold",
     "ModelMergeRelevantRun",
 ]

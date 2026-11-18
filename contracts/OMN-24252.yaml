@@ -1,0 +1,82 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-24252
+title: "Feed the tool call outcome checker from captured tool output"
+summary: "The tool call outcome node subscribes to the captured tool content topic, classifies each tool result or tool error record, and publishes the typed outcome on its own topic."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - topics
+requirements:
+  - id: req-omn24252-feed-tool-outcome
+    statement: The outcome node is fed by the captured tool content topic and publishes one classified outcome event per first-chunk tool result or tool error record, with every rule value read from the overlay.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the node''s contract subscribes to the captured tool-content topic and publishes a classified-outcome topic, and a contract test fails when either topic is removed -- falsifier: pytest tests/unit/nodes/node_hook_tool_outcome_compute/test_tool_outcome_contract_topics.py -q goes red when the subscribe topic is deleted from the contract'
+      - id: AC2
+        statement: 'AC2: a captured tool_response record whose content starts with a REFUSED line yields a classified event with outcome refused and its component, and a record that is not the first chunk or not a tool result yields none -- falsifier: pytest tests/unit/nodes/node_hook_tool_outcome_compute/test_tool_outcome_capture_golden.py -q goes red when the rule table is emptied'
+      - id: AC3
+        statement: 'AC3: an absent overlay refuses with an error that names the setting when the capture handler classifies -- falsifier: pytest tests/unit/nodes/node_hook_tool_outcome_compute/test_tool_outcome_capture_errors.py -q'
+      - id: AC4
+        statement: 'AC4: integrated: on the running dev runtime the log shows a run line for node_hook_tool_outcome_compute within five minutes of a tool call, and one refused stored call reads back as refused with its component -- falsifier: the runtime log shows no run line for the node five minutes after a tool call'
+evidence_requirements:
+  - kind: "tests"
+    description: "Outcome node tests: contract topic seam, capture golden chain, capture error chain, failing control (empty rules read a refusal as ok)"
+    command: "uv run pytest tests/unit/nodes/node_hook_tool_outcome_compute -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn24252-ac1
+    description: "AC1: the contract topic seam test passes at the head and fails at the merge base, where the contract declares no subscribe topic."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: 'uv run pytest tests/unit/nodes/node_hook_tool_outcome_compute/test_tool_outcome_contract_topics.py -q -p no:randomly --no-cov'
+        cwd: "."
+  - id: dod-omn24252-ac2
+    description: "AC2: the capture golden chain passes at the head and fails at the merge base; with an empty rule table the golden refusal reads ok."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: 'uv run pytest tests/unit/nodes/node_hook_tool_outcome_compute/test_tool_outcome_capture_golden.py -q -p no:randomly --no-cov'
+        cwd: "."
+  - id: dod-omn24252-ac3
+    description: "AC3: the capture error chain passes at the head and fails at the merge base."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: 'uv run pytest tests/unit/nodes/node_hook_tool_outcome_compute/test_tool_outcome_capture_errors.py -q -p no:randomly --no-cov'
+        cwd: "."
+  - id: dod-omn24252-ac4
+    description: "hosted proxy for AC4: the contract, capture golden and capture error tests pass here; the dev runtime run line read is posted as a pull request comment naming the head."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/nodes/node_hook_tool_outcome_compute -q -p no:randomly --no-cov"
+        cwd: "."
+  - id: dod-omn24252-integration-proof
+    description: "The pushed head ran the outcome node tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: manual
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24252 -- uv run --frozen pytest tests/unit/nodes/node_hook_tool_outcome_compute -q -p no:randomly --no-cov
+        cwd: "."
+  - id: dod-omn24252-deploy-hosted-probe
+    description: "Deploy probe the hosted runner can run: the handler file GitHub serves at the checked-out commit defines the capture handler class, which the merge base does not."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_hook_tool_outcome_compute/handlers/handler_hook_tool_outcome_capture.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerHookToolOutcomeCapture" > /dev/null'
+        cwd: "."
+      - check_type: test_passes
+        check_value: "env ONEX_DEPLOY_PROBE=OMN-24252 uv run --frozen pytest tests/unit/nodes/node_hook_tool_outcome_compute/test_tool_outcome_capture_golden.py -q -p no:randomly --no-cov"
+        cwd: "."

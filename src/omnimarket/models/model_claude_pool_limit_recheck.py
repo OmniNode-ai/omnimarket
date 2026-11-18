@@ -44,7 +44,7 @@ class ModelLimitProbeAnswer(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    verdict: Literal["ok", "limited", "error"]
+    verdict: Literal["ok", "limited", "refused", "error"]
     reset_at: datetime | None = None
     probed_at: datetime
 

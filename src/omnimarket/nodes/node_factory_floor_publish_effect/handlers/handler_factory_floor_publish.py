@@ -79,6 +79,9 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_fleet_obser
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload import (
     ModelProcessHealthPayloadRequest,
 )
+from omnimarket.nodes.node_source_read_cache_effect.handlers.tally_receipt_lines import (
+    read_tally_lines,
+)
 
 NODE_NAME = "node_factory_floor_publish_effect"
 NODE_DIR = Path(__file__).resolve().parents[1]
@@ -479,6 +482,7 @@ class HandlerFactoryFloorPublish:
         compare_data = self._read_simple(home / rt.compare_data_relpath)
         tracker_page = (NODE_DIR / rt.delegation_tracker_page_relpath).read_bytes()
         tracker_data = self._read_simple(home / rt.delegation_tracker_data_relpath)
+        history_data = self._read_simple(home / rt.delegation_history_data_relpath)
         floor_page = (NODE_DIR / rt.floor_page_relpath).read_bytes()
         theme_css = [
             (name, (NODE_DIR / rt.theme_css_relpath / name).read_bytes())
@@ -516,6 +520,7 @@ class HandlerFactoryFloorPublish:
             "simple_floor": "published" if simple_data is not None else "absent",
             "floor_compare": "published" if compare_data is not None else "absent",
             "delegation_tracker": "published" if tracker_data is not None else "absent",
+            "delegation_history": "published" if history_data is not None else "absent",
             "process_health": "published" if health is not None else "absent",
             "process_health_reason": health_payload.reason,
             "delegation": "published" if delegation is not None else "absent",
@@ -544,6 +549,8 @@ class HandlerFactoryFloorPublish:
             files.append((rt.names.compare_data, compare_data))
         if tracker_data is not None:
             files.append((rt.names.delegation_tracker_data, tracker_data))
+        if history_data is not None:
+            files.append((rt.names.delegation_history_data, history_data))
         if health is not None:
             if health_payload.detail is not None:
                 files.append((health_payload.detail_file, health_payload.detail))
@@ -635,6 +642,7 @@ class HandlerFactoryFloorPublish:
             steps=tuple(results),
             cycle_seconds=timing["cycle_seconds"],
             phase_seconds={k: round(v, 3) for k, v in phases.items()},
+            source_cache_lines=tuple(read_tally_lines(home, now)),
             after_publish=tuple(after),
             process_health_published=health is not None,
             delegation_published=delegation is not None,
@@ -686,6 +694,10 @@ class HandlerFactoryFloorPublish:
         if tracker is not None:
             with contextlib.suppress(PublishRefusedError):
                 self._copy(rt, overlay, rt.names.delegation_tracker_data, tracker)
+        history = self._read_simple(home / rt.delegation_history_data_relpath)
+        if history is not None:
+            with contextlib.suppress(PublishRefusedError):
+                self._copy(rt, overlay, rt.names.delegation_history_data, history)
         if self._local_root is None:
             return
         try:
@@ -835,6 +847,13 @@ class HandlerFactoryFloorPublish:
         env: Mapping[str, str],
     ) -> ModelPublishStepResult:
         """One step, with the seconds it took."""
+        if not step.limit_resolved:
+            return ModelPublishStepResult(
+                name=step.name,
+                status="unread",
+                detail=step.limit_missing_message(),
+                seconds=0.0,
+            )
         started = self._clock()
         result = self._run_step(step, home, overlay, plugin_root_env, env)
         return result.model_copy(update={"seconds": round(self._clock() - started, 3)})

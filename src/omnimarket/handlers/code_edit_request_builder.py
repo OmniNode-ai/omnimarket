@@ -15,6 +15,10 @@ import sys
 import uuid
 from pathlib import Path
 
+from omnibase_core.enums.enum_delegation_traffic_class import (
+    EnumDelegationTrafficClass,
+)
+
 from omnimarket.delegated_code_edit.loop_ports import resolve_delegate_pin
 from omnimarket.handlers.code_edit_contract_checks import (
     declared_checks_from_contract,
@@ -87,6 +91,8 @@ def build_code_edit_request(
     ticket_contract: Path | None,
     caller_lane: str | None,
     ticket: str | None,
+    traffic_class: EnumDelegationTrafficClass = EnumDelegationTrafficClass.UNCLASSIFIED,
+    source_surface: str | None = None,
 ) -> ModelDelegatedCodeEditRequest:
     """The request; ``ValueError`` when it is invalid or no check is declared."""
     if worktree is None or task_file is None or not writable:
@@ -142,6 +148,8 @@ def build_code_edit_request(
             max_no_change_finishes=max_no_change,
             caller_lane=caller_lane,
             ticket=ticket,
+            traffic_class=traffic_class,
+            source_surface=source_surface,
         )
     except ValueError as exc:
         raise ValueError(f"invalid request: {exc}") from exc

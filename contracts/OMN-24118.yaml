@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-24118
+title: Declare ownership of the branch deploy state table in omnimarket's relation manifest
+summary: scripts/application-relation-ownership.yaml gains an ownership entry for public.branch_deploy_state and a function entry for public.refresh_branch_deploy_state_updated_at, both created by omnibase_infra migration 116, so the application database domain gate on the omnibase_infra migration pull request resolves an owner for each. The generated relation inventory moves with it and one test pins both entries.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24118-ownership
+  statement: The manifest declares one owner for the branch deploy state table and for its trigger helper function.
+  acceptance:
+  - id: AC1
+    statement: "AC1: scripts/application-relation-ownership.yaml declares branch_deploy_state under db_io and refresh_branch_deploy_state_updated_at under database_objects, owned by service:omnimarket_projection_migration_runner -- falsifier: uv run pytest tests/test_omn24085_branch_deploy_state_ownership_declared.py -q fails when either entry is removed."
+  - id: AC2
+    statement: "AC2: the generated relation inventory matches the manifest -- falsifier: uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q fails with a stale generated inventory."
+evidence_requirements:
+- kind: tests
+  description: The ownership declaration test and the inventory test pass at the pushed head.
+  command: uv run pytest tests/test_omn24085_branch_deploy_state_ownership_declared.py tests/unit/scripts/test_application_relation_inventory.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24118-ac1
+  description: 'AC1: both entries are present in the manifest; the test file is added by this change, so the command fails at the merge base.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn24085_branch_deploy_state_ownership_declared.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24118-ac2
+  description: 'AC2: the generated inventory is current against the manifest.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .

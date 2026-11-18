@@ -33,3 +33,5 @@ class ModelPointQuery(BaseModel):
     cursor: str | None = None
     #: A paged rows answer carries lines and no typed rows; the reader prints lines only.
     lines_only: bool = False
+    #: An ``open-claims`` read lists only the claims stamped at or after this time (the node's own claims_since); the open set before it is not sent.
+    claims_since: datetime | None = None

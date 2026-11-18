@@ -13,6 +13,7 @@ from omnimarket.handlers.container.container_tenant_read_dependencies import (
     bound_identity,
     bound_reader,
 )
+from omnimarket.handlers.edge_overlay_identity import OverlayBoundTenantIdentity
 from omnimarket.handlers.tenant_projection_read.http_gate import build_app, load_route
 from omnimarket.nodes.node_tenant_savings_read_effect.handlers.handler_tenant_savings_read import (
     HandlerTenantSavingsRead,
@@ -26,6 +27,8 @@ from omnimarket.protocols.protocol_tenant_delegation_projection_reader import (
 
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
+OVERLAY_ID = "node_tenant_savings_read_effect"
+
 
 def create_app(
     *,
@@ -35,8 +38,9 @@ def create_app(
     """Build the mount without connecting to a database or resolving a secret.
 
     Dependencies come from the installed lane overlay; an argument replaces the
-    overlay's binding for that protocol (tests). With no identity bound the app
-    refuses every request.
+    overlay's binding for that protocol (tests). With no identity bound by
+    argument or lane overlay, the node's own overlay document supplies the
+    resolver; with none, every request is refused.
     """
     contract = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
     route = load_route(CONTRACT_PATH)
@@ -49,5 +53,7 @@ def create_app(
     uncounted = list(contract["config"]["uncounted_data_sources"])
     handler = HandlerTenantSavingsRead(reader=reader or bound_reader(secret, uncounted))
     return build_app(
-        route=route, identity=identity or bound_identity(), handle=handler.handle
+        route=route,
+        identity=identity or bound_identity() or OverlayBoundTenantIdentity(OVERLAY_ID),
+        handle=handler.handle,
     )

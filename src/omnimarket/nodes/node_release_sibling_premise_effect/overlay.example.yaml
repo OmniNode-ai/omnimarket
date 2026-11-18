@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+repos:
+  - repo: omnimarket/platform
+    clone_dir: $OMNI_HOME/clones/platform
+    base_branch: main
+  - repo: omnimarket/infra
+    clone_dir: $OMNI_HOME/clones/infra
+    base_branch: main
+classifier_path: $OMNI_HOME/tools/deploy_path_classifier.py
+git_timeout_seconds: 30
+classifier_timeout_seconds: 60
+pending_window_seconds: 900
+lookback_hours: 24
+max_walk_commits: 50

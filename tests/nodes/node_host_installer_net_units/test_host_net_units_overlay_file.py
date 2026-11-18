@@ -16,11 +16,13 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.models.model_net_units_overlay import (
+    ModelNetUnitsOverlay,
+)
 from omnimarket.nodes.node_host_installer_net_units.handlers.handler_net_units import (
     HandlerNetUnits,
 )
 from omnimarket.nodes.node_host_installer_net_units.models.model_net_units import (
-    ModelNetUnitsOverlay,
     ModelNetUnitsRequest,
 )
 from omnimarket.nodes.node_host_installer_net_units.node import (

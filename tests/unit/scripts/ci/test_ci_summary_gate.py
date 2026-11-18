@@ -15,6 +15,7 @@ at the caller's deadline — never SUCCESS and never absence.
 
 from __future__ import annotations
 
+import ast
 import json
 from dataclasses import FrozenInstanceError, replace
 from datetime import UTC, datetime, timedelta
@@ -42,6 +43,7 @@ from scripts.ci.ci_summary_gate import (
     evaluate,
     evaluate_external,
 )
+from tests.unit.scripts.ci.registry_support import shipped_request, write_resolved
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
@@ -1006,6 +1008,11 @@ _CI_YML_STRUCTURALLY_COVERED_KEYS: frozenset[str] = frozenset(
         # would be wrong: it legitimately reports `skipped` on every non-docs
         # PR, which is exactly the state the gates are built to reject.
         "docs-only-marker",
+        # Overlay Main Load: unconditional, no skip path other than the fork
+        # guard; covered by the L3 default-deny sweep, not individually named
+        # (naming it in STRICT_GATE_JOBS changes the bytes the recorded-head
+        # replay pins).
+        "overlay-main-load",
     }
 )
 
@@ -2593,3 +2600,74 @@ def test_prompt_cost_estimate_contract_workflow_reports_on_every_shape() -> None
     job = doc["jobs"][PROMPT_COST_CONTEXT]
     assert job["name"] == PROMPT_COST_CONTEXT
     assert "if" not in job
+
+
+# OMN-23505: the gate reads the registries the node resolved and holds no loader of them.
+
+# Code lines (neither blank nor comment) scripts/ci/ci_summary_gate.py held at the
+# baselined limit: the file may only shrink.
+GATE_BASELINE_CODE_LINES = 1504
+REGISTRY_LIST_FILES = (
+    "ci_summary_sweep_exclusions",
+    "ci_summary_external_check_modes",
+)
+
+
+def _gate_code_lines(source: str) -> int:
+    return sum(
+        1
+        for line in source.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+
+
+def _registry_loader_sites(source: str) -> list[str]:
+    """Names of the strings in ``source`` that point at one of the two list files."""
+    return sorted(
+        node.value
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and any(name in node.value for name in REGISTRY_LIST_FILES)
+    )
+
+
+def test_registry_from_node_gate_holds_no_loader_of_the_two_lists() -> None:
+    source = Path(gate.__file__).read_text(encoding="utf-8")
+    assert _registry_loader_sites(source) == []
+    assert _gate_code_lines(source) <= GATE_BASELINE_CODE_LINES
+
+
+def test_registry_from_node_control_a_loader_in_the_source_is_found() -> None:
+    """The detector is not vacuous: a gate that opens either list file is caught."""
+    loader = 'raw = json.loads(Path("ci_summary_sweep_exclusions.json").read_text())'
+    assert _registry_loader_sites(loader) == ["ci_summary_sweep_exclusions.json"]
+
+
+def test_registry_from_node_answer_is_what_the_gate_reads(tmp_path: Path) -> None:
+    from omnimarket.nodes.node_ci_summary_registry_compute.handlers.handler_ci_summary_registry import (
+        HandlerCiSummaryRegistry,
+    )
+
+    request = shipped_request()
+    answer = HandlerCiSummaryRegistry().handle(request)
+    path = write_resolved(tmp_path / "resolved.json", request)
+    exclusions, check_modes, refusals = gate.load_resolved_registry(path)
+    assert refusals == [] == answer.refusals
+    assert check_modes == answer.check_modes
+    assert {n: vars(e) for n, e in exclusions.items()} == {
+        n: e.model_dump() for n, e in answer.exclusions.items()
+    }
+
+
+def test_registry_from_node_refusal_fails_the_gate_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bad_overlay = {"Tessl Reviewer": {"mode": "no-such-mode", "reason": "x"}}
+    path = write_resolved(
+        tmp_path / "resolved.json", shipped_request(check_modes_overlay=bad_overlay)
+    )
+    monkeypatch.setattr(gate, "REGISTRY_FILE", path)
+    code, report = gate.evaluate_external_sweep([])
+    assert code == EXIT_FAILURE, report
+    assert "CI Summary registry check-modes: Tessl Reviewer" in report

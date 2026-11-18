@@ -1,0 +1,120 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Consumer group state REDUCER (OMN-23992)
+#
+# Holds, per bus lane, the state of every consumer group: its state, the first census time of its current unbroken run of
+# EMPTY readings, and the names that have been Empty past the overlay bound and may be reaped. Folds one group census into the
+# prior record. Pure fold, no I/O, no file: this replaces the empty_since.json the guard's old reaper kept.
+---
+name: node_consumer_group_state_reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Consumer group state reducer. Folds one census (group name to state, observed at a time) into the bus lane's record.
+  A group's empty_since is the first census of its current unbroken run of EMPTY readings, so a group that leaves EMPTY
+  and returns starts over. The record names reap_due: the groups that are EMPTY past the overlay bound, match a reapable
+  pattern and no protected one, capped by the overlay. The record carries a decision digest that the reap effect
+  recomputes, so a reap decided anywhere else (a file, a hand-built list) is refused there. An empty census, a census for
+  another bus lane and an out-of-order census are refused with a typed error. Every bound comes from the node overlay. No
+  events, no intents, no I/O.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: "consumer.group.state.fold"
+      handler:
+        name: HandlerGroupState
+        module: omnimarket.nodes.node_consumer_group_state_reducer.handlers.handler_group_state
+      description: "Fold one group census into the bus lane's group record."
+      input_model:
+        name: ModelGroupStateReduceCommand
+        module: omnimarket.nodes.node_consumer_group_state_reducer.models.model_group_state
+        description: "Prior group record (or none) + the census to fold."
+
+handler:
+  module: omnimarket.nodes.node_consumer_group_state_reducer.handlers.handler_group_state
+  class: HandlerGroupState
+  input_model: omnimarket.nodes.node_consumer_group_state_reducer.models.model_group_state.ModelGroupStateReduceCommand
+
+input_model:
+  name: ModelGroupStateReduceCommand
+  module: omnimarket.nodes.node_consumer_group_state_reducer.models.model_group_state
+  description: "Prior group record + the census to fold."
+output_model:
+  name: ModelGroupStateRecord
+  module: omnimarket.nodes.node_consumer_group_state_reducer.models.model_group_state
+  description: "The group state record projection."
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+  runtime_profiles: [workers]
+
+terminal_event: onex.evt.omnimarket.consumer-group-state-updated.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.consumer-group-census.v1
+  publish_topics:
+    - onex.evt.omnimarket.consumer-group-state-updated.v1
+
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.consumer-group-census.v1
+    producer: "node_consumer_group_guard_effect's tick, which publishes one census event per run directly -- not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.consumer-group-state-updated.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_CONSUMER_GROUP_STATE_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.consumer-group-census.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.consumer-group-census.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.consumer-group-state-updated.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.consumer-group-state-updated.v1, operation: DESCRIBE}
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Consumer group state reducer"
+  author: "OmniNode Platform Team"
+  related_tickets:
+    - "OMN-23992"
+
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: consumer_group_state_reducer
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "consumer_group_state_reducer"
+  initial_state: unobserved
+  terminal_states: []
+  error_states: []
+  persistence_enabled: true
+  states:
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: unobserved
+      state_type: operational
+      description: "No census folded yet for the bus lane."
+      required_data: []
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: observed
+      state_type: operational
+      description: "At least one census folded; the record holds the groups and the reap-due names."
+      required_data: []
+  transitions:
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: unobserved_to_observed_on_census_observed
+      from_state: unobserved
+      to_state: observed
+      trigger: census_observed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: observed_to_observed_on_census_observed
+      from_state: observed
+      to_state: observed
+      trigger: census_observed

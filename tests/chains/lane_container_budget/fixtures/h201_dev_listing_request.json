@@ -1,0 +1,16 @@
+{
+  "host": "h201",
+  "docker_ps": "{\"Names\": \"omninode-runtime\", \"State\": \"running\", \"Labels\": \"com.docker.compose.project=omnibase-infra\"}\n{\"Names\": \"onex-api\", \"State\": \"running\", \"Labels\": \"com.docker.compose.project=omnibase-infra\"}\n{\"Names\": \"omninode-cost-estimator-web\", \"State\": \"running\", \"Labels\": \"com.docker.compose.project=omnibase-infra\"}\n{\"Names\": \"omnibase-infra-postgres\", \"State\": \"running\", \"Labels\": \"com.docker.compose.project=omnibase-infra\"}",
+  "declarations": [
+    {
+      "host": "h201",
+      "lane": "dev",
+      "compose_project": "omnibase-infra",
+      "application_container_budget": 19,
+      "application_container_target": 1,
+      "infrastructure_markers": [
+        "postgres"
+      ]
+    }
+  ]
+}

@@ -21,10 +21,20 @@ requirements:
         statement: 'AC2: the overlays repository carries the publisher''s overlay with factory_floor 45 s, the cycle bound 255 s and the other steps'' current values, loading through the node''s own model at the pinned revision -- falsifier: the overlays repository ci overlay-load step fails when a step name or a limit is missing from the file'
       - id: AC3
         statement: 'AC3: integrated: the publish cycle on the Mac installed from the merged revisions reads its limits from the overlay and publishes a fresh record -- falsifier: the served publish-status.json read on the Mac shows a cycle_bound_seconds other than 255, or a record older than one publish cycle'
+  - id: req-omn23963-overlay-main-load
+    statement: Every document on overlays main loads through this pull request's own node models in CI, and a pull request that makes a document invalid (a key made required that the document lacks) is refused.
+    acceptance:
+      - id: AC4
+        statement: 'AC4: the node node_overlay_main_load_check_effect loads every overlays-main document through the models of the tree under review, reusing node_overlay_drift_effect''s pin parser and validator, and refuses with a typed finding naming the refused fields when a document no longer validates -- falsifier: uv run --frozen pytest tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov fails when the node is absent or when its refusal is injected away'
+      - id: AC5
+        statement: 'AC5: integrated: the ci job Overlay Main Load runs on every omnimarket pull request against overlays main and is green on a normal pull request and red on a control branch whose model makes a key required that overlays main lacks -- falsifier: the job''s conclusion on a pull request head, read in CI, is green on the control branch'
 evidence_requirements:
   - kind: tests
     description: The limits tests, the cycle bound tests and the publisher tests that read the limits.
     command: uv run --frozen pytest tests/unit/nodes/node_factory_floor_publish_effect/test_board_limits_overlay.py tests/nodes/node_factory_floor_publish_effect/test_cycle_bound.py -q --no-cov
+  - kind: tests
+    description: The overlay main load check's golden, error chain, failing control and seam tests.
+    command: uv run --frozen pytest tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ""
@@ -62,4 +72,21 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_factory_floor_publish_effect/test_board_limits_overlay.py -q --no-cov
+        cwd: .
+  - id: dod-omn23963-overlay-main-load
+    description: The overlay main load check's tests pass at the head; the planted breaks (a required key missing from a document, the refusal injected away) turn them red.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov
+        cwd: .
+  - id: dod-omn23963-overlay-main-load-ci
+    description: The ci job Overlay Main Load is green on this pull request and red on the control branch; the readings are the job conclusions on the two heads named in the pull request.
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov
         cwd: .

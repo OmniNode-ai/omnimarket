@@ -1,62 +1,72 @@
 schema_version: 1.0.0
 ticket_id: OMN-23614
-title: Broker topics are planned only for contracts a running profile loads, and never-produced topics are listed with evidence
-summary: Every deploy provisions topics for every contract in the registry, so the dev broker holds thousands of topics, most empty. Two compute nodes in omnimarket make the rule and the read declared. node_topic_provision_plan_compute plans topics only for the contracts a running profile loads, with the rule values in its overlay. node_topic_never_produced_compute lists topics that were never produced, have no consumer group and hold no data, with the evidence for each, and deletes nothing. Neither node is wired into the boot provisioner yet.
+title: Create broker topics only for contracts a running runtime loads, with a read-only dry run
+summary: A new compute node decides which broker topics a runtime provisions. A topic is created only for a contract that the running runtime profile loads and the lane manifest names, with the rule value in the overlay and the contract. A read-only dry run lists the live topics and counts how many would exist under the rule. Nothing is created or deleted.
 is_seam_ticket: true
 interface_change: true
 interfaces_touched:
 - topics
 requirements:
-- id: req-omn23614-plan-and-list
-  statement: A contract outside the running profile gets no topic in the plan, and the never-produced listing names its evidence per topic and issues no delete.
+- id: req-omn23614-provision-on-demand
+  statement: The plan provisions no topic for a contract outside the running profile or the lane manifest; the dry run counts the live topics under the rule using list calls only.
   acceptance:
   - id: AC1
-    statement: 'AC1: a contract that no running profile loads gets no topic in the provision plan, a loaded name no contract holds and an empty profile are refused, and the rule values come only from the overlay -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_topic_provision_plan_compute -q'
+    statement: 'AC1: a contract outside the running profile or the lane manifest gets no topic under the rule -- falsifier: uv run --frozen pytest tests/unit/nodes/node_topic_provision_plan_compute/test_topic_provision_plan.py -q --no-cov, with the rule set to all the outside contract topic appears and the control test shows it'
   - id: AC2
-    statement: 'AC2: the never-produced listing lists a topic only with no record ever produced, no data in retention and no consumer group, never lists a topic whose evidence was not read, and issues no delete; its offset facts are read from the topic-activity projection row and a seam test fails when either shape changes -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_topic_never_produced_compute -q'
+    statement: 'AC2: the plan is the same for the same request in any input order and refuses an empty lane manifest, an unknown manifest name and an unknown profile -- falsifier: uv run --frozen pytest tests/unit/nodes/node_topic_provision_plan_compute/test_topic_provision_plan.py -q --no-cov'
   - id: AC3
-    statement: 'AC3: integrated: both nodes run on a lab host at the pushed head, through the lab work runner, and their tests exit 0 there; wiring the plan into the running boot provisioner and reading the dev broker through it are named follow-ups, not claimed here -- falsifier: onex lab-work run --repo OmniNode-ai/omnimarket --sha <head> --lane dod-integration-proof-23614 --kind test -- uv run --frozen pytest tests/nodes/node_topic_provision_plan_compute tests/nodes/node_topic_never_produced_compute -q --no-cov exits non-zero'
+    statement: 'AC3: the rule value comes from the overlay, then the contract, and the golden and error chain events travel the node declared topics -- falsifier: uv run --frozen pytest tests/unit/nodes/node_topic_provision_plan_compute/test_topic_provision_overlay.py tests/chain/test_topic_provision_chain.py -q --no-cov, with the plan function made to raise the golden chain test fails'
+  - id: AC4
+    statement: 'AC4: integrated: the read-only dry run on a lab host against the dev broker lists topics only and prints how many of the live topics would exist under the rule -- falsifier: the dry run output on the lab host names live_topic_count and live_topics_under_rule, and the broker topic count read before and after is equal'
 evidence_requirements:
 - kind: tests
-  description: The plan, listing and seam tests at the pushed head. With the loaded-contract filter removed from the plan handler, three of the nine plan tests fail.
-  command: env -u PYTHONPATH uv run pytest tests/nodes/node_topic_provision_plan_compute tests/nodes/node_topic_never_produced_compute -q
+  description: The plan, facts, overlay, dry-run, seam and chain tests at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_topic_provision_plan_compute tests/unit/nodes/node_topic_provision_dry_run_effect tests/chain/test_topic_provision_chain.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn23614-ac1-plan
-  description: The plan tests pass at the pushed head; three of nine fail when the loaded-contract filter is removed from the handler.
+- id: dod-omn23614-ac1-ac2-plan
+  description: The plan tests pass at the pushed head, including the outside-profile test and the all-mode control.
   source: manual
   binds_ac:
   - AC1
-  checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_topic_provision_plan_compute -q --no-cov -n 0 -p no:randomly
-    cwd: .
-- id: dod-omn23614-ac2-listing
-  description: The listing tests and the seam test against the topic-activity row pass at the pushed head.
-  source: manual
-  binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_topic_never_produced_compute -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/unit/nodes/node_topic_provision_plan_compute/test_topic_provision_plan.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn23614-ac3-both-nodes
-  description: The plan, listing and seam tests of both nodes pass together at the pushed head; at the merge base the node packages do not exist, so they fail on import.
+- id: dod-omn23614-ac3-overlay-chain
+  description: The overlay tests and the golden and error chain tests pass at the pushed head on the in-memory bus.
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_topic_provision_plan_compute tests/nodes/node_topic_never_produced_compute -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/unit/nodes/node_topic_provision_plan_compute/test_topic_provision_overlay.py tests/chain/test_topic_provision_chain.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23614-seams
+  description: The seam tests pass at the pushed head; they compare the node contract facts with the platform topic extractor and the registered runtime profiles.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_topic_provision_plan_compute/test_topic_provision_seams.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23614-ac4-dry-run
+  description: The dry-run tests pass at the pushed head in process; they list topics through a read-only client and count the live topics under the rule.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_topic_provision_dry_run_effect/test_topic_provision_dry_run.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23614-integration-proof
-  description: The pushed head ran the plan, listing and seam tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  description: The pushed head ran the dry-run tests on a lab host through the lab work runner and exited 0. This is the in-process half of AC4; the read against the dev broker is run on the lab host and its receipt is in the pull request comment. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the bound in-process half is dod-omn23614-ac4-dry-run.
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23614 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_topic_provision_plan_compute tests/nodes/node_topic_never_produced_compute -q --no-cov'
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23614 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_topic_provision_dry_run_effect/test_topic_provision_dry_run.py -q --no-cov'
     cwd: .

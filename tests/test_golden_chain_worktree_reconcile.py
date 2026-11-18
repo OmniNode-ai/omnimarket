@@ -30,6 +30,10 @@ def test_golden_chain_worktree_reconcile() -> None:
     result = effect.handle(command())
     assert result.decided_events[0].decision == decisions.decisions[0]
     assert result.completed_event.removed == 1
+    assert (result.completed_event.deferred, result.completed_event.deferred_paths) == (
+        0,
+        (),
+    )
     writer = WorktreeReconcileProjectionWriter()
     db = RecordingDB()
     writer._db = db  # type: ignore[assignment]
@@ -55,6 +59,8 @@ def test_error_chain_a_deferred_tree_reaches_the_event_and_the_projection(
     assert decided.outcome == "kept"
     assert decided.facts.probe_errors == ("probe_deferred:probe_timeout",)
     assert result.completed_event.failures == 0
+    assert result.completed_event.deferred == 1
+    assert result.completed_event.deferred_paths == ("trees/task/slow",)
     topic, completed = fake.events[-1]
     writer = WorktreeReconcileProjectionWriter()
     db = RecordingDB()

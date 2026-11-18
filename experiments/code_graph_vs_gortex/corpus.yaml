@@ -1,0 +1,30 @@
+# Frozen corpus for the code graph (rebuild piece 1) against Gortex experiment (OMN-23328).
+# Gate: OMN-22478 AC-1. Operator, 2026-11-09 about 12:50Z: run the value comparison as a sandboxed
+# lab experiment against our own code graph, and build the Gortex integration only if it passes.
+#
+# Files in this directory: corpus.yaml (this file, AC1), questions.yaml (AC1), gate.yaml (AC3),
+# results.yaml (the 32-row table of AC2, every row not_run), experiment_log.yaml (append only).
+# This change builds AC1 and the empty table. No arm has run and there is no verdict.
+# Arms never see questions.yaml; each gets only the question text. An anchor in questions.yaml is
+# checked at the corpus commit with: git -C <repo clone> show <commit>:<path>  (contains the anchor text).
+# Both repositories are read at these commits only; no arm reads a later head.
+schema_version: 1
+ticket: OMN-23328
+corpus:
+  - repo: omnibase_spi
+    ref: origin/dev
+    commit: c990fa3c466c1f7e510bc36096e6b7a89155bcc4
+  - repo: omnibase_infra
+    ref: origin/dev
+    commit: 8c866eb2066e4c017706d8c59edc909679ecea58
+# Out-of-corpus repository named by one question (Q1) so a correct answer must say the
+# implementation sits outside the corpus. It is not frozen here and no arm may read it.
+out_of_corpus_named: [omnibase_core]
+gortex:
+  repository: pinned by commit only
+  commit: eb3237d1acaf3938d68ce2d42417ddd9f2ab91b4
+  mode: read-only tool, no network, fixed tool list
+  # The tool list is copied from Gortex at the pinned commit into the experiment log
+  # before the first arm run; an arm run whose log has no tool list is void. The tool list is not
+  # frozen yet: gortex is not on the path of lab host h201 and its commit is fetched from GitHub,
+  # which a lane cannot read.

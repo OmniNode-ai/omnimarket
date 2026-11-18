@@ -36,12 +36,14 @@ from omnimarket.nodes.node_code_quarantine_effect.handlers.handler_code_quaranti
     HandlerCodeQuarantine,
 )
 from omnimarket.nodes.node_code_quarantine_effect.models import (
+    EnumEntityKind,
     EnumQuarantineMode,
     ModelCatalogRow,
     ModelFilesBackend,
     ModelGateCommand,
     ModelPolicy,
     ModelQuarantineRequest,
+    ModelRarePathCheck,
     ModelRemovalBatch,
     ModelRemovalEvidence,
 )
@@ -51,6 +53,8 @@ ENTITY = "unused_pkg"
 ENTITY_PATHS = ("src/unused/mod.py", "src/unused/helper.py")
 TEST_PATHS = ("tests/unused/test_mod.py",)
 KEPT = "src/kept.py"
+SKILL = "never_seen_skill"
+SKILL_PATHS = ("skills/never_seen_skill/SKILL.md",)
 TAG = "removal-batch-1"
 START = datetime(2026, 11, 8, 12, 0, tzinfo=UTC)
 POLICY = ModelPolicy(quarantine_days=7, min_observation_days=7)
@@ -90,6 +94,49 @@ def quarantine_request(
     )
 
 
+def stage_four_module_request(
+    run_id: str = "stage4",
+    *,
+    entity_paths: tuple[str, ...] = ENTITY_PATHS,
+    test_paths: tuple[str, ...] = TEST_PATHS,
+    test_references: tuple[str, ...] = TEST_PATHS,
+) -> ModelQuarantineRequest:
+    """A quarantine of a module referenced only by tests (OMN-23149), with the evidence of an ordinary quarantine."""
+    return quarantine_request(run_id).model_copy(
+        update={
+            "entity_kind": EnumEntityKind.TEST_ONLY_MODULE,
+            "entity_paths": entity_paths,
+            "test_paths": test_paths,
+            "test_references": test_references,
+        }
+    )
+
+
+def stage_four_skill_request(
+    run_id: str = "stage4",
+    *,
+    rare_path: ModelRarePathCheck | None = None,
+) -> ModelQuarantineRequest:
+    """A quarantine of a skill never seen (OMN-23149); the default rare-path check read two drills and none uses it."""
+    check = (
+        ModelRarePathCheck(
+            evidence_ref="reports/rare-path/skills.md",
+            drills_checked=("drill-failover", "drill-restore"),
+        )
+        if rare_path is None
+        else rare_path
+    )
+    return quarantine_request(run_id).model_copy(
+        update={
+            "entity": SKILL,
+            "entity_paths": SKILL_PATHS,
+            "test_paths": (),
+            "entity_kind": EnumEntityKind.SKILL_NEVER_SEEN,
+            "rare_path": check,
+        }
+    )
+
+
 def check_request(run_id: str = "chain1") -> ModelQuarantineRequest:
     return ModelQuarantineRequest(
         run_id=run_id, mode=EnumQuarantineMode.CHECK, repository=REPO, entity=ENTITY
@@ -102,12 +149,13 @@ def remove_request(
     tag: str | None = None,
     with_row: bool = True,
     row_sha: str | None = None,
+    entity: str = ENTITY,
 ) -> ModelQuarantineRequest:
     tag_name = TAG if tag is None else tag
     rows = (
         (
             ModelCatalogRow(
-                entity=ENTITY,
+                entity=entity,
                 tag=tag_name,
                 sha=rig.tag_sha if row_sha is None else row_sha,
                 reason="no reader in a 7-day observation; no public consumer",
@@ -120,7 +168,7 @@ def remove_request(
         run_id=run_id,
         mode=EnumQuarantineMode.REMOVE,
         repository=REPO,
-        batch=ModelRemovalBatch(tag=tag_name, entities=(ENTITY,), catalog_rows=rows),
+        batch=ModelRemovalBatch(tag=tag_name, entities=(entity,), catalog_rows=rows),
     )
 
 
@@ -128,7 +176,7 @@ def memory_rig(handler_cls: type[HandlerCodeQuarantine] = HandlerCodeQuarantine)
     sha = "0123456789abcdef0123456789abcdef01234567"
     store = InMemoryStore()
     repository = InMemoryRepository(
-        {REPO: {*ENTITY_PATHS, *TEST_PATHS, KEPT}}, {REPO: {TAG: sha}}
+        {REPO: {*ENTITY_PATHS, *TEST_PATHS, *SKILL_PATHS, KEPT}}, {REPO: {TAG: sha}}
     )
     gates = InMemoryGates(build=True, start=True, reading=True)
     clock = SteppedClock(START)
@@ -166,7 +214,7 @@ def files_rig(
     root: Path, handler_cls: type[HandlerCodeQuarantine] = HandlerCodeQuarantine
 ) -> Rig:
     repo_root = root / "repo_a"
-    for rel in (*ENTITY_PATHS, *TEST_PATHS, KEPT):
+    for rel in (*ENTITY_PATHS, *TEST_PATHS, *SKILL_PATHS, KEPT):
         target = repo_root / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("x = 1\n", encoding="utf-8")
@@ -286,6 +334,22 @@ MUTATIONS: dict[str, tuple[str, str]] = {
     "skip-catalog-check": (
         "rows: dict[str, ModelCatalogRow] = {r.entity: r for r in batch.catalog_rows}",
         "rows: dict[str, ModelCatalogRow] = {e: ModelCatalogRow(entity=e, tag=batch.tag, sha=tagged, reason='auto') for e in batch.entities}",
+    ),
+    "accept-tests-alone": (
+        "tests_inside = [p for p in request.entity_paths if is_test_path(p)]",
+        "tests_inside = []",
+    ),
+    "leave-referencing-tests-behind": (
+        "p for p in request.test_references if p not in request.test_paths",
+        "p for p in request.test_references if False",
+    ),
+    "skip-rare-path-drills-read": (
+        "or not check.drills_checked",
+        "or False",
+    ),
+    "skip-rare-path-using-drill": (
+        "if check.drills_using:",
+        "if False:",
     ),
     "remove-before-days": (
         "if age < timedelta(days=self._policy.quarantine_days):",

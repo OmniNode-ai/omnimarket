@@ -27,6 +27,7 @@ from omnimarket.nodes.node_prompt_intent_classify_compute.handlers import (
     handler_prompt_intent_classify as handler_module,
 )
 
+_CORRELATION_ID = "11111111-2222-3333-4444-555555555555"
 _EMITTED_AT = "2026-09-25T11:40:00+00:00"
 
 
@@ -43,7 +44,7 @@ def _fake_classifier(prompt: str) -> ModelPromptIntentVerdict:
 def _record(**overrides: object) -> ModelContentCapturedRecord:
     fields: dict[str, object] = {
         "session_id": "sess-1",
-        "correlation_id": "corr-1",
+        "correlation_id": _CORRELATION_ID,
         "content_kind": "prompt",
         "content": "fix the failing test",
         "chunk_index": 0,
@@ -68,7 +69,7 @@ def test_prompt_record_yields_intent_classified_event(
 
     assert isinstance(result, ModelIntentClassified)
     assert result.session_id == "sess-1"
-    assert result.correlation_id == "corr-1"
+    assert result.correlation_id == _CORRELATION_ID
     assert result.intent_class == "BUGFIX"
     assert result.intent_category == "debugging"
     assert result.confidence == 0.9
@@ -82,7 +83,7 @@ def test_prompt_record_yields_intent_classified_event(
 def test_record_parses_from_wire_payload_with_unknown_fields() -> None:
     wire = {
         "session_id": "sess-1",
-        "correlation_id": "corr-1",
+        "correlation_id": _CORRELATION_ID,
         "content_kind": "prompt",
         "content": "add a tenant listing endpoint",
         "chunk_index": 0,
@@ -108,6 +109,11 @@ def test_record_parses_from_wire_payload_with_unknown_fields() -> None:
         pytest.param({"content": None}, id="skip_missing_content"),
         pytest.param({"correlation_id": None}, id="skip_missing_correlation"),
         pytest.param({"correlation_id": ""}, id="skip_empty_correlation"),
+        pytest.param({"correlation_id": "corr-1"}, id="skip_non_uuid_correlation"),
+        pytest.param({"emitted_at": None}, id="skip_missing_emitted_at"),
+        pytest.param(
+            {"emitted_at": "not-a-datetime"}, id="skip_unparseable_emitted_at"
+        ),
     ],
 )
 def test_skip_records_that_are_not_classifiable_prompts(
@@ -134,7 +140,7 @@ def test_event_validates_against_projection_model(
 
     event = ModelIntentClassifiedEvent.model_validate(result.model_dump(mode="json"))
 
-    assert event.correlation_id == "corr-1"
+    assert event.correlation_id == _CORRELATION_ID
     assert event.session_id == "sess-1"
     assert event.intent_class == "BUGFIX"
     assert event.confidence == 0.9
