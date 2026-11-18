@@ -1513,9 +1513,9 @@ units:
       ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
     environment_inputs:
       ONEX_LEDGER_HOST_NAME: ledger_host_name
-      ONEX_LEDGER_PATH: ledger_path
+      ONEX_TEMPORAL_LEDGER_FILE: ledger_path
       OMNIBASE_INTERNAL_HOME: appender_root
-    required_environment_inputs: [ONEX_LEDGER_HOST_NAME, ONEX_LEDGER_PATH, OMNIBASE_INTERNAL_HOME]
+    required_environment_inputs: [ONEX_LEDGER_HOST_NAME, ONEX_TEMPORAL_LEDGER_FILE, OMNIBASE_INTERNAL_HOME]
     environment_file: .config/onex/temporal-health-alarm.env
     evidence_file: .local/state/omni/temporal-health-alarm/last-run.json
     state_directory: .onex_state/temporal-health-alarm
