@@ -1509,6 +1509,7 @@ units:
       ONEX_TEMPORAL_CLI: "{home}/.local/share/onex-temporal/cli/v1.10.1/temporal"
       ONEX_TEMPORAL_ADDRESS: "127.0.0.1:7233"
       ONEX_TEMPORAL_TASK_QUEUE: "onex-prove-running"
+      ONEX_TEMPORAL_HEALTH_LEDGER: "{ledger_path}"
       ONEX_LEDGER_WRITE_VIA: "bus"
       ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
     environment_inputs:
