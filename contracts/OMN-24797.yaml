@@ -1,0 +1,76 @@
+schema_version: 1.0.0
+ticket_id: OMN-24797
+title: omnimarket#6094 reads green on every required check at its new head
+summary: The experiment-result pull request carried four red checks at head 3bfb3248f3c8. The Tests (Split 7/20) red is the pinned omninode-memory tag declaring an older omnibase-core than the pull request pins, so uv reads conflicting URLs for omnibase-core; this change repins omninode-memory to the memory tag that carries the matching core pin. The Sibling Release Compatibility Gate red is a migration the pinned omnibase_infra release does not vendor and is left unpatched here. No test, workflow or required-check definition changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24797-required-checks-green
+  statement: Every required check of omnimarket#6094 reads success at its new head, with no check widened, skipped or bypassed.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every required check-run of omnimarket#6094 at its new head reads success, read through the declared scm read path after the fix push -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6094` lists a required context that is not success at the new head'
+  - id: AC2
+    statement: 'AC2: the fix widens, skips or bypasses no check, so the diff from head 88f0a2967f42 to the new head removes no assertion and adds no skip, xfail or loosened threshold, and changes no workflow or required-check list -- falsifier: `git diff 88f0a2967f42 <new head> -- tests/ .github/` shows a removed assert, a new skip or xfail marker, or a changed check definition'
+  - id: AC3
+    statement: 'AC3: the new head is on the pull request in a comment that starts `Lab: head=<new head>`, with the red then green lab runs behind it -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6094` shows no comment starting with `Lab: head=` and the full new head sha'
+  - id: AC4
+    statement: 'AC4: when the cause is outside the pull request, a STATUS row on the ledger carries `cause=` and `shared=yes` with the evidence and the pull request is left unpatched -- falsifier: the ledger holds no STATUS row naming omnimarket#6094 with shared=yes and no commit after head 88f0a2967f42 on the pull request'
+evidence_requirements:
+- kind: tests
+  description: The dev tag lineage live test file, the one the memory tag conflict turned red in Split 7, passes at the pushed head.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_dev_tag_lineage_effect/live/test_dev_tag_lineage_live.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24797-ac1-required-checks
+  description: 'The required checks read at the new head through the watcher state. Unbound for hosted CI: the read needs the PR watcher, so only the local Done gate runs it. Sibling Release Compatibility Gate stays red until omnibase_infra vendors the row level security lines of migration 0000 and a release is pinned, so this reads red until then.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: onex scm pr-checks OmniNode-ai/omnimarket#6094
+    cwd: .
+- id: dod-omn24797-ac2-no-widening
+  description: 'The fix commit at the new head touches no test and no workflow file. Local Done gate only: it reads the commit before the head, which a shallow hosted clone lacks.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: test -z "$(git diff --name-only HEAD~1 HEAD -- tests/ .github/)"
+    cwd: .
+- id: dod-omn24797-ac3-lab-comment
+  description: 'The Lab: head= comment on the pull request carries the new head. Read from the watcher state, so only the local Done gate runs it.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: onex scm pr-view OmniNode-ai/omnimarket#6094
+    cwd: .
+- id: dod-omn24797-ac4-shared-cause-status
+  description: 'The shared cause of the Sibling Release Compatibility Gate red is on the ledger as a STATUS row. Local Done gate only: the ledger is not in a hosted clone.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: grep -c "shared=yes" "$ONEX_LEDGER_PATH"
+    cwd: .
+- id: dod-omn24797-integration-proof
+  description: 'Runs the dev tag lineage live test file on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It reads the file whose conflicting-URL failure made Tests (Split 7/20) red.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24797 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_dev_tag_lineage_effect/live/test_dev_tag_lineage_live.py --no-cov -p no:randomly
+    cwd: .
