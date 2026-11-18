@@ -1405,6 +1405,14 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: typed-runtime-command-subscriptions
+        name: Validate typed runtime command subscriptions
+        language: system
+        entry: uv run --frozen pytest tests/test_runtime_command_subscriptions.py -q -n 0 --no-cov -k typed_runtime_commands_are_subscribed
+        files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|tests/test_runtime_command_subscriptions\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-15833: bare AIOKafkaConsumer/AIOKafkaProducer construction (zero auth
       # kwargs) silently connects PLAINTEXT against a SASL/IAM-only MSK broker —
       # third occurrence of the OMN-14155 class, this time inside omnimarket

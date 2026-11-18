@@ -64,6 +64,14 @@ event_bus:
 externally_consumed_topics:
   - onex.evt.omnimarket.host-install-state-updated.v1
 
+# The folded record is an EVENT to publish, not a reducer projection. The runtime classifies a reducer's bare model return
+# as a projection unless the contract declares the model class here (event_type -> topic), and a projection is never
+# published: without this map the branch deploy orchestrator and the host install orchestrator waited on the state-updated
+# topic, which stayed empty, and stopped after their first step.
+published_events:
+  - event_type: HostInstallRecord
+    topic: onex.evt.omnimarket.host-install-state-updated.v1
+
 broker_acl_grants:
   - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
     grants:

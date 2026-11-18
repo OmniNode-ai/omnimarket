@@ -16,6 +16,9 @@ hosts:
       df_command: [docker, system, df, --format, "{{json .}}"]
       exited_command: [docker, ps, -a, --filter, status=exited, --size, --format, "{{json .}}"]
       timeout_seconds: 60
+    growth:  # page when a volume reaches the floor within 12 h at the measured rate (OMN-21663)
+      page_hours_to_floor: 12
+      min_span_minutes: 30
 reading:
   tolerance_percent: 2
   bus_lane: dev
