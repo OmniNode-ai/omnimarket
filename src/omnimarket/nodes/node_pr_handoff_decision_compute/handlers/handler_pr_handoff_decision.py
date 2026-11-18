@@ -30,7 +30,9 @@ from datetime import datetime, timedelta
 from typing import Literal
 
 from omnimarket.events.pr_state import EnumPrState, ModelPrStateEmitRequest
+from omnimarket.handlers.review_status_reading import read_head_review_status
 from omnimarket.merge_control.hold_marker import evaluate_merge_hold
+from omnimarket.models.model_review_status import EnumReviewStatusVerdict
 from omnimarket.models.pr_handoff import (
     EnumPrHandoffErrorCode,
     EnumPrHandoffLabProofSource,
@@ -88,6 +90,14 @@ def invalid_request_reason(request: ModelPrHandoffRequested) -> str | None:
             "'delegated=0 delegation_reason=<why>' or 'delegation=na:<reason>'"
         )
     return None
+
+
+#: The refusal each non-pass review-gate status reading earns: missing, failing or on another head.
+_REVIEW_STATUS_REFUSAL: dict[EnumReviewStatusVerdict, EnumPrHandoffErrorCode] = {
+    EnumReviewStatusVerdict.MISSING: EnumPrHandoffErrorCode.REVIEW_STATUS_MISSING,
+    EnumReviewStatusVerdict.FAILING: EnumPrHandoffErrorCode.REVIEW_STATUS_FAILING,
+    EnumReviewStatusVerdict.OTHER_HEAD: EnumPrHandoffErrorCode.REVIEW_STATUS_OTHER_HEAD,
+}
 
 
 def _observed_at(observation: ModelPrStateEmitRequest) -> datetime:
@@ -354,6 +364,15 @@ def decide_handoff(
     lab_problem = _lab_proof_problem(request, observation)
     if lab_problem is not None:
         return _refuse(EnumPrHandoffErrorCode.MISSING_LAB_PROOF, lab_problem, head)
+    review = decision_request.review_status
+    if review is not None and review.new_work:
+        reading = read_head_review_status(review.statuses, head)
+        if reading.verdict is not EnumReviewStatusVerdict.PASS:
+            return _refuse(
+                _REVIEW_STATUS_REFUSAL[reading.verdict],
+                f"new-work PR: {reading.detail}",
+                head,
+            )
     msg_id, rows = _rows(request, observation, ticket, source, decision_request.now)
     return ModelPrHandoffDecision(
         verdict=EnumPrHandoffVerdict.READY,

@@ -8,6 +8,30 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+_ENV_FILE_SAFE = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/"
+)
+
+
+def validate_superuser_env_file(path: object) -> str:
+    """Refuse a declared superuser env file path the broker host script cannot take.
+
+    The one check every declaration of that path shares (the ACL declaration, the principal mint
+    broker row and the topic-delete overlay), so a bad path is refused when the declaration loads,
+    not at the first remote call. Absolute or ``~/`` paths of letters, digits and ``._-/`` only.
+    """
+    if (
+        not isinstance(path, str)
+        or not path
+        or not set(path) <= _ENV_FILE_SAFE | {"~"}
+        or ".." in path.split("/")
+        or not (path.startswith(("/", "~/")))
+    ):
+        raise ValueError(
+            "superuser_env_file must be an absolute or ~/ path of letters, digits and ._-/"
+        )
+    return path
+
 
 class ModelBrokerAclReconcileRequest(BaseModel):
     """dry_run and apply act on every declared and derived row. ready_check asks one node's question (OMN-24005): does

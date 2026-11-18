@@ -1,0 +1,65 @@
+schema_version: 1.0.0
+ticket_id: OMN-24079
+title: The delegation call effect and its producer agree on the task kind, pinned to the core release that carries it
+summary: 'Child of OMN-24039. omnimarket moves its omnibase-core dev tag to the one omnibase_infra locks since omnibase_infra#5925 (the release that carries the task_type field of the inference intent, omnibase_core#2316) and its omnibase-infra dev tag to the build that merged #5925, relocks uv.lock and re-records the lock hash in the work contracts that pin it. A seam test, restored after the landing worker dropped it from omnimarket#5968, requires that the producer (the orchestrator''s inference intent builder) stamps task_type, that the effect reads its call ceiling for that class from the code budget overlay, that an overlay edit changes the ceiling with no code change, and that a class the overlay does not name is refused.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24079-pin-and-seam
+  statement: The market package names the core release that carries task_type, and the producer and the effect are checked to agree on it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: omnimarket names the same omnibase-core and omnibase-infra dev tags as omnibase_infra''s locked core, and the sibling pin gate accepts it -- falsifier: uv lock --check fails on origin/dev''s pyproject.toml after the infra tag is published and passes on the branch'
+  - id: AC2
+    statement: 'AC2: the seam test fails when the producer stops stamping task_type or the effect stops reading it, and follows an overlay edit -- falsifier: uv run pytest tests/unit/delegation/test_omn24039_task_class_seam.py -q -n 0 --no-cov fails against the previous core pin'
+- id: req-omn24079-integrated
+  statement: A long local reasoning call finishes in the running dev runtime under the overlay ceiling of its class.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: integrated: a local reasoning call that runs past 120 s finishes in the dev runtime and the revision running carries the pin -- falsifier: the delegation receipt of a reasoning call shows terminal_wait over 120 s with status success, read with the running image revision label'
+evidence_requirements:
+- kind: tests
+  description: The seam test and the two pin tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/delegation/test_omn24039_task_class_seam.py tests/ci/test_sibling_core_pin_pair_omn17427.py tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24079-ac1
+  description: The lock names the same omnibase-core and omnibase-infra dev tags as pyproject.toml, the core tag is the one the pinned infra build names, and every work contract that pins the lock records its hash.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_sibling_core_pin_pair_omn17427.py tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24079-ac2
+  description: The seam test passes on the new pin; its pin check fails on a core older than omnibase_core#2316.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_omn24039_task_class_seam.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24079-ac3
+  description: The tests behind the integrated reading pass at the head; the reading itself (a reasoning call over 120 s finishing in the dev runtime) needs this change rolled on dev and is the pull request's Lab line; hosted CI cannot reach it.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_omn24039_task_class_seam.py tests/unit/delegation/test_inference_call_ceiling_overlay.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24079-integration-proof
+  description: The seam test and the two pin tests run on a lab host at the pushed head through the lab work node. The reading on the running dev runtime (a reasoning call over 120 s) is the pull request's Lab line; hosted CI cannot reach it.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24079 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_omn24039_task_class_seam.py tests/ci/test_sibling_core_pin_pair_omn17427.py tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
