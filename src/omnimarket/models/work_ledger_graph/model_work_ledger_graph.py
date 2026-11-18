@@ -10,6 +10,14 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.work_ledger_graph.model_work_ledger_similarity import (
+    EnumLedgerSimilarityOperation,
+    ModelLedgerSimilarityCursor,
+    ModelLedgerSimilarityHit,
+    ModelLedgerSimilarityIndexRequest,
+    ModelLedgerSimilarityRequest,
+)
+
 WORK_LEDGER_GRAPH_SCHEMA_VERSION = "work-ledger-graph/v1"
 
 
@@ -107,9 +115,11 @@ class ModelWorkLedgerGraphQueryRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    query: EnumWorkLedgerGraphQuery
+    query: EnumWorkLedgerGraphQuery | EnumLedgerSimilarityOperation
     graph: ModelWorkLedgerGraph | None = None
     graph_path: str | None = None
+    index: ModelLedgerSimilarityIndexRequest | None = None
+    similarity: ModelLedgerSimilarityRequest | None = None
 
 
 class ModelWorkLedgerGraphAnswer(BaseModel):
@@ -126,13 +136,19 @@ class ModelWorkLedgerGraphAnswer(BaseModel):
 class ModelWorkLedgerGraphQueryResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    query: EnumWorkLedgerGraphQuery
+    query: EnumWorkLedgerGraphQuery | EnumLedgerSimilarityOperation
     status: EnumWorkLedgerGraphQueryStatus
     error: str | None = None
     graph_sha256: str | None = None
     answers: tuple[ModelWorkLedgerGraphAnswer, ...] = ()
     elapsed_ms: float = Field(default=0.0, ge=0.0)
     model_tokens: int = Field(default=0, ge=0)
+    embedding_model: str | None = None
+    embedding_dimension: int | None = Field(default=None, ge=1)
+    indexed_rows: int | None = Field(default=None, ge=0)
+    rows_without_text: int | None = Field(default=None, ge=0)
+    next_cursor: ModelLedgerSimilarityCursor | None = None
+    similar_rows: tuple[ModelLedgerSimilarityHit, ...] = ()
 
 
 __all__ = [

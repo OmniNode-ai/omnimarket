@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-25483
 title: The work ledger is graphed from its own typed columns and five typed queries answer ownership, review, red-check, ruling and seen-running questions without an agent reading rows
-summary: A compute node derives a graph from work ledger rows by their own key=value cells with no model call, and a query effect answers five typed queries over it; an unreadable graph answers an error.
+summary: A compute node derives a graph from work ledger rows by their own key=value cells with no model call. The query effect serves structural queries and two lab-local similarity queries over cited, tagged ledger rows.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -13,6 +13,14 @@ requirements:
     statement: 'AC1: a compute node derives the graph from work_ledger_rows by the rows'' own columns with no model call, and two runs over the same rows give byte-identical output -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_graph_compute -q (determinism test and a no-model-import test, red on a planted model call)'
   - id: AC2
     statement: 'AC2: a query effect answers each of the five questions as one typed query with a golden case and an error case per query, and an unreadable graph answers an error, never an empty answer -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_graph_query_effect -q'
+  - id: AC3
+    statement: "AC3: on the dev lane, each question's answer matches the raw ledger for 5 spot-checked answers per question -- falsifier: run the five queries on dev, grep the raw ledger for 5 answers of each, and find any answer that differs"
+  - id: AC4
+    statement: "AC4: each query's cost in seconds and tokens is measured on dev and set against today's agent read of 3 to 8 million tokens a round -- falsifier: run each query on dev and find a query with no recorded measurement or one that takes over 30 seconds"
+  - id: AC5
+    statement: "AC5: the change is installed from its branch on dev and one run of each query is read handled on the dev runtime on h201, recorded as installed=<host>:<revision> and observed=<what ran> in the PR's Lab line -- falsifier: read the Lab line and the h201 run lines and find a query with no handled run"
+  - id: AC6
+    statement: "AC6: two similarity queries (existing RULING rows that answer a new question; earlier rows with the same blocker and how they were resolved) are measured against today's word-overlap matching with precision on 10 spot-checked cases each -- falsifier: run both queries on dev and the word-overlap baseline over the same 10 cases each and find a case with no recorded result"
 evidence_requirements:
 - kind: tests
   description: The compute and query effect unit tests.
@@ -39,6 +47,47 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_work_ledger_graph_query_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25483-ac3-dev-spot-checks
+  description: Compare five answers per structural query on dev to cited raw ledger rows and record how many answers were available for each check.
+  source: manual
+  binds_ac: [AC3]
+  execution_scope: local_done_gate
+  checks:
+  - check_type: disposition
+    check_value: dod-omn25483-ac3-dev-spot-checks
+- id: dod-omn25483-ac4-dev-query-cost
+  description: Read the elapsed time and token count for every structural query on dev and compare each with the 30-second ceiling and the agent-read baseline.
+  source: manual
+  binds_ac: [AC4]
+  execution_scope: local_done_gate
+  checks:
+  - check_type: disposition
+    check_value: dod-omn25483-ac4-dev-query-cost
+- id: dod-omn25483-ac5-dev-running
+  description: Read the branch revision installed on h201 and one handled run of every structural query at that revision.
+  source: manual
+  binds_ac: [AC5]
+  execution_scope: local_done_gate
+  checks:
+  - check_type: lab_receipt
+    check_value:
+      installer: Standing dev runtime restart window for the registered branch revision
+      observation: h201 dev runtime handled each of the five structural graph queries
+- id: dod-omn25483-ac6-dev-similarity
+  description: Record the expected and returned row evidence for ten cases per similarity query on dev with identical filters and cutoffs for both methods. Read precision, embedding model, dimension, elapsed seconds and tokens.
+  source: manual
+  binds_ac: [AC6]
+  execution_scope: local_done_gate
+  checks:
+  - check_type: disposition
+    check_value: dod-omn25483-ac6-dev-similarity
+- id: dod-omn25483-deploy-query-dispatch
+  description: Exercise the runtime-facing async handler with a fake local embedding HTTP service and a temporary index. The handler applies the cutoff, reports proof of the blocker outcome, and returns a typed endpoint error. The hosted runner needs no lab address or credentials.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_graph_query_effect/test_work_ledger_similarity.py -q -k deployed_dispatch
     cwd: .
 - id: dod-omn25483-integration-proof
   description: Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check. It runs the compute node and the five queries at the sha on a lab host through onex lab-work.
