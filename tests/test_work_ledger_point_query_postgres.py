@@ -109,6 +109,7 @@ def project(conn: Any, schema: str, raws: Iterable[str]) -> None:
                     row.source,
                     now,
                     row.ledger_seq,
+                    False,
                 ),
             )
             for op in result.ops:
@@ -143,7 +144,11 @@ def database(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[Any, str]]:
     try:
         with conn.cursor() as cursor:
             cursor.execute(f"CREATE SCHEMA {schema}")
-            for name in ("0000_create_work_ledger.sql", "0003_work_ledger_seq.sql"):
+            for name in (
+                "0000_create_work_ledger.sql",
+                "0003_work_ledger_seq.sql",
+                "0013_work_ledger_seq_provisional.sql",
+            ):
                 cursor.execute(
                     (MIGRATIONS / name)
                     .read_text()

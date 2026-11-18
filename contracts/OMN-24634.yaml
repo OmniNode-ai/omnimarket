@@ -1,0 +1,91 @@
+schema_version: 1.0.0
+ticket_id: OMN-24634
+title: 'Work-ledger projection: sequence live rows (UnsequencedLiveRowError) instead of failing'
+summary: A live onex-ledger row that arrives with no ledger_seq is now given a provisional ledger_seq by the projection (the next after the tip, under the ledger advisory lock) instead of being refused; the judge's own number for that sequence outranks it, so the projection moves its row and the judge's next row still projects. A listed source with no declared way to order it is still counted and refused to the poison dead-letter topic with its reason. The projection's loop probe no longer chains every failure to "no running event loop", and a projection failure is logged with its own type and message.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24634-sequence-live-rows
+  statement: The work-ledger projection sequences a live unsequenced row, never drops a row silently, and reports a failure with its real cause.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a live onex-ledger row with no ledger_seq is sequenced and lands with a ledger_seq, with no UnsequencedLiveRowError -- falsifier: uv run pytest tests/unit/nodes/node_projection_work_ledger -k "unsequenced and live" -q fails on the unfixed handler'
+  - id: AC2
+    statement: 'AC2: a row that cannot be sequenced is counted and sent to the declared dead-letter topic with its reason, and the count equals the rows in -- falsifier: uv run pytest tests/unit/nodes/node_projection_work_ledger -k "unsequenced and dead_letter" -q'
+  - id: AC3
+    statement: 'AC3: a failure in the projection async path is logged with its real cause and the no running event loop traceback does not appear -- falsifier: uv run pytest tests/unit/nodes/node_projection_work_ledger -k "event_loop or failure_logged" -q, built from recorded_unfixed_run_traceback.txt beside the test'
+  - id: AC4
+    statement: 'AC4: a sequenced live row and a backfill row project as before -- falsifier: uv run pytest tests/unit/nodes/node_projection_work_ledger -q, whole suite'
+  - id: AC5
+    statement: 'AC5: after the fix reaches the dev runtime the log holds 0 no running event loop lines from the projection and no onex-ledger row with ledger_seq NULL is projected after the install -- falsifier: docker logs omninode-runtime on the dev host piped to grep -c returns 0 and the work_ledger_rows count query returns 0'
+evidence_requirements:
+- kind: tests
+  description: The node's focused unit tests.
+  command: uv run pytest tests/unit/nodes/node_projection_work_ledger -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24634-live-and-dead-letter
+  description: 'AC1, AC2: the live unsequenced row is sequenced and the unassigned path is counted and dead-lettered; against dev the new tests fail.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_work_ledger/test_unsequenced_live_row_refused.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24634-event-loop
+  description: 'AC3: the failure carries no loop context and is logged with its real cause; the fixture is the traceback the unfixed handler printed.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_work_ledger/test_event_loop_failure_logged.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24634-suite
+  description: 'AC4: the whole node suite passes, sequenced and backfill rows project as before.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_work_ledger -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24634-dev-runtime-read
+  description: 'AC5: the log half, read on the dev host after the release train installs the fix. The check fails when docker is absent or the container log is empty, and passes only when the log is readable and holds 0 no running event loop lines. The hosted runner cannot reach the host, so only the local Done gate runs it.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: "logs=$(docker logs omninode-runtime 2>&1) && test -n \"$logs\" && test \"$(printf '%s\\n' \"$logs\" | grep -c 'no running event loop')\" = 0"
+    cwd: .
+- id: dod-omn24634-dev-runtime-rows
+  description: 'AC5: no onex-ledger row with ledger_seq NULL is projected after the install; the window starts at ONEX_FIX_INSTALLED_AT (the install time, unset fails the check) and the check also fails when the window holds no onex-ledger row at all, so a zero is never an empty read. Read on the dev host; the hosted runner cannot reach it, so only the local Done gate runs it.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: "test -n \"$ONEX_FIX_INSTALLED_AT\" && test -n \"$OMNINODE_INTERNAL_DB_URL\" && test \"$(psql \"$OMNINODE_INTERNAL_DB_URL\" -At -c \"SELECT count(*) FILTER (WHERE ledger_seq IS NULL) = 0 AND count(*) > 0 FROM omninode_internal.work_ledger_rows WHERE source = 'onex-ledger' AND projected_at >= '$ONEX_FIX_INSTALLED_AT'\")\" = t"
+    cwd: .
+- id: dod-omn24634-dev-runtime-proxy
+  description: 'AC5, hosted proxy: the two code paths the dev runtime reading observes. The loop-probe test shows a projection failure is logged with its own cause and never as no running event loop; the live-row tests show an unsequenced onex-ledger row is given a ledger_seq and never projected as NULL. The two dev-runtime reading items above keep the post-install reading and run only in the local Done gate, where they bind no criterion because the hosted runner cannot reach the dev host.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_work_ledger/test_event_loop_failure_logged.py tests/unit/nodes/node_projection_work_ledger/test_unsequenced_live_row_refused.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24634-integration-proof
+  description: 'Run the focused node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion: the dev runtime reading (AC5) is taken after the release train installs the fix.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24634 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger -q -n 0 --no-cov
+    cwd: .

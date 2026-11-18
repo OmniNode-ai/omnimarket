@@ -126,7 +126,9 @@ async def source_database(monkeypatch):
         "0000_create_work_ledger.sql",
         "0002_work_ledger_typed_records.sql",
         "0003_work_ledger_seq.sql",
+        "0009_work_ledger_seq_unique.sql",
         "0011_work_ledger_latest.sql",
+        "0013_work_ledger_seq_provisional.sql",
     ):
         await conn.execute(
             (migration_root / name).read_text().replace("omninode_internal", schema)
@@ -646,12 +648,11 @@ async def test_distinct_legacy_arrival_cannot_race_typed_reconciliation(
 
 
 @pytest.mark.integration
-async def test_unsequenced_live_row_is_refused_and_projects_no_row_in_a_real_database(
+async def test_unsequenced_live_row_is_sequenced_and_projects_no_null_seq_row_in_a_real_database(
     source_database,
 ):
     from omnimarket.events.enum_ledger_row_type import EnumLedgerRowType
     from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection import (
-        UnsequencedLiveRowError,
         WorkLedgerProjectionWriter,
     )
     from omnimarket.projection.runner import MessageMeta
@@ -665,15 +666,59 @@ async def test_unsequenced_live_row_is_refused_and_projects_no_row_in_a_real_dat
     meta = MessageMeta(
         partition=0, offset=1, fallback_id="", topic=EnumLedgerRowType.CLAIM.topic
     )
-    with pytest.raises(UnsequencedLiveRowError):
-        await writer._project_and_report(meta.topic, payload, meta)
+    # OMN-24634: the projection sequences the row (first in an empty ledger) instead of refusing it.
+    await writer._project_and_report(meta.topic, payload, meta)
     unsequenced = await conn.fetch(
         f"SELECT 1 FROM {schema}.work_ledger_rows "
         "WHERE source = 'onex-ledger' AND ledger_seq IS NULL"
     )
     assert len(unsequenced) == 0
-    await writer._project_and_report(meta.topic, {**payload, "ledger_seq": 9}, meta)
     sequenced = await conn.fetch(
         f"SELECT ledger_seq FROM {schema}.work_ledger_rows WHERE source = 'onex-ledger'"
     )
-    assert [row["ledger_seq"] for row in sequenced] == [9]
+    assert [row["ledger_seq"] for row in sequenced] == [1]
+
+
+@pytest.mark.integration
+async def test_next_judged_row_after_a_provisional_row_projects_in_a_real_database(
+    source_database,
+):
+    """OMN-24634: the judge's next row takes its number from the provisional row the projection gave tip+1.
+
+    Real Postgres, the unique index (0009) and the provisional column (0013) applied: the judge's row
+    projects, the projection's row moves to a fresh tip+1, and no row lands in work_ledger_seq_conflicts.
+    """
+    from omnimarket.events.enum_ledger_row_type import EnumLedgerRowType
+    from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection import (
+        WorkLedgerProjectionWriter,
+    )
+    from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
+        parse_ledger_row,
+    )
+    from omnimarket.projection.runner import MessageMeta
+
+    db, conn, schema = source_database
+    writer = WorkLedgerProjectionWriter()
+    writer._db = db
+    topic = EnumLedgerRowType.CLAIM.topic
+    live_raw = RAW_ROW
+    judged_raw = RAW_ROW.replace("OMN-20001", "OMN-20002")
+
+    def envelope(raw: str, seq: int | None) -> dict[str, object]:
+        row = parse_ledger_row(raw, source="onex-ledger").model_dump(mode="json")
+        return {**row, "ledger_seq": seq}
+
+    for offset, (raw, seq) in enumerate(((live_raw, None), (judged_raw, 1)), start=1):
+        meta = MessageMeta(partition=0, offset=offset, fallback_id="", topic=topic)
+        await writer._project_and_report(topic, envelope(raw, seq), meta)
+    rows = {
+        record["raw_row"]: (record["ledger_seq"], record["ledger_seq_provisional"])
+        for record in await conn.fetch(
+            f"SELECT raw_row, ledger_seq, ledger_seq_provisional FROM {schema}.work_ledger_rows"
+        )
+    }
+    assert rows == {judged_raw: (1, False), live_raw: (2, True)}
+    assert (
+        await conn.fetchval(f"SELECT count(*) FROM {schema}.work_ledger_seq_conflicts")
+        == 0
+    )

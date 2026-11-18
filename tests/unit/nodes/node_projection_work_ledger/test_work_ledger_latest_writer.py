@@ -78,14 +78,17 @@ def test_error_chain_an_untracked_row_type_writes_no_latest_entry() -> None:
     result = _writer(db).handle(
         {"raw_row": FRICTION, "_topic": EnumLedgerRowType.FRICTION.topic}
     )
-    assert result == {"rows_upserted": 1}
+    assert result["rows_upserted"] == 1
     assert _latest(db) == []
 
 
 def test_error_chain_an_unsequenced_live_row_is_refused_before_any_write() -> None:
     db = _FakeDb()
+    writer = _writer(db)
+    # A listed source with no declared way to order it is still refused (OMN-24634 keeps this path).
+    writer._config = writer._config.model_copy(update={"sequence_assigned_sources": ()})
     with pytest.raises(UnsequencedLiveRowError):
-        _writer(db).handle(
+        writer.handle(
             {
                 "raw_row": TERMINAL,
                 "source": "onex-ledger",

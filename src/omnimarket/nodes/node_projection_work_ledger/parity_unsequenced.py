@@ -3,8 +3,9 @@
 """The unsequenced extra rows of the work-ledger parity explain (OMN-21849).
 
 A projection row with a NULL ``ledger_seq`` is the mark of a dual-write emit from a ledger file that is not the
-canonical one: the canonical append assigns every row a sequence. The parity ``--explain`` and ``--receipt`` read
-the window's NULL-sequence row ids (from a projection export or the database) and split the ``extra`` rows by them.
+canonical one: the canonical append assigns every row a sequence. A projection-assigned (provisional) sequence is
+not the canonical append's, so a provisional row counts as unsequenced too (OMN-24634). The parity ``--explain`` and
+``--receipt`` read the window's unsequenced row ids (from a projection export or the database) and split the ``extra`` rows by them.
 An export entry with no ``ledger_seq`` key is unknown, never unsequenced. The per-source row count the
 backfilled flag reads sits beside it (moved out of the baselined ``parity.py``, behaviour unchanged).
 """
@@ -31,20 +32,27 @@ SELECT_SOURCES = """
 """
 SELECT_UNSEQUENCED = """
     SELECT row_id FROM omninode_internal.work_ledger_rows
-    WHERE row_ts >= $1 AND row_ts <= $2 AND ledger_seq IS NULL
+    WHERE row_ts >= $1 AND row_ts <= $2 AND (ledger_seq IS NULL OR ledger_seq_provisional)
 """
 
 
 def load_projection_unsequenced_json(
     path: Path, since: datetime, until: datetime
 ) -> frozenset[str]:
-    """Row ids in the window whose export HAS a ``ledger_seq`` key holding None."""
+    """Row ids in the window whose export HAS a ``ledger_seq`` key holding None, or marks it provisional.
+
+    The provisional mark is read from the export's ``ledger_seq_provisional`` key. An export entry that holds a
+    ``ledger_seq`` number and has NO such key (an export written before that column existed, or by a producer
+    that does not select it) cannot say whether the number is the judge's or the projection's: this reader
+    counts it sequenced, so a provisional row in such an export reads as sequenced. That blind spot is the
+    export's, not the database's; ``load_unsequenced_db`` reads the column itself and has none (OMN-24683).
+    """
     data = json.loads(path.read_text(encoding="utf-8"))
     return frozenset(
         str(r["row_id"])
         for r in data.get("rows", [])
         if "ledger_seq" in r
-        and r["ledger_seq"] is None
+        and (r["ledger_seq"] is None or r.get("ledger_seq_provisional") is True)
         and since <= parse_stamp(str(r["row_ts"])) <= until
     )
 
@@ -52,7 +60,7 @@ def load_projection_unsequenced_json(
 async def load_unsequenced_db(
     dsn: str, since: datetime, until: datetime
 ) -> frozenset[str]:
-    """Row ids in the window whose projection ``ledger_seq`` is NULL, read from the database."""
+    """Row ids in the window whose projection ``ledger_seq`` is NULL or provisional, read from the database."""
     import asyncpg  # lazy: only the live read needs a database driver
 
     conn = await asyncpg.connect(dsn)

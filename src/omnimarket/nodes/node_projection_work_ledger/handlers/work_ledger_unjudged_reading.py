@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The unjudged-row reading: how many projected rows carry no ledger_seq (OMN-23152).
+"""The unjudged-row reading: how many projected rows carry no judge-given ledger_seq (OMN-23152).
 
 A row the judge accepted carries the sequence the judge assigned. A row that reached the bus
-another way carries none. The reading counts those rows over the contract's window, grouped by
+another way carries none, or only the provisional one the projection gave it (OMN-24634). The reading counts those rows over the contract's window, grouped by
 the emitter's source tag and lane, so the emitter is named by the reading and not by a search.
 It is RED above zero and WORKING at zero. The window is the contract's, never spelled here.
 """
@@ -33,7 +33,8 @@ _UNJUDGED_BY_SOURCE = """
     SELECT source, row_lane, count(*) AS count,
            min(projected_at) AS first_projected_at, max(projected_at) AS last_projected_at
     FROM omninode_internal.work_ledger_rows
-    WHERE ledger_id = $1 AND ledger_seq IS NULL AND projected_at >= $2
+    WHERE ledger_id = $1 AND (ledger_seq IS NULL OR ledger_seq_provisional)
+      AND projected_at >= $2
     GROUP BY source, row_lane
     ORDER BY count(*) DESC, source, row_lane
 """
@@ -57,6 +58,8 @@ class ProjectedRowFact:
     row_lane: str | None
     ledger_seq: int | None
     projected_at: datetime
+    #: A sequence the projection assigned (OMN-24634): the judge has not sequenced the row.
+    ledger_seq_provisional: bool = False
 
 
 class InMemoryUnjudgedRowReader:
@@ -72,7 +75,7 @@ class InMemoryUnjudgedRowReader:
         for row in self._rows:
             if (
                 row.ledger_id == ledger_id
-                and row.ledger_seq is None
+                and (row.ledger_seq is None or row.ledger_seq_provisional)
                 and row.projected_at >= since
             ):
                 groups[(row.source, row.row_lane)].append(row.projected_at)

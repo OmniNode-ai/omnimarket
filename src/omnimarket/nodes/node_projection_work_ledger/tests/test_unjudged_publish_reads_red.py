@@ -112,3 +112,33 @@ def test_unjudged_publish_reads_red_other_ledgers_are_not_counted() -> None:
         InMemoryUnjudgedRowReader([other]), config, ledger_id=LEDGER, now=NOW
     )
     assert reading.state is EnumUnjudgedReadingState.WORKING
+
+
+def test_unjudged_publish_reads_red_a_projection_assigned_sequence_still_reads_red() -> (
+    None
+):
+    """OMN-24634: a live row the projection sequenced holds a number the judge did not give."""
+    config = load_unjudged_config()
+    provisional = ProjectedRowFact(
+        ledger_id=LEDGER,
+        source="onex-ledger",
+        row_lane="alpha",
+        ledger_seq=7,
+        projected_at=NOW - timedelta(hours=1),
+        ledger_seq_provisional=True,
+    )
+    reading = read_unjudged(
+        InMemoryUnjudgedRowReader([provisional]), config, ledger_id=LEDGER, now=NOW
+    )
+    assert reading.state is EnumUnjudgedReadingState.RED
+    assert reading.unjudged_count == 1
+    # Positive control: the same row once the judge settled its number is not counted.
+    settled = ProjectedRowFact(
+        LEDGER, "onex-ledger", "alpha", 7, NOW - timedelta(hours=1), False
+    )
+    assert (
+        read_unjudged(
+            InMemoryUnjudgedRowReader([settled]), config, ledger_id=LEDGER, now=NOW
+        ).state
+        is EnumUnjudgedReadingState.WORKING
+    )

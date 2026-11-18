@@ -26,6 +26,7 @@ import os
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
@@ -141,6 +142,10 @@ async def _migrated(
         "_SEQ_HOLDER",
         "_INSERT_SEQ_CONFLICT",
         "_UPSERT_LATEST",
+        "_HELD_SEQ",
+        "_NEXT_SEQ",
+        "_HOLDER_IS_PROVISIONAL",
+        "_MOVE_PROVISIONAL",
     )
     originals = {n: getattr(writer_module, n) for n in names}
     try:
@@ -156,6 +161,12 @@ async def _migrated(
         # 0010 grants the runtime role, which the throwaway schema lacks, so only 0009 is applied.
         await connection.execute(
             (MIGRATION.parent / "0009_work_ledger_seq_unique.sql")
+            .read_text()
+            .replace("omninode_internal.", f"{schema}.")
+        )
+        # OMN-24634: the provisional-sequence flag the writer's insert and move statements name.
+        await connection.execute(
+            (MIGRATION.parent / "0013_work_ledger_seq_provisional.sql")
             .read_text()
             .replace("omninode_internal.", f"{schema}.")
         )
@@ -364,6 +375,113 @@ async def test_ledger_seq_window_presence_includes_rows_outside_window(
         assert report.rows_without_seq == 1
         assert report.max_seq_row_ts == datetime(2026, 10, 8, 2, tzinfo=UTC)
         assert report.newest_row_ts == datetime(2026, 10, 8, 3, tzinfo=UTC)
+
+
+def _claim_n(n: int) -> str:
+    return f"2026-11-15T10:{n:02d}:00Z | CLAIM | lane=alpha{n} | ticket=OMN-{n} | est ~1 lane-hours; displaces x; (OMN-{n}) | work"
+
+
+async def _live(writer: WorkLedgerProjectionWriter, n: int, seq: int | None) -> None:
+    topic = EnumLedgerRowType.CLAIM.topic
+    await writer.project_event(
+        topic,
+        {"raw_row": _claim_n(n), "ledger_seq": seq, "source": "onex-ledger"},
+        _meta(topic),
+    )
+
+
+async def _seq_of(connection: asyncpg.Connection, schema: str, n: int) -> int | None:
+    return await connection.fetchval(
+        f"SELECT ledger_seq FROM {schema}.work_ledger_rows WHERE raw_row = $1",
+        _claim_n(n),
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_provisional_rows_keep_their_arrival_order_over_three_judge_rows() -> (
+    None
+):
+    """Review of omnimarket#6306, finding 3, on the real unique index and the real move statement."""
+    async with _migrated() as (writer, connection, schema):
+        for n in (1, 2, 3):
+            await _live(writer, n, n)  # the judge's rows 1-3
+        await _live(writer, 7, None)  # provisional a: 4
+        await _live(writer, 8, None)  # provisional b: 5
+        for n in (4, 5, 6):
+            await _live(writer, n, n)  # the judge's rows 4-6, each stating a number
+            a, b = (
+                await _seq_of(connection, schema, 7),
+                await _seq_of(connection, schema, 8),
+            )
+            assert a is not None
+            assert b is not None
+            assert a < b, f"order lost after judge {n}: a={a} b={b}"
+        judged = [await _seq_of(connection, schema, n) for n in (1, 2, 3, 4, 5, 6)]
+        assert judged == [1, 2, 3, 4, 5, 6]
+        conflicts = await connection.fetchval(
+            f"SELECT count(*) FROM {schema}.work_ledger_seq_conflicts"
+        )
+        assert conflicts == 0
+        assert writer.provisional_rows_moved >= 2
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_provisional_rows_moved_leaves_the_row_being_written_out_on_real_postgres() -> (
+    None
+):
+    """Third review of omnimarket#6306, finding 4: provisional rows at 1 and 2, the judge accepts the second as 1."""
+    async with _migrated() as (writer, connection, schema):
+        await _live(writer, 7, None)  # provisional 1
+        await _live(writer, 8, None)  # provisional 2
+        await _live(writer, 8, 1)  # the judge accepts the second row as 1
+        assert await _seq_of(connection, schema, 8) == 1
+        assert await _seq_of(connection, schema, 7) == 3
+        conflicts = await connection.fetchval(
+            f"SELECT count(*) FROM {schema}.work_ledger_seq_conflicts"
+        )
+        assert conflicts == 0
+        assert writer.provisional_rows_moved == 1  # one row moved, not two
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_provisional_row_is_unsequenced_to_the_gap_check_and_the_parity_split(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review of omnimarket#6306, finding 2, on a real table: judge 1-3, judge 4 lost, a live row takes 4, judge 5."""
+    from omnimarket.handlers.work_ledger_seq_gap import PostgresWorkLedgerSeqReader
+    from omnimarket.nodes.node_projection_work_ledger.parity_unsequenced import (
+        SELECT_UNSEQUENCED,
+    )
+
+    async with _migrated() as (writer, connection, schema):
+        for n in (1, 2, 3):
+            await _live(writer, n, n)
+        await _live(writer, 7, None)  # takes 4, provisional
+        assert await _seq_of(connection, schema, 7) == 4
+        await _live(writer, 5, 5)  # judge 5 arrives, judge 4 never did
+        monkeypatch.setenv("WORK_LEDGER_SEQ_INTEGRATION_DSN", _dsn())
+        facts = PostgresWorkLedgerSeqReader(
+            "WORK_LEDGER_SEQ_INTEGRATION_DSN", f"{schema}.work_ledger_rows"
+        ).read_gap_facts(
+            ledger_id="rolling-work-ledger", from_seq=1, since=None, until=None
+        )
+        assert facts.gaps == ((4, 4),)
+        assert facts.rows_with_seq == 4
+        assert facts.rows_without_seq == 1
+        assert facts.max_seq == 5
+        rows = await connection.fetch(
+            SELECT_UNSEQUENCED.replace("omninode_internal.", f"{schema}."),
+            datetime(2026, 11, 15, tzinfo=UTC),
+            datetime(2026, 11, 16, tzinfo=UTC),
+        )
+        provisional_id = await connection.fetchval(
+            f"SELECT row_id FROM {schema}.work_ledger_rows WHERE raw_row = $1",
+            _claim_n(7),
+        )
+        assert [r["row_id"] for r in rows] == [provisional_id]
 
 
 RULING = '2026-10-01T09:00:00Z | RULING | lane=orch | ticket=OMN-1 | kind=decision | "use the lab" | first answer'

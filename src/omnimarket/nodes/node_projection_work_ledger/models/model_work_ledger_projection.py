@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from typing import Self
+
 from omnibase_core.models.events.work.model_work_ledger_record import (
     ModelWorkLedgerRecord,
 )
@@ -19,6 +21,7 @@ from pydantic import (
     ConfigDict,
     Field,
     field_validator,
+    model_validator,
 )
 
 from omnimarket.events.model_ledger_row_event import validate_work_ledger_id
@@ -52,10 +55,26 @@ class ModelWorkLedgerProjectionConfig(BaseModel):
     ledger_id: str = Field(min_length=1)
     #: Sources whose rows must carry a ledger_seq to be projected (OMN-23488).
     sequence_required_sources: tuple[str, ...]
+    #: OMN-24634: the listed sources whose unsequenced rows the projection gives a provisional ledger_seq
+    #: (tip+1 under the ledger lock); the judge's own number for that sequence outranks it. Each must also be
+    #: in sequence_required_sources.
+    sequence_assigned_sources: tuple[str, ...] = ()
     #: The row types work_ledger_latest keeps the newest row of per lane and per ticket (OMN-23606).
     latest_row_types: frozenset[str] = Field(min_length=1)
 
     _canonical_ledger_id = field_validator("ledger_id")(validate_work_ledger_id)
+
+    @model_validator(mode="after")
+    def _assigned_sources_are_required_sources(self) -> Self:
+        """A source can only be given a sequence by the projection if it is one that needs one (OMN-24634)."""
+        unlisted = sorted(
+            set(self.sequence_assigned_sources) - set(self.sequence_required_sources)
+        )
+        if unlisted:
+            raise ValueError(
+                f"sequence_assigned_sources {unlisted} are not in sequence_required_sources"
+            )
+        return self
 
 
 __all__ = [

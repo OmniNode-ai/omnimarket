@@ -1,0 +1,80 @@
+schema_version: 1.0.0
+ticket_id: OMN-24683
+title: 'omnimarket#6306 review round 3: the context-source sequence reader reads a provisional row as unsequenced'
+summary: The third review of omnimarket#6306 at head e49d19acb965 found that the context-source ledger's sequence reader (read_sequence) read a projection-assigned (provisional) ledger_seq as the judge's, so a revision ledger_seq:rolling-work-ledger:4 resolved complete with a row the judge never sequenced. The reader now returns a provisional row with no ledger_seq, so a snapshot that holds one reads STALE as for a legacy NULL row. The review's four non-blocking findings are fixed beside it (the anchored findings-comment check, the counters logged at INFO, the moved count leaving out the row being written, and the parity export's missing provisional key documented).
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24683-review-round-3
+  statement: A revision never resolves complete on a sequence number the judge has not assigned, and each non-blocking finding of the third review is fixed with a test.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: read_sequence returns a provisional row with ledger_seq None (so a snapshot reads STALE, as for a legacy NULL row) or leaves it out, with a unit test for judge rows 1-3 plus a provisional row 4 -- falsifier: uv run pytest tests/unit/nodes/node_context_source_ledger_effect -k provisional -q in omnimarket, red on head e49d19acb965 and green on the new head'
+  - id: AC2
+    statement: 'AC2: a real-Postgres test for judge rows 1-3 plus provisional row 4 shows reached_sequence does not answer complete for through_seq 4 -- falsifier: uv run pytest tests/test_context_source_ledger_real_postgres.py -k provisional -q in omnimarket against real Postgres on the lab, red on head e49d19acb965 and green on the new head'
+  - id: AC3
+    statement: 'AC3: the contract.yaml comment at node_projection_work_ledger line 130 names the context-source sequence reader among the readers that read a provisional row as unsequenced -- falsifier: grep -n "node_context_source_ledger_effect" src/omnimarket/nodes/node_projection_work_ledger/contract.yaml returns the comment line'
+  - id: AC4
+    statement: 'AC4: the review''s non-blocking findings 2 to 5 are each fixed with a test or answered in a pull request comment by number (the findings-comment check anchored to the answer form with a case in test_contract_checks_can_fail.py, the counters logged at INFO or carried on the terminal event, provisional_rows_moved leaving the row being written out of the count, a missing ledger_seq_provisional key read as unknown in parity_unsequenced.py) -- falsifier: uv run pytest tests/unit/nodes/node_projection_work_ledger tests/test_contract_checks_can_fail.py -q in omnimarket, then onex scm pr-view reads the comment list'
+evidence_requirements:
+- kind: tests
+  description: The two nodes' focused unit tests.
+  command: uv run pytest tests/unit/nodes/node_context_source_ledger_effect tests/unit/nodes/node_projection_work_ledger -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24683-reader-unit
+  description: 'AC1: judge rows 1-3 plus a provisional row 4 read STALE through the sequence reader; the same tests fail on head e49d19acb965.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_context_source_ledger_effect -k provisional -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24683-reader-real-postgres-hosted
+  description: 'AC2, hosted: the real-Postgres provisional test passes against the Postgres 16 the hosted verifier provides to every bound test. The none-skipped reading of the same test stays in the item below, a local Done gate item that binds no criterion.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_context_source_ledger_real_postgres.py -k provisional -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24683-reader-real-postgres
+  description: 'AC2: the real-Postgres test passes with none skipped; only the local Done gate runs it.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: "out=$(uv run pytest tests/test_context_source_ledger_real_postgres.py -k provisional -q -n 0 --no-cov -p no:cacheprovider 2>&1); printf '%s\\n' \"$out\" | tail -3; printf '%s\\n' \"$out\" | tail -1 | grep -Eq '^[0-9]+ passed' && ! printf '%s\\n' \"$out\" | tail -1 | grep -Eq 'skipped|failed|error'"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24683-contract-comment
+  description: 'AC3: the projection contract names the context-source sequence reader.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_work_ledger/test_contract_names_context_source_reader.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24683-non-blocking
+  description: 'AC4: the findings-comment check, the counter log, the moved count and the parity export docstring each have a test.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_work_ledger -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24683-integration-proof
+  description: 'Run the two nodes'' focused unit tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24683 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_context_source_ledger_effect tests/unit/nodes/node_projection_work_ledger -q -n 0 --no-cov
+    cwd: .

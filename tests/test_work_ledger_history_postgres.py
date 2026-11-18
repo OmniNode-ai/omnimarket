@@ -80,7 +80,11 @@ def database(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[Any, str]]:
     try:
         with conn.cursor() as cursor:
             cursor.execute(f"CREATE SCHEMA {schema}")
-            for name in ("0000_create_work_ledger.sql", "0003_work_ledger_seq.sql"):
+            for name in (
+                "0000_create_work_ledger.sql",
+                "0003_work_ledger_seq.sql",
+                "0013_work_ledger_seq_provisional.sql",
+            ):
                 cursor.execute(
                     (MIGRATIONS / name)
                     .read_text()
@@ -103,7 +107,12 @@ def migrate(conn: Any, schema: str) -> None:
 
 
 def insert(
-    conn: Any, schema: str, seq: int, *, ledger_id: str = "rolling-work-ledger"
+    conn: Any,
+    schema: str,
+    seq: int,
+    *,
+    ledger_id: str = "rolling-work-ledger",
+    provisional: bool = False,
 ) -> str:
     # A future writer stamp cannot move the ingest cutoff or canonical order.
     raw = f"2027-01-{5 - seq:02d}T00:00:00Z | CLAIM | lane=member | run=run-a | principal=dev-member | ledger={ledger_id}"
@@ -124,6 +133,7 @@ def insert(
                 f"archive/2026-10-{23 if seq <= 2 else 24}",
                 datetime.now(UTC),
                 seq,
+                provisional,
             ),
         )
     return raw
@@ -206,6 +216,36 @@ def test_postgres_history_returns_both_sources_and_rejects_truncation_and_gaps(
         with source._connect().cursor() as cursor:
             cursor.execute("SHOW transaction_read_only")
             assert cursor.fetchone()[0] == "on"
+    finally:
+        source.close()
+
+
+def test_postgres_history_reads_a_provisional_row_as_unsequenced(database) -> None:
+    """Review of omnimarket#6306, finding 2: judge rows 1-3, judge 4 lost, a live row holds the provisional 4."""
+    conn, schema = database
+    migrate(conn, schema)
+    for seq in (1, 2, 3):
+        insert(conn, schema, seq)
+    insert(conn, schema, 4, provisional=True)
+    request = ModelWorkLedgerQueryRequest.model_validate(
+        {
+            "correlation_id": str(uuid4()),
+            "query": "rows",
+            "until": datetime.now(UTC) + timedelta(seconds=1),
+            "history": {
+                "ledger_id": "rolling-work-ledger",
+                "first_seq": 1,
+                "last_seq": 4,
+                "sources": ["archive/2026-10-23", "archive/2026-10-24"],
+            },
+        }
+    )
+    source = reader(schema)
+    try:
+        result = HandlerWorkLedgerQuery(reader=source).handle(request)
+        assert result.completeness.status == "incomplete"
+        assert "missing-sequence" in result.completeness.reasons
+        assert "sequence-gap" in result.completeness.reasons
     finally:
         source.close()
 

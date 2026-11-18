@@ -52,6 +52,8 @@ class _FakeConnection:
 
     async def fetchval(self, sql: str, *args: Any) -> Any:
         # OMN-23152: the writer asks who holds a sequence before it inserts; nobody does here.
+        if "COALESCE(MAX(ledger_seq)" in sql:
+            return 1  # OMN-24634: an empty ledger's tip+1 (the real query never returns NULL)
         self._db.holder_lookups.append(args)
         return None
 
@@ -129,7 +131,7 @@ def test_a_claim_message_writes_the_log_row_and_opens_the_entity() -> None:
     result = _writer(db).handle(
         {"raw_row": CLAIM, "_topic": EnumLedgerRowType.CLAIM.topic}
     )
-    assert result == {"rows_upserted": 2}
+    assert result["rows_upserted"] == 2
     assert (db.connected, db.closed) == (1, 1)
     sqls = [s for s, _ in db.statements]
     assert "work_ledger_rows" in sqls[0]
@@ -197,15 +199,20 @@ def test_ledger_seq_writer_binds_and_only_fills_null(ledger_seq: int | None) -> 
         }
     )
     sql, args = db.statements[0]
-    assert "projected_at, ledger_seq)" in sql
-    assert "$10)" in sql
+    assert "projected_at, ledger_seq, ledger_seq_provisional)" in sql
+    assert "$10, $11)" in sql
     assert "ON CONFLICT (row_id) DO UPDATE SET ledger_seq = EXCLUDED.ledger_seq" in sql
+    # OMN-24634: a stored judge sequence is never overwritten; a provisional one gives way to the judge's.
     assert (
-        "WHERE omninode_internal.work_ledger_rows.ledger_seq IS NULL "
-        "AND EXCLUDED.ledger_seq IS NOT NULL"
+        "WHERE (omninode_internal.work_ledger_rows.ledger_seq IS NULL "
+        "OR omninode_internal.work_ledger_rows.ledger_seq_provisional)"
     ) in sql
-    assert len(args) == 10
+    assert "AND EXCLUDED.ledger_seq IS NOT NULL" in sql
+    assert len(args) == 11
     assert args[9] == ledger_seq
+    assert (
+        args[10] is False
+    )  # a row that carries the judge's sequence is never provisional
     assert args[6] == CLAIM
     assert db.locks == [("work-ledger:rolling-work-ledger",)]
     # OMN-23152: a row with a sequence is checked for a holder first; a row with none is not.

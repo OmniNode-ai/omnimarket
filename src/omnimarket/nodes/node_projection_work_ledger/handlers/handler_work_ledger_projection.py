@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import threading
 from collections.abc import Coroutine
 from concurrent.futures import ThreadPoolExecutor
@@ -84,20 +85,25 @@ from omnimarket.projection.runner import (
     MessageMeta,
 )
 
+logger = logging.getLogger(__name__)
+
 ROWS_TABLE = "omninode_internal.work_ledger_rows"
 STATE_TABLE = "omninode_internal.work_ledger_state"
 CONFLICTS_TABLE = "omninode_internal.work_ledger_seq_conflicts"
 SEQ_CONFLICT_REASON = "ledger_seq already held by another row"
 
-# A row first projected by an older emitter or the emit backfill gains its seq
-# when the sequenced event arrives. A stored seq is immutable, never overwritten.
+# A row first projected by an older emitter or the emit backfill gains its seq when the sequenced event
+# arrives. A stored judge sequence is immutable, never overwritten. A projection-assigned (provisional)
+# sequence is the one exception: the judge's own number for the same row replaces it (OMN-24634).
 _INSERT_ROW = f"""
     INSERT INTO {ROWS_TABLE}
         (row_id, ledger_id, row_ts, row_type, row_lane, tickets, raw_row, source,
-         projected_at, ledger_seq)
-    VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)
-    ON CONFLICT (row_id) DO UPDATE SET ledger_seq = EXCLUDED.ledger_seq
-    WHERE {ROWS_TABLE}.ledger_seq IS NULL AND EXCLUDED.ledger_seq IS NOT NULL
+         projected_at, ledger_seq, ledger_seq_provisional)
+    VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11)
+    ON CONFLICT (row_id) DO UPDATE SET ledger_seq = EXCLUDED.ledger_seq,
+        ledger_seq_provisional = EXCLUDED.ledger_seq_provisional
+    WHERE ({ROWS_TABLE}.ledger_seq IS NULL OR {ROWS_TABLE}.ledger_seq_provisional)
+      AND EXCLUDED.ledger_seq IS NOT NULL
 """
 
 # OMN-23152: the unique index on (ledger_id, ledger_seq) refuses a second row for a held sequence.
@@ -113,6 +119,37 @@ _INSERT_SEQ_CONFLICT = f"""
         (row_id, ledger_id, ledger_seq, held_row_id, raw_row, source, reason)
     VALUES ($1, $2, $3, $4, $5, $6, $7)
     ON CONFLICT (row_id) DO NOTHING
+"""
+
+# OMN-24634: the judge owns ledger_seq and counts it on its own, so the projection cannot know the
+# judge's next number. A live row with no sequence takes the next number after the ledger's tip, under the
+# same advisory lock every writer holds, and the row is marked provisional. When the judge then states a
+# number a provisional row holds, the judge's number stands and the projection moves its own rows: the
+# provisional rows at or above that number go, in their current order, to fresh numbers above the tip, so
+# the provisional rows keep their arrival order relative to one another whatever the judge states. A
+# provisional row below the stated number keeps its number (it still sorts before the moved ones). A
+# redelivery finds its stored sequence first and keeps it.
+_HELD_SEQ = f"SELECT ledger_seq FROM {ROWS_TABLE} WHERE row_id = $1"
+_NEXT_SEQ = (
+    f"SELECT COALESCE(MAX(ledger_seq), 0) + 1 FROM {ROWS_TABLE} WHERE ledger_id = $1"
+)
+_HOLDER_IS_PROVISIONAL = (
+    f"SELECT ledger_seq_provisional FROM {ROWS_TABLE} WHERE row_id = $1"
+)
+# One statement: every new number is above the current tip, so the unique index never sees a collision
+# mid-update, and the rank over the current ledger_seq keeps the rows' relative order.
+_MOVE_PROVISIONAL = f"""
+    WITH moving AS (
+        SELECT row_id, row_number() OVER (ORDER BY ledger_seq) AS rank
+        FROM {ROWS_TABLE}
+        WHERE ledger_id = $1 AND ledger_seq_provisional AND ledger_seq >= $2
+    ), tip AS (
+        SELECT COALESCE(MAX(ledger_seq), 0) AS top FROM {ROWS_TABLE} WHERE ledger_id = $1
+    )
+    UPDATE {ROWS_TABLE} AS target SET ledger_seq = tip.top + moving.rank
+    FROM moving, tip
+    WHERE target.row_id = moving.row_id
+    RETURNING target.row_id
 """
 
 _ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))"
@@ -199,13 +236,13 @@ _T = TypeVar("_T")
 
 
 class UnsequencedLiveRowError(PoisonEventError, WorkLedgerFoldError):
-    """A live dual-write source row arrived with no ledger_seq (OMN-23488).
+    """A live dual-write source row arrived with no ledger_seq and no declared way to order it (OMN-23488).
 
-    A row of a source listed in ``sequence_required_sources`` that carries no
-    ``ledger_seq`` is a write to a ledger file that is not the canonical one.
-    Refused before any database statement, so the runtime classifies it POISON
-    and routes it to the poison DLQ topic instead of projecting it. The backfill
-    source (ledger-emit) is not listed and still projects unsequenced.
+    A row of a source listed in ``sequence_required_sources`` is given its ledger_seq by the
+    projection when the source is also in ``sequence_assigned_sources`` (OMN-24634). A listed
+    source that is not assigned is refused before any database statement, so the runtime
+    classifies it POISON and routes it to the poison DLQ topic. The backfill source
+    (ledger-emit) is not listed and still projects unsequenced.
     """
 
 
@@ -280,6 +317,30 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
             self._contract["work_ledger"]
         )
         self._dispatch_lock = threading.Lock()
+        #: OMN-24634: counters of the live rows that arrived with no ledger_seq, kept for the life of the writer
+        #: and published beside ``rows_upserted`` by ``project_request``. ``in`` counts every delivery of such a
+        #: row when it arrives. Each delivery then settles as exactly one of: ``sequenced`` (a number newly
+        #: assigned, committed), ``redelivered`` (the row already held its number, which was kept) or
+        #: ``dead_lettered`` (refused before any write). A delivery that fails in the database settles as none,
+        #: so ``in`` above the three outcomes together is a delivery that did not finish.
+        self.unsequenced_live_rows_in = 0
+        self.unsequenced_live_rows_sequenced = 0
+        self.unsequenced_live_rows_redelivered = 0
+        self.unsequenced_live_rows_dead_lettered = 0
+        #: Provisional rows moved to fresh numbers because the judge stated a number one of them held (the
+        #: row being written is never counted: it takes the judge's number, it is not moved).
+        self.provisional_rows_moved = 0
+        self._logged_sequence_counters: dict[str, int] = self.sequence_counters
+
+    @property
+    def sequence_counters(self) -> dict[str, int]:
+        return {
+            "unsequenced_live_rows_in": self.unsequenced_live_rows_in,
+            "unsequenced_live_rows_sequenced": self.unsequenced_live_rows_sequenced,
+            "unsequenced_live_rows_redelivered": self.unsequenced_live_rows_redelivered,
+            "unsequenced_live_rows_dead_lettered": self.unsequenced_live_rows_dead_lettered,
+            "provisional_rows_moved": self.provisional_rows_moved,
+        }
 
     @property
     def poison_dlq_topics(self) -> list[str]:
@@ -315,9 +376,38 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
         topic = request.topic_or(topics[0] if topics else "")
         meta = request.message_meta(topic)
         with self._dispatch_lock:
-            written = self._run(self._project_one_message(topic, request.payload, meta))
-        # ``rows_upserted`` is the key the runtime's write-path guard reads.
-        return {"rows_upserted": written}
+            try:
+                written = self._run(
+                    self._project_one_message(topic, request.payload, meta)
+                )
+            except Exception as err:
+                # OMN-24634: the failure is logged here with its own type and message, as the top-level
+                # error, before the runtime classifies it.
+                logger.error(
+                    "work-ledger projection failed on %s: %s: %s",
+                    topic,
+                    type(err).__name__,
+                    err,
+                    exc_info=err,
+                )
+                # A refused delivery moves a counter too (dead_lettered, or ``in`` with no outcome).
+                self._log_sequence_counters()
+                raise
+        # ``rows_upserted`` is the key the runtime's write-path guard reads; the sequence counters ride
+        # beside it as running totals of this writer. The runtime prints the rest of this result at DEBUG, so
+        # the counters are also logged at INFO whenever one of them changes: that line is the operator reading.
+        self._log_sequence_counters()
+        return {"rows_upserted": written, **self.sequence_counters}
+
+    def _log_sequence_counters(self) -> None:
+        """Log the sequence counters at INFO when any of them changed since the last line (OMN-24634)."""
+        counters = self.sequence_counters
+        if counters != self._logged_sequence_counters:
+            self._logged_sequence_counters = counters
+            logger.info(
+                "work-ledger projection sequence counters: %s",
+                " ".join(f"{name}={value}" for name, value in counters.items()),
+            )
 
     async def _project_one_message(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
@@ -332,9 +422,15 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
 
     @staticmethod
     def _run(coro: Coroutine[Any, Any, _T]) -> _T:
+        # OMN-24634: the loop probe sits outside the except block. Running the coroutine inside
+        # ``except RuntimeError`` chained every projection failure to "no running event loop" as its
+        # context, which buried the real cause (UnsequencedLiveRowError) in the traceback.
         try:
             asyncio.get_running_loop()
+            running = True
         except RuntimeError:
+            running = False
+        if not running:
             return asyncio.run(coro)
         with ThreadPoolExecutor(max_workers=1) as pool:
             return pool.submit(asyncio.run, coro).result()
@@ -362,13 +458,21 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
         if request.ledger_id != self._config.ledger_id:
             raise WorkLedgerFoldError("configured ledger_id mismatch")
         result = fold_row(request)
-        if (
+        needs_seq = (
             result.row.ledger_seq is None
             and result.row.source in self._config.sequence_required_sources
+        )
+        if needs_seq:
+            self.unsequenced_live_rows_in += 1
+        if (
+            needs_seq
+            and result.row.source not in self._config.sequence_assigned_sources
         ):
+            # No declared way to order this source: counted, refused to the poison DLQ with its reason.
+            self.unsequenced_live_rows_dead_lettered += 1
             raise UnsequencedLiveRowError(
                 f"unsequenced-live-row: source {result.row.source!r} requires a "
-                f"ledger_seq; row_id {result.row.row_id}"
+                f"ledger_seq and is not in sequence_assigned_sources; row_id {result.row.row_id}"
             )
         expected_id = str(work_ledger_event_id(result.row.ledger_id, result.row.row_id))
         if data.get("event_id") is not None and str(data["event_id"]) not in {
@@ -380,24 +484,51 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
             )
         now = datetime.now(UTC)
         row = result.row
+        provisional = False
+        newly_assigned = False
+        moved = 0
         async with self._db.pool.acquire() as conn, conn.transaction():
             await conn.execute(_ADVISORY_LOCK, f"work-ledger:{request.ledger_id}")
+            if needs_seq:
+                held = await conn.fetchval(_HELD_SEQ, row.row_id)
+                if held is None:
+                    held = await conn.fetchval(_NEXT_SEQ, row.ledger_id)
+                    newly_assigned = True
+                row = row.model_copy(update={"ledger_seq": int(held)})
+                provisional = True
             if row.ledger_seq is not None:
                 holder = await conn.fetchval(
                     _SEQ_HOLDER, row.ledger_id, row.ledger_seq, row.row_id
                 )
                 if holder is not None:
-                    await conn.execute(
-                        _INSERT_SEQ_CONFLICT,
-                        row.row_id,
-                        row.ledger_id,
-                        row.ledger_seq,
-                        holder,
-                        row.raw_row,
-                        row.source,
-                        SEQ_CONFLICT_REASON,
-                    )
-                    return 0
+                    if not provisional and await conn.fetchval(
+                        _HOLDER_IS_PROVISIONAL, holder
+                    ):
+                        # The judge's number outranks the projection's provisional one: the projection
+                        # moves its own rows (this one and the provisional rows after it, in order) above
+                        # the tip and the judge's row takes its number.
+                        moved_rows = await conn.fetch(
+                            _MOVE_PROVISIONAL, row.ledger_id, row.ledger_seq
+                        )
+                        # The row being written may itself be among them (its own provisional copy sat at or
+                        # above the stated number): it is written with the judge's number, not moved.
+                        moved += sum(
+                            1
+                            for moved_row in moved_rows
+                            if moved_row["row_id"] != row.row_id
+                        )
+                    else:
+                        await conn.execute(
+                            _INSERT_SEQ_CONFLICT,
+                            row.row_id,
+                            row.ledger_id,
+                            row.ledger_seq,
+                            holder,
+                            row.raw_row,
+                            row.source,
+                            SEQ_CONFLICT_REASON,
+                        )
+                        return 0
             await conn.execute(
                 _INSERT_ROW,
                 row.row_id,
@@ -410,6 +541,7 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
                 row.source,
                 now,
                 row.ledger_seq,
+                provisional,
             )
             for op in result.ops:
                 sql, args = _op_args(op, now)
@@ -417,6 +549,12 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
             # The latest-state table is derived from the row; the count stays the log row plus its state ops.
             for entry in latest_entries_for_row(row, self._config.latest_row_types):
                 await conn.execute(_UPSERT_LATEST, *latest_args(entry, now))
+        # Counted after the transaction committed: a failed write leaves no count behind.
+        self.provisional_rows_moved += moved
+        if provisional and newly_assigned:
+            self.unsequenced_live_rows_sequenced += 1
+        elif provisional:
+            self.unsequenced_live_rows_redelivered += 1
         return 1 + len(result.ops)
 
     def _validated_rows(
