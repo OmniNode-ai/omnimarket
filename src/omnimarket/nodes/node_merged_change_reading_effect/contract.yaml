@@ -47,7 +47,7 @@ event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
-  external_trigger: python -m omnimarket.nodes.node_merged_change_reading_effect --change <repo>#<number> ..., from a lab host with an ssh path to the runtime host, by hand or from the hourly proving pass.
+  external_trigger: the node's own hourly systemd user timer on the lab hosts its overlay names (schedule install --host <name>), which runs python -m omnimarket.nodes.node_merged_change_reading_effect read --all-runners; the same entry also takes --change <repo>#<number> ... by hand.
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -56,6 +56,7 @@ descriptor:
   timeout_ms: 120000
 metadata:
   transport_type: local
+  execution_locus: host-local
   description: Read merged changes against the running dev system and call the compute node.
   author: OmniNode Team
   created: '2026-11-14'
@@ -103,3 +104,21 @@ runtime:
     git_timeout_seconds: 30
     store_source: overlay store checkout
 # The default rule config is the compute node's own contract block (merged_change_reading); an overlay supplies another.
+# The node owns its schedule. The hosts that run it, and the environment their unit carries, are the node overlay
+# (<root>/node_merged_change_reading_effect/overlay.yaml, schedule_hosts:); the package names no host. The unit reads every
+# change the merged_change_runners overlay declares, once an hour, and keeps the readings in its output log. A lab host
+# gets a systemd user timer: `python -m omnimarket.nodes.node_merged_change_reading_effect schedule install --host <name>`;
+# `schedule uninstall` is the rollback.
+schedule:
+  unit_name: onex-merged-change-reading-hourly
+  state_directory: .onex_state/merged-change-reading
+  timeout_seconds: 600
+  cadence:
+    on_calendar: "*-*-* *:40:00"
+    randomized_delay: 60s
+    persistent: true
+    description: hourly, forty minutes past
+overlay:
+  node: node_merged_change_reading_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.nodes.node_merged_change_reading_effect.overlay.ModelMcrScheduleOverlay
