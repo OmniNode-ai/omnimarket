@@ -1,0 +1,96 @@
+schema_version: "1.0.0"
+ticket_id: OMN-25633
+title: Codex lane model and effort routing
+summary: The Codex model node resolves a lane's model from its requested ID, security scope, round, and overlay.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: [public_api]
+requirements:
+  - id: req-omn25633-codex-routing
+    statement: Apply the Codex model and effort ruling at lane dispatch.
+    acceptance:
+      - id: AC1
+        statement: The node accepts typed security scope and round count and resolves declared IDs and overlay policy.
+      - id: AC2
+        statement: The runner defaults to max effort and passes the model selected by the node within its existing line budget.
+      - id: AC3
+        statement: The lane brief and the runner accept max for every Codex ROUTE band and refuse high.
+      - id: AC4
+        statement: The Mac install and both probe lane receipts are recorded in the ticket's ledger STATUS.
+      - id: AC5
+        statement: Both pull requests carry a Lab line in their original bodies.
+evidence_requirements:
+  - kind: tests
+    description: Exercise the packaged contract and the handler with a temporary overlay.
+    command: uv run --frozen pytest tests/nodes/node_codex_model_compute -q --no-cov -n 0 --refuse-skips
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn25633-node-policy
+    description: The node selects from overlay policy and refuses IDs outside its declarations.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_codex_model_compute -q --no-cov -n 0 --refuse-skips
+        cwd: "."
+  - id: dod-omn25633-packaged-overlay-policy
+    description: Read the packaged node contract at the checked-out revision and check that it declares the escalation threshold.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_codex_model_compute/contract.yaml?ref=$(git rev-parse HEAD)"
+          --jq .content | base64 -d | grep -F "  escalation_round_threshold:"'
+        cwd: "."
+  - id: dod-omn25633-runner
+    description: Run the caller tests and canonical file shape check from the plugin worktree.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC2]
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -ec 'cd "${CODEX_ROUTING_PLUGIN_WORKTREE:?}";
+          uv run --no-project --with-requirements tests/skill_suites_requirements.txt python -B -m pytest
+          plugins/omni/skills/remote-lane/tests -q -p no:cacheprovider -k codex;
+          uv run --no-project --with "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@d7ed23f1e89b8b6ce6079d303f8599c661c7f191"
+          python -m omnibase_core.validators.canonical_file_shape --base "$(git merge-base origin/main HEAD)" --head HEAD'
+        cwd: "."
+  - id: dod-omn25633-route
+    description: Run the Codex ROUTE tests from the plugin worktree.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC3]
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -ec 'cd "${CODEX_ROUTING_PLUGIN_WORKTREE:?}";
+          uv run --no-project --with-requirements tests/skill_suites_requirements.txt python -B -m pytest
+          plugins/omni/skills/lane-brief/tests -q -p no:cacheprovider -k codex'
+        cwd: "."
+  - id: dod-omn25633-installed-probes
+    description: Read the orchestrator's installation and probe evidence from the ticket's ledger STATUS.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC4]
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'onex ledger query --query rows --ticket OMN-25633 --kind STATUS |
+          jq -r ".lines[]" | grep -F "installed=" | grep -F "observed="'
+        cwd: "."
+  - id: dod-omn25633-lab-line
+    description: Read the bodies of the published node and plugin pull requests through the source-control node.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC5]
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -euo pipefail -c 'for pr in "${CODEX_ROUTING_NODE_PR:?}" "${CODEX_ROUTING_PLUGIN_PR:?}"; do
+          onex scm pr-view "$pr" --source bus | sed -n "/^{/p" | jq -re ".result.body" | grep "^Lab:";
+          done'
+        cwd: "."
