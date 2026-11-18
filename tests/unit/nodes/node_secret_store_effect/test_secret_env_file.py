@@ -104,7 +104,7 @@ async def test_secret_env_file_write(
     replaced: list[tuple[str | bytes, str | bytes, int | None, int | None]] = []
 
     def observe_open(
-        path: str | bytes, flags: int, mode: int = 0o777, *, dir_fd: int | None = None
+        path: str | bytes, flags: int, mode: int = 0o600, *, dir_fd: int | None = None
     ) -> int:
         fd = real_open(path, flags, mode, dir_fd=dir_fd)
         if flags & os.O_CREAT:
