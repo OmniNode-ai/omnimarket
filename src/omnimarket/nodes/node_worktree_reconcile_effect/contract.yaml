@@ -19,7 +19,7 @@ node_version:
 description: Portable host worktree reconciliation with conservative preservation
   rails.
 input_model: omnimarket.events.worktree_reconcile.ModelWorktreeReconcileCommand
-output_model: omnimarket.events.worktree_reconcile.ModelWorktreeReconcileRunResult
+output_model: omnimarket.nodes.node_worktree_reconcile_effect.models.model_worktree_reconcile_report.ModelWorktreeReconcileRunReport
 handler:
   # OMN-19399: invoked by __main__.py on a host timer, which supplies the
   # effect boundaries. This handler is not a runtime routing target: its host
@@ -150,3 +150,6 @@ outputs:
   errors:
     type: list[str]
     description: Run-level discovery or decider failures.
+  skipped_units:
+    type: list[object]
+    description: Units the unit reader skipped, each with its unit name, the reason environment_file_missing and the file path (a failed transient unit that names no worktree and whose required environment file is gone). A skip is not a failure.
