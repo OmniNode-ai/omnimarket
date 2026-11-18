@@ -73,6 +73,12 @@ handler_routing:
   # handler's dependencies and a runtime cannot.
   default_handler: omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_reconcile:HandlerWorktreeReconcile
   handlers:
+  - operation: repair_core_worktree
+    handler:
+      module: omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_core_worktree_repair
+      name: HandlerCoreWorktreeRepair
+    input_model: omnimarket.nodes.node_worktree_reconcile_effect.models.model_core_worktree_repair.ModelCoreWorktreeRepairRequest
+    output_model: omnimarket.nodes.node_worktree_reconcile_effect.models.model_core_worktree_repair.ModelCoreWorktreeRepairResult
   - operation: schedule
     handler:
       module: omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_schedule

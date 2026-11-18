@@ -1,0 +1,86 @@
+schema_version: 1.0.0
+ticket_id: OMN-25602
+title: A canonical clone whose core.worktree names a missing directory is repaired by the worktree reconcile node with a ledger STATUS row
+summary: A canonical clone whose .git/config core.worktree names a deleted directory makes every git command in it exit 128 and removes its host from lane placement. The worktree reconcile node now reads the value with git config --file, unsets it as a typed repair when the directory is missing, leaves a value naming an existing directory or the clone itself alone, and publishes one ledger STATUS row per repair naming the clone path, the missing directory and the repair kind. Its repair-core-worktree command is the declared way to run it on a host.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25602-core-worktree-repair
+  statement: The node detects a canonical clone whose core.worktree names a missing directory, unsets it without git resolving the worktree, writes one STATUS row per repair, and leaves a clone whose core.worktree names an existing directory or itself alone.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a canonical clone whose .git/config core.worktree names a missing directory is detected and core.worktree is unset as a typed repair, and a clone whose core.worktree names an existing directory is left alone -- falsifier: uv run pytest tests/test_worktree_reconcile_core_worktree.py -q --no-cov -k core_worktree, red on origin/dev and green on the branch'
+  - id: AC2
+    statement: 'AC2: each repair writes one ledger STATUS row naming the clone path, the missing directory and the repair kind -- falsifier: uv run pytest tests/test_worktree_reconcile_core_worktree.py -q --no-cov -k status_row'
+  - id: AC3
+    statement: 'AC3: after the repair runs on h053 from the branch over ssh from h051, git exits 0 in the affected canonical clone and no file on h053 was hand-edited -- falsifier: ssh h053 git config --file <clone>/.git/config --get core.worktree prints no fatal line and the lane report names the repair command that wrote the change'
+  - id: AC4
+    statement: 'AC4: one GLM probe lane on standing probe ticket OMN-25600 starts on h053 after the repair -- falsifier: the lane receipt under ~/.local/state/omni/remote-lanes shows host h053 and engine_rc 0, and a CLAIM row with host=h053 exists on the rolling ledger'
+  - id: AC5
+    statement: 'AC5: the lane step that set core.worktree in the canonical clone is named with the log line or ledger row that shows it -- falsifier: the lane report lacks a line naming the step with a command and its output'
+evidence_requirements:
+- kind: tests
+  description: The core.worktree repair tests beside the node's other reconcile tests.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/test_worktree_reconcile_core_worktree.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25602-ac1-core-worktree-repair
+  description: A missing core.worktree directory is unset as a typed repair; an existing directory or the clone itself is left alone.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_worktree_reconcile_core_worktree.py -q --no-cov -n 0 -p no:randomly -k core_worktree
+    cwd: .
+- id: dod-omn25602-ac2-status-row
+  description: Each repair publishes one STATUS row naming the clone path, the missing directory and the repair kind; a clone left alone or a failed unset publishes none.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_worktree_reconcile_core_worktree.py -q --no-cov -n 0 -p no:randomly -k status_row
+    cwd: .
+- id: dod-omn25602-ac3-h053-git-exits-zero
+  description: After the node's repair-core-worktree command ran on h053 from the branch, git exits 0 in every canonical clone under the registry root. Hosted CI cannot reach the lab host, so only the local Done gate reads it.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: ssh -o BatchMode=yes h053 'for d in /data/omninode/*/*/; do [ -d "$d.git" ] && git -C "$d" status --short --branch >/dev/null || exit 1; done'
+    cwd: .
+- id: dod-omn25602-ac4-probe-on-h053
+  description: The lane report names the probe lane h053probe-1130 placed on h053 with its receipt path and engine rc. Only the local Done gate reads the report.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: sh -c 'grep -l "h053probe-1130" "${OMNI_HOME:?}"/.claude_scratch/reports/h053git-1130-*.md'
+    cwd: .
+- id: dod-omn25602-ac5-setting-step-named
+  description: The lane report names the lane step that set core.worktree with the command and its output. Only the local Done gate reads the report.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: sh -c 'grep -l "core.worktree" "${OMNI_HOME:?}"/.claude_scratch/reports/h053git-1130-*.md'
+    cwd: .
+- id: dod-omn25602-integration-proof
+  description: Run the core.worktree repair tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25602 --kind test -- env -u PYTHONPATH uv run --frozen pytest tests/test_worktree_reconcile_core_worktree.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
