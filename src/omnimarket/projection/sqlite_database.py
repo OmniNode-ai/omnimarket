@@ -53,7 +53,9 @@ from omnimarket.models.model_local_install_delegation_summary import (
 )
 from omnimarket.models.model_local_install_schema import (
     _CURSOR_TABLE_STEPS,
+    FAILED_ZERO_DURATION_STEP,
     RUN_SAVINGS_RECOMPUTE_STEP,
+    clear_failed_zero_durations,
     recompute_run_savings,
     relabel_usage_source,
 )
@@ -896,6 +898,14 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
         if not cls._store_step_recorded(conn, RUN_SAVINGS_RECOMPUTE_STEP):
             redo = "recomputed each run's modelled saving"
             pending.append((RUN_SAVINGS_RECOMPUTE_STEP, recompute_run_savings, redo))
+        if not cls._store_step_recorded(conn, FAILED_ZERO_DURATION_STEP):
+            pending.append(
+                (
+                    FAILED_ZERO_DURATION_STEP,
+                    clear_failed_zero_durations,
+                    "cleared the 0 ms stored on failed runs that timed nothing",
+                )
+            )
         pending.extend(cls._credential_store_steps(conn))
         for index, (step, apply, _) in enumerate(pending):
             try:

@@ -98,3 +98,20 @@ async def test_unmeasured_terminal_and_pre_migration_row_read_nulls() -> None:
         )
         await admin_conn.execute(_MIGRATION.read_text())
         assert await admin_conn.fetchrow(_SELECT, cid) == row
+
+
+@pytest.mark.integration
+async def test_failed_terminal_timed_at_zero_stores_no_measured_duration() -> None:
+    """OMN-24615 AC8: execution_ms is the served run duration; a failed run that timed nothing stores NULL."""
+    payload = {**_wire(_quota_terminal()), "execution_duration_ms": 0}
+    assert payload.get("terminal_failure_cause")  # the fixture is a failed terminal
+    cid = str(payload["correlation_id"])
+    async with _provisioned_runner() as (runner, admin_conn, _schema):
+        assert await runner.project_event(
+            runner._topic_delegation_failed,
+            payload,
+            MessageMeta(partition=0, offset=0, fallback_id=cid),
+        )
+        row = await admin_conn.fetchrow(_SELECT, cid)
+        assert row is not None
+        assert row["execution_ms"] is None

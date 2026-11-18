@@ -1761,7 +1761,12 @@ def _canonical_result_to_task_delegated_payload(
         # explicit requested_model identifies the requested model on this wire.
         "requested_model": _blank_to_none(payload.get("requested_model")),
         "queue_wait_ms": _nonnegative_int_or_none(payload.get("queue_wait_ms")),
-        "execution_ms": _nonnegative_int_or_none(payload.get("execution_duration_ms")),
+        # OMN-24615 AC8: execution_ms is the run duration every page shows; a run that ended on a failure
+        # cause and timed nothing (0 ms) has no measured duration, never a measured 0 ms.
+        "execution_ms": _failed_zero_to_none(
+            _nonnegative_int_or_none(payload.get("execution_duration_ms")),
+            payload.get("terminal_failure_cause"),
+        ),
         "quality_gates_failed": [failure_reason]
         if failure_reason and not quality_passed
         else [],
@@ -2242,6 +2247,13 @@ def _nonnegative_int_or_none(value: object) -> int | None:
     if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
         return value
     return None
+
+
+def _failed_zero_to_none(duration_ms: int | None, failure_cause: object) -> int | None:
+    """OMN-24615 AC8: a run that ended on a failure cause and timed nothing has no measured duration."""
+    if duration_ms == 0 and failure_cause not in (None, ""):
+        return None
+    return duration_ms
 
 
 def _stamp_terminal_timing_and_requested_model(

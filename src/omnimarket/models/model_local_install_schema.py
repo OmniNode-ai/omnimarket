@@ -211,6 +211,24 @@ def relabel_usage_source(conn: sqlite3.Connection) -> None:
     )
 
 
+FAILED_ZERO_DURATION_STEP = "omn24615_delegation_events_failed_zero_duration"
+
+
+def clear_failed_zero_durations(conn: sqlite3.Connection) -> None:
+    """OMN-24615 AC8: a stored run that ended on a failure cause and timed nothing has no measured duration.
+
+    The writer now stores NULL for it; this clears the 0 ms an earlier build stored, in execution_ms (the served
+    run duration) and latency_ms (the model call time). A measured duration, and any run without a failure cause,
+    is left as it is.
+    """
+    conn.execute(
+        "UPDATE delegation_events SET "
+        "execution_ms = CASE WHEN execution_ms = 0 THEN NULL ELSE execution_ms END, "
+        "latency_ms = CASE WHEN latency_ms = 0 THEN NULL ELSE latency_ms END "
+        "WHERE COALESCE(terminal_failure_cause, '') <> '' AND (execution_ms = 0 OR latency_ms = 0)"
+    )
+
+
 RUN_SAVINGS_RECOMPUTE_STEP = "omn24615_delegation_events_run_savings_recompute"
 
 
