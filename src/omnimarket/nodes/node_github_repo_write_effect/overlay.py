@@ -18,12 +18,18 @@ id, or of another organization, is never read.
 ``runner_removals`` names each organization whose runners a lane may list and, per organization, the runners a
 runner_remove may delete: an offline runner of another name is never deleted.
 
+``org_secret_sets`` names each organization Actions secret an org_secret_set write may set: the organization, the name,
+the visibility (``selected`` with the repositories it names, or ``private`` or ``all``) and the secret store reference
+the value is read under. It is its own key and never loosens ``repo_variables``, whose name markers still refuse a
+secret.
+
 The document also carries ``event_bus`` and ``comment_author_logins`` for their own readers; they are optional here
 because the node never reads them, and each reader refuses on its own when its key is absent.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Literal
 
@@ -191,6 +197,76 @@ class ModelRunnerRemovalOverlay(BaseModel):
         return self
 
 
+class ModelOrgSecretSetEntry(BaseModel):
+    """One organization Actions secret the node may set, none in code.
+
+    ``secret_ref`` is the name the value is read under from the secret store, never the
+    value. ``visibility`` is the one the secret is set with: ``selected`` names the
+    ``repositories`` (of the same organization) it is visible to, and ``private`` and
+    ``all`` name none.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    organization: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    name: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,99}$")
+    secret_ref: str = Field(pattern=r"^[A-Za-z0-9_./:-]{1,200}$")
+    visibility: Literal["selected", "private", "all"]
+    repositories: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _shape(self) -> ModelOrgSecretSetEntry:
+        if self.visibility == "selected":
+            if not self.repositories:
+                raise ValueError(
+                    "a selected org secret names the repositories it is visible to"
+                )
+        elif self.repositories:
+            raise ValueError("only a selected org secret names repositories")
+        seen: set[str] = set()
+        for repository in self.repositories:
+            owner, _, repo_name = repository.partition("/")
+            if (
+                not re.fullmatch(r"[A-Za-z0-9_.-]+", owner)
+                or not re.fullmatch(r"[A-Za-z0-9_.-]+", repo_name)
+                or owner.lower() != self.organization.lower()
+            ):
+                raise ValueError(
+                    "an org secret repository must be <organization>/<name> of "
+                    f"the entry's own organization: {repository}"
+                )
+            if repository.lower() in seen:
+                raise ValueError(
+                    f"an org secret repository is named twice: {repository}"
+                )
+            seen.add(repository.lower())
+        return self
+
+
+class ModelOrgSecretSetsOverlay(BaseModel):
+    """The organization secrets an org_secret_set write may set, none in code.
+
+    Its own overlay key: the ``repo_variables`` path refuses a secret-shaped name and
+    this list never loosens that, it is read by no other operation.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    entries: tuple[ModelOrgSecretSetEntry, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _shape(self) -> ModelOrgSecretSetsOverlay:
+        seen: set[tuple[str, str]] = set()
+        for entry in self.entries:
+            key = (entry.organization.lower(), entry.name)
+            if key in seen:
+                raise ValueError(
+                    f"an org secret is named twice: {entry.organization} {entry.name}"
+                )
+            seen.add(key)
+        return self
+
+
 class ModelRepoWriteOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -198,6 +274,7 @@ class ModelRepoWriteOverlay(BaseModel):
     repo_variables: ModelRepoVariablesOverlay | None = None
     runner_removals: ModelRunnerRemovalOverlay | None = None
     runner_group_reads: ModelRunnerGroupReadOverlay | None = None
+    org_secret_sets: ModelOrgSecretSetsOverlay | None = None
     event_bus: ModelNodeEventBus | None = None
     comment_author_logins: tuple[str, ...] | None = None
 

@@ -167,6 +167,12 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         operation="runner_remove",
         replaces="gh api --method DELETE /orgs/{o}/actions/runners/{id}",
     ),
+    ModelScmVerb(
+        verb="org-secret-set",
+        node=_W,
+        operation="org_secret_set",
+        replaces="gh api --method PUT /orgs/{o}/actions/secrets/{name}",
+    ),
     *SCM_GATEWAY_VERBS,
 )
 

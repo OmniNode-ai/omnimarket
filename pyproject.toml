@@ -284,6 +284,9 @@ dependencies = [
     # not a new addition to the resolved dependency set.
     "jsonschema>=4.18.0",
     "cryptography>=50.0.1,<51.0.0",
+    # libsodium sealed box (crypto_box_seal) for the org Actions secret PUT of
+    # node_github_repo_write_effect; `cryptography` has no XSalsa20 box.
+    "pynacl>=1.5.0,<2.0.0",
     # age (X25519) client-side encryption of topic archives before they leave
     # the host; the archiver holds only the public recipient.
     "pyrage>=1.4.0,<2.0.0",

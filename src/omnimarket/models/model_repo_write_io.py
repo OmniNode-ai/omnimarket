@@ -31,6 +31,11 @@ or one failed result. Each operation replaces one ``gh`` verb a lane ran:
 - runner_group_get replaces ``gh api --method GET /orgs/{o}/actions/runner-groups/{id}``:
   it reads one runner group's settings and repositories. The organization and
   group id it may read are only the overlay's runner_group_reads entries.
+- org_secret_set sets one organization Actions secret with PUT
+  /orgs/{o}/actions/secrets/{name}. The request names the secret and carries no
+  value: the value is read from the secret store by the reference the node's
+  overlay declares, sealed with a libsodium sealed box to the organization's
+  public key, and sent only in that sealed form, which no result records.
 - check_run_create posts a check result to /check-runs.
 - workflow_dispatch replaces ``gh workflow run`` with
   POST /actions/workflows/{w}/dispatches.
@@ -98,6 +103,7 @@ class EnumRepoWriteOperation(StrEnum):
     RUNNER_LIST = "runner_list"
     RUNNER_REMOVE = "runner_remove"
     RUNNER_GROUP_GET = "runner_group_get"
+    ORG_SECRET_SET = "org_secret_set"
     WORKFLOW_DISPATCH = "workflow_dispatch"
     CHECK_RUN_CREATE = "check_run_create"
 
@@ -120,6 +126,7 @@ _OPERATION_ONLY_FIELDS: Final[dict[EnumRepoWriteOperation, tuple[str, ...]]] = {
     EnumRepoWriteOperation.PR_LABEL: ("add_labels", "remove_labels"),
     EnumRepoWriteOperation.RUNNER_REMOVE: ("runner_name",),
     EnumRepoWriteOperation.RUNNER_GROUP_GET: ("runner_group_id",),
+    EnumRepoWriteOperation.ORG_SECRET_SET: ("secret_name",),
 }
 
 
@@ -148,6 +155,8 @@ class EnumRepoWriteRefusal(StrEnum):
     RUNNER_NOT_ALLOWED = "runner_not_allowed"
     RUNNER_ONLINE = "runner_online"
     SECRET_REFUSED = "secret_refused"
+    ORG_SECRET_NOT_ALLOWED = "org_secret_not_allowed"
+    ORG_SECRET_SOURCE_UNREADABLE = "org_secret_source_unreadable"
     GITHUB_REFUSED = "github_refused"
     CREDENTIAL_UNAVAILABLE = "credential_unavailable"
     TRANSPORT_ERROR = "transport_error"
@@ -369,6 +378,14 @@ class ModelRepoWriteRequest(BaseModel):
         "overlay's runner_removals, and the runner must be offline and idle "
         "before it is deleted.",
     )
+    secret_name: str | None = Field(
+        default=None,
+        pattern=_VARIABLE_NAME,
+        description="org_secret_set: the organization Actions secret's name; "
+        "the pair (repository's organization, secret_name) must be an entry of "
+        "the overlay's org_secret_sets. The request carries no value: it is "
+        "read from the secret store by the entry's declared reference.",
+    )
     runner_group_id: int | None = Field(
         default=None,
         gt=0,
@@ -484,6 +501,8 @@ class ModelRepoWriteRequest(BaseModel):
             and self.runner_group_id is not None
         ):
             raise ValueError("runner_group_id is read only by runner_group_get")
+        if op is EnumRepoWriteOperation.ORG_SECRET_SET and self.secret_name is None:
+            missing.append("secret_name")
         if op is EnumRepoWriteOperation.RUNNER_REMOVE and self.runner_name is None:
             missing.append("runner_name")
         if (
@@ -633,6 +652,17 @@ class ModelRepoWriteCompleted(_ModelRepoWriteResultBase):
         default=None,
         description="runner_group_get only: the runner group, its settings and "
         "its repositories, as the organization reports them.",
+    )
+    secret_name: str | None = Field(
+        default=None,
+        description="org_secret_set only: the name of the organization secret "
+        "set. Never its value, its sealed form or a digest of either.",
+    )
+    secret_key_id: str | None = Field(
+        default=None,
+        description="org_secret_set only: the id of the organization public key "
+        "the value was sealed to; GitHub returns no value, so this and the "
+        "idempotency key are the replay record.",
     )
 
 

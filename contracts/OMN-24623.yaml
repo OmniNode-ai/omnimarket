@@ -1,0 +1,74 @@
+schema_version: 1.0.0
+ticket_id: OMN-24623
+title: GitHub write node sets allowlisted org Actions secrets from the secret store (dev redeploy trigger SASL)
+summary: 'The dev redeploy trigger authenticates with the organization Actions secrets KAFKA_SASL_USERNAME and KAFKA_SASL_PASSWORD, and no node could set them: node_github_repo_write_effect wrote repository variables only and refused secrets. It gains one narrow operation, org_secret_set (verb onex scm org-secret-set --secret), that sets an organization secret only for a name its overlay org_secret_sets lists. The value is read from the secret store by the entry''s declared reference, sealed with a libsodium sealed box to the organization public key and sent in one PUT /orgs/{org}/actions/secrets/{name} with the key id and the declared visibility. The value is on no request, result, event or log, and the repository variable path still refuses a secret. The dependency pynacl is added for the sealed box.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- events
+- public_api
+requirements:
+- id: req-omn24623-org-secret-set
+  statement: The write node sets an organization Actions secret from the secret store only for an overlay-allowlisted name, and the value appears nowhere but the sealed PUT.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: an org-secret set for KAFKA_SASL_USERNAME or KAFKA_SASL_PASSWORD reads the value from the secret store by name, seals it with libsodium to the org public key, and sends one PUT /orgs/{org}/actions/secrets/{name} carrying the key id and the declared selected-repository visibility -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_org_secret.py -q'
+  - id: AC2
+    statement: 'AC2: a secret name not on the declared allowlist is refused with a typed reason before any secret-store read and any GitHub call -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_org_secret.py -q'
+  - id: AC3
+    statement: 'AC3: the secret value never appears in argv, any log record, any bus event or any error text, on success, on refusal and on a failed GitHub call -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_org_secret.py -q'
+  - id: AC4
+    statement: 'AC4: the repository-variable and the other write operations still refuse a secret-shaped name or value, and the golden chain and scm seam-shape tests pass with the new operation -- falsifier: uv run pytest tests/test_golden_chain_github_repo_write_effect.py tests/unit/handlers/scm/test_scm_write_seam_shapes.py -q'
+evidence_requirements:
+- kind: tests
+  description: The org secret tests, the write node tests, the chain and seam tests, the operation table and the gh shim coverage table at the pushed head; they fail at origin/dev where the operation does not exist.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect tests/test_golden_chain_github_repo_write_effect.py tests/unit/handlers/scm tests/ci/test_scm_operation_table_omn20912.py tests/ci/test_gh_shim_coverage_table_omn20914.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24623-ac1-seal-and-put
+  description: 'The org secret handler test: an allowlisted name reads the store by its declared reference, seals the value to the organization key (decrypting the captured encrypted_value with the test key pair returns the sentinel) and sends one PUT with the key id, the selected visibility and the repository ids; private visibility sends no ids; a retry with the same key is replayed.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_org_secret.py -q --no-cov -n 0 -p no:randomly -k "allowlisted or 204 or private or retry or sealed"
+    cwd: .
+- id: dod-omn24623-ac2-allowlist
+  description: 'The org secret handler test: a name the overlay does not list, one of another organization, an overlay with no org_secret_sets key and no overlay are refused org_secret_not_allowed in both modes with zero store reads and zero transport calls.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_org_secret.py -q --no-cov -n 0 -p no:randomly -k "allowlist or overlay"
+    cwd: .
+- id: dod-omn24623-ac3-value-hygiene
+  description: 'The org secret handler test: the sentinel, its base64 form and every sealed form are absent from every log record, result, exception text and chained cause on success and on the store, public key, repository, seal and PUT failure paths, and the positive controls prove the check fails when a result or a log carries the value.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_org_secret.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24623-ac4-chain-seams-and-variable-path
+  description: The write node's golden chain, the scm seam-shape and verb tests, the operation table, the gh shim coverage table and the node's own tests, which include the repository variable path still refusing a secret-shaped name.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_golden_chain_github_repo_write_effect.py tests/unit/handlers/scm tests/unit/nodes/node_github_repo_write_effect tests/ci/test_scm_operation_table_omn20912.py tests/ci/test_gh_shim_coverage_table_omn20914.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24623-integration-proof
+  description: 'The pushed head ran the org secret and seam tests on a lab host through the lab work runner and exited 0. It binds no acceptance criterion: the live set of the two organization secrets is the orchestrator''s step after review, and no test here makes a real call.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24623 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_org_secret.py tests/unit/handlers/scm/test_scm_write_seam_shapes.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

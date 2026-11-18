@@ -200,6 +200,7 @@ _VERB_FIELDS: dict[EnumRepoWriteOperation, dict[str, object]] = {
     EnumRepoWriteOperation.REPO_VARIABLE_SET: {"variable_name": "LAB_VAR_ONE"},
     EnumRepoWriteOperation.REPO_VARIABLE_GET: {"variable_name": "LAB_VAR_ONE"},
     EnumRepoWriteOperation.RUNNER_LIST: {},
+    EnumRepoWriteOperation.ORG_SECRET_SET: {"secret_name": "KAFKA_SASL_USERNAME"},
     EnumRepoWriteOperation.RUNNER_REMOVE: {"runner_name": "example-runner-1"},
     EnumRepoWriteOperation.RUNNER_GROUP_GET: {"runner_group_id": 7},
     EnumRepoWriteOperation.WORKFLOW_DISPATCH: {"workflow": "ci.yml", "ref": "dev"},

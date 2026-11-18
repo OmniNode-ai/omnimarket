@@ -32,6 +32,20 @@ runner_group_reads:
   entries:
     - organization: example-org
       group_id: 7
+org_secret_sets:
+  entries:
+    - organization: example-org
+      name: KAFKA_SASL_USERNAME
+      secret_ref: example/kafka-sasl-username
+      visibility: selected
+      repositories:
+        - example-org/example-repo
+    - organization: example-org
+      name: KAFKA_SASL_PASSWORD
+      secret_ref: example/kafka-sasl-password
+      visibility: selected
+      repositories:
+        - example-org/example-repo
 event_bus:
   type: kafka
   lane: example-lane
