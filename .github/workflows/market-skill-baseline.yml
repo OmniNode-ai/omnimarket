@@ -54,7 +54,7 @@ jobs:
           # The repo-owned verifier has a 40-minute job timeout. Allow another
           # 180 seconds for scheduling; a missing verdict still fails closed.
           # The window belongs to one verifier run, not to this job: an edited
-          # event restarts the pull_request_target verifier (its concurrency
+          # event restarts the pull_request verifier (its concurrency
           # cancels the run in flight), and a restart late in this job's wait
           # used to time out here while the new run was still verifying. Each
           # new verifier run id therefore restarts the clock (OMN-17427).

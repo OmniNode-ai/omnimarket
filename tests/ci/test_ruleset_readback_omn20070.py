@@ -147,8 +147,9 @@ def test_scratch_outcomes_workflow_edit_does_not_change_the_definition() -> None
 
     omnimarket#3381 edited ``evidence-source: caller`` to ``occ`` in the caller.
     Had the edited definition run, ``repo-evidence / dod-verify`` would be
-    skipped and ``repo-evidence / verify`` would run. The base branch's
-    definition ran: dod-verify executed and verify is the skipped one.
+    skipped and ``repo-evidence / verify`` would run. This scratch run predates
+    the move to ``pull_request``. The base-branch definition ran, so dod-verify
+    executed and verify was skipped.
     """
     suite = _read(f"repos/{REPO}/check-suites/{WORKFLOW_EDIT_SUITE}/check-runs")
     assert isinstance(suite, dict)

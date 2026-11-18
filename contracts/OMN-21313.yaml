@@ -6,6 +6,20 @@ summary: "HandlerLlmDelegationCall typed only httpx.TimeoutException and httpx.H
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn21313-ac1-accepted-20261117t1145z:
+      - label: "AC1"
+        criterion_hash: "c045de494f14f2792aa813afa90168b9a0e0de2d7ac77debbfdcdf81b44eadee"
+        proposed_by: "lane=dod-closeout-bind-2026-11-17T1145Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-11-17T1145Z-c3"
+        accepted_at: "2026-11-17T12:22:32Z"
+    dod-omn21313-ac2-accepted-20261117t1145z:
+      - label: "AC2"
+        criterion_hash: "12c3d8af09c7dd616e25e7e36760d54e4c4034e4fb51fc99bfd725d6940fe0c4"
+        proposed_by: "lane=dod-closeout-bind-2026-11-17T1145Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-11-17T1145Z-c3"
+        accepted_at: "2026-11-17T12:22:32Z"
 requirements:
   - id: "req-omn21313-transport-error-typed"
     statement: |-
@@ -55,4 +69,20 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegation/test_rung_killed_mid_call_failure_class.py -q --no-cov -k receipt_cf7e176d"
+        cwd: "."
+  - id: "dod-omn21313-ac1-accepted-20261117t1145z"
+    description: "AC1 binding (accepted 2026-11-17T1145Z, proposed by lane=dod-closeout-bind-2026-11-17T1145Z-c3, accepted by lane=dod-closeout-accept-2026-11-17T1145Z-c3). A live stub that accepts the chat POST then closes (FIN) or resets (RST) the socket yields success=False, failure_class=MODEL_UNAVAILABLE and a non-empty error_message. Re-run on lab host h051 at omnimarket origin/dev 13a7e30415fa: [close] and [reset] passed; with the product path of 471adda053 reverted at that head both failed with UNKNOWN."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_rung_killed_mid_call_failure_class.py::test_server_closing_the_socket_mid_call_is_model_unavailable -q -p no:randomly --no-cov"
+        cwd: "."
+  - id: "dod-omn21313-ac2-accepted-20261117t1145z"
+    description: "AC2 binding (accepted 2026-11-17T1145Z, proposed by lane=dod-closeout-bind-2026-11-17T1145Z-c3, accepted by lane=dod-closeout-accept-2026-11-17T1145Z-c3). The receipt error of run cf7e176d, httpx.RemoteProtocolError('Server disconnected without sending a response.') at post_chat_completion, is typed MODEL_UNAVAILABLE with the receipt text kept. Re-run on lab host h051 at omnimarket origin/dev 13a7e30415fa passed; with the product path of 471adda053 reverted it failed with UNKNOWN."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_rung_killed_mid_call_failure_class.py::test_receipt_cf7e176d_server_disconnected_is_model_unavailable -q -p no:randomly --no-cov"
         cwd: "."
