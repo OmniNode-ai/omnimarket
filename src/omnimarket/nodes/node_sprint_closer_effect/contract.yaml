@@ -48,6 +48,18 @@ handler_routing:
       handler:
         name: HandlerSprintCloserEligibility
         module: omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer_eligibility
+    - operation: onex_node_call
+      handler:
+        name: HandlerOnexNodeCall
+        module: omnimarket.nodes.node_sprint_closer_effect.handlers.sprint_closer_sources
+    - operation: linear_ticket_node
+      handler:
+        name: HandlerLinearTicketNode
+        module: omnimarket.nodes.node_sprint_closer_effect.handlers.sprint_closer_sources
+    - operation: dod_verify_call
+      handler:
+        name: HandlerDodVerifyCall
+        module: omnimarket.nodes.node_sprint_closer_effect.handlers.sprint_closer_sources
 event_bus:
   subscribe_topics: []
   publish_topics: []
