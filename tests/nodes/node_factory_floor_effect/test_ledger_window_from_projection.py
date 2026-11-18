@@ -283,6 +283,21 @@ def test_golden_one_rows_read_per_day_and_the_rows_land_in_day_order() -> None:
     assert (today.since, today.until) == (datetime(2026, 11, 14, tzinfo=UTC), None)
 
 
+def test_every_day_read_writes_the_readers_summary_line_to_stderr(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _window(FakeProjection(LINES_BY_DAY))
+    err_lines = [
+        line
+        for line in capsys.readouterr().err.splitlines()
+        if line.startswith("READER ")
+    ]
+    # today and three closed days: one summary line each, every one naming that no file was read
+    assert len(err_lines) == 4
+    assert all(f"reader={READER} " in line for line in err_lines)
+    assert all(line.endswith("file_read=no") for line in err_lines)
+
+
 def test_the_same_lines_answered_for_every_day_are_not_duplicated() -> None:
     """A node that answers the same lines for every window keeps each row once: only the day a
     row is stamped in keeps it."""

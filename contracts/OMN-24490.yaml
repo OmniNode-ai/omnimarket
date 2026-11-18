@@ -54,13 +54,13 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_ledger_window_projection_parity.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24490-ac4
-  description: The tests behind the integrated reading pass; the live reading on a lab host is recorded in the Lab line and a comment.
+  description: The step's stderr carries one READER line per day read, each ending file_read=no (the test below); the live reading on a lab host, with its exit code, is recorded in the Lab comment.
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_ledger_window_from_projection.py tests/nodes/node_factory_floor_effect/test_ledger_window_projection_parity.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_ledger_window_from_projection.py -q --no-cov -n 0 -p no:randomly -k summary_line_to_stderr
     cwd: .
 - id: dod-omn24490-integration-proof
   description: Run the node tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check.
