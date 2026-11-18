@@ -41,3 +41,13 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25639 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lane_host_pool_snapshot_effect -q --no-cov -p no:randomly
     cwd: .
+- id: dod-omn25639-ac3-hosted-record
+  description: 'AC3 hosted proxy: the unread tests that assert the read hosts keep their free slots, the unread hosts are named in unread_hosts and carry no zero, run on the hosted runner at the checked-out head. The lab-host reading against the live accounts command stays in dod-omn25639-integration-proof.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_unread.py -q -n 0 --no-cov -p no:cacheprovider -k "named or not_written"
+    cwd: .
