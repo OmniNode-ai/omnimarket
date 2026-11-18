@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """The shared head review reading: what a head's recorded review verdicts say about that exact head.
 
-``read_head_review`` is the pure reading the landing decision's review gate asks of a head's verdicts. Only a verdict
+``read_head_review`` is the pure reading both the landing decision's review gate and the review-gate context decision ask of a head's verdicts. Only a verdict
 on the exact head counts: a head with verdicts only on other heads reads ``superseded``, a head with none reads
 ``missing``, and a CLEAN verdict on the head reads ``pass``. A CHANGES_NEEDED verdict is read by its findings: any
 blocking finding (a failing check, or a cited file and line with a defect) reads ``changes_needed``; findings that
