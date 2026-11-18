@@ -6,7 +6,7 @@
     "minor": 0,
     "patch": 0
   },
-  "description": "Render exact-head JSON parsing and bytecode cleanup commands for Codex landing.",
+  "description": "Prepare Codex landing commands, classify hook failures against the base, and decide handoff readiness from the lane's report.",
   "input_model": {
     "name": "ModelCodexLandingRequest",
     "module": "omnimarket.nodes.node_codex_landing_compute.models.model_codex_landing"
@@ -36,7 +36,7 @@
   "execution": {
     "deterministic": true,
     "side_effects": false,
-    "caller": "CodexEngine landing shell generation"
+    "caller": "CodexEngine landing"
   },
   "contract_version": {
     "major": 1,

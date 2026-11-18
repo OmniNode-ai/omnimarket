@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import BaseModel
 
 pytestmark = pytest.mark.unit
 
@@ -67,6 +68,10 @@ def test_contract_models_are_frozen_and_handler_is_typed(name):
     for field in ("input_model", "output_model"):
         spec = contract[field]
         model = getattr(importlib.import_module(spec["module"]), spec["name"])
+        if issubclass(model, BaseModel):
+            assert model.model_config.get("frozen") is True
+            assert model.model_config.get("extra") == "forbid"
+            continue
         assert is_dataclass(model)
         assert model.__dataclass_params__.frozen
     spec = contract["handler"]
