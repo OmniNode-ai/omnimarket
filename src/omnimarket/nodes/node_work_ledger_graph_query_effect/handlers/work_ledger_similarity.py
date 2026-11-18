@@ -69,7 +69,7 @@ class _EmbeddingResponse(BaseModel):
 
 
 def _local_base_url() -> str:
-    raw_url = os.environ.get("LLM_EMBEDDING_URL", "")  # contract-config-ok: config
+    raw_url = os.environ.get("LLM_EMBEDDING_URL", "")
     try:
         url = urlsplit(raw_url)
         address = ip_address(url.hostname or "")
@@ -90,12 +90,10 @@ def _local_base_url() -> str:
 
 
 def _index_path() -> Path:
-    configured = os.environ.get(
-        "WORK_LEDGER_VECTOR_INDEX_PATH"
-    )  # contract-config-ok: config
+    configured = os.environ.get("WORK_LEDGER_VECTOR_INDEX_PATH")
     if configured:
         return Path(configured)
-    state_dir = os.environ.get("ONEX_STATE_DIR")  # contract-config-ok: config
+    state_dir = os.environ.get("ONEX_STATE_DIR")
     if not state_dir:
         raise ValueError("WORK_LEDGER_VECTOR_INDEX_PATH or ONEX_STATE_DIR must be set")
     return Path(state_dir) / "work-ledger-vectors.sqlite"

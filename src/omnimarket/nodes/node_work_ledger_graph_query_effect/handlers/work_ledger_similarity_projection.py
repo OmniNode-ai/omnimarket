@@ -65,7 +65,7 @@ def projected_row(
 
 def read_page(request: ModelLedgerSimilarityIndexRequest) -> LedgerSimilarityPage:
     window = request.projection
-    dsn = os.environ.get("OMNINODE_INTERNAL_DB_URL")  # contract-config-ok: config
+    dsn = os.environ.get("OMNINODE_INTERNAL_DB_URL")
     if not dsn:
         raise ValueError("OMNINODE_INTERNAL_DB_URL is unset")
     after_ts = window.after.row_ts if window.after is not None else window.since
