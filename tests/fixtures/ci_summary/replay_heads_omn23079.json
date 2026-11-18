@@ -7,7 +7,7 @@
     {
       "pr": 5375,
       "sha": "0b0c45e11276ab22ac5d8c90a83d50783d73e2c6",
-      "verdicts": {"pull_request:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "7a880c3e98ba3cf832c96f401de9dcb3c2c0b5b5771b14ae8dd3a0881386f646"}, "merge_group:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "b257319af16e6edb8ca0434763f4c5936990e0c2519079d3ebefd1be5200d9f6"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "730dbf069741d089dcef914de7fa6873b59f1067f1da905f449174f8d3cbc70e"}},
+      "verdicts": {"pull_request:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "85527a1dae368e0d844276f584c183c8fa8a742816478122b9393cef03272526"}, "merge_group:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "dd9b59faf6262cc34bc2e8f2941b82b11de41148bb398a432f857befc0393a39"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "c9b1ea5860815604a50572d488998d37a7967900f0a62cf38235975e2d4b3c32"}},
       "check_runs": [
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T02:21:18Z", "started_at": "2026-11-08T02:21:18Z", "id": 128601453810},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:24:17Z", "started_at": "2026-11-08T02:24:17Z", "id": 128601996635},
@@ -167,7 +167,7 @@
     {
       "pr": 5382,
       "sha": "808536f285661b93bf3604681e0a282d550aa160",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "92307d5b38cae914796f1974dfd5c3d1b775e9ca72e795228d72aba8f0da3f4d"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "a7649929a0fff960d019ef62c640d586c304b128811c278cda249d778513b8c9"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "573f210beebebb6ab0a3208ad160c2e6ebc5f9909d055b961dc825d7feba8b44"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "72923745bae1669ecc65e450eac26a77fb106aabb825826288375194ccb52e7b"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "c33f689b112c93ad966b4e9d89f52f6ec5e661822f4e141fa69e989ae8e74093"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "b93196691d34a0cdbe789d32d68f16a73d6774b5252e370cc7819eeb5f61fe65"}},
       "check_runs": [
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:51:48Z", "started_at": "2026-11-08T04:51:48Z", "id": 128632429137},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:52:17Z", "started_at": "2026-11-08T04:52:17Z", "id": 128632468497},
@@ -272,7 +272,7 @@
     {
       "pr": 5383,
       "sha": "f0ff9238311b32bdc791e7b50cc4ae601507f927",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "871963dd0e1fb70ba8e849205f5eda652586aa6f3d43e058c5dead50f6b78e12"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "7dc1f5b12237f0883d90097995528b622a4fe92c98d6b48791eb39c590b6f8ed"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "5e762e2679cecb77e48ca1546bed080bac9e23809b46c8a039eaa3817e93c5e2"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "34475efd61dc9e26e2203adb1b146fddd838f13e3c295f8498a79ec5ad3d1d90"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "bbbb2cca4bd0edad620c68ace37919e919712bab4eb0dc6c74bf191b6d6d8f62"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "44fe6b6e29765520393affd7075e96b7bf08a4d579b5c065371f1de5f7fdd51d"}},
       "check_runs": [
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:45:43Z", "started_at": "2026-11-08T04:45:43Z", "id": 128631228834},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:54Z", "started_at": "2026-11-08T04:47:54Z", "id": 128631545714},
@@ -407,7 +407,7 @@
     {
       "pr": 5384,
       "sha": "6a0dde94e04bedeeec651f9a2f152b51e58f2cb7",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "12ffcad2ba040491dd8a2c3e82c5232be43816a558507348f6c25e2ef4f48360"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "d4283c455e9c6a6a3c00752b64468aa84a8cecde9aafab4d8f02b8740844886e"}, "push:dev": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "26adf2b591806865df24b365d7e2459cb162c3c52f7d2a942222b6ee470458a7"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "acaf532f9196885a012c55501fb576717d300221eb793e339ebceaa410f9f0a7"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "236277ceb30294970ca54b90603139362256a76ba14ec64b37d5f41230223731"}, "push:dev": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "be7ca3985d509ecb717d2e6adc489a93afb55f83240e7108075ad016a68e74c6"}},
       "check_runs": [
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:53:03Z", "started_at": "2026-11-08T04:53:03Z", "id": 128632668388},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:26Z", "started_at": "2026-11-08T04:53:26Z", "id": 128632692280},
@@ -488,7 +488,7 @@
     {
       "pr": 5385,
       "sha": "bb637ecedd986e136442d0112323b1bce505432a",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "72b77ea6843a7ce4e19e8f537e8a813c31553ad29acc7fb91acbd76d7b0adcf6"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "9148445a6fbed071f2ddd2f072fa8ebdefa80ec044ef5f0fd083657dce2a6719"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "5fabd46ea9042bdf14aa67afb0b3090043c1b63ba1f7fc7856a6560ae49675af"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "cb1a2145d77823c261fbaa37bdaa10cf7e88ba01b0c4467db0cf32785680ef69"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "3efc8302b62704c3a1684b52aef6c8a6dc9d8f24ad0369f7b5c9caded3693119"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "5d32d3d626d7eca4be14449f2c4789ef7d966911bb982a93ef96b3fd2b208b7b"}},
       "check_runs": [
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:47:16Z", "started_at": "2026-11-08T04:47:16Z", "id": 128631541593},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:50:24Z", "started_at": "2026-11-08T04:50:24Z", "id": 128632031835},
@@ -642,7 +642,7 @@
     {
       "pr": 5386,
       "sha": "afcf58c713b910e950c14d4669b80d46011eeace",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "7c2d30b2b1a6be4b684126d36fa99666b0900fc1b270ecc368d4624a3add4a5b"}, "merge_group:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "68dd60984e432c3ad6034ea7bfd1fd341d09ba05642a567d4c3a14dc4f52e753"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "bec7f4fb028f1487b6fbc9b3b26eb2f4978e16d1682572b66f8fd4fa4e6e2488"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "d8b857ae0cfd6ce8b9879f0d114710caef5c0ecb4324223f8ca199351559b971"}, "merge_group:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "89efe27c8fdb5e34d5b482645dbaf1df8d74514a926f9ef2cdfc6184d8b2ca27"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "dae0eebc126bacff7c2d10761830f0a6d3c29f3a11a6e8981b45ab2520c27c66"}},
       "check_runs": [
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T03:46:22Z", "started_at": "2026-11-08T03:46:22Z", "id": 128619273518},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:48:51Z", "started_at": "2026-11-08T03:48:51Z", "id": 128619656276},
@@ -801,7 +801,7 @@
     {
       "pr": 5387,
       "sha": "3089a0191b93e6e73129090a539051d3f1893382",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "5d2ee6bad54dcb03f73da6f8cd65438c2215b29b30b52ed691d9ebae2044b747"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "6bddd0b7219b2512a7267e571848be0829bc6bab2a220f5a0bdeea17fd88addf"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "51df73512b5830d7550880ea082bfe63fa89c89b7146d9f9f7f349a8ac1b0c81"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "232a740a934e57ef186f4f9b5c3282c188d7916c8c44388d792095aa3fbb77e9"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "9a288df186d745419aba9a0daf7c8959a78d1d0af5cec48f1ee1612b2df2e5ff"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "4a0aca9368f24e08014ba277d601502d365cf6f77f7469558a97bfc3aa641679"}},
       "check_runs": [
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T03:53:39Z", "started_at": "2026-11-08T03:53:39Z", "id": 128620718211},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:57:18Z", "started_at": "2026-11-08T03:57:18Z", "id": 128621301995},
@@ -961,7 +961,7 @@
     {
       "pr": 5388,
       "sha": "96516f0fb24f479eb24e1e72da4913afdc0b7c3d",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "461d9af6caac87698b854110fd6be82f1be025c2e8f0ebf52f2bdcc859acf0c9"}, "merge_group:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "bd9a4ce74debd43fb73b31e861581bed4351f041f0ece388dee0e8e663efb3d5"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "24b83f775b2a0d5feefafeaeadff0a470b9a7c08828c0bcf3c0c43876682f5fa"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "5e55aca8e84cae5407a1e464f888c5e07cf5cd342113e1dfeb17ecbd74dc46f9"}, "merge_group:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "b20be6b3574a1656b772d0f4bf6da5d39159ce6602c4a5613381a1db1cfbd344"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "754e3811a598aae952395a4e8610b7263a56f1bb0f57de1ee16259f0810157a4"}},
       "check_runs": [
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:11:26Z", "started_at": "2026-11-08T04:11:26Z", "id": 128624302580},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:14:15Z", "started_at": "2026-11-08T04:14:15Z", "id": 128624794593},
@@ -1101,7 +1101,7 @@
     {
       "pr": 5389,
       "sha": "331d81e5857a04e9cc89d3c497649bf0847070b7",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "d5f0b10d8fca9e96f79534e8bdc24fbf749cd25f3617e4feb9531d3ed6f763ba"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "95cde150556db28c7fa61b4c23b22f2165ca2dc74d2bd0e43488c51c873d3eb0"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "0847be6e946eadb8579cd0989d052c685b53fe76445ed65560513f43548c7549"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "bcffb72b46c2ce8dd7777f6c53d987930f5bb1ec2ef8db4e4edb1eebd23d263d"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "a66360d68fd85ef9f9ae3c97bf7290d12746b1b66cd64503d7fbbc569dd1f65f"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "bbef1e76d74188f8088e4de0a33e9762e19ab985ed5b1cc60247805d441a690f"}},
       "check_runs": [
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:53:45Z", "started_at": "2026-11-08T04:53:45Z", "id": 128632805016},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:54:10Z", "started_at": "2026-11-08T04:54:10Z", "id": 128632831327},
@@ -1205,7 +1205,7 @@
     {
       "pr": 5390,
       "sha": "bee0521217f19edf949d2199c84d76cd21689d90",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "a26ad741d1a422e17fbb60143097f85caf0daf3cc91aa55c7de07e9989435dc5"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "51050db75c1929c0bb71919cd29a1251b404d9bccf9db204a97008d774ed73c4"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "0957716202b927e90ff8ba21e1f9af8c102677a14f630ab7d3d28cb3acbe63a7"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "be1eb3d5471e9acae61608c3c2cee5a15bffb48f4672f0f36dab5bb1b955fff2"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "613019c2b68078f0194199707d80b40daef9aa6177116222230dc708465a5704"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "92bfee75b13d26ed6a394db13eca2cf55fd158aec70975a5be628652f18c1fb9"}},
       "check_runs": [
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:20:55Z", "started_at": "2026-11-08T04:20:55Z", "id": 128626262060},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:25:30Z", "started_at": "2026-11-08T04:25:30Z", "id": 128627104963},
@@ -1361,7 +1361,7 @@
     {
       "pr": 5391,
       "sha": "7101e23cf733189b1ff5e1d20a85192a3cff366e",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "fe33d0a1363dd6afdd6affbedeaea2e5ff4f4399a34d1ca157a136b50de51184"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "e447c4e4522961c08ffe85fcdbf3e38e9742535d0e7bcbd30de4c661c1a5833e"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "44f21f342c721d1ad75b58bc7edd8d1bdcaff6f1aaf7dad9b28d1af0b5b87fec"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "715bddca2f7c7938ee140e47fc2df876de3a175f88b3f5097978810cf0c98215"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "4c67f604665313748fc56724b3bff7e926a6895ea72750796009114fa81bade7"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "89d6ab2f3dc81a9a90cabedc68779fb17bff7304e6cd4b680648581071c0978f"}},
       "check_runs": [
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:39:44Z", "started_at": "2026-11-08T04:39:44Z", "id": 128630057022},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:41:22Z", "started_at": "2026-11-08T04:41:22Z", "id": 128630287785},
@@ -1500,7 +1500,7 @@
     {
       "pr": 5392,
       "sha": "36ef6b9dd813cfdfd272f87ad177c8dee69e3ae3",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "4c623a9a55576ab172fdc5bce0a14fe7e0899517964e0ed3983088d0cf714c27"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "85f81bdc9971a8af2467291e95fe7396a2216b3ca1dfc4576718d8b0d76bfd26"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "201568ad1e957fc0e34117f07144c013b63f5af0d7ba3e965a3e2ed86453758e"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "bd83faf3355ce57ed45c014e9707e0f22e6cba14d6b45b57c9c7f7d77c78138f"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "293752aac39d91d079daa2b27fa18eb13df516df63a16fc589fdfabf9fdee924"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "e13faa28a05289c07025c28dfa4970529653ac05c7f386664f272fb88a77bb7a"}},
       "check_runs": [
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:44:30Z", "started_at": "2026-11-08T04:44:30Z", "id": 128630985447},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:00Z", "started_at": "2026-11-08T04:47:00Z", "id": 128631351149},
