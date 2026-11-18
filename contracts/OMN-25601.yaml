@@ -1,7 +1,11 @@
 schema_version: 1.0.0
 ticket_id: OMN-25601
 title: 'The omnimarket ledger-file census returns to its ratchet of 186: the two files that raised it to 188 read through the bus or the ledger reader node'
-summary: The ledger-file-census hook failed every omnimarket commit with files=188 against a ratchet of 186. The two files that raised the count were a tick runtime that read the ledger path variable to name the file it appended to (now appended over the bus append command its unit names) and a contract falsifier that named the path variable (now worded as a ledger read). The ratchet file is unchanged.
+summary: >-
+  The census counted 188 files against a ratchet of 186 after a tick runtime
+  and a contract falsifier began naming the ledger file path. Dev already
+  removed the contract reference. This branch sends tick appends through the
+  bus command declared by the unit. The ratchet file is byte-identical to dev.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -41,13 +45,20 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_incident_two_files.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn25601-ac2
-  description: AC2 the census on the branch exits 0 with files at or below 186 (it exits non-zero at 188, so the control at the merge base fails). The ratchet file staying byte-identical to the base is read in the unbound integration-proof item, because that diff also passes at the merge base.
+  description: >-
+    AC2 the live census checks the repository against its ratchet and verifies
+    that neither incident file contributes to the count. The merge base
+    meets the ratchet and still counts the alarm runtime. The integration
+    proof separately compares the ratchet file with dev.
   source: manual
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=.
+  - check_type: test_passes
+    check_value: >-
+      uv run pytest
+      tests/unit/nodes/node_work_ledger_file_census_effect/test_incident_two_files.py::test_live_census_excludes_incident_files
+      -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn25601-ac3
   description: AC3 the regression test built from the recorded incident listing fails while either file holds an executable read of the ledger file (origin/dev) and passes on the branch.
