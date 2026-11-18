@@ -44,11 +44,25 @@ handler_routing:
         module: "omnimarket.nodes.node_work_state_projection_compute.handlers.handler_work_state_projection"
 event_bus:
   subscribe_topics: []
-  publish_topics: []
+  # OMN-25641: the snapshot topic is a publish topic so the runtime's provisioner creates it
+  # (the dev broker has auto-create off; named only under externally_consumed_topics it was never
+  # created and the publish failed on absent cluster metadata). Same shape as
+  # node_floor_emissions_publish_effect.
+  publish_topics:
+    # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+    - onex.snapshot.projection.floor-work-state.v1
 externally_consumed_topics:
   # The floor reads it through node_floor_projection_read_effect (OMN-23391).
   # onex-topic-allow: a projection snapshot topic has the projection's own name form.
   - onex.snapshot.projection.floor-work-state.v1
+# The broker rows the principal that runs this node needs (OMN-24005, OMN-25641). The projection publishes the
+# snapshot topic from the dev runtime container, which holds its own broker login; the principal is named by an
+# environment variable so this public file names no identity, and the overlays repository holds the concrete login.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_WORK_STATE_PROJECTION_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.floor-work-state.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.floor-work-state.v1, operation: DESCRIBE}
 runtime_dispatch:
   external_trigger: "python -m omnimarket.nodes.node_work_state_projection_effect, by the floor publish tick and the fill orchestrator's pass."
 descriptor:
