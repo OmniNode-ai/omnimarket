@@ -61,6 +61,11 @@ floor_fill_live:
   # Optional. The absolute path of an environment file holding ``<store_dsn_env>=<the DSN>``; the tick unit the schedule
   # install renders reads it as ``EnvironmentFile=-<path>`` so the unit carries the DSN without it entering the
   # overlay or the unit text. Leave the key out when the unit's environment already carries the variable.
+  # The path is absolute and holds no whitespace, quote, backslash, ``%`` or control character; any other value is
+  # refused naming floor_fill_live.store_dsn_env_file, by the install and by the tick. The unit reads the file after its
+  # Environment= lines, so a variable in the file overrides HOME, OMNI_HOME and PATH; keep only the DSN variable in it.
+  # The ``-`` prefix makes a missing or unreadable file silent: the unit still starts and the tick falls back to exit 4
+  # with fill-state:store-dsn-unset, so confirm the file exists on the fill host.
   store_dsn_env_file: /srv/example/secrets/floor-fill.env
   store_schema_name: public
   store_table_name: floor_fill_state

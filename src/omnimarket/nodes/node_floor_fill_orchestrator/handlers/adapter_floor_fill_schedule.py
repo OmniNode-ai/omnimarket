@@ -29,6 +29,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
 from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_settings import (
     LIVE_OVERLAY_SECTION,
     ModelFloorFillLiveSettings,
+    unit_line_path_refusal,
 )
 
 NODE_NAME = "node_floor_fill_orchestrator"
@@ -37,7 +38,7 @@ NODE_MODULE = (
 )
 OVERLAY_SECTION = "floor_fill"
 PROFILES: tuple[str, ...] = ("inmemory", "live")
-_SAFE_PATH = re.compile(r"^[A-Za-z0-9_@+=:,./~-]+$")
+_SAFE_PATH = re.compile(r"[A-Za-z0-9_@+=:,./~-]+")
 
 Runner = Callable[[Sequence[str]], "subprocess.CompletedProcess[str]"]
 
@@ -53,7 +54,7 @@ def run_command(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
 
 def _safe(path: Path, what: str) -> str:
     text = str(path)
-    if not _SAFE_PATH.match(text):
+    if not _SAFE_PATH.fullmatch(text):
         raise ValueError(
             f"{what} {text!r} holds a character a unit line cannot carry unquoted"
         )
@@ -67,10 +68,9 @@ def _assignment(name: str, value: str) -> str:
 
 def _environment_file_line(path: str) -> str:
     """The unit's ``EnvironmentFile=-`` line: an absolute path a unit line carries unquoted, or a refusal naming the key."""
-    if not path.startswith("/") or not _SAFE_PATH.match(path):
-        raise ValueError(
-            f"floor_fill_live.store_dsn_env_file {path!r} is not an absolute path a unit line can carry unquoted"
-        )
+    refusal = unit_line_path_refusal(path)
+    if refusal is not None:
+        raise ValueError(refusal)
     return f"EnvironmentFile=-{path}\n"
 
 

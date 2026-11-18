@@ -4,10 +4,18 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_config import (
     FloorFillConfigError,
@@ -17,6 +25,18 @@ LIVE_OVERLAY_SECTION = "floor_fill_live"
 LINE_ID_PLACEHOLDER = "{line_id}"
 
 _PREFIX = f"{LIVE_OVERLAY_SECTION}."
+STORE_DSN_ENV_FILE_KEY = f"{_PREFIX}store_dsn_env_file"
+
+# An absolute path of characters a systemd unit line carries unquoted and unexpanded: no whitespace, control
+# character, quote, backslash or ``%``. Matched with ``fullmatch`` so a trailing newline is not accepted.
+_UNIT_LINE_PATH = re.compile(r"/[A-Za-z0-9_@+=:,./~-]+")
+
+
+def unit_line_path_refusal(path: str) -> str | None:
+    """The refusal text for an environment file path a unit line cannot carry unquoted, or ``None`` when it can."""
+    if _UNIT_LINE_PATH.fullmatch(path) is None:
+        return f"{STORE_DSN_ENV_FILE_KEY} {path!r} is not an absolute path a unit line can carry unquoted"
+    return None
 
 
 class ModelFloorFillLiveSettings(BaseModel):
@@ -41,7 +61,17 @@ class ModelFloorFillLiveSettings(BaseModel):
     plan_file_pattern: str = Field(min_length=1)
     ledger_path: str = Field(min_length=1)
     process_output_dir: str = Field(min_length=1)
-    store_dsn_env_file: str | None = Field(default=None, min_length=1)
+    store_dsn_env_file: str | None = None
+
+    @field_validator("store_dsn_env_file")
+    @classmethod
+    def _env_file_is_a_unit_line_path(cls, value: str | None) -> str | None:
+        """Install and the tick runtime both load the settings here, so both refuse a path the unit cannot carry."""
+        if value is not None:
+            refusal = unit_line_path_refusal(value)
+            if refusal is not None:
+                raise ValueError(refusal)
+        return value
 
     @model_validator(mode="before")
     @classmethod
@@ -98,6 +128,8 @@ def load_floor_fill_live_settings(
 __all__: list[str] = [
     "LINE_ID_PLACEHOLDER",
     "LIVE_OVERLAY_SECTION",
+    "STORE_DSN_ENV_FILE_KEY",
     "ModelFloorFillLiveSettings",
     "load_floor_fill_live_settings",
+    "unit_line_path_refusal",
 ]
