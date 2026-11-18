@@ -106,7 +106,7 @@ def test_broken_overlay_refuses_instead_of_falling_back(
 
 def test_request_rejects_undeclared_fields() -> None:
     with pytest.raises(ValidationError):
-        ModelCodexModelRequest(model="gpt-6.2-sol")  # type: ignore[call-arg]
+        ModelCodexModelRequest.model_validate({"model": "gpt-6.2-sol"})
 
 
 def test_contract_binding_and_installed_entry_point() -> None:

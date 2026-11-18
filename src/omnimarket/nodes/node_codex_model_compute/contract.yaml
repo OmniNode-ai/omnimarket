@@ -3,7 +3,7 @@
 name: node_codex_model_compute
 lifecycle: experimental
 node_type: COMPUTE_GENERIC
-runtime_profiles: [main]
+runtime_profiles: []
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: 1.0.0
 description: >
@@ -24,40 +24,16 @@ handler:
   class: HandlerCodexModel
   input_model: omnimarket.nodes.node_codex_model_compute.models.model_codex_model.ModelCodexModelRequest
   output_model: omnimarket.nodes.node_codex_model_compute.models.model_codex_model.ModelCodexModelResult
-handler_routing:
-  routing_strategy: operation_match
-  default_handler: omnimarket.nodes.node_codex_model_compute.handlers.handler_codex_model:HandlerCodexModel
-  handlers:
-    - operation: resolve
-      topic: onex.cmd.omnimarket.codex-model-requested.v1
-      handler:
-        module: omnimarket.nodes.node_codex_model_compute.handlers.handler_codex_model
-        name: HandlerCodexModel
 descriptor:
   node_archetype: compute
   purity: pure
   idempotent: true
   side_effects: []
-  runtime_profiles: [main]
-event_bus:
-  subscribe_topics:
-  - onex.cmd.omnimarket.codex-model-requested.v1
-  publish_topics:
-  - onex.evt.omnimarket.codex-model-resolved.v1
-runtime_dispatch:
-  command_topic: onex.cmd.omnimarket.codex-model-requested.v1
-terminal_event: onex.evt.omnimarket.codex-model-resolved.v1
+  runtime_profiles: []
 # OVERLAY KEYS (OMN-25552): the accepted Codex model ids, read from `codex debug models`. The account default is not
 # an id: it is the answer to a request that names none.
 overlay:
   codex_models:
     description: "The accepted Codex model ids, one or more; any other asked id is refused."
-broker_acl_grants:
-  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
-    grants:
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.codex-model-requested.v1, operation: READ}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.codex-model-requested.v1, operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.codex-model-resolved.v1, operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.codex-model-resolved.v1, operation: DESCRIBE}
 metadata:
   ticket: OMN-25552
