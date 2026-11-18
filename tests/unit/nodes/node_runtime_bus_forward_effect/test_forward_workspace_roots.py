@@ -24,11 +24,8 @@ import yaml
 from omnimarket.nodes.node_runtime_bus_forward_effect import (
     adapter_core_forwarder as adapter,
 )
-from omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_workspace_roots_resolve import (
-    HandlerWorkspaceRootsResolve,
-)
 from omnimarket.nodes.node_runtime_bus_forward_effect.models.model_workspace_roots import (
-    ModelWorkspaceRootsRequest,
+    ModelWorkspaceRoots,
 )
 from omnimarket.nodes.node_runtime_bus_forward_effect.overlay import (
     ModelRuntimeBusForwardOverlay,
@@ -168,10 +165,8 @@ def test_an_environment_root_is_never_replaced_by_the_host_declaration(
         tmp_path / "onex", "serve.env", [f"{ROOT}=/declared", f"{CONFIG_ROOT}=/cfg"]
     )
 
-    roots = HandlerWorkspaceRootsResolve().handle(
-        ModelWorkspaceRootsRequest(
-            environment={"XDG_CONFIG_HOME": str(tmp_path), ROOT: "/exported"}
-        )
+    roots = ModelWorkspaceRoots.resolve(
+        {"XDG_CONFIG_HOME": str(tmp_path), ROOT: "/exported"}
     )
 
     assert dict(roots.declared) == {CONFIG_ROOT: "/cfg"}
@@ -181,10 +176,8 @@ def test_an_environment_root_is_never_replaced_by_the_host_declaration(
 def test_omni_home_counts_as_a_declared_workspace_root(tmp_path: Path) -> None:
     _declare(tmp_path / "onex", "serve.env", [f"{ROOT}=/declared"])
 
-    roots = HandlerWorkspaceRootsResolve().handle(
-        ModelWorkspaceRootsRequest(
-            environment={"XDG_CONFIG_HOME": str(tmp_path), "OMNI_HOME": "/registry"}
-        )
+    roots = ModelWorkspaceRoots.resolve(
+        {"XDG_CONFIG_HOME": str(tmp_path), "OMNI_HOME": "/registry"}
     )
 
     assert ROOT not in roots.declared
@@ -196,9 +189,7 @@ def test_units_that_disagree_leave_the_root_unresolved_naming_each_file(
     _declare(tmp_path / "onex", "a.env", [f"{ROOT}=/one"])
     _declare(tmp_path / "onex", "b.env", [f"{ROOT}=/two"])
 
-    roots = HandlerWorkspaceRootsResolve().handle(
-        ModelWorkspaceRootsRequest(environment={"XDG_CONFIG_HOME": str(tmp_path)})
-    )
+    roots = ModelWorkspaceRoots.resolve({"XDG_CONFIG_HOME": str(tmp_path)})
 
     described = roots.describe_unresolved() or ""
     assert ROOT not in roots.declared
@@ -209,9 +200,7 @@ def test_units_that_disagree_leave_the_root_unresolved_naming_each_file(
 def test_an_unexpanded_value_is_not_taken_as_a_path(tmp_path: Path) -> None:
     _declare(tmp_path / "onex", "a.env", [f"{ROOT}=$HOME/x"])
 
-    roots = HandlerWorkspaceRootsResolve().handle(
-        ModelWorkspaceRootsRequest(environment={"XDG_CONFIG_HOME": str(tmp_path)})
-    )
+    roots = ModelWorkspaceRoots.resolve({"XDG_CONFIG_HOME": str(tmp_path)})
 
     assert ROOT not in roots.declared
     assert "not an absolute literal path" in (roots.describe_unresolved() or "")

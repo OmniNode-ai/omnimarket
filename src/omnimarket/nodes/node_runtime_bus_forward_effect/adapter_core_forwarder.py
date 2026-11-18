@@ -20,15 +20,12 @@ from omnimarket.models.bus_binding.model_node_broker import ModelNodeBroker
 from omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_runtime_bus_forward import (
     HandlerRuntimeBusForward,
 )
-from omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_workspace_roots_resolve import (
-    HandlerWorkspaceRootsResolve,
-)
 from omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward import (
     ModelForwardEvent,
     ModelRuntimeBusForwardCommand,
 )
 from omnimarket.nodes.node_runtime_bus_forward_effect.models.model_workspace_roots import (
-    ModelWorkspaceRootsRequest,
+    ModelWorkspaceRoots,
 )
 from omnimarket.nodes.node_runtime_bus_forward_effect.overlay import (
     ModelRuntimeBusForwardOverlay,
@@ -78,9 +75,7 @@ class CoreRuntimeBusForwarder:
 
     def forward(self, events: Sequence[ProtocolRecordedEvent]) -> dict[str, object]:
         """The core hook: publish ``events`` to the hosted bus and answer the receipt mapping."""
-        roots = HandlerWorkspaceRootsResolve().handle(
-            ModelWorkspaceRootsRequest(environment=self._environ)
-        )
+        roots = ModelWorkspaceRoots.resolve(self._environ)
         environ = {**self._environ, **roots.declared}
         if self._environ is os.environ:
             # The lane declaration reader resolves the config root from the process environment.
