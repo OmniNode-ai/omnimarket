@@ -4,6 +4,9 @@
 
 from pydantic import BaseModel, ConfigDict
 
+# Shared route identity for the reducer, workflow and projection cost readers.
+TENANT_OVERLAY_TIER_NAME = "tenant_overlay"
+
 
 class ModelTenantRoutingOverlayBackend(BaseModel):
     """Resolved tenant-overlay backend binding for one (tenant_id, task_type).

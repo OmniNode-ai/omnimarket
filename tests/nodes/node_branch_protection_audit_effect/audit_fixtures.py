@@ -153,11 +153,15 @@ def run_audit(
     fixtures: dict[str, object],
     branches: str = "main",
     policy: ModelBranchProtectionAuditPolicy = POLICY,
+    policy_overrides: dict[str, object] | None = None,
 ) -> ModelBranchProtectionAuditResult:
     """Judge one repository, as the script did with BRANCH_PROTECTION_AUDIT_REPOS=repo."""
+    update: dict[str, object] = {"repos": (repo,)}
+    if policy_overrides is not None:
+        update.update(policy_overrides)
     return HandlerBranchProtectionAudit().handle(
         ModelBranchProtectionAuditRequest(
-            policy=policy.model_copy(update={"repos": (repo,)}),
+            policy=policy.model_copy(update=update),
             snapshot=snapshot(repo, fixtures),
             org=ORG,
             branches=tuple(branches.split(",")),
