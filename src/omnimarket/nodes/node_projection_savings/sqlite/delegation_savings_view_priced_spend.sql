@@ -40,11 +40,11 @@ event_sessions AS (
         COALESCE(events.task_type, '') AS task_type,
         COALESCE(NULLIF(events.model_name, ''), NULLIF(events.delegated_to, ''), 'local')
             AS model_name,
-        CAST(CASE WHEN COALESCE(pm_exact.free, pm_lower.free) IS NULL THEN NULL WHEN COALESCE(pm_exact.free, pm_lower.free) = 1 AND events.cost_usd > 0 THEN NULL ELSE events.cost_usd END AS REAL) AS local_cost_usd,
-        CAST(COALESCE(CASE WHEN COALESCE(pm_exact.free, pm_lower.free) IS NULL THEN NULL WHEN COALESCE(pm_exact.free, pm_lower.free) = 1 AND events.cost_usd > 0 THEN NULL ELSE events.cost_usd END, 0) + COALESCE(CASE WHEN COALESCE(events.terminal_failure_cause, '') <> '' THEN 0.0
+        CAST(CASE WHEN events.cost_usd > 0 AND COALESCE(pm_exact.free, pm_lower.free, 1) = 1 THEN NULL ELSE events.cost_usd END AS REAL) AS local_cost_usd,
+        CAST(COALESCE(CASE WHEN events.cost_usd > 0 AND COALESCE(pm_exact.free, pm_lower.free, 1) = 1 THEN NULL ELSE events.cost_usd END, 0) + COALESCE(CASE WHEN COALESCE(events.terminal_failure_cause, '') <> '' THEN 0.0
             ELSE CAST(events.modelled_savings_usd AS REAL) END, 0) AS REAL)
             AS cloud_cost_usd,
-        CAST(COALESCE(CASE WHEN COALESCE(pm_exact.free, pm_lower.free) IS NULL THEN NULL WHEN COALESCE(pm_exact.free, pm_lower.free) = 1 AND events.cost_usd > 0 THEN NULL ELSE events.cost_usd END, 0) + COALESCE(CASE WHEN COALESCE(events.terminal_failure_cause, '') <> '' THEN 0.0
+        CAST(COALESCE(CASE WHEN events.cost_usd > 0 AND COALESCE(pm_exact.free, pm_lower.free, 1) = 1 THEN NULL ELSE events.cost_usd END, 0) + COALESCE(CASE WHEN COALESCE(events.terminal_failure_cause, '') <> '' THEN 0.0
             ELSE CAST(events.modelled_savings_usd AS REAL) END, 0) AS REAL)
             AS counterfactual_baseline_usd,
         CASE WHEN COALESCE(events.terminal_failure_cause, '') <> '' THEN 0.0
@@ -61,7 +61,7 @@ event_sessions AS (
         CAST(COALESCE(events.delegation_latency_ms, events.latency_ms) AS INTEGER)
             AS latency_ms,
         COALESCE(events.created_at, events.timestamp) AS created_at,
-        CASE WHEN (CASE WHEN COALESCE(pm_exact.free, pm_lower.free) IS NULL THEN NULL WHEN COALESCE(pm_exact.free, pm_lower.free) = 1 AND events.cost_usd > 0 THEN NULL ELSE events.cost_usd END) IS NULL THEN 1 ELSE 0 END AS unpriced
+        CASE WHEN (CASE WHEN events.cost_usd > 0 AND COALESCE(pm_exact.free, pm_lower.free, 1) = 1 THEN NULL ELSE events.cost_usd END) IS NULL THEN 1 ELSE 0 END AS unpriced
     FROM delegation_events AS events
     LEFT JOIN local_priced_models AS pm_exact ON pm_exact.model_key = COALESCE(NULLIF(events.model_name, ''), NULLIF(events.delegated_to, ''), '')
     LEFT JOIN local_priced_models AS pm_lower ON pm_lower.model_key = lower(COALESCE(NULLIF(events.model_name, ''), NULLIF(events.delegated_to, ''), ''))

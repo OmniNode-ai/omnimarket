@@ -15,8 +15,7 @@ WITH events AS (
         de.*,
         COALESCE(de.cost_tier_name, '') AS tier_name,
         COALESCE(NULLIF(de.model_name, ''), de.delegated_to) AS resolved_model,
-        CASE WHEN COALESCE(pm_exact.free, pm_lower.free) IS NULL THEN NULL
-            WHEN COALESCE(pm_exact.free, pm_lower.free) = 1 AND de.cost_usd > 0 THEN NULL
+        CASE WHEN de.cost_usd > 0 AND COALESCE(pm_exact.free, pm_lower.free, 1) = 1 THEN NULL
             ELSE de.cost_usd END AS priced_cost_usd
     FROM delegation_events AS de
     LEFT JOIN local_priced_models AS pm_exact ON pm_exact.model_key = COALESCE(NULLIF(de.model_name, ''), NULLIF(de.delegated_to, ''), '')
