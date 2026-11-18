@@ -1156,7 +1156,8 @@ async def test_only_one_concurrent_request_claims_an_expired_key() -> None:
         await asyncio.wait_for(entered_retry.wait(), timeout=5)
         second = asyncio.create_task(gateway.complete(_PAYLOAD))
         await asyncio.sleep(0)
-        assert not second.done()
+        # OMN-24658: the second request does not queue behind the publication in flight; it
+        # finds the key reserved by the first and makes no upstream call of its own.
         assert len(call.calls) == 1
     finally:
         release_retry.set()
@@ -1174,7 +1175,7 @@ async def test_only_one_concurrent_request_claims_an_expired_key() -> None:
 
 
 @pytest.mark.parametrize("failed_transition", ["set_aside", "retry"])
-async def test_failed_bus_publication_is_replayed_before_more_key_calls(
+async def test_failed_bus_publication_defers_the_event_and_never_fails_the_review(
     failed_transition: str,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -1197,7 +1198,7 @@ async def test_failed_bus_publication_is_replayed_before_more_key_calls(
 
     clock = [_NOW]
     bus = FlakyBus()
-    call = FakeCall([_fail(EnumDelegationFailureClass.PROVIDER_BILLING), _ok()])
+    call = FakeCall([_fail(EnumDelegationFailureClass.PROVIDER_BILLING), _ok(), _ok()])
     gateway = ClaudeReviewGateway(
         ModelClaudeReviewGatewayRequest(
             host=_HOST,
@@ -1213,22 +1214,29 @@ async def test_failed_bus_publication_is_replayed_before_more_key_calls(
         event_bus=bus,
         clock=lambda: clock[0],
     )
-    if failed_transition == "retry":
-        assert (await gateway.complete(_PAYLOAD))[0] == 503
-        clock[0] += timedelta(seconds=17)
-    status, reply = await gateway.complete(_PAYLOAD)
-    assert status == 503
-    assert reply["error"]["type"] == "gateway_dependency_unavailable"
     secret = _value(str(_row("key-a")["api_key_ref"]))
-    assert secret not in json.dumps(reply)
-    assert secret not in caplog.text
-    assert len(call.calls) == 1
     if failed_transition == "set_aside":
+        # OMN-24658: the refused key is skipped and the refused publication is
+        # deferred; neither turns into a dependency failure.
+        status, reply = await gateway.complete(_PAYLOAD)
+        assert status == 503
+        assert reply["error"]["type"] == "gateway_keys_set_aside"
+        assert len(call.calls) == 1
+        assert bus.events == []
         assert (await gateway.complete(_PAYLOAD))[0] == 503
         assert len(call.calls) == 1
         clock[0] += timedelta(seconds=17)
-    assert (await gateway.complete(_PAYLOAD))[0] == 200
-    assert len(call.calls) == 2
+        assert (await gateway.complete(_PAYLOAD))[0] == 200
+        assert len(call.calls) == 2
+    else:
+        assert (await gateway.complete(_PAYLOAD))[0] == 503
+        clock[0] += timedelta(seconds=17)
+        # The retry event cannot be published, the retry itself still runs.
+        assert (await gateway.complete(_PAYLOAD))[0] == 200
+        assert len(call.calls) == 2
+        assert [json.loads(v)["transition"] for _, _, v in bus.events] == ["set_aside"]
+        assert (await gateway.complete(_PAYLOAD))[0] == 200
+    assert secret not in caplog.text
     events = [json.loads(value) for _, _, value in bus.events]
     assert [event["transition"] for event in events] == ["set_aside", "retry"]
     replayed = [e for e in bus.attempts if e["transition"] == failed_transition]
@@ -1358,6 +1366,74 @@ def test_handler_loads_required_ttl_from_overlay_without_a_default(
     overlay.write_text("key_set_aside_ttl_seconds: 23\n", encoding="utf-8")
     monkeypatch.setenv("ONEX_REVIEW_GATEWAY_OVERLAY", str(overlay))
     assert handler.gateway(request).set_aside_records == ()
+
+
+def _overlay_handler() -> Any:
+    from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
+        HandlerClaudeReviewGateway,
+    )
+
+    return HandlerClaudeReviewGateway(
+        catalog=FakeCatalog([]),
+        key_values=FakeValues([]),
+        call=FakeCall([]),
+        endpoint_url=_URL,
+        event_bus=FakeEventBus(),
+    )
+
+
+def _overlay_request() -> ModelClaudeReviewGatewayRequest:
+    return ModelClaudeReviewGatewayRequest(
+        host=_HOST,
+        tenant_id=_TENANT,
+        model=_MODEL,
+        cloud_refused_repositories=_REFUSED,
+    )
+
+
+def test_one_policy_file_holding_the_privacy_list_and_the_ttl_loads_through_the_overlay_variable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The host's one policy file also carries the list ``--privacy-overlay`` reads (OMN-24658)."""
+    policy = tmp_path / "policy.yaml"
+    policy.write_text(
+        "cloud_review_refused_repositories:\n  - private-repo\n"
+        "key_set_aside_ttl_seconds: 23\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEX_REVIEW_GATEWAY_OVERLAY", str(policy))
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+    gateway = _overlay_handler().gateway(_overlay_request())
+    assert gateway.set_aside_records == ()
+    assert gateway._overlay.key_set_aside_ttl_seconds == 23
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "key_set_aside_ttl_second: 23",
+        "key_set_aside_ttl: 23",
+        "key_set_aside_ttl_seconds: not-a-number",
+        "key_set_aside_ttl_seconds: 0",
+    ],
+)
+def test_a_misspelled_or_invalid_ttl_key_in_a_policy_file_still_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    line: str,
+) -> None:
+    from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+
+    policy = tmp_path / "policy.yaml"
+    policy.write_text(
+        f"cloud_review_refused_repositories:\n  - private-repo\n{line}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEX_REVIEW_GATEWAY_OVERLAY", str(policy))
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+    with pytest.raises(NodeOverlayError):
+        _overlay_handler().gateway(_overlay_request())
 
 
 async def test_live_handler_owns_the_bus_lifecycle_and_signed_route(
