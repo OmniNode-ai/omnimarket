@@ -102,6 +102,7 @@ class _FakeTracker:
             title="Read me",
             description="the body",
             state="Backlog",
+            assignee="Owner",
             url=f"https://linear.app/omninode/issue/{issue_id}",
         )
 
@@ -158,7 +159,35 @@ def test_operations_and_contract_input_model_read_returns_the_ticket() -> None:
     assert result.title == "Read me"
     assert result.description_body == "the body"
     assert result.ticket_status == "Backlog"
+    assert result.assignee == "Owner"
     assert tracker.closed
+
+
+class _FakeLister:
+    def __init__(self) -> None:
+        self.projects: list[str] = []
+
+    def open_issue_ids(self, project_id: str) -> list[str]:
+        self.projects.append(project_id)
+        return ["OMN-9", "OMN-3"]
+
+
+def test_list_open_returns_the_projects_open_ticket_ids_sorted() -> None:
+    lister = _FakeLister()
+    handler = HandlerCreateTicket(linear_client=lister)  # type: ignore[arg-type]
+    result = handler.handle(
+        ModelCreateTicketRequest(
+            operation=EnumTicketOperation.LIST_OPEN, project=" proj-1 "
+        )
+    )
+    assert result.status == "listed"
+    assert result.candidate_ids == ["OMN-3", "OMN-9"]
+    assert lister.projects == ["proj-1"]
+
+
+def test_list_open_without_a_project_is_refused_by_the_request_model() -> None:
+    with pytest.raises(ValueError, match="list_open requires project"):
+        ModelCreateTicketRequest(operation=EnumTicketOperation.LIST_OPEN)
 
 
 def test_operations_and_contract_input_model_comment_posts_the_body() -> None:
