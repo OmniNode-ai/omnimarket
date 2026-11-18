@@ -5,5 +5,5 @@ version: 1.0.0
 pack: distributed_validation
 node_role: compute
 display_name: Codex Model Compute
-description: Which Codex model a lane runs, the account default unless a declared id is asked.
+description: Which Codex model a lane runs given its requested id, security scope, and round.
 owner: omnimarket

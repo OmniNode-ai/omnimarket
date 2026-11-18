@@ -7,12 +7,13 @@ runtime_profiles: []
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: 1.0.0
 description: >
-  Which Codex model a lane runs. A lane that asks for no model gets none, so Codex
-  runs the account default; a lane that asks for a declared id gets it; any other id
-  is refused with the declared ids named. The declared ids are the node's overlay
-  (<root>/node_codex_model_compute/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS,
-  field codex_models); the node holds no id, and with no overlay it refuses to
-  build rather than guess.
+  Which Codex model a lane runs. An explicitly requested declared id takes
+  precedence. An undeclared id is refused with the declared ids named. With
+  no id requested, use the escalation model for security scope or a round
+  at or above the escalation threshold. Use the default model otherwise.
+  A brief may supply omitted request fields through Security scope and Round
+  declarations. Their defaults are false and 1. The routing policy lives at
+  <root>/node_codex_model_compute/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS.
 input_model:
   name: ModelCodexModelRequest
   module: omnimarket.nodes.node_codex_model_compute.models.model_codex_model
@@ -36,18 +37,22 @@ event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
-  external_trigger: Direct invocation through onex node with the asked model id and the node's overlay.
+  external_trigger: Direct invocation through onex node with the requested id, lane routing facts, and the node's overlay.
 descriptor:
   node_archetype: compute
   purity: pure
   idempotent: true
   side_effects: []
   runtime_profiles: []
-# OVERLAY KEYS (OMN-25552): the accepted Codex model ids, read from `codex debug models`. The account default is not
-# an id: it is the answer to a request that names none.
 overlay:
   codex_models:
     description: "The accepted Codex model ids, one or more; any other asked id is refused."
+  initial_model:
+    description: "The declared model id for lanes without an asked id or an escalation."
+  escalation_model:
+    description: "The declared model id for lanes with security scope or at or above the escalation round."
+  escalation_round_threshold:
+    description: "The first round that uses the escalation model when no id is asked."
 metadata:
   transport_type: local
   ticket: OMN-25552

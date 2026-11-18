@@ -1,11 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Which Codex model a lane runs: the account default unless a declared id is asked (OMN-25552).
-
-A lane asks for no model and gets none (no ``-m``; the account's default model runs), asks for a
-declared id and gets it, and asks for anything else and is refused with the declared ids named.
-The declared ids are the node's overlay (``codex_models``); the node holds none itself.
-"""
+"""Resolve the Codex model from the overlay policy and the lane's routing facts."""
 
 from __future__ import annotations
 
@@ -27,7 +22,7 @@ CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 def load_declaration(
     environ: Mapping[str, str] | None = None,
 ) -> ModelCodexModelDeclaration:
-    """The overlay's declared ids; no overlay, or a broken one, refuses (there is no packaged fallback)."""
+    """Load and validate the declared model ids and their routing policy."""
     return load_structured_overlay(NODE, ModelCodexModelDeclaration, environ)
 
 
@@ -38,22 +33,27 @@ class HandlerCodexModel:
     def handle(self, request: ModelCodexModelRequest) -> ModelCodexModelResult:
         declared = self.declaration.codex_models
         asked = (request.codex_model or "").strip()
-        if not asked:
-            return ModelCodexModelResult(
-                accepted=True,
-                reason="no model asked: the account default runs (no -m)",
-                declared=declared,
+        if asked:
+            if request.codex_model not in declared:
+                return ModelCodexModelResult(
+                    accepted=False,
+                    reason=f"codex model {asked!r} is not declared; the declared ids are "
+                    + ", ".join(declared),
+                    declared=declared,
+                )
+            model, reason = request.codex_model, f"declared id {request.codex_model!r}"
+        elif request.security_scope:
+            model, reason = self.declaration.escalation_model, "security scope"
+        elif request.round_count >= self.declaration.escalation_round_threshold:
+            model, reason = (
+                self.declaration.escalation_model,
+                "escalation round reached",
             )
-        if request.codex_model in declared:
-            return ModelCodexModelResult(
-                accepted=True,
-                model=request.codex_model,
-                reason=f"declared id {request.codex_model!r}",
-                declared=declared,
-            )
+        else:
+            model, reason = self.declaration.initial_model, "overlay default"
         return ModelCodexModelResult(
-            accepted=False,
-            reason=f"codex model {asked!r} is not declared; the declared ids are "
-            + ", ".join(declared),
+            accepted=True,
+            model=model,
+            reason=reason,
             declared=declared,
         )
