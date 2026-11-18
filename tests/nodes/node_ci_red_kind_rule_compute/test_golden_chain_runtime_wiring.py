@@ -16,6 +16,7 @@ import asyncio
 import contextlib
 import json
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -39,16 +40,16 @@ CONTRACT = (
 )
 
 
-def _declared() -> dict[str, object]:
-    return yaml.safe_load(CONTRACT.read_text())  # type: ignore[no-any-return]
+def _declared() -> dict[str, Any]:
+    return yaml.safe_load(CONTRACT.read_text())
 
 
 def test_contract_declares_one_command_topic_and_one_terminal_event() -> None:
     contract = _declared()
-    subscribe = contract["event_bus"]["subscribe_topics"]  # type: ignore[index]
+    subscribe = contract["event_bus"]["subscribe_topics"]
     assert subscribe, "no subscribe topic: the runtime never attaches this node"
-    assert contract["runtime_dispatch"]["command_topic"] == subscribe[0]  # type: ignore[index]
-    assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]  # type: ignore[index]
+    assert contract["runtime_dispatch"]["command_topic"] == subscribe[0]
+    assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
 
 
 async def test_command_on_the_declared_topic_is_handled_and_answered(
@@ -64,7 +65,7 @@ async def test_command_on_the_declared_topic_is_handled_and_answered(
     )
     monkeypatch.setenv("CI_RED_KIND_RULES_OVERLAY", str(overlay))
     contract = _declared()
-    subscribe = contract["event_bus"]["subscribe_topics"]  # type: ignore[index]
+    subscribe = contract["event_bus"]["subscribe_topics"]
     assert subscribe, "no subscribe topic: the runtime never attaches this node"
     command_topic = subscribe[0]
     terminal_topic = contract["terminal_event"]

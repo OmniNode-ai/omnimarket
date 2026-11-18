@@ -16,6 +16,7 @@ import asyncio
 import contextlib
 import json
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -51,20 +52,32 @@ CASES = [
 IDS = ["no-first-slice-section", "first-slice-ok"]
 
 
-def _declared() -> dict[str, object]:
-    return yaml.safe_load(CONTRACT.read_text())  # type: ignore[no-any-return]
+def _declared() -> dict[str, Any]:
+    return yaml.safe_load(CONTRACT.read_text())
 
 
 def test_contract_subscribes_its_command_topic_and_runs_on_main() -> None:
     contract = _declared()
-    command_topic = contract["runtime_dispatch"]["command_topic"]  # type: ignore[index]
-    subscribe = contract["event_bus"]["subscribe_topics"]  # type: ignore[index]
+    command_topic = contract["runtime_dispatch"]["command_topic"]
+    subscribe = contract["event_bus"]["subscribe_topics"]
     assert command_topic in subscribe, (
         "no subscribe topic: the runtime never attaches this node"
     )
-    terminal = contract["runtime_dispatch"]["terminal_events"]["success"]  # type: ignore[index]
-    assert terminal in contract["event_bus"]["publish_topics"]  # type: ignore[index]
-    assert contract["descriptor"]["runtime_profiles"] == ["main"]  # type: ignore[index]
+    terminal = contract["runtime_dispatch"]["terminal_events"]["success"]
+    assert terminal in contract["event_bus"]["publish_topics"]
+    assert contract["descriptor"]["runtime_profiles"] == ["main"]
+
+
+def test_contract_publishes_the_declared_terminal_topics() -> None:
+    contract = _declared()
+    assert contract["runtime_dispatch"]["terminal_events"] == {
+        "success": "onex.evt.omnimarket.plan-first-slice-check-completed.v1",
+        "failure": "onex.evt.omnimarket.plan-first-slice-check-failed.v1",
+    }
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.plan-first-slice-check-completed.v1",
+        "onex.evt.omnimarket.plan-first-slice-check-failed.v1",
+    ]
 
 
 @pytest.mark.parametrize(("payload", "expected"), CASES, ids=IDS)
@@ -72,8 +85,8 @@ async def test_command_on_the_declared_topic_is_handled_and_answered(
     payload: dict[str, object], expected: dict[str, str]
 ) -> None:
     contract = _declared()
-    command_topic = contract["runtime_dispatch"]["command_topic"]  # type: ignore[index]
-    terminal_topic = contract["runtime_dispatch"]["terminal_events"]["success"]  # type: ignore[index]
+    command_topic = contract["runtime_dispatch"]["command_topic"]
+    terminal_topic = contract["runtime_dispatch"]["terminal_events"]["success"]
     assert isinstance(command_topic, str)
     assert isinstance(terminal_topic, str)
 
