@@ -17,6 +17,7 @@ from __future__ import annotations
 import stat
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -146,12 +147,10 @@ def _run_remote_locally(
         env_file.write_text(env_text, encoding="utf-8")
     log = tmp_path / "docker.log"
 
-    def local_ssh(
-        argv: list[str], **kwargs: object
-    ) -> subprocess.CompletedProcess[str]:
+    def local_ssh(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         assert argv[0] == "ssh"
         assert argv[-2:] == ["sh", "-s"]
-        return real_run(  # type: ignore[call-overload,no-any-return]
+        return real_run(
             ["sh", "-s"],
             **kwargs,
             env={
