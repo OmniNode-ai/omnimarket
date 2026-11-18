@@ -11,11 +11,15 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
+from typing import cast
 
 import pytest
 
 from omnimarket.nodes.node_host_down_compute.models.model_host_down import (
     ModelHostReading,
+)
+from omnimarket.nodes.node_host_down_reading_effect.adapters.fakes import (
+    InMemoryReadingPublisher,
 )
 from omnimarket.nodes.node_host_down_reading_effect.adapters.stores import (
     InMemoryDownStore,
@@ -186,7 +190,10 @@ def test_chain_error_a_bus_that_refuses_a_reading_is_a_typed_failure_and_the_sto
         def publish(self, topic: str, key: str, payload: bytes) -> None:
             raise RuntimeError("bus refused")
 
-    rig = Rig(results={HOST_A: True, HOST_B: True}, publisher=Refusing())  # type: ignore[arg-type]
+    rig = Rig(
+        results={HOST_A: True, HOST_B: True},
+        publisher=cast("InMemoryReadingPublisher", Refusing()),
+    )
     result = _sweep(rig, "err-1")
     assert result.failure_code == rig.overlay.codes.publish_failed
     _failure(rig, rig.overlay.codes.publish_failed)

@@ -80,7 +80,7 @@ class Rig:
             self.probed.append(f"{host_name}@{address}:{port}")
             return real_probe(host_name, address, port, timeout_s)
 
-        self.prober.probe = spy  # type: ignore[method-assign]
+        object.__setattr__(self.prober, "probe", spy)
         self.handler = HandlerHostDownReading(
             self.overlay,
             table_source,

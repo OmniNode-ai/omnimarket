@@ -275,12 +275,12 @@ def test_the_reading_crosses_the_in_memory_bus_and_placement_skips_the_down_host
     assert _place(down, now, only_host=HOST_B).replaced_from == HOST_B
 
 
+@pytest.mark.kafka
 def test_the_reading_crosses_the_real_broker_and_placement_skips_the_down_host(
     overlay: ModelHostDownOverlay,
 ) -> None:
     lane = os.environ.get(LANE_ENV)
-    if not lane:
-        pytest.skip(f"no broker lane: {LANE_ENV} names none")
+    assert lane, f"no broker lane: {LANE_ENV} names none"
     bus_cm = open_lane_bus(
         bus="kafka", lane=lane, kafka_bootstrap=None, root=workspace_root(os.environ)
     )

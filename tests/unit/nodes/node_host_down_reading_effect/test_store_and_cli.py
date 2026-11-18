@@ -51,7 +51,9 @@ def test_both_stores_read_the_latest_record_per_host(make, tmp_path: Path) -> No
     store.write(_record(HOST_B, EnumHostState.DOWN))
     store.write(_record(HOST_B, EnumHostState.UP, at=NOW + timedelta(seconds=60)))
     assert store.down_hosts(NOW + timedelta(seconds=60), 600) == (HOST_A,)
-    assert store.latest(HOST_B).state is EnumHostState.UP  # type: ignore[union-attr]
+    latest = store.latest(HOST_B)
+    assert latest is not None
+    assert latest.state is EnumHostState.UP
 
 
 def test_a_down_record_older_than_the_ttl_no_longer_counts_even_when_the_outage_is_old(
