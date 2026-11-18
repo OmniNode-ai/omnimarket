@@ -139,14 +139,23 @@ def _write_episode(state_dir: Path, episode: str, reasons: tuple[str, ...]) -> N
     tmp.replace(state_dir / EPISODE_FILE)
 
 
+def _no_appender(row: str) -> str:
+    return "no appender is configured for the alarm row"
+
+
 class HandlerTemporalHealthAlarm:
     """Turn one reading into at most one alarm or recovery row."""
 
     def __init__(
-        self, *, settings: ModelTemporalHealthSettings, append: Appender
+        self,
+        *,
+        settings: ModelTemporalHealthSettings | None = None,
+        append: Appender | None = None,
     ) -> None:
-        self._settings = settings
-        self._append = append
+        # Both optional so the routed handler boots with no constructor arguments; a row with no appender is
+        # reported as unappended (and tried again next tick), never raised.
+        self._settings = settings or ModelTemporalHealthSettings()
+        self._append: Appender = append or _no_appender
 
     def handle(
         self, request: ModelTemporalHealthAlarmRequest

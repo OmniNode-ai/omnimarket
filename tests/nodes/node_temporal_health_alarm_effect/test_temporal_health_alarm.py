@@ -211,3 +211,19 @@ def test_contract_settings_and_probe(capsys: pytest.CaptureFixture[str]) -> None
     assert settings.task_queue == "q1"
     assert main(["--probe"]) == 0
     assert json.loads(capsys.readouterr().out)["probe"] == "ok"
+
+
+def test_routed_handler_boots_without_arguments_and_reports_an_unappended_row(
+    tmp_path: Path,
+) -> None:
+    """The runtime resolves the routed handler with no constructor arguments; with no appender it reports, not raises."""
+    handler = HandlerTemporalHealthAlarm()
+    result = handler.handle(
+        ModelTemporalHealthAlarmRequest(
+            facts=_facts(server=False), host="h051", state_dir=tmp_path
+        )
+    )
+    assert result.verdict == "unhealthy"
+    assert result.outcome == "unappended"
+    assert "no appender" in result.error
+    assert not (tmp_path / "episode.json").exists()
