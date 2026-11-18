@@ -27,6 +27,7 @@ from omnimarket.handlers.tick_unit_arguments import (
 from omnimarket.nodes.node_claude_token_pool_effect.runtime_claude_token_pool import (
     EXIT_ALL_LIMITED,
     EXIT_EMPTY,
+    publish_labels,
     run_tick,
 )
 
@@ -51,6 +52,21 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default=None, help="this host's name in the overlay")
     add_tick_arguments(parser)
     return parser
+
+
+def _labels_fields(host: str, *, dry_run: bool) -> dict[str, object]:
+    """After the pass, publish this host's login label and read every label fresh; the line goes in the heartbeat.
+
+    A failure to publish or read is named in the heartbeat and never changes the pass's own exit status: the
+    swap and the sync already happened.
+    """
+    if dry_run:
+        return {"labels": "dry_run"}
+    try:
+        view = publish_labels(host)
+    except (NodeOverlayError, ValidationError, ValueError, OSError) as exc:
+        return {"labels": f"publish_failed:{type(exc).__name__}"}
+    return {"labels": view.basis, "labels_line": view.labels_line}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -114,6 +130,7 @@ def main(argv: list[str] | None = None) -> int:
             "revokes_confirmed": list(result.revokes_confirmed),
             "revokes_rechecked_kept": list(result.revokes_rechecked_kept),
         }
+        line.update(_labels_fields(host, dry_run=args.dry_run))
         if result.outcome == "no_usable":
             code = EXIT_ALL_LIMITED
         elif result.marks_sync.state in ("unreadable", "stale"):

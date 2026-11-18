@@ -48,6 +48,7 @@ from omnimarket.models.model_local_install_delegation_savings import (
 )
 from omnimarket.models.model_local_install_delegation_summary import (
     DELEGATION_SUMMARY_VIEW_STEPS,
+    DELEGATION_VIEW_REPLACE_STEPS,
     create_delegation_summary_view,
 )
 from omnimarket.models.model_local_install_schema import (
@@ -580,17 +581,13 @@ _DELEGATION_ROUTING_QUALITY_VIEWS_SQL: tuple[tuple[str, str], ...] = (
 )
 # OMN-21015 AC2: the counterpart of node_projection_delegation migration 0060, the
 # model-routing view whose tiers each list their models with run count, share and
-# cost. Its own step, replacing the OMN-20754 definition of that one view: a store
-# that has already recorded the OMN-20754 step would never run it again.
-_DELEGATION_MODEL_ROUTING_TIER_MODELS_STEP = "omn21015_model_routing_tier_models"
+# cost; the default relation of _replace_delegation_view. Its step, with the per-day
+# view's (OMN-21970) and their later revisions, is declared in order in
+# DELEGATION_VIEW_REPLACE_STEPS (model_local_install_delegation_summary).
 _DELEGATION_MODEL_ROUTING_TIER_MODELS_SQL = (
     "projection_delegation_model_routing",
     "sqlite/delegation_model_routing_view_v2.sql",
 )
-# OMN-21970: the counterpart of node_projection_delegation migration 0067, all of
-# a tenant's days in one row (migration 0066's cursor is a cursor-table step).
-_DAILY_VIEW_STEP = "omn21970_delegation_daily_view"
-_DAILY_VIEW_SQL = ("projection_delegation_daily", "sqlite/delegation_daily_view.sql")
 # OMN-21349: correlation-keyed claims have no delivery_id mapping. Preserve
 # them in a legacy table and create the current shape before its indexes.
 _CLAIMS_DELIVERY_ID_SHAPE_STEP = "omn21349_claims_delivery_id_shape"
@@ -864,19 +861,10 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                         done,
                     )
                 )
-        if not cls._store_step_recorded(
-            conn, _DELEGATION_MODEL_ROUTING_TIER_MODELS_STEP
-        ):
-            pending.append(
-                (
-                    _DELEGATION_MODEL_ROUTING_TIER_MODELS_STEP,
-                    cls._replace_delegation_view,
-                    "listed each tier's models in the delegation model-routing view",
-                )
-            )
-        if not cls._store_step_recorded(conn, _DAILY_VIEW_STEP):
-            daily = partial(cls._replace_delegation_view, relation=_DAILY_VIEW_SQL)
-            pending.append((_DAILY_VIEW_STEP, daily, "created the per-day view"))
+        for step, relation, done in DELEGATION_VIEW_REPLACE_STEPS:
+            if not cls._store_step_recorded(conn, step):
+                replace = partial(cls._replace_delegation_view, relation=relation)
+                pending.append((step, replace, done))
         for step, note, ddl in _CURSOR_TABLE_STEPS:
             if not cls._store_step_recorded(conn, step):
                 create = partial(cls._create_cursor_table, ddl=ddl)
