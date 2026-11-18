@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-24874
+title: 'The delegation scenario alarm timer is installed on h053 from the omnimarket 6353 branch and one forced failure writes an alarm row naming r8 or r9'
+summary: The alarm node of this pull request is installed from the branch on h053 through the declared installer, the timer is listed, one evaluation reads the newest r8 and r9 records, and one evaluation
+  over a scratch record and a scratch ledger writes a STATUS row with alarm= naming r8.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24874-ac4
+  statement: A scheduled check writes an alarm row when either run fails, and it was run once on h053.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: a scheduled check writes an alarm row when either run fails, and it was run once -- falsifier: a run of the check over a forced r8 or r9 failure leaves no STATUS row with alarm=
+      naming r8 or r9 on the ledger'
+evidence_requirements:
+- kind: tests
+  description: The alarm node golden-chain tests, which run the tick over a failed r8 record and read the alarm row it appends.
+  command: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24874-ac4
+  description: A failed r8 record under a scratch home gives one alarm row naming the r8 alarm through the append command, and a passing r9 record gives none.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -k "a_failed_r8_run_writes_one_alarm_row" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24874-ac4-installed
+  description: 'Local Done gate on h053: the alarm timer installed from the branch is listed by the user manager.'
+  source: manual
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: sh -c 'systemctl --user list-timers --all | grep -F onex-delegation-scenario-alarm.timer'
+    cwd: .
+- id: dod-omn24874-integration-proof
+  description: The alarm node tests and the installer registry unit tests run on a lab host at the pushed head through the lab work runner; hosted CI cannot reach the lab, so only the local Done gate runs
+    this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path "${OMNI_HOME:?}" --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24874
+      --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect tests/nodes/node_host_installer_registry_units -q --no-cov -n 0 -p no:randomly
+    cwd: .
