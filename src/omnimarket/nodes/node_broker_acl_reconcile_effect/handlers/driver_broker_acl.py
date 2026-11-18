@@ -295,8 +295,8 @@ def build_remote_script(decl: AclConnection, rpk_argvs: list[list[str]]) -> str:
     level of surrounding quotes, and the trailing whitespace and `` # comment`` the shell drops.
     ``NAME = value`` is not a shell assignment and is not read. A value is read only in one of
     three forms, whole: ``'...'`` or ``"..."`` followed by nothing, whitespace or a `` # comment``,
-    or a bare word of no quote, whitespace, ``;&|<>()``, backslash, dollar or backtick, followed
-    the same way. Any other form the shell reads differently from this reader (text after a
+    or a bare word of no quote, whitespace, ``;&|<>()``, tilde, backslash, dollar or backtick,
+    followed the same way. Any other form the shell reads differently from this reader (text after a
     closing quote, a quote or an operator in a bare word, inner whitespace that starts no comment,
     a leading space after the equals sign, and inside double quotes or a bare word a backslash, a
     dollar sign or a backtick) fails closed with the same exit and marker, never a guessed or
@@ -322,15 +322,16 @@ def build_remote_script(decl: AclConnection, rpk_argvs: list[list[str]]) -> str:
     # cut short: a leading space (``NAME= v`` runs ``v`` with NAME empty), and any value that is not,
     # whole, one of three accepted shapes. Single quotes are literal; double quotes and a bare word
     # may not hold a backslash, dollar or backtick (the shell decodes or expands them), and a bare
-    # word may hold no quote, whitespace or ``;&|<>()``. After a closing quote or a bare word only
-    # whitespace, or whitespace then ``#`` and a comment, may follow.
+    # word may hold no quote, whitespace, ``;&|<>()`` or tilde (the shell expands ``~`` to a home
+    # directory at the start of a value and after a colon). After a closing quote or a bare word
+    # only whitespace, or whitespace then ``#`` and a comment, may follow.
     tail = r"([[:space:]]*|[[:space:]]+#.*)$"
     accepted = " || ".join(
         f"printf '%s\\n' \"$R_{{var}}\" | grep -Eq {shlex.quote(pattern)}"
         for pattern in (
             "^'[^']*'" + tail,
             '^"[^"$`\\]*"' + tail,
-            "^[^[:space:]'\"$`\\;&|<>()]+" + tail,
+            "^[^[:space:]'\"$`\\;&|<>()~]+" + tail,
         )
     )
     check_form = (
