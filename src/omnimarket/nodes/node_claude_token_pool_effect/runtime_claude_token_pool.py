@@ -27,7 +27,9 @@ Usage, on the lab host whose pool it is:
         label goes to stderr, never the value.
     python -m omnimarket.nodes.node_claude_token_pool_effect reorder --labels <a>,<b>,...
         draws these labels first, in this order, then every other token as it stands
-    python -m omnimarket.nodes.node_claude_token_pool_effect status [--json]
+    python -m omnimarket.nodes.node_claude_token_pool_effect status [--json] [--labels]
+        --labels prints one line naming every account label with its limit state, the reset it reads and the
+        hosts whose login is on it (read from the marks source and the login board each tick fills)
     python -m omnimarket.nodes.node_claude_token_pool_effect tick --host <name> [--dry-run]
         the rotation tick (OMN-23000): re-syncs the pool's marks from the overlay's one source, sets this
         host's draw order, and swaps the host's login to a usable token when the one in use is limited
@@ -61,10 +63,12 @@ revokes it (or records it challenged, when --evidence-stdin shows the mark is a
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import socket
 import sys
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from getpass import getpass
 from pathlib import Path
 
@@ -92,6 +96,7 @@ from omnimarket.nodes.node_claude_token_pool_effect.handlers.adapter_pool_mark_e
     InMemoryPoolMarkEventSink,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.adapter_rotation_ports import (
+    DirectoryLoginBoard,
     FileTokenFile,
     MirrorMarksSource,
 )
@@ -120,6 +125,7 @@ from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_po
     ModelPoolLabelLanes,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool_status_view import (
+    ModelPoolHostLogin,
     ModelPoolStatusViewRequest,
     ModelPoolStatusViewResult,
 )
@@ -132,6 +138,9 @@ from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_ro
 )
 from omnimarket.nodes.node_claude_token_pool_effect.protocols.protocol_pool_mark_events import (
     ProtocolPoolMarkEventSink,
+)
+from omnimarket.nodes.node_claude_token_pool_effect.protocols.protocol_rotation_ports import (
+    ProtocolLoginBoard,
 )
 
 EXIT_REFUSED = 2
@@ -247,6 +256,15 @@ def _parser() -> argparse.ArgumentParser:
         "--json", action="store_true", help="the whole result as JSON (no token)"
     )
     status.add_argument(
+        "--labels",
+        dest="show_labels",
+        action="store_true",
+        help=(
+            "print the one line naming every account label with its limit state, the reset it reads and the "
+            "hosts whose login is on it, and rewrite the labels mirror from that fresh read"
+        ),
+    )
+    status.add_argument(
         "--entries",
         action="store_true",
         help=(
@@ -305,6 +323,75 @@ def mark_event_wiring(
     return sink, environ.get(overlay.mark_events.actor_env) or None
 
 
+#: The directory, beside the marks source's mirror, where every host's tick publishes which label its login is.
+LOGIN_BOARD_NAME = "claude-token-pool-logins"
+#: The labels mirror a host rewrites on every tick and every ``status --labels``: one line naming every label.
+LABELS_MIRROR = Path(".cache") / "omni" / "claude-pool-labels.json"
+
+
+def login_board_for(
+    host: str, overlay: ModelRotationOverlay, home: Path
+) -> ProtocolLoginBoard:
+    """The login board kept beside the marks source's mirror, written and read from every other host on the source host."""
+    source = overlay.marks_source
+    address = (source.ssh_target or "").split(".", 1)[0]
+    return DirectoryLoginBoard(
+        home=home,
+        directory=str(Path(source.mirror_path).parent / LOGIN_BOARD_NAME),
+        ssh_target=None if host in (source.host, address) else source.ssh_target,
+    )
+
+
+def write_labels_mirror(result: ModelPoolStatusViewResult, home: Path) -> None:
+    """Rewrite the labels mirror from a fresh view: the line and one row per label, never a token."""
+    path = home / LABELS_MIRROR
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = {
+        "at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "host": result.host,
+        "basis": result.basis,
+        "labels_line": result.labels_line,
+        "hosts_unread": list(result.hosts_unread),
+        "labels": [row.model_dump() for row in result.label_states],
+    }
+    temporary = path.with_name(path.name + ".new")
+    temporary.write_text(json.dumps(body, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def publish_labels(
+    host: str,
+    *,
+    overlay: ModelRotationOverlay | None = None,
+    home: Path | None = None,
+    pool: HandlerClaudeTokenPool | None = None,
+) -> ModelPoolStatusViewResult:
+    """Say which label ``host``'s login is on the login board, then read every label fresh and rewrite the mirror.
+
+    The tick calls this after its pass, so the label it names is the login the pass left on the host.
+    """
+    declared = overlay or load_overlay()
+    row = declared.host(host)
+    if row is None:
+        raise ValueError(f"{host} is not a host of the {NODE_NAME} overlay")
+    user_home = home or Path.home()
+    claude_pool = pool or HandlerClaudeTokenPool(host=host)
+    fingerprint = FileTokenFile(user_home / row.token_file).fingerprint()
+    label = None
+    if fingerprint is not None:
+        status = claude_pool.handle(ModelClaudeTokenPoolRequest(operation="status"))
+        label = next(
+            (t.label for t in status.tokens if t.fingerprint == fingerprint), None
+        )
+    board = login_board_for(host, declared, user_home)
+    board.publish(ModelPoolHostLogin(host=host, label=label, at=datetime.now(UTC)))
+    result = run_status(
+        host, overlay=declared, home=user_home, pool=claude_pool, login_board=board
+    )
+    write_labels_mirror(result, user_home)
+    return result
+
+
 def run_status(
     host: str | None = None,
     *,
@@ -312,6 +399,7 @@ def run_status(
     overlay_read: bool | None = None,
     home: Path | None = None,
     pool: HandlerClaudeTokenPool | None = None,
+    login_board: ProtocolLoginBoard | None = None,
 ) -> ModelPoolStatusViewResult:
     """The pool status of ``host`` with the production ports: its pool, the overlay's marks source over ssh or in place."""
     declared = overlay if overlay is not None else read_overlay()
@@ -330,14 +418,25 @@ def run_status(
             else source.ssh_target,
         ),
         local_copy_written_at=claude_pool.written_at,
+        login_board=login_board
+        or (
+            login_board_for(name, declared, home or Path.home())
+            if declared is not None
+            else None
+        ),
     )
     return handler.handle(ModelPoolStatusViewRequest(host=name))
 
 
 def _status(args: argparse.Namespace) -> int:
     result = run_status()
+    if getattr(args, "show_labels", False) and result.basis != "unsynced_local_copy":
+        # a fresh read of every label is also the mirror's fresh write
+        write_labels_mirror(result, Path.home())
     if getattr(args, "json", False):
         sys.stdout.write(result.model_dump_json(indent=2) + "\n")
+    elif getattr(args, "show_labels", False):
+        sys.stdout.write(result.labels_line + "\n")
     else:
         sys.stdout.write(result.status_line + "\n")
     # A copy that could not be judged against the source says so in its exit status, as a tick that fell back does.
