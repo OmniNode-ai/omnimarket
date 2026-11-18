@@ -59,6 +59,7 @@ handler_routing:
         name: "ModelPlanFirstSliceRequest"
         module: "omnimarket.nodes.node_plan_first_slice_compute.models.model_plan_first_slice"
 
+terminal_event: "onex.evt.omnimarket.plan-first-slice-check-completed.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.plan-first-slice-check-requested.v1"
   terminal_events:
@@ -69,10 +70,8 @@ event_bus:
     - "onex.cmd.omnimarket.plan-first-slice-check-requested.v1"
   publish_topics:
     - "onex.evt.omnimarket.plan-first-slice-check-completed.v1"
-    - "onex.evt.omnimarket.plan-first-slice-check-failed.v1"
 externally_consumed_topics:
   - "onex.evt.omnimarket.plan-first-slice-check-completed.v1"
-  - "onex.evt.omnimarket.plan-first-slice-check-failed.v1"
 broker_acl_grants:
   - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
     grants:
@@ -80,8 +79,6 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: "onex.cmd.omnimarket.plan-first-slice-check-requested.v1", operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.plan-first-slice-check-completed.v1", operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.plan-first-slice-check-completed.v1", operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.plan-first-slice-check-failed.v1", operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.plan-first-slice-check-failed.v1", operation: DESCRIBE}
 descriptor:
   runtime_profiles: [main]
   node_archetype: compute

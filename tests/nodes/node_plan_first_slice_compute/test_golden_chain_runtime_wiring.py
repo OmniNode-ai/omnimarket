@@ -76,7 +76,6 @@ def test_contract_publishes_the_declared_terminal_topics() -> None:
     }
     assert contract["event_bus"]["publish_topics"] == [
         "onex.evt.omnimarket.plan-first-slice-check-completed.v1",
-        "onex.evt.omnimarket.plan-first-slice-check-failed.v1",
     ]
 
 
