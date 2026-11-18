@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-25484
 title: The integration check reads every merged change through the declared runner reader with no model, and publishes SEEN RUNNING or NOT RUNNING with the reading and its time
-summary: node_merged_change_runner_read_workflow runs the merged-change runner reader as a Temporal workflow on the lab host's Temporal server. A Temporal schedule starts one full read every 900 s; the workflow lists every line the merged_change_runners overlay declares, runs node_merged_change_reading_effect once per line as its own activity with retries, and publishes the readings as one integration reading batch through node_integration_reading_publish_effect. Its worker is a registry_module_tick unit of node_host_installer_registry_units (merged-change-runner-read-systemd). No model runs in the read.
+summary: The merged-change runner uses a Temporal schedule to observe dev runtime readiness and build provenance. The schedule queues one read per observed ready boot over the window from the preceding build to the read start. The reader checks the declared merges without a model and publishes their integration readings. The lab alarm delivery effect sends an idle notice and a recovery notice when a read misses the declared bound.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -29,7 +29,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn25484-ac1
-  description: The workflow lists the declared lines, runs one activity per line with the retry limit, and carries a line that failed every attempt as unread. The live schedule run on the lab host is recorded in the pull request's Lab line.
+  description: Tests the full-read workflow's per-line retry limit and unread result. The h201 installed schedule and unit status require live proof.
   source: manual
   binds_ac:
   - AC1
@@ -47,7 +47,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_merged_change_runner_read_workflow/test_runner_read_workflow.py -q --no-cov -n 0 -p no:randomly -k "running_paths or not_running_rules or unread_and_library"
     cwd: .
 - id: dod-omn25484-ac3
-  description: The batch counts by reader verdict; the counts from the published projection are in the lane report.
+  description: Tests the per-verdict batch counts. AC3 requires a live projection recount with and without runner rows.
   source: manual
   binds_ac:
   - AC3
@@ -65,13 +65,49 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_merged_change_runner_read_workflow/test_runner_read_workflow.py -q --no-cov -n 0 -p no:randomly -k contract_maps
     cwd: .
 - id: dod-omn25484-ac5
-  description: Every full read appends its read seconds and line counts to its run record; the measured numbers are in the lane report.
+  description: The read receipt records seconds and line counts. AC5 requires a fresh full-read measurement on h201.
   source: manual
   binds_ac:
   - AC5
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_merged_change_runner_read_workflow/test_runner_read_workflow.py -q --no-cov -n 0 -p no:randomly -k build_plan
+    cwd: .
+- id: dod-omn25484-ready-edge
+  description: Each observed ready boot starts one read and passes the preceding build time. Repeated readiness for one boot and a boot that never reports ready start no extra read.
+  source: manual
+  binds_ac: [AC1]
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_merged_change_runner_read_workflow/test_ready_edge.py -q --no-cov -n 0 -p no:randomly -k 'one_read_per_ready_boot or no_ready_edge'
+    cwd: .
+- id: dod-omn25484-ready-window
+  description: Schedule a read of the open lower and closed upper merge interval. The Temporal publish activity receives failed line reads as unread with a cause and a read timestamp. Incremental publication retains older rows.
+  source: manual
+  binds_ac: [AC2]
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_merged_change_runner_read_workflow/test_ready_edge.py -q --no-cov -n 0 -p no:randomly -k 'merge_window or windowed_workflow or incremental_projection'
+    cwd: .
+- id: dod-omn25484-idle-recovery
+  description: A ready boot whose read misses the declared bound opens one idle episode. The lab alarm channel posts one recovery after the read completes.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_merged_change_runner_read_workflow/test_ready_edge.py::test_idle_alarm_fires_once_and_recovers tests/nodes/node_lab_alarm_deliver_effect/test_lab_alarm_delivery.py::test_recovery_posts_once_through_the_alarm_channel -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25484-hosted-deploy-probe
+  description: At the checked-out revision, the hosted runner reads the published node contract and checks that it declares the bounded ready-edge scheduler. The predecessor had an unconditional full-read schedule.
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: command
+    check_value: >-
+      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_merged_change_runner_read_workflow/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content
+      | base64 -d | grep -Ex '    idle_bound_seconds: [1-9][0-9]*'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_merged_change_runner_read_workflow/test_ready_edge.py::test_schedule_declares_ready_watcher_without_a_full_read -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25484-integration-proof
   description: Run the runner read workflow's tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts or their Temporal server, so only the local Done gate runs this unbound check.

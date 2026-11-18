@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.integration_reading import (
     EnumIntegrationGapClass,
@@ -66,6 +66,18 @@ class ModelRunnerReadPlan(_Frozen):
     step_timeout_seconds: int = Field(ge=1)
     step_max_attempts: int = Field(ge=1)
     publish: bool = True
+    previous_build_at: AwareDatetime | None = None
+
+
+class ModelRunnerReadWindow(_Frozen):
+    previous_build_at: AwareDatetime
+    as_of: AwareDatetime
+
+    @model_validator(mode="after")
+    def _ordered(self) -> ModelRunnerReadWindow:
+        if self.previous_build_at > self.as_of:
+            raise ValueError("the previous build is newer than the read window")
+        return self
 
 
 class ModelRunnerLineOutcome(_Frozen):
@@ -91,6 +103,8 @@ class ModelRunnerReadPublishInput(_Frozen):
     read_seconds: float = Field(ge=0)
     outcomes: tuple[ModelRunnerLineOutcome, ...]
     publish: bool = True
+    windowed: bool = False
+    merge_facts: dict[str, ModelMergeFacts] = Field(default_factory=dict)
 
 
 class ModelMergeFacts(_Frozen):
@@ -98,6 +112,20 @@ class ModelMergeFacts(_Frozen):
 
     title: str = ""
     merged_at: datetime | None = None
+
+
+class ModelRunnerSelectedLine(_Frozen):
+    """The resolved merge of a declared runner, or the reason its window could not be read."""
+
+    repo: str = Field(min_length=1)
+    number: int = Field(gt=0)
+    merge_sha: str = ""
+    merge: ModelMergeFacts = Field(default_factory=ModelMergeFacts)
+    unread_cause: str = ""
+
+    @property
+    def key(self) -> str:
+        return f"{self.repo}#{self.number}"
 
 
 class ModelRunnerStateRule(_Frozen):
@@ -160,5 +188,7 @@ __all__ = [
     "ModelRunnerReadPlan",
     "ModelRunnerReadPublishInput",
     "ModelRunnerReadSteps",
+    "ModelRunnerReadWindow",
+    "ModelRunnerSelectedLine",
     "ModelRunnerStateRule",
 ]

@@ -9,6 +9,7 @@ handler. Nothing is written.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from collections.abc import Mapping
@@ -156,6 +157,11 @@ def main(argv: list[str] | None = None) -> int:
         help="repo#number, or repo#number=merge sha",
     )
     ap.add_argument("--now", help="override the clock, UTC ISO (tests and replays)")
+    ap.add_argument(
+        "--resolve-only",
+        action="store_true",
+        help="Resolve the supplied changes to merge SHAs without reading the runtime",
+    )
     ap.add_argument("--overlay", help="a YAML file holding a full ModelMcrConfig")
     args = ap.parse_args(argv)
     now = (
@@ -163,16 +169,23 @@ def main(argv: list[str] | None = None) -> int:
         if args.now
         else datetime.now(UTC)
     )
+    changes = tuple(parse_change(c) for c in args.change)
+    sources = build_sources(os.environ, now)
+    if args.resolve_only:
+        resolved = sources.resolve_changes(changes)
+        sys.stdout.write(
+            json.dumps([change.model_dump(mode="json") for change in resolved]) + "\n"
+        )
+        return 0
+
     config = (
         ModelMcrConfig.model_validate(yaml.safe_load(Path(args.overlay).read_text()))
         if args.overlay
         else load_contract_config()
     )
-    container: Any = _LocalContainer(build_sources(os.environ, now))
+    container: Any = _LocalContainer(sources)
     result = HandlerMergedChangeReadingEffect(container, config).handle(
-        ModelMcrRunRequest(
-            changes=tuple(parse_change(c) for c in args.change), now=now, config=config
-        )
+        ModelMcrRunRequest(changes=changes, now=now, config=config)
     )
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
     return 0

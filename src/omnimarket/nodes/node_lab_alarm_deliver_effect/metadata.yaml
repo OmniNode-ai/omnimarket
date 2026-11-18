@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_lab_alarm_deliver_effect
 version: 1.0.0
-description: Delivers a typed lab alarm once per episode - one post to the alert channel and one FRICTION row on the rolling ledger, with the alarm script's dedupe.
+description: Delivers a typed lab alarm once per episode through the alert channel and rolling ledger, with an optional channel notice on recovery.
 pack: operator_tooling
 node_role: effect
 display_name: Lab Alarm Deliver
