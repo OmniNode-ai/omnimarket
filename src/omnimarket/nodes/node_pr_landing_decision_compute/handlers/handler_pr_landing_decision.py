@@ -86,6 +86,7 @@ from omnimarket.models.model_landing_review import (
     EnumReviewGateVerdict,
 )
 from omnimarket.models.model_priority_rules import ModelPriorityRules
+from omnimarket.models.model_review_status import EnumReviewStatusVerdict
 from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_priority import (
     load_priority_rules,
 )
@@ -172,7 +173,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_stat
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.review_gate import (
     SKIP_FOR_REVIEW,
+    SKIP_FOR_REVIEW_STATUS,
     read_review_gate,
+    read_review_status_gate,
 )
 
 _INVALID_REASON: dict[EnumLandingResultKind, EnumLandingOutcomeReason] = {
@@ -1693,7 +1696,9 @@ def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
 
     A PR that carries a lab-bound check lands only on a pass of the current attempt on this exact head (J8): any
     other reading holds the head with its own named reason. A new-work PR lands only on a CLEAN review verdict for
-    its exact head: any other review reading holds the head with its own named reason.
+    its exact head: any other review reading holds the head with its own named reason. A new-work PR also lands
+    only with a success ``fable-review-gate`` commit status on its exact head: a missing, failing, unread or
+    older-head status holds it with its own named reason.
     """
     reading = read_lab_check(p, t.now, t.facts.policy)
     if reading is not None and reading.verdict is not EnumLabCheckVerdict.PASS:
@@ -1702,6 +1707,10 @@ def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
     review = read_review_gate(p, t.facts.policy)
     if review is not None and review.verdict is not EnumReviewGateVerdict.PASS:
         t.skips[p.pr] = SKIP_FOR_REVIEW[review.verdict]
+        return
+    status = read_review_status_gate(p, t.facts.policy)
+    if status is not None and status.verdict is not EnumReviewStatusVerdict.PASS:
+        t.skips[p.pr] = SKIP_FOR_REVIEW_STATUS[status.verdict]
         return
     undeclared = _liveness_undeclared(p)
     if undeclared:
