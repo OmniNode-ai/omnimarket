@@ -46,8 +46,8 @@ dod_evidence:
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=.
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_incident_two_files.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn25601-ac3
   description: AC3 the regression test built from the recorded incident listing fails while either file holds an executable read of the ledger file (origin/dev) and passes on the branch.
@@ -76,4 +76,7 @@ dod_evidence:
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-omn25601 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_file_census_effect tests/nodes/node_temporal_health_alarm_effect tests/unit/validators/test_ledger_file_census.py -q --no-cov -n 0 -p no:randomly
   - check_type: command
     check_value: git diff --exit-code origin/dev -- src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml
+    cwd: .
+  - check_type: command
+    check_value: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=.
     cwd: .
