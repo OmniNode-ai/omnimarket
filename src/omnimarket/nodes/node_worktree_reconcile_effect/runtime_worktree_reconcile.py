@@ -119,8 +119,11 @@ def repair_core_worktree(argv: list[str]) -> int:
     parser.add_argument("--lane", default="worktree-reconcile")
     parser.add_argument(
         "--ledger-append-command",
-        nargs="+",
-        help="argv that appends one ledger row; the token {row} is replaced by the STATUS row",
+        nargs=argparse.REMAINDER,
+        help=(
+            "argv that appends one ledger row; the token {row} is replaced by the STATUS row. "
+            "It takes every argument after it, dash-led ones included, so it goes last."
+        ),
     )
     args = parser.parse_args(argv)
     result = create_handler_core_worktree_repair(

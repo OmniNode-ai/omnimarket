@@ -273,6 +273,35 @@ def test_core_worktree_command_runs_the_repair_from_the_node_entry_point(
     assert stored(clone) == ""
 
 
+def test_status_row_command_takes_dash_led_arguments_from_the_node_entry_point(
+    tmp_path: Path,
+) -> None:
+    registry = tmp_path / "registry"
+    make_clone(registry, "canonical", str(tmp_path / "gone"))
+    sink = tmp_path / "sink.txt"
+    code = main(
+        [
+            "repair-core-worktree",
+            "--host",
+            "h053",
+            "--registry",
+            str(registry),
+            "--execute",
+            "--ledger-append-command",
+            "sh",
+            "-c",
+            'printf "%s\\n" "$1" >> "$2"',
+            "append",
+            "{row}",
+            str(sink),
+        ]
+    )
+    lines = sink.read_text().splitlines()
+    assert code == 0
+    assert len(lines) == 1
+    assert "| STATUS |" in lines[0]
+
+
 def test_status_row_writer_runs_the_declared_command_once_per_row(
     tmp_path: Path,
 ) -> None:
