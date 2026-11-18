@@ -6,6 +6,8 @@ These are data only. The SQLite adapter applies them through its recorded store
 steps, so readers of an initialized store do not acquire a write transaction.
 """
 
+import sqlite3
+
 # OMN-19988: the latest environment report per (tenant, mode, service), with the
 # verdict and open alert the alert compute gave it. A row changes in place, so its
 # cursor is re-stamped from a one-row sequence on every insert and update, as
@@ -146,3 +148,101 @@ _CURSOR_TABLE_STEPS = (
         _DELEGATION_EVENTS_CURSOR,
     ),
 )
+
+
+# OMN-20226: metering_summary's three not-yet-measured fields. A store written
+# before them has the table without the columns, and CREATE TABLE IF NOT EXISTS
+# leaves it so; the read node then refuses the whole exposure
+# (projection_column_missing). They are added once, nullable with no default
+# like migration 0003, so a row written before them reads null, never a zero.
+METERING_SUMMARY_MEASURES_STEP = "omn20226_metering_summary_measure_columns"
+METERING_SUMMARY_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("compression_ratio", "TEXT"),
+    ("cache_hit_rate", "TEXT"),
+    ("runs_cache_answered", "INTEGER"),
+)
+# OMN-20008: metering_summary's savings share of the baseline, the counterpart
+# of migration 0004. Its own step, not a fourth entry above: a store that has
+# already recorded the OMN-20226 step would never run that step again.
+METERING_SUMMARY_SAVINGS_PCT_STEP = "omn20008_metering_summary_savings_pct_column"
+# OMN-21361: metering_summary's savings per measured run, the counterpart of
+# migration 0002. A store written before it has the table without the column,
+# and read_summary_row refused that row on every delegation. Its own step, for
+# the same reason as the savings share above.
+METERING_SUMMARY_SAVINGS_PER_RUN_STEP = (
+    "omn21361_metering_summary_savings_per_measured_run_column"
+)
+# Each step adds its columns once per store, nullable with no default, so a row
+# written before them reads null. The columns are read again under the step's
+# write lock, so a fresh store, whose table already has them, and two first
+# opens that race both add nothing twice.
+METERING_SUMMARY_COLUMN_STEPS: tuple[
+    tuple[str, tuple[tuple[str, str], ...], str], ...
+] = (
+    (
+        METERING_SUMMARY_MEASURES_STEP,
+        METERING_SUMMARY_ADDED_COLUMNS,
+        "added the metering-summary compression and cache columns",
+    ),
+    (
+        METERING_SUMMARY_SAVINGS_PCT_STEP,
+        (("savings_pct_of_counterfactual", "TEXT"),),
+        "added the metering-summary savings share column",
+    ),
+    (
+        METERING_SUMMARY_SAVINGS_PER_RUN_STEP,
+        (("savings_per_measured_run_usd", "TEXT"),),
+        "added the metering-summary savings per measured run column",
+    ),
+)
+
+
+def relabel_usage_source(conn: sqlite3.Connection) -> None:
+    """OMN-19968: move rows written before the shared vocabulary onto it.
+
+    The SQLite counterpart of migration 0003 (EnumUsageSource; omnibase_infra
+    migration 077), run once per store as a store step.
+    """
+    conn.execute(
+        "UPDATE llm_call_metrics SET usage_source = CASE usage_source "
+        "WHEN 'API' THEN 'measured' WHEN 'ESTIMATED' THEN 'estimated' "
+        "WHEN 'MISSING' THEN 'unknown' ELSE usage_source END "
+        "WHERE usage_source IN ('API', 'ESTIMATED', 'MISSING')"
+    )
+
+
+RUN_SAVINGS_RECOMPUTE_STEP = "omn24615_delegation_events_run_savings_recompute"
+
+
+def recompute_run_savings(conn: sqlite3.Connection) -> None:
+    """OMN-24615 AC1: recompute every stored run's derived saving once, with the writer's own definition.
+
+    The savings view sums each run's stored modelled_savings_usd, while the
+    metering headline is folded live, so a store written by an earlier build
+    (a refused run or a run on a model with no price given a figure, a run from
+    before the column given none) showed two totals. Only the derived columns
+    are written; the recorded cost columns are never touched (decision D1).
+    """
+    # Imported here: the handler reaches this module through the store it writes.
+    from omnimarket.nodes.node_projection_delegation.handlers.handler_run_savings import (
+        RUN_SAVINGS_DERIVED_COLUMNS,
+        RUN_SAVINGS_INPUT_COLUMNS,
+        modelled_run_savings_columns,
+    )
+
+    have = {
+        str(info[1]) for info in conn.execute("PRAGMA table_info(delegation_events)")
+    }
+    if not set(RUN_SAVINGS_DERIVED_COLUMNS) <= have:
+        return
+    read = ["correlation_id", *(c for c in RUN_SAVINGS_INPUT_COLUMNS if c in have)]
+    assignments = ", ".join(f"{column} = ?" for column in RUN_SAVINGS_DERIVED_COLUMNS)
+    rows = conn.execute(
+        f"SELECT rowid, {', '.join(read)} FROM delegation_events"
+    ).fetchall()
+    for rowid, *values in rows:
+        derived = modelled_run_savings_columns(dict(zip(read, values, strict=True)))
+        conn.execute(
+            f"UPDATE delegation_events SET {assignments} WHERE rowid = ?",
+            (*(derived[column] for column in RUN_SAVINGS_DERIVED_COLUMNS), rowid),
+        )
