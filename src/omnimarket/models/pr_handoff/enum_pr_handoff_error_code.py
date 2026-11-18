@@ -45,6 +45,15 @@ class EnumPrHandoffErrorCode(StrEnum):
     PR_NOT_OPEN = "pr_not_open"
     """The live PR is closed or merged."""
 
+    REVIEW_STATUS_MISSING = "review_status_missing"
+    """A new-work PR whose live head has no fable-review-gate commit status at all."""
+
+    REVIEW_STATUS_FAILING = "review_status_failing"
+    """A new-work PR whose live head's newest fable-review-gate commit status is not success."""
+
+    REVIEW_STATUS_OTHER_HEAD = "review_status_other_head"
+    """A new-work PR whose fable-review-gate commit status is only on an older head; a status on another head does not count."""
+
     SUPERSEDED = "superseded"
     """A newer handoff request for the same PR replaced this one while it waited."""
 
@@ -66,6 +75,9 @@ DECISION_REFUSAL_CODES: frozenset[EnumPrHandoffErrorCode] = frozenset(
         EnumPrHandoffErrorCode.MISSING_TICKET,
         EnumPrHandoffErrorCode.NOT_OWNED,
         EnumPrHandoffErrorCode.MISSING_LAB_PROOF,
+        EnumPrHandoffErrorCode.REVIEW_STATUS_MISSING,
+        EnumPrHandoffErrorCode.REVIEW_STATUS_FAILING,
+        EnumPrHandoffErrorCode.REVIEW_STATUS_OTHER_HEAD,
         EnumPrHandoffErrorCode.HELD,
         EnumPrHandoffErrorCode.WITHHELD,
         EnumPrHandoffErrorCode.PR_NOT_OPEN,
