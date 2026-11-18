@@ -484,8 +484,10 @@ dod_evidence:
 
 - id: dod-omn23413-ac33-installed-prompt-controls
   description: Required isolated installed-hook journey executes accepted prompt blocking, fixed decline,
-    quality veto, process failure, timeout, OFF and skip controls, history delivery once, Agent/Task
-    reuse and unchanged Claude configuration. Requires the companion omniclaude source or unpacked
+    quality veto, process failure, timeout, OFF and skip controls, history delivery once, and unchanged
+    Claude configuration. It also calls the hook script directly with an Agent/Task event, which the script
+    still answers; `onex delegation on` registers only the prompt hook (Amendment 14a), so in a real session
+    subagents stay on Claude. Aligning this journey with Amendment 14a follows with omniclaude#3270. Requires the companion omniclaude source or unpacked
     wheel customer resource root via ONEX_COMBINED_HOOK_SOURCE; missing assets fail. The same required
     command also checks the TUI and joins a captured real prompt receipt to exactly one measured-usage
     delegation_events row and the actual native Claude result with zero native turns or cost.
