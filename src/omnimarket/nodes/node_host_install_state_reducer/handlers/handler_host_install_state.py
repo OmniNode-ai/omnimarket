@@ -10,10 +10,6 @@ bound (digest length, history kept, detail cut) comes from the node overlay.
 
 from __future__ import annotations
 
-from uuid import uuid4
-
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
-
 from omnimarket.nodes.node_host_install_state_reducer.models.model_host_install_state import (
     EnumHostInstallOutcome,
     EnumHostInstallState,
@@ -271,17 +267,11 @@ class HandlerHostInstallState:
 
     async def handle(
         self, request: ModelHostInstallReduceCommand
-    ) -> ModelHandlerOutput[None]:
-        """Fold the step and emit the new record as the projection."""
+    ) -> ModelHostInstallRecord:
+        """Fold the step and return the new record, which the contract's published_events publishes as the state event."""
         if self._overlay is None:
             self._overlay = load_overlay()
-        record = fold(request.prior, request.event, self._overlay)
-        return ModelHandlerOutput.for_reducer(
-            input_envelope_id=uuid4(),
-            correlation_id=request.event.correlation_id,
-            handler_id=HANDLER_ID,
-            projections=(record,),
-        )
+        return fold(request.prior, request.event, self._overlay)
 
 
 __all__: list[str] = [
