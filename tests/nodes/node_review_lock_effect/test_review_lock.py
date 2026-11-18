@@ -282,3 +282,17 @@ def test_head_must_be_a_hex_sha() -> None:
     for bad in ("abc", "z" * 12, ""):
         with pytest.raises(ValueError, match="head"):
             ModelReviewLockRequest(repo="omnimarket", pr=1, head=bad, tag="0001")
+
+
+def test_a_handler_built_with_no_ledger_ports_is_undecided_never_acquired() -> None:
+    """The runtime builds the handler from injectable parameters alone (OMN-13551 boot guard)."""
+    request = ModelReviewLockRequest(
+        repo="omnibase_infra", pr=6047, head="7ce37985d13c", tag="1139"
+    )
+    result = HandlerReviewLock().handle(request)
+    assert result.outcome is EnumLockOutcome.UNDECIDED
+    assert "not wired" in result.detail
+    # Positive control: the same request with a ledger wired acquires.
+    ledger = FakeLedger()
+    acquired = HandlerReviewLock(ledger, ledger).handle(request)
+    assert acquired.outcome is EnumLockOutcome.ACQUIRED

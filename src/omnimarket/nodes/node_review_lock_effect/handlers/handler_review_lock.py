@@ -46,8 +46,8 @@ class HandlerReviewLock:
 
     def __init__(
         self,
-        reader: ProtocolLedgerStatusReader,
-        writer: ProtocolLedgerRowWriter,
+        reader: ProtocolLedgerStatusReader | None = None,
+        writer: ProtocolLedgerRowWriter | None = None,
         clock: Callable[[], datetime] = _now,
     ) -> None:
         self._reader = reader
@@ -55,8 +55,13 @@ class HandlerReviewLock:
         self._clock = clock
 
     def handle(self, request: ModelReviewLockRequest) -> ModelReviewLockResult:
+        # The runtime builds this handler from its injectable parameters alone, so the ledger
+        # ports default to None; a handler with no ledger wired cannot lock, so it is UNDECIDED.
+        reader, writer = self._reader, self._writer
+        if reader is None or writer is None:
+            return self._undecided(request, "ledger reader and writer not wired")
         try:
-            rows = self._reader.status_rows(request.repo)
+            rows = reader.status_rows(request.repo)
         except OSError as exc:
             return self._undecided(request, f"ledger unreadable: {exc}")
         refusal = self._refusal(request, rows)
@@ -71,10 +76,10 @@ class HandlerReviewLock:
             )
         row = self._lock_row(request)
         try:
-            self._writer.append(row)
+            writer.append(row)
         except OSError as exc:
             return self._undecided(request, f"lock row not written: {exc}")
-        return self._confirm(request, row)
+        return self._confirm(reader, request, row)
 
     def _refusal(
         self,
@@ -91,10 +96,13 @@ class HandlerReviewLock:
         return None
 
     def _confirm(
-        self, request: ModelReviewLockRequest, row: str
+        self,
+        reader: ProtocolLedgerStatusReader,
+        request: ModelReviewLockRequest,
+        row: str,
     ) -> ModelReviewLockResult:
         try:
-            rows = self._reader.status_rows(request.repo)
+            rows = reader.status_rows(request.repo)
         except OSError as exc:
             return self._undecided(
                 request, f"lock row written, ledger unreadable after: {exc}"
