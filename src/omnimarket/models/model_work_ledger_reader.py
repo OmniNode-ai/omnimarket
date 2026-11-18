@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -60,6 +60,10 @@ class ModelReaderRequest(BaseModel):
     # Required for a rows read; also allowed (optional) for an open-claims read, where it
     # means "claims opened within the last window_hours"; refused for every other query.
     window_hours: int | None = Field(default=None, ge=1, le=24 * 30)
+    # Only a rows read may narrow: the ledger row types it wants (CLAIM, STATUS, ...) and a
+    # case-insensitive substring the row's first line must hold; refused for every other query.
+    kinds: tuple[Annotated[str, Field(min_length=1)], ...] = ()
+    term: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def _window_hours_matches_query(self) -> ModelReaderRequest:
@@ -71,6 +75,12 @@ class ModelReaderRequest(BaseModel):
             and self.window_hours is not None
         ):
             raise ValueError("window_hours is only for a rows or an open-claims read")
+        return self
+
+    @model_validator(mode="after")
+    def _filters_only_for_rows(self) -> ModelReaderRequest:
+        if self.query is not EnumReaderQuery.ROWS and (self.kinds or self.term):
+            raise ValueError("kinds and term are only for a rows read")
         return self
 
 
