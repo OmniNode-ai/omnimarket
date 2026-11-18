@@ -51,7 +51,15 @@ from omnimarket.models.model_local_install_delegation_summary import (
     DELEGATION_VIEW_REPLACE_STEPS,
     create_delegation_summary_view,
 )
-from omnimarket.models.model_local_install_schema import _CURSOR_TABLE_STEPS
+from omnimarket.models.model_local_install_schema import (
+    _CURSOR_TABLE_STEPS,
+    RUN_SAVINGS_RECOMPUTE_STEP,
+    recompute_run_savings,
+    relabel_usage_source,
+)
+from omnimarket.models.model_local_install_schema import (
+    METERING_SUMMARY_COLUMN_STEPS as _METERING_SUMMARY_COLUMN_STEPS,
+)
 from omnimarket.nodes.node_projection_tenant_credentials.stores import (
     _CREDENTIAL_CHOSEN_MODELS_STEP as _CREDENTIAL_CHOSEN_MODELS_STEP,
 )
@@ -567,51 +575,6 @@ _DELEGATION_SUMMARY_VIEW_SQL = (
 # quality-gate view, the relations the Overview's Run locally, Tier mix and
 # Quality rows read. Same home and pattern as the summary view.
 _DELEGATION_ROUTING_QUALITY_VIEWS_STEP = "omn20754_delegation_routing_quality_views"
-# OMN-20226: metering_summary's three not-yet-measured fields. A store written
-# before them has the table without the columns, and CREATE TABLE IF NOT EXISTS
-# leaves it so; the read node then refuses the whole exposure
-# (projection_column_missing). They are added once, nullable with no default
-# like migration 0003, so a row written before them reads null, never a zero.
-_METERING_SUMMARY_MEASURES_STEP = "omn20226_metering_summary_measure_columns"
-_METERING_SUMMARY_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
-    ("compression_ratio", "TEXT"),
-    ("cache_hit_rate", "TEXT"),
-    ("runs_cache_answered", "INTEGER"),
-)
-# OMN-20008: metering_summary's savings share of the baseline, the counterpart
-# of migration 0004. Its own step, not a fourth entry above: a store that has
-# already recorded the OMN-20226 step would never run that step again.
-_METERING_SUMMARY_SAVINGS_PCT_STEP = "omn20008_metering_summary_savings_pct_column"
-# OMN-21361: metering_summary's savings per measured run, the counterpart of
-# migration 0002. A store written before it has the table without the column,
-# and read_summary_row refused that row on every delegation. Its own step, for
-# the same reason as the savings share above.
-_METERING_SUMMARY_SAVINGS_PER_RUN_STEP = (
-    "omn21361_metering_summary_savings_per_measured_run_column"
-)
-# Each step adds its columns once per store, nullable with no default, so a row
-# written before them reads null. The columns are read again under the step's
-# write lock, so a fresh store, whose table already has them, and two first
-# opens that race both add nothing twice.
-_METERING_SUMMARY_COLUMN_STEPS: tuple[
-    tuple[str, tuple[tuple[str, str], ...], str], ...
-] = (
-    (
-        _METERING_SUMMARY_MEASURES_STEP,
-        _METERING_SUMMARY_ADDED_COLUMNS,
-        "added the metering-summary compression and cache columns",
-    ),
-    (
-        _METERING_SUMMARY_SAVINGS_PCT_STEP,
-        (("savings_pct_of_counterfactual", "TEXT"),),
-        "added the metering-summary savings share column",
-    ),
-    (
-        _METERING_SUMMARY_SAVINGS_PER_RUN_STEP,
-        (("savings_per_measured_run_usd", "TEXT"),),
-        "added the metering-summary savings per measured run column",
-    ),
-)
 _DELEGATION_ROUTING_QUALITY_VIEWS_SQL: tuple[tuple[str, str], ...] = (
     ("projection_delegation_model_routing", "sqlite/delegation_model_routing_view.sql"),
     ("projection_delegation_quality_gate", "sqlite/delegation_quality_gate_view.sql"),
@@ -843,7 +806,7 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
             pending.append(
                 (
                     _USAGE_SOURCE_VOCABULARY_STEP,
-                    cls._relabel_usage_source,
+                    relabel_usage_source,
                     "moved llm_call_metrics.usage_source onto the shared vocabulary",
                 )
             )
@@ -930,6 +893,9 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                     "indexed the delegate-skill command claims by correlation",
                 )
             )
+        if not cls._store_step_recorded(conn, RUN_SAVINGS_RECOMPUTE_STEP):
+            redo = "recomputed each run's modelled saving"
+            pending.append((RUN_SAVINGS_RECOMPUTE_STEP, recompute_run_savings, redo))
         pending.extend(cls._credential_store_steps(conn))
         for index, (step, apply, _) in enumerate(pending):
             try:
@@ -960,20 +926,6 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
             except BaseException:
                 conn.rollback()
                 raise
-
-    @staticmethod
-    def _relabel_usage_source(conn: sqlite3.Connection) -> None:
-        """OMN-19968: move rows written before the shared vocabulary onto it.
-
-        The SQLite counterpart of migration 0003 (EnumUsageSource; omnibase_infra
-        migration 077), run once per store as a store step.
-        """
-        conn.execute(
-            "UPDATE llm_call_metrics SET usage_source = CASE usage_source "
-            "WHEN 'API' THEN 'measured' WHEN 'ESTIMATED' THEN 'estimated' "
-            "WHEN 'MISSING' THEN 'unknown' ELSE usage_source END "
-            "WHERE usage_source IN ('API', 'ESTIMATED', 'MISSING')"
-        )
 
     @classmethod
     def _add_usage_by_model_day_columns(cls, conn: sqlite3.Connection) -> None:
