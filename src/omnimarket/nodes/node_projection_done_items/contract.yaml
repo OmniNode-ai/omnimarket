@@ -11,6 +11,7 @@ node_version:
   minor: 1
   patch: 0
 node_type: reducer
+input_model: omnimarket.models.done_items.model_done_items.ModelDoneItemsRequest
 lifecycle: experimental
 description: >
   Done items for the dashboard's Done figure: one row per ticket with the work-ledger TERMINAL row
