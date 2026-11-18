@@ -31,8 +31,10 @@ class ModelHostMirrorRequest(BaseModel):
     window_seconds: int = Field(default=604800, gt=0)
     # A later tick re-reads this far behind the watermark, so a row projected late is not skipped.
     overlap_seconds: int = Field(default=600, ge=0)
-    page_size: int = Field(default=500, ge=1, le=5000)
-    max_pages: int = Field(default=40, ge=1)
+    # The read node refuses an answer over about 900 KB; 200 rows of about 2 KB each stay well under it.
+    page_size: int = Field(default=200, ge=1, le=5000)
+    # Six pages of about 12 s each fit the tick's 100 s run limit; a longer backfill resumes on the next tick.
+    max_pages: int = Field(default=6, ge=1)
     now: datetime | None = None
 
 

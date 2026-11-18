@@ -13,7 +13,7 @@ first, and appends them to the host's mirror file; the host timer runs it every 
 from a watermark, re-reads ``overlap_seconds`` behind it, and drops a row it already holds by row id.
 The mirror's byte length is recorded in the state after each append, so a tick that died between the
 append and the state write truncates back to what the state recorded and never leaves a duplicate.
-A failed read changes nothing.
+A failed read keeps the pages already recorded and appends nothing more.
 """
 
 from __future__ import annotations
@@ -54,84 +54,85 @@ class HandlerWorkLedgerHostMirror:
         size = mirror.stat().st_size if mirror.exists() else 0
         if watermark is not None and size < recorded_bytes:
             # The mirror lost bytes the state counted: start over from the window rather than trust it.
-            watermark, seen, recorded_bytes, reset = None, {}, 0, True
+            watermark, seen, reset = None, {}, True
+        if watermark is None:
+            recorded_bytes = 0
         since = (
             now - timedelta(seconds=request.window_seconds)
             if watermark is None
             else watermark - timedelta(seconds=request.overlap_seconds)
         )
 
-        fresh: list[ModelLedgerRow] = []
+        appended = 0
         cursor: str | None = None
         record_newest: datetime | None = None
         pages = 0
         partial = False
-        try:
-            while True:
-                if pages == request.max_pages:
-                    partial = True
-                    break
+        detail = ""
+        failed = False
+        while True:
+            if pages == request.max_pages:
+                partial = True
+                break
+            try:
                 page = self._reader.read_rows(
                     since=since, cursor=cursor, page_size=request.page_size
                 )
-                pages += 1
-                record_newest = page.record_newest_row_ts or record_newest
-                fresh.extend(row for row in page.rows if row.row_id not in seen)
-                cursor = page.next_cursor
-                if cursor is None:
-                    break
-        except LedgerReadError as exc:
-            return ModelHostMirrorResult(
-                status=EnumHostMirrorStatus.REFUSED,
-                rows_appended=0,
-                pages=pages,
-                mirror_path=str(mirror),
-                mirror_newest_row_ts=watermark,
-                reset=reset,
-                detail=str(exc),
+            except LedgerReadError as exc:
+                failed, detail = True, str(exc)
+                break
+            pages += 1
+            record_newest = page.record_newest_row_ts or record_newest
+            fresh = sorted(
+                (row for row in page.rows if row.row_id not in seen),
+                key=lambda row: row.row_ts,
             )
-
-        fresh.sort(key=lambda row: row.row_ts)
-        new_watermark = max([row.row_ts for row in fresh], default=watermark)
-        if new_watermark is not None:
-            floor = new_watermark - timedelta(seconds=request.overlap_seconds)
-            seen = {rid: ts for rid, ts in seen.items() if ts >= floor}
-            seen.update(
-                {row.row_id: row.row_ts for row in fresh if row.row_ts >= floor}
-            )
-        size_after = self._append(mirror, fresh, recorded_bytes, reset)
-        self._store_state(request.state_path, new_watermark, seen, size_after)
+            # Each page is appended and recorded before the next is read, so a tick the run limit ends
+            # keeps the pages it finished and the next one resumes from them.
+            recorded_bytes = self._append(mirror, fresh, recorded_bytes)
+            appended += len(fresh)
+            if fresh:
+                watermark = max(watermark or fresh[-1].row_ts, fresh[-1].row_ts)
+                floor = watermark - timedelta(seconds=request.overlap_seconds)
+                seen = {rid: ts for rid, ts in seen.items() if ts >= floor}
+                seen.update(
+                    {row.row_id: row.row_ts for row in fresh if row.row_ts >= floor}
+                )
+                self._store_state(request.state_path, watermark, seen, recorded_bytes)
+            cursor = page.next_cursor
+            if cursor is None:
+                break
 
         lag = (
-            int((record_newest - new_watermark).total_seconds())
-            if record_newest is not None and new_watermark is not None
+            int((record_newest - watermark).total_seconds())
+            if record_newest is not None and watermark is not None
             else None
         )
+        if failed:
+            status = EnumHostMirrorStatus.REFUSED
+        elif partial:
+            status = EnumHostMirrorStatus.PARTIAL
+        else:
+            status = EnumHostMirrorStatus.MIRRORED
         return ModelHostMirrorResult(
-            status=(
-                EnumHostMirrorStatus.PARTIAL
-                if partial
-                else EnumHostMirrorStatus.MIRRORED
-            ),
-            rows_appended=len(fresh),
+            status=status,
+            rows_appended=appended,
             pages=pages,
             mirror_path=str(mirror),
-            mirror_newest_row_ts=new_watermark,
+            mirror_newest_row_ts=watermark,
             record_newest_row_ts=record_newest,
             lag_seconds=lag,
             reset=reset,
+            detail=detail,
         )
 
     @staticmethod
-    def _append(
-        mirror: Path, rows: list[ModelLedgerRow], recorded_bytes: int, reset: bool
-    ) -> int:
+    def _append(mirror: Path, rows: list[ModelLedgerRow], recorded_bytes: int) -> int:
         mirror.parent.mkdir(parents=True, exist_ok=True)
-        with mirror.open("ab" if not reset else "wb") as held:
-            if not reset:
-                # Cut back to what the state recorded: bytes past it are an append whose state write never landed.
-                held.truncate(recorded_bytes)
-                held.seek(recorded_bytes)
+        with mirror.open("r+b" if mirror.exists() else "wb") as held:
+            # Cut back to what the state recorded: bytes past it are an append whose state write never landed.
+            held.truncate(recorded_bytes)
+            held.seek(recorded_bytes)
             for row in rows:
                 held.write(row.raw_row.rstrip("\n").encode("utf-8") + b"\n")
             held.flush()

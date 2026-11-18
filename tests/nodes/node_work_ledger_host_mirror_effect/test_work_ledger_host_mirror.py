@@ -321,6 +321,28 @@ def test_error_a_mirror_shorter_than_its_state_is_rebuilt_from_the_window(
     assert len(_lines(tmp_path)) == 2
 
 
+def test_error_a_read_that_fails_after_a_page_keeps_that_page_and_resumes(
+    tmp_path: Path,
+) -> None:
+    class FailsOnSecondPage(FakeReader):
+        def read_rows(
+            self, *, since: datetime, cursor: str | None, page_size: int
+        ) -> ModelLedgerRowsPage:
+            if cursor is not None:
+                raise LedgerReadError("run limit ended the second read")
+            return super().read_rows(since=since, cursor=cursor, page_size=page_size)
+
+    rows = [_row(i) for i in range(1, 5)]
+    handler = HandlerWorkLedgerHostMirror(FailsOnSecondPage(rows))
+    failed = handler.handle(_request(tmp_path))
+    assert failed.status is EnumHostMirrorStatus.REFUSED
+    assert failed.rows_appended == 2
+    assert len(_lines(tmp_path)) == 2
+    resumed = HandlerWorkLedgerHostMirror(FakeReader(rows)).handle(_request(tmp_path))
+    assert resumed.status is EnumHostMirrorStatus.MIRRORED
+    assert len(_lines(tmp_path)) == 4
+
+
 def test_golden_the_page_bound_ends_a_tick_partial_and_the_next_one_resumes(
     tmp_path: Path,
 ) -> None:
@@ -368,6 +390,20 @@ ROW = {
     "row_ts": "2026-11-18T01:00:05Z",
     "raw_row": "2026-11-18T01:00:05Z | MSG | x",
 }
+
+
+def test_golden_the_adapter_asks_for_the_declared_row_kinds(tmp_path: Path) -> None:
+    script = tmp_path / "read.py"
+    script.write_text(
+        "import sys, json\n"
+        "request = json.loads(sys.stdin.read())\n"
+        "assert request['kinds'] == ['RULING'] and request['page_size'] == 5\n"
+        f"sys.stdout.write({_answer([ROW])!r})\n"
+    )
+    page = AdapterBusRead([sys.executable, str(script)], 20, ("RULING",)).read_rows(
+        since=datetime(2026, 11, 18, tzinfo=UTC), cursor=None, page_size=5
+    )
+    assert [r.row_id for r in page.rows] == ["a"]
 
 
 def test_golden_the_adapter_reads_one_page_through_the_command(tmp_path: Path) -> None:
@@ -426,7 +462,8 @@ def test_golden_the_tick_writes_the_mirror_and_a_receipt_with_the_lag(
     assert mirror.read_text() == ROW["raw_row"] + "\n"
     receipt = json.loads((tmp_path / "state/last-run.json").read_text())
     assert receipt["exit_code"] == 0
-    assert receipt["result"]["lag_seconds"] == 0
+    assert receipt["results"]["host-ledger-mirror"]["lag_seconds"] == 0
+    assert (tmp_path / "home/.onex_state/ledger-mirror/host-ledger-rulings.md").exists()
 
 
 def test_error_the_tick_with_no_read_command_is_indeterminate_and_writes_no_mirror(

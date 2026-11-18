@@ -11,8 +11,9 @@
 # it stood when the file last went through git (the hourly clone fast-forward moves tracked files), plus rows
 # its own hooks appended, so a ruling written hours earlier read as absent (measured 2026-11-18: the newest
 # canonical row on h051, h053, h201 and h202 was 35 days old). One tick reads the rows the host has not seen
-# from the work ledger read node over the bus and appends them to the host's mirror file, and writes a receipt
-# naming the mirror's lag behind the record. The tick period plus the projection lag is the bound a ruling
+# from the work ledger read node over the bus and appends them to the host's mirror files (the authority rows of the
+# last 3 days, and the rulings and consents of the last 30 days; the status and friction rows, about 6,500 of the
+# 10,500 rows a day, are not mirrored), and writes a receipt naming each mirror's lag behind the record. The tick period plus the projection lag is the bound a ruling
 # reaches a host in; the contract's `delivery` block declares both and a test holds their sum under the limit.
 name: "node_work_ledger_host_mirror_effect"
 lifecycle: experimental

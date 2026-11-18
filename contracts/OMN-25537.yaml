@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-25537
 title: A ruling written on the ledger of record reaches the ledger every lab host reads within 5 minutes
-summary: The rolling ledger reaches a lab host only through git (the hourly clone fast-forward, which moves tracked files), so on 2026-11-18 the newest canonical row on h051, h053, h201 and h202 was weeks old and the newest ruling 35 days old. node_work_ledger_host_mirror_effect appends the rows the host has not seen, read over the bus from the work ledger read node, to <registry root>/.onex_state/ledger-mirror/host-ledger-mirror.md, and a declared systemd user unit (ledger-host-mirror-systemd, installed with onex-host-install-units) ticks it every 120 s.
+summary: The rolling ledger reaches a lab host only through git (the hourly clone fast-forward, which moves tracked files), so on 2026-11-18 the newest canonical row on h051, h053, h201 and h202 was weeks old and the newest ruling 35 days old. node_work_ledger_host_mirror_effect appends the rows the host has not seen, read over the bus from the work ledger read node, to <registry root>/.onex_state/ledger-mirror/host-ledger-mirror.md (authority rows, 3 days) and host-ledger-rulings.md (rulings and consents, 30 days), and a declared systemd user unit (ledger-host-mirror-systemd, installed with onex-host-install-units) ticks it every 120 s.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []

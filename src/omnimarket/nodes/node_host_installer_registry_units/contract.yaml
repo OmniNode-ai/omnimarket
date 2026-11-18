@@ -505,7 +505,7 @@ units:
     evidence_file: .local/state/omni/lane-ctx-ledger-dedupe/last-run.json
     state_directory: .onex_state/lane-ctx-ledger-dedupe
   # The lab host's ledger mirror (node_work_ledger_host_mirror_effect, OMN-25537): every 120 s a Linux lab host appends the
-  # rows of the ledger of record it has not seen to <registry root>/.onex_state/ledger-mirror/host-ledger-mirror.md, read over
+  # rows of the ledger of record it has not seen to <registry root>/.onex_state/ledger-mirror/host-ledger-mirror.md (authority rows, 3 days) and host-ledger-rulings.md (rulings and consents, 30 days), read over
   # the bus from the work ledger read node (the unit names the read command and the workspace config root the command resolves
   # its lane from). The hourly clone fast-forward moves only tracked files, so on 2026-11-18 the newest canonical row on
   # h051, h053, h201 and h202 was 35 days old. The period (120 s), the 100 s run limit and the projection lag (60 s) sum

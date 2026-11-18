@@ -3,7 +3,8 @@
 """One tick of the work ledger host mirror, the unit the host installer renders (OMN-25537).
 
 The unit passes ``--omni-home`` and ``--state-dir`` and declares ``ONEX_LEDGER_BUS_READ_COMMAND``. The mirror is
-``<omni-home>/.onex_state/ledger-mirror/host-ledger-mirror.md``. ``last-run.json`` in the state directory holds
+``<omni-home>/.onex_state/ledger-mirror/host-ledger-mirror.md`` (authority rows, 3 days) and
+``host-ledger-rulings.md`` (rulings and consents, 30 days). ``last-run.json`` in the state directory holds
 the tick's receipt, with the mirror's lag behind the record, so the unit's installer can tell a ticking unit from a
 silent one. Exit 0: the mirror holds every row the record held at the read. Exit 1: the read failed or the page
 bound ended the tick; the next tick resumes. Exit 3: the unit supplies no read command.
@@ -16,6 +17,7 @@ import json
 import os
 import shlex
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -32,10 +34,41 @@ from omnimarket.nodes.node_work_ledger_host_mirror_effect.models.model_work_ledg
 
 NODE_NAME = "node_work_ledger_host_mirror_effect"
 READ_COMMAND_ENV = "ONEX_LEDGER_BUS_READ_COMMAND"
-MIRROR_RELATIVE = ".onex_state/ledger-mirror/host-ledger-mirror.md"
-STATE_FILE = "mirror-state.json"
-# Under the contract's 100 s run limit for a pass of up to a few pages; one read answers in 10 to 15 s.
-READ_TIMEOUT_SECONDS = 45.0
+MIRROR_DIRECTORY = ".onex_state/ledger-mirror"
+# The rows a lane reads to find an authority or an owner, not the status and friction rows that are most of the
+# ledger (about 10,500 rows a day against about 4,000).
+AUTHORITY_KINDS = (
+    "RULING",
+    "OPERATOR-CONSENT",
+    "MSG",
+    "ACK",
+    "HOLD",
+    "RELEASE",
+    "CLAIM",
+    "TERMINAL",
+    "CORRECTION",
+)
+RULING_KINDS = ("RULING", "OPERATOR-CONSENT")
+DAY_SECONDS = 86400
+
+
+@dataclass(frozen=True)
+class Stream:
+    """One mirror file: the row kinds it holds and how far back the first read goes."""
+
+    name: str
+    kinds: tuple[str, ...]
+    window_seconds: int
+
+
+# The recent authority rows in one file; a ruling is cited for weeks, so the rulings and consents go back further.
+STREAMS = (
+    Stream("host-ledger-mirror", AUTHORITY_KINDS, 3 * DAY_SECONDS),
+    Stream("host-ledger-rulings", RULING_KINDS, 30 * DAY_SECONDS),
+)
+# One read answers in 5 to 12 s; two streams of up to six pages each end inside the contract's 100 s run limit,
+# and a read that hangs ends at this bound with the pages before it kept.
+READ_TIMEOUT_SECONDS = 25.0
 
 
 def _write_atomically(path: Path, text: str) -> None:
@@ -62,25 +95,35 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps({"ran_at": ran_at, "exit_code": 3, "indeterminate": message}),
         )
         return 3
-    handler = HandlerWorkLedgerHostMirror(AdapterBusRead(command, READ_TIMEOUT_SECONDS))
-    result = handler.handle(
-        ModelHostMirrorRequest(
-            mirror_path=args.registry_root / MIRROR_RELATIVE,
-            state_path=args.state_dir / STATE_FILE,
+    results = {}
+    for stream in STREAMS:
+        handler = HandlerWorkLedgerHostMirror(
+            AdapterBusRead(command, READ_TIMEOUT_SECONDS, stream.kinds)
         )
+        results[stream.name] = handler.handle(
+            ModelHostMirrorRequest(
+                mirror_path=args.registry_root / MIRROR_DIRECTORY / f"{stream.name}.md",
+                state_path=args.state_dir / f"{stream.name}-state.json",
+                window_seconds=stream.window_seconds,
+            )
+        )
+    code = (
+        0
+        if all(r.status is EnumHostMirrorStatus.MIRRORED for r in results.values())
+        else 1
     )
-    code = 0 if result.status is EnumHostMirrorStatus.MIRRORED else 1
-    sys.stdout.write(
-        f"{NODE_NAME} {result.status.value} rows_appended={result.rows_appended} "
-        f"lag_seconds={result.lag_seconds} {result.detail}\n"
-    )
+    for name, result in results.items():
+        sys.stdout.write(
+            f"{NODE_NAME} {name} {result.status.value} rows_appended={result.rows_appended} "
+            f"lag_seconds={result.lag_seconds} {result.detail}\n"
+        )
     _write_atomically(
         args.state_dir / "last-run.json",
         json.dumps(
             {
                 "ran_at": ran_at,
                 "exit_code": code,
-                "result": result.model_dump(mode="json"),
+                "results": {n: r.model_dump(mode="json") for n, r in results.items()},
             }
         ),
     )

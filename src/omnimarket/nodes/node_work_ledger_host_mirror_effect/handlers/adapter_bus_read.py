@@ -25,11 +25,17 @@ class AdapterBusRead:
     """One typed rows query per call. A nonzero exit, an unreadable answer, an answer that is not
     ``ok`` or one that carries an error or a refusal is a LedgerReadError, never an empty page."""
 
-    def __init__(self, command: Sequence[str], timeout_seconds: float) -> None:
+    def __init__(
+        self,
+        command: Sequence[str],
+        timeout_seconds: float,
+        kinds: Sequence[str] = (),
+    ) -> None:
         if not command:
             raise LedgerReadError("the ledger read command is empty")
         self._command = list(command)
         self._timeout = timeout_seconds
+        self._kinds = list(kinds)
 
     def read_rows(
         self, *, since: datetime, cursor: str | None, page_size: int
@@ -40,6 +46,8 @@ class AdapterBusRead:
             "since": since.astimezone(UTC).strftime(_STAMP),
             "page_size": page_size,
         }
+        if self._kinds:
+            request["kinds"] = self._kinds
         if cursor is not None:
             request["cursor"] = cursor
         try:
