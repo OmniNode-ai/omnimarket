@@ -14,10 +14,13 @@ import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.models.ticket_closer import (
+    EnumCloserAction,
     EnumCloserReadingSource,
     ModelCloserCandidate,
+    ModelCloserTicketOutcome,
     ModelCloserWriteReceipt,
     ModelTicketCloserScheduleOverlay,
+    closer_status_line,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_overlay import (
     PACKAGED_OVERLAY,
@@ -80,9 +83,19 @@ def contract_schedule() -> ModelTicketCloserScheduleOverlay:
     )
 
 
+def make_clone_root(tmp_path: Path) -> Path:
+    scope = load_scope_overlay(PACKAGED_OVERLAY)
+    (tmp_path / scope.pr_repositories[0].name / ".git").mkdir(parents=True)
+    state = tmp_path / ".claude_scratch" / "pr-watcher" / "state.json"
+    state.parent.mkdir(parents=True)
+    state.write_text("{}", encoding="utf-8")
+    return tmp_path
+
+
 def test_bound_profile_golden_builds_the_real_adapters(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    make_clone_root(tmp_path)
     monkeypatch.setattr(
         "omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.bound_profile.load_scope_overlay",
         lambda: load_scope_overlay(PACKAGED_OVERLAY),
@@ -131,6 +144,8 @@ def test_bound_profile_refuses_naming_the_missing_thing(
 def test_bound_profile_refuses_when_scope_overlay_cannot_load(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    make_clone_root(tmp_path)
+
     def _raise() -> Any:
         raise FileNotFoundError("scope overlay missing")
 
@@ -158,6 +173,8 @@ async def test_handler_error_chain_refuses_and_holds_the_interval(
     assert result.flipped == 0
     assert result.examined == 0
     assert result.unread_reason.startswith("bound profile refused")
+    assert result.status_line.startswith("STATUS ticket-closer candidates_read=")
+    assert result.status_line.endswith(result.unread_reason)
     assert await handler.handle(tick(T0 + timedelta(seconds=10))) is None
 
 
@@ -190,6 +207,8 @@ async def test_handler_reports_a_source_that_could_not_read() -> None:
         result.unread_reason
         == "the candidate source could not read its contracts, merges or pull requests"
     )
+    assert result.status_line.startswith("STATUS ticket-closer candidates_read=")
+    assert result.status_line.endswith(result.unread_reason)
 
 
 async def test_failing_control_the_unread_and_bound_readings_differ() -> None:
@@ -262,10 +281,7 @@ async def test_the_bound_parts_are_built_once_and_reused(
 def test_seam_the_bound_profile_builds_from_the_scope_overlay_the_node_ships(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_overlay import (
-        PACKAGED_OVERLAY,
-    )
-
+    make_clone_root(tmp_path)
     shipped = load_scope_overlay(PACKAGED_OVERLAY)
     monkeypatch.setattr(
         "omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.bound_profile.load_scope_overlay",
@@ -288,4 +304,60 @@ async def test_failing_control_a_bound_schedule_never_reads_as_the_unread_profil
     assert result.unread_reason.startswith("bound profile refused")
     assert (
         result.unread_reason != "reading_source is unread: no candidate source is bound"
+    )
+
+
+def test_bound_profile_refuses_when_no_scope_repository_is_cloned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.bound_profile.load_scope_overlay",
+        lambda: load_scope_overlay(PACKAGED_OVERLAY),
+    )
+    with pytest.raises(BoundProfileRefusedError) as excinfo:
+        bound_closer_parts(
+            contract_schedule(), {"TEST_HOME": str(tmp_path)}, clock=lambda: T0
+        )
+    assert "no clone of any scope repository" in str(excinfo.value)
+
+
+def test_bound_profile_refuses_when_the_watcher_state_file_is_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    make_clone_root(tmp_path)
+    (tmp_path / ".claude_scratch" / "pr-watcher" / "state.json").unlink()
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.bound_profile.load_scope_overlay",
+        lambda: load_scope_overlay(PACKAGED_OVERLAY),
+    )
+    with pytest.raises(BoundProfileRefusedError) as excinfo:
+        bound_closer_parts(
+            contract_schedule(), {"TEST_HOME": str(tmp_path)}, clock=lambda: T0
+        )
+    assert "the PR watcher state file is absent at its declared path" in str(
+        excinfo.value
+    )
+
+
+def test_status_line_counts_every_outcome_kind() -> None:
+    outcomes = (
+        ModelCloserTicketOutcome(
+            ticket_id="OMN-1", action=EnumCloserAction.FLIPPED_DONE
+        ),
+        ModelCloserTicketOutcome(ticket_id="OMN-2", action=EnumCloserAction.HELD),
+        ModelCloserTicketOutcome(
+            ticket_id="OMN-3", action=EnumCloserAction.VERIFY_NOT_RUN
+        ),
+        ModelCloserTicketOutcome(
+            ticket_id="OMN-4", action=EnumCloserAction.WRITE_REFUSED
+        ),
+    )
+    assert (
+        closer_status_line(
+            candidates_read=True,
+            outcomes=outcomes,
+            unread_reason="",
+        )
+        == "STATUS ticket-closer candidates_read=true examined=4 flipped=1 "
+        "held=1 verify_not_run=1 write_refused=1 unread=none"
     )

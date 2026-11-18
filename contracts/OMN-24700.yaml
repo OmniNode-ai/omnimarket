@@ -1,0 +1,127 @@
+schema_version: 1.0.0
+ticket_id: OMN-24700
+title: 'omnimarket#6285 review gateway: one wait deadline per request, the probe command out of the baselined cli_secret.py, a contract proof that runs without a broker, and a tested overlay model'
+summary: 'Fixes the findings of the second review of the review gateway change: a request holds the key-state bus at most the declared wait even when the bus refuses late, the probe command body moves into
+  its handler module so the baselined cli_secret.py does not grow, the gateway contract''s evidence commands exclude the kafka-marked test, the overlay model''s loading of the host''s policy file is tested,
+  and the non-blocking findings ride along. Not in this change: the key-state topic ACL and the second ticket''s bus-lane commits beyond naming them.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24700-ac1
+  statement: A request waits on the key-state bus at most the declared wait, even when the bus refuses late.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the gateway handler holds one request for at most the contract''s wait_seconds even when the bus refuses a flush after a delay, and a late-refusing-bus test asserts it -- falsifier:
+      uv run pytest on the new late-refusing-bus test in tests/unit/nodes/node_claude_review_gateway_effect fails at head 23e821c38cfb and passes after'
+- id: req-omn24700-ac2
+  statement: The probe command body is in the probe handler module and the baselined cli_secret.py has at most 1212 code lines.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: cli_secret.py has at most 1212 code lines and the probe command body lives in src/omnimarket/handlers/handler_review_key_credit_probe.py -- falsifier: uv run pytest on the canonical
+      file shape ratchet test passes and the code-line count of cli_secret.py is at most 1212'
+- id: req-omn24700-ac3
+  statement: The gateway contract's evidence and integration-proof commands exclude the kafka-marked test and exit 0 without broker credentials.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the contract''s evidence and integration-proof commands exit 0 without broker credentials because they exclude the kafka-marked test -- falsifier: run each command in contracts/ for
+      the PR''s ticket with uv run pytest -m "not kafka" on the lab and compare the exit code'
+- id: req-omn24700-ac4
+  statement: The overlay model loads the host's one policy file (privacy list plus TTL) and still refuses a misspelled TTL key.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the overlay model loads a file holding the privacy list plus the TTL through ONEX_REVIEW_GATEWAY_OVERLAY, and a misspelled TTL key still refuses -- falsifier: uv run pytest on the two
+      new overlay cases fails with the model''s extra rule reverted and passes with it restored'
+- id: req-omn24700-ac5
+  statement: A replaced in-flight event is not a drop, the policy test reads the contract's 2.0 and 30.0, and the probe passes --thinking-mode to its request.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: a replaced in-flight event is not counted as dropped, the policy test compares against contract.yaml''s 2.0 and 30.0, and the probe accepts --thinking-mode and passes it to the request
+      -- falsifier: uv run pytest on the three new cases fails at head 23e821c38cfb and passes after'
+- id: req-omn24700-ac6
+  statement: The node contract states that held events wait for the next review request.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: held events publish on a timed flush or the contract states the limit, and the [OMN-24577](https://linear.app/omninode/issue/OMN-24577) commits are either named in the PR title and
+      body or landed separately -- falsifier: uv run pytest on the held-event flush case passes, or the contract text names the limit and the PR title names both tickets'
+evidence_requirements:
+- kind: tests
+  description: The gateway, probe and overlay tests at the pushed head, without the broker-dependent test.
+  command: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect tests/unit/cli/test_review_gateway_declared_bus_lane.py -q --no-cov -p no:randomly -m "not kafka"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24700-ac1
+  description: A request waits on the key-state bus at most the declared wait, even when the bus refuses late.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_gateway_key_events_omn24658.py -q --no-cov -p no:randomly -k refuses_late
+    cwd: .
+- id: dod-omn24700-ac2
+  description: The probe command body is in the probe handler module and the baselined cli_secret.py has at most 1212 code lines.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_gateway_review_fixes_omn24700.py -q --no-cov -p no:randomly -k "code_line_budget or probe_command_body"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_canonical_file_shape_burndown_omn21524.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24700-ac3
+  description: The gateway contract's evidence and integration-proof commands exclude the kafka-marked test and exit 0 without broker credentials.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_gateway_review_fixes_omn24700.py -q --no-cov -p no:randomly -k excludes_kafka
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect -q --no-cov -p no:randomly -m "not kafka"
+    cwd: .
+- id: dod-omn24700-ac4
+  description: The overlay model loads the host's one policy file (privacy list plus TTL) and still refuses a misspelled TTL key.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -q --no-cov -p no:randomly -m "not kafka" -k policy_file
+    cwd: .
+- id: dod-omn24700-ac5
+  description: A replaced in-flight event is not a drop, the policy test reads the contract's 2.0 and 30.0, and the probe passes --thinking-mode to its request.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_gateway_key_events_omn24658.py -q --no-cov -p no:randomly -k "in_flight or come_from_the_node_contract"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_omn24658.py -q --no-cov -p no:randomly -k thinking_mode
+    cwd: .
+- id: dod-omn24700-ac6
+  description: The node contract states that held events wait for the next review request.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_gateway_key_events_omn24658.py -q --no-cov -p no:randomly -k next_review_request
+    cwd: .
+- id: dod-omn24700-integration-proof
+  description: 'Integration proof run on a lab host at the pushed head: the gateway, probe and overlay tests run through lab-work without the broker-dependent test.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24700 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/unit/nodes/node_claude_review_gateway_effect -q --no-cov -p no:randomly -m "not kafka"
+    cwd: .

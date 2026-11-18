@@ -43,6 +43,27 @@
       "from_state": "WAITING",
       "node": "node_pr_handoff_orchestrator",
       "to_state": "REFUSED",
+      "transition_name": "waiting_to_refused_on_evaluated_review_status_missing",
+      "trigger": "evaluated_review_status_missing"
+    },
+    {
+      "from_state": "WAITING",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "REFUSED",
+      "transition_name": "waiting_to_refused_on_evaluated_review_status_failing",
+      "trigger": "evaluated_review_status_failing"
+    },
+    {
+      "from_state": "WAITING",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "REFUSED",
+      "transition_name": "waiting_to_refused_on_evaluated_review_status_other_head",
+      "trigger": "evaluated_review_status_other_head"
+    },
+    {
+      "from_state": "WAITING",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "REFUSED",
       "transition_name": "waiting_to_refused_on_evaluated_held",
       "trigger": "evaluated_held"
     },
@@ -271,6 +292,57 @@
     },
     {
       "kind": "error",
+      "path_id": "error:accepted>evaluated_review_status_failing",
+      "raw_path_count": 1,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "evaluated_review_status_failing",
+          "REFUSED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:accepted>evaluated_review_status_missing",
+      "raw_path_count": 1,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "evaluated_review_status_missing",
+          "REFUSED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:accepted>evaluated_review_status_other_head",
+      "raw_path_count": 1,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "evaluated_review_status_other_head",
+          "REFUSED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
       "path_id": "error:accepted>evaluated_scope-unread",
       "raw_path_count": 1,
       "steps": [
@@ -374,10 +446,10 @@
   ],
   "projection": "owner-component state changes, deduplicated",
   "raw_counts": {
-    "error": 15,
+    "error": 18,
     "golden": 2,
     "open": 0,
-    "paths": 17
+    "paths": 20
   },
   "schema_version": 1,
   "sync_triggers": [],
