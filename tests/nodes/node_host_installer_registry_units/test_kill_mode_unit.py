@@ -104,6 +104,7 @@ UNDECLARED_UNITS = (
     "scenario-r6-systemd",
     "scenario-r7-systemd",
     "scenario-r8-systemd",
+    "scenario-r9-systemd",
     "lane-host-pool-snapshot-systemd",
     "lab-disk-hygiene-systemd",
     "stability-refresh-serve-systemd",

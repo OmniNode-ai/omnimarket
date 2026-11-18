@@ -1,0 +1,49 @@
+# Ceiling for the effect-node bypass ratchet (OMN-24432, RULING 2026-11-14T11:59:02Z).
+# A bypass is an effect on the outside world (GitHub, git remotes, Slack, Linear, lab hosts over ssh,
+# docker and kafka administration) that does not go through its effect node over the bus.
+#
+# RULE: this is a count ceiling, not an exception list: counts only fall. A category that rises fails the check. A change that moves a caller onto its
+# effect node lowers the count here in the same change. The check also refuses a count above the merge
+# base's copy of this file, so the baseline cannot be raised to pass.
+#
+# Read it:  python -m omnimarket.nodes.node_effect_bypass_scan_effect check --repository <repo> --root . \
+#             --baseline .onex_ratchets/effect_bypass_ceiling.yaml
+# omnimarket host_ssh reads 132 and slack_api 8: these are the counts of the dev tree this change merges onto (this change adds no counted line);
+# the host_ssh sites merged to dev after the first read of 125 (omnimarket#6207 and later merges) are counted here, not excused,
+# and a caller moved onto the host-access node lowers this row.
+# Counts are taken by node_effect_bypass_scan_effect (policy: its contract.yaml config.scan). The rows of the
+# other repositories are today's counts, carried here for the burn-down report; each repository enforces its own
+# row when it wires the same check.
+schema_version: 1
+ticket: OMN-24432
+repositories:
+  omnimarket:
+    counts:
+      gh_cli: 286
+      github_api: 16
+      git_remote: 74
+      slack_api: 8
+      linear_api: 3
+      host_ssh: 132
+      docker_admin: 73
+      kafka_admin: 34
+  omnibase_infra:
+    counts:
+      gh_cli: 152
+      github_api: 22
+      git_remote: 112
+      slack_api: 12
+      linear_api: 7
+      host_ssh: 107
+      docker_admin: 425
+      kafka_admin: 149
+  omniclaude:
+    counts:
+      gh_cli: 196
+      github_api: 16
+      git_remote: 57
+      slack_api: 11
+      linear_api: 8
+      host_ssh: 21
+      docker_admin: 60
+      kafka_admin: 33

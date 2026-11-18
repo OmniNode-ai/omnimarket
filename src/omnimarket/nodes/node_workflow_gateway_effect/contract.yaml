@@ -1,0 +1,107 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeWorkflowGatewayEffect
+#
+# POST /v1/workflows, GET /v1/workflows/contracts, GET /v1/workflows/{id}/status and GET /v1/workflows/{id}/receipt,
+# moved from the hosted onex-api into the runtime (T18d). One mount at /v1/workflows serves the four
+# routes. The caller is a bearer token or a tenant API key, resolved before anything else is read; the
+# tenant, the command topic and the wire shape come from the node's overlay document and the workflow
+# catalog inside it, never from the request. With no overlay document every request answers 503.
+name: "node_workflow_gateway_effect"
+contract_name: "node_workflow_gateway_effect"
+node_name: "node_workflow_gateway_effect"
+node_type: "EFFECT_GENERIC"
+runtime_profiles:
+  - effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "0.1.0"
+# Experimental until the T18e cutover: the routes are served by the runtime mount only and the node
+# declares no bus topics, so the node-liveness gate needs the lifecycle stated.
+lifecycle: experimental
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: false
+description: >
+  Serves the workflow gateway from the runtime's HTTP port: submit a workflow (allowlisted type, payload checked against the catalog schema, per-principal rate limit, monthly plan quota, command published on the catalog's topic, 202 only after the publish), read a tenant's workflow status, render a terminal workflow's receipt, and advertise the servable catalog (GET /v1/workflows/contracts). A workflow of another tenant answers 404, the same as an unknown id.
+input_model:
+  name: "ModelWorkflowSubmitCommand"
+  module: "omnimarket.nodes.node_workflow_gateway_effect.models.model_workflow_http"
+  description: "The authenticated caller and the decoded JSON body of a submission."
+config:
+  # The overlay document <root>/node_workflow_gateway_effect/overlay.yaml carries every deployment value:
+  # identity provider keys, database secret name, API key header and prefix, rate limit, quota keys,
+  # the workflow catalog, gateway instance id and publish timeout. Nothing in it is a secret.
+  overlay_id: "node_workflow_gateway_effect"
+  broker:
+    # Name of the environment variable holding the broker address; the address is not in this file.
+    bootstrap_servers_env: "KAFKA_BOOTSTRAP_SERVERS"
+  http:
+    max_body_bytes: 1048576
+http_mount:
+  factory: "omnimarket.nodes.node_workflow_gateway_effect.handlers.http_app:create_app"
+  path_prefix: "/v1/workflows"
+http_routes:
+  - operation: submit
+    method: POST
+    path: "/v1/workflows"
+    handler:
+      name: HandlerWorkflowSubmit
+      module: omnimarket.nodes.node_workflow_gateway_effect.handlers.handler_workflow_submit
+  - operation: contracts
+    method: GET
+    path: "/v1/workflows/contracts"
+    handler:
+      name: HandlerWorkflowContractsRead
+      module: omnimarket.nodes.node_workflow_gateway_effect.handlers.handler_workflow_contracts_read
+  - operation: status
+    method: GET
+    path: "/v1/workflows/{workflow_id}/status"
+    handler:
+      name: HandlerWorkflowStatusRead
+      module: omnimarket.nodes.node_workflow_gateway_effect.handlers.handler_workflow_status_read
+  - operation: receipt
+    method: GET
+    path: "/v1/workflows/{workflow_id}/receipt"
+    handler:
+      name: HandlerWorkflowReceiptRead
+      module: omnimarket.nodes.node_workflow_gateway_effect.handlers.handler_workflow_receipt_read
+handler_dependencies:
+  - omnimarket.protocols.protocol_http_tenant_identity.ProtocolHttpTenantIdentity
+  - omnimarket.nodes.node_workflow_gateway_effect.protocols.protocol_workflow_store.ProtocolWorkflowStore
+  - omnimarket.nodes.node_workflow_gateway_effect.protocols.protocol_workflow_publisher.ProtocolWorkflowPublisher
+  - omnimarket.nodes.node_workflow_gateway_effect.protocols.protocol_workflow_rate_limiter.ProtocolWorkflowRateLimiter
+dependencies:
+  - name: "secret_resolver"
+    type: "service"
+    class_name: "SecretResolver"
+    module: "omnibase_infra.runtime.secret_resolver"
+    description: "Resolves the logical name the overlay's database.dsn_secret gives, for the workflow store and the API key lookup. Absent means every request that needs the database answers 503."
+    required: false
+capabilities:
+  - name: "workflow_gateway_contracts_read"
+    description: "Serve GET /v1/workflows/contracts."
+  - name: "workflow_gateway_submit"
+    description: "Serve POST /v1/workflows."
+  - name: "workflow_gateway_status_read"
+    description: "Serve GET /v1/workflows/{workflow_id}/status."
+  - name: "workflow_gateway_receipt_read"
+    description: "Serve GET /v1/workflows/{workflow_id}/receipt."
+metadata:
+  description: "The workflow submit, status and receipt routes served by the runtime."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-13"
+  ticket: "OMN-19998"
+  transport_type: "database"
+  tags:
+    - "effect"
+    - "http"
+    - "gateway"
