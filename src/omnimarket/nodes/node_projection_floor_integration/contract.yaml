@@ -1,0 +1,105 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+name: projection_floor_integration
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_type: reducer
+input_model: omnimarket.models.integration_reading.model_integration_reading.ModelIntegrationProjection
+lifecycle: experimental
+description: >
+  Floor integration rows for the dashboard's Running figure: the newest hourly integration pass, one
+  row per merged change with its newest running reading, each row carrying the pass's counts and
+  as_of. node_integration_reading_publish_effect publishes every pass on
+  onex.evt.omnimarket.floor-integration-pass.v1 as well as on its snapshot topic (the runtime cannot
+  dispatch a snapshot topic to a writer). The writer upserts the pass's rows and deletes the rows of
+  older passes the newest no longer names; a pass older than the one held writes nothing. The Running
+  figure is the number of rows whose state is running, which equals seen_running.
+handler:
+  module: omnimarket.nodes.node_projection_floor_integration.handlers.handler_floor_integration_writer
+  class: FloorIntegrationProjectionWriter
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: floor_integration_projection_writer
+      handler:
+        name: FloorIntegrationProjectionWriter
+        module: omnimarket.nodes.node_projection_floor_integration.handlers.handler_floor_integration_writer
+      handler_module: omnimarket.nodes.node_projection_floor_integration.handlers.handler_floor_integration_writer
+db_io:
+  db_tables:
+    - name: floor_integration_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_floor_integration_rows.sql"
+      access: read_write
+      role: floor_integration_rows
+  dedupe_key:
+    - key
+  ordering_key: as_of
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.floor-integration-pass.v1
+  publish_topics:
+    - onex.snapshot.projection.floor-integration-rows.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-floor-integration-malformed.v1
+externally_consumed_topics:
+  - onex.snapshot.projection.floor-integration-rows.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.floor-integration-rows.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          cleanup.policy: compact
+      key_grain: mutable
+      table: floor_integration_rows
+      # The loader's schema field records the DATABASE the relation lives in;
+      # the physical relation is omninode_internal.floor_integration_rows (db_io above).
+      schema: omnidash_analytics
+      columns:
+        - key
+        - repository
+        - number
+        - title
+        - merged_at
+        - target
+        - state
+        - gap_class
+        - step
+        - running_path
+        - running_line
+        - merged
+        - seen_running
+        - settled_elsewhere
+        - reading_owed
+        - unintegrated
+        - as_of
+        - projected_at
+      order_by: "merged_at DESC"
+      freshness_column: projected_at
+      cursor_column: key
+      limit: 500
+      bus_backed: true
+      key_columns:
+        - key
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.floor-integration-pass.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.floor-integration-pass.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.floor-integration-rows.v1, operation: WRITE}  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.floor-integration-rows.v1, operation: DESCRIBE}  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.projection-floor-integration-malformed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.projection-floor-integration-malformed.v1, operation: DESCRIBE}
+
+metadata:
+  transport_type: kafka
+  ticket: OMN-25103
