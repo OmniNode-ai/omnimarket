@@ -78,6 +78,8 @@ runner_read:
     probe_timeout_seconds: 8
     tick_timeout_seconds: 180
     idle_bound_seconds: 600
+    # The runtime's address is the host of the dev deploy reading overlay's health probe; only the path is declared here.
+    ready_path: /ready
     host_reads_overlay_id: runtime_host_reads
     host_reads_file_env: RUNTIME_HOST_READS_OVERLAY_PATH
     alarm_state_relpath: .onex_state/merged-change-runner-read/alarm-state.json

@@ -55,6 +55,7 @@ class ModelRunnerReadReadySettings(_FrozenModel):
     probe_timeout_seconds: int = Field(gt=0)
     tick_timeout_seconds: int = Field(gt=0)
     idle_bound_seconds: int = Field(gt=0)
+    ready_path: str = Field(pattern=r"^/[A-Za-z0-9_./-]*$")
     host_reads_overlay_id: str = Field(min_length=1)
     host_reads_file_env: str = Field(min_length=1)
     alarm_state_relpath: str = Field(min_length=1)

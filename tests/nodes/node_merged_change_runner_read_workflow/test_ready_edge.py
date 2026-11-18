@@ -381,7 +381,7 @@ def _runtime_probe(monkeypatch, *, ready_url, statuses, starts, build_time):
             {"repo": "omnimarket", "clone_relpath": "omnimarket", "ref_path": ["ref"]}
         ],
     )
-    receipt = None if ready_url is None else SimpleNamespace(ready_url=ready_url)
+    health_url = ready_url
     start_reads = iter(starts)
 
     class Facts:
@@ -392,8 +392,8 @@ def _runtime_probe(monkeypatch, *, ready_url, statuses, starts, build_time):
             return next(start_reads)
 
     class Probe:
-        def __init__(self, settings, _environ):
-            calls.provenance_settings.append(settings)
+        def __init__(self, probe, _environ):
+            calls.provenance_settings.append(probe)
 
         def build_record(self):
             return {"build_time": build_time}
@@ -405,10 +405,11 @@ def _runtime_probe(monkeypatch, *, ready_url, statuses, starts, build_time):
     monkeypatch.setattr(
         ready_edge_runtime, "load_structured_overlay", lambda *_a, **_k: host_reads
     )
+    probe = SimpleNamespace(health_url=health_url, ssh_host_env="EXAMPLE_SSH_HOST")
     monkeypatch.setattr(
         ready_edge_runtime,
-        "load_lab_alarm_overlay",
-        lambda _environ: SimpleNamespace(lab_pass_receipt=receipt),
+        "load_dev_deploy_overlay",
+        lambda _environ: SimpleNamespace(probe=probe),
     )
     monkeypatch.setattr(ready_edge_runtime, "load_log_labels", lambda: None)
     monkeypatch.setattr(ready_edge_runtime, "SourceRuntimeFacts", Facts)
@@ -418,6 +419,7 @@ def _runtime_probe(monkeypatch, *, ready_url, statuses, starts, build_time):
         host_reads_overlay_id="runtime_host_reads",
         host_reads_file_env="RUNTIME_HOST_READS_OVERLAY_PATH",
         probe_timeout_seconds=8,
+        ready_path="/ready",
     )
     return ready_edge_runtime, settings, calls
 
@@ -428,7 +430,7 @@ def test_dev_runtime_read_uses_declared_overlay_url_and_effect_sources(
 ):
     runtime, settings, calls = _runtime_probe(
         monkeypatch,
-        ready_url="http://runtime.example:9000/ready",
+        ready_url="http://runtime.example:9000/health",
         statuses=status,
         starts=[FIRST_BOOT, FIRST_BOOT],
         build_time=FIRST_BUILD.isoformat(),
@@ -446,7 +448,7 @@ def test_dev_runtime_read_uses_declared_overlay_url_and_effect_sources(
 def test_dev_runtime_read_is_unread_when_boot_changes_during_probe(monkeypatch):
     runtime, settings, _ = _runtime_probe(
         monkeypatch,
-        ready_url="http://runtime.example:9000/ready",
+        ready_url="http://runtime.example:9000/health",
         statuses=200,
         starts=[FIRST_BOOT, SECOND_BOOT],
         build_time=FIRST_BUILD.isoformat(),
@@ -455,15 +457,15 @@ def test_dev_runtime_read_is_unread_when_boot_changes_during_probe(monkeypatch):
         runtime.read_dev_runtime(settings, {})
 
 
-def test_dev_runtime_read_is_unread_without_declared_ready_url(monkeypatch):
+def test_dev_runtime_read_is_unread_without_a_declared_http_health_url(monkeypatch):
     runtime, settings, calls = _runtime_probe(
         monkeypatch,
-        ready_url=None,
+        ready_url="runtime.example",
         statuses=200,
         starts=[FIRST_BOOT, FIRST_BOOT],
         build_time=FIRST_BUILD.isoformat(),
     )
-    with pytest.raises(ValueError, match="ready URL"):
+    with pytest.raises(ValueError, match="not an http URL"):
         runtime.read_dev_runtime(settings, {})
     assert calls.fetched == []
 
@@ -471,7 +473,7 @@ def test_dev_runtime_read_is_unread_without_declared_ready_url(monkeypatch):
 def test_dev_runtime_read_is_unread_on_unexpected_status(monkeypatch):
     runtime, settings, _ = _runtime_probe(
         monkeypatch,
-        ready_url="http://runtime.example:9000/ready",
+        ready_url="http://runtime.example:9000/health",
         statuses=500,
         starts=[FIRST_BOOT, FIRST_BOOT],
         build_time=FIRST_BUILD.isoformat(),

@@ -10,6 +10,7 @@ import logging
 import os
 import subprocess
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
@@ -33,9 +34,11 @@ from omnimarket.models.model_runtime_host_reads import ModelRuntimeHostReadOverl
 from omnimarket.nodes.node_dev_deploy_reading_effect.adapters.adapter_lab_facts import (
     RuntimeProbeSource,
 )
-from omnimarket.nodes.node_dev_deploy_reading_effect.overlay import ModelProbeSettings
-from omnimarket.nodes.node_lab_alarm.overlay import (
-    load_overlay as load_lab_alarm_overlay,
+from omnimarket.nodes.node_dev_deploy_reading_effect.overlay import (
+    ModelProbeSettings,
+)
+from omnimarket.nodes.node_dev_deploy_reading_effect.overlay import (
+    load_overlay as load_dev_deploy_overlay,
 )
 from omnimarket.nodes.node_lab_alarm_deliver_effect.overlay import load_overlay
 from omnimarket.nodes.node_lab_alarm_deliver_effect.runtime_lab_alarm_deliver import (
@@ -82,12 +85,14 @@ def _ready_status(url: str, timeout_seconds: int) -> int:
         return exc.code
 
 
-def _ready_url(environ: Mapping[str, str]) -> str:
-    """The runtime's readiness URL, from the lab alarm overlay that already declares it."""
-    receipt = load_lab_alarm_overlay(environ).lab_pass_receipt
-    if receipt is None or not receipt.ready_url:
-        raise ValueError("the lab alarm overlay declares no runtime ready URL")
-    return receipt.ready_url
+def _ready_url(probe: ModelProbeSettings, ready_path: str) -> str:
+    """The runtime's readiness URL: the host the dev deploy overlay's health probe names, at the contract's ready path."""
+    declared = urllib.parse.urlsplit(probe.health_url)
+    if declared.scheme not in {"http", "https"} or not declared.netloc:
+        raise ValueError("the declared runtime health URL is not an http URL")
+    return urllib.parse.urlunsplit(
+        (declared.scheme, declared.netloc, ready_path, "", "")
+    )
 
 
 def read_dev_runtime(
@@ -97,7 +102,7 @@ def read_dev_runtime(
 
     The runtime host reads go through the effect nodes that own them: the reading effect's runtime
     facts source reads the container start, the dev deploy reading effect's probe source reads the
-    build provenance, and the readiness URL comes from the declared lab alarm overlay.
+    build provenance, and the runtime's address comes from that effect's declared overlay.
     """
     host_reads = load_structured_overlay(
         settings.host_reads_overlay_id,
@@ -105,26 +110,15 @@ def read_dev_runtime(
         environ,
         file_env=settings.host_reads_file_env,
     )
+    probe = load_dev_deploy_overlay(environ).probe
+    ready_url = _ready_url(probe, settings.ready_path)
     facts = SourceRuntimeFacts(
         overlay=host_reads,
         labels=load_log_labels(),
         unit_hosts=(),
         environ=environ,
     )
-    ready_url = _ready_url(environ)
-    provenance = RuntimeProbeSource(
-        ModelProbeSettings(
-            health_url=ready_url,
-            health_ok_path=("ready",),
-            ssh_host_env=host_reads.ssh_host_env,
-            compose_project=host_reads.compose_project,
-            provenance_service=host_reads.provenance_service,
-            provenance_path=host_reads.provenance_path,
-            sha_path=("build_time",),
-            timeout_seconds=host_reads.timeout_seconds,
-        ),
-        environ,
-    )
+    provenance = RuntimeProbeSource(probe, environ)
     started_at = facts.build_started_at()
     status = _ready_status(ready_url, settings.probe_timeout_seconds)
     if status not in {200, 503}:
