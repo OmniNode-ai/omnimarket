@@ -144,3 +144,6 @@ outputs:
   errors:
     type: list[str]
     description: Run-level discovery or decider failures.
+  skipped_units:
+    type: list[object]
+    description: Units the unit reader skipped, each with its unit name, the reason environment_file_missing and the file path (a failed transient unit that names no worktree and whose required environment file is gone). A skip is not a failure.

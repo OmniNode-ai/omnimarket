@@ -184,6 +184,7 @@ class HandlerWorktreeReconcile:
             decided_events=tuple(events),
             completed_event=completed,
             errors=tuple(errors),
+            skipped_units=self._probe.skipped_units(),
         )
 
     def _execute(
