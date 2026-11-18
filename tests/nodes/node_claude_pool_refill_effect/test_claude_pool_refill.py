@@ -444,3 +444,55 @@ def test_the_probe_script_binds_a_lane_overlay_because_the_probe_refuses_to_run_
     assert f"-m {refill_mod.PROBE_MODULE} --overlay " in script
     assert "host_process_environment" in script
     assert "file_overlay_documents" in script
+
+
+def _parked_h2_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hosts: tuple[str, ...]
+) -> tuple[Any, list[str]]:
+    monkeypatch.delenv("ONEX_LAB_RUN_HOSTS", raising=False)
+    monkeypatch.delenv("ONEX_WORKSPACE_CONFIG_ROOT", raising=False)
+    _overlay(tmp_path)
+    (tmp_path / "hosts.yaml").write_text(
+        "hosts:\n  - {name: hr, target: reader}\n  - {name: h1, target: one}\n"
+        "  - {name: h2, target: two, available: false}\n  - {name: h3, target: three}\n",
+        encoding="utf-8",
+    )
+    read: list[str] = []
+
+    def host_pool(ov: Any, host: Any) -> dict[str, dict[str, Any]]:
+        read.append(host.name)
+        return {"a": _entry("a", "fa")}
+
+    fakes = _Fakes({"a": _entry("a", "fa")}, {})
+    monkeypatch.setattr(refill_mod, "store_fingerprints", lambda _ov: {"a": "fa"})
+    monkeypatch.setattr(refill_mod, "host_pool", host_pool)
+    for name in ("probe", "order_pool"):
+        monkeypatch.setattr(refill_mod, name, getattr(fakes, name))
+    result = refill_mod.HandlerClaudePoolRefill().handle(
+        ModelClaudePoolRefillRequest(
+            config_path=str(tmp_path / refill_mod.OVERLAY_REL),
+            dry_run=True,
+            hosts=hosts,
+        )
+    )
+    return result, read
+
+
+def test_an_unnamed_pass_skips_a_host_the_lab_table_parks_and_exits_zero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    result, read = _parked_h2_pass(tmp_path, monkeypatch, ())
+    assert sorted(set(read)) == ["h1", "h3"]
+    assert result.exit_code == 0
+    assert any(
+        line.startswith("claude-pool-refill host=h2 verdict=skipped")
+        for line in result.lines
+    )
+
+
+def test_control_a_parked_host_named_in_the_request_is_still_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    result, read = _parked_h2_pass(tmp_path, monkeypatch, ("h2",))
+    assert set(read) == {"h2"}
+    assert not any("verdict=skipped" in line for line in result.lines)
