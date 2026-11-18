@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The lane host pool snapshot: a host that cannot be reached reads zero free slots and names its reason (OMN-23725).
+"""The lane host pool snapshot: a host that cannot be reached names its reason (OMN-23725).
 
-Golden: a host that advertises nothing and a host whose token pool read failed each read zero free slots with a reason
-in the per-host row and in the pool reading the lane start and the fill read.
+Golden: a host that advertises nothing reads zero free slots, and a host whose token pool read failed is unread (no free
+slot figure), each with a reason in the per-host row and in the pool reading the lane start and the fill read.
 Failing control: the same host with its advertisement and its accounts read has free slots, so the zero comes from the
 unreachable state and not from the inputs' shape.
 """
@@ -65,7 +65,7 @@ def test_an_unreachable_host_is_a_zero_slot_reading_with_its_reason_for_the_lane
     assert reading.lane_admission_refusal == "no-advertisement"
 
 
-def test_a_host_whose_token_pool_cannot_be_read_reads_zero_free_slots_and_names_why() -> (
+def test_a_host_whose_token_pool_cannot_be_read_is_unread_not_zero_and_names_why() -> (
     None
 ):
     """h2 advertises, but ssh to it fails: its accounts are unread and the reason rides in the row."""
@@ -78,7 +78,8 @@ def test_a_host_whose_token_pool_cannot_be_read_reads_zero_free_slots_and_names_
         ),
     ).handle(pool_request())
     rows = _by_host(result)
-    assert rows["h2"].free_slots == 0
+    assert rows["h2"].free_slots is None
+    assert rows["h2"].accounts_unread is True
     assert rows["h2"].refusal == "accounts-unread: ssh: connection refused"
 
 

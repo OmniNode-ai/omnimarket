@@ -111,6 +111,7 @@ def build_pool_snapshot(
         running_lanes = lanes.get(row.name, 0)
 
         refusal: str | None = None
+        accounts_unread = False
         if away:
             refusal = f"away: {away_reason}"
         elif ad is None:
@@ -121,12 +122,17 @@ def build_pool_snapshot(
             refusal = f"capacity: {ad.capacity_refusal}"
         elif acc and acc.unread_reason:
             refusal = f"accounts-unread: {acc.unread_reason}"
+            accounts_unread = True
         elif not accounts_usable:
             refusal = "no-usable-account"
         elif row.contributor and not row.lane_ready:
             refusal = f"lane-not-ready: {row.lane_not_ready_reason or 'not ready'}"
 
-        if refusal is not None:
+        free_slots: int | None
+        if accounts_unread:
+            # The accounts read failed: the host's free slots are unknown. Zero would read as a full host.
+            free_slots = None
+        elif refusal is not None:
             free_slots = 0
         else:
             free_slots = max(0, declared_slots - running_lanes)
@@ -143,6 +149,7 @@ def build_pool_snapshot(
                 away_reason=away_reason,
                 refusal=refusal,
                 advertised_at=ad.advertised_at if ad else None,
+                accounts_unread=accounts_unread,
             )
         )
 
@@ -171,7 +178,9 @@ def build_pool_snapshot(
                 engines=engines,
                 lane_admission_refusal=refusal,
                 codex_refusal=None,
-                lane_slots=free_slots,
+                # The shared reading model holds an integer: an unread host publishes 0 here and the marker is its
+                # ``accounts-unread:`` admission refusal, which every reader already treats as no lane on this host.
+                lane_slots=free_slots or 0,
                 lane_cap=declared_slots,
                 placed=running_lanes,
                 rank_free=rank_free,
@@ -308,7 +317,8 @@ class HandlerPoolSnapshot:
             read_at=read_at,
             max_age_seconds=self._overlay.snapshot_max_age_seconds,
             hosts=host_rows,
-            free_slots_total=sum(r.free_slots for r in host_rows),
+            free_slots_total=sum(r.free_slots or 0 for r in host_rows),
+            unread_hosts=tuple(r.host for r in host_rows if r.accounts_unread),
             snapshot_path=self._overlay.snapshot_path or "",
             provenance=" + ".join(
                 [
