@@ -53,6 +53,7 @@ jobs:
   # `delegation-health-check / Delegation Health Check`, the context the
   # sweep exclusion names and the prefix the advisory-job gate
   # matches a called workflow's job by.
+  # advisory-automation: OMN-25514 reports the delegation nightly and M4 C17 verdicts as a dev signal; in no required list, so a red row cannot block a merge
   delegation-health-check:
     uses: OmniNode-ai/omnibase_infra/.github/workflows/delegation-health-reusable.yml@dev-20261107104119-e3cff8e210fe
     with:
