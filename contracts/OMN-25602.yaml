@@ -46,12 +46,37 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/test_worktree_reconcile_core_worktree.py -q --no-cov -n 0 -p no:randomly -k status_row
     cwd: .
+- id: dod-omn25602-ac3-git-works-again
+  description: After the repair a clone whose core.worktree named a missing directory answers git commands again, with no hand edit of the config.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_worktree_reconcile_core_worktree.py -q --no-cov -n 0 -p no:randomly -k git_works_again
+    cwd: .
+- id: dod-omn25602-ac4-repair-command-entry
+  description: The hosted-checkable part of the probe precondition - the repair-core-worktree command runs the repair from the node entry point a lane invokes. The h053 lane receipt itself is read only by the local Done gate item below.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_worktree_reconcile_core_worktree.py -q --no-cov -n 0 -p no:randomly -k command_runs_the_repair
+    cwd: .
+- id: dod-omn25602-ac5-repair-status-row
+  description: The hosted-checkable part of naming the setting step - each repair writes a STATUS row naming the clone path, the missing directory and the repair kind. The lane report line is read only by the local Done gate item below.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_worktree_reconcile_core_worktree.py -q --no-cov -n 0 -p no:randomly -k writes_one_status_row
+    cwd: .
 - id: dod-omn25602-ac3-h053-git-exits-zero
   description: After the node's repair-core-worktree command ran on h053 from the branch, git exits 0 in every canonical clone under the registry root. Hosted CI cannot reach the lab host, so only the local Done gate reads it.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: ssh -o BatchMode=yes h053 'for d in /data/omninode/*/*/; do [ -d "$d.git" ] && git -C "$d" status --short --branch >/dev/null || exit 1; done'
@@ -60,8 +85,6 @@ dod_evidence:
   description: The lane report names the probe lane h053probe-1130 placed on h053 with its receipt path and engine rc. Only the local Done gate reads the report.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: sh -c 'grep -l "h053probe-1130" "${OMNI_HOME:?}"/.claude_scratch/reports/h053git-1130-*.md'
@@ -70,8 +93,6 @@ dod_evidence:
   description: The lane report names the lane step that set core.worktree with the command and its output. Only the local Done gate reads the report.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC5
   checks:
   - check_type: command
     check_value: sh -c 'grep -l "core.worktree" "${OMNI_HOME:?}"/.claude_scratch/reports/h053git-1130-*.md'
