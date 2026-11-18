@@ -9,6 +9,9 @@ from .handlers import (
     HandlerDrainerAlarm as HandlerDrainerAlarm,
 )
 from .handlers import (
+    HandlerInstallFailureAlarm as HandlerInstallFailureAlarm,
+)
+from .handlers import (
     HandlerJobExitAlarm as HandlerJobExitAlarm,
 )
 from .handlers import (

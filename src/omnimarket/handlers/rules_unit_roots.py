@@ -21,6 +21,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
+from omnimarket.models.model_skipped_unit import ModelSkippedUnit
+
 #: The directory name every lane worktree sits under.
 WORKTREE_SEGMENT = "omni_worktrees"
 
@@ -235,6 +237,8 @@ class UnitRoots:
 
     named: Mapping[str, str] = field(default_factory=dict)
     units_read: int = 0
+    #: Units the reader skipped with a reason; each is a typed record, not a failure.
+    skipped: tuple[ModelSkippedUnit, ...] = ()
 
     def naming(self, tree: str) -> str:
         """The unit that names ``tree`` or a path inside it; empty when none does."""
@@ -246,9 +250,13 @@ class UnitRoots:
         return ""
 
     @classmethod
-    def from_paths(cls, per_unit: Mapping[str, Iterable[str]]) -> UnitRoots:
+    def from_paths(
+        cls,
+        per_unit: Mapping[str, Iterable[str]],
+        skipped: Iterable[ModelSkippedUnit] = (),
+    ) -> UnitRoots:
         named: dict[str, str] = {}
         for unit, paths in per_unit.items():
             for path in paths:
                 named.setdefault(path, unit)
-        return cls(named=named, units_read=len(per_unit))
+        return cls(named=named, units_read=len(per_unit), skipped=tuple(skipped))
