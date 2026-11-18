@@ -50,12 +50,10 @@ output_model:
   module: "omnimarket.nodes.node_workflow_contract_catalog_effect.models.model_workflow_contract_catalog"
   description: "The status and JSON body the HTTP adapter renders."
 
-# The narrowest prefix, equal to the route path: private sibling routes under
-# /v1/workflows can be mounted later without an overlap. The mounted app sees
-# the request path unchanged.
-http_mount:
-  factory: "omnimarket.nodes.node_workflow_contract_catalog_effect.handlers.http_app:create_app"
-  path_prefix: "/v1/workflows/contracts"
+# No http_mount: the workflow gateway node mounts /v1/workflows and serves
+# GET /v1/workflows/contracts itself. The runtime refuses overlapping mounts,
+# and this prefix sits inside the gateway's. The factory stays importable for
+# the catalog's own tests.
 
 # Interfaces the handler asks for; the hosted edge binds the caller resolver.
 handler_dependencies:

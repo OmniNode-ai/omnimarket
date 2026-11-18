@@ -1,43 +1,47 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Build the lane-brief context pack: seven tiers, each inside its own budget, one hash, every rung recorded.
-
-Six tiers are read by code and never call a model: graph answers and tests and required CI contexts through
-injected readers (the graph query nodes, the repository), review findings from the posted review text (whole,
-never cut: one that outgrows its budget refuses the pack), the files to touch, the lane history from the
-ledger rows that name the ticket or a file, and the risks from ``lane_brief_risks.yaml``. The exemplar is
-model-selected: the rungs run local first, then GLM, then Sonnet, and each fallback is recorded on the pack
-with the rung and why. A choice a rung makes is checked against the candidates it was given: a path that is
-not a candidate, or an excerpt the file never held, falls back like a failed call.
-"""
+"""Build the seven budgeted tiers of a lane-brief context pack."""
 
 from __future__ import annotations
 
 import hashlib
-import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from omnimarket.enums.enum_lane_brief_tier import (
+    EnumLaneBriefRefusal,
     EnumLaneBriefRung,
     EnumLaneBriefTier,
-    EnumLaneBriefTierMode,
 )
 from omnimarket.models.context_pack_orchestrator.model_lane_brief_context import (
     ModelLaneBriefContextPack,
     ModelLaneBriefContextRequest,
-    ModelLaneBriefExemplarChoice,
+    ModelLaneBriefJudgement,
     ModelLaneBriefRungAttempt,
     ModelLaneBriefTierRecord,
+    is_claude_assembler,
 )
 from omnimarket.models.context_profile_resolve.model_context_profile_resolve_request import (
     ModelContextProfileResolveRequest,
 )
 from omnimarket.models.context_profile_resolve.model_context_profile_resolve_result import (
     EnumContextProfileResolveStatus,
+)
+from omnimarket.nodes.node_context_pack_orchestrator.handlers.lane_brief_delegation import (
+    LaneBriefDelegation,
+)
+from omnimarket.nodes.node_context_pack_orchestrator.handlers.lane_brief_errors import (
+    LaneBriefContextRefusedError,
+    LaneBriefRungError,
+)
+from omnimarket.nodes.node_context_pack_orchestrator.handlers.lane_brief_sources import (
+    LaneBriefSources,
 )
 from omnimarket.nodes.node_context_pack_orchestrator.protocols.protocol_lane_brief_context import (
     ProtocolLaneBriefRung,
@@ -46,24 +50,17 @@ from omnimarket.nodes.node_context_pack_orchestrator.protocols.protocol_lane_bri
 from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import (
     HandlerContextProfileResolver,
 )
+from omnimarket.nodes.node_context_source_ledger_effect import (
+    HandlerContextSourceLedger,
+    ModelLedgerHistoryReference,
+    ModelLedgerHistoryScope,
+)
 
 _RISKS_PATH = Path(__file__).resolve().parents[1] / "lane_brief_risks.yaml"
-_RUNG_ORDER = (EnumLaneBriefRung.LOCAL, EnumLaneBriefRung.GLM, EnumLaneBriefRung.SONNET)
+_RUNG_ORDER = (EnumLaneBriefRung.LOCAL, EnumLaneBriefRung.JEV, EnumLaneBriefRung.GLM)
 _REQUIRED_RISK_CLASSES = frozenset(
     {"frozen-repo-growth", "branch-name-refusal", "install-refusal", "suite-timeout"}
 )
-
-
-class LaneBriefContextRefusedError(ValueError):
-    """The pack is refused: a tier, a reader, a rung, a budget or the profile is missing or wrong."""
-
-
-class LaneBriefRungError(Exception):
-    """A rung could not choose (a timeout, an unreadable answer); the chain falls back to the next.
-
-    A rung that lets a transport error (``OSError``: ``TimeoutError``, ``ConnectionError``) escape is
-    treated the same way.
-    """
 
 
 class ModelLaneBriefRisk(BaseModel):
@@ -99,73 +96,59 @@ def _tokens(text: str) -> int:
     return max(1, (len(text) + 3) // 4)  # heuristic_chars, the profile default
 
 
-def _names_ticket(row: str, ticket: str) -> bool:
-    """Whether the row names the ticket id on id boundaries: OMN-1 is not OMN-12, and is in contracts/OMN-1.yaml."""
-    return re.search(rf"(?<![\w-]){re.escape(ticket)}(?![\w-])", row) is not None
+def _hash_body(body: bytes) -> str:
+    return hashlib.sha256(body).hexdigest()
 
 
-def _names_path(row: str, path: str, repository: str) -> bool:
-    """Whether the row names the path, bare, as ``./<path>`` or as ``<repository>/<path>``.
-
-    Any other directory in front makes it another file (tests/src/a.py is not src/a.py), and a longer
-    tail does too (src/a.py is not src/a.pyi or src/a.py.bak).
-    """
-    bare = path.removeprefix("./").removeprefix(f"{repository}/")
-    prefix = rf"(?:\./|{re.escape(repository)}/)?"
-    return (
-        re.search(rf"(?<![\w./-]){prefix}{re.escape(bare)}(?![\w-]|\.\w)", row)
-        is not None
-    )
+def _ledger_reference(reference: ModelLedgerHistoryReference) -> str:
+    tags = reference.model_dump(exclude={"text", "source_ref"})
+    metadata = " ".join(f"{key}={value}" for key, value in tags.items())
+    return f"- reference={reference.source_ref} {metadata}\n  {reference.text}"
 
 
-def _lane_history(request: ModelLaneBriefContextRequest) -> str:
-    rows = [
-        r
-        for r in request.ledger_rows
-        if _names_ticket(r, request.ticket)
-        or any(_names_path(r, f, request.repository) for f in request.files_to_touch)
-    ]
-    return (
-        "\n".join(rows) if rows else "no ledger row names the ticket or a file to touch"
-    )
-
-
-def _fit(text: str, budget: int, what: str) -> str:
-    if (tokens := _tokens(text)) > budget:
-        raise ValueError(f"{what} needs {tokens} tokens, over its budget {budget}")
-    return text
+@dataclass(frozen=True)
+class _Tier:
+    text: str = ""
+    reason: str | None = None
+    rungs: tuple[ModelLaneBriefRungAttempt, ...] = ()
+    judgement_reason: str | None = None
+    omitted: int = 0
 
 
 class HandlerLaneBriefContextPack:
-    """The lane-brief context handler of the pack orchestrator: ``handle(request) -> pack``."""
+    """Build the pack through configured repository, graph, ledger and delegation sources."""
 
     def __init__(
         self,
         *,
-        rungs: Sequence[ProtocolLaneBriefRung] = (),
+        rungs: Sequence[ProtocolLaneBriefRung] | None = None,
         readers: Mapping[EnumLaneBriefTier, ProtocolLaneBriefTierReader] | None = None,
         profiles_dir: Path | None = None,
+        ledger: HandlerContextSourceLedger | None = None,
     ) -> None:
-        # The runtime builds the contract-routed handler with no arguments: no rung or reader is bound,
-        # and handle() refuses, typed, before any model is called. A composition root or a test binds them.
+        if rungs is None:
+            delegate = LaneBriefDelegation.from_environment()
+            rungs = (delegate,) if delegate is not None else ()
         self._rungs = tuple(rungs)
         self._readers = dict(readers or {})
         self._resolver = HandlerContextProfileResolver(profiles_dir)
+        self._sources = LaneBriefSources()
+        self._ledger = ledger or HandlerContextSourceLedger()
 
     def handle(
-        self, request: ModelLaneBriefContextRequest
+        self,
+        request: ModelLaneBriefContextRequest,
+        *,
+        tenant_id: str | None = None,
     ) -> ModelLaneBriefContextPack:
         resolved = self._resolver.handle(
             ModelContextProfileResolveRequest(profile_name=request.profile_name)
         )
-        if (
-            resolved.status is not EnumContextProfileResolveStatus.OK
-            or resolved.profile is None
-        ):
+        profile = resolved.profile
+        if resolved.status is not EnumContextProfileResolveStatus.OK or profile is None:
             raise LaneBriefContextRefusedError(
                 f"profile {request.profile_name!r}: {'; '.join(resolved.errors)}"
             )
-        profile = resolved.profile
         if profile.token_estimation_method != _SUPPORTED_ESTIMATION:
             raise LaneBriefContextRefusedError(
                 f"profile {request.profile_name!r}: token_estimation_method "
@@ -175,21 +158,35 @@ class HandlerLaneBriefContextPack:
             raise LaneBriefContextRefusedError(
                 f"profile {request.profile_name!r} declares no tier_specs"
             )
-        if tuple(r.name for r in self._rungs) != _RUNG_ORDER:
+
+        names = tuple(r.name for r in self._rungs)
+        if any(is_claude_assembler(name, None) for name in names):
             raise LaneBriefContextRefusedError(
-                "rungs must be local, glm, sonnet in that order: "
-                f"{[r.name.value for r in self._rungs]}"
+                "Claude cannot assemble a lane-brief judgement",
+                EnumLaneBriefRefusal.CLAUDE_ASSEMBLER,
             )
+        if names != tuple(rung for rung in _RUNG_ORDER if rung in names):
+            raise LaneBriefContextRefusedError("rungs must be in local, jev, glm order")
+
         sections: list[str] = []
         records: list[ModelLaneBriefTierRecord] = []
         for spec in profile.tier_specs:
-            rungs: tuple[ModelLaneBriefRungAttempt, ...] = ()
-            if spec.mode is EnumLaneBriefTierMode.MODEL_SELECTED:
-                text, rungs = self._select_exemplar(request, spec.token_budget)
-            else:
-                text = self._read(spec.tier, request)
-            if not text.strip():
+            tier = self._read(spec.tier, request, spec.token_budget, tenant_id)
+            text = tier.text
+            status: Literal["assembled", "empty", "truncated", "unassembled"] = (
+                "assembled"
+            )
+            if tier.reason:
+                status = "unassembled"
+                marker = f"unassembled ({tier.reason})"
+                text = f"{marker}\n\n{text}" if text else marker
+            elif tier.omitted:
+                status = "truncated"
+                text += f"\n\ntruncated ({tier.omitted} whole references exceeded the tier budget)"
+            elif not text.strip():
+                status = "empty"
                 text = f"no {spec.tier.value} content for this brief"
+
             tokens = _tokens(text)
             if tokens > spec.token_budget:
                 raise LaneBriefContextRefusedError(
@@ -201,90 +198,212 @@ class HandlerLaneBriefContextPack:
                 ModelLaneBriefTierRecord(
                     tier=spec.tier,
                     mode=spec.mode,
-                    model_called=bool(rungs),
-                    rungs=rungs,
+                    model_called=bool(tier.rungs),
+                    rungs=tier.rungs,
                     token_estimate=tokens,
                     token_budget=spec.token_budget,
+                    status=status,
+                    reason=tier.reason,
+                    judgement_reason=tier.judgement_reason,
                 )
             )
-        body = "\n\n".join(sections) + "\n"
+        body = "\n\n".join(sections)
         return ModelLaneBriefContextPack(
             profile_name=request.profile_name,
             profile_version=profile.profile_version,
             profile_content_hash=resolved.profile_content_hash
             or profile.content_hash(),
             body=body,
-            final_pack_hash=hashlib.sha256(body.encode()).hexdigest(),
+            final_pack_hash=_hash_body(body.encode()),
             tiers=tuple(records),
         )
 
     def _read(
-        self, tier: EnumLaneBriefTier, request: ModelLaneBriefContextRequest
-    ) -> str:
+        self,
+        tier: EnumLaneBriefTier,
+        request: ModelLaneBriefContextRequest,
+        budget: int,
+        tenant_id: str | None,
+    ) -> _Tier:
+        if tier is EnumLaneBriefTier.EXEMPLAR:
+            return self._exemplar(request, budget)
+        if tier is EnumLaneBriefTier.LANE_HISTORY:
+            return self._history(request, budget, tenant_id)
         if tier is EnumLaneBriefTier.REVIEW_FINDINGS:
-            return "\n\n".join(
-                f"[{c.comment_id}]\n{c.text}" for c in request.review_comments
+            if not request.review_comments:
+                return _Tier(reason="dispatcher supplied no full review text")
+            return _Tier(
+                "\n\n".join(
+                    f"[{c.comment_id}]\n{c.text}" for c in request.review_comments
+                )
             )
         if tier is EnumLaneBriefTier.FILES_TO_TOUCH:
-            return "\n".join(request.files_to_touch)
-        if tier is EnumLaneBriefTier.LANE_HISTORY:
-            return _lane_history(request)
+            return _Tier("\n".join(request.files_to_touch))
         if tier is EnumLaneBriefTier.RISKS:
-            return "\n".join(
-                f"- {r.risk_class}: {' '.join(r.rule.split())} (source: {r.source})"
-                for r in load_lane_brief_risks()
+            return _Tier(
+                "\n".join(
+                    f"- {r.risk_class}: {' '.join(r.rule.split())} (source: {r.source})"
+                    for r in load_lane_brief_risks()
+                )
             )
-        reader = self._readers.get(tier)
-        if reader is None:
-            raise LaneBriefContextRefusedError(
-                f"no reader is bound for tier {tier.value}"
-            )
-        return reader.read(request)
+        if reader := self._readers.get(tier):
+            return _Tier(reader.read(request))
+        if tier is EnumLaneBriefTier.GRAPH_ANSWERS:
+            return _Tier(*self._sources.graph(request))
+        return _Tier(*self._sources.tests_and_ci(request))
 
-    def _select_exemplar(
-        self, request: ModelLaneBriefContextRequest, budget: int
-    ) -> tuple[str, tuple[ModelLaneBriefRungAttempt, ...]]:
-        if not request.exemplar_candidates:
-            raise LaneBriefContextRefusedError(
-                "tier exemplar: exemplar_candidates is empty; no rung is called"
+    def _exemplar(self, request: ModelLaneBriefContextRequest, budget: int) -> _Tier:
+        candidates, unavailable = self._sources.exemplars(request)
+        if not candidates:
+            missing = unavailable or "no admitted exemplar candidates"
+            return _Tier(reason=missing, judgement_reason=missing)
+        by_path = {candidate.path: candidate.text for candidate in candidates}
+
+        def choose(rung: ProtocolLaneBriefRung) -> tuple[ModelLaneBriefJudgement, str]:
+            choice = rung.select(request, candidates)
+            self._check_assembler(choice)
+            if choice.path not in by_path:
+                raise ValueError(f"chose {choice.path!r}, which is not a candidate")
+            if choice.excerpt not in by_path[choice.path]:
+                raise ValueError(f"excerpt is not verbatim from {choice.path!r}")
+            return choice, f"{choice.path}\n{choice.excerpt}"
+
+        text, attempts, reason = self._judge(choose, budget)
+        if reason:
+            return _Tier(reason=reason, rungs=attempts, judgement_reason=reason)
+        return _Tier(text, rungs=attempts)
+
+    def _history(
+        self,
+        request: ModelLaneBriefContextRequest,
+        budget: int,
+        tenant_id: str | None,
+    ) -> _Tier:
+        result = self._ledger.read_lane_history(
+            ModelLedgerHistoryScope(
+                lane=request.lane,
+                ticket=request.ticket,
+                repository=request.repository,
+                pull_request=request.pull_request,
+                touched_paths=request.files_to_touch,
+                as_of=datetime.now(UTC),
+            ),
+            tenant_id=tenant_id,
+            supplied_rows=request.ledger_rows,
+        )
+        if result.unavailable_reason:
+            return _Tier(
+                reason=result.unavailable_reason,
+                judgement_reason=result.unavailable_reason,
             )
-        by_path = {c.path: c.text for c in request.exemplar_candidates}
+        if not result.references:
+            return _Tier(judgement_reason="no matching ledger references to summarize")
+
+        def priority(ref: ModelLedgerHistoryReference) -> tuple[bool, bool, str]:
+            same_pr = bool(
+                request.pull_request
+                and request.pull_request.rsplit("/", 1)[-1].casefold()
+                in {
+                    pr.strip().rsplit("/", 1)[-1].casefold() for pr in ref.pr.split(",")
+                }
+            )
+            terminal = ref.kind == "TERMINAL"
+            return terminal and same_pr, terminal, ref.time
+
+        summary_budget = min(500, budget // 4)
+        reference_budget = max(0, (budget - summary_budget) * 4 - 160)
+        lines: list[str] = []
+        used = 0
+        for ref in sorted(result.references, key=priority, reverse=True):
+            entry = _ledger_reference(ref)
+            if used + len(entry) + 1 <= reference_budget:
+                lines.append(entry)
+                used += len(entry) + 1
+        facts = "\n".join(lines)
+        omitted = len(result.references) - len(lines)
+
+        def summarize(
+            rung: ProtocolLaneBriefRung,
+        ) -> tuple[ModelLaneBriefJudgement, str]:
+            answer = rung.summarize(request, facts)
+            self._check_assembler(answer)
+            return answer, answer.text
+
+        if facts:
+            text, attempts, reason = self._judge(summarize, summary_budget)
+        else:
+            text, attempts, reason = (
+                "",
+                (),
+                "no whole ledger reference fit the tier budget",
+            )
+        if reason:
+            text = f"summary unassembled ({reason})"
+        return _Tier(
+            f"{text}\n\n### Ledger references\n{facts}",
+            rungs=attempts,
+            judgement_reason=reason,
+            omitted=omitted,
+        )
+
+    @staticmethod
+    def _check_assembler(answer: ModelLaneBriefJudgement) -> None:
+        if is_claude_assembler(answer.rung, answer.model):
+            raise LaneBriefContextRefusedError(
+                "Claude cannot assemble a lane-brief judgement",
+                EnumLaneBriefRefusal.CLAUDE_ASSEMBLER,
+            )
+
+    def _judge(
+        self,
+        produce: Callable[[ProtocolLaneBriefRung], tuple[ModelLaneBriefJudgement, str]],
+        budget: int,
+    ) -> tuple[str, tuple[ModelLaneBriefRungAttempt, ...], str | None]:
         attempts: list[ModelLaneBriefRungAttempt] = []
         for rung in self._rungs:
             try:
-                choice = rung.select(request, request.exemplar_candidates)
-                self._check_choice(choice, by_path, budget)
+                answer, content = produce(rung)
+                actual = answer.rung or rung.name
+                if (
+                    actual not in _RUNG_ORDER
+                    or not answer.model
+                    or not answer.run_id
+                    or not content.strip()
+                ):
+                    raise LaneBriefRungError(
+                        "answer lacks allowed assembler provenance or text"
+                    )
+                text = f"assembler: rung={actual.value} model={answer.model} run_id={answer.run_id}\n{content}"
+                if _tokens(text) > budget:
+                    raise LaneBriefRungError(
+                        f"delegation answer exceeds its {budget}-token budget"
+                    )
+            except LaneBriefContextRefusedError:
+                raise
             except (LaneBriefRungError, ValueError, OSError) as exc:
-                # OSError is the transport family (TimeoutError, ConnectionError): a rung that
-                # does not wrap its own transport failure still falls back, never aborts the pack.
                 attempts.append(
                     ModelLaneBriefRungAttempt(
                         rung=rung.name,
                         outcome="fell_back",
-                        reason=f"{type(exc).__name__}: {exc}".rstrip(": ")
-                        if isinstance(exc, OSError)
-                        else str(exc) or type(exc).__name__,
+                        reason=f"{type(exc).__name__}: {exc}".rstrip(": "),
                     )
                 )
                 continue
             attempts.append(
-                ModelLaneBriefRungAttempt(rung=rung.name, outcome="selected")
+                ModelLaneBriefRungAttempt(
+                    rung=actual,
+                    outcome="selected",
+                    model=answer.model,
+                    run_id=answer.run_id,
+                )
             )
-            return f"{choice.path}\n{choice.excerpt}", tuple(attempts)
-        raise LaneBriefContextRefusedError(
-            "tier exemplar: every rung fell back: "
-            + "; ".join(f"{a.rung.value}: {a.reason}" for a in attempts)
+            return text, tuple(attempts), None
+        reason = (
+            "every delegation rung fell back"
+            if attempts
+            else "delegation step is not bound"
         )
-
-    @staticmethod
-    def _check_choice(
-        choice: ModelLaneBriefExemplarChoice, by_path: Mapping[str, str], budget: int
-    ) -> None:
-        if choice.path not in by_path:
-            raise ValueError(f"chose {choice.path!r}, which is not a candidate")
-        if choice.excerpt not in by_path[choice.path]:
-            raise ValueError(f"excerpt is not verbatim from {choice.path!r}")
-        _fit(f"{choice.path}\n{choice.excerpt}", budget, f"excerpt of {choice.path!r}")
+        return "", tuple(attempts), reason
 
 
 __all__ = [

@@ -66,6 +66,7 @@ context_source_ledger:
     dsn_env: OMNINODE_INTERNAL_DB_URL
     # The deploy overlay binds the source tenant; unset remains deny-all.
     tenant_ids: ["${env.ONEX_CONTEXT_SOURCE_TENANT_ID:}"]
+# The pack orchestrator reads scoped lane-history references through this same binding.
 db_io:
   db_tables:
     - name: work_ledger_rows

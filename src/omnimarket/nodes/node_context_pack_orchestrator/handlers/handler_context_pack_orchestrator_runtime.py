@@ -12,11 +12,16 @@ from __future__ import annotations
 from collections.abc import Callable, Collection, Mapping
 
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
+from omnibase_core.enums.enum_context_pack_failure import EnumContextPackFailure
 
 from omnimarket.enums.enum_context_binding_kind import EnumContextBindingKind
+from omnimarket.enums.enum_lane_brief_tier import EnumLaneBriefRefusal
 from omnimarket.models.context_pack_orchestrator import (
     ModelContextPackBuilt,
     ModelContextPackCommand,
+)
+from omnimarket.models.context_pack_orchestrator.enum_context_pack_orchestrator_status import (
+    EnumContextPackOrchestratorStatus,
 )
 from omnimarket.nodes.node_context_pack_orchestrator.handlers.additive_answer import (
     answer_additive,
@@ -26,6 +31,10 @@ from omnimarket.nodes.node_context_pack_orchestrator.handlers.enabled_additive_p
 )
 from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator import (
     HandlerContextPackOrchestrator,
+)
+from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_lane_brief_context_pack import (
+    HandlerLaneBriefContextPack,
+    LaneBriefContextRefusedError,
 )
 from omnimarket.nodes.node_context_pack_orchestrator.handlers.tier_source_binding import (
     load_tier_sources,
@@ -78,6 +87,7 @@ class HandlerContextPackOrchestratorRuntime(HandlerContextPackOrchestrator):
         *,
         enabled_additive_profiles: Collection[str] | None = None,
         implementation_identity: Callable[[], Mapping[str, str]] | None = None,
+        lane_brief: HandlerLaneBriefContextPack | None = None,
     ) -> None:
         super().__init__(
             load_tier_sources(resolve=resolve_tier_source)
@@ -91,9 +101,47 @@ class HandlerContextPackOrchestratorRuntime(HandlerContextPackOrchestrator):
             else enabled_additive_profiles
         )
 
+        self._lane_brief = lane_brief
+
     def handle(self, command: ModelContextPackCommand) -> ModelContextPackBuilt:
+        if command.request.profile_name == "lane_brief_context":
+            return self._build_lane_brief(command)
         if command.request.binding_kind is not EnumContextBindingKind.ADDITIVE:
             return super().handle(command)
         return answer_additive(
             command, enabled=self._enabled_additive_profiles, build=super().handle
+        )
+
+    def _build_lane_brief(
+        self, command: ModelContextPackCommand
+    ) -> ModelContextPackBuilt:
+        scope = command.request.lane_brief
+        try:
+            if scope is None or scope.ledger_rows is not None:
+                raise LaneBriefContextRefusedError(
+                    "lane_brief_context requires scope and reads ledger rows from its bound source",
+                    EnumLaneBriefRefusal.INVALID_REQUEST,
+                )
+            pack = (self._lane_brief or HandlerLaneBriefContextPack()).handle(
+                scope,
+                tenant_id=command.access.tenant_id,
+            )
+        except LaneBriefContextRefusedError as exc:
+            return ModelContextPackBuilt(
+                status=EnumContextPackOrchestratorStatus.FAILED,
+                profile_name=command.request.profile_name,
+                terminal_failure_cause=EnumContextPackFailure.INVALID_PROFILE,
+                failure_class=EnumContextPackFailure.INVALID_PROFILE,
+                errors=(str(exc),),
+                lane_brief_refusal=exc.kind,
+            )
+        return ModelContextPackBuilt(
+            status=EnumContextPackOrchestratorStatus.OK,
+            profile_name=pack.profile_name,
+            profile_version=pack.profile_version,
+            profile_content_hash=pack.profile_content_hash,
+            final_pack_hash=pack.final_pack_hash,
+            body_hash=pack.final_pack_hash,
+            text=pack.body,
+            lane_brief=pack,
         )

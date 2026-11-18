@@ -12,6 +12,7 @@ from omnimarket.models.context_pack_orchestrator.model_lane_brief_context import
     ModelLaneBriefContextRequest,
     ModelLaneBriefExemplarCandidate,
     ModelLaneBriefExemplarChoice,
+    ModelLaneBriefSummary,
 )
 
 
@@ -26,7 +27,7 @@ class ProtocolLaneBriefTierReader(Protocol):
 
 @runtime_checkable
 class ProtocolLaneBriefRung(Protocol):
-    """One rung of the exemplar tier's chain: lab GPU hosts through onex delegate, GLM, or Sonnet."""
+    """A delegate for exemplar selection and the lane-history summary."""
 
     name: EnumLaneBriefRung
 
@@ -36,4 +37,10 @@ class ProtocolLaneBriefRung(Protocol):
         candidates: Sequence[ModelLaneBriefExemplarCandidate],
     ) -> ModelLaneBriefExemplarChoice:
         """Choose the closest candidate and cut its shape excerpt; raise LaneBriefRungError to fall back."""
+        ...
+
+    def summarize(
+        self, request: ModelLaneBriefContextRequest, facts: str
+    ) -> ModelLaneBriefSummary:
+        """Summarize the supplied ledger references."""
         ...

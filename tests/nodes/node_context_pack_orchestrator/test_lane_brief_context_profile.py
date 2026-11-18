@@ -25,6 +25,7 @@ from omnimarket.models.context_pack_orchestrator.model_lane_brief_context import
     ModelLaneBriefExemplarCandidate,
     ModelLaneBriefExemplarChoice,
     ModelLaneBriefReviewComment,
+    ModelLaneBriefSummary,
 )
 from omnimarket.models.context_profile_resolve.model_context_profile_resolve_request import (
     ModelContextProfileResolveRequest,
@@ -40,6 +41,9 @@ from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_lane_brief
 )
 from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import (
     HandlerContextProfileResolver,
+)
+from omnimarket.nodes.node_context_source_ledger_effect import (
+    HandlerContextSourceLedger,
 )
 from omnimarket.pack.model_context_profile import ModelContextProfile
 
@@ -82,7 +86,21 @@ class _Rung:
         self.calls += 1
         if self.fail is not None:
             raise LaneBriefRungError(self.fail)
-        return ModelLaneBriefExemplarChoice(path=self._path, excerpt=self._excerpt)
+        return ModelLaneBriefExemplarChoice(
+            path=self._path,
+            excerpt=self._excerpt,
+            model="test-model",
+            run_id="fixture-exemplar",
+        )
+
+    def summarize(
+        self, request: ModelLaneBriefContextRequest, facts: str
+    ) -> ModelLaneBriefSummary:
+        return ModelLaneBriefSummary(
+            text="Earlier lanes worked on the same change.",
+            model="test-model",
+            run_id="fixture-summary",
+        )
 
 
 class _Reader:
@@ -101,7 +119,6 @@ def _rungs(**overrides: _Rung) -> list[_Rung]:
         for name in (
             EnumLaneBriefRung.LOCAL,
             EnumLaneBriefRung.GLM,
-            EnumLaneBriefRung.SONNET,
         )
     ]
 
@@ -109,7 +126,7 @@ def _rungs(**overrides: _Rung) -> list[_Rung]:
 def _request(**changes: object) -> ModelLaneBriefContextRequest:
     base: dict[str, object] = {
         "ticket": "OMN-1",
-        "lane": "lane-a",
+        "lane": "new-lane",
         "task": "add a check",
         "files_to_touch": ("src/a.py", "tests/test_a.py"),
         "review_comments": (
@@ -137,6 +154,7 @@ def _handler(
     graph: _Reader | None = None,
     tests: _Reader | None = None,
     profiles_dir: Path | None = None,
+    ledger: HandlerContextSourceLedger | None = None,
 ) -> HandlerLaneBriefContextPack:
     return HandlerLaneBriefContextPack(
         rungs=_rungs() if rungs is None else rungs,
@@ -145,6 +163,7 @@ def _handler(
             EnumLaneBriefTier.TESTS_AND_CI: tests or _Reader("ci: validate-plugin"),
         },
         profiles_dir=profiles_dir,
+        ledger=ledger,
     )
 
 
@@ -168,7 +187,7 @@ def test_lane_brief_context_tiers_profile_declares_seven_budgeted_tiers() -> Non
     assert modes[EnumLaneBriefTier.EXEMPLAR] is EnumLaneBriefTierMode.MODEL_SELECTED
     assert [
         t for t, m in modes.items() if m is EnumLaneBriefTierMode.MODEL_SELECTED
-    ] == [EnumLaneBriefTier.EXEMPLAR]
+    ] == [EnumLaneBriefTier.EXEMPLAR, EnumLaneBriefTier.LANE_HISTORY]
 
 
 def test_lane_brief_context_tiers_other_profiles_keep_no_tier_specs() -> None:
@@ -290,25 +309,19 @@ def test_lane_brief_context_tiers_risk_with_no_source_is_refused(
         load_lane_brief_risks(path)
 
 
-def test_lane_brief_context_tiers_a_tier_with_no_reader_is_refused() -> None:
-    handler = HandlerLaneBriefContextPack(rungs=_rungs(), readers={})
-    with pytest.raises(LaneBriefContextRefusedError, match="graph_answers"):
-        handler.handle(_request())
-
-
 def test_lane_brief_context_fallback_deterministic_tiers_record_no_model_call() -> None:
     rungs = _rungs()
     graph, tests = _Reader("g"), _Reader("t")
     built = _handler(rungs, graph=graph, tests=tests).handle(_request())
     for record in built.tiers:
-        if record.tier is EnumLaneBriefTier.EXEMPLAR:
+        if record.tier in {EnumLaneBriefTier.EXEMPLAR, EnumLaneBriefTier.LANE_HISTORY}:
             continue
         assert record.mode is EnumLaneBriefTierMode.DETERMINISTIC
         assert record.model_called is False
         assert record.rungs == ()
     assert graph.calls == 1
     assert tests.calls == 1
-    assert [r.calls for r in rungs] == [1, 0, 0]  # the exemplar alone reached a model
+    assert [r.calls for r in rungs] == [1, 0]
 
 
 def test_lane_brief_context_fallback_first_rung_failure_is_recorded_with_why() -> None:
@@ -320,23 +333,28 @@ def test_lane_brief_context_fallback_first_rung_failure_is_recorded_with_why() -
         (EnumLaneBriefRung.LOCAL, "fell_back"),
         (EnumLaneBriefRung.GLM, "selected"),
     ]
-    assert exemplar.rungs[0].reason == "lab host timed out"
-    assert [r.calls for r in rungs] == [1, 1, 0]
+    assert "lab host timed out" in (exemplar.rungs[0].reason or "")
+    assert [r.calls for r in rungs] == [1, 1]
 
 
-def test_lane_brief_context_fallback_walks_local_then_glm_then_sonnet() -> None:
-    rungs = _rungs(
-        local=_Rung(EnumLaneBriefRung.LOCAL, fail="a"),
-        glm=_Rung(EnumLaneBriefRung.GLM, fail="b"),
-    )
-    built = _handler(rungs).handle(_request())
-    exemplar = next(t for t in built.tiers if t.tier is EnumLaneBriefTier.EXEMPLAR)
-    assert [a.rung for a in exemplar.rungs] == [
-        EnumLaneBriefRung.LOCAL,
-        EnumLaneBriefRung.GLM,
-        EnumLaneBriefRung.SONNET,
+def test_lane_brief_context_fallback_walks_local_then_jev_then_glm() -> None:
+    rungs = [
+        _Rung(EnumLaneBriefRung.LOCAL, fail="a"),
+        _Rung(EnumLaneBriefRung.JEV, fail="b"),
+        _Rung(EnumLaneBriefRung.GLM),
     ]
-    assert [a.outcome for a in exemplar.rungs] == ["fell_back", "fell_back", "selected"]
+    built = _handler(rungs).handle(_request())
+    exemplar = built.tiers[0]
+    assert [attempt.rung for attempt in exemplar.rungs] == [
+        EnumLaneBriefRung.LOCAL,
+        EnumLaneBriefRung.JEV,
+        EnumLaneBriefRung.GLM,
+    ]
+    assert [attempt.outcome for attempt in exemplar.rungs] == [
+        "fell_back",
+        "fell_back",
+        "selected",
+    ]
 
 
 def test_lane_brief_context_fallback_an_invented_choice_falls_back() -> None:
@@ -352,14 +370,17 @@ def test_lane_brief_context_fallback_an_invented_choice_falls_back() -> None:
     assert "verbatim" in (reasons[1] or "")
 
 
-def test_lane_brief_context_fallback_every_rung_failing_refuses_the_pack() -> None:
+def test_lane_brief_context_fallback_every_rung_failing_marks_exemplar_unassembled() -> (
+    None
+):
     rungs = [_Rung(r.name, fail="down") for r in _rungs()]
-    with pytest.raises(LaneBriefContextRefusedError, match="exemplar"):
-        _handler(rungs).handle(_request())
+    built = _handler(rungs).handle(_request())
+    assert built.tiers[0].status == "unassembled"
+    assert "every delegation rung fell back" in (built.tiers[0].reason or "")
 
 
 def test_lane_brief_context_fallback_rungs_out_of_order_are_refused() -> None:
-    with pytest.raises(LaneBriefContextRefusedError, match="local, glm, sonnet"):
+    with pytest.raises(LaneBriefContextRefusedError, match="local, jev, glm"):
         _handler(list(reversed(_rungs()))).handle(_request())
 
 
@@ -409,10 +430,6 @@ def test_lane_brief_context_routing_command_path_builds_the_pack() -> None:
     handler_cls = _resolve(route["handler"]["module"], route["handler"]["name"])
     payload = _request().model_dump(mode="json")
     command = event_model.model_validate(payload)
-    # the runtime builds the contract-named handler with no arguments: it refuses, typed, until bound
-    with pytest.raises(LaneBriefContextRefusedError, match="local, glm, sonnet"):
-        handler_cls().handle(command)
-    # the same class, bound the way a test or a composition root binds it, builds the pack
     bound = handler_cls(
         rungs=_rungs(),
         readers={
@@ -422,14 +439,6 @@ def test_lane_brief_context_routing_command_path_builds_the_pack() -> None:
     )
     built = bound.handle(command)
     assert built.final_pack_hash == hashlib.sha256(built.body.encode()).hexdigest()
-
-
-def test_lane_brief_context_routing_no_arg_handler_binds_no_rung_and_calls_no_model() -> (
-    None
-):
-    handler = HandlerLaneBriefContextPack()
-    with pytest.raises(LaneBriefContextRefusedError, match="local, glm, sonnet"):
-        handler.handle(_request())
 
 
 def _history_of(**changes: object) -> str:
@@ -507,22 +516,25 @@ def test_exemplar_budget_over_budget_excerpt_makes_the_rung_fall_back_with_a_rea
     ]
     assert "budget" in (exemplar.rungs[0].reason or "")
     assert exemplar.token_estimate <= exemplar.token_budget
-    assert [r.calls for r in rungs] == [1, 1, 0]
+    assert [r.calls for r in rungs] == [1, 1]
 
 
-def test_exemplar_budget_every_rung_over_budget_refuses_the_pack() -> None:
+def test_exemplar_budget_every_rung_over_budget_marks_exemplar_unassembled() -> None:
     big = _over_budget_excerpt()
     rungs = [_Rung(r.name, path=big.path, excerpt=big.text) for r in _rungs()]
-    with pytest.raises(LaneBriefContextRefusedError, match="exemplar"):
-        _handler(rungs).handle(_request(exemplar_candidates=(big,)))
-    assert [r.calls for r in rungs] == [1, 1, 1]
+    built = _handler(rungs).handle(_request(exemplar_candidates=(big,)))
+    assert built.tiers[0].status == "unassembled"
+    assert all("budget" in (a.reason or "") for a in built.tiers[0].rungs)
+    assert [r.calls for r in rungs] == [1, 1]
 
 
-def test_exemplar_budget_empty_candidate_list_is_refused_before_any_rung_call() -> None:
+def test_exemplar_budget_empty_candidate_list_marks_exemplar_unassembled_without_a_rung_call() -> (
+    None
+):
     rungs = _rungs()
-    with pytest.raises(LaneBriefContextRefusedError, match="exemplar_candidates"):
-        _handler(rungs).handle(_request(exemplar_candidates=()))
-    assert [r.calls for r in rungs] == [0, 0, 0]
+    built = _handler(rungs).handle(_request(exemplar_candidates=()))
+    assert built.tiers[0].status == "unassembled"
+    assert [r.calls for r in rungs] == [0, 0]
 
 
 def _reversed_profile_data() -> dict[str, object]:
@@ -551,7 +563,7 @@ def test_tier_specs_order_reversed_profile_is_refused_typed_with_no_rung_call(
     assert result.status is not EnumContextProfileResolveStatus.OK
     with pytest.raises(LaneBriefContextRefusedError, match="order"):
         _handler(rungs, profiles_dir=tmp_path).handle(_request())
-    assert [r.calls for r in rungs] == [0, 0, 0]
+    assert [r.calls for r in rungs] == [0, 0]
 
 
 def test_lane_brief_context_tiers_an_empty_tier_is_an_explicit_empty_line() -> None:
@@ -619,11 +631,12 @@ def test_rung_timeout_falls_back_with_a_recorded_reason(error: Exception) -> Non
     assert rungs[1].calls == 1
 
 
-def test_rung_timeout_on_every_rung_refuses_the_pack_typed_not_untyped() -> None:
+def test_rung_timeout_on_every_rung_records_fallback_reasons() -> None:
     rungs = [_RaisingRung(r.name, TimeoutError()) for r in _rungs()]
-    with pytest.raises(LaneBriefContextRefusedError, match="every rung fell back"):
-        _handler(rungs).handle(_request())
-    assert [r.calls for r in rungs] == [1, 1, 1]
+    built = _handler(rungs).handle(_request())
+    assert built.tiers[0].status == "unassembled"
+    assert all("TimeoutError" in (a.reason or "") for a in built.tiers[0].rungs)
+    assert [r.calls for r in rungs] == [1, 1]
 
 
 def test_duplicate_candidate_path_is_refused_by_the_request_model() -> None:
@@ -712,3 +725,186 @@ def test_routing_reply_goes_to_the_nodes_declared_terminal_topics() -> None:
     assert terminal["success"] in contract["externally_consumed_topics"]
     assert terminal["failure"] in contract["externally_consumed_topics"]
     assert contract["runtime_dispatch"]["command_topic"] not in terminal.values()
+
+
+def test_lane_brief_context_tiers_runtime_binds_the_seven_tiers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "CLAUDE_PLUGIN_ROOT",
+        "OMNI_PLUGIN_ROOT",
+        "ONEX_LANE_BRIEF_DELEGATION_STEP",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    built = HandlerLaneBriefContextPack().handle(
+        ModelLaneBriefContextRequest(
+            lane="new-lane", ticket="OMN-12", task="Wire the source"
+        )
+    )
+    assert [record.tier for record in built.tiers] == list(EnumLaneBriefTier)
+    assert built.final_pack_hash == hashlib.sha256(built.body.encode()).hexdigest()
+    assert "unassembled (" in built.body
+
+
+def test_lane_brief_rung_binding_records_each_judgement() -> None:
+    local = _Rung(EnumLaneBriefRung.LOCAL)
+    built = _handler([local]).handle(_request())
+    exemplar, history = built.tiers[0], built.tiers[5]
+    assert exemplar.rungs[-1].rung is EnumLaneBriefRung.LOCAL
+    assert exemplar.rungs[-1].run_id == "fixture-exemplar"
+    assert history.rungs[-1].rung is EnumLaneBriefRung.LOCAL
+    assert history.rungs[-1].run_id == "fixture-summary"
+    assert "assembler: rung=local" in built.body
+
+
+def test_lane_brief_rung_binding_refuses_claude_before_hash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_lane_brief_context_pack as handler_module
+
+    def unexpected_hash(_: bytes) -> str:
+        pytest.fail("a Claude judgement reached the pack hash")
+
+    monkeypatch.setattr(handler_module, "_hash_body", unexpected_hash, raising=False)
+    claude = _Rung(EnumLaneBriefRung.SONNET)
+    with pytest.raises(LaneBriefContextRefusedError, match="Claude") as refusal:
+        _handler([claude]).handle(_request())
+    assert refusal.value.kind.value == "claude_assembler"
+    assert claude.calls == 0
+
+
+def test_lane_brief_ledger_tier_tags_earlier_terminals(tmp_path: Path) -> None:
+    path = tmp_path / "ledger.md"
+    path.write_text(
+        "\n".join(
+            (
+                "2026-11-16T01:00:00Z | CLAIM | lane=prior-a | ticket=OMN-2 | pr=omnimarket#12 | worked",
+                "2026-11-16T01:01:00Z | TERMINAL | lane=prior-a | outcome=blocked | blocker_class=install | first end",
+                "2026-11-16T01:02:00Z | TERMINAL | lane=prior-b | ticket=OMN-2 | pr=omnimarket#12 | outcome=partial | second end",
+            )
+        )
+    )
+    source = HandlerContextSourceLedger.from_markdown(path, tenant_ids=("test",))
+    built = _handler(ledger=source).handle(
+        _request(ledger_rows=None, pull_request="omnimarket#12"),
+        tenant_id="test",
+    )
+    for lane, outcome, blocker, time in (
+        ("prior-a", "blocked", "install", "01:01"),
+        ("prior-b", "partial", "none", "01:02"),
+    ):
+        assert any(
+            all(
+                tag in line
+                for tag in (
+                    f"lane={lane}",
+                    "ticket=OMN-2",
+                    "pr=omnimarket#12",
+                    "kind=TERMINAL",
+                    f"outcome={outcome}",
+                    f"time=2026-11-16T{time}:00Z",
+                    f"blocker_class={blocker}",
+                )
+            )
+            for line in built.body.splitlines()
+        )
+
+
+@pytest.mark.parametrize(
+    ("changes", "row"),
+    [
+        ({"ticket": "OMN-12"}, "ticket=OMN-1"),
+        ({"ticket": "OMN-12"}, "ticket=XYZ-OMN-12"),
+        ({"files_to_touch": ()}, "arbitrary history"),
+        ({"files_to_touch": ("src/a.py",)}, "src/a.py/child"),
+    ],
+)
+def test_lane_brief_ledger_selection_rejects_nonmatching_tokens(
+    changes: dict[str, object], row: str
+) -> None:
+    built = _handler().handle(
+        _request(
+            ledger_rows=(
+                f"2026-11-16T01:00:00Z | STATUS | lane=prior | {row} | UNRELATED",
+            ),
+            **changes,
+        )
+    )
+    assert "UNRELATED" not in built.body
+
+
+def test_lane_brief_ledger_selection_matches_pr_at_token_boundaries() -> None:
+    built = _handler().handle(
+        _request(
+            pull_request="omnimarket#12",
+            ledger_rows=(
+                "2026-11-16T01:00:00Z | TERMINAL | lane=prior-a | pr=omnimarket#12 | outcome=partial | EXACT",
+                "2026-11-16T01:01:00Z | TERMINAL | lane=prior-b | pr=omnimarket#123 | outcome=partial | PREFIX",
+            ),
+        )
+    )
+    assert "EXACT" in built.body
+    assert "PREFIX" not in built.body
+
+
+def test_lane_brief_ledger_unassembled_distinguishes_missing_source(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "ledger.md"
+    path.write_text(
+        "2026-11-16T01:06:00Z | STATUS | lane=other | touched src/a.py | by file\n"
+    )
+    source = HandlerContextSourceLedger.from_markdown(path, tenant_ids=("test",))
+    handler = _handler(ledger=source)
+    request = _request(ledger_rows=None)
+    up = handler.handle(request, tenant_id="test")
+    assert "by file" in up.body
+    path.unlink()
+    down = handler.handle(request, tenant_id="test")
+    assert "## lane_history\nunassembled (" in down.body
+    assert down.tiers[5].status == "unassembled"
+    assert "ledger read failed" in (down.tiers[5].reason or "")
+
+
+def test_lane_brief_rung_binding_dispatch_emits_typed_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnimarket.models.context_pack_orchestrator import ModelContextPackCommand
+    from omnimarket.nodes.node_context_pack_orchestrator.handlers import (
+        handler_lane_brief_context_pack as assembly,
+    )
+    from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator_runtime import (
+        HandlerContextPackOrchestratorRuntime,
+    )
+
+    def unexpected_hash(_: bytes) -> str:
+        pytest.fail("the refusal reached the pack hash")
+
+    class ClaudeAnswer(_Rung):
+        def select(
+            self,
+            request: ModelLaneBriefContextRequest,
+            candidates: Sequence[ModelLaneBriefExemplarCandidate],
+        ) -> ModelLaneBriefExemplarChoice:
+            result = super().select(request, candidates)
+            return result.model_copy(update={"model": "claude-sonnet-4"})
+
+    monkeypatch.setattr(assembly, "_hash_body", unexpected_hash)
+    runtime = HandlerContextPackOrchestratorRuntime(
+        sources={}, lane_brief=_handler([ClaudeAnswer(EnumLaneBriefRung.LOCAL)])
+    )
+    result = runtime.handle(
+        ModelContextPackCommand.model_validate(
+            {
+                "request": {
+                    "profile_name": "lane_brief_context",
+                    "lane_brief": _request(ledger_rows=None).model_dump(mode="json"),
+                },
+                "access": {"tenant_id": "test"},
+            }
+        )
+    )
+    assert result.status.value == "failed"
+    assert result.lane_brief_refusal is not None
+    assert result.lane_brief_refusal.value == "claude_assembler"
+    assert result.final_pack_hash is None

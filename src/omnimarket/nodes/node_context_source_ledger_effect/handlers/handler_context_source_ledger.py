@@ -21,7 +21,7 @@ from __future__ import annotations
 import hashlib
 import re
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import ClassVar
@@ -46,6 +46,7 @@ from omnimarket.enums.enum_work_ledger_entity_kind import (
     EnumWorkLedgerEntityKind,
     EnumWorkLedgerStateOp,
 )
+from omnimarket.events.model_ledger_row_event import ModelLedgerRowEventBase
 from omnimarket.handlers.work_ledger_fold import (
     SHARED_WORK_LEDGER_FOLD_MEMO,
     WorkLedgerFoldMemo,
@@ -58,6 +59,9 @@ from omnimarket.models.model_work_ledger_fold_result import (
     ModelWorkLedgerLink,
 )
 from omnimarket.nodes.contract_topics import contract_publish_topics
+from omnimarket.nodes.node_context_source_ledger_effect.handlers.lane_history import (
+    select_lane_history,
+)
 from omnimarket.nodes.node_context_source_ledger_effect.handlers.ledger_row_reader import (
     LedgerSourceReadError,
     MarkdownLedgerRowReader,
@@ -68,6 +72,10 @@ from omnimarket.nodes.node_context_source_ledger_effect.handlers.ledger_row_read
     load_ledger_source_binding,
     reached_sequence,
 )
+from omnimarket.nodes.node_context_source_ledger_effect.models.model_ledger_history import (
+    ModelLedgerHistoryResult,
+    ModelLedgerHistoryScope,
+)
 from omnimarket.nodes.node_context_source_ledger_effect.models.model_ledger_source_entry import (
     CORRECTED_LABEL,
     FRAMING_LABEL,
@@ -75,6 +83,9 @@ from omnimarket.nodes.node_context_source_ledger_effect.models.model_ledger_sour
     ModelLedgerSourceEntry,
     ModelLedgerSourceResult,
     ledger_provenance_label,
+)
+from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
+    parse_ledger_row,
 )
 
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
@@ -182,6 +193,63 @@ class HandlerContextSourceLedger:
             entry_counts={_SOURCE_NAME: len(entries)},
             leg_timings_ms=timings,
         )
+
+    @classmethod
+    def from_markdown(
+        cls, path: Path, *, tenant_ids: Iterable[str]
+    ) -> HandlerContextSourceLedger:
+        """Bind the ledger snapshot and its split archive through the existing reader."""
+        path = path.absolute()
+        return cls(
+            reader=MarkdownLedgerRowReader(
+                (
+                    path,
+                    *sorted(
+                        (path.parent / "archive").glob("ROLLING_WORK_LEDGER_*-split.md")
+                    ),
+                ),
+                manifest_root=path.parent,
+            ),
+            tenant_ids=tenant_ids,
+        )
+
+    def read_lane_history(
+        self,
+        scope: ModelLedgerHistoryScope,
+        *,
+        tenant_id: str | None,
+        supplied_rows: Sequence[str] | None = None,
+    ) -> ModelLedgerHistoryResult:
+        """Return scoped ledger references from the same row reader used for rulings."""
+        if supplied_rows is None:
+            if tenant_id not in self._tenant_ids:
+                return ModelLedgerHistoryResult(
+                    unavailable_reason="ledger tenant is not bound"
+                )
+            try:
+                rows = tuple(
+                    (row.raw_row, row.source_ref)
+                    for row in self._reader.read_rows(as_of=scope.as_of)
+                )
+            except (LedgerSourceReadError, OSError) as exc:
+                return ModelLedgerHistoryResult(
+                    unavailable_reason=f"ledger read failed ({type(exc).__name__})"
+                )
+        else:
+            rows = tuple(
+                (text, f"supplied ledger row {i}")
+                for i, text in enumerate(supplied_rows, 1)
+            )
+
+        parsed: list[tuple[ModelLedgerRowEventBase, str]] = []
+        for text, source_ref in rows:
+            try:
+                row = parse_ledger_row(text)
+                if parse_stamp(row.row_timestamp) <= scope.as_of:
+                    parsed.append((row, source_ref))
+            except ValueError:
+                continue
+        return ModelLedgerHistoryResult(references=select_lane_history(parsed, scope))
 
     def _handle_sequence(
         self, request: ModelContextSourceRequest

@@ -5,15 +5,39 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from omnimarket.enums.enum_lane_brief_tier import (
+    MODEL_SELECTED_TIERS,
     EnumLaneBriefRung,
     EnumLaneBriefTier,
     EnumLaneBriefTierMode,
 )
+
+_CLAUDE_IDENTITY = re.compile(r"(?:anthropic|claude|haiku|opus|sonnet)", re.IGNORECASE)
+
+
+def is_claude_assembler(rung: EnumLaneBriefRung | None, model: str | None) -> bool:
+    return rung is EnumLaneBriefRung.SONNET or bool(
+        model and _CLAUDE_IDENTITY.search(model)
+    )
+
+
+class ModelLaneBriefJudgement(BaseModel):
+    """Provenance associated with a delegation answer."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    rung: EnumLaneBriefRung | None = None
+    model: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_.:/-]+$")
+    run_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_.:-]+$")
+
+
+class ModelLaneBriefSummary(ModelLaneBriefJudgement):
+    text: str = Field(min_length=1)
 
 
 class ModelLaneBriefReviewComment(BaseModel):
@@ -34,7 +58,7 @@ class ModelLaneBriefExemplarCandidate(BaseModel):
     text: str
 
 
-class ModelLaneBriefExemplarChoice(BaseModel):
+class ModelLaneBriefExemplarChoice(ModelLaneBriefJudgement):
     """What a rung chose: the path of the closest example and the shape excerpt cut from it."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -62,11 +86,21 @@ class ModelLaneBriefContextRequest(BaseModel):
     task: str = Field(min_length=1)
     profile_name: str = Field(default="lane_brief_context", min_length=1)
     # The repository the paths are in: a ledger row may name a path as ``<repository>/src/a.py``.
-    repository: str = Field(default="omnimarket", min_length=1)
+    repository: str = Field(
+        default="omnimarket", pattern=r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?$"
+    )
+    pull_request: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?#[1-9][0-9]*$"
+    )
+    revision: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
+    change_kind: str = Field(default="design-build", min_length=1)
+    node_archetype: str | None = Field(default=None, min_length=1)
+    ticket_criteria: tuple[str, ...] = ()
+    required_ci_contexts: tuple[str, ...] = ()
     files_to_touch: tuple[str, ...] = ()
     review_comments: tuple[ModelLaneBriefReviewComment, ...] = ()
     exemplar_candidates: tuple[ModelLaneBriefExemplarCandidate, ...] = ()
-    ledger_rows: tuple[str, ...] = ()
+    ledger_rows: tuple[str, ...] | None = None
 
     @field_validator("files_to_touch")
     @classmethod
@@ -88,7 +122,7 @@ class ModelLaneBriefContextRequest(BaseModel):
         return candidates
 
 
-class ModelLaneBriefRungAttempt(BaseModel):
+class ModelLaneBriefRungAttempt(ModelLaneBriefJudgement):
     """One rung a model-selected tier tried and what came of it."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -99,8 +133,12 @@ class ModelLaneBriefRungAttempt(BaseModel):
 
     @model_validator(mode="after")
     def _a_fallback_says_why(self) -> ModelLaneBriefRungAttempt:
+        if is_claude_assembler(self.rung, self.model):
+            raise ValueError("Claude cannot assemble a lane-brief judgment")
         if self.outcome == "fell_back" and not (self.reason or "").strip():
             raise ValueError("a rung that fell back records why")
+        if self.outcome == "selected" and not (self.model and self.run_id):
+            raise ValueError("a selected rung records its model and run id")
         return self
 
 
@@ -116,21 +154,32 @@ class ModelLaneBriefTierRecord(BaseModel):
     token_estimate: int = Field(ge=0)
     token_budget: int = Field(gt=0)
 
+    status: Literal["assembled", "empty", "truncated", "unassembled"] = "assembled"
+    reason: str | None = None
+    judgement_reason: str | None = None
+
     @model_validator(mode="after")
     def _mode_agrees_with_calls(self) -> ModelLaneBriefTierRecord:
-        if self.mode is EnumLaneBriefTierMode.DETERMINISTIC:
-            if self.model_called or self.rungs:
-                raise ValueError(f"deterministic tier {self.tier.value} called a model")
-            return self
-        outcomes = [a.outcome for a in self.rungs]
-        if not self.model_called or not self.rungs or outcomes[-1] != "selected":
-            raise ValueError(
-                f"model-selected tier {self.tier.value} ends on a selected rung"
-            )
-        if "selected" in outcomes[:-1]:
+        if (self.mode is EnumLaneBriefTierMode.MODEL_SELECTED) != (
+            self.tier in MODEL_SELECTED_TIERS
+        ):
+            raise ValueError(f"mode does not match tier {self.tier.value}")
+        if self.model_called != bool(self.rungs):
+            raise ValueError("model_called must match the recorded attempts")
+        if self.mode is EnumLaneBriefTierMode.DETERMINISTIC and self.rungs:
+            raise ValueError(f"deterministic tier {self.tier.value} called a model")
+        if any(a.outcome == "selected" for a in self.rungs[:-1]):
             raise ValueError(
                 f"tier {self.tier.value} kept walking after a rung selected"
             )
+        if self.mode is EnumLaneBriefTierMode.MODEL_SELECTED:
+            selected = bool(self.rungs and self.rungs[-1].outcome == "selected")
+            if selected == bool(self.judgement_reason):
+                raise ValueError(
+                    f"tier {self.tier.value} records a selected rung or a judgement reason"
+                )
+        if self.status == "unassembled" and not self.reason:
+            raise ValueError(f"unassembled tier {self.tier.value} records its reason")
         return self
 
 
@@ -162,7 +211,10 @@ __all__ = [
     "ModelLaneBriefContextRequest",
     "ModelLaneBriefExemplarCandidate",
     "ModelLaneBriefExemplarChoice",
+    "ModelLaneBriefJudgement",
     "ModelLaneBriefReviewComment",
     "ModelLaneBriefRungAttempt",
+    "ModelLaneBriefSummary",
     "ModelLaneBriefTierRecord",
+    "is_claude_assembler",
 ]

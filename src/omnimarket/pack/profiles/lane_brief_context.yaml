@@ -2,13 +2,11 @@
 # example, who calls the code, the review findings in full, the files and tests, the lane's own
 # history, the known refusals). Inline: the lane-brief context handler of the pack orchestrator builds
 # it, and the orchestrator approves the built pack (its final_pack_hash) before the lane starts.
-# tier_specs names the seven tiers with a budget each, inside token_budget. Only the exemplar tier is
-# model-selected (the closest example and its shape excerpt, through the delegation chain local first,
-# then GLM, then Sonnet); the other six are read by code and never call a model. A profile that names
-# fewer than the seven tiers is refused. Each tier is carried as the nearest existing factor, because the
-# factor enum belongs to the core package. The budgets are first values, not measurements.
+# Every tier has its own budget. The exemplar and lane-history summary use the local-first
+# delegation chain. The lane-history references and the other five tiers come from their sources.
+# Each tier uses the nearest existing context factor.
 model_id: claude-code-subagent
-profile_version: 1.0.0
+profile_version: 1.1.0
 binding_kind: inline
 required_factors:
   - exemplar
@@ -44,5 +42,5 @@ tier_specs:
   - {tier: review_findings, factor: local_failures, mode: deterministic, token_budget: 8000}
   - {tier: files_to_touch, factor: repo_state, mode: deterministic, token_budget: 1500}
   - {tier: tests_and_ci, factor: golden_chain, mode: deterministic, token_budget: 2500}
-  - {tier: lane_history, factor: orchestration_state, mode: deterministic, token_budget: 3500}
+  - {tier: lane_history, factor: orchestration_state, mode: model_selected, token_budget: 3500}
   - {tier: risks, factor: invariants, mode: deterministic, token_budget: 1500}

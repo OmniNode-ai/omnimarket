@@ -60,14 +60,8 @@ handler_routing:
       event_model:
         name: ModelContextPackCommand
         module: omnimarket.models.context_pack_orchestrator
-    # The lane-brief context pack (capability context.pack.lane_brief): the node's one command topic carries
-    # it too, told apart from a generic pack request by payload type, and its own handler builds it. The
-    # runtime constructs that handler with no arguments. No rung or reader is bound yet, so until a composition
-    # root binds them a request is refused, typed, before any model is called.
-    # Reply: the lane-brief pack has no topic of its own (a new topic needs a broker grant). It is answered on
-    # this node's terminal topics, correlated by the command's id: a built ModelLaneBriefContextPack on
-    # runtime_dispatch.terminal_events.success and a typed refusal on .failure. A consumer of those topics
-    # tells a lane-brief reply from a generic ModelContextPackBuilt by its payload type.
+    # The scoped dispatcher requests lane_brief_context through ModelContextPackCommand, with tenant
+    # access from the envelope. The existing stand-alone payload route also builds inline control packs.
     - operation: context.pack.lane_brief
       message_category: command
       handler:
@@ -81,7 +75,8 @@ descriptor:
   node_archetype: orchestrator
   purity: effectful
   idempotent: true
-  timeout_ms: 30000
+  # The lane-brief route can run two bounded delegated judgements.
+  timeout_ms: 600000
   runtime_profiles: [effects]
 
 dependencies:
@@ -109,6 +104,12 @@ dependencies:
   - name: node_context_source_repo_doctrine_effect
     type: node
     optional: false
+  - name: node_code_graph_effect
+    type: node
+    optional: true
+  - name: node_exemplar_registry_reconcile_compute
+    type: node
+    optional: true
 
 # Binds each factor to the node whose handler serves it; read by tier_source_binding.load_tier_sources.
 context_tier_sources:

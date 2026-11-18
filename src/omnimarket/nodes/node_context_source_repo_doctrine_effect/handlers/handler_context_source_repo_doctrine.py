@@ -355,6 +355,40 @@ class HandlerContextSourceRepoDoctrine:
             text=True,
         )
 
+    def read_committed(
+        self,
+        repository: str,
+        path: str,
+        *,
+        revision: str | None = None,
+    ) -> str | None:
+        """Read a file at a pinned commit, or at the repository's configured base."""
+        env = os.environ if self._env is None else self._env
+        if not (
+            root := env.get(self._binding.root_env)
+        ) or not _REPOSITORY_NAME.fullmatch(repository):
+            return None
+        repo = self._path(
+            Path(root).resolve(), self._binding.repository_path, repository
+        )
+        if repo is None or not repo.is_dir() or not path or ".." in Path(path).parts:
+            return None
+        try:
+            ref = revision
+            if ref is None:
+                config = self._binding.exemplar
+                ref = config.ref
+                if self._git(
+                    repo, "rev-parse", "--verify", f"{ref}^{{commit}}"
+                ).returncode:
+                    ref = config.fallback_ref
+            shown = self._git(repo, "show", "--end-of-options", f"{ref}:{path}")
+            if shown.returncode == 0:
+                return shown.stdout
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return None
+
     def _exemplar(
         self,
         root: Path,

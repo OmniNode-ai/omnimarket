@@ -5,10 +5,17 @@
 from omnimarket.nodes.node_exemplar_registry_reconcile_compute.handlers.handler_exemplar_registry_reconcile import (
     HandlerExemplarRegistryReconcile,
 )
+from omnimarket.nodes.node_exemplar_registry_reconcile_compute.models.model_exemplar_registry_reconcile import (
+    ModelExemplarRegistryRow,
+)
 
 
 class NodeExemplarRegistryReconcileCompute(HandlerExemplarRegistryReconcile):
     """ONEX entrypoint for pure exemplar registry reconciliation."""
 
 
-__all__ = ["HandlerExemplarRegistryReconcile", "NodeExemplarRegistryReconcileCompute"]
+__all__ = [
+    "HandlerExemplarRegistryReconcile",
+    "ModelExemplarRegistryRow",
+    "NodeExemplarRegistryReconcileCompute",
+]

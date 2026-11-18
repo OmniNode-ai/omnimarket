@@ -21,6 +21,9 @@ from omnimarket.enums.enum_context_binding_kind import EnumContextBindingKind
 from omnimarket.models.context_pack_orchestrator.enum_context_pack_mode import (
     EnumContextPackMode,
 )
+from omnimarket.models.context_pack_orchestrator.model_lane_brief_context import (
+    ModelLaneBriefContextRequest,
+)
 
 
 class ModelContextPackRequest(BaseModel):
@@ -55,9 +58,21 @@ class ModelContextPackRequest(BaseModel):
     # the answer then carries a client verdict, and only an enabled profile is built.
     binding_kind: EnumContextBindingKind | None = None
     invocation_id: UUID | None = None
+    lane_brief: ModelLaneBriefContextRequest | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def _pinned_names_its_case(self) -> ModelContextPackRequest:
+        if self.lane_brief is not None and (
+            self.profile_name != "lane_brief_context"
+            or self.lane_brief.profile_name != self.profile_name
+            or self.binding_kind is not None
+            or self.mode is not EnumContextPackMode.LIVE
+        ):
+            raise ValueError(
+                "lane_brief requires the inline live lane_brief_context profile"
+            )
         if (self.mode is EnumContextPackMode.PINNED) != (
             self.manifest_case is not None
         ):

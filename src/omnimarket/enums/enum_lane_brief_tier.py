@@ -27,20 +27,28 @@ class EnumLaneBriefTierMode(StrEnum):
 
 
 class EnumLaneBriefRung(StrEnum):
-    """The delegation chain of a model-selected tier, in order: lab GPU hosts, then GLM, then Sonnet."""
+    """Judgement rungs, including the legacy Claude label used for typed refusals."""
 
     LOCAL = "local"
+    JEV = "jev"
     GLM = "glm"
     SONNET = "sonnet"
 
 
-#: The one model-selected tier; every other tier is read by code.
+#: History has a delegated summary alongside the deterministic ledger references.
 MODEL_SELECTED_TIERS: frozenset[EnumLaneBriefTier] = frozenset(
-    {EnumLaneBriefTier.EXEMPLAR}
+    {EnumLaneBriefTier.EXEMPLAR, EnumLaneBriefTier.LANE_HISTORY}
 )
+
+
+class EnumLaneBriefRefusal(StrEnum):
+    INVALID_REQUEST = "invalid_request"
+    CLAUDE_ASSEMBLER = "claude_assembler"
+
 
 __all__ = [
     "MODEL_SELECTED_TIERS",
+    "EnumLaneBriefRefusal",
     "EnumLaneBriefRung",
     "EnumLaneBriefTier",
     "EnumLaneBriefTierMode",

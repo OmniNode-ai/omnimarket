@@ -1,6 +1,6 @@
 name: node_context_pack_orchestrator
 version: "1.0.0"
-description: "Resolves a context profile, reads its tiers through ProtocolContextTierSource, builds and renders one context package"
+description: "Resolves a context profile, reads its tiers through ProtocolContextTierSource, builds one context package including scoped lane-brief provenance when requested"
 omnibase_core_compat: ">=0.47.46,<0.48.0"
 entry_points:
   onex.nodes:
@@ -8,8 +8,8 @@ entry_points:
 capabilities:
   standalone: true
   full_runtime: false
-  requires_network: false
-  requires_repo: false
+  requires_network: true
+  requires_repo: true
   requires_secrets: false
   requires_docker: false
   side_effect_class: none
@@ -17,7 +17,7 @@ dependencies:
   - "omnibase_core>=0.47.46,<0.48.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["orchestrator", "context-pack", "deterministic"]
+tags: ["orchestrator", "context-pack", "lane-brief"]
 pack: "pipeline"
 display_name: "Context Pack Orchestrator"
 node_role: "orchestrator"

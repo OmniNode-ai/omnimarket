@@ -13,8 +13,9 @@ from uuid import UUID
 
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from omnibase_core.enums.enum_context_pack_failure import EnumContextPackFailure
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.enums.enum_lane_brief_tier import EnumLaneBriefRefusal
 from omnimarket.models.claude_code_binding.enum_client_verdict_action import (
     EnumClientVerdictAction,
 )
@@ -23,6 +24,9 @@ from omnimarket.models.context_pack_orchestrator.enum_context_pack_orchestrator_
 )
 from omnimarket.models.context_pack_orchestrator.model_context_pack_tier_status import (
     ModelContextPackTierStatus,
+)
+from omnimarket.models.context_pack_orchestrator.model_lane_brief_context import (
+    ModelLaneBriefContextPack,
 )
 from omnimarket.models.context_pack_render import (
     EnumContextPackRenderFailure,
@@ -69,6 +73,22 @@ class ModelContextPackBuilt(BaseModel):
     invocation_id: UUID | None = None
     text: str | None = None
     package_sha256: str | None = None
+
+    lane_brief: ModelLaneBriefContextPack | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    lane_brief_refusal: EnumLaneBriefRefusal | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def _lane_brief_identity(self) -> ModelContextPackBuilt:
+        if (
+            self.lane_brief is not None
+            and self.final_pack_hash != self.lane_brief.final_pack_hash
+        ):
+            raise ValueError("final_pack_hash does not identify the built lane brief")
+        return self
 
     def model_section_ms(self) -> float | None:
         """Sum the timed reads of model-written tiers, or None when none was read."""
