@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+name: "node_review_key_credit_probe_effect"
+# Run by `onex models review-gateway-key-probe`; a key's credit flip is one ledger row.
+lifecycle: experimental
+contract_name: node_review_key_credit_probe_effect
+node_name: node_review_key_credit_probe_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  EFFECT node behind `onex models review-gateway-key-probe` (OMN-24658). A review
+  key that runs out of credit makes a voter answer 503 until someone notices.
+  This node makes one call per review key bound to the host, with the token
+  budget and prompt declared below, and compares each key's state with the last
+  run's. A changed state appends one ledger STATUS row carrying
+  alarm=review-key-credit; the first run records the baseline and writes no row.
+  Only a key's display name is ever written, never its credential reference, its
+  value or a provider message. A run in which no key gave a reading is a failed
+  run, never a quiet one. The node builds no gateway and no event bus: it reads
+  the key catalogue, the key values and the call effect only (OMN-24727).
+node_type: effect
+input_model:
+  name: ModelReviewKeyCreditProbeRequest
+  module: omnimarket.nodes.node_review_key_credit_probe_effect.models.model_review_key_credit_probe
+output_model:
+  name: ModelReviewKeyCreditProbeResult
+  module: omnimarket.nodes.node_review_key_credit_probe_effect.models.model_review_key_credit_probe
+
+outputs:
+  states:
+    type: list
+    description: Each key's display name with funded, out_of_credit, refused or unreachable.
+  flips_written:
+    type: int
+    description: Ledger rows written for keys whose state changed since the last run.
+
+# The probe's single request. The token budget lives here, never in the handler (OMN-24727).
+config:
+  probe:
+    max_tokens: 1
+    prompt: "Reply with the single word OK."
+
+dependencies:
+  - name: key_catalog
+    dependency_type: protocol
+    description: The tenant credential catalogue the bound keys are read from.
+    required: true
+  - name: key_values
+    dependency_type: protocol
+    description: The local credential store that resolves a key reference to its value.
+    required: true
+  - name: ledger_appender
+    dependency_type: protocol
+    description: The ledger command the host units carry (ONEX_LEDGER_COMMAND); no default.
+    required: true
+
+handler:
+  name: HandlerReviewKeyCreditProbe
+  module: omnimarket.nodes.node_review_key_credit_probe_effect.handlers.handler_review_key_credit_probe
+  class: HandlerReviewKeyCreditProbe
+  input_model: omnimarket.nodes.node_review_key_credit_probe_effect.models.model_review_key_credit_probe.ModelReviewKeyCreditProbeRequest

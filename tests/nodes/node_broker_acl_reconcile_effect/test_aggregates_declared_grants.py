@@ -263,7 +263,8 @@ def test_transactional_id_grants_applied() -> None:
     )
     assert len(remote.scripts) == 3
     assert all(
-        "docker inspect credentials" in script
+        "DEV_KAFKA_SASL_PASSWORD" in script
+        and "docker inspect" not in script
         and "sasl.mechanism=SCRAM-SHA-256" in script
         for script in remote.scripts
     )
