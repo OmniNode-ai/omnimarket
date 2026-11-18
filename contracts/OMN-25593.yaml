@@ -10,7 +10,7 @@ requirements:
     statement: The boot provisioner can discover the snapshot topic from the publisher contract.
     acceptance:
       - id: AC1
-        statement: The snapshot selected by runtime.publish.topic appears in event_bus.publish_topics in the publisher's contract.
+        statement: The snapshot selected by runtime.publish.topic appears in published_events in the publisher's contract.
       - id: AC2
         statement: The publisher tests and topic provisioning chain pass in a checkout of the change.
 evidence_requirements:
@@ -23,7 +23,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: dod-work-state-snapshot-deploy
-    description: The hosted deploy smoke reads the publisher contract and checks the topic against the list used at boot. With the base contract, the test fails on the empty publish list.
+    description: The hosted deploy smoke reads the publisher contract and checks the topic against the events the boot extractor reads. With the base contract, the test fails on the missing event.
     source: manual
     binds_ac: [AC1]
     checks:
@@ -37,7 +37,7 @@ dod_evidence:
           'python -m pip install --disable-pip-version-check --quiet PyYAML==6.0.3 &&
           python -c "from pathlib import Path; import yaml;
           contract = yaml.safe_load(Path(\"src/omnimarket/nodes/node_work_state_projection_effect/contract.yaml\").read_text(encoding=\"utf-8\"));
-          assert contract[\"runtime\"][\"publish\"][\"topic\"] in contract[\"event_bus\"][\"publish_topics\"]"'
+          assert contract[\"runtime\"][\"publish\"][\"topic\"] in [e[\"topic\"] for e in contract[\"published_events\"]]"'
         cwd: .
   - id: dod-work-state-topic-provision-chain
     description: The publisher tests and in-memory topic provisioning chain run without a live broker.

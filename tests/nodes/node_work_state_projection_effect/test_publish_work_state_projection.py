@@ -58,7 +58,8 @@ def test_runtime_publish_topic_is_declared() -> None:
     contract = yaml.safe_load(rw._CONTRACT.read_text(encoding="utf-8"))
     topic = contract["runtime"]["publish"]["topic"]
 
-    assert topic in contract["event_bus"]["publish_topics"]
+    assert contract["event_bus"]["publish_topics"] == []
+    assert topic in [event["topic"] for event in contract["published_events"]]
 
 
 def test_golden_chain_the_projection_is_published_stamped_with_the_time_it_was_built(
