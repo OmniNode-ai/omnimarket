@@ -6,6 +6,7 @@ import os
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -189,9 +190,9 @@ def test_core_worktree_unset_never_lets_git_resolve_the_worktree(
     seen: list[list[str]] = []
     real_run = subprocess.run
 
-    def recording_run(argv: list[str], **kwargs: object) -> object:
+    def recording_run(argv: list[str], **kwargs: Any) -> object:
         seen.append(list(argv))
-        return real_run(argv, **kwargs)  # type: ignore[call-overload]
+        return real_run(argv, **kwargs)
 
     monkeypatch.setattr(adapter_core_worktree.subprocess, "run", recording_run)
     handler().handle(request(registry))
