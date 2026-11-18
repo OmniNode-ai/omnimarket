@@ -40,6 +40,12 @@ class ModelFloorFillAnswer(BaseModel):
     exit_code: int = Field(ge=0)
     state_seq: int = Field(default=0, ge=0)
     observed_at: AwareDatetime | None = None
+    # The pool read of this pass: None when it was not read (a failed read is never a count of 0).
+    free_slots: int | None = Field(default=None, ge=0)
+    # The floor lines that still had a task to start when the pass read them.
+    unowned_work: int | None = Field(default=None, ge=0)
+    # Each source this pass could not read, as ``<source>:<cause>``.
+    unread: tuple[str, ...] = ()
 
     def decision_projection(self) -> dict[str, object]:
         """What parity compares: the lines, the status, the exit code and each key's result."""

@@ -1,0 +1,133 @@
+schema_version: 1.0.0
+ticket_id: OMN-24927
+title: 'Temporal workflow 2: the floor fill runs on a Temporal schedule'
+summary: 'node_floor_fill_temporal_workflow: a Temporal Schedule every 15 minutes (one contract field, every_seconds) with overlap policy skip starts a workflow whose every step is one activity running a node command: read the pool through
+  the fill node''s declared read, run the fill node once through its declared one-run command, read back each placed lane''s CLAIM within 10 minutes, and write an alarm row through the ledger CLI when
+  free slots stay above 5 with 0 lanes placed for 2 runs in a row or when a placed lane never claims.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24927-floor-fill-schedule
+  statement: The floor fill runs on a Temporal Schedule whose every step is one of our nodes, and an alarm row is written when it stops placing lanes or a placed lane never claims.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a Temporal Schedule fires every 5 minutes with overlap policy skip and starts the fill workflow, and a run still in progress at the next fire is skipped, not queued -- falsifier:
+      `uv run pytest -m unit <workflow test file> -k schedule_overlap_skip` against Temporal''s test server'
+  - id: AC2
+    statement: 'AC2: every step is an activity that calls one of our nodes through onex run-node or the node''s declared CLI, and the workflow body holds no inline fill logic -- falsifier: `uv run pytest
+      -m unit <workflow test file> -k activities_call_nodes` fails when an activity is replaced by inline code'
+  - id: AC3
+    statement: 'AC3: a worker restart in the middle of a run does not run any activity a second time -- falsifier: `uv run pytest -m unit <workflow test file> -k worker_restart_mid_run` against Temporal''s
+      test server, counting step keys'
+  - id: AC4
+    statement: 'AC4: an alarm row is written through the ledger node when free slots stay above 5 and the fill placed 0 lanes for 2 runs in a row, and when a placed lane writes no CLAIM within 10 minutes,
+      and no alarm row is written when either condition is absent -- falsifier: `uv run pytest -m unit <workflow test file> -k "alarm_no_placement or alarm_no_claim or no_alarm"`'
+  - id: AC5
+    statement: 'AC5: the workflow ran on h051 under the Schedule, only after lane temporal-up-1600 reported the server up, and two scheduled runs and the CLAIM row of each lane they placed are read on the
+      ledger -- falsifier: grep of the ledger for the two scheduled run ids and the CLAIM rows of the placed lanes, each with its read time'
+  - id: AC6
+    statement: 'AC6: the draft pull request body carries a Lab: line and the lane handed off nothing -- falsifier: `onex scm pr-view <repo>#<n>` body read for the Lab: line'
+evidence_requirements:
+- kind: tests
+  description: The workflow tests against Temporal's time-skipping test server and the SDK's local dev server.
+  command: uv run pytest -m unit tests/nodes/node_floor_fill_temporal_workflow -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24927-ac1
+  description: a Temporal Schedule fires at the contract's interval (900 s; 300 s is tested too) with overlap policy skip and a run still in progress at the next fire is skipped, not queued
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'schedule_overlap_skip'
+    cwd: .
+- id: dod-omn24927-ac2
+  description: every step is an activity that calls one of our nodes through the node's declared CLI, and the workflow body holds no inline fill logic
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'activities_call_nodes'
+    cwd: .
+- id: dod-omn24927-ac3
+  description: a worker restart in the middle of a run does not run any activity a second time, counting step keys
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'worker_restart_mid_run'
+    cwd: .
+- id: dod-omn24927-ac4
+  description: an alarm row is written for 2 zero-placement runs with free slots above 5 and for a placed lane with no CLAIM within 10 minutes, and none when either condition is absent
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'alarm_no_placement or alarm_no_claim or no_alarm'
+    cwd: .
+- id: dod-omn24927-ac4-counts-and-unread
+  description: every run writes one STATUS counts row (free slots read, lanes placed, claims read back, alarm decision), and a source the fill could not read is an unread run, never zero free slots
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'status_counts or not_read or could_not_read or real_fill'
+    cwd: .
+- id: dod-omn24927-ac2-fill-entry-answer
+  description: the fill node's runtime entry ends with one typed JSON answer line (free slots, unowned work, lanes placed, unread, why none), including for a refused store
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_floor_fill_orchestrator/test_node_floor_fill_orchestrator_step_answer.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24927-ac5-row-shape
+  description: 'The rows a scheduled run reads and writes: each placed lane''s CLAIM row inside the window and the alarm rows. The live h051 runs are the unbound local Done gate check below.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'alarm_no_claim or no_alarm_when_every_placed_lane_claims'
+    cwd: .
+- id: dod-omn24927-integration-proof
+  description: 'Hosted CI cannot reach the h051 Temporal server, so only the local Done gate runs this unbound check: on a lab host at the sha, the Schedule is described against the live Temporal server
+    and its recent scheduled runs are listed with their run ids.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24927 --kind test -- sh -c 'uv run --frozen python -m omnimarket.nodes.node_floor_fill_temporal_workflow
+      schedule describe --target-host "$ONEX_TEMPORAL_TARGET"'
+    cwd: .
+- id: dod-omn24927-deploy-check
+  description: 'Deploy check, local Done gate only (the hosted runner has no route to the h051 Temporal server): the Schedule exists on h051 with overlap skip and the contract interval, and its recent actions are listed.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-deploy-check-24927 --kind test -- sh -c 'uv run --frozen python -m omnimarket.nodes.node_floor_fill_temporal_workflow
+      schedule describe --target-host "$ONEX_TEMPORAL_TARGET" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d[\"schedule_id\"]==\"onex-floor-fill\" and d[\"num_actions\"]>=1, d"'
+    cwd: .
+- id: dod-omn24927-ac6-lab-line
+  description: 'The draft pull request body carries a Lab: line.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: command
+    check_value: 'test -f src/omnimarket/nodes/node_floor_fill_temporal_workflow/contract.yaml && gh pr view omn-24927-floor-fill-temporal-schedule --repo OmniNode-ai/omnimarket --json body --jq .body | grep -Eq ''^Lab: '''
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_floor_fill_temporal_workflow/test_floor_fill_temporal_workflow.py -q --no-cov -p no:randomly -k 'activities_call_nodes'
+    cwd: .

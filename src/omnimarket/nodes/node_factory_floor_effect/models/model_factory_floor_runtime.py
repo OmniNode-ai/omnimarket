@@ -227,6 +227,17 @@ class ModelFactoryFloorContainerHost(BaseModel):
     ssh_target: str = Field(min_length=1)
 
 
+class ModelFactoryFloorLedgerProjection(BaseModel):
+    """The window read from the work ledger projection instead of the ledger file (OMN-24490), one UTC day at a time."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    reader: str = Field(min_length=1)
+    cache_ttl_seconds: int = Field(gt=0)
+    read_workers: int = Field(default=1, gt=0)
+    settle_seconds: int = Field(default=0, ge=0)
+
+
 class ModelFactoryFloorOverlay(BaseModel):
     """Deployment choice: which plans are lines and which machines are bays. There is no packaged default."""
 
