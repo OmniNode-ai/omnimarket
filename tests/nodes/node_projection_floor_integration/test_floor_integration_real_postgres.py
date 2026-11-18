@@ -20,6 +20,10 @@ import asyncpg
 import pytest
 
 from omnimarket.models.floor_projection import ModelFloorProjectionEnvelope
+from omnimarket.models.integration_reading import (
+    ModelIntegrationProjection,
+    ModelIntegrationReadingBatch,
+)
 from omnimarket.nodes.node_integration_projection_compute.handlers import (
     HandlerIntegrationProjection,
 )
@@ -57,7 +61,7 @@ async def _connect_or_skip() -> asyncpg.Connection:
     except (
         OSError,
         asyncpg.PostgresError,
-    ) as exc:  # pragma: no cover - infra-dependent
+    ) as exc:
         pytest.skip(
             f"no reachable Postgres for floor integration write-path proof: {exc}"
         )
@@ -124,8 +128,10 @@ class _AsyncpgFloorIntegrationStore:
         return [dict(row) for row in rows]
 
 
-def _envelope(batch: object) -> tuple[object, dict[str, object]]:
-    projection = HandlerIntegrationProjection().handle(batch)  # type: ignore[arg-type]
+def _envelope(
+    batch: ModelIntegrationReadingBatch,
+) -> tuple[ModelIntegrationProjection, dict[str, object]]:
+    projection = HandlerIntegrationProjection().handle(batch)
     payload = ModelFloorProjectionEnvelope(
         projection_id="integration",
         as_of=projection.as_of,
@@ -157,22 +163,22 @@ def test_real_postgres_writer_holds_the_newest_pass() -> None:
         result = writer.handle(
             {**first_payload, "_topic": EVENT, "_partition": 0, "_offset": 0}
         )
-        assert result["rows_upserted"] == len(first.rows)  # type: ignore[attr-defined]
+        assert result["rows_upserted"] == len(first.rows)
         rows = asyncio.run(_served())
-        assert {r["key"] for r in rows} == set(first.rows)  # type: ignore[attr-defined]
+        assert {r["key"] for r in rows} == set(first.rows)
         assert all(isinstance(r["projected_at"], datetime) for r in rows)
         assert all(r["projected_at"].tzinfo is not None for r in rows)
 
         writer.handle({**newer_payload, "_topic": EVENT, "_partition": 0, "_offset": 1})
         rows = asyncio.run(_served())
-        assert {r["key"] for r in rows} == set(newer.rows)  # type: ignore[attr-defined]
+        assert {r["key"] for r in rows} == set(newer.rows)
         assert len({r["as_of"] for r in rows}) == 1
 
         stale = writer.handle(
             {**first_payload, "_topic": EVENT, "_partition": 0, "_offset": 2}
         )
         assert stale.get("skipped_older_pass") is True
-        assert {r["key"] for r in asyncio.run(_served())} == set(newer.rows)  # type: ignore[attr-defined]
+        assert {r["key"] for r in asyncio.run(_served())} == set(newer.rows)
     finally:
         asyncio.run(_drop())
 

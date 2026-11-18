@@ -28,9 +28,9 @@ class SqliteFloorIntegrationStore:
         self._conn: sqlite3.Connection | None = None
 
     async def connect(self) -> None:
-        self._conn = sqlite3.connect(
+        self._conn = sqlite3.connect(  # no-contract-check: projection boundary
             str(self._db_path)
-        )  # no-contract-check: projection boundary
+        )
         self._conn.row_factory = sqlite3.Row
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS floor_integration_rows ("
