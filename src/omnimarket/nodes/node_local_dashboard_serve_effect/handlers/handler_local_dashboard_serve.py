@@ -428,11 +428,8 @@ def _register_model_keys(app: FastAPI) -> None:
         rows = await asyncio.to_thread(model_keys.list_providers)
         return JSONResponse(
             {
-                "providers": [
-                    row.model_dump(mode="json")
-                    for row in rows
-                    if row.provider in model_keys.DASHBOARD_PROVIDERS
-                ]
+                # OMN-24615 AC9: every provider onex models list prints, as it prints it.
+                "providers": [row.model_dump(mode="json") for row in rows]
             }
         )
 

@@ -76,6 +76,10 @@ class ModelPlanFirstSliceResult(BaseModel):
     detail: str = Field(
         description="One plain sentence naming the heading or its absence."
     )
+    terminal_failure_cause: str | None = Field(
+        default=None,
+        description="Set when the run failed; the runtime publishes the result on the contract's failure terminal.",
+    )
 
 
 __all__: list[str] = [
