@@ -41,14 +41,12 @@ NODES: Path = Path(__file__).parents[2] / "src" / "omnimarket" / "nodes"
 
 GROUP_A: tuple[str, ...] = (
     "node_broker_auth_refusal_reading_effect",
-    "node_bus_login_exposure_effect",
     "node_commitment_check_runner_effect",
     "node_daily_line_effect",
     "node_delegation_completion_rate_effect",
     "node_delegation_events_defect_scan_effect",
     "node_order_advance_effect",
     "node_overlay_drift_effect",
-    "node_stability_lane_refresh_effect",
     "node_stop_escalation_effect",
     "node_validator_workflow_orchestrator",
     "node_lab_proof_judge_compute",
@@ -74,11 +72,6 @@ EXPECTED_PUBLISH_TOPICS: dict[str, tuple[str, ...]] = {
         "onex.evt.omnimarket.broker-auth-refusal-failed.v1",
         "onex.evt.omnimarket.broker-auth-refusal-run-completed.v1",
         "onex.evt.omnimarket.broker-auth-refusal-run-failed.v1",
-    ),
-    "node_bus_login_exposure_effect": (
-        "onex.cmd.omnimarket.bus-login-exposure-probe-requested.v1",
-        "onex.evt.omnimarket.bus-login-exposure-probed.v1",
-        "onex.evt.omnimarket.bus-login-exposure-probe-failed.v1",
     ),
     "node_commitment_check_runner_effect": (
         "onex.cmd.omnimarket.commitment-check-requested.v1",
@@ -112,13 +105,6 @@ EXPECTED_PUBLISH_TOPICS: dict[str, tuple[str, ...]] = {
         "onex.evt.omnimarket.overlay-drift-failed.v1",
         "onex.evt.omnimarket.overlay-drift-run-completed.v1",
         "onex.evt.omnimarket.overlay-drift-run-failed.v1",
-    ),
-    "node_stability_lane_refresh_effect": (
-        "onex.cmd.omnimarket.stability-refresh-requested.v1",
-        "onex.evt.omnimarket.stability-refresh-pin-accepted.v1",
-        "onex.evt.omnimarket.stability-refresh-refused.v1",
-        "onex.evt.omnimarket.stability-refresh-completed.v1",
-        "onex.evt.omnimarket.stability-refresh-failed.v1",
     ),
     "node_stop_escalation_effect": (
         "onex.cmd.omnimarket.stop-escalation-requested.v1",
