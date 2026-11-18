@@ -107,3 +107,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn24874-stale-phrase-preserved
+  description: The stale-text helper reserializes contract prose without PyYAML line wrapping, so each tracked stale phrase placed in the middle of an evidence description stays whole and the stale-tier-rule text check still sees it. Runs the whole file, which holds the five parameterized cases of the stale tier rule text regression (each failed at the substring assertion with the original helper); no -k selection, so a rename cannot empty the evidence. It binds AC1 because the stale-tier-rule text check guards the AC1 contract text, and the hosted gate needs one bound check of this change's own.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
