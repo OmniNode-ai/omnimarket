@@ -59,10 +59,15 @@ descriptor:
 inputs:
   operation:
     type: str
-    description: "create (default), read, comment, transition, clear_project or repair_project"
+    description: "create (default), read, comment, transition, clear_project, repair_project, list_open or list_sprint_projects"
     required: false
     default: "create"
-    allowed_values: ["create", "read", "comment", "transition", "clear_project", "repair_project"]
+    allowed_values: ["create", "read", "comment", "transition", "clear_project", "repair_project", "list_open", "list_sprint_projects"]
+  include_attachments:
+    type: boolean
+    description: Read all attachment URLs for a read request.
+    required: false
+    default: false
   title:
     type: str
     description: "Ticket title (create)"
@@ -102,7 +107,7 @@ inputs:
     default: false
   project:
     type: str
-    description: "REFUSED when non-empty: new tickets are created in the Backlog with no project (operator ruling 2026-09-30T14:30:05Z, OMN-17427)"
+    description: "REFUSED on a create when non-empty: new tickets are created in the Backlog with no project (operator ruling 2026-09-30T14:30:05Z, OMN-17427); list_open takes the project id whose open tickets it lists"
     required: false
   day:
     type: str
@@ -130,7 +135,7 @@ inputs:
 outputs:
   status:
     type: str
-    description: "created | read | commented | transitioned | project_cleared | project_repaired | dry_run | error"
+    description: "created | read | commented | transitioned | project_cleared | project_repaired | listed | dry_run | error"
   project_cleared:
     type: bool
     description: "clear_project: the independent readback showed an explicit null project"
@@ -139,7 +144,10 @@ outputs:
     description: "repair_project: the tickets whose project was cleared and read back as null"
   candidate_ids:
     type: list[str]
-    description: "repair_project: the tickets the listing found for the day, label and project"
+    description: "repair_project: the tickets the listing found for the day, label and project; list_open: the project's tickets that are not completed or canceled"
+  assignee:
+    type: str
+    description: "Assignee name of a read ticket, empty when unassigned"
   skipped:
     type: list[str]
     description: "repair_project: id and reason for each listed ticket the recheck refused"

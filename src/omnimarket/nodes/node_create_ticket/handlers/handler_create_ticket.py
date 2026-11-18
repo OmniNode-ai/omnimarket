@@ -42,10 +42,10 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 import yaml
 from omnibase_infra.adapters.project_tracker.linear_graphql_project_tracker_adapter import (
@@ -74,6 +74,7 @@ from omnimarket.models.model_ticket_io import (
     EnumTicketOperation,
     ModelCreateTicketRequest,
     ModelCreateTicketResult,
+    ModelTicketProjectDates,
 )
 from omnimarket.models.secret_store.model_secret_resolution_error import (
     SecretResolutionError,
@@ -135,6 +136,35 @@ _BACKLOG_STATE_QUERY = """
 query GetBacklogState($teamId: ID!) {
   workflowStates(filter: { team: { id: { eq: $teamId } }, name: { eq: "Backlog" } }) {
     nodes { id }
+  }
+}
+"""
+
+_SPRINT_PROJECTS_QUERY = """
+query($after: String) {
+  projects(first: 100, after: $after, filter: {name: {startsWith: "Sprint"}}) {
+    nodes { id startDate targetDate completedAt }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+"""
+_ISSUE_ATTACHMENTS_QUERY = """
+query($id: String!, $after: String) {
+  issue(id: $id) {
+    attachments(first: 100, after: $after) {
+      nodes { url }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+"""
+_PROJECT_OPEN_ISSUES_QUERY = """
+query($id: String!, $after: String) {
+  project(id: $id) {
+    issues(first: 100, after: $after, filter: {state: {type: {nin: ["completed", "canceled"]}}}) {
+      pageInfo { hasNextPage endCursor }
+      nodes { identifier }
+    }
   }
 }
 """
@@ -381,6 +411,21 @@ class TicketTrackerProtocol(Protocol):
 
 
 @runtime_checkable
+class OpenIssueListerProtocol(Protocol):
+    """Lists a project's open ticket identifiers (list_open)."""
+
+    def open_issue_ids(self, project_id: str) -> list[str]: ...
+
+
+@runtime_checkable
+class SprintReadProtocol(Protocol):
+    """Reads the additional Linear facts consumed by the sprint closer."""
+
+    def sprint_projects(self) -> list[ModelTicketProjectDates]: ...
+
+    def attachment_urls(self, ticket_id: str) -> list[str]: ...
+
+
 class TicketStateResolverProtocol(Protocol):
     """Resolves a workflow state name to its Linear id for one ticket's team."""
 
@@ -574,6 +619,56 @@ class LinearTicketHttpGateway:
         """The project gateway over this client's own GraphQL transport."""
         return LinearTicketProjectGateway(self._post)
 
+    def _connection_nodes(
+        self, query: str, connection: tuple[str, ...], **variables: object
+    ) -> Iterator[dict[str, Any]]:
+        cursor: str | None = None
+        visited: set[str] = set()
+        while True:
+            page = self._post(query, {**variables, "after": cursor})["data"]
+            for field in connection:
+                page = page[field]
+                if not isinstance(page, dict):
+                    raise RuntimeError("Linear returned an unreadable connection")
+            yield from page["nodes"]
+            info = page["pageInfo"]
+            if not info["hasNextPage"]:
+                return
+            cursor = info["endCursor"]
+            if not isinstance(cursor, str) or not cursor or cursor in visited:
+                raise RuntimeError("Linear pagination did not advance")
+            visited.add(cursor)
+
+    def open_issue_ids(self, project_id: str) -> list[str]:
+        """Identifiers of the project's tickets whose state is not completed or canceled."""
+        return sorted(
+            str(row["identifier"])
+            for row in self._connection_nodes(
+                _PROJECT_OPEN_ISSUES_QUERY, ("project", "issues"), id=project_id
+            )
+        )
+
+    def sprint_projects(self) -> list[ModelTicketProjectDates]:
+        return [
+            ModelTicketProjectDates.model_validate(
+                {
+                    "id": row["id"],
+                    "start_date": row["startDate"],
+                    "target_date": row["targetDate"],
+                    "completed": row["completedAt"] is not None,
+                }
+            )
+            for row in self._connection_nodes(_SPRINT_PROJECTS_QUERY, ("projects",))
+        ]
+
+    def attachment_urls(self, ticket_id: str) -> list[str]:
+        return [
+            str(row["url"])
+            for row in self._connection_nodes(
+                _ISSUE_ATTACHMENTS_QUERY, ("issue", "attachments"), id=ticket_id
+            )
+        ]
+
     def resolve_state_id(self, ticket_id: str, state: str) -> str:
         """Return the id of workflow state ``state`` on ``ticket_id``'s own team."""
         data = self._post(
@@ -661,6 +756,18 @@ class HandlerCreateTicket:
             return self._injectable_tracker
         return AdapterLinearGraphQLProjectTracker(api_key=self._linear_api_key())
 
+    def _get_open_lister(self) -> OpenIssueListerProtocol:
+        if self._injectable_client is not None and hasattr(
+            self._injectable_client, "open_issue_ids"
+        ):
+            return cast(OpenIssueListerProtocol, self._injectable_client)
+        return LinearTicketHttpGateway(self._linear_api_key())
+
+    def _get_sprint_reader(self) -> SprintReadProtocol:
+        if isinstance(self._injectable_client, SprintReadProtocol):
+            return self._injectable_client
+        return LinearTicketHttpGateway(self._linear_api_key())
+
     def _get_state_resolver(self) -> TicketStateResolverProtocol:
         if self._injectable_state_resolver is not None:
             return self._injectable_state_resolver
@@ -716,6 +823,15 @@ class HandlerCreateTicket:
             return self._read(request)
         if request.operation is EnumTicketOperation.COMMENT:
             return self._comment(request)
+        if request.operation is EnumTicketOperation.LIST_OPEN:
+            return self._list_open(request)
+        if request.operation is EnumTicketOperation.LIST_SPRINT_PROJECTS:
+            return ModelCreateTicketResult(
+                status="listed",
+                operation=request.operation,
+                team=request.team,
+                sprint_projects=self._get_sprint_reader().sprint_projects(),
+            )
         if request.operation is EnumTicketOperation.TRANSITION:
             return self._transition(request)
         if request.operation in (
@@ -803,7 +919,23 @@ class HandlerCreateTicket:
             title=str(issue.title),
             team=request.team,
             ticket_status=str(issue.state),
+            assignee=str(getattr(issue, "assignee", "") or ""),
             description_body=str(issue.description or ""),
+            attachment_urls=(
+                self._get_sprint_reader().attachment_urls(ticket_id)
+                if request.include_attachments
+                else None
+            ),
+        )
+
+    def _list_open(self, request: ModelCreateTicketRequest) -> ModelCreateTicketResult:
+        """The identifiers of a project's tickets that are not completed or canceled, sorted."""
+        ids = self._get_open_lister().open_issue_ids(request.project.strip())
+        return ModelCreateTicketResult(
+            status="listed",
+            operation=EnumTicketOperation.LIST_OPEN,
+            team=request.team,
+            candidate_ids=sorted(ids),
         )
 
     def _comment(self, request: ModelCreateTicketRequest) -> ModelCreateTicketResult:

@@ -24,11 +24,15 @@ operations:
   - name: create
     description: Guard the exact caller payload, create in Backlog without project.
   - name: read
-    description: Read the ticket through the Linear adapter; no local stub.
+    description: Read a ticket through the Linear adapter with optional paginated attachment URLs.
   - name: comment
     description: Post a comment through the Linear adapter.
   - name: transition
     description: Guard the update, resolve the named state for the team and update.
+  - name: list_open
+    description: List the identifiers of a project's tickets that are not completed or canceled.
+  - name: list_sprint_projects
+    description: Read the declared dates of sprint projects from Linear.
 descriptor:
   node_archetype: effect
   purity: impure

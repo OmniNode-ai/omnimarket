@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_sprint_closer_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The sprint closer selects the active sprint by its Linear project dates and reports dry-run decisions.
+  A ticket needs passing bound checks or, when its contract is missing, merged linked PRs. Runtime changes
+  also need a SEEN RUNNING integration reading. An eligible collaborator ticket has the evidence-comment
+  action and keeps its state. Temporal runs one activity per ticket and continues the remaining tickets in a
+  new run when it reaches the batch limit. The schedule and SEEN RUNNING trigger both use dry-run plans.
+input_model:
+  name: ModelTicketEvidence
+  module: omnimarket.nodes.node_sprint_closer_effect.models.model_sprint_closer
+  description: Everything the eligibility rule reads about one ticket.
+output_model:
+  name: ModelTicketDecision
+  module: omnimarket.nodes.node_sprint_closer_effect.models.model_sprint_closer
+  description: The verdict, the action (set Done, evidence comment, missing comment, no change) and the comment.
+handler:
+  module: omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer
+  class: HandlerSprintCloser
+  input_model: omnimarket.nodes.node_sprint_closer_effect.models.model_sprint_closer.ModelTicketEvidence
+  output_model: omnimarket.nodes.node_sprint_closer_effect.models.model_sprint_closer.ModelTicketDecision
+dependencies:
+  - name: omnimarket.nodes.node_dod_verify
+    dependency_type: internal
+    description: "each ticket's checks come from its declared CLI (python -m omnimarket.nodes.node_dod_verify), run as a process."
+    required: true
+  - name: omnimarket.nodes.node_linear_ticket_write_effect
+    dependency_type: internal
+    description: Read sprint project dates and membership, tickets and their attachments.
+    required: true
+  - name: temporalio
+    dependency_type: library
+    description: "the workflow, the activities, the worker, the schedule and the seen-running start."
+    required: true
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer:HandlerSprintCloser
+  handlers:
+    - operation: decide
+      handler:
+        name: HandlerSprintCloser
+        module: omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer
+    - operation: eligibility
+      handler:
+        name: HandlerSprintCloserEligibility
+        module: omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer_eligibility
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: >-
+    python -m omnimarket.nodes.node_sprint_closer_effect worker runs the worker on the task queue below against the
+    shared Temporal server; schedule creates the every-2-hours schedule; seen-running --change <repo>#<n> starts one
+    run for a change the integration reader marked SEEN RUNNING; run-once runs the same activities in process.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 1200000
+metadata:
+  transport_type: local
+  description: Close finished sprint tickets on passing checks only, one durable activity per ticket.
+  author: OmniNode Team
+  created: '2026-11-17'
+sprint_closer:
+  target_host: 127.0.0.1:7233
+  task_queue: onex-sprint-closer
+  schedule_id: sprint-closer-every-2h
+  interval_hours: 2
+  tickets_per_run: 25
+  # Tickets assigned to anyone else are collaborators' tickets: evidence comment, state left to them.
+  # The owner's assignee names come from this environment variable (comma separated); unset means every
+  # ticket is a collaborator's ticket, so the closer comments and never changes a state.
+  owner_assignees_env: ONEX_SPRINT_OWNER_ASSIGNEES
+  actor: "closer2-1235 (codex)"
+  activity_timeout_seconds: 1200
+  activity_max_attempts: 3

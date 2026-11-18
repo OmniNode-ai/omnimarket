@@ -23,6 +23,8 @@ class EnumTicketOperation(StrEnum):
     TRANSITION = "transition"
     CLEAR_PROJECT = "clear_project"
     REPAIR_PROJECT = "repair_project"
+    LIST_OPEN = "list_open"
+    LIST_SPRINT_PROJECTS = "list_sprint_projects"
 
 
 def _is_utc_day(value: str) -> bool:
@@ -46,7 +48,10 @@ class ModelCreateTicketRequest(BaseModel):
 
     operation: EnumTicketOperation = Field(
         default=EnumTicketOperation.CREATE,
-        description="create (the default), read, comment or transition.",
+        description="create (the default), read, comment, transition or list_open.",
+    )
+    include_attachments: bool = Field(
+        default=False, description="Read every attachment URL."
     )
     title: str = Field(default="", description="Ticket title (create).")
     description: str = Field(
@@ -98,6 +103,8 @@ class ModelCreateTicketRequest(BaseModel):
     @model_validator(mode="after")
     def _fields_for_operation(self) -> ModelCreateTicketRequest:
         op = self.operation
+        if self.include_attachments and op is not EnumTicketOperation.READ:
+            raise ValueError("include_attachments is only valid with operation=read")
         if self.state.strip() and op is not EnumTicketOperation.TRANSITION:
             raise ValueError("state is only valid with operation=transition")
         if op is EnumTicketOperation.REPAIR_PROJECT:
@@ -112,6 +119,12 @@ class ModelCreateTicketRequest(BaseModel):
             raise ValueError(
                 "day and from_project are only valid with operation=repair_project"
             )
+        if op is EnumTicketOperation.LIST_SPRINT_PROJECTS:
+            return self
+        if op is EnumTicketOperation.LIST_OPEN:
+            if not self.project.strip():
+                raise ValueError("operation=list_open requires project (a project id)")
+            return self
         if op is EnumTicketOperation.CREATE:
             if not self.title.strip():
                 raise ValueError("operation=create requires a title")
@@ -128,6 +141,17 @@ class ModelCreateTicketRequest(BaseModel):
         return self
 
 
+class ModelTicketProjectDates(BaseModel):
+    """A Linear project and its declared schedule."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    start_date: date | None = None
+    target_date: date | None = None
+    completed: bool = False
+
+
 class ModelCreateTicketResult(BaseModel):
     """Result of a ticket create, read or comment request."""
 
@@ -140,6 +164,9 @@ class ModelCreateTicketResult(BaseModel):
     title: str = Field(default="")
     team: str = Field(default="Omninode")
     ticket_status: str = Field(default="", description="Workflow state name (read).")
+    assignee: str = Field(
+        default="", description="Assignee name, empty when unassigned (read)."
+    )
     comment_id: str = Field(default="", description="Created comment id (comment).")
     guard_path: str = Field(
         default="", description="The ticket-creation guard that admitted a create."
@@ -167,7 +194,15 @@ class ModelCreateTicketResult(BaseModel):
     )
     candidate_ids: list[str] = Field(
         default_factory=list,
-        description="repair_project: the tickets the listing found for the day, label and project.",
+        description=(
+            "repair_project: the tickets the listing found for the day, label and project; "
+            "list_open: the identifiers of the project's tickets that are not completed or canceled."
+        ),
+    )
+    sprint_projects: list[ModelTicketProjectDates] = Field(default_factory=list)
+    attachment_urls: list[str] | None = Field(
+        default=None,
+        description="All attachment URLs when requested; null when not read.",
     )
     skipped: list[str] = Field(
         default_factory=list,

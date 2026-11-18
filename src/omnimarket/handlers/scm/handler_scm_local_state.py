@@ -34,6 +34,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Final, Literal
 
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 from pydantic import JsonValue
 
 from omnimarket.handlers.scm.handler_scm_local_git import HandlerScmLocalGit
@@ -149,6 +150,7 @@ def _git(clone: Path, *args: str, timeout: int = 30) -> str | None:
             text=True,
             timeout=timeout,
             check=False,
+            env=scrub_git_location_env(os.environ),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         logger.warning("git %s in %s failed: %s", args[0], clone, exc)
