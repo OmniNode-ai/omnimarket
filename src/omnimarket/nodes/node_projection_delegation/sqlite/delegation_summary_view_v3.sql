@@ -1,37 +1,37 @@
 -- SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 -- SPDX-License-Identifier: MIT
--- The revision after delegation_summary_view_v2.sql: the same view, except a row
--- with no data_source counts as real. v2 compared with `<>`, and a NULL compared
--- with `<>` is never true, so rows written before data_source was classified fell
--- out of the run count, the quality rates, the headline savings and both lists.
--- `IS NOT` treats NULL as a value, so only rows typed 'experiment' leave the totals
--- and only rows typed 'fixture' leave the headline savings, as v2 intended.
+-- OMN-24615 AC4, AC6: the revision of delegation_summary_view_v2.sql (OMN-23169). Changes, nothing else:
+-- * a run whose data_source is NULL is kept: "data_source <> 'experiment'" is not true for NULL, so the old filter
+--   dropped 170 runs on an operator's store copy (2026-11-15); "IS NOT 'experiment'" drops only experiment runs;
+-- * the quality counts are over evaluated runs (quality_gates_checked other than 0, with a verdict), the same rule
+--   as the quality-gate view's revision, so "totalDelegations" - "qualityGateTotal" is the runs never evaluated;
+-- * "byModel" names the model that ran (model_name, else delegated_to), not the backend alias.
 --
--- Applied as the store step omn23413_delegation_summary_counts_unclassified after
--- omn23169_delegation_summary_excludes_experiment; it drops that view and creates
--- this one. A later revision is a new step.
+-- Applied as the store step omn24615_delegation_summary_evaluated_runs after
+-- omn23169_delegation_summary_excludes_experiment; a later revision is a new step.
 CREATE VIEW projection_delegation_summary AS
 WITH measured AS (
     SELECT tenant_id, quality_gate_passed,
         latency_ms, delegation_latency_ms, created_at, cost_savings_usd,
-        data_source, task_type, delegated_to
+        data_source, task_type, delegated_to, quality_gates_checked,
+        COALESCE(NULLIF(model_name, ''), delegated_to) AS served_model
     FROM delegation_events WHERE data_source IS NOT 'experiment'
 ),
 summary AS (
     SELECT
         tenant_id,
         COUNT(*) AS total_events,
-        COALESCE(SUM(CASE WHEN quality_gate_passed = 1 THEN 1 ELSE 0 END), 0)
+        COALESCE(SUM(CASE WHEN quality_gates_checked IS NOT 0 AND quality_gate_passed = 1 THEN 1 ELSE 0 END), 0)
             AS quality_passed_count,
-        COALESCE(SUM(CASE WHEN quality_gate_passed = 0 THEN 1 ELSE 0 END), 0)
+        COALESCE(SUM(CASE WHEN quality_gates_checked IS NOT 0 AND quality_gate_passed = 0 THEN 1 ELSE 0 END), 0)
             AS quality_failed_count,
-        COALESCE(SUM(CASE WHEN quality_gate_passed IS NOT NULL THEN 1 ELSE 0 END), 0)
+        COALESCE(SUM(CASE WHEN (quality_gates_checked IS NOT 0 AND quality_gate_passed IS NOT NULL) THEN 1 ELSE 0 END), 0)
             AS quality_checked_count,
         COALESCE(AVG(COALESCE(latency_ms, delegation_latency_ms)), 0.0)
             AS avg_latency_ms,
         COALESCE(MAX((julianday(created_at) - 2440587.5) * 86400.0), 0.0)
             AS latest_event_at,
-        COALESCE(SUM(CASE WHEN data_source IS NOT 'fixture' THEN cost_savings_usd END), 0.0)
+        COALESCE(SUM(CASE WHEN data_source <> 'fixture' THEN cost_savings_usd END), 0.0)
             AS total_savings_usd,
         COALESCE(SUM(CASE WHEN data_source = 'fixture' THEN cost_savings_usd END), 0.0)
             AS fixture_savings_usd,
@@ -54,11 +54,11 @@ by_task_type AS (
 ),
 by_model AS (
     SELECT tenant_id,
-        json_group_array(json_object('model', delegated_to, 'count', count)) AS rows
+        json_group_array(json_object('model', served_model, 'count', count)) AS rows
     FROM (
-        SELECT tenant_id, delegated_to, COUNT(*) AS count
+        SELECT tenant_id, served_model, COUNT(*) AS count
         FROM measured
-        GROUP BY tenant_id, delegated_to
+        GROUP BY tenant_id, served_model
         ORDER BY count DESC
     )
     GROUP BY tenant_id
