@@ -43,6 +43,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_ci_red_kind_rule_compute/test_golden_chain_runtime_wiring.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_runtime_command_subscriptions.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
 - id: dod-omn25454-ac3
   description: 'hosted proxy for AC3: the runtime wiring test passes; the dev runtime reading is taken on h201 from the branch install and named in the pull request.'
   source: manual
