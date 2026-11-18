@@ -775,14 +775,14 @@ def test_contract_checks_omn25071_paths_check_fails_on_a_missing_falsifier_path(
             {
                 "checks": [
                     {
-                        "check_value": "sh -c 'git cat-file -e HEAD:contracts/OMN-24874.yaml'"
+                        "check_value": "sh -c 'git cat-file -e HEAD:contracts/OMN-24874-absent-at-this-head.yaml'"
                     }
                 ]
             }
         ],
     }
     assert _missing_paths(contract, _REPO) == [
-        "contracts/OMN-24874.yaml",
+        "contracts/OMN-24874-absent-at-this-head.yaml",
         "tests/test_omn24874_contract_checks.py",
     ]
     assert _missing_paths({"requirements": [], "dod_evidence": []}, _REPO) == []
