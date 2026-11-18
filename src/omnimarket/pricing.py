@@ -26,6 +26,7 @@ from omnibase_infra.models.pricing.model_pricing_entry import ModelPricingEntry
 from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models import model_tenant_routing_overlay_backend as _overlay
 from omnimarket.models.baseline_fallback import (
     BaselineSelectionCase,
     configured_or_most_used,
@@ -401,14 +402,15 @@ def resolve_tier_cost(tier_name: str) -> ModelTierCost | None:
     """Resolve a tier's typed ModelTierCost by name from the routing registry.
 
     None means the tier is absent from the registry OR has not been migrated to
-    the typed cost model — the caller treats that as ``no_cost_model``.
+    the typed cost model — the caller treats that as ``no_cost_model``, and a
+    ceiling reader as "tier not budgeted" (skip). The tenant overlay tier always
+    resolves to None, whatever the registry declares (OMN-24874).
     """
-    if not tier_name:
+    # OMN-24874: the tenant overlay tier is the customer's own key, never the
+    # platform's spend, so it resolves to None and never draws a ceiling.
+    if not tier_name or tier_name == _overlay.TENANT_OVERLAY_TIER_NAME:
         return None
-    for tier in _load_routing_config().tiers:
-        if tier.name == tier_name:
-            return tier.cost
-    return None
+    return next((t.cost for t in _load_routing_config().tiers if t.name == tier_name), None)  # fmt: skip
 
 
 class ModelActualCostMeasurement(BaseModel):

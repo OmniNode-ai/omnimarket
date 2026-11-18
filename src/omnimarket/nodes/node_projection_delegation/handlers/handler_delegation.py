@@ -1646,8 +1646,8 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
 
         Event-sources the per-tenant ceiling budget state from a delegation's
         measured drawdown, exactly mirroring the sync reducer's accumulation
-        math (``resolve_tier_cost`` is pure and reused unmodified) with the
-        SELECT-then-UPSERT I/O ported to async ``self.db.execute()`` calls.
+        math (``resolve_tier_cost`` is pure; its None for the tenant overlay tier
+        is the skip) with the SELECT-then-UPSERT I/O ported to async calls.
         """
         cost = resolve_tier_cost(cost_tier_name)
         if cost is None or cost.monthly_cap_usd is None:
