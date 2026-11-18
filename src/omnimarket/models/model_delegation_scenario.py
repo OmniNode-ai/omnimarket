@@ -18,6 +18,8 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 SCENARIO_ID_PATTERN = r"^R[1-9]$"
 STATUS_KIND = "STATUS"
+STATUS_DETAIL_LIMIT = 240
+DETAIL_TRUNCATION_MARK = " [truncated]"
 
 
 class _Frozen(BaseModel):
@@ -104,6 +106,10 @@ class ModelScenarioResult(_Frozen):
         checks = ",".join(self.assertions) or "none"
         text = " ".join(self.detail.split()) or self.conclusion.value
         text = text.replace("|", "/")
+        if len(text) > STATUS_DETAIL_LIMIT:
+            text = text[: STATUS_DETAIL_LIMIT - len(DETAIL_TRUNCATION_MARK)] + (
+                DETAIL_TRUNCATION_MARK
+            )
         return (
             f"{stamp} | {STATUS_KIND} | lane={lane} | ticket={ticket} | actor={actor} | model=none | "
             f"scenario={self.scenario_id} | slot={slot} | trigger={self.trigger.value} | "

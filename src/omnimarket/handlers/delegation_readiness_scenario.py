@@ -2,10 +2,9 @@
 # SPDX-License-Identifier: MIT
 """The run skeleton the probe-ladder readiness scenario nodes share (OMN-23173).
 
-One run: build the scenario's legs, run them, compare typed fields (never a model's judgment), then write one ledger
-STATUS row (the row the green-days reading counts) and emit the same result on the bus. A missing setting, an unreadable
-input and an exception are failures, never a skip. The row is written before the bus emit, so an emit that fails
-raises after the row exists.
+One run: build the scenario's legs, run them, compare typed fields (never a model's judgment), then save a receipt,
+write one ledger STATUS row (the row the green-days reading counts) and emit the result on the bus. A missing setting,
+an unreadable input and an exception are failures, never a skip.
 
 A scenario node subclasses ``ReadinessScenarioBase`` and implements ``_scenario``; everything it needs (contract
 runtime block, ledger route, event sink, transport, clock) is injected.
@@ -34,6 +33,10 @@ from omnimarket.handlers.delegation_readiness_probe import (
     ProtocolLegTransport,
     ScriptedLegTransport,
 )
+from omnimarket.handlers.delegation_scenario_receipt import (
+    bound_record_detail,
+    write_run_receipt,
+)
 from omnimarket.handlers.delegation_scenario_runtime import (
     LedgerAppender,
     ModelScenarioSchedule,
@@ -58,7 +61,6 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
     CommandLedgerAppender,
 )
 
-DETAIL_LIMIT = 240
 Clock = Callable[[], datetime]
 
 
@@ -166,8 +168,9 @@ class ReadinessScenarioBase(ABC):
             else EnumScenarioConclusion.FAILURE,
             recorded_at=now,
             assertions=tuple(assertions),
-            detail=detail[:DETAIL_LIMIT],
+            detail=bound_record_detail(detail),
         )
+        write_run_receipt(self.work_dir, result)
         self._append(
             result.to_status_row(
                 lane=self._runtime.lane,

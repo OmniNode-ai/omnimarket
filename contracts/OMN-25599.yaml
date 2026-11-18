@@ -1,0 +1,92 @@
+schema_version: "1.0.0"
+ticket_id: OMN-25599
+title: A quality veto of a delegation run keeps its full reason, deciding rules and failures, in the r8 job record and the run receipt
+summary: R8 preserves the delegation veto in its journal and in an atomic receipt written before publication. The ledger STATUS detail remains bounded and marks a cut.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn25599-veto-reason-kept
+    statement: Preserve the veto label, scores, deciding rules and failures in the R8 run evidence.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a test where a quality veto reason longer than 200 characters (with deciding_rules= and failures= parts) fails at the base head and passes at the fix head, because the r8 job record and the run receipt carry the whole reason -- falsifier: uv run pytest on the new test file exits 0 at the base head or exits nonzero at the fix head'
+      - id: AC2
+        statement: 'AC2: the cut at 200 characters is located by file and line, and every place that cuts the veto reason between the delegation workflow handler and the r8 job record is named in the PR body -- falsifier: the PR body lacks a file:line for the cut or a test that reads the long reason back from the job record'
+      - id: AC3
+        statement: 'AC3: one draft pull request carries the change with a Lab: line in its body -- falsifier: onex scm pr-view OmniNode-ai/omnimarket#<n> shows no Lab: line or no draft state'
+evidence_requirements:
+  - kind: tests
+    description: Run the R8 veto control through the scheduled tick, bus adapter, job journal and receipt.
+    command: uv run --frozen pytest -q --no-cov -n 0 tests/nodes/node_delegation_scenario_r8_effect/test_veto_reason_kept_omn25599.py
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn25599-veto-journal-and-receipt
+    description: The regression test reads the veto from the job journal and the receipt and checks the STATUS cut marker.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q --no-cov -n 0 tests/nodes/node_delegation_scenario_r8_effect/test_veto_reason_kept_omn25599.py
+        cwd: .
+  - id: dod-omn25599-pr-cut-locations
+    description: The PR body names the original and remaining detail limits by file and line and links the regression test.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          if [ "${GITHUB_ACTIONS:-}" = true ]; then
+            body=$(gh api "repos/OmniNode-ai/omnimarket/pulls/${PR_NUMBER}" --jq .body)
+          else
+            snapshot=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr "omnimarket#${PR_NUMBER}" --json)
+            body=$(printf '%s\n' "$snapshot" | jq -er '.facts.body')
+          fi
+          for citation in delegation_readiness_scenario.py:61 delegation_readiness_scenario.py:169 cli_delegate.py:2809 delegation_scenario_receipt.py:22 model_delegation_scenario.py:110 test_veto_reason_kept_omn25599.py; do
+            printf '%s\n' "$body" | grep -F "$citation" >/dev/null
+          done
+        cwd: .
+  - id: dod-omn25599-draft-lab-evidence
+    description: Read the draft and its Lab line before handoff. Hosted verification can also read the transition from draft to ready in the PR timeline.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          if [ "${GITHUB_ACTIONS:-}" = true ]; then
+            facts=$(gh api graphql -F "number=${PR_NUMBER}" -f 'query=query($number: Int!) { repository(owner: "OmniNode-ai", name: "omnimarket") { pullRequest(number: $number) { body isDraft timelineItems(first: 1, itemTypes: [READY_FOR_REVIEW_EVENT]) { totalCount } } } }' --jq '.data.repository.pullRequest | {body, draft: (.isDraft or (.timelineItems.totalCount > 0))}')
+          else
+            snapshot=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr "omnimarket#${PR_NUMBER}" --json)
+            facts=$(printf '%s\n' "$snapshot" | jq -e '.facts')
+          fi
+          printf '%s\n' "$facts" | jq -e '.draft == true and (.body | split("\n") | any(startswith("Lab: ")))'
+        cwd: .
+  - id: dod-omn25599-deploy
+    description: At the candidate revision, the scenario handler writes the receipt with the same result sent to the event sink.
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: |
+          bash -o pipefail -c '
+            path=src/omnimarket/handlers/delegation_readiness_scenario.py
+            if [ "${GITHUB_ACTIONS:-}" = true ]; then
+              gh api -H "Accept: application/vnd.github.raw+json" "repos/OmniNode-ai/omnimarket/contents/$path?ref=$(git rev-parse HEAD)"
+            else
+              git show "HEAD:$path"
+            fi | grep -F "write_run_receipt(self.work_dir, result)"
+          '
+        cwd: .
+  - id: dod-omn25599-integration-proof
+    description: The lab work node places the scheduled R8 tick regression at the pushed revision and returns its exit status.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25599 --kind test -- uv run --frozen pytest -q --no-cov -n 0 tests/nodes/node_delegation_scenario_r8_effect/test_veto_reason_kept_omn25599.py
+        cwd: .
