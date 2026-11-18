@@ -75,17 +75,18 @@ class CoreRuntimeBusForwarder:
 
     def forward(self, events: Sequence[ProtocolRecordedEvent]) -> dict[str, object]:
         """The core hook: publish ``events`` to the hosted bus and answer the receipt mapping."""
-        roots = ModelWorkspaceRoots.resolve(self._environ)
-        environ = {**self._environ, **roots.declared}
-        if self._environ is os.environ:
-            # The lane declaration reader resolves the config root from the process environment.
-            os.environ.update(roots.declared)
+        roots: ModelWorkspaceRoots | None = None
         try:
-            overlay = self._overlay or load_overlay(environ)
+            overlay = self._overlay or load_overlay(self._environ)
+            roots = ModelWorkspaceRoots.resolve(self._environ)
+            environ = {**self._environ, **roots.declared}
+            if self._environ is os.environ:
+                # The lane declaration reader resolves the config root from the process environment.
+                os.environ.update(roots.declared)
             broker = broker_for_lane(overlay.event_bus.lane, environ)
             publisher = self._publisher_for_broker(broker)
         except Exception as exc:
-            unresolved = roots.describe_unresolved()
+            unresolved = roots.describe_unresolved() if roots is not None else None
             raise RuntimeError(
                 f"runtime bus forwarder could not reach the hosted bus: {type(exc).__name__}: {exc}"
                 + (f". Workspace roots: {unresolved}" if unresolved else "")
