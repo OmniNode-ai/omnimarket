@@ -83,13 +83,20 @@ class HandlerOverlayStoreRead:
         try:
             record = await self._store.read_current(overlay_id)
             if record is None:
-                store_error = f"the store holds no overlay {overlay_id}"
+                # A store that resumes where its last window stopped answers nothing when nothing new was published.
+                if not getattr(self._store, "resumes", False):
+                    store_error = f"the store holds no overlay {overlay_id}"
             else:
                 loaded = ModelOverlayStoreRecord.model_validate(record)
                 if loaded.overlay_id != overlay_id:
                     raise ValueError(
                         f"asked for {overlay_id}, the store answered {loaded.overlay_id}"
                     )
+                if self._snapshot_is_newer(overlay_id, loaded):
+                    # A window that is still catching up delivers old versions first; they never replace a newer snapshot.
+                    reading = self.read(overlay_id)
+                    await self._report(reading)
+                    return reading
                 stamp = self._snapshot.write(loaded, written_at=now)
                 reading = self._reading(
                     overlay_id, stamp, EnumOverlayReadSource.STORE, None, now=now
@@ -105,6 +112,15 @@ class HandlerOverlayStoreRead:
         reading = self.read(overlay_id, store_error=store_error)
         await self._report(reading)
         return reading
+
+    def _snapshot_is_newer(
+        self, overlay_id: str, loaded: ModelOverlayStoreRecord
+    ) -> bool:
+        try:
+            held = self._snapshot.read_stamp(overlay_id)
+        except OverlaySnapshotError:
+            return False
+        return held.loaded_at > loaded.loaded_at
 
     async def refresh_all(self) -> tuple[ModelOverlayStoreReading, ...]:
         """One refresh of every overlay this host keeps."""
