@@ -12,7 +12,7 @@ entry_points:
     node_lab_fill_effect: "omnimarket.nodes.node_lab_fill_effect"
 capabilities:
   standalone: false
-  full_runtime: false
+  full_runtime: true
   requires_network: true
   requires_repo: true
   requires_secrets: true

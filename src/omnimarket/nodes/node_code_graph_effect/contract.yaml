@@ -92,8 +92,21 @@ topics:
   code_graph_lookup_answered: onex.evt.omnimarket.code-graph-lookup-answered.v1
 
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.code-graph-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.code-graph-run-completed.v1
+    - onex.evt.omnimarket.code-graph-run-failed.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.cmd.omnimarket.code-graph-requested.v1", operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.cmd.omnimarket.code-graph-requested.v1", operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.code-graph-run-completed.v1", operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.code-graph-run-completed.v1", operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.code-graph-run-failed.v1", operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.code-graph-run-failed.v1", operation: DESCRIBE}
 
 externally_consumed_topics:
   - onex.evt.omnimarket.code-graph-run-started.v1
@@ -162,4 +175,4 @@ overlay:
 
 metadata:
   ticket: OMN-22651
-  transport_type: inmemory
+  transport_type: kafka

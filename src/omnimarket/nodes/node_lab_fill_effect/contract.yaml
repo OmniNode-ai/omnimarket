@@ -180,6 +180,13 @@ runtime_dispatch:
   terminal_events:
     success: "onex.evt.omnimarket.lab-fill-effect-completed.v1"
     failure: "onex.evt.omnimarket.lab-fill-effect-failed.v1"
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lab-fill-effect-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lab-fill-effect-completed.v1
+    - onex.evt.omnimarket.lab-fill-effect-failed.v1
+
 published_events:
   - event_type: ModelLabFillStatusWriteResult
     topic: onex.evt.omnimarket.lab-fill-effect-completed.v1
@@ -187,6 +194,16 @@ published_events:
   - event_type: ModelLabFillTickResult
     topic: onex.evt.omnimarket.lab-fill-effect-completed.v1
     description: "One lab-fill tick: the lanes dispatched with host and receipt, each skipped row with its reason, the rows never tried and why the tick stopped, every lane made and not placed with its reason (refusals, refusals_cell), the tickets parked after a second brief-check refusal, and the zero-placement alarm (idle streak and the diagnose lane's dispatch) when free slots went unplaced."
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.cmd.omnimarket.lab-fill-effect-requested.v1", operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.cmd.omnimarket.lab-fill-effect-requested.v1", operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.lab-fill-effect-completed.v1", operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.lab-fill-effect-completed.v1", operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.lab-fill-effect-failed.v1", operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.lab-fill-effect-failed.v1", operation: DESCRIBE}
+
 externally_consumed_topics:
   - onex.evt.omnimarket.lab-fill-effect-completed.v1
   - onex.evt.omnimarket.lab-fill-effect-failed.v1

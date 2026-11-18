@@ -12,7 +12,7 @@ entry_points:
     node_code_graph_effect: omnimarket.nodes.node_code_graph_effect
 capabilities:
   standalone: true
-  full_runtime: false
+  full_runtime: true
   requires_network: true
   requires_repo: true
   requires_secrets: false
