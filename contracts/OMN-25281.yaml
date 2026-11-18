@@ -118,8 +118,6 @@ dod_evidence:
   description: 'Local Done gate: the one comment of this pull request that opens with the Lab marker for the head the PR watcher records names each of findings 1 to 9 (the first check), and the lab
     command and exit 0 (the second).'
   source: manual
-  binds_ac:
-  - AC6
   execution_scope: local_done_gate
   checks:
   - check_type: command

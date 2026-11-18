@@ -89,8 +89,6 @@ dod_evidence:
   description: 'Local Done gate: the one comment of this pull request that opens with the Lab marker for the head the PR watcher records names each of findings 1 to 7 of the review of head 43bc9673d0c1
     on a line tagged round 1345, and the lab command and exit 0.'
   source: manual
-  binds_ac:
-  - AC3
   execution_scope: local_done_gate
   checks:
   - check_type: command

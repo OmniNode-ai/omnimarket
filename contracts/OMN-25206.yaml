@@ -76,12 +76,19 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn25206-ac4-hosted
+  description: The Lab comment checker reads the full head, the lab-work command and exit 0 from one comment and each finding number inside it, proved over shims.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn25206-ac4
   description: 'Local Done gate: the one comment of this pull request that opens with the Lab marker for the head the PR watcher records names each of findings 7 to 11 (the first check), and names the
     lab command and exit 0 (the second). The comments are read with the bus read of onex scm pr-view, so only the local Done gate runs them.'
   source: manual
-  binds_ac:
-  - AC4
   execution_scope: local_done_gate
   checks:
   - check_type: command

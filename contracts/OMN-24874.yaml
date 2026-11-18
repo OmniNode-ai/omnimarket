@@ -34,8 +34,6 @@ dod_evidence:
 - id: dod-omn24874-ac4-installed
   description: 'Local Done gate on h053: the alarm timer installed from the branch is listed by the user manager.'
   source: manual
-  binds_ac:
-  - AC4
   execution_scope: local_done_gate
   checks:
   - check_type: command
