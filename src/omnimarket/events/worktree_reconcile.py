@@ -9,7 +9,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.models.model_skipped_unit import ModelSkippedUnit
 from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy as Policy,
 )
@@ -163,6 +162,3 @@ class ModelWorktreeReconcileRunResult(ModelWorktreeReconcileBase):
     decided_events: tuple[ModelWorktreeReconcileDecidedEvent, ...]
     completed_event: ModelWorktreeReconcileRunCompletedEvent
     errors: tuple[str, ...] = ()
-    # Units the unit reader skipped, each with its reason (a failed transient unit whose environment file
-    # is gone). A skip is not a failure and is not counted in completed_event.failures.
-    skipped_units: tuple[ModelSkippedUnit, ...] = ()

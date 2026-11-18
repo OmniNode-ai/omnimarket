@@ -19,11 +19,13 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileDecidedEvent,
     ModelWorktreeReconcileRequest,
     ModelWorktreeReconcileRunCompletedEvent,
-    ModelWorktreeReconcileRunResult,
 )
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.probe_classes import (
     probe_class,
     route_needs_human,
+)
+from omnimarket.nodes.node_worktree_reconcile_effect.models.model_worktree_reconcile_report import (
+    ModelWorktreeReconcileRunReport,
 )
 from omnimarket.nodes.node_worktree_reconcile_effect.protocols import (
     ProtocolClock,
@@ -77,7 +79,7 @@ class HandlerWorktreeReconcile:
 
     def handle(
         self, command: ModelWorktreeReconcileCommand
-    ) -> ModelWorktreeReconcileRunResult:
+    ) -> ModelWorktreeReconcileRunReport:
         started = self._clock.now()
         errors: list[str] = []
         try:
@@ -180,7 +182,7 @@ class HandlerWorktreeReconcile:
             ),
         )
         self._publisher.publish(self._completed_topic, completed)
-        return ModelWorktreeReconcileRunResult(
+        return ModelWorktreeReconcileRunReport(
             decided_events=tuple(events),
             completed_event=completed,
             errors=tuple(errors),
