@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_codex_model_compute
+version: 1.0.0
+pack: distributed_validation
+node_role: compute
+display_name: Codex Model Compute
+description: Which Codex model a lane runs, the account default unless a declared id is asked.
+owner: omnimarket
