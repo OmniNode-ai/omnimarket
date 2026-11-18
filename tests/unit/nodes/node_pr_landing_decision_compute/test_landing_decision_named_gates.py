@@ -623,6 +623,49 @@ def _generated_fleet(rng: random.Random) -> dict[str, Any]:
                 for _ in range(review_rng.randint(0, 2))
             ],
         }
+    # Review status gate: the fable-review-gate commit statuses read for a PR's head. A stream of its own, seeded from the
+    # fleet, so the streams above (and every fleet the other reasons were covered with) are unchanged.
+    status_rng = random.Random("review-status" + repr(prs))
+    if status_rng.random() < 0.5:
+        facts["policy"] = {
+            **facts.get("policy", {}),
+            "review_status_read_expected": True,
+        }
+    for pr in prs:
+        review = pr.get("review")
+        if review is None or status_rng.random() < 0.25:
+            continue
+        at = "2026-11-07T11:45:00Z"
+        review["statuses"] = status_rng.choice(
+            [
+                None,
+                [],
+                [
+                    {
+                        "head_sha": pr["head_sha"],
+                        "context": "fable-review-gate",
+                        "state": "failure",
+                        "at": at,
+                    }
+                ],
+                [
+                    {
+                        "head_sha": f"{97:040x}",
+                        "context": "fable-review-gate",
+                        "state": "success",
+                        "at": at,
+                    }
+                ],
+                [
+                    {
+                        "head_sha": pr["head_sha"],
+                        "context": "fable-review-gate",
+                        "state": "success",
+                        "at": at,
+                    }
+                ],
+            ]
+        )
     return facts
 
 
