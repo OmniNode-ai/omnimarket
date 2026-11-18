@@ -811,3 +811,39 @@ def test_omn22496_items_bind_their_criterion_to_a_test_passes_check(
     kinds = [c.get("check_type") for c in item["checks"]]
     assert "test_passes" in kinds, f"{item_id} has no test_passes check: {kinds}"
     assert contract_binds_violations(path.name, contract) == []
+
+
+def test_contract_binds_refuses_a_declared_criterion_with_no_hosted_binding() -> None:
+    """A declared criterion that only an unbound local_done_gate item reads is refused.
+
+    The kept readings of the review contracts (the alarm node's tests, the PR
+    comments) stay unbound, so their criteria are not declared in the contract.
+    """
+    contract: dict[str, Any] = {
+        "requirements": [{"acceptance": [{"id": "AC1"}]}],
+        "dod_evidence": [
+            {
+                "id": "dod-local-only",
+                "execution_scope": "local_done_gate",
+                "checks": [{"check_type": "command", "check_value": "true"}],
+            }
+        ],
+    }
+    assert contract_binds_violations("OMN-0.yaml", contract) == [
+        "OMN-0.yaml: acceptance criteria missing binds_ac: ['AC1']"
+    ]
+    # Positive control: the same criterion bound to an existing hosted test passes.
+    contract["dod_evidence"].append(
+        {
+            "id": "dod-hosted",
+            "binds_ac": ["AC1"],
+            "checks": [
+                {
+                    "check_type": "test_passes",
+                    "check_value": "uv run pytest tests/test_omn24874_contract_checks.py -q",
+                    "cwd": ".",
+                }
+            ],
+        }
+    )
+    assert contract_binds_violations("OMN-0.yaml", contract) == []

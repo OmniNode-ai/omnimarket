@@ -22,6 +22,7 @@ from omnimarket.events.worktree_reconcile import (
 )
 from omnimarket.handlers.handler_ledger_claims import claimed, live_claims
 from omnimarket.handlers.rules_unit_roots import UnitRoots
+from omnimarket.models.model_skipped_unit import ModelSkippedUnit
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
     MergedPrEvidenceUnavailableError,
     git,
@@ -219,6 +220,9 @@ class GitWorktreeFactsProbe:
         # worktree: keyed by the clone's common git dir, True when the fetch worked.
         self._fetched: dict[Path, FetchStatus] = {}
         self._fetch_lock = threading.Lock()
+
+    def skipped_units(self) -> tuple[ModelSkippedUnit, ...]:
+        return self._units.skipped
 
     def discover(
         self, command: ModelWorktreeReconcileCommand, now: datetime

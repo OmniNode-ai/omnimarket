@@ -31,6 +31,16 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'AC6: no allowlist row is expired -- falsifier: uv run pytest tests/nodes/test_dep_health_contract_topology.py -q fails on test_this_repo_allowlist_has_no_expired_entries'
+  - id: req-omn20413-filelock
+    statement: uv.lock pins filelock outside the range the safety advisories name.
+    acceptance:
+      - id: AC7
+        statement: 'AC7: uv.lock resolves filelock 4.2.1 -- falsifier: uv run pytest tests/ci/test_filelock_lock_pin_omn20413.py fails while the filelock entry reads version 3.32.6'
+  - id: req-omn20413-census-at-ratchet
+    statement: The census of ledger-file readers and writers counts no more files than its ratchet row on this tree, and the ratchet row is unchanged.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the census counts 186 files against the ratchet row of 186 -- falsifier: uv run pytest tests/unit/validators/test_ledger_file_census.py -q --no-cov -k at_or_under_its_ratchet_row fails at the base head with ratchet-grew omnimarket=188>186'
 evidence_requirements:
   - kind: tests
     description: The deploy-gate run step hands the validator the title and the body, and the validator stays at its pin and mode.
@@ -38,6 +48,9 @@ evidence_requirements:
   - kind: tests
     description: A cause_not_shared verdict holds across a member set change on the same base head, the key is leased again when the base head moves, and the budget and fixer HOLD tests stay green.
     command: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_determinism.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_guards.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_merge_queue.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_stale_cancelled.py -q -p no:randomly
+  - kind: tests
+    description: The lock file carries the fixed filelock version.
+    command: uv run pytest tests/ci/test_filelock_lock_pin_omn20413.py -q -p no:randomly --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -110,3 +123,21 @@ dod_evidence:
       - check_type: command
         check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-20413 --kind test -- sh -c 'uv run --frozen pytest tests/nodes/test_dep_health_contract_topology.py -q --no-cov -n 0 -p no:randomly'
         cwd: .
+  - id: dod-omn20413-ac7-lock
+    description: uv.lock resolves filelock 4.2.1 and no longer 3.32.6.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_filelock_lock_pin_omn20413.py -q -p no:randomly --no-cov
+        cwd: .
+    binds_ac:
+      - AC7
+  - id: dod-omn20413-ac8-census-at-ratchet
+    description: Two test fixtures named a scratch copy with the ledger file's own name and are renamed ledger_copy.md, so the census counts 186 files against the unchanged ratchet row of 186.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/validators/test_ledger_file_census.py tests/unit/nodes/node_projection_work_ledger/test_parity_extra_unsequenced.py tests/nodes/node_compaction_continuation_replay_effect/test_continuation_replay.py -q --no-cov -p no:randomly
+        cwd: .
+    binds_ac:
+      - AC8
