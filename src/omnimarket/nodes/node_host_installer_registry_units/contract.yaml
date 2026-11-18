@@ -504,6 +504,39 @@ units:
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
     evidence_file: .local/state/omni/lane-ctx-ledger-dedupe/last-run.json
     state_directory: .onex_state/lane-ctx-ledger-dedupe
+  # The lab host's ledger mirror (node_work_ledger_host_mirror_effect, OMN-25537): every 120 s a Linux lab host appends the
+  # rows of the ledger of record it has not seen to <registry root>/.onex_state/ledger-mirror/host-ledger-mirror.md (authority rows, 1 day) and host-ledger-rulings.md (rulings and consents, 30 days), read over
+  # the bus from the work ledger read node (the unit names the read command and the workspace config root the command resolves
+  # its lane from). The hourly clone fast-forward moves only tracked files, so on 2026-11-18 the newest canonical row on
+  # h051, h053, h201 and h202 was 35 days old. The period (120 s), the 100 s run limit and the projection lag (60 s) sum
+  # to under the 300 s a ruling may take to reach a host; a test holds that sum. The probe runs the module's help request.
+  ledger-host-mirror-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-ledger-host-mirror
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 120
+      run_timeout_s: 100
+      run_at_load: true
+      description: every 120 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_work_ledger_host_mirror_effect.runtime_work_ledger_host_mirror_tick
+    entry_file: src/omnimarket/nodes/node_work_ledger_host_mirror_effect/runtime_work_ledger_host_mirror_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/omnibase_infra/.venv/bin/onex ledger query --stdin"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/ledger-host-mirror/last-run.json
+    state_directory: .onex_state/ledger-host-mirror
   # The capture silence watch (node_capture_silence_watch_effect): the host ran this node from a /tmp copy of the source
   # until this declaration replaced it. The database address (no password) and the reference of the login's password are request
   # inputs persisted in the unit (OMN-24325); the environment file stays an optional place for overrides and is never required.
