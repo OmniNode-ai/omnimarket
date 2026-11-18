@@ -101,7 +101,10 @@ def test_worker_runs_the_workflow_node_worker_verb_in_the_named_checkout(
     monkeypatch.delenv("ONEX_TEMPORAL_ADDRESS", raising=False)
     monkeypatch.setenv("ONEX_TEMPORAL_WORKER_PROJECT", str(tmp_path))
     settings = worker.worker_settings()
-    argv = worker.worker_argv(settings, worker.worker_project(settings), "uv")
+    commands, _skipped = worker.worker_commands(
+        settings, worker.worker_project(settings), "uv", "/omni"
+    )
+    argv = commands[0]
     assert argv[:5] == ["uv", "run", "--frozen", "--project", str(tmp_path)]
     assert argv[5:9] == [
         "python",

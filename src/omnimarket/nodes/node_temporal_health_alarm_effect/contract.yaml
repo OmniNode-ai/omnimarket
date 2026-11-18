@@ -98,8 +98,26 @@ server:
   ui_port: 8233
   namespace: default
   download_timeout_s: 300
+# One persistent unit serves every declared task queue: the runtime starts one child worker per entry from the checkout in
+# $<project_environment> and ends them all when any one ends, so the unit's restart policy starts every queue again.
+# ``module`` is the primary worker (workflow 1, always required); an ``also_serves`` worker whose module the checkout does
+# not carry is left out and named in the start line. {address}, {namespace} and {registry_root} fill from the runtime.
+# Each task queue is the one its schedule starts its workflow on (read from the schedule on the host, never a proof queue).
 worker:
   module: omnimarket.nodes.node_prove_running_workflow
   project_environment: ONEX_TEMPORAL_WORKER_PROJECT
   address: 127.0.0.1:7233
   namespace: default
+  also_serves:
+    - name: merged-change-runner-read
+      task_queue: onex-merged-change-runner-read
+      module: omnimarket.nodes.node_merged_change_runner_read_workflow.runtime_runner_read_worker
+      args: []
+    - name: sprint-closer
+      task_queue: onex-sprint-closer
+      module: omnimarket.nodes.node_sprint_closer_effect
+      args: [worker, --target-host, "{address}", --namespace, "{namespace}", --omni-home, "{registry_root}"]
+    - name: worktree-prune
+      task_queue: onex-worktree-prune
+      module: omnimarket.nodes.node_worktree_prune_temporal_effect
+      args: [worker, --target-host, "{address}", --namespace, "{namespace}"]
