@@ -41,7 +41,7 @@ gh() {
     case "$2" in
         *"check_name=repo-evidence%20%2F%20dod-verify"*)
             jq -r "$4" "$CHECKS_FIXTURE" ;;
-        *"actions/workflows/call-repo-evidence-gate.yml/runs?head_sha=${HEAD_SHA}&event=pull_request_target"*)
+        *"actions/workflows/call-repo-evidence-gate.yml/runs?head_sha=${HEAD_SHA}&event=pull_request&"*)
             if [ "$GATE_READ" = "fail" ]; then
                 echo "HTTP 502" >&2
                 return 1
