@@ -225,3 +225,4 @@ def test_live_profile_refuses_an_environment_file_a_unit_line_cannot_carry(
     code, _, err = _install_live(tmp_path, section, "--dry-run", "--profile", "live")
     assert code == 1
     assert "floor_fill_live.store_dsn_env_file" in err
+    assert "not an absolute path a unit line can carry unquoted" in err
