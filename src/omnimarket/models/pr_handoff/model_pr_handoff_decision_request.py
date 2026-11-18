@@ -13,6 +13,9 @@ from omnimarket.events.pr_state import ModelPrStateEmitRequest
 from omnimarket.models.pr_handoff.model_pr_handoff_requested import (
     ModelPrHandoffRequested,
 )
+from omnimarket.models.pr_handoff.model_pr_handoff_review_status import (
+    ModelPrHandoffReviewStatus,
+)
 
 
 class ModelPrHandoffDecisionRequest(BaseModel):
@@ -27,7 +30,9 @@ class ModelPrHandoffDecisionRequest(BaseModel):
     was not supplied and the request is refused scope-unread; an empty tuple
     is a valid scope that lands nothing. ``landing_scope_problem`` explains
     why the caller could not read the overlay. The model carries no repository
-    name.
+    name. ``review_status`` is the fable-review-gate commit statuses the caller read for the PR: absent, the
+    handoff is decided as before; present with new_work true, the live head needs a success status or the handoff
+    is refused review_status_missing, review_status_failing or review_status_other_head.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -37,6 +42,7 @@ class ModelPrHandoffDecisionRequest(BaseModel):
     ledger_holds: tuple[str, ...] = Field(default=())
     landing_scope: tuple[str, ...] | None = None
     landing_scope_problem: str | None = None
+    review_status: ModelPrHandoffReviewStatus | None = None
     now: Annotated[datetime, AwareDatetime]
 
 

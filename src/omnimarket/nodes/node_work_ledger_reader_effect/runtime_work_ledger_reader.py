@@ -66,6 +66,16 @@ def main(
     parser.add_argument("--ticket")
     parser.add_argument("--parity", action="store_true")
     parser.add_argument("--window-hours", type=int)
+    parser.add_argument(
+        "--kind",
+        action="append",
+        default=[],
+        help="a rows read only: a ledger row type to keep (repeat for several)",
+    )
+    parser.add_argument(
+        "--term",
+        help="a rows read only: a case-insensitive text the row's first line holds",
+    )
     args = parser.parse_args(argv)
     env = os.environ if environ is None else environ
     overlay = load_overlay(env)
@@ -82,6 +92,8 @@ def main(
             ticket=args.ticket,
             read_parity=args.parity,
             window_hours=args.window_hours,
+            kinds=tuple(args.kind),
+            term=args.term,
         )
     )
     sys.stdout.write("".join(f"{line}\n" for line in result.lines))

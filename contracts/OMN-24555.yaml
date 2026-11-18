@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-24555
+title: The ledger bus readers drop expired holds and filter rows by kind and word
+summary: The work-ledger query node leaves a HOLD whose until time is past out of the holds answer and the inbox, whatever its scope (the reducer leaves expiry to the reader's clock), and the ledger reader node's rows read carries kinds and a term to the query node, which narrows in the store. Both are shared seams between the reader node and the query node (cutover plan wave 0, projection gaps b and c). Never reads the ledger file.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24555-reader-gaps
+  statement: A bus reader of the work ledger no longer lists a hold past its until time as in force, and can ask for rows of one kind or one word.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a hold with an end time in the past, scoped to a surface or not, is not listed by the holds query, not counted in the inbox and is counted in the answer''s expired number -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_holds_expiry_ledger_cut5.py -q'
+  - id: AC2
+    statement: 'AC2: the ledger reader''s rows request carries kinds and term to the query node, and a refused combination (kinds or term on a point query) is a typed refusal -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_rows_filters_ledger_cut5.py -q'
+  - id: AC3
+    statement: 'AC3: integrated: through the reader on the dev bus, a rows read with kinds=claim over a 24 hour window answers only claim rows and a holds read lists none of the holds whose end time is past -- falsifier: run the reader node on the dev bus on h053 and count rows of other kinds in the answer, read as zero'
+evidence_requirements:
+- kind: tests
+  description: The query node and reader node tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_holds_expiry_ledger_cut5.py tests/unit/nodes/node_work_ledger_reader_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24555-ac1
+  description: 'The holds and inbox statements keep a hold with an end time before now out, whatever its surface, and keep an open-ended hold; the expired count no longer needs a surface; a database error is a read error (error chain). Failing control: at the merge base the statement still carries the surface condition and three of the five tests fail.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_holds_expiry_ledger_cut5.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24555-ac2
+  description: 'kinds and term reach every page of a rows read and the command line takes --kind and --term; the seam test runs the real query node in process so a shape change on either side fails; a point query that names them is refused (error chain). Failing control: at the merge base the request refuses both fields and the tests fail.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_rows_filters_ledger_cut5.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24555-ac3
+  description: The tests behind the integrated reading pass; the dev-bus reading through the reader is recorded in the Lab line and a comment at the pushed head.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect tests/unit/nodes/node_work_ledger_reader_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24555-integration-proof
+  description: Run the query and reader tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24555 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_holds_expiry_ledger_cut5.py tests/unit/nodes/node_work_ledger_reader_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
