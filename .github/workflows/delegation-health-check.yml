@@ -7,17 +7,18 @@
 # and config/delegation_health_check.yaml); nothing of it is copied here, so the
 # source list cannot fork.
 #
-# ENFORCING. The check-run this caller produces, `delegation-health-check /
-# Delegation Health Check`, is a member of EXPECTED_EXTERNAL_CONTEXTS in
-# scripts/ci/ci_summary_gate.py, so CI Summary requires it present, completed
-# and green on every pull request head and every merge-queue head (operator
-# ruling 2026-09-29T12:02:35Z, OMN-19998: no shadow or advisory mode). A runtime-
-# affecting PR is red while the delegation regression nightly or the M4 C17
-# verdict is red; a PR that repairs the red carries the label
-# `delegation-fix-forward:OMN-<n>`, which admits it and is recorded in the job
-# summary. A docs-only PR is never blocked.
+# SIGNAL, NOT A GATE (OMN-25514, decoupling plan step S1-A). The check-run this
+# caller produces, `delegation-health-check / Delegation Health Check`, is in no
+# required list: it is not in EXPECTED_EXTERNAL_CONTEXTS in
+# scripts/ci/ci_summary_gate.py, not in ci_summary_external_producers.json, and
+# CI Summary admits its row through a dated entry in
+# scripts/ci/ci_summary_sweep_exclusions.json, so a red row never fails a pull
+# request. The job below still runs and still reports the delegation regression
+# nightly and the M4 C17 verdict in its job summary; a PR that repairs the red
+# may still carry the label `delegation-fix-forward:OMN-<n>`. A docs-only PR is
+# never blocked.
 #
-# The shape exists to satisfy that registration: it runs on `pull_request` AND
+# The shape is kept until step S1-B moves the triggers: it runs on `pull_request` AND
 # `merge_group`, the one job carries no `needs:`, no job-level `if:` and no path
 # filter, so it can neither skip-as-passed nor leave a queue head waiting on a
 # context that never reports. There is no `branches:` filter either, because
@@ -49,9 +50,10 @@ permissions:
 
 jobs:
   # No `name:` on purpose: the check-run is then `<job id> / <called job name>`,
-  # `delegation-health-check / Delegation Health Check`, the exact context
-  # EXPECTED_EXTERNAL_CONTEXTS registers and the prefix the advisory-job gate
+  # `delegation-health-check / Delegation Health Check`, the context the
+  # sweep exclusion names and the prefix the advisory-job gate
   # matches a called workflow's job by.
+  # advisory-ok: OMN-25514 dev signal, no longer a required context: out of EXPECTED_EXTERNAL_CONTEXTS and ci_summary_external_producers.json, admitted by a dated sweep exclusion, so a red row cannot block a merge
   delegation-health-check:
     uses: OmniNode-ai/omnibase_infra/.github/workflows/delegation-health-reusable.yml@dev-20261107104119-e3cff8e210fe
     with:
