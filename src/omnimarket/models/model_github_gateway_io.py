@@ -53,6 +53,8 @@ class EnumGithubGatewayOperation(StrEnum):
     PR_HEADS = "pr_heads"
     # OMN-21146
     COMMIT_CHECK_RUNS = "commit_check_runs"
+    # The statuses posted on a commit (the review gate's fable-review-gate is one).
+    COMMIT_STATUSES = "commit_statuses"
     MERGED_PR = "merged_pr"
     # The review threads of a PR, with the resolved state only GraphQL reports.
     PR_REVIEW_THREADS = "pr_review_threads"
@@ -161,7 +163,7 @@ class ModelGithubGatewayRequest(BaseModel):
         pattern=r"^[0-9a-f]{40}$",
         description=(
             "workflow_runs: runs at this head commit; pr_heads: PRs whose head is this commit; "
-            "commit_check_runs: required commit to read."
+            "commit_check_runs and commit_statuses: required commit to read."
         ),
     )
     check_name: str | None = Field(
@@ -277,6 +279,11 @@ class ModelGithubGatewayRequest(BaseModel):
             raise ValueError(
                 "operation 'commit_check_runs' requires head_sha to be set."
             )
+        if (
+            self.operation is EnumGithubGatewayOperation.COMMIT_STATUSES
+            and self.head_sha is None
+        ):
+            raise ValueError("operation 'commit_statuses' requires head_sha to be set.")
         if self.operation is EnumGithubGatewayOperation.CODE_SCANNING_ALERTS and (
             self.pr_number is None
         ) == (self.branch is None):
@@ -799,6 +806,28 @@ class ModelCommitCheckRunsResult(_ModelBoundedList):
     check_runs: list[ModelCheckRun] = Field(default_factory=list)
 
 
+class ModelCommitStatus(BaseModel):
+    """One commit status posted on a commit."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: int
+    context: str
+    state: str
+    target_url: str | None = None
+    description: str | None = None
+    created_at: str | None = None
+
+
+class ModelCommitStatusesResult(_ModelBoundedList):
+    """The statuses posted on a commit, newest first (replaces ``gh api repos/<r>/commits/<sha>/statuses``)."""
+
+    operation: Literal["commit_statuses"] = "commit_statuses"
+    repo: str
+    head_sha: str
+    statuses: list[ModelCommitStatus] = Field(default_factory=list)
+
+
 class ModelCodeScanningAlert(BaseModel):
     """One open code-scanning alert: its rule, severity and the place it was found."""
 
@@ -971,6 +1000,7 @@ GithubGatewayResult = Annotated[
     | ModelReleasesResult
     | ModelPrHeadsResult
     | ModelCommitCheckRunsResult
+    | ModelCommitStatusesResult
     | ModelMergedPrResult
     | ModelRepoFileResult
     | ModelCodeScanningAlertsResult
@@ -1014,6 +1044,8 @@ __all__: list[str] = [
     "ModelCodeScanningAlert",
     "ModelCodeScanningAlertsResult",
     "ModelCommitCheckRunsResult",
+    "ModelCommitStatus",
+    "ModelCommitStatusesResult",
     "ModelGithubGatewayRequest",
     "ModelGithubGatewayResponse",
     "ModelJobLogFillResult",

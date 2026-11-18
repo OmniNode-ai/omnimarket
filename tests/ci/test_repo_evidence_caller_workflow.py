@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""OMN-20070: repo-owned acceptance evidence and its base-branch caller."""
+"""OMN-20070: repo-owned acceptance evidence and its pull request caller."""
 
 from __future__ import annotations
 
@@ -32,12 +32,15 @@ def test_caller_workflow_shape() -> None:
     # PyYAML 1.1 resolves the bare `on:` key to the boolean True.
     triggers = data.get("on", data.get(True))
     assert isinstance(triggers, dict), "caller must declare a mapping on: block"
-    assert "pull_request_target" in triggers, "caller must run from the base branch"
-    assert "pull_request" not in triggers, "caller must not use pull_request"
-    assert "workflow_run" not in triggers, "caller must not use workflow_run"
-    target = triggers["pull_request_target"]
-    assert target["branches"] == ["dev", "main"], "caller must target dev and main"
-    assert target["types"] == [
+    assert set(triggers) == {"pull_request"}, "caller must run only on pull_request"
+    assert "pull_request_target" not in text, "caller must not name the old event"
+    event = triggers["pull_request"]
+    assert isinstance(event, dict), "caller must declare pull_request filters"
+    assert set(event) == {"branches", "types"}, (
+        "caller may filter only by base branch and activity type"
+    )
+    assert event["branches"] == ["dev", "main"], "caller must target dev and main"
+    assert event["types"] == [
         "opened",
         "synchronize",
         "reopened",
@@ -811,3 +814,39 @@ def test_omn22496_items_bind_their_criterion_to_a_test_passes_check(
     kinds = [c.get("check_type") for c in item["checks"]]
     assert "test_passes" in kinds, f"{item_id} has no test_passes check: {kinds}"
     assert contract_binds_violations(path.name, contract) == []
+
+
+def test_contract_binds_refuses_a_declared_criterion_with_no_hosted_binding() -> None:
+    """A declared criterion that only an unbound local_done_gate item reads is refused.
+
+    The kept readings of the review contracts (the alarm node's tests, the PR
+    comments) stay unbound, so their criteria are not declared in the contract.
+    """
+    contract: dict[str, Any] = {
+        "requirements": [{"acceptance": [{"id": "AC1"}]}],
+        "dod_evidence": [
+            {
+                "id": "dod-local-only",
+                "execution_scope": "local_done_gate",
+                "checks": [{"check_type": "command", "check_value": "true"}],
+            }
+        ],
+    }
+    assert contract_binds_violations("OMN-0.yaml", contract) == [
+        "OMN-0.yaml: acceptance criteria missing binds_ac: ['AC1']"
+    ]
+    # Positive control: the same criterion bound to an existing hosted test passes.
+    contract["dod_evidence"].append(
+        {
+            "id": "dod-hosted",
+            "binds_ac": ["AC1"],
+            "checks": [
+                {
+                    "check_type": "test_passes",
+                    "check_value": "uv run pytest tests/test_omn24874_contract_checks.py -q",
+                    "cwd": ".",
+                }
+            ],
+        }
+    )
+    assert contract_binds_violations("OMN-0.yaml", contract) == []

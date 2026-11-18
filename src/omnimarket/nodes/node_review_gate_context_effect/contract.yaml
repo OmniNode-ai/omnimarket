@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract - Review Gate Context Effect (OMN-24614)
+#
+# Posts one pull request head's review verdict as the fable-review-gate commit status on GitHub through the GitHub
+# write node's commit_status_create (never GitHub directly, and never a check run: the node's token cannot create
+# one), idempotently, and reads it back through the gateway node's commit_statuses read, both over the bus.
+# The head's statuses of another context or on another head never count; a status already holding the decision's
+# state is unchanged, and nothing is posted for it. The route, the emission journal and the identity come from the
+# overlay; this contract holds no setting.
+name: node_review_gate_context_effect
+contract_name: node_review_gate_context_effect
+node_name: node_review_gate_context_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Posts a pull request head's review verdict as the fable-review-gate commit status on GitHub through the GitHub
+  write node, idempotently, and reads it back: a status on the exact head already holding the decision's state is
+  unchanged and nothing is posted for it; a status of another context or on another head never counts. The status's
+  target_url is the link to the pull request the decision is for (the page that holds its review verdict comment),
+  not a link to the verdict comment itself. No check run
+  is created. Every call is one chain on the floor's
+  emission contract: a start, then a success or a typed failure.
+
+handler:
+  module: omnimarket.nodes.node_review_gate_context_effect.handlers.handler_review_gate_context_effect
+  class: HandlerReviewGateContextEffect
+  input_model: omnimarket.models.model_review_context_post.ModelReviewContextPostCommand
+
+# Not a runtime-dispatched handler: HandlerReviewGateContextEffect takes the reader, the poster, the emission sink,
+# the emission identity and the clock as constructor parameters, so it runs from its own caller and the orchestrator
+# node, in process. handler_routing would quarantine it at boot.
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [network-write, emission-append]
+  timeout_ms: 60000
+
+input_model:
+  name: ModelReviewContextPostCommand
+  module: omnimarket.models.model_review_context_post
+  description: The correlation id and the decision the pure node made for the head.
+output_model:
+  name: ModelReviewContextPostResult
+  module: omnimarket.models.model_review_context_post
+  description: The outcome, the head, the posted status's id when one was posted, the port calls made and the detail.
+
+terminal_event: onex.evt.omnimarket.review-gate-context-post-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.review-gate-context-post-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.review-gate-context-post-completed.v1
+    failure: onex.evt.omnimarket.review-gate-context-post-failed.v1
+  external_trigger: true
+
+topics:
+  command: onex.cmd.omnimarket.review-gate-context-post-requested.v1
+  completed: onex.evt.omnimarket.review-gate-context-post-completed.v1
+  failed: onex.evt.omnimarket.review-gate-context-post-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.review-gate-context-post-completed.v1
+  - onex.evt.omnimarket.review-gate-context-post-failed.v1
+
+# The runtime principal publishes the terminal events if the runtime hosts this node (it is run by its own command today; no consumer reads
+# the events yet). The rows are the declared form; the broker applies them through its own reconcile.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.review-gate-context-post-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.review-gate-context-post-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.review-gate-context-post-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.review-gate-context-post-failed.v1, operation: DESCRIBE}
+
+overlay:
+  node: node_review_gate_context_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+dod_evidence:
+  - tests/unit/nodes/node_review_gate_context_effect/test_review_gate_context_effect.py
+  - tests/unit/nodes/node_review_gate_context_effect/test_review_gate_context_write_shape.py
+
+metadata:
+  ticket: OMN-24614
