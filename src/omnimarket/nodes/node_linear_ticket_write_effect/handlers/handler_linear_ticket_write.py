@@ -43,7 +43,10 @@ from omnimarket.nodes.node_create_ticket import (
 
 Result = ModelTicketWriteCompleted | ModelTicketWriteFailed
 _RECORD_LIMIT = 1024
-_CAUSE_LIMIT = 300
+# A Done-write refusal carries the verifier's own stderr (the guard keeps up to
+# 4000 characters of it after a ~70 character prefix). 300 characters cut a
+# traceback before its exception line (OMN-25667).
+_CAUSE_LIMIT = 4500
 _LOG = logging.getLogger(__name__)
 
 

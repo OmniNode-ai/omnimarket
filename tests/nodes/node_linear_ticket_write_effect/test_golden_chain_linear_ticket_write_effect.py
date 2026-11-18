@@ -38,6 +38,7 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     TicketGuardUnavailableError,
 )
 from omnimarket.nodes.node_linear_ticket_write_effect.handlers.handler_linear_ticket_write import (
+    _CAUSE_LIMIT,
     HandlerLinearTicketWriteEffect,
 )
 
@@ -161,7 +162,7 @@ async def test_done_write_refusal_carries_its_cause():
     assert result.reason == "done_write_refused"
     assert result.finding_codes == ["done_write_gate_refused"]
     assert "not a PASS" in result.terminal_failure_cause
-    assert len(result.terminal_failure_cause) <= 300
+    assert len(result.terminal_failure_cause) <= _CAUSE_LIMIT
 
 
 async def test_unknown_failure_names_its_exception_class_not_its_text():
