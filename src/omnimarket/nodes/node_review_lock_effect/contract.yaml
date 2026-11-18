@@ -9,9 +9,9 @@
 # unless the fixer comment names the finding that asked for each added file.
 #
 # HandlerReviewLock takes the ledger reader, the ledger writer and the clock as constructor
-# parameters, so it is bound through handler.module and is not a handler_routing entry; the boot
-# resolver could not construct it. HandlerScopeCheck is pure and takes no parameters, so it is the
-# one handler_routing entry. A caller runs both through the CLI. The node publishes no event: its answer is the exit code and one JSON line.
+# parameters; both handlers are listed in handler_routing (payload_type_match) so the canonical
+# handler is reachable by the compliance sweep and the file-shape gate binds both. The node
+# subscribes to no topic, so the runtime never boots either; a caller runs both through the CLI. The node publishes no event: its answer is the exit code and one JSON line.
 name: node_review_lock_effect
 contract_name: node_review_lock_effect
 node_name: node_review_lock_effect
@@ -48,6 +48,12 @@ additional_handlers:
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
+    - handler:
+        name: HandlerReviewLock
+        module: omnimarket.nodes.node_review_lock_effect.handlers.handler_review_lock
+      event_model:
+        name: ModelReviewLockRequest
+        module: omnimarket.nodes.node_review_lock_effect.models.model_review_lock
     - handler:
         name: HandlerScopeCheck
         module: omnimarket.nodes.node_review_lock_effect.handlers.handler_scope_check
