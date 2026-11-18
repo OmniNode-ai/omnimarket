@@ -118,6 +118,7 @@ class HandlerLandingJoinJ8Live:
             self._sink,
             node=self._overlay.poster_node,
             piece=self._policy.from_piece,
+            origin="drill" if self._overlay.drill else "real",
             clock=self._clock,
             correlation_id=cid,
             backend=self._backend,
@@ -145,6 +146,7 @@ class HandlerLandingJoinJ8Live:
             policy=self._policy,
             clock=self._clock,
             backend=self._backend,
+            origin="drill" if self._overlay.drill else "real",
         ).handle(
             ModelJoinJ8Request(correlation_id=cid, pr=subject.pr, facts=subject.facts)
         )

@@ -11,6 +11,7 @@ bus, so the deployed gateway fills its own, shared cache.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
@@ -19,6 +20,7 @@ from omnimarket.handlers.scm.handler_gateway_read_client import (
     GATEWAY_BUS_LANE_ENV,
     read_over_bus,
 )
+from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
 from omnimarket.models.model_gateway_node_skew import GatewayReadError
 from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
@@ -38,8 +40,15 @@ from omnimarket.nodes.node_github_repo_gateway_effect.transport import (
 )
 from omnimarket.nodes.node_job_log_filler_effect.protocols.protocol_job_log_reader import (
     JobLogCacheMissError,
+    JobLogNotFoundError,
 )
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
+
+_LOG_NOT_FOUND = re.compile(r"job log not cached: HTTP 404\b")
+
+
+def is_log_not_found(message: str) -> bool:
+    """True when a failure text says the gateway answered the job's log is not served: HTTP 404."""
+    return _LOG_NOT_FOUND.search(message) is not None
 
 
 def _request(
@@ -78,17 +87,29 @@ class InMemoryJobLogReader:
         )
 
     def read(
-        self, repo: str, job_id: int, *, cache_only: bool
+        self,
+        repo: str,
+        job_id: int,
+        *,
+        cache_only: bool,
+        tail_bytes: int | None = None,
     ) -> ModelJobLogTailResult:
         transport = None if cache_only else self._factory()
         cache = JobLogCacheTransport(self._root, transport, ttl_seconds=self._ttl)
         try:
             result = cache.handle(
-                _request(repo, job_id, cache_only=cache_only, tail_bytes=self._tail)
+                _request(
+                    repo,
+                    job_id,
+                    cache_only=cache_only,
+                    tail_bytes=tail_bytes or self._tail,
+                )
             )
         except GitHubTransportError as exc:
             if str(exc).startswith(JOB_LOG_CACHE_MISS):
                 raise JobLogCacheMissError(str(exc)) from exc
+            if is_log_not_found(str(exc)):
+                raise JobLogNotFoundError(str(exc)) from exc
             raise
         if not isinstance(result, ModelJobLogTailResult):
             raise GatewayReadError(f"gateway answered {type(result).__name__}")
@@ -105,22 +126,34 @@ class BusJobLogReader:
         self._tail = tail_bytes
 
     def read(
-        self, repo: str, job_id: int, *, cache_only: bool
+        self,
+        repo: str,
+        job_id: int,
+        *,
+        cache_only: bool,
+        tail_bytes: int | None = None,
     ) -> ModelJobLogTailResult:
         # read_over_bus takes the lane from this variable, which the profile names.
         os.environ[GATEWAY_BUS_LANE_ENV] = self._lane
         try:
             result = read_over_bus(
-                _request(repo, job_id, cache_only=cache_only, tail_bytes=self._tail),
+                _request(
+                    repo,
+                    job_id,
+                    cache_only=cache_only,
+                    tail_bytes=tail_bytes or self._tail,
+                ),
                 timeout_s=self._timeout,
             )
         except GatewayReadError as exc:
             if JOB_LOG_CACHE_MISS in str(exc):
                 raise JobLogCacheMissError(str(exc)) from exc
+            if is_log_not_found(str(exc)):
+                raise JobLogNotFoundError(str(exc)) from exc
             raise
         if not isinstance(result, ModelJobLogTailResult):
             raise GatewayReadError(f"gateway answered {type(result).__name__}")
         return result
 
 
-__all__ = ["BusJobLogReader", "InMemoryJobLogReader"]
+__all__ = ["BusJobLogReader", "InMemoryJobLogReader", "is_log_not_found"]

@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_throughput_goal_check_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The hourly check's goal check (OMN-23734). Turns what the tick read (the goal scope or why it could not
+  be read, the PR watcher's state, the tick's finding lines, the previous check's record, the landing
+  controller's admission rows and its newest receipt's per-PR reasons) into the GOAL line, the goal
+  findings, the record to keep and the check's cells: in-scope merges in the window, in-scope open pull
+  requests, green ones waiting, paused pull requests flipped back, unowned shared reds, the holders of held
+  pull requests, and whether the open count fell. Reads no file, runs no process, has no clock (the caller
+  supplies now), mutates nothing. Behaviour-preserving port of goal_tick_fold of the retired
+  throughput_tick.py, parity-tested on 20 recorded ticks. Keeping the record is node_throughput_tick_record_effect's job.
+input_model:
+  name: ModelThroughputGoalCheckRequest
+  module: omnimarket.nodes.node_throughput_goal_check_compute.models.model_throughput_goal_check
+output_model:
+  name: ModelThroughputGoalCheckResult
+  module: omnimarket.nodes.node_throughput_goal_check_compute.models.model_throughput_goal_check
+handler:
+  module: omnimarket.nodes.node_throughput_goal_check_compute.handlers.handler_throughput_goal_check
+  class: HandlerThroughputGoalCheck
+  input_model: omnimarket.nodes.node_throughput_goal_check_compute.models.model_throughput_goal_check.ModelThroughputGoalCheckRequest
+  output_model: omnimarket.nodes.node_throughput_goal_check_compute.models.model_throughput_goal_check.ModelThroughputGoalCheckResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_throughput_goal_check_compute.handlers.handler_throughput_goal_check:HandlerThroughputGoalCheck
+  handlers:
+    - operation: check_throughput_goal
+      topic: onex.cmd.omnimarket.throughput-goal-check-requested.v1
+      handler:
+        name: HandlerThroughputGoalCheck
+        module: omnimarket.nodes.node_throughput_goal_check_compute.handlers.handler_throughput_goal_check
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  now: {type: str, required: true, description: ISO-Z time of the tick.}
+  scope: {type: object, required: false, description: "The declared goal scope (ruling, repos, prs, prerequisites, paused, repo_work_kinds, prerequisite_kinds); absent when it could not be read."}
+  scope_unread: {type: str, required: false, description: Why the scope could not be read.}
+  watcher_state: {type: object, required: false}
+  lines: {type: list, required: false, description: The tick's finding lines so far.}
+  previous: {type: object, required: false, description: The record the last non-read-only tick kept.}
+  admissions: {type: object, required: false, description: The controller's newest admission row per pull request.}
+  admissions_unread: {type: str, required: false}
+  pr_reasons: {type: object, required: false, description: "The newest controller receipt's repo#n -> reason; absent: unread."}
+outputs:
+  goal_line: {type: str}
+  findings: {type: list}
+  lines: {type: list}
+  record: {type: object, required: false, description: The record node_throughput_tick_record_effect keeps for the next check; absent when the check could not run.}
+  changed: {type: bool}
+  cells: {type: object}
+terminal_event: onex.evt.omnimarket.throughput-goal-check-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.throughput-goal-check-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.throughput-goal-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.throughput-goal-check-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.throughput-goal-check-completed.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.throughput-goal-check-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.throughput-goal-check-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.throughput-goal-check-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.throughput-goal-check-completed.v1, operation: DESCRIBE}
+
+metadata:
+  transport_type: inmemory
+  description: The hourly check's goal check
+  author: OmniNode Team
+  created: "2026-11-14"
+  related_tickets: [OMN-23734]

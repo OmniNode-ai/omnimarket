@@ -12,8 +12,16 @@ reader_concurrency: 2
 reply_tail_bytes: 4096
 reply_timeout_seconds: 60
 reprobe_seconds: 1800
+# Seconds a job whose log the gateway answered HTTP 404 (a check run that is not an Actions job, or an expired log) is not read again.
+not_found_hold_seconds: 3600
 # Seconds after which a pass starts no more reads. Budget + reply_timeout_seconds stays under the unit's run_timeout_s.
 pass_budget_seconds: 240
+# The red-facts records (OMN-23832): the state directory is the one the variable names, the records sit under the subdirectory.
+red_facts_state_env: EXAMPLE_ONEX_STATE_DIR
+red_facts_subdir: red-facts
+red_facts_tail_bytes: 65536
+red_facts_max_lines: 12
+red_facts_line_chars: 240
 default_profile: inmemory
 profiles:
   inmemory:

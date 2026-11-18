@@ -26,8 +26,20 @@ from omnimarket.nodes.node_projection_delegation_capability_map.lab_run import (
     build_map_run,
 )
 from omnimarket.projection.runner import BaseProjectionRunner
+from tests.node_overlay_support import CAPABILITY_MAP_OVERLAY, install_node_overlay
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _capability_map_overlay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    install_node_overlay(
+        monkeypatch,
+        tmp_path / "capability_map_overlay_root",
+        "node_projection_delegation_capability_map",
+        CAPABILITY_MAP_OVERLAY,
+    )
+
 
 _IN_TOPIC = "onex.evt.omnimarket.delegation-capability-map-run-recorded.v1"  # onex-topic-allow: asserted against the contract
 _OUT_TOPIC = "onex.evt.omnimarket.projection-delegation-capability-map-applied.v1"  # onex-topic-allow: asserted against the contract

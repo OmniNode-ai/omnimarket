@@ -45,6 +45,18 @@ always_selected_paths:
   - tests/test_no_cross_node_reach_in.py
   - tests/ci/test_repo_evidence_caller_workflow.py
 
+# The node inventory test (tests/test_market_node_runtime_dogfood.py) walks every
+# node directory, contract.yaml and onex.nodes entry point. A node contract change
+# narrowed to the node's own tests and skipped it: the test selector chose 52
+# paths for omnimarket#6071 and omnimarket#6054 and none was this test. An entry
+# point change edits pyproject.toml, which is test infrastructure below and takes
+# the full suite, so contract.yaml files are the glob here.
+path_triggered_selected_paths:
+  - changed_globs:
+      - src/omnimarket/nodes/*/contract.yaml
+    selected_paths:
+      - tests/test_market_node_runtime_dogfood.py
+
 # OMN-23719: modules made of node packages. A change reaching one of these
 # (directly, or through reverse_deps) selects the tests of the nodes it can
 # affect by the import graph, not the whole tests/<module>/ tree. tests/nodes/

@@ -102,6 +102,17 @@ class ModelSnapshotOverlay(BaseModel):
         default=None,
         description="Redpanda only: the journal every tick's record is appended to.",
     )
+    record_journal_max_records: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Redpanda only: how many of the newest tick records the journal keeps (OMN-23757). The journal's one "
+            "use is the already-recorded check, which needs the newest tick, and the broker holds every record "
+            "(each is published before it is journaled), so a read parses only this many and an append that "
+            "leaves more rewrites the file to this many. Absent, the journal is unbounded and each pass line "
+            "names this key as missing."
+        ),
+    )
     emission_journal: str | None = Field(
         default=None,
         description="Redpanda only: the floor's emission journal each pass's chain is written to.",

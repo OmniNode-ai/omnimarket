@@ -136,6 +136,7 @@ from omnimarket.handlers.delegation_model_scope import (
     read_model_scope,
 )
 from omnimarket.handlers.delegation_paid_band import resolve_paid_from_size_band
+from omnimarket.handlers.delegation_sampling_reader import read_sampling_settings
 from omnimarket.handlers.handler_capability_start import (
     ProtocolCapabilityCellReader,
     read_capability_cells,
@@ -283,6 +284,7 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
     ModelQualityGateResult,
     ModelQualityRuleEvaluation,
 )
+from omnimarket.models.model_delegation_code_budget import ModelClassSampling
 from omnimarket.models.model_delegation_split_recombine import (
     EnumDelegationSizeBand,
     ModelDelegationSplitUnit,
@@ -1444,6 +1446,55 @@ def _request_size_band(
     return None if band is None else _ATTEMPT_SIZE_BANDS.get(band.value)
 
 
+def _resolve_class_sampling_call_values(
+    task_type: str, max_tokens: int | None, temperature: float | None
+) -> tuple[int | None, float | None]:
+    """The caller's token cap and temperature, each filled from the overlay when the caller sent none (OMN-24061).
+
+    A task class the code budget overlay names no sampling for, and an install with no
+    overlay, leave both values as the caller sent them. A value the caller sent wins.
+    """
+    if not task_type:
+        return max_tokens, temperature
+    sampling = read_sampling_settings(task_type)
+    if sampling is None:
+        return max_tokens, temperature
+    return (
+        max_tokens if max_tokens is not None else sampling.max_tokens,
+        temperature if temperature is not None else sampling.temperature,
+    )
+
+
+def _apply_class_sampling(
+    provider_request_options: dict[str, Any],
+    outbound_prompt: str,
+    sampling: ModelClassSampling,
+) -> tuple[dict[str, Any], str]:
+    """The profile's request options and prompt with the overlay's sampling values over them (OMN-24061).
+
+    Returns new objects; the options passed in are never changed. A value the overlay
+    does not name is not sent. When the overlay turns thinking on, the profile's
+    ``/no_think`` soft switch is taken off the prompt so the two cannot contradict.
+    """
+    options = dict(provider_request_options)
+    if sampling.enable_thinking is not None:
+        options["chat_template_kwargs"] = {
+            **options.get("chat_template_kwargs", {}),
+            "enable_thinking": sampling.enable_thinking,
+        }
+    if sampling.thinking_token_budget is not None:
+        options["thinking_token_budget"] = sampling.thinking_token_budget
+        options["thinking_budget_tokens"] = sampling.thinking_token_budget
+    for name in ("top_p", "top_k", "min_p", "presence_penalty", "repetition_penalty"):
+        value = getattr(sampling, name)
+        if value is not None:
+            options[name] = value
+    prompt = outbound_prompt
+    if sampling.enable_thinking is True:
+        prompt = prompt.removeprefix("/no_think\n")
+    return options, prompt
+
+
 def _attempt_configuration(
     backend: ModelResolvedDelegationBackend,
     *,
@@ -2048,6 +2099,12 @@ class LocalDelegationDispatchPort:
         queue_wait_ms: int | None = None,
     ) -> dict[str, object]:
         dispatch_started = time.monotonic()
+        # OMN-24061: the overlay's sampling values for this task class stand in for a
+        # token cap and temperature the caller sent none of; the attempt configuration
+        # recorded in the receipt then shows them.
+        max_tokens, temperature = _resolve_class_sampling_call_values(
+            task_type, max_tokens, temperature
+        )
         attempt_size_band = _request_size_band(
             task_type=task_type,
             prompt=prompt,
@@ -5183,6 +5240,13 @@ class LocalDelegationDispatchPort:
         if reserved:
             keys = ", ".join(sorted(reserved))
             raise ValueError(f"provider request options cannot override: {keys}")
+        # OMN-24061: the overlay's sampling values for this task class go over the
+        # profile's request options; a class the overlay does not name changes nothing.
+        class_sampling = read_sampling_settings(task_type) if task_type else None
+        if class_sampling is not None:
+            provider_request_options, outbound_prompt = _apply_class_sampling(
+                provider_request_options, outbound_prompt, class_sampling
+            )
         # OMN-19432: the profile's prescribed temperature is a default for a
         # caller that sent none, never a competing writer of the wire key.
         profile_default_temperature = resolve_inference_protocol_default_temperature(

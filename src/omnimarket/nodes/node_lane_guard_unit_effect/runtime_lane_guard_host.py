@@ -61,6 +61,13 @@ HARD_CAP_S = 3 * 3600
 GRACE_S = 120
 KILL_AFTER_S = 60
 STOP_TIMEOUT_S = 30
+# OMN-22991: a lane that must be stopped is told first. A headless engine run that gets SIGTERM mid-tool ends 143 with no
+# ``result`` event (measured on h053 with the engine CLI 2.1.316); the same run that gets SIGINT ends 0 with a ``result`` event
+# (subtype error_during_execution) within a second. So an engine lane's stop is SIGINT, then the notice, then SIGTERM.
+STOP_NOTICE_S = 20
+# How far apart two readings of one process's start may fall: ``ps`` reports elapsed time in whole seconds and the
+# tracker and the reap read it at different moments.
+IDENTITY_SLACK_S = 3.0
 GIB = 1024**3
 DEFAULT_MEM_BYTES = 8 * GIB
 MEM_CEILING_BYTES = 32 * GIB
@@ -141,7 +148,20 @@ class Limits:
         }
 
 
-def scope_argv(unit: str, limits: Limits, command: list[str]) -> list[str]:
+# OMN-22991: an engine lane that reaches its deadline is told by the guard first (SIGINT, ``stop_notice_s``, SIGTERM,
+# ``STOP_TIMEOUT_S`` to SIGKILL), which only works while the guard's deadline comes before the OS limit's. So the OS limit
+# (``RuntimeMaxSec``, ``timeout``) is a backstop set that long after it. A tests run gets no notice and no offset.
+def backstop_runtime_s(limits: Limits, stop_notice_s: float = STOP_NOTICE_S) -> int:
+    return limits.runtime_s + (
+        int(stop_notice_s) + STOP_TIMEOUT_S
+        if limits.kind == "lane" and stop_notice_s > 0
+        else 0
+    )
+
+
+def scope_argv(
+    unit: str, limits: Limits, command: list[str], stop_notice_s: float = STOP_NOTICE_S
+) -> list[str]:
     """``systemd-run --user --scope``: the limits as unit properties, the command after ``--``."""
     return [
         # No ``--collect``: a scope that failed (memory kill, runtime limit) stays loaded in the failed state until
@@ -155,7 +175,7 @@ def scope_argv(unit: str, limits: Limits, command: list[str]) -> list[str]:
         "--description",
         f"onex lane guard {unit}",
         "-p",
-        f"RuntimeMaxSec={limits.runtime_s}",
+        f"RuntimeMaxSec={backstop_runtime_s(limits, stop_notice_s)}",
         "-p",
         f"MemoryMax={limits.mem_bytes}",
         "-p",
@@ -171,13 +191,15 @@ def scope_argv(unit: str, limits: Limits, command: list[str]) -> list[str]:
     ]
 
 
-def timeout_argv(limits: Limits, command: list[str]) -> list[str]:
+def timeout_argv(
+    limits: Limits, command: list[str], stop_notice_s: float = STOP_NOTICE_S
+) -> list[str]:
     """``timeout --kill-after=60 <runtime> prlimit --as|--data=<bytes> -- <command>``."""
     flag = "--as" if limits.kind == "tests" else "--data"
     return [
         "timeout",
         f"--kill-after={KILL_AFTER_S}",
-        str(limits.runtime_s),
+        str(backstop_runtime_s(limits, stop_notice_s)),
         "prlimit",
         f"{flag}={limits.mem_bytes}",
         "--",
@@ -517,6 +539,15 @@ def scope_result(
     return value if done.returncode == 0 and value else None
 
 
+# OMN-22991: a pid is a name, not an identity. On a Mac pids wrap at 99999 and a busy lab host reuses one about every
+# hour, so a pid the tracker saw in a neighbouring lane's tree can later belong to another lane's guard, run script or
+# engine. The old test (age >= age at first sight - 2) held for every process older than two seconds, so a lane ending
+# signalled every live process that shared a number with anything it had ever spawned. A process keeps its start time
+# for life; that time must equal the one recorded.
+def same_process(proc: Proc, born: float, now: float) -> bool:
+    return abs((now - proc.age_s) - born) <= IDENTITY_SLACK_S
+
+
 def reap_unit(
     unit: str,
     *,
@@ -527,7 +558,7 @@ def reap_unit(
     tracked: dict[int, float] | None = None,
 ) -> dict[str, Any]:
     """Stop the systemd unit (when there is one) and kill every process that carries the unit's tag, and every
-    ``tracked`` descendant (pid -> age when first seen) that is still the same process (macOS hides the
+    ``tracked`` descendant (pid -> epoch it started) that is still the same process (macOS hides the
     environment from ps, so there the guard follows the process tree while the command runs)."""
     stopped = False
     if sys.platform.startswith("linux") and shutil.which("systemctl"):
@@ -555,16 +586,16 @@ def reap_unit(
                 pass
     me = os.getpid()
     table = read_table()
+    now = time.time()
     victims = [p for p in table if p.tag == unit and p.pid != me]
     seen = {p.pid for p in victims}
     for p in table:
-        first_age = (tracked or {}).get(p.pid)
-        # the same process, not a recycled pid: it is at least as old as when it was first seen
+        born = (tracked or {}).get(p.pid)
         if (
-            first_age is not None
+            born is not None
             and p.pid not in seen
             and p.pid != me
-            and p.age_s + 2 >= first_age
+            and same_process(p, born, now)
         ):
             victims.append(p)
     outcome = kill([p.pid for p in victims]) if victims else {}
@@ -613,6 +644,167 @@ def spool_drain(directory: Path | None = None) -> list[dict[str, object]]:
             records.append(value)
     taken.unlink(missing_ok=True)
     return records
+
+
+# ----------------------------------------------------------------------------------------------
+# The end record: how a killed lane ended and where its work is (read only).
+# ----------------------------------------------------------------------------------------------
+
+END_RECORD_SCHEMA = 1
+CAUSE_OOM_KILL = "oom_kill"
+CAUSE_RUNTIME_MAX = "runtime_max"
+CAUSE_SIGNAL = "signal"
+CAUSE_EXIT_CODE = "exit_code"
+TREE_DEPTHS = (1, 2)
+RECORD_STAMP = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def classify_end(
+    rc: int,
+    verdict: str | None,
+    deadline_hit: bool,
+    stopped_by_signal: int | None,
+    oom_kills: int,
+) -> str | None:
+    """How the command ended: ``oom_kill``, ``runtime_max``, ``signal``, ``exit_code``, or None for a clean exit."""
+    if verdict == "oom-kill" or oom_kills > 0:
+        return CAUSE_OOM_KILL
+    if deadline_hit:
+        return CAUSE_RUNTIME_MAX
+    if rc < 0 or stopped_by_signal is not None:
+        return CAUSE_SIGNAL
+    if rc != 0:
+        return CAUSE_EXIT_CODE
+    return None
+
+
+def find_trees(worktrees_dir: str, lane: str, max_trees: int) -> list[str]:
+    """The outermost git trees under ``<worktrees_dir>/<lane>`` (depth 1 or 2, the layout the closeout inventory
+    reads), sorted, at most ``max_trees``; empty when the lane directory is missing."""
+    lane_dir = Path(worktrees_dir) / lane
+    found: list[str] = []
+    if not lane_dir.is_dir():
+        return found
+    for root, dirs, files in os.walk(lane_dir):
+        depth = len(Path(root).relative_to(lane_dir).parts)
+        if depth in TREE_DEPTHS and ".git" in (*dirs, *files):
+            found.append(root)
+            dirs[:] = []
+        elif depth >= TREE_DEPTHS[-1]:
+            dirs[:] = []
+        else:
+            dirs[:] = [d for d in dirs if d != ".git"]
+    return sorted(found)[:max_trees]
+
+
+def read_tree(
+    path: str, git_timeout_s: int, run: Any = subprocess.run
+) -> dict[str, object]:
+    """One tree's branch, last pushed head, unpushed commit count and changed file count. Reads only: every
+    command is a ``git --no-optional-locks`` read (symbolic-ref, rev-parse, rev-list, status), so the tree is unchanged."""
+    out: dict[str, object] = {
+        "path": path,
+        "branch": "",
+        "last_pushed_head": "",
+        "unpushed_commits": 0,
+        "changed_files": 0,
+        "readable": True,
+        "error": "",
+    }
+
+    def git(*argv: str) -> Any:
+        return run(
+            ["git", "--no-optional-locks", "-C", path, *argv],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=git_timeout_s,
+        )
+
+    try:
+        branch = git("symbolic-ref", "-q", "--short", "HEAD")
+        out["branch"] = (branch.stdout or "").strip() if branch.returncode == 0 else ""
+        upstream = git("rev-parse", "-q", "--verify", "@{u}")
+        pushed = upstream
+        if upstream.returncode != 0 and out["branch"]:
+            pushed = git(
+                "rev-parse", "-q", "--verify", f"refs/remotes/origin/{out['branch']}"
+            )
+        out["last_pushed_head"] = (
+            (pushed.stdout or "").strip() if pushed.returncode == 0 else ""
+        )
+        count_args = (
+            ["@{u}..HEAD"]
+            if upstream.returncode == 0
+            else ["HEAD", "--not", "--remotes"]
+        )
+        count = git("rev-list", "--count", *count_args)
+        status = git("status", "--porcelain")
+        if count.returncode != 0 or status.returncode != 0:
+            raise ValueError("git could not read the tree")
+        out["unpushed_commits"] = int((count.stdout or "0").strip())
+        out["changed_files"] = len(
+            [ln for ln in (status.stdout or "").splitlines() if ln.strip()]
+        )
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        out.update(
+            {
+                "readable": False,
+                "error": type(exc).__name__,
+                "unpushed_commits": 0,
+                "changed_files": 0,
+            }
+        )
+    return out
+
+
+def build_end_record(
+    *,
+    unit: str,
+    lane: str,
+    host: str,
+    mode: str,
+    cause: str,
+    rc: int,
+    signal: int | None,
+    mem_peak_bytes: int | None,
+    mem_limit_bytes: int,
+    mem_enforced: bool,
+    runtime_s: float,
+    runtime_limit_s: int,
+    ended_at: str,
+    trees: list[dict[str, object]],
+) -> dict[str, object]:
+    return {
+        "schema_version": END_RECORD_SCHEMA,
+        "unit": unit,
+        "lane": lane,
+        "host": host,
+        "mode": mode,
+        "cause": cause,
+        "exit": end_exit_code(rc),
+        "signal": signal,
+        "mem_peak_bytes": mem_peak_bytes,
+        "mem_limit_bytes": mem_limit_bytes,
+        "mem_enforced": mem_enforced,
+        "runtime_s": runtime_s,
+        "runtime_limit_s": runtime_limit_s,
+        "ended_at": ended_at,
+        "trees": trees,
+    }
+
+
+def write_end_record(record_dir: str, unit: str, record: dict[str, object]) -> str:
+    """``<record_dir>/<unit>.json``, written atomically (a temp file in the same directory, then a rename)."""
+    directory = Path(record_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{unit}.json"
+    held = directory / f".{unit}.json.tmp"
+    held.write_text(
+        json.dumps(record, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+    )
+    os.replace(held, path)
+    return str(path)
 
 
 # ----------------------------------------------------------------------------------------------
@@ -701,13 +893,29 @@ class _TreeTracker(threading.Thread):
             while frontier:
                 for child in kids.get(frontier.pop(), []):
                     if child.pid not in self.seen:
-                        self.seen[child.pid] = child.age_s
+                        self.seen[child.pid] = (
+                            time.time() - child.age_s
+                        )  # the epoch it started: its identity
                         frontier.append(child.pid)
             self.stop.wait(self.interval_s)
 
 
-def run_guarded(unit: str, limits: Limits, command: list[str], lane: str = "") -> int:
-    """Run ``command`` bounded by ``limits``; return the exit code the shell would see."""
+# OMN-22991: a stop (a SIGTERM, SIGHUP or SIGINT to this guard, or the deadline of an engine lane in any mode) of an engine lane
+# (kind=lane) is a notice first: SIGINT to the command's group, then stop_notice_s seconds for it to write its report and
+# exit, and only then the SIGTERM and SIGKILL of before. A tests run gets no notice.
+def run_guarded(
+    unit: str,
+    limits: Limits,
+    command: list[str],
+    lane: str = "",
+    end_record: dict[str, Any] | None = None,
+    stop_notice_s: float = STOP_NOTICE_S,
+) -> int:
+    """Run ``command`` bounded by ``limits``; return the exit code the shell would see.
+
+    ``end_record`` (record_dir, worktrees_dir, git_timeout_s, max_trees) switches on the end record: a command
+    that ended by a memory kill, the runtime limit, a signal or a non-zero exit leaves one typed record in
+    ``record_dir``; a clean exit leaves none."""
     if not command:
         sys.stderr.write("lane_guard_host: no command after --" + "\n")
         return EXIT_USAGE
@@ -718,10 +926,11 @@ def run_guarded(unit: str, limits: Limits, command: list[str], lane: str = "") -
     env = systemd_env() if mode == MODE_SCOPE else dict(os.environ)
     env[TAG_ENV] = unit
     env[DEADLINE_ENV] = str(int(deadline))
+    notice_s = stop_notice_s if limits.kind == "lane" else 0.0
     if mode == MODE_SCOPE:
-        argv = scope_argv(unit, limits, command)
+        argv = scope_argv(unit, limits, command, notice_s)
     elif mode == MODE_TIMEOUT:
-        argv = timeout_argv(limits, command)
+        argv = timeout_argv(limits, command, notice_s)
     else:
         argv = list(command)
     enforced = {
@@ -776,8 +985,9 @@ def run_guarded(unit: str, limits: Limits, command: list[str], lane: str = "") -
     if tracker:
         tracker.start()
     term_at: float | None = None
-    killed_group = False
-    deadline_fired = False
+    notice_at: float | None = None
+    stop_phase: str | None = None
+    killed_group = deadline_fired = False
     rc: int | None = None
     while rc is None:
         try:
@@ -786,14 +996,20 @@ def run_guarded(unit: str, limits: Limits, command: list[str], lane: str = "") -
         except subprocess.TimeoutExpired:
             pass
         now = time.time()
-        if stop_signal and term_at is None:
-            reap_unit(unit, tracked=tracker.seen if tracker else None)
-            _signal_group(proc.pid, signal.SIGTERM)
-            term_at = now
-        if mode == MODE_WATCHDOG and now >= deadline and term_at is None:
-            deadline_fired = True
-            _signal_group(proc.pid, signal.SIGTERM)
-            term_at = now
+        # An engine lane's own deadline is enforced here in every mode, so it gets the notice (OMN-22991); the OS limit
+        # is the backstop ``backstop_runtime_s`` sets after it. A tests run keeps the OS limit as its only deadline.
+        if (
+            stop_signal or ((mode == MODE_WATCHDOG or notice_s > 0) and now >= deadline)
+        ) and term_at is None:
+            if notice_at is None and notice_s > 0:
+                notice_at, stop_phase, deadline_fired = now, "notice", not stop_signal
+                _signal_group(proc.pid, signal.SIGINT)
+            if notice_at is None or now - notice_at >= notice_s:
+                deadline_fired = deadline_fired or not stop_signal
+                if stop_signal:
+                    reap_unit(unit, tracked=tracker.seen if tracker else None)
+                _signal_group(proc.pid, signal.SIGTERM)
+                term_at, stop_phase = now, "term"
         if (
             term_at is not None
             and not killed_group
@@ -825,6 +1041,7 @@ def run_guarded(unit: str, limits: Limits, command: list[str], lane: str = "") -
         "elapsed_s": round(ended - started, 1),
         "deadline_hit": bool(deadline_hit),
         "stopped_by_signal": stop_signal[0] if stop_signal else None,
+        "stop_phase": stop_phase,
         "residue_killed": len(residue["killed"]),
         "residue": residue["killed"],
     }
@@ -838,6 +1055,43 @@ def run_guarded(unit: str, limits: Limits, command: list[str], lane: str = "") -
                 "oom_kills": max(watch.oom_kills, 1 if verdict == "oom-kill" else 0),
             }
         )
+    cause = classify_end(
+        rc,
+        verdict,
+        bool(deadline_hit),
+        stop_signal[0] if stop_signal else None,
+        watch.oom_kills if watch else 0,
+    )
+    end_info["cause"] = cause
+    if cause is not None and end_record is not None:
+        try:
+            trees = [
+                read_tree(tree, int(end_record["git_timeout_s"]))
+                for tree in find_trees(
+                    str(end_record["worktrees_dir"]), lane, int(end_record["max_trees"])
+                )
+            ]
+            record = build_end_record(
+                unit=unit,
+                lane=lane,
+                host=os.uname().nodename,
+                mode=mode,
+                cause=cause,
+                rc=rc,
+                signal=-rc if rc < 0 else None,
+                mem_peak_bytes=watch.peak if watch else None,
+                mem_limit_bytes=limits.mem_bytes,
+                mem_enforced=bool(enforced["memory"]),
+                runtime_s=round(ended - started, 1),
+                runtime_limit_s=limits.runtime_s,
+                ended_at=time.strftime(RECORD_STAMP, time.gmtime(ended)),
+                trees=trees,
+            )
+            end_info["end_record"] = write_end_record(
+                str(end_record["record_dir"]), unit, record
+            )
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+            end_info["end_record_error"] = type(exc).__name__
     _emit("LANE-GUARD-END", end_info)
     return end_exit_code(rc)
 
@@ -865,11 +1119,54 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--cpu-pct", type=int, default=DEFAULT_CPU_PCT)
     run.add_argument("--tasks-max", type=int, default=TASKS_MAX)
     run.add_argument("--kind", choices=KINDS, default="lane")
+    run.add_argument("--stop-notice-s", type=float, default=STOP_NOTICE_S)
+    run.add_argument("--record-dir", default=None)
+    run.add_argument("--worktrees-dir", default=None)
+    run.add_argument("--git-timeout-s", type=int, default=None)
+    run.add_argument("--max-trees", type=int, default=None)
     reap = sub.add_parser("reap")
     reap.add_argument("--unit", required=True)
     sub.add_parser("probe")
     sub.add_parser("spool-drain")
     return ap
+
+
+OVERLAY_ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
+OVERLAY_NODE = "node_lane_guard_unit_effect"
+#: The overlay's end_record keys, each the flag of the same name with dashes (``record_dir`` -> ``--record-dir``).
+END_RECORD_KEYS = ("record_dir", "worktrees_dir", "git_timeout_s", "max_trees")
+
+
+def overlay_end_record_flags(environ: dict[str, str] | None = None) -> list[str]:
+    """The ``run`` flags of the end record, read by a launcher from the overlay ``node_lane_guard_unit_effect`` (the first
+    root of ``ONEX_SKILL_OVERLAY_ROOTS`` that holds one): the one reading of those settings outside the node's own, so a
+    runner that embeds this program passes what the node would. Empty when no root holds the overlay (no record is written,
+    the end line still carries the cause); a present overlay without exactly the four keys is a ``ValueError``, never read
+    as absent."""
+    env = os.environ if environ is None else environ
+    for root in filter(None, env.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep)):
+        path = Path(root) / OVERLAY_NODE / "overlay.yaml"
+        if not path.is_file():
+            continue
+        import yaml  # a launcher reads the overlay; the program that runs on a host never does
+
+        row = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("end_record")
+        if not isinstance(row, dict) or set(row) != set(END_RECORD_KEYS):
+            raise ValueError(
+                f"{path} must hold end_record with exactly {', '.join(END_RECORD_KEYS)}"
+            )
+        return [
+            w
+            for k in END_RECORD_KEYS
+            for w in ("--" + k.replace("_", "-"), str(row[k]))
+        ]
+    return []
+
+
+def _expand_path(path: str) -> str:
+    """A settings path as the host reads it: ``~`` is the lane user's home and ``$VAR`` (``$OMNI_HOME``, the host's own
+    registry root) the lane's environment, so one overlay row serves every lab host."""
+    return os.path.expanduser(os.path.expandvars(path))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -893,7 +1190,28 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             sys.stderr.write(f"lane_guard_host: {exc}" + "\n")
             return EXIT_USAGE
-        return run_guarded(ns.unit, limits, command, ns.lane)
+        end_record: dict[str, Any] | None = None
+        if ns.record_dir is not None:
+            if None in (ns.worktrees_dir, ns.git_timeout_s, ns.max_trees):
+                sys.stderr.write(
+                    "lane_guard_host: --record-dir needs --worktrees-dir, --git-timeout-s and --max-trees"
+                    + "\n"
+                )
+                return EXIT_USAGE
+            end_record = {
+                "record_dir": _expand_path(ns.record_dir),
+                "worktrees_dir": _expand_path(ns.worktrees_dir),
+                "git_timeout_s": ns.git_timeout_s,
+                "max_trees": ns.max_trees,
+            }
+        return run_guarded(
+            ns.unit,
+            limits,
+            command,
+            ns.lane,
+            end_record,
+            stop_notice_s=ns.stop_notice_s,
+        )
     if ns.cmd == "reap":
         if not ns.unit.startswith(UNIT_PREFIX):
             sys.stderr.write(

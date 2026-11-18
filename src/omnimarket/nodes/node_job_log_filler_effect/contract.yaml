@@ -24,7 +24,11 @@ description: >
   costs one local probe and no GitHub call; the per-pass cap bounds GitHub reads.
   The in-memory profile fills this host's cache through the gateway's own cache
   transport; the Redpanda profile asks the deployed gateway over the lane's bus. The
-  result event says per run whether the log was filled, already cached or failed.
+  result event says per run whether the log was filled, already cached or failed. For each red job
+  it also writes one red-facts record (failing step, capped failure lines, cache path) keyed by
+  repository, pull request, head and job, which `onex scm red-facts` reads with no gateway call (OMN-23832).
+  A job whose log the gateway answers HTTP 404 is held for the overlay's not_found_hold_seconds, recorded
+  with its cause, so live reads go to jobs that can fill.
 input_model:
   name: ModelJobLogFillRequest
   module: omnimarket.nodes.node_job_log_filler_effect.models.model_job_log_filler
@@ -84,4 +88,4 @@ metadata:
   transport_type: kafka
   description: "Fills the job-log cache from merge-relevant runs of open pull requests"
   author: "OmniNode Team"
-  tags: ["effect", "job-log", "cache", "OMN-23032"]
+  tags: ["effect", "job-log", "cache", "red-facts", "OMN-23032", "OMN-23832"]

@@ -97,7 +97,11 @@ async def run(
     """One pass: read, record the chain, write the bundle. The chain ends in a failure when any projection is unread."""
     contract = _contract()["runtime"]
     chain = ChainEmitter(
-        sink, node=contract["chain"], piece=int(contract["piece"]), clock=clock
+        sink,
+        node=contract["chain"],
+        piece=int(contract["piece"]),
+        clock=clock,
+        origin="probe",
     )
     chain.start()
     handler = HandlerFloorProjectionRead(source=source, overlay=overlay, clock=clock)

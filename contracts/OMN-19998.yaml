@@ -241,6 +241,26 @@ requirements:
     acceptance:
       - id: AC15
         statement: 'AC15: a read that gets "unexpected end of JSON input" is retried and succeeds on a later attempt, and a write that gets it is attempted once -- falsifier: uv run pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q --no-cov -k truncated'
+  - id: req-omn19998-job-log-404-hold
+    statement: A job whose log the gateway answers as not cached with HTTP 404 on a live read is held for the overlay's not_found_hold_seconds instead of being read every pass.
+    acceptance:
+      - id: AC16
+        statement: 'AC16: a 404 job is read once, recorded with its cause in held-not-found.json, skipped until the hold passes, and counted as held_not_found; without the overlay value the earlier no-hold behaviour stays -- falsifier: uv run --frozen pytest tests/nodes/node_job_log_filler_effect/test_job_log_filler_not_found_hold.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-h053-tmp-retention
+    statement: The h053 temp retention overlay row ages out the root disk /tmp the way the h051 row does.
+    acceptance:
+      - id: AC17
+        statement: 'AC17: the packaged overlay reads clean for h053 with /tmp in temp_roots and the claude-[0-9]+ protected pattern, and a copy of the overlay with /tmp taken off the h053 row is reported as "h053 temp_roots has no /tmp" -- falsifier: uv run --frozen pytest tests/nodes/node_temp_retention_effect/test_retention_schedule.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-baseline-cluster-ticket
+    statement: One command per failing dev-baseline test cluster finds the cluster's open ticket by its signature line and comments on it, and files a ticket only when none exists.
+    acceptance:
+      - id: AC14
+        statement: 'AC14: two runs of one cluster make one ticket and one comment; a search that cannot find the cluster files it every run; the gate refuses a description without its Diagnosis and Gate lines -- falsifier: uv run --frozen pytest tests/nodes/node_baseline_cluster_ticket -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-duplicate-guard-added-lines
+    statement: The pull request duplicate guard scores one share over all the changed lines of both diffs, less the removed lines a deployment declares shared catalog lines, so two pull requests that replace one declared catalog line with different content are not one fix.
+    acceptance:
+      - id: AC133
+        statement: 'AC133: the share rule is one share over all the changed lines of both diffs, added and removed together, less the removed lines the deployment overlay declares shared catalog lines for that path (a path glob and a line pattern per repository); two diffs that replace one declared catalog line with different fingerprints and add different rows pass with a note, identical added lines and two deletions of one line are still refused, and an overlap from a commit outside a replaced change still refuses -- falsifier: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_shared_base_line.py tests/unit/handlers/scm/test_scm_duplicate_guard_replaces.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: Recorded gate subject spellings and named causes run through the production ledger parser and contract handler.
@@ -257,6 +277,9 @@ evidence_requirements:
   - kind: tests
     description: The additive-wire suite exercises model serialization, queued requests, and the bus caller against the pre-field host model.
     command: uv run pytest tests/unit/work_ledger_bus/test_request_additive_wire.py -q --no-cov -n 0 -p no:randomly
+  - kind: tests
+    description: The guard folds recorded diffs of a declared shared catalog fingerprint line through parse_diff and the contract handler; the identical-change and pure-deletion controls still refuse, and a pin manifest the overlay does not declare keeps its removed lines.
+    command: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_shared_base_line.py tests/unit/handlers/scm/test_scm_duplicate_guard_replaces.py -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -913,4 +936,68 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q --no-cov -k truncated
+        cwd: .
+  - id: dod-omn19998-job-log-404-hold
+    description: The nine tests of the new file replay the 404 job through the filler handler; the control test without a hold shows the 404 job read on both passes and the fillable job never read.
+    source: manual
+    binds_ac: [AC16]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_job_log_filler_effect/test_job_log_filler_not_found_hold.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-job-log-404-hold-deploy
+    description: Hosted smoke runs the filler node golden and error chain tests, which plant a 404 through the real transport and an overlay without the new key. No live host is asserted.
+    source: manual
+    binds_ac: [AC16]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_job_log_filler_effect -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-job-log-404-hold-integration-proof
+    description: Run the filler node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-19998-404 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_job_log_filler_effect -q --no-cov
+        cwd: .
+  - id: dod-omn19998-h053-tmp-retention
+    description: The packaged overlay is read for the h053 row's /tmp root and protected pattern; the control overlay without /tmp on h053 is reported, so the check fails when the row is wrong.
+    source: manual
+    binds_ac: [AC17]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_temp_retention_effect/test_retention_schedule.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-h053-tmp-retention-deploy
+    description: Hosted smoke runs the two h053 tests from the checked-in overlay. No live host is asserted.
+    source: manual
+    binds_ac: [AC17]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_temp_retention_effect/test_retention_schedule.py -q --no-cov -n 0 -p no:randomly -k h053
+        cwd: .
+  - id: dod-omn19998-h053-tmp-retention-integration-proof
+    description: Run the retention node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-19998-h053 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_temp_retention_effect/test_retention_schedule.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-baseline-cluster-ticket
+    description: The node's handler tests and the gate, bus and reporter seam tests run; the control with a blinded search makes two tickets, so the check fails when the dedupe is wrong.
+    source: manual
+    binds_ac: [AC14]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest src/omnimarket/nodes/node_baseline_cluster_ticket_effect/tests tests/nodes/node_baseline_cluster_ticket -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-duplicate-guard-added-lines
+    description: Recorded catalog diffs run through parse_diff and HandlerPrDuplicateGuard. Different added lines under one declared catalog line pass; identical added lines and two deletions of one line still refuse; the replaces suite keeps refusing an overlap from a commit outside the replaced change. This scoped proof binds the guard tests and does not assert the landing controller criteria of the ticket.
+    source: manual
+    binds_ac: [AC133]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_shared_base_line.py tests/unit/handlers/scm/test_scm_duplicate_guard_replaces.py -q --no-cov -n 0 -p no:randomly
         cwd: .

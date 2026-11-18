@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github/workflows"
 CALLER = WORKFLOWS / "imperative-contract-guard.yml"
 ALLOWLIST = ROOT / "imperative-contract-allowlist.yaml"
-CORE_REF = "dev-20261018024445-b6ee996befa1"
+CORE_REF = "dev-20261110125852-e6bc5e13e9e7"
 CORE_HOOK_SHA = "031148215620031436cba30619bbae67c0bb38ad"
 CORE_USES = "OmniNode-ai/omnibase_core/.github/workflows/imperative-contract-guard.yml"
 RECORDED_PATHS = [
@@ -60,7 +60,6 @@ RECORDED_PATHS = [
     "omnimarket/nodes/node_build_loop_orchestrator/handlers/model_policy_loader.py",
     "omnimarket/nodes/node_bus_audit_compute/handlers/handler_bus_audit_compute.py",
     "omnimarket/nodes/node_canary_score_reducer/handlers/handler_canary_score_reducer.py",
-    "omnimarket/nodes/node_candidate_pool_compute/handlers/handler_candidate_pool.py",
     "omnimarket/nodes/node_chain_diff/handlers/handler_chain_diff.py",
     "omnimarket/nodes/node_chain_diff_compute/handlers/handler_chain_diff.py",
     "omnimarket/nodes/node_ci_fix_effect/handlers/handler_ci_fix.py",

@@ -168,6 +168,7 @@ class HandlerJoinJ15:
             clock=self._clock,
             correlation_id=request.correlation_id,
             backend=self._backend,
+            origin="probe",
         )
         results = self._results.read_results(request.run_ids)
         held = {r.run_id for r in results}

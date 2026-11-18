@@ -47,6 +47,7 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
 )
 from omnimarket.nodes.node_reading_writer_effect.protocols import ModelLedgerQuery
 from omnimarket.nodes.node_work_ledger_reader_effect.models import ModelPointAnswer
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 
 pytestmark = pytest.mark.unit
 
@@ -182,7 +183,11 @@ def requests_sent(tmp_path: Path) -> list[dict[str, object]]:
 
 def friction_step(**rollup: object) -> ModelPublishStep:
     """The contract's friction step, with the named settings of its rollup block replaced (a test's own page size or budget)."""
-    step = next(s for s in load_runtime().steps if s.name == "friction_classed")
+    step = next(
+        s
+        for s in load_runtime().with_limits(TEST_LIMITS).steps
+        if s.name == "friction_classed"
+    )
     if not rollup:
         return step
     assert step.rollup is not None
@@ -200,6 +205,7 @@ def run_step(
         step,
         home,
         ModelFactoryFloorPublishOverlay(
+            limits=TEST_LIMITS,
             ssh_target="lab-web",
             remote_dir=str(home / "site"),
             serve_url="http://example.invalid:8088/",
@@ -243,12 +249,12 @@ def test_golden_the_contract_step_names_the_overlay_and_every_setting_it_reads()
     step = friction_step()
     assert step.kind == "friction_rollup"
     assert step.required is False
-    assert step.concurrent is True  # inside the 240 s cycle bound
+    assert step.concurrent is True  # inside the 255 s cycle bound
     rollup = step.rollup
     assert rollup is not None
     assert rollup.class_overlay_id == "node_friction_rollup_compute"
     assert (rollup.window_hours, rollup.bucket_hours) == (24, 2)
-    names = [s.name for s in load_runtime().steps]
+    names = [s.name for s in load_runtime().with_limits(TEST_LIMITS).steps]
     assert names.index("friction_classed") > names.index("friction")
 
 

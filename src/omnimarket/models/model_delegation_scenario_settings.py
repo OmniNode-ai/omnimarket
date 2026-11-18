@@ -13,6 +13,8 @@ only, never a key.
 from __future__ import annotations
 
 import re
+from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -80,12 +82,26 @@ class ModelScenarioSettingsOverlay(BaseModel):
     settings: tuple[ModelScenarioSetting, ...] = Field(min_length=1)
 
 
+class ModelScenarioTenantReadOverlay(BaseModel):
+    """The bus lane of a scenario's tenant reads: the bus and lane to open, the probe tenant and the wait bound."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    bus: Literal["kafka", "inmemory"]
+    bus_lane: str = Field(min_length=1)
+    probe_tenant_id: UUID
+    timeout_seconds: float = Field(gt=0)
+    #: The routing backend id the organic control run is pinned to, a priced route so the control carries spend; absent means ordinary routing.
+    control_backend_id: str | None = Field(default=None, min_length=1)
+
+
 class ModelScenarioStoreOverlay(BaseModel):
     """The overlay document of a scenario node that names its store: names and addresses only, never a value."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     secret_store: ModelSecretStoreOverlay
+    tenant_read: ModelScenarioTenantReadOverlay | None = None
 
 
 __all__ = [
@@ -93,4 +109,5 @@ __all__ = [
     "ModelScenarioSetting",
     "ModelScenarioSettingsOverlay",
     "ModelScenarioStoreOverlay",
+    "ModelScenarioTenantReadOverlay",
 ]

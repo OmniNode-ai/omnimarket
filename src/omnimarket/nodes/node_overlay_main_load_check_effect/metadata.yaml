@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_overlay_main_load_check_effect
+version: 1.0.0
+description: Loads every overlay document through the model class in this tree and refuses when a document no longer validates.
+pack: operator_tooling
+node_role: effect
+display_name: Overlay Main Load Check Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_overlay_main_load_check_effect: omnimarket.nodes.node_overlay_main_load_check_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_read
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- overlay

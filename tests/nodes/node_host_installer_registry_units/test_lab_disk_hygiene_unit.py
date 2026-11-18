@@ -48,10 +48,7 @@ def test_golden_the_lab_collectors_unit_declares_its_module_and_overlay_root() -
     assert unit["module"] == MODULE
     assert unit["entry_file"] == ENTRY
     assert unit["probe_argv"] == ["--probe"]
-    assert (
-        unit["environment"]["ONEX_SKILL_OVERLAY_ROOTS"]
-        == "{registry_root}/overlays/overlays"
-    )
+    assert unit["environment"]["ONEX_SKILL_OVERLAY_ROOTS"] == "{overlays_root}"
     assert unit["environment_path_overrides"] == ["ONEX_SKILL_OVERLAY_ROOTS"]
     assert unit["environment_refuse_worktree_paths"] == ["ONEX_SKILL_OVERLAY_ROOTS"]
     assert unit["schedule"]["start_interval"] == 21600

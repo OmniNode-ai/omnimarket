@@ -127,6 +127,9 @@ async def test_outbox_request_id_clash_different_payload_is_refused_with_digests
     request_side = [
         line.replace(
             "| lane=writer-lane |", f"| lane=writer-lane | principal={WRITER} |"
+        ).replace(
+            f"| req={REQUEST_ID} |",
+            f"| req={REQUEST_ID} | via=bus:{queued.requesting_host} |",
         )
         for line in queued.rows.splitlines()
         if line

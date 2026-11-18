@@ -22,6 +22,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_proof_class import EnumProofClass
+from omnimarket.models.context_roi_trial_fields import ModelTrialFields
 
 
 class EnumFailureStage(StrEnum):
@@ -50,7 +51,7 @@ class EnumFailureStage(StrEnum):
     DOWNSTREAM_GATE = "downstream_gate"
 
 
-class ModelAttemptReductionRow(BaseModel):
+class ModelAttemptReductionRow(ModelTrialFields):
     """Per-run row captured by the context-ROI runner.
 
     One row per (task x factor_subset x trial).  Captured live
@@ -61,8 +62,6 @@ class ModelAttemptReductionRow(BaseModel):
     All non-identity fields are optional with safe defaults so the scorer
     can deserialise rows from fixtures that predate field additions.
     """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
 
     # Correlation / identity
     run_id: str = Field(description="Stable run identifier for this experiment run")

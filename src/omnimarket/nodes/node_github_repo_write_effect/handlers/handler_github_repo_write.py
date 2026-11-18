@@ -38,6 +38,38 @@ Rules this handler enforces:
   in the asked-for state. workflow_dispatch has no GitHub-side record, so only
   the in-process record guards a retry. check_run_create likewise only has
   the in-process record; a restart can create another check run.
+- **Commit status.** commit_status_create posts one commit status (context
+  fable-review-gate, state success or failure, the verdict link) to
+  /statuses/{sha}; the request model refuses another context or state and an
+  empty or short sha before any call. Like check_run_create it keeps only the
+  in-process replay record.
+- **Required contexts.** required_context_apply adds one required status-check
+  context to a branch's protection with an add-only POST to its ``contexts`` endpoint (the
+  checks already required are never rewritten), only for a (repository, branch, context)
+  the overlay's ``required_contexts`` names; anything else or an unreadable overlay
+  is refused ``required_context_not_allowed`` before any GitHub call, in either mode.
+- **Allowed labels.** pr_label adds and removes labels on a pull request, pinned to
+  the expected head like pr_edit. Every label must be in the ``allowed_labels`` set of
+  the node's overlay (``overlay.py``); one that is not, or an overlay that cannot be
+  read, is refused ``label_not_allowed`` before any GitHub call, in either mode. A label
+  already in the asked-for state is not sent again and the result is ``replayed``.
+- **Repository variables.** repo_variable_set and repo_variable_get read and write
+  GitHub Actions repository variables, never secrets. The allowed names and the file
+  each value is read from are overlay values (``repo_variables`` in ``overlay.py``);
+  the value is never on the request. A name the overlay does not allow, a source
+  that cannot be read (set only; get reports ``variable_in_sync`` as None), or a
+  name or value carrying a refuse marker is refused before any GitHub call, in
+  either mode, and only the /actions/variables endpoints are called.
+- **Runners.** runner_list pages a self-hosted runner organization's registrations
+  and answers with every one of them; runner_remove deletes one offline, idle
+  runner by name. The organizations and runner names a lane may act on are only
+  the overlay's ``runner_removals`` entries (``overlay.py``); anything else, an
+  absent overlay or an absent ``runner_removals`` is refused ``runner_not_allowed``
+  before any GitHub call, in either mode, and only the /actions/runners endpoints
+  are called. A runner that is online or busy is refused ``runner_online`` with no
+  DELETE; a name GitHub does not register answers completed ``replayed`` with
+  ``runner_removed`` false. Like a variable, a runner is read back from GitHub on
+  every call, so runner operations keep no idempotency record.
 - **Claim.** pr_close is refused with ``claim_not_held`` unless the requesting
   lane and run hold a live claim on the PR in node_pr_claim_registry_effect.
   The claim is checked in dry_run too, since it needs no GitHub call.
@@ -62,6 +94,7 @@ import re
 import time
 from collections import OrderedDict
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
@@ -93,6 +126,7 @@ from omnimarket.github_landing.github_landing_requests import (
     open_pulls_for_head_request,
     pull_request_request,
     review_comments_request,
+    split_repository,
     workflow_dispatch_request,
 )
 from omnimarket.github_landing.github_landing_transport import (
@@ -108,6 +142,10 @@ from omnimarket.handlers.github_quota_readings import GithubQuotaReadings
 from omnimarket.handlers.handler_lane_write_identity import (
     ModelLaneWriteIdentity,
     assert_github_token_is_actor,
+)
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    pinned_overlay_root,
 )
 from omnimarket.inference.secret_store_resolver import (
     SecretStoreConfigurationError,
@@ -126,6 +164,7 @@ from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_pr_claim_lo
     registry_claim_refusal,
 )
 from omnimarket.nodes.node_github_repo_write_effect.models import (
+    MAX_VARIABLE_CHARS,
     EnumRepoWriteFenceStatus,
     EnumRepoWriteMode,
     EnumRepoWriteOperation,
@@ -134,14 +173,28 @@ from omnimarket.nodes.node_github_repo_write_effect.models import (
     ModelRepoWriteConfig,
     ModelRepoWriteFailed,
     ModelRepoWriteRequest,
+    ModelRepoWriteRunner,
+    ModelRepoWriteRunnerGroup,
 )
 from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_config import (
     ModelRepoWriteCredentialChoice,
+)
+from omnimarket.nodes.node_github_repo_write_effect.overlay import (
+    NODE_NAME,
+    ModelRepoWriteOverlay,
+    load_overlay,
 )
 from omnimarket.nodes.node_github_repo_write_effect.protocols import (
     ProtocolGithubRepoWriteTransport,
     ProtocolLeaseFence,
     ProtocolPrClaimLookup,
+)
+from omnimarket.nodes.node_github_repo_write_effect.services.commit_status import (
+    commit_status_request,
+)
+from omnimarket.nodes.node_github_repo_write_effect.services.pr_label import (
+    add_labels_request,
+    remove_label_request,
 )
 from omnimarket.nodes.node_github_repo_write_effect.services.pr_review_post import (
     create_pull_request_review_request,
@@ -155,6 +208,23 @@ from omnimarket.nodes.node_github_repo_write_effect.services.pr_thread_resolve i
     resolve_review_thread_request,
     thread_nodes,
     threads_page_request,
+)
+from omnimarket.nodes.node_github_repo_write_effect.services.repo_variable import (
+    create_variable_request,
+    get_variable_request,
+    read_variable_source_value,
+    update_variable_request,
+    variable_digest,
+)
+from omnimarket.nodes.node_github_repo_write_effect.services.required_context import (
+    add_required_context_request,
+    read_required_checks_request,
+)
+from omnimarket.nodes.node_github_repo_write_effect.services.runner_registration import (
+    delete_runner_request,
+    get_runner_group_request,
+    list_runner_group_repositories_request,
+    list_runners_request,
 )
 
 _log = logging.getLogger(__name__)
@@ -179,6 +249,8 @@ _CALL_CONTEXT_FIELDS: tuple[str, ...] = (
 # Comment pages scanned for an idempotency marker (300 comments), for the
 # conversation comments, review comments and reviews of the comment/review writes.
 _MARKER_SCAN_PAGES = 3
+# The per_page the runner list requests name; a shorter page ends the paging.
+_RUNNERS_PAGE_SIZE = 100
 # A planned node id in dry_run: the real one is read from the PR first.
 _PLANNED_NODE_ID = "<node id read from the pull request>"
 
@@ -244,6 +316,19 @@ def _int_at(body: dict[str, object] | None, key: str) -> int | None:
     return value if isinstance(value, int) else None
 
 
+@dataclass(frozen=True)
+class _VariablePlan:
+    """The value a repo_variable write acts on, from the overlay's declared source.
+
+    ``source_value`` is None when that file could not be read: repo_variable_get
+    still reads GitHub and reports ``variable_in_sync`` as None, while
+    repo_variable_set was refused before any call.
+    """
+
+    value: str
+    source_value: str | None
+
+
 class _RefusedError(Exception):
     """Internal: carries the typed failure out of a multi-request operation."""
 
@@ -267,6 +352,7 @@ class _Run:
         self.sent: list[ModelGithubHttpRequest] = []
         self.statuses: list[int] = []
         self.quota: ModelGithubQuotaReading | None = None
+        self.variable_plan: _VariablePlan | None = None
 
     def refused(
         self,
@@ -307,6 +393,16 @@ class _Run:
         comment_id: int | None = None,
         review_id: int | None = None,
         check_run_id: int | None = None,
+        commit_status_id: int | None = None,
+        required_context_applied: bool | None = None,
+        variable_name: str | None = None,
+        variable_value: str | None = None,
+        variable_digest: str | None = None,
+        variable_in_sync: bool | None = None,
+        runners: tuple[ModelRepoWriteRunner, ...] | None = None,
+        runner_group: ModelRepoWriteRunnerGroup | None = None,
+        runner_name: str | None = None,
+        runner_removed: bool | None = None,
     ) -> ModelRepoWriteCompleted:
         c = self.command
         return ModelRepoWriteCompleted(
@@ -326,6 +422,16 @@ class _Run:
             comment_id=comment_id,
             review_id=review_id,
             check_run_id=check_run_id,
+            commit_status_id=commit_status_id,
+            required_context_applied=required_context_applied,
+            variable_name=variable_name,
+            variable_value=variable_value,
+            variable_digest=variable_digest,
+            variable_in_sync=variable_in_sync,
+            runners=runners,
+            runner_group=runner_group,
+            runner_name=runner_name,
+            runner_removed=runner_removed,
         )
 
     async def send(
@@ -426,7 +532,11 @@ class HandlerGithubRepoWriteEffect:
         config: ModelRepoWriteConfig | None = None,
         clock: Callable[[], float] = time.time,
         quota_readings: GithubQuotaReadings | None = None,
+        overlay: ModelRepoWriteOverlay | None = None,
+        variable_source_root: Path | None = None,
     ) -> None:
+        self._write_overlay = overlay
+        self._variable_source_root = variable_source_root
         self._transport = transport
         self._fence = fence_port
         if deadline_seconds is None:
@@ -451,6 +561,262 @@ class HandlerGithubRepoWriteEffect:
         self._done: OrderedDict[
             tuple[str, str, str], tuple[dict[str, str], ModelRepoWriteCompleted]
         ] = OrderedDict()
+
+    def _variable_plan(
+        self, request: ModelRepoWriteRequest
+    ) -> ModelRepoWriteFailed | _VariablePlan | None:
+        """Plan a repo_variable_set/get write, refusing before any call when the
+        overlay does not allow it.
+        """
+        if request.operation not in (
+            EnumRepoWriteOperation.REPO_VARIABLE_SET,
+            EnumRepoWriteOperation.REPO_VARIABLE_GET,
+        ):
+            return None
+        is_set = request.operation is EnumRepoWriteOperation.REPO_VARIABLE_SET
+        name = request.variable_name
+        if name is None:  # defensive; the request validator enforces this
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.VARIABLE_NOT_ALLOWED,
+                "repo_variable_set/get requires variable_name; no call made",
+            )
+        try:
+            if self._write_overlay is None:
+                self._write_overlay = load_overlay()
+        except NodeOverlayError as exc:
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.VARIABLE_NOT_ALLOWED,
+                f"no repo_variables overlay is configured: {exc}",
+            )
+        overlay = self._write_overlay.repo_variables
+        if overlay is None:
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.VARIABLE_NOT_ALLOWED,
+                f"variable {name} on {request.repo} is not in the node's "
+                "repo_variables overlay; no call made",
+            )
+        lowered_name = name.lower()
+        for marker in overlay.refuse_name_markers:
+            if marker.lower() in lowered_name:
+                return self._preflight_refusal(
+                    request,
+                    EnumRepoWriteRefusal.SECRET_REFUSED,
+                    f"variable name {name} carries a refuse marker; no call made",
+                )
+        entry = next(
+            (
+                e
+                for e in overlay.entries
+                if e.repository.lower() == request.repo.lower() and e.name == name
+            ),
+            None,
+        )
+        if entry is None:
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.VARIABLE_NOT_ALLOWED,
+                f"variable {name} on {request.repo} is not in the node's "
+                "repo_variables overlay; no call made",
+            )
+        try:
+            root = self._variable_source_root or pinned_overlay_root(NODE_NAME)
+            source_value = read_variable_source_value(
+                root,
+                entry.source,
+                fmt=entry.format,
+                select=entry.select,
+                name=entry.name,
+                repository=entry.repository,
+                max_chars=MAX_VARIABLE_CHARS,
+            )
+        except ValueError:
+            # The declared source cannot be read: a set refuses before any
+            # call, a get still reads GitHub and reports in_sync as None.
+            if is_set:
+                return self._preflight_refusal(
+                    request,
+                    EnumRepoWriteRefusal.VARIABLE_SOURCE_UNREADABLE,
+                    f"the source for variable {name} on {request.repo} is "
+                    "unreadable; no call made",
+                )
+            return _VariablePlan(value="", source_value=None)
+        if not is_set:
+            return _VariablePlan(value="", source_value=source_value)
+        lowered_value = source_value.lower()
+        for marker in overlay.refuse_value_markers:
+            if marker.lower() in lowered_value:
+                return self._preflight_refusal(
+                    request,
+                    EnumRepoWriteRefusal.SECRET_REFUSED,
+                    f"the source value for variable {name} on {request.repo} "
+                    "carries a refuse marker; no call made",
+                )
+        return _VariablePlan(value=source_value, source_value=source_value)
+
+    def _runner_preflight(
+        self, request: ModelRepoWriteRequest
+    ) -> ModelRepoWriteFailed | None:
+        """Refuse a runner write the overlay's ``runner_removals`` does not
+        allow, before any call.
+
+        The overlay is read the first time a runner operation needs it, so no
+        other operation depends on it. The organization is the owner part of
+        the request's repository: a runner_list is served when at least one
+        entry names that organization (case-insensitively), a runner_remove
+        only when (organization, runner_name) is an entry.
+        """
+        if request.operation not in (
+            EnumRepoWriteOperation.RUNNER_LIST,
+            EnumRepoWriteOperation.RUNNER_REMOVE,
+            EnumRepoWriteOperation.RUNNER_GROUP_GET,
+        ):
+            return None
+        try:
+            if self._write_overlay is None:
+                self._write_overlay = load_overlay()
+        except NodeOverlayError as exc:
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
+                f"no runner overlay is configured: {exc}",
+            )
+        organization, _ = split_repository(request.repo)
+        lowered_organization = organization.lower()
+        if request.operation is EnumRepoWriteOperation.RUNNER_GROUP_GET:
+            group_reads = self._write_overlay.runner_group_reads
+            if group_reads is None:
+                return self._preflight_refusal(
+                    request,
+                    EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
+                    "the node's overlay declares no runner_group_reads; no call made",
+                )
+            group_id = request.runner_group_id
+            if group_id is None:  # defensive; the request validator enforces this
+                return self._preflight_refusal(
+                    request,
+                    EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
+                    "runner_group_get requires runner_group_id; no call made",
+                )
+            if any(
+                entry.organization.lower() == lowered_organization
+                and entry.group_id == group_id
+                for entry in group_reads.entries
+            ):
+                return None
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
+                f"runner group {group_id} on organization {organization} is not in "
+                "the node's runner_group_reads overlay; no call made",
+            )
+        overlay = self._write_overlay.runner_removals
+        if overlay is None:
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
+                "the node's overlay declares no runner_removals; no call made",
+            )
+        if request.operation is EnumRepoWriteOperation.RUNNER_LIST:
+            if any(
+                entry.organization.lower() == lowered_organization
+                for entry in overlay.entries
+            ):
+                return None
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
+                f"no runner_removals entry names organization {organization}; "
+                "no call made",
+            )
+        name = request.runner_name
+        if name is None:  # defensive; the request validator enforces this
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
+                "runner_remove requires runner_name; no call made",
+            )
+        if any(
+            entry.organization.lower() == lowered_organization and entry.name == name
+            for entry in overlay.entries
+        ):
+            return None
+        return self._preflight_refusal(
+            request,
+            EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
+            f"runner {name} on organization {organization} is not in the "
+            "node's runner_removals overlay; no call made",
+        )
+
+    def _required_context_refusal(
+        self, request: ModelRepoWriteRequest
+    ) -> ModelRepoWriteFailed | None:
+        """Refuse a required_context_apply the overlay does not allow, before any call.
+
+        The overlay's ``required_contexts`` names each (repository, branch, context) the
+        node may add to a branch's protection; any other triple, and a missing overlay,
+        is refused, never defaulted from a value here.
+        """
+        if request.operation is not EnumRepoWriteOperation.REQUIRED_CONTEXT_APPLY:
+            return None
+        try:
+            if self._write_overlay is None:
+                self._write_overlay = load_overlay()
+        except NodeOverlayError as exc:
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.REQUIRED_CONTEXT_NOT_ALLOWED,
+                f"no required_contexts overlay is configured: {exc}",
+            )
+        allowed = self._write_overlay.required_contexts
+        if allowed is not None and any(
+            entry.repository.lower() == request.repo.lower()
+            and entry.branch == request.protected_branch
+            and entry.context == request.required_context
+            for entry in allowed.entries
+        ):
+            return None
+        return self._preflight_refusal(
+            request,
+            EnumRepoWriteRefusal.REQUIRED_CONTEXT_NOT_ALLOWED,
+            f"{request.required_context} on {request.repo} {request.protected_branch} "
+            "is not in the node's required_contexts overlay; no call made",
+        )
+
+    def _label_refusal(
+        self, request: ModelRepoWriteRequest
+    ) -> ModelRepoWriteFailed | None:
+        """Refuse a pr_label naming a label the overlay does not allow, before any call.
+
+        The overlay is read the first time a pr_label needs it, so no other
+        operation depends on it; one that cannot be read refuses the label
+        write, never falls back to a value here.
+        """
+        if request.operation is not EnumRepoWriteOperation.PR_LABEL:
+            return None
+        try:
+            if self._write_overlay is None:
+                self._write_overlay = load_overlay()
+        except NodeOverlayError as exc:
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.LABEL_NOT_ALLOWED,
+                f"no allowed-label overlay is configured for pr_label: {exc}",
+            )
+        allowed = set(self._write_overlay.pr_label.allowed_labels)
+        refused = sorted(
+            {*(request.add_labels or ()), *(request.remove_labels or ())} - allowed
+        )
+        if not refused:
+            return None
+        return self._preflight_refusal(
+            request,
+            EnumRepoWriteRefusal.LABEL_NOT_ALLOWED,
+            f"label(s) {', '.join(refused)} are not in the node's allowed pr_label "
+            "set; no call made",
+        )
 
     # --- quota ----------------------------------------------------------------
 
@@ -495,6 +861,18 @@ class HandlerGithubRepoWriteEffect:
         refused = self._claim_refusal(request)
         if refused is not None:
             return refused
+        refused = self._label_refusal(request)
+        if refused is not None:
+            return refused
+        refused = self._required_context_refusal(request)
+        if refused is not None:
+            return refused
+        variable_plan = self._variable_plan(request)
+        if isinstance(variable_plan, ModelRepoWriteFailed):
+            return variable_plan
+        runner_refusal = self._runner_preflight(request)
+        if runner_refusal is not None:
+            return runner_refusal
         mode = (
             EnumRepoWriteMode.DRY_RUN
             if request.dry_run
@@ -518,11 +896,22 @@ class HandlerGithubRepoWriteEffect:
                 request, EnumRepoWriteRefusal.CREDENTIAL_UNAVAILABLE, str(exc)
             )
         run = _Run(self, request, transport)
+        run.variable_plan = variable_plan
         try:
             result: Result = await self._run(run)
         except _RefusedError as exc:
             result = exc.failed
-        if isinstance(result, ModelRepoWriteCompleted):
+        # A repository variable, and a runner, is read back from GitHub on
+        # every call, so a repeat finds the answer already there without a
+        # record: a record would hide a value or a registration that changed
+        # since the first call.
+        if isinstance(result, ModelRepoWriteCompleted) and request.operation not in (
+            EnumRepoWriteOperation.REPO_VARIABLE_SET,
+            EnumRepoWriteOperation.REPO_VARIABLE_GET,
+            EnumRepoWriteOperation.RUNNER_LIST,
+            EnumRepoWriteOperation.RUNNER_REMOVE,
+            EnumRepoWriteOperation.RUNNER_GROUP_GET,
+        ):
             self._done[key] = (digests, result)
             while len(self._done) > _IDEMPOTENCY_RECORD_SIZE:
                 self._done.popitem(last=False)
@@ -734,10 +1123,26 @@ class HandlerGithubRepoWriteEffect:
             return await _pr_thread_reply(run)
         if op is EnumRepoWriteOperation.PR_THREAD_RESOLVE:
             return await _pr_thread_resolve(run)
+        if op is EnumRepoWriteOperation.PR_LABEL:
+            return await _pr_label(run)
+        if op is EnumRepoWriteOperation.REPO_VARIABLE_SET:
+            return await _repo_variable_set(run)
+        if op is EnumRepoWriteOperation.REPO_VARIABLE_GET:
+            return await _repo_variable_get(run)
+        if op is EnumRepoWriteOperation.RUNNER_LIST:
+            return await _runner_list(run)
+        if op is EnumRepoWriteOperation.RUNNER_REMOVE:
+            return await _runner_remove(run)
+        if op is EnumRepoWriteOperation.RUNNER_GROUP_GET:
+            return await _runner_group_get(run)
         if op is EnumRepoWriteOperation.PR_REVIEW_POST:
             return await _pr_review_post(run)
         if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
             return await _check_run_create(run)
+        if op is EnumRepoWriteOperation.COMMIT_STATUS_CREATE:
+            return await _commit_status_create(run)
+        if op is EnumRepoWriteOperation.REQUIRED_CONTEXT_APPLY:
+            return await _required_context_apply(run)
         return await _workflow_dispatch(run)
 
 
@@ -1045,6 +1450,190 @@ async def _pr_thread_resolve(run: _Run) -> ModelRepoWriteCompleted:
     return run.completed(html_url=url, head_sha=head_sha)
 
 
+async def _repo_variable_set(run: _Run) -> ModelRepoWriteCompleted:
+    c = run.command
+    name = c.variable_name or ""
+    plan = run.variable_plan
+    value = plan.value if plan is not None else ""
+    response = await run.send(get_variable_request(c.repo, name), allow_not_found=True)
+    if response.status == 404:
+        await run.send(create_variable_request(c.repo, name, value))
+        return run.completed(variable_name=name, variable_digest=variable_digest(value))
+    body = response.body or {}
+    if body.get("value") == value:
+        return run.completed(
+            replayed=True,
+            variable_name=name,
+            variable_digest=variable_digest(value),
+        )
+    await run.send(update_variable_request(c.repo, name, value))
+    return run.completed(variable_name=name, variable_digest=variable_digest(value))
+
+
+async def _repo_variable_get(run: _Run) -> ModelRepoWriteCompleted:
+    c = run.command
+    name = c.variable_name or ""
+    plan = run.variable_plan
+    response = await run.send(get_variable_request(c.repo, name))
+    body = response.body or {}
+    value = str(body.get("value", ""))
+    in_sync: bool | None = None
+    if plan is not None and plan.source_value is not None:
+        in_sync = value == plan.source_value
+    return run.completed(
+        variable_name=name,
+        variable_value=value,
+        variable_digest=variable_digest(value),
+        variable_in_sync=in_sync,
+    )
+
+
+async def _runners_pages(run: _Run, organization: str) -> list[ModelRepoWriteRunner]:
+    """Every runner the organization has registered, page after page.
+
+    ``list_runners_request`` asks 100 runners per page; a page holding fewer
+    than that ends the paging.
+    """
+    runners: list[ModelRepoWriteRunner] = []
+    page = 1
+    while True:
+        body = (await run.send(list_runners_request(organization, page))).body or {}
+        registered = body.get("runners")
+        entries = registered if isinstance(registered, list) else []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            runner_id = _int_at(entry, "id")
+            name = entry.get("name")
+            if runner_id is None or not isinstance(name, str) or not name:
+                continue
+            runners.append(
+                ModelRepoWriteRunner(
+                    id=runner_id,
+                    name=name,
+                    status=str(entry.get("status", "")),
+                    busy=entry.get("busy") is True,
+                )
+            )
+        if len(entries) < _RUNNERS_PAGE_SIZE:
+            return runners
+        page += 1
+
+
+async def _runner_list(run: _Run) -> ModelRepoWriteCompleted:
+    c = run.command
+    organization, _ = split_repository(c.repo)
+    return run.completed(runners=tuple(await _runners_pages(run, organization)))
+
+
+async def _runner_group_get(run: _Run) -> ModelRepoWriteCompleted:
+    """One runner group's settings and every repository it is open to.
+
+    The group id is the request's ``runner_group_id``; the repositories are paged
+    100 at a time and a shorter page ends the paging. A body that lacks a field
+    the model needs is refused, never filled with a default: a half-read group
+    must not read as an exposed or an unexposed one.
+    """
+    c = run.command
+    organization, _ = split_repository(c.repo)
+    group_id = c.runner_group_id or 0
+    meta = (await run.send(get_runner_group_request(organization, group_id))).body or {}
+    repositories: list[str] = []
+    page = 1
+    while True:
+        body = (
+            await run.send(
+                list_runner_group_repositories_request(organization, group_id, page)
+            )
+        ).body or {}
+        listed = body.get("repositories")
+        entries = listed if isinstance(listed, list) else []
+        repositories.extend(
+            str(entry["full_name"])
+            for entry in entries
+            if isinstance(entry, dict) and entry.get("full_name")
+        )
+        if len(entries) < _RUNNERS_PAGE_SIZE:
+            break
+        page += 1
+    name = meta.get("name")
+    allows_public = meta.get("allows_public_repositories")
+    restricted = meta.get("restricted_to_selected_workflows")
+    selected = meta.get("selected_workflows")
+    if (
+        not isinstance(name, str)
+        or not isinstance(allows_public, bool)
+        or not isinstance(restricted, bool)
+    ):
+        raise run.refused(
+            EnumRepoWriteRefusal.GITHUB_REFUSED,
+            f"runner group {group_id} on {organization} answered a body without "
+            "name, allows_public_repositories and restricted_to_selected_workflows",
+        )
+    return run.completed(
+        runner_group=ModelRepoWriteRunnerGroup(
+            id=group_id,
+            name=name,
+            allows_public_repositories=allows_public,
+            restricted_to_selected_workflows=restricted,
+            selected_workflows=tuple(
+                str(w) for w in (selected if isinstance(selected, list) else ())
+            ),
+            repositories=tuple(repositories),
+        )
+    )
+
+
+async def _runner_remove(run: _Run) -> ModelRepoWriteCompleted:
+    c = run.command
+    name = c.runner_name or ""
+    organization, _ = split_repository(c.repo)
+    found = next(
+        (
+            runner
+            for runner in await _runners_pages(run, organization)
+            if runner.name == name
+        ),
+        None,
+    )
+    if found is None:
+        # No registration of that name: the asked-for state already holds, so
+        # the answer is replayed and no DELETE is sent.
+        return run.completed(replayed=True, runner_name=name, runner_removed=False)
+    if found.status == "online" or found.busy:
+        raise run.refused(
+            EnumRepoWriteRefusal.RUNNER_ONLINE,
+            f"runner {name} on {organization} is "
+            f"{'busy' if found.busy else found.status}; only an offline, idle "
+            "runner may be removed; no DELETE sent",
+        )
+    await run.send(delete_runner_request(organization, found.id))
+    return run.completed(runner_name=name, runner_removed=True)
+
+
+async def _pr_label(run: _Run) -> ModelRepoWriteCompleted:
+    c = run.command
+    number = c.pr_number or 0
+    pr = await run.expect_pr_head()
+    labels = pr.get("labels")
+    current = {
+        name
+        for label in (labels if isinstance(labels, list) else [])
+        if isinstance(label, dict) and isinstance(name := label.get("name"), str)
+    }
+    to_add = [label for label in (c.add_labels or ()) if label not in current]
+    to_remove = [label for label in (c.remove_labels or ()) if label in current]
+    if to_add:
+        await run.send(add_labels_request(c.repo, number, to_add))
+    for label in to_remove:
+        await run.send(remove_label_request(c.repo, number, label))
+    return run.completed(
+        replayed=not (to_add or to_remove),
+        html_url=_str_at(pr, "html_url"),
+        head_sha=_str_at(pr, "head", "sha"),
+    )
+
+
 def _check_run_create_request(c: ModelRepoWriteRequest) -> ModelGithubHttpRequest:
     body: dict[str, object] = {
         "name": c.name,
@@ -1067,6 +1656,48 @@ async def _check_run_create(run: _Run) -> ModelRepoWriteCompleted:
         html_url=_str_at(created, "html_url"),
         head_sha=_str_at(created, "head_sha"),
     )
+
+
+def _commit_status_create_request(c: ModelRepoWriteRequest) -> ModelGithubHttpRequest:
+    return commit_status_request(
+        c.repo,
+        c.commit_sha or "",
+        state=c.status_state or "",
+        context=c.status_context or "",
+        target_url=c.status_target_url or "",
+        description=c.status_description,
+    )
+
+
+async def _commit_status_create(run: _Run) -> ModelRepoWriteCompleted:
+    created = (await run.send(_commit_status_create_request(run.command))).body
+    return run.completed(
+        commit_status_id=_int_at(created, "id"),
+        html_url=_str_at(created, "url"),
+        head_sha=run.command.commit_sha,
+    )
+
+
+async def _required_context_apply(run: _Run) -> ModelRepoWriteCompleted:
+    c = run.command
+    branch, context = c.protected_branch or "", c.required_context or ""
+    current = (await run.send(read_required_checks_request(c.repo, branch))).body or {}
+    raw = current.get("checks")
+    checks = [
+        entry
+        for entry in (raw if isinstance(raw, list) else [])
+        if isinstance(entry, dict)
+    ]
+    legacy = current.get("contexts")
+    named = {entry.get("context") for entry in checks} | {
+        name
+        for name in (legacy if isinstance(legacy, list) else [])
+        if isinstance(name, str)
+    }
+    if context in named:
+        return run.completed(replayed=True, required_context_applied=False)
+    await run.send(add_required_context_request(c.repo, branch, context))
+    return run.completed(required_context_applied=True)
 
 
 async def _workflow_dispatch(run: _Run) -> ModelRepoWriteCompleted:
@@ -1101,6 +1732,39 @@ def planned_requests(
         in (EnumRepoWriteOperation.PR_CREATE, EnumRepoWriteOperation.WORKFLOW_DISPATCH)
         else []
     )
+    if op is EnumRepoWriteOperation.REPO_VARIABLE_SET:
+        return (get_variable_request(c.repo, c.variable_name or ""),)
+    if op is EnumRepoWriteOperation.REPO_VARIABLE_GET:
+        return (get_variable_request(c.repo, c.variable_name or ""),)
+    if op in (
+        EnumRepoWriteOperation.RUNNER_LIST,
+        EnumRepoWriteOperation.RUNNER_REMOVE,
+    ):
+        # A remove reads the registrations first, to find the id and check the
+        # runner is offline and idle; the DELETE it may send is only known
+        # after that read answers.
+        return (list_runners_request(split_repository(c.repo)[0], 1),)
+    if op is EnumRepoWriteOperation.RUNNER_GROUP_GET:
+        # The repositories read follows the group read; its first page is only
+        # known to be needed once the group answers, so a plan shows the group read.
+        return (
+            get_runner_group_request(
+                split_repository(c.repo)[0], c.runner_group_id or 0
+            ),
+        )
+    if op is EnumRepoWriteOperation.PR_LABEL:
+        return (
+            pull_request_request(c.repo, n),
+            *(
+                (add_labels_request(c.repo, n, list(c.add_labels)),)
+                if c.add_labels
+                else ()
+            ),
+            *(
+                remove_label_request(c.repo, n, label)
+                for label in c.remove_labels or ()
+            ),
+        )
     if op is EnumRepoWriteOperation.PR_CREATE:
         return (
             *tip,
@@ -1116,6 +1780,11 @@ def planned_requests(
         )
     if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
         return (_check_run_create_request(c),)
+    if op is EnumRepoWriteOperation.COMMIT_STATUS_CREATE:
+        return (_commit_status_create_request(c),)
+    if op is EnumRepoWriteOperation.REQUIRED_CONTEXT_APPLY:
+        # The PATCH follows the read of the branch's current checks; a plan shows the read.
+        return (read_required_checks_request(c.repo, c.protected_branch or ""),)
     if op is EnumRepoWriteOperation.WORKFLOW_DISPATCH:
         return (
             *tip,

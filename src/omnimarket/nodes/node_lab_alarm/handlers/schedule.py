@@ -34,6 +34,9 @@ NODE_MODULE = f"omnimarket.nodes.{NODE_NAME}"
 OVERLAY_ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
 _SAFE_PATH = re.compile(r"^[A-Za-z0-9_@+=:,./~-]+$")
 
+#: The verb the overlay's ``schedule`` block runs; a condition's own block names its verb.
+BROKER_LAG_VERB = "broker-lag"
+
 Runner = Callable[[Sequence[str]], "subprocess.CompletedProcess[str]"]
 
 
@@ -52,6 +55,11 @@ def run_command(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
         )
     except FileNotFoundError as exc:
         return subprocess.CompletedProcess(list(command), 127, "", str(exc))
+
+
+def _log_stem(verb: str) -> str:
+    """The broker lag keeps its log names; a condition's unit logs under its verb, so two units never share a file."""
+    return "lab-alarm" if verb == BROKER_LAG_VERB else f"lab-alarm-{verb}"
 
 
 def _safe(path: Path, what: str) -> str:
@@ -92,6 +100,7 @@ def render_systemd(
     omni_root: Path,
     home: Path,
     overlay_root: Path,
+    verb: str = BROKER_LAG_VERB,
 ) -> tuple[str, str]:
     """The systemd user service and timer text."""
     schedule = overlay.schedule
@@ -103,14 +112,14 @@ def render_systemd(
         "# Rendered by the lab alarm node (schedule install); the overlay owns the cadence,\n"
         "# so change the overlay and install again rather than editing this file.\n"
         "# Rollback: schedule uninstall.\n"
-        "[Unit]\nDescription=ONEX lab alarm, broker lag read\n"
+        f"[Unit]\nDescription=ONEX lab alarm, {verb}\n"
         "\n[Service]\nType=oneshot\n"
         f"TimeoutStartSec={schedule.timeout_seconds}\n"
         + "".join(_assignment(name, value) for name, value in environment.items())
         + f"WorkingDirectory={root}\n"
-        f"ExecStart={python} -m {NODE_MODULE} broker-lag\n"
-        f"StandardOutput=append:{state}/lab-alarm.out.log\n"
-        f"StandardError=append:{state}/lab-alarm.err.log\n"
+        f"ExecStart={python} -m {NODE_MODULE} {verb}\n"
+        f"StandardOutput=append:{state}/{_log_stem(verb)}.out.log\n"
+        f"StandardError=append:{state}/{_log_stem(verb)}.err.log\n"
         f"SyslogIdentifier={schedule.unit_name}\n"
     )
     timer = (
@@ -131,6 +140,7 @@ def render_launchd(
     omni_root: Path,
     home: Path,
     overlay_root: Path,
+    verb: str = BROKER_LAG_VERB,
 ) -> bytes:
     """The launchd agent, as plist bytes."""
     schedule = overlay.schedule
@@ -139,14 +149,14 @@ def render_launchd(
     return plistlib.dumps(
         {
             "Label": schedule.launchd_label,
-            "ProgramArguments": [python, "-m", NODE_MODULE, "broker-lag"],
+            "ProgramArguments": [python, "-m", NODE_MODULE, verb],
             "EnvironmentVariables": _unit_environment(
                 host, omni_root, home, overlay_root
             ),
             "WorkingDirectory": _safe(omni_root, "registry root"),
             "StartInterval": schedule.interval_seconds,
-            "StandardOutPath": f"{state}/lab-alarm.out.log",
-            "StandardErrorPath": f"{state}/lab-alarm.err.log",
+            "StandardOutPath": f"{state}/{_log_stem(verb)}.out.log",
+            "StandardErrorPath": f"{state}/{_log_stem(verb)}.err.log",
         }
     )
 
@@ -161,7 +171,9 @@ class LabAlarmScheduler:
         home: Path,
         run: Runner = run_command,
         uid: int | None = None,
+        verb: str = BROKER_LAG_VERB,
     ) -> None:
+        self.verb = verb
         self.overlay = overlay
         self.home = home
         self.run = run
@@ -195,18 +207,27 @@ class LabAlarmScheduler:
                 exit_code=1,
                 stderr=f"registry root {omni_root} is not an absolute path; the schedule installs from the registry root\n",
             )
-        render = {
-            "omni_root": omni_root,
-            "home": self.home,
-            "overlay_root": overlay_root,
-        }
         try:
             if host.scheduler == "launchd":
-                rendered = render_launchd(self.overlay, host, **render)
+                rendered = render_launchd(
+                    self.overlay,
+                    host,
+                    omni_root=omni_root,
+                    home=self.home,
+                    overlay_root=overlay_root,
+                    verb=self.verb,
+                )
                 files = [(self.plist, rendered)]
                 refuse_worktree_plists({self.plist.name: rendered})
             else:
-                service, timer = render_systemd(self.overlay, host, **render)
+                service, timer = render_systemd(
+                    self.overlay,
+                    host,
+                    omni_root=omni_root,
+                    home=self.home,
+                    overlay_root=overlay_root,
+                    verb=self.verb,
+                )
                 files = [
                     (self.unit_dir / self.service_name, service.encode("utf-8")),
                     (self.unit_dir / self.timer_name, timer.encode("utf-8")),
@@ -331,6 +352,7 @@ class LabAlarmScheduler:
 
 
 __all__ = [
+    "BROKER_LAG_VERB",
     "LabAlarmScheduler",
     "ModelLabAlarmScheduleResult",
     "render_launchd",

@@ -40,10 +40,23 @@ from omnimarket.models.model_code_graph import (
     ModelCodeGraphResult,
     ModelShadowCommand,
 )
+from omnimarket.models.model_code_graph_lookup import (
+    ModelCodeGraphLookupCommand,
+    ModelCodeGraphLookupResult,
+)
 from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources import (
     WatcherStatePullRequestSource,
 )
 from omnimarket.nodes.node_code_graph_effect.adapters.repo_sources import GitRepoSource
+from omnimarket.nodes.node_code_graph_effect.adapters.version_stores import (
+    InMemoryVersionStore,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_index import (
+    build_version,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_lookup import (
+    CodeGraphLookup,
+)
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
     CodeGraphRun,
 )
@@ -93,6 +106,56 @@ def _source(overlay: ModelCodeGraphOverlay) -> GitRepoSource:
             f"{overlay.repos_root_env} is not set; the overlay names it as the clones' root"
         )
     return GitRepoSource(Path(root), max_file_bytes=overlay.graph_roots.max_file_bytes)
+
+
+#: The versions this process holds. The persistent, merge-refreshed projection replaces it (OMN-23648, later slice).
+_VERSIONS: dict[int, InMemoryVersionStore] = {}
+
+
+def answer_lookup(command: ModelCodeGraphLookupCommand) -> ModelCodeGraphLookupResult:
+    """Answer a lookup from the overlay's versions, building the head version of a repository on first ask.
+
+    A lookup for a repository the overlay does not declare, or an overlay with no lookup block, or a
+    repository that cannot be read, is a typed ``failed`` result and never an empty answer.
+    """
+
+    def failed(reason: str) -> ModelCodeGraphLookupResult:
+        return ModelCodeGraphLookupResult(
+            correlation_id=command.correlation_id,
+            question=command.question,
+            repo=command.repo,
+            status="failed",
+            reason=reason,
+        )
+
+    overlay = load_overlay()
+    if overlay.lookup is None:
+        return failed("the overlay has no lookup block")
+    declared = {repo.name: repo for repo in overlay.repos}
+    if command.repo not in declared:
+        return failed(f"the overlay does not declare {command.repo}")
+    source = _source(overlay)
+    store = _VERSIONS.setdefault(
+        overlay.lookup.retention_versions,
+        InMemoryVersionStore(overlay.lookup.retention_versions),
+    )
+    if store.newest(command.repo) is None:
+        try:
+            snapshot = source.snapshot(
+                command.repo,
+                declared[command.repo].ref,
+                GraphRules(roots=overlay.graph_roots).wanted,
+            )
+        except RepoSourceError as exc:
+            return failed(f"repository unreadable: {exc}")
+        store.put(
+            build_version(
+                snapshot,
+                GraphRules(roots=overlay.graph_roots),
+                committed_at=source.committed_at(command.repo, snapshot.head),
+            )
+        )
+    return CodeGraphLookup(store, source).handle(command)
 
 
 def _keep(result: ModelCodeGraphResult) -> None:

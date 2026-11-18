@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_gpu_power_caps_effect
+version: 1.0.0
+description: Apply a lab host's GPU power caps from the gpu_power_caps settings and read each card's limit back.
+pack: distributed_validation
+node_role: effect
+display_name: GPU Power Caps Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_gpu_power_caps_effect: omnimarket.nodes.node_gpu_power_caps_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+- pydantic>=2.0.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- gpu-power-caps

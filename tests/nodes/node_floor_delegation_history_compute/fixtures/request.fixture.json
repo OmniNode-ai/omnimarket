@@ -1,0 +1,7670 @@
+{
+ "now": "2026-11-14T02:30:00Z",
+ "policy": {
+  "engine_rules": [
+   {
+    "kind": "local",
+    "backend_prefixes": [
+     "local-",
+     "eval-local-"
+    ],
+    "model_prefixes": []
+   },
+   {
+    "kind": "GLM",
+    "backend_prefixes": [
+     "harness:glm"
+    ],
+    "model_prefixes": [
+     "glm"
+    ]
+   },
+   {
+    "kind": "Claude",
+    "backend_prefixes": [
+     "harness:claude:"
+    ],
+    "model_prefixes": [
+     "claude"
+    ]
+   },
+   {
+    "kind": "Codex",
+    "backend_prefixes": [
+     "harness:codex"
+    ],
+    "model_prefixes": [
+     "gpt-",
+     "codex"
+    ]
+   }
+  ],
+  "fallback_engine": "other",
+  "not_a_model_backend_ids": [
+   "not routed"
+  ],
+  "not_a_model_name_prefixes": [],
+  "serving": [
+   {
+    "backend_id": "eval-local-b",
+    "quantization": "Q3_K Medium",
+    "thinking": "off",
+    "recorded_in": "routing overlay comment"
+   },
+   {
+    "backend_id": "local-a",
+    "quantization": null,
+    "thinking": "on",
+    "recorded_in": "vllm unit"
+   }
+  ],
+  "arm_rules": [
+   {
+    "label_pattern": "^(local201|h201|local_)",
+    "backend_id": "local-a"
+   },
+   {
+    "label_pattern": "^(local202|h202)",
+    "backend_id": "eval-local-b"
+   },
+   {
+    "label_pattern": "^(glm|GLM)",
+    "backend_id": "harness:glm:flash"
+   }
+  ],
+  "window_days": 14
+ },
+ "backends": [
+  {
+   "backend_id": "local-a",
+   "model_name": "Model-X",
+   "host": "192.0.2.10",
+   "context_tokens": 131072,
+   "price_in_usd_per_mtok": null,
+   "price_out_usd_per_mtok": null
+  },
+  {
+   "backend_id": "eval-local-b",
+   "model_name": "Model-X",
+   "host": "192.0.2.11",
+   "context_tokens": 65536,
+   "price_in_usd_per_mtok": 0.0,
+   "price_out_usd_per_mtok": 0.0
+  },
+  {
+   "backend_id": "harness:glm:flash",
+   "model_name": "glm-flash",
+   "host": null,
+   "context_tokens": null,
+   "price_in_usd_per_mtok": 0.5,
+   "price_out_usd_per_mtok": 2.0
+  }
+ ],
+ "attempts": [
+  {
+   "bucket": "2026-11-11T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T02:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-11T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T03:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-11T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T04:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-11T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 1,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T05:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-11T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 1,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T06:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 1,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-11T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T07:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-11T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T08:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-11T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 7,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T09:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-11T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T10:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-11T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T11:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-11T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T12:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-11T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T13:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 1,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-11T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T14:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-11T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T15:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-11T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T16:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-11T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T17:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-11T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T18:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-11T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T19:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-11T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 1,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T20:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 1,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-11T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 1,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T21:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-11T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T22:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-11T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-11T23:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-12T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T00:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-12T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 1,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T01:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-12T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 1,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T02:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-12T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T03:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 1,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-12T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 1,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T04:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-12T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T05:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-12T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T06:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-12T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T07:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-12T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T08:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-12T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T09:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-12T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T10:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 1,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-12T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T11:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-12T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 3,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T12:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-12T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 6,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T13:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-12T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T14:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-12T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T15:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-12T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 1,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T16:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-12T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 1,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T17:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 1,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-12T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T18:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-12T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T19:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-12T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T20:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-12T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 1,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T21:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-12T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 1,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T22:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-12T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-12T23:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-13T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T00:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 1,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-13T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T01:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-13T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T02:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-13T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T03:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-13T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T04:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-13T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T05:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-13T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T06:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-13T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T07:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 1,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-13T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 1,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T08:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-13T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T09:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-13T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T10:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-13T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T11:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-13T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 1,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T12:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-13T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 1,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T13:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-13T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T14:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 1,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-13T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T15:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-13T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T16:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-13T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 7,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 1,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T17:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-13T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 1,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T18:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-13T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 3,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T19:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-13T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T20:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-13T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T21:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 1,
+   "cost_usd": 0.012
+  },
+  {
+   "bucket": "2026-11-13T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 2,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T22:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.014
+  },
+  {
+   "bucket": "2026-11-13T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 5,
+   "accepted": 2,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-13T23:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 4,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.008
+  },
+  {
+   "bucket": "2026-11-14T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 7,
+   "accepted": 5,
+   "timeouts": 1,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-14T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 6,
+   "accepted": 4,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-14T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 2,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-14T00:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 5,
+   "accepted": 5,
+   "timeouts": 0,
+   "cost_usd": 0.01
+  },
+  {
+   "bucket": "2026-11-14T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "attempts": 8,
+   "accepted": 7,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-14T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-14T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "attempts": 3,
+   "accepted": 2,
+   "timeouts": 0,
+   "cost_usd": 0.0
+  },
+  {
+   "bucket": "2026-11-14T01:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "attempts": 6,
+   "accepted": 6,
+   "timeouts": 0,
+   "cost_usd": 0.012
+  }
+ ],
+ "latencies": [
+  {
+   "bucket": "2026-11-11T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    400,
+    881,
+    1362,
+    770
+   ]
+  },
+  {
+   "bucket": "2026-11-11T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    800,
+    1281,
+    1762
+   ]
+  },
+  {
+   "bucket": "2026-11-11T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1200,
+    1681,
+    2162
+   ]
+  },
+  {
+   "bucket": "2026-11-11T02:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1600,
+    2081,
+    2562,
+    1970,
+    2451,
+    1859
+   ]
+  },
+  {
+   "bucket": "2026-11-11T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    659,
+    1140,
+    548,
+    1029,
+    437
+   ]
+  },
+  {
+   "bucket": "2026-11-11T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1059,
+    1540,
+    948,
+    1429
+   ]
+  },
+  {
+   "bucket": "2026-11-11T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1459,
+    1940,
+    1348,
+    1829
+   ]
+  },
+  {
+   "bucket": "2026-11-11T03:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1859,
+    2340,
+    1748
+   ]
+  },
+  {
+   "bucket": "2026-11-11T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    918,
+    1399,
+    807,
+    1288,
+    696,
+    1177
+   ]
+  },
+  {
+   "bucket": "2026-11-11T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1318,
+    1799,
+    1207,
+    1688,
+    1096
+   ]
+  },
+  {
+   "bucket": "2026-11-11T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1718
+   ]
+  },
+  {
+   "bucket": "2026-11-11T04:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2118,
+    2599,
+    2007,
+    2488
+   ]
+  },
+  {
+   "bucket": "2026-11-11T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1177,
+    585,
+    1066,
+    474,
+    955,
+    1436,
+    844
+   ]
+  },
+  {
+   "bucket": "2026-11-11T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1577,
+    985
+   ]
+  },
+  {
+   "bucket": "2026-11-11T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1977,
+    1385
+   ]
+  },
+  {
+   "bucket": "2026-11-11T05:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2377,
+    1785,
+    2266,
+    1674,
+    2155
+   ]
+  },
+  {
+   "bucket": "2026-11-11T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1436,
+    844,
+    1325,
+    733
+   ]
+  },
+  {
+   "bucket": "2026-11-11T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1836,
+    1244,
+    1725
+   ]
+  },
+  {
+   "bucket": "2026-11-11T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2236,
+    1644,
+    2125
+   ]
+  },
+  {
+   "bucket": "2026-11-11T06:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2636,
+    2044,
+    2525,
+    1933,
+    2414,
+    1822
+   ]
+  },
+  {
+   "bucket": "2026-11-11T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    622,
+    1103,
+    511,
+    992,
+    400
+   ]
+  },
+  {
+   "bucket": "2026-11-11T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1022,
+    1503,
+    911,
+    1392
+   ]
+  },
+  {
+   "bucket": "2026-11-11T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1422,
+    1903,
+    1311,
+    1792
+   ]
+  },
+  {
+   "bucket": "2026-11-11T07:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1822,
+    2303,
+    1711
+   ]
+  },
+  {
+   "bucket": "2026-11-11T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    881,
+    1362,
+    770,
+    1251,
+    659,
+    1140
+   ]
+  },
+  {
+   "bucket": "2026-11-11T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1281,
+    1762,
+    1170,
+    1651,
+    1059
+   ]
+  },
+  {
+   "bucket": "2026-11-11T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1681
+   ]
+  },
+  {
+   "bucket": "2026-11-11T08:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2081,
+    2562,
+    1970,
+    2451
+   ]
+  },
+  {
+   "bucket": "2026-11-11T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1140,
+    548,
+    1029,
+    437,
+    918,
+    1399,
+    807
+   ]
+  },
+  {
+   "bucket": "2026-11-11T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1540,
+    948
+   ]
+  },
+  {
+   "bucket": "2026-11-11T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1940,
+    1348
+   ]
+  },
+  {
+   "bucket": "2026-11-11T09:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2340,
+    1748,
+    2229,
+    1637,
+    2118
+   ]
+  },
+  {
+   "bucket": "2026-11-11T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1399,
+    807,
+    1288,
+    696
+   ]
+  },
+  {
+   "bucket": "2026-11-11T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1799,
+    1207,
+    1688
+   ]
+  },
+  {
+   "bucket": "2026-11-11T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2199,
+    1607,
+    2088
+   ]
+  },
+  {
+   "bucket": "2026-11-11T10:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2599,
+    2007,
+    2488,
+    1896,
+    2377,
+    1785
+   ]
+  },
+  {
+   "bucket": "2026-11-11T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    585,
+    1066,
+    474,
+    955,
+    1436
+   ]
+  },
+  {
+   "bucket": "2026-11-11T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    985,
+    1466,
+    874,
+    1355
+   ]
+  },
+  {
+   "bucket": "2026-11-11T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1385,
+    1866,
+    1274,
+    1755
+   ]
+  },
+  {
+   "bucket": "2026-11-11T11:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1785,
+    2266,
+    1674
+   ]
+  },
+  {
+   "bucket": "2026-11-11T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    844,
+    1325,
+    733,
+    1214,
+    622,
+    1103
+   ]
+  },
+  {
+   "bucket": "2026-11-11T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1244,
+    1725,
+    1133,
+    1614,
+    1022
+   ]
+  },
+  {
+   "bucket": "2026-11-11T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1644
+   ]
+  },
+  {
+   "bucket": "2026-11-11T12:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2044,
+    2525,
+    1933,
+    2414
+   ]
+  },
+  {
+   "bucket": "2026-11-11T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1103,
+    511,
+    992,
+    400,
+    881,
+    1362,
+    770
+   ]
+  },
+  {
+   "bucket": "2026-11-11T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1503,
+    911
+   ]
+  },
+  {
+   "bucket": "2026-11-11T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1903,
+    1311
+   ]
+  },
+  {
+   "bucket": "2026-11-11T13:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2303,
+    1711,
+    2192,
+    1600,
+    2081
+   ]
+  },
+  {
+   "bucket": "2026-11-11T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1362,
+    770,
+    1251,
+    659
+   ]
+  },
+  {
+   "bucket": "2026-11-11T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1762,
+    1170,
+    1651
+   ]
+  },
+  {
+   "bucket": "2026-11-11T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2162,
+    1570,
+    2051
+   ]
+  },
+  {
+   "bucket": "2026-11-11T14:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2562,
+    1970,
+    2451,
+    1859,
+    2340,
+    1748
+   ]
+  },
+  {
+   "bucket": "2026-11-11T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    548,
+    1029,
+    437,
+    918,
+    1399
+   ]
+  },
+  {
+   "bucket": "2026-11-11T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    948,
+    1429,
+    837,
+    1318
+   ]
+  },
+  {
+   "bucket": "2026-11-11T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1348,
+    1829,
+    1237,
+    1718
+   ]
+  },
+  {
+   "bucket": "2026-11-11T15:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1748,
+    2229,
+    1637
+   ]
+  },
+  {
+   "bucket": "2026-11-11T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    807,
+    1288,
+    696,
+    1177,
+    585,
+    1066
+   ]
+  },
+  {
+   "bucket": "2026-11-11T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1207,
+    1688,
+    1096,
+    1577,
+    985
+   ]
+  },
+  {
+   "bucket": "2026-11-11T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1607
+   ]
+  },
+  {
+   "bucket": "2026-11-11T16:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2007,
+    2488,
+    1896,
+    2377
+   ]
+  },
+  {
+   "bucket": "2026-11-11T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1066,
+    474,
+    955,
+    1436,
+    844,
+    1325,
+    733
+   ]
+  },
+  {
+   "bucket": "2026-11-11T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1466,
+    874
+   ]
+  },
+  {
+   "bucket": "2026-11-11T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1866,
+    1274
+   ]
+  },
+  {
+   "bucket": "2026-11-11T17:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2266,
+    1674,
+    2155,
+    2636,
+    2044
+   ]
+  },
+  {
+   "bucket": "2026-11-11T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1325,
+    733,
+    1214,
+    622
+   ]
+  },
+  {
+   "bucket": "2026-11-11T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1725,
+    1133,
+    1614
+   ]
+  },
+  {
+   "bucket": "2026-11-11T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2125,
+    1533,
+    2014
+   ]
+  },
+  {
+   "bucket": "2026-11-11T18:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2525,
+    1933,
+    2414,
+    1822,
+    2303,
+    1711
+   ]
+  },
+  {
+   "bucket": "2026-11-11T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    511,
+    992,
+    400,
+    881,
+    1362
+   ]
+  },
+  {
+   "bucket": "2026-11-11T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    911,
+    1392,
+    800,
+    1281
+   ]
+  },
+  {
+   "bucket": "2026-11-11T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1311,
+    1792,
+    1200,
+    1681
+   ]
+  },
+  {
+   "bucket": "2026-11-11T19:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1711,
+    2192,
+    1600
+   ]
+  },
+  {
+   "bucket": "2026-11-11T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    770,
+    1251,
+    659,
+    1140,
+    548,
+    1029
+   ]
+  },
+  {
+   "bucket": "2026-11-11T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1170,
+    1651,
+    1059,
+    1540,
+    948
+   ]
+  },
+  {
+   "bucket": "2026-11-11T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1570
+   ]
+  },
+  {
+   "bucket": "2026-11-11T20:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1970,
+    2451,
+    1859,
+    2340
+   ]
+  },
+  {
+   "bucket": "2026-11-11T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1029,
+    437,
+    918,
+    1399,
+    807,
+    1288,
+    696
+   ]
+  },
+  {
+   "bucket": "2026-11-11T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1429,
+    837
+   ]
+  },
+  {
+   "bucket": "2026-11-11T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1829,
+    1237
+   ]
+  },
+  {
+   "bucket": "2026-11-11T21:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2229,
+    1637,
+    2118,
+    2599,
+    2007
+   ]
+  },
+  {
+   "bucket": "2026-11-11T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1288,
+    696,
+    1177,
+    585
+   ]
+  },
+  {
+   "bucket": "2026-11-11T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1688,
+    1096,
+    1577
+   ]
+  },
+  {
+   "bucket": "2026-11-11T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2088,
+    1496,
+    1977
+   ]
+  },
+  {
+   "bucket": "2026-11-11T22:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2488,
+    1896,
+    2377,
+    1785,
+    2266,
+    1674
+   ]
+  },
+  {
+   "bucket": "2026-11-11T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    474,
+    955,
+    1436,
+    844,
+    1325
+   ]
+  },
+  {
+   "bucket": "2026-11-11T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    874,
+    1355,
+    1836,
+    1244
+   ]
+  },
+  {
+   "bucket": "2026-11-11T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1274,
+    1755,
+    2236,
+    1644
+   ]
+  },
+  {
+   "bucket": "2026-11-11T23:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1674,
+    2155,
+    2636
+   ]
+  },
+  {
+   "bucket": "2026-11-12T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    733,
+    1214,
+    622,
+    1103,
+    511,
+    992
+   ]
+  },
+  {
+   "bucket": "2026-11-12T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1133,
+    1614,
+    1022,
+    1503,
+    911
+   ]
+  },
+  {
+   "bucket": "2026-11-12T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1533
+   ]
+  },
+  {
+   "bucket": "2026-11-12T00:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1933,
+    2414,
+    1822,
+    2303
+   ]
+  },
+  {
+   "bucket": "2026-11-12T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    992,
+    400,
+    881,
+    1362,
+    770,
+    1251,
+    659
+   ]
+  },
+  {
+   "bucket": "2026-11-12T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1392,
+    800
+   ]
+  },
+  {
+   "bucket": "2026-11-12T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1792,
+    1200
+   ]
+  },
+  {
+   "bucket": "2026-11-12T01:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2192,
+    1600,
+    2081,
+    2562,
+    1970
+   ]
+  },
+  {
+   "bucket": "2026-11-12T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1251,
+    659,
+    1140,
+    548
+   ]
+  },
+  {
+   "bucket": "2026-11-12T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1651,
+    1059,
+    1540
+   ]
+  },
+  {
+   "bucket": "2026-11-12T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2051,
+    1459,
+    1940
+   ]
+  },
+  {
+   "bucket": "2026-11-12T02:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2451,
+    1859,
+    2340,
+    1748,
+    2229,
+    1637
+   ]
+  },
+  {
+   "bucket": "2026-11-12T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    437,
+    918,
+    1399,
+    807,
+    1288
+   ]
+  },
+  {
+   "bucket": "2026-11-12T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    837,
+    1318,
+    1799,
+    1207
+   ]
+  },
+  {
+   "bucket": "2026-11-12T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1237,
+    1718,
+    2199,
+    1607
+   ]
+  },
+  {
+   "bucket": "2026-11-12T03:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1637,
+    2118,
+    2599
+   ]
+  },
+  {
+   "bucket": "2026-11-12T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    696,
+    1177,
+    585,
+    1066,
+    474,
+    955
+   ]
+  },
+  {
+   "bucket": "2026-11-12T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1096,
+    1577,
+    985,
+    1466,
+    874
+   ]
+  },
+  {
+   "bucket": "2026-11-12T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1496
+   ]
+  },
+  {
+   "bucket": "2026-11-12T04:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1896,
+    2377,
+    1785,
+    2266
+   ]
+  },
+  {
+   "bucket": "2026-11-12T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    955,
+    1436,
+    844,
+    1325,
+    733,
+    1214,
+    622
+   ]
+  },
+  {
+   "bucket": "2026-11-12T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1355,
+    1836
+   ]
+  },
+  {
+   "bucket": "2026-11-12T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1755,
+    2236
+   ]
+  },
+  {
+   "bucket": "2026-11-12T05:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2155,
+    2636,
+    2044,
+    2525,
+    1933
+   ]
+  },
+  {
+   "bucket": "2026-11-12T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1214,
+    622,
+    1103,
+    511
+   ]
+  },
+  {
+   "bucket": "2026-11-12T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1614,
+    1022,
+    1503
+   ]
+  },
+  {
+   "bucket": "2026-11-12T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2014,
+    1422,
+    1903
+   ]
+  },
+  {
+   "bucket": "2026-11-12T06:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2414,
+    1822,
+    2303,
+    1711,
+    2192,
+    1600
+   ]
+  },
+  {
+   "bucket": "2026-11-12T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    400,
+    881,
+    1362,
+    770,
+    1251
+   ]
+  },
+  {
+   "bucket": "2026-11-12T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    800,
+    1281,
+    1762,
+    1170
+   ]
+  },
+  {
+   "bucket": "2026-11-12T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1200,
+    1681,
+    2162,
+    1570
+   ]
+  },
+  {
+   "bucket": "2026-11-12T07:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1600,
+    2081,
+    2562
+   ]
+  },
+  {
+   "bucket": "2026-11-12T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    659,
+    1140,
+    548,
+    1029,
+    437,
+    918
+   ]
+  },
+  {
+   "bucket": "2026-11-12T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1059,
+    1540,
+    948,
+    1429,
+    837
+   ]
+  },
+  {
+   "bucket": "2026-11-12T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1459
+   ]
+  },
+  {
+   "bucket": "2026-11-12T08:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1859,
+    2340,
+    1748,
+    2229
+   ]
+  },
+  {
+   "bucket": "2026-11-12T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    918,
+    1399,
+    807,
+    1288,
+    696,
+    1177,
+    585
+   ]
+  },
+  {
+   "bucket": "2026-11-12T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1318,
+    1799
+   ]
+  },
+  {
+   "bucket": "2026-11-12T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1718,
+    2199
+   ]
+  },
+  {
+   "bucket": "2026-11-12T09:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2118,
+    2599,
+    2007,
+    2488,
+    1896
+   ]
+  },
+  {
+   "bucket": "2026-11-12T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1177,
+    585,
+    1066,
+    474
+   ]
+  },
+  {
+   "bucket": "2026-11-12T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1577,
+    985,
+    1466
+   ]
+  },
+  {
+   "bucket": "2026-11-12T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1977,
+    1385,
+    1866
+   ]
+  },
+  {
+   "bucket": "2026-11-12T10:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2377,
+    1785,
+    2266,
+    1674,
+    2155,
+    2636
+   ]
+  },
+  {
+   "bucket": "2026-11-12T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1436,
+    844,
+    1325,
+    733,
+    1214
+   ]
+  },
+  {
+   "bucket": "2026-11-12T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1836,
+    1244,
+    1725,
+    1133
+   ]
+  },
+  {
+   "bucket": "2026-11-12T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2236,
+    1644,
+    2125,
+    1533
+   ]
+  },
+  {
+   "bucket": "2026-11-12T11:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2636,
+    2044,
+    2525
+   ]
+  },
+  {
+   "bucket": "2026-11-12T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    622,
+    1103,
+    511,
+    992,
+    400,
+    881
+   ]
+  },
+  {
+   "bucket": "2026-11-12T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1022,
+    1503,
+    911,
+    1392,
+    800
+   ]
+  },
+  {
+   "bucket": "2026-11-12T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1422
+   ]
+  },
+  {
+   "bucket": "2026-11-12T12:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1822,
+    2303,
+    1711,
+    2192
+   ]
+  },
+  {
+   "bucket": "2026-11-12T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    881,
+    1362,
+    770,
+    1251,
+    659,
+    1140,
+    548
+   ]
+  },
+  {
+   "bucket": "2026-11-12T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1281,
+    1762
+   ]
+  },
+  {
+   "bucket": "2026-11-12T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1681,
+    2162
+   ]
+  },
+  {
+   "bucket": "2026-11-12T13:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2081,
+    2562,
+    1970,
+    2451,
+    1859
+   ]
+  },
+  {
+   "bucket": "2026-11-12T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1140,
+    548,
+    1029,
+    437
+   ]
+  },
+  {
+   "bucket": "2026-11-12T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1540,
+    948,
+    1429
+   ]
+  },
+  {
+   "bucket": "2026-11-12T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1940,
+    1348,
+    1829
+   ]
+  },
+  {
+   "bucket": "2026-11-12T14:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2340,
+    1748,
+    2229,
+    1637,
+    2118,
+    2599
+   ]
+  },
+  {
+   "bucket": "2026-11-12T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1399,
+    807,
+    1288,
+    696,
+    1177
+   ]
+  },
+  {
+   "bucket": "2026-11-12T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1799,
+    1207,
+    1688,
+    1096
+   ]
+  },
+  {
+   "bucket": "2026-11-12T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2199,
+    1607,
+    2088,
+    1496
+   ]
+  },
+  {
+   "bucket": "2026-11-12T15:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2599,
+    2007,
+    2488
+   ]
+  },
+  {
+   "bucket": "2026-11-12T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    585,
+    1066,
+    474,
+    955,
+    1436,
+    844
+   ]
+  },
+  {
+   "bucket": "2026-11-12T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    985,
+    1466,
+    874,
+    1355,
+    1836
+   ]
+  },
+  {
+   "bucket": "2026-11-12T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1385
+   ]
+  },
+  {
+   "bucket": "2026-11-12T16:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1785,
+    2266,
+    1674,
+    2155
+   ]
+  },
+  {
+   "bucket": "2026-11-12T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    844,
+    1325,
+    733,
+    1214,
+    622,
+    1103,
+    511
+   ]
+  },
+  {
+   "bucket": "2026-11-12T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1244,
+    1725
+   ]
+  },
+  {
+   "bucket": "2026-11-12T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1644,
+    2125
+   ]
+  },
+  {
+   "bucket": "2026-11-12T17:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2044,
+    2525,
+    1933,
+    2414,
+    1822
+   ]
+  },
+  {
+   "bucket": "2026-11-12T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1103,
+    511,
+    992,
+    400
+   ]
+  },
+  {
+   "bucket": "2026-11-12T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1503,
+    911,
+    1392
+   ]
+  },
+  {
+   "bucket": "2026-11-12T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1903,
+    1311,
+    1792
+   ]
+  },
+  {
+   "bucket": "2026-11-12T18:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2303,
+    1711,
+    2192,
+    1600,
+    2081,
+    2562
+   ]
+  },
+  {
+   "bucket": "2026-11-12T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1362,
+    770,
+    1251,
+    659,
+    1140
+   ]
+  },
+  {
+   "bucket": "2026-11-12T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1762,
+    1170,
+    1651,
+    1059
+   ]
+  },
+  {
+   "bucket": "2026-11-12T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2162,
+    1570,
+    2051,
+    1459
+   ]
+  },
+  {
+   "bucket": "2026-11-12T19:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2562,
+    1970,
+    2451
+   ]
+  },
+  {
+   "bucket": "2026-11-12T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    548,
+    1029,
+    437,
+    918,
+    1399,
+    807
+   ]
+  },
+  {
+   "bucket": "2026-11-12T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    948,
+    1429,
+    837,
+    1318,
+    1799
+   ]
+  },
+  {
+   "bucket": "2026-11-12T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1348
+   ]
+  },
+  {
+   "bucket": "2026-11-12T20:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1748,
+    2229,
+    1637,
+    2118
+   ]
+  },
+  {
+   "bucket": "2026-11-12T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    807,
+    1288,
+    696,
+    1177,
+    585,
+    1066,
+    474
+   ]
+  },
+  {
+   "bucket": "2026-11-12T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1207,
+    1688
+   ]
+  },
+  {
+   "bucket": "2026-11-12T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1607,
+    2088
+   ]
+  },
+  {
+   "bucket": "2026-11-12T21:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2007,
+    2488,
+    1896,
+    2377,
+    1785
+   ]
+  },
+  {
+   "bucket": "2026-11-12T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1066,
+    474,
+    955,
+    1436
+   ]
+  },
+  {
+   "bucket": "2026-11-12T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1466,
+    874,
+    1355
+   ]
+  },
+  {
+   "bucket": "2026-11-12T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1866,
+    1274,
+    1755
+   ]
+  },
+  {
+   "bucket": "2026-11-12T22:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2266,
+    1674,
+    2155,
+    2636,
+    2044,
+    2525
+   ]
+  },
+  {
+   "bucket": "2026-11-12T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1325,
+    733,
+    1214,
+    622,
+    1103
+   ]
+  },
+  {
+   "bucket": "2026-11-12T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1725,
+    1133,
+    1614,
+    1022
+   ]
+  },
+  {
+   "bucket": "2026-11-12T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2125,
+    1533,
+    2014,
+    1422
+   ]
+  },
+  {
+   "bucket": "2026-11-12T23:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2525,
+    1933,
+    2414
+   ]
+  },
+  {
+   "bucket": "2026-11-13T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    511,
+    992,
+    400,
+    881,
+    1362,
+    770
+   ]
+  },
+  {
+   "bucket": "2026-11-13T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    911,
+    1392,
+    800,
+    1281,
+    1762
+   ]
+  },
+  {
+   "bucket": "2026-11-13T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1311
+   ]
+  },
+  {
+   "bucket": "2026-11-13T00:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1711,
+    2192,
+    1600,
+    2081
+   ]
+  },
+  {
+   "bucket": "2026-11-13T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    770,
+    1251,
+    659,
+    1140,
+    548,
+    1029,
+    437
+   ]
+  },
+  {
+   "bucket": "2026-11-13T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1170,
+    1651
+   ]
+  },
+  {
+   "bucket": "2026-11-13T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1570,
+    2051
+   ]
+  },
+  {
+   "bucket": "2026-11-13T01:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1970,
+    2451,
+    1859,
+    2340,
+    1748
+   ]
+  },
+  {
+   "bucket": "2026-11-13T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1029,
+    437,
+    918,
+    1399
+   ]
+  },
+  {
+   "bucket": "2026-11-13T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1429,
+    837,
+    1318
+   ]
+  },
+  {
+   "bucket": "2026-11-13T02:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1829,
+    1237,
+    1718
+   ]
+  },
+  {
+   "bucket": "2026-11-13T02:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2229,
+    1637,
+    2118,
+    2599,
+    2007,
+    2488
+   ]
+  },
+  {
+   "bucket": "2026-11-13T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1288,
+    696,
+    1177,
+    585,
+    1066
+   ]
+  },
+  {
+   "bucket": "2026-11-13T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1688,
+    1096,
+    1577,
+    985
+   ]
+  },
+  {
+   "bucket": "2026-11-13T03:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2088,
+    1496,
+    1977,
+    1385
+   ]
+  },
+  {
+   "bucket": "2026-11-13T03:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2488,
+    1896,
+    2377
+   ]
+  },
+  {
+   "bucket": "2026-11-13T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    474,
+    955,
+    1436,
+    844,
+    1325,
+    733
+   ]
+  },
+  {
+   "bucket": "2026-11-13T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    874,
+    1355,
+    1836,
+    1244,
+    1725
+   ]
+  },
+  {
+   "bucket": "2026-11-13T04:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1274
+   ]
+  },
+  {
+   "bucket": "2026-11-13T04:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1674,
+    2155,
+    2636,
+    2044
+   ]
+  },
+  {
+   "bucket": "2026-11-13T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    733,
+    1214,
+    622,
+    1103,
+    511,
+    992,
+    400
+   ]
+  },
+  {
+   "bucket": "2026-11-13T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1133,
+    1614
+   ]
+  },
+  {
+   "bucket": "2026-11-13T05:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1533,
+    2014
+   ]
+  },
+  {
+   "bucket": "2026-11-13T05:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1933,
+    2414,
+    1822,
+    2303,
+    1711
+   ]
+  },
+  {
+   "bucket": "2026-11-13T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    992,
+    400,
+    881,
+    1362
+   ]
+  },
+  {
+   "bucket": "2026-11-13T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1392,
+    800,
+    1281
+   ]
+  },
+  {
+   "bucket": "2026-11-13T06:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1792,
+    1200,
+    1681
+   ]
+  },
+  {
+   "bucket": "2026-11-13T06:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2192,
+    1600,
+    2081,
+    2562,
+    1970,
+    2451
+   ]
+  },
+  {
+   "bucket": "2026-11-13T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1251,
+    659,
+    1140,
+    548,
+    1029
+   ]
+  },
+  {
+   "bucket": "2026-11-13T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1651,
+    1059,
+    1540,
+    948
+   ]
+  },
+  {
+   "bucket": "2026-11-13T07:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2051,
+    1459,
+    1940,
+    1348
+   ]
+  },
+  {
+   "bucket": "2026-11-13T07:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2451,
+    1859,
+    2340
+   ]
+  },
+  {
+   "bucket": "2026-11-13T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    437,
+    918,
+    1399,
+    807,
+    1288,
+    696
+   ]
+  },
+  {
+   "bucket": "2026-11-13T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    837,
+    1318,
+    1799,
+    1207,
+    1688
+   ]
+  },
+  {
+   "bucket": "2026-11-13T08:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1237
+   ]
+  },
+  {
+   "bucket": "2026-11-13T08:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1637,
+    2118,
+    2599,
+    2007
+   ]
+  },
+  {
+   "bucket": "2026-11-13T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    696,
+    1177,
+    585,
+    1066,
+    474,
+    955,
+    1436
+   ]
+  },
+  {
+   "bucket": "2026-11-13T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1096,
+    1577
+   ]
+  },
+  {
+   "bucket": "2026-11-13T09:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1496,
+    1977
+   ]
+  },
+  {
+   "bucket": "2026-11-13T09:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1896,
+    2377,
+    1785,
+    2266,
+    1674
+   ]
+  },
+  {
+   "bucket": "2026-11-13T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    955,
+    1436,
+    844,
+    1325
+   ]
+  },
+  {
+   "bucket": "2026-11-13T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1355,
+    1836,
+    1244
+   ]
+  },
+  {
+   "bucket": "2026-11-13T10:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1755,
+    2236,
+    1644
+   ]
+  },
+  {
+   "bucket": "2026-11-13T10:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2155,
+    2636,
+    2044,
+    2525,
+    1933,
+    2414
+   ]
+  },
+  {
+   "bucket": "2026-11-13T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1214,
+    622,
+    1103,
+    511,
+    992
+   ]
+  },
+  {
+   "bucket": "2026-11-13T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1614,
+    1022,
+    1503,
+    911
+   ]
+  },
+  {
+   "bucket": "2026-11-13T11:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2014,
+    1422,
+    1903,
+    1311
+   ]
+  },
+  {
+   "bucket": "2026-11-13T11:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2414,
+    1822,
+    2303
+   ]
+  },
+  {
+   "bucket": "2026-11-13T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    400,
+    881,
+    1362,
+    770,
+    1251,
+    659
+   ]
+  },
+  {
+   "bucket": "2026-11-13T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    800,
+    1281,
+    1762,
+    1170,
+    1651
+   ]
+  },
+  {
+   "bucket": "2026-11-13T12:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1200
+   ]
+  },
+  {
+   "bucket": "2026-11-13T12:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1600,
+    2081,
+    2562,
+    1970
+   ]
+  },
+  {
+   "bucket": "2026-11-13T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    659,
+    1140,
+    548,
+    1029,
+    437,
+    918,
+    1399
+   ]
+  },
+  {
+   "bucket": "2026-11-13T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1059,
+    1540
+   ]
+  },
+  {
+   "bucket": "2026-11-13T13:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1459,
+    1940
+   ]
+  },
+  {
+   "bucket": "2026-11-13T13:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1859,
+    2340,
+    1748,
+    2229,
+    1637
+   ]
+  },
+  {
+   "bucket": "2026-11-13T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    918,
+    1399,
+    807,
+    1288
+   ]
+  },
+  {
+   "bucket": "2026-11-13T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1318,
+    1799,
+    1207
+   ]
+  },
+  {
+   "bucket": "2026-11-13T14:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1718,
+    2199,
+    1607
+   ]
+  },
+  {
+   "bucket": "2026-11-13T14:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2118,
+    2599,
+    2007,
+    2488,
+    1896,
+    2377
+   ]
+  },
+  {
+   "bucket": "2026-11-13T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1177,
+    585,
+    1066,
+    474,
+    955
+   ]
+  },
+  {
+   "bucket": "2026-11-13T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1577,
+    985,
+    1466,
+    874
+   ]
+  },
+  {
+   "bucket": "2026-11-13T15:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1977,
+    1385,
+    1866,
+    1274
+   ]
+  },
+  {
+   "bucket": "2026-11-13T15:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2377,
+    1785,
+    2266
+   ]
+  },
+  {
+   "bucket": "2026-11-13T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1436,
+    844,
+    1325,
+    733,
+    1214,
+    622
+   ]
+  },
+  {
+   "bucket": "2026-11-13T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1836,
+    1244,
+    1725,
+    1133,
+    1614
+   ]
+  },
+  {
+   "bucket": "2026-11-13T16:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2236
+   ]
+  },
+  {
+   "bucket": "2026-11-13T16:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2636,
+    2044,
+    2525,
+    1933
+   ]
+  },
+  {
+   "bucket": "2026-11-13T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    622,
+    1103,
+    511,
+    992,
+    400,
+    881,
+    1362
+   ]
+  },
+  {
+   "bucket": "2026-11-13T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1022,
+    1503
+   ]
+  },
+  {
+   "bucket": "2026-11-13T17:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1422,
+    1903
+   ]
+  },
+  {
+   "bucket": "2026-11-13T17:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1822,
+    2303,
+    1711,
+    2192,
+    1600
+   ]
+  },
+  {
+   "bucket": "2026-11-13T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    881,
+    1362,
+    770,
+    1251
+   ]
+  },
+  {
+   "bucket": "2026-11-13T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1281,
+    1762,
+    1170
+   ]
+  },
+  {
+   "bucket": "2026-11-13T18:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1681,
+    2162,
+    1570
+   ]
+  },
+  {
+   "bucket": "2026-11-13T18:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2081,
+    2562,
+    1970,
+    2451,
+    1859,
+    2340
+   ]
+  },
+  {
+   "bucket": "2026-11-13T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1140,
+    548,
+    1029,
+    437,
+    918
+   ]
+  },
+  {
+   "bucket": "2026-11-13T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1540,
+    948,
+    1429,
+    837
+   ]
+  },
+  {
+   "bucket": "2026-11-13T19:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1940,
+    1348,
+    1829,
+    1237
+   ]
+  },
+  {
+   "bucket": "2026-11-13T19:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2340,
+    1748,
+    2229
+   ]
+  },
+  {
+   "bucket": "2026-11-13T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1399,
+    807,
+    1288,
+    696,
+    1177,
+    585
+   ]
+  },
+  {
+   "bucket": "2026-11-13T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1799,
+    1207,
+    1688,
+    1096,
+    1577
+   ]
+  },
+  {
+   "bucket": "2026-11-13T20:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2199
+   ]
+  },
+  {
+   "bucket": "2026-11-13T20:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2599,
+    2007,
+    2488,
+    1896
+   ]
+  },
+  {
+   "bucket": "2026-11-13T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    585,
+    1066,
+    474,
+    955,
+    1436,
+    844,
+    1325
+   ]
+  },
+  {
+   "bucket": "2026-11-13T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    985,
+    1466
+   ]
+  },
+  {
+   "bucket": "2026-11-13T21:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1385,
+    1866
+   ]
+  },
+  {
+   "bucket": "2026-11-13T21:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1785,
+    2266,
+    1674,
+    2155,
+    2636
+   ]
+  },
+  {
+   "bucket": "2026-11-13T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    844,
+    1325,
+    733,
+    1214
+   ]
+  },
+  {
+   "bucket": "2026-11-13T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1244,
+    1725,
+    1133
+   ]
+  },
+  {
+   "bucket": "2026-11-13T22:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1644,
+    2125,
+    1533
+   ]
+  },
+  {
+   "bucket": "2026-11-13T22:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2044,
+    2525,
+    1933,
+    2414,
+    1822,
+    2303
+   ]
+  },
+  {
+   "bucket": "2026-11-13T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1103,
+    511,
+    992,
+    400,
+    881
+   ]
+  },
+  {
+   "bucket": "2026-11-13T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1503,
+    911,
+    1392,
+    800
+   ]
+  },
+  {
+   "bucket": "2026-11-13T23:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1903,
+    1311,
+    1792,
+    1200
+   ]
+  },
+  {
+   "bucket": "2026-11-13T23:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2303,
+    1711,
+    2192
+   ]
+  },
+  {
+   "bucket": "2026-11-14T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    1362,
+    770,
+    1251,
+    659,
+    1140,
+    548
+   ]
+  },
+  {
+   "bucket": "2026-11-14T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    1762,
+    1170,
+    1651,
+    1059,
+    1540
+   ]
+  },
+  {
+   "bucket": "2026-11-14T00:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    2162
+   ]
+  },
+  {
+   "bucket": "2026-11-14T00:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    2562,
+    1970,
+    2451,
+    1859
+   ]
+  },
+  {
+   "bucket": "2026-11-14T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "document",
+   "latencies_ms": [
+    548,
+    1029,
+    437,
+    918,
+    1399,
+    807,
+    1288
+   ]
+  },
+  {
+   "bucket": "2026-11-14T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "task_type": "review",
+   "latencies_ms": [
+    948,
+    1429
+   ]
+  },
+  {
+   "bucket": "2026-11-14T01:00:00Z",
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "task_type": "document",
+   "latencies_ms": [
+    1348,
+    1829
+   ]
+  },
+  {
+   "bucket": "2026-11-14T01:00:00Z",
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "task_type": "document",
+   "latencies_ms": [
+    1748,
+    2229,
+    1637,
+    2118,
+    2599
+   ]
+  }
+ ],
+ "seen": [
+  {
+   "model_name": "Model-X",
+   "backend_id": "local-a",
+   "host": "192.0.2.10",
+   "first_seen": "2026-09-01T00:00:00Z",
+   "last_seen": "2026-11-14T01:00:00Z"
+  },
+  {
+   "model_name": "Model-X",
+   "backend_id": "eval-local-b",
+   "host": "192.0.2.11",
+   "first_seen": "2026-11-01T00:00:00Z",
+   "last_seen": "2026-11-14T01:00:00Z"
+  },
+  {
+   "model_name": "glm-flash",
+   "backend_id": "harness:glm:flash",
+   "host": "client-1",
+   "first_seen": "2026-10-01T00:00:00Z",
+   "last_seen": "2026-11-14T01:00:00Z"
+  }
+ ],
+ "experiments": [
+  {
+   "id": "exp-glmlocal-6799",
+   "question": "GLM against local models on the same sets, with cost per correct answer (queue item i)",
+   "source": "fixture-host:exp-glmlocal-6799-2026-11-13T1730Z.md",
+   "task_set_description": "- Blind truth, hashed before any model call of this lane: triage set_items.json sha256 9bb0e61f7c2b922a5417b9e99768d2dc4718f44c1bcd865b27b7c0eefd0d95e2, set_truth.json 3d34cbbb9d6fc001f4048b87c51ab752",
+   "task_set_hash": "9bb0e61f7c2b922a5417b9e99768d2dc4718f44c1bcd865b27b7c0eefd0d95e2",
+   "baseline": null,
+   "arms": [
+    {
+     "label": "local201_excerpt",
+     "correct": 68,
+     "n": 165,
+     "p50_latency_s": 0.47,
+     "gpu_seconds": 159.2
+    },
+    {
+     "label": "local202_excerpt",
+     "correct": 67,
+     "n": 165,
+     "p50_latency_s": 3.09,
+     "gpu_seconds": 1605.5
+    },
+    {
+     "label": "glm_excerpt",
+     "correct": 84,
+     "n": 165,
+     "p50_latency_s": 23.2,
+     "gpu_seconds": 5650.8
+    },
+    {
+     "label": "local201_facts",
+     "correct": 123,
+     "n": 165,
+     "p50_latency_s": 0.5,
+     "gpu_seconds": 148.4
+    },
+    {
+     "label": "local202_facts",
+     "correct": 124,
+     "n": 165,
+     "p50_latency_s": 1.88,
+     "gpu_seconds": 367.2
+    },
+    {
+     "label": "glm_facts",
+     "correct": 124,
+     "n": 165,
+     "p50_latency_s": 18.4,
+     "gpu_seconds": 4091.2
+    }
+   ],
+   "paired": [
+    {
+     "test": "exact McNemar",
+     "arm_a": "local201_excerpt",
+     "arm_b": "local202_excerpt",
+     "only_a_right": 7,
+     "only_b_right": 6,
+     "p_value": 1.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local201_excerpt",
+     "arm_b": "glm_excerpt",
+     "only_a_right": 6,
+     "only_b_right": 22,
+     "p_value": 0.0037
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local201_excerpt",
+     "arm_b": "local201_facts",
+     "only_a_right": 6,
+     "only_b_right": 61,
+     "p_value": 0.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local201_excerpt",
+     "arm_b": "local202_facts",
+     "only_a_right": 4,
+     "only_b_right": 60,
+     "p_value": 0.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local201_excerpt",
+     "arm_b": "glm_facts",
+     "only_a_right": 9,
+     "only_b_right": 65,
+     "p_value": 0.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local202_excerpt",
+     "arm_b": "glm_excerpt",
+     "only_a_right": 12,
+     "only_b_right": 29,
+     "p_value": 0.0115
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local202_excerpt",
+     "arm_b": "local201_facts",
+     "only_a_right": 9,
+     "only_b_right": 65,
+     "p_value": 0.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local202_excerpt",
+     "arm_b": "local202_facts",
+     "only_a_right": 4,
+     "only_b_right": 61,
+     "p_value": 0.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local202_excerpt",
+     "arm_b": "glm_facts",
+     "only_a_right": 14,
+     "only_b_right": 71,
+     "p_value": 0.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "glm_excerpt",
+     "arm_b": "local201_facts",
+     "only_a_right": 9,
+     "only_b_right": 48,
+     "p_value": 0.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "glm_excerpt",
+     "arm_b": "local202_facts",
+     "only_a_right": 11,
+     "only_b_right": 51,
+     "p_value": 0.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "glm_excerpt",
+     "arm_b": "glm_facts",
+     "only_a_right": 5,
+     "only_b_right": 45,
+     "p_value": 0.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local201_facts",
+     "arm_b": "local202_facts",
+     "only_a_right": 5,
+     "only_b_right": 6,
+     "p_value": 1.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local201_facts",
+     "arm_b": "glm_facts",
+     "only_a_right": 8,
+     "only_b_right": 9,
+     "p_value": 1.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local202_facts",
+     "arm_b": "glm_facts",
+     "only_a_right": 12,
+     "only_b_right": 12,
+     "p_value": 1.0
+    }
+   ],
+   "verdict": null,
+   "date": "2026-11-13T17:30:00Z",
+   "date_source": "filename"
+  },
+  {
+   "id": "exp-glmlocal-6799#2",
+   "question": "GLM against local models on the same sets, with cost per correct answer (queue item i)",
+   "source": "fixture-host:exp-glmlocal-6799-2026-11-13T1730Z.md",
+   "task_set_description": "- Blind truth, hashed before any model call of this lane: triage set_items.json sha256 9bb0e61f7c2b922a5417b9e99768d2dc4718f44c1bcd865b27b7c0eefd0d95e2, set_truth.json 3d34cbbb9d6fc001f4048b87c51ab752",
+   "task_set_hash": "9bb0e61f7c2b922a5417b9e99768d2dc4718f44c1bcd865b27b7c0eefd0d95e2",
+   "baseline": null,
+   "arms": [
+    {
+     "label": "local201",
+     "correct": 31,
+     "n": 60,
+     "p50_latency_s": 1.67,
+     "gpu_seconds": 257.9
+    },
+    {
+     "label": "local202",
+     "correct": 25,
+     "n": 60,
+     "p50_latency_s": 2.48,
+     "gpu_seconds": 198.9
+    },
+    {
+     "label": "glm",
+     "correct": 56,
+     "n": 60,
+     "p50_latency_s": 26.55,
+     "gpu_seconds": 1623.8
+    }
+   ],
+   "paired": [
+    {
+     "test": "exact McNemar",
+     "arm_a": "local201",
+     "arm_b": "local202",
+     "only_a_right": 8,
+     "only_b_right": 2,
+     "p_value": 0.1094
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local201",
+     "arm_b": "glm",
+     "only_a_right": 0,
+     "only_b_right": 25,
+     "p_value": 0.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local202",
+     "arm_b": "glm",
+     "only_a_right": 0,
+     "only_b_right": 31,
+     "p_value": 0.0
+    }
+   ],
+   "verdict": null,
+   "date": "2026-11-13T17:30:00Z",
+   "date_source": "filename"
+  },
+  {
+   "id": "exp-glmlocal-6799#3",
+   "question": "GLM against local models on the same sets, with cost per correct answer (queue item i)",
+   "source": "fixture-host:exp-glmlocal-6799-2026-11-13T1730Z.md",
+   "task_set_description": "- Blind truth, hashed before any model call of this lane: triage set_items.json sha256 9bb0e61f7c2b922a5417b9e99768d2dc4718f44c1bcd865b27b7c0eefd0d95e2, set_truth.json 3d34cbbb9d6fc001f4048b87c51ab752",
+   "task_set_hash": "9bb0e61f7c2b922a5417b9e99768d2dc4718f44c1bcd865b27b7c0eefd0d95e2",
+   "baseline": null,
+   "arms": [
+    {
+     "label": "local201",
+     "correct": 52,
+     "n": 60,
+     "p50_latency_s": 1.67,
+     "gpu_seconds": 257.9
+    },
+    {
+     "label": "local202",
+     "correct": 52,
+     "n": 60,
+     "p50_latency_s": 2.48,
+     "gpu_seconds": 198.9
+    },
+    {
+     "label": "glm",
+     "correct": 60,
+     "n": 60,
+     "p50_latency_s": 26.55,
+     "gpu_seconds": 1623.8
+    }
+   ],
+   "paired": [
+    {
+     "test": "exact McNemar",
+     "arm_a": "local201",
+     "arm_b": "local202",
+     "only_a_right": 7,
+     "only_b_right": 7,
+     "p_value": 1.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local201",
+     "arm_b": "glm",
+     "only_a_right": 0,
+     "only_b_right": 8,
+     "p_value": 0.0078
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local202",
+     "arm_b": "glm",
+     "only_a_right": 0,
+     "only_b_right": 8,
+     "p_value": 0.0078
+    }
+   ],
+   "verdict": null,
+   "date": "2026-11-13T17:30:00Z",
+   "date_source": "filename"
+  },
+  {
+   "id": "exp-seamshot-6799",
+   "question": "do GLM-labelled examples help a local model name seam classes?",
+   "source": "fixture-host:exp-seamshot-6799-2026-11-13T1845Z.md",
+   "task_set_description": "",
+   "task_set_hash": null,
+   "baseline": null,
+   "arms": [
+    {
+     "label": "h201 A",
+     "correct": 29,
+     "n": 60,
+     "p50_latency_s": 0.65,
+     "gpu_seconds": 60.0
+    },
+    {
+     "label": "h201 B",
+     "correct": 42,
+     "n": 60,
+     "p50_latency_s": 1.25,
+     "gpu_seconds": 79.7
+    },
+    {
+     "label": "h201 C",
+     "correct": 51,
+     "n": 60,
+     "p50_latency_s": 1.82,
+     "gpu_seconds": 110.8
+    },
+    {
+     "label": "GLM glm-5.3-flash",
+     "correct": 56,
+     "n": 60,
+     "p50_latency_s": null,
+     "gpu_seconds": null
+    }
+   ],
+   "paired": [
+    {
+     "test": "exact McNemar",
+     "arm_a": "A",
+     "arm_b": "B",
+     "only_a_right": 1,
+     "only_b_right": 14,
+     "p_value": 0.001
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "A",
+     "arm_b": "C",
+     "only_a_right": 0,
+     "only_b_right": 22,
+     "p_value": 0.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "B",
+     "arm_b": "C",
+     "only_a_right": 0,
+     "only_b_right": 9,
+     "p_value": 0.0039
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "A",
+     "arm_b": "GLM",
+     "only_a_right": 0,
+     "only_b_right": 27,
+     "p_value": 0.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "B",
+     "arm_b": "GLM",
+     "only_a_right": 2,
+     "only_b_right": 16,
+     "p_value": 0.0013
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "C",
+     "arm_b": "GLM",
+     "only_a_right": 2,
+     "only_b_right": 7,
+     "p_value": 0.1797
+    }
+   ],
+   "verdict": null,
+   "date": "2026-11-13T18:45:00Z",
+   "date_source": "filename"
+  },
+  {
+   "id": "exp-seamshot-6799#2",
+   "question": "do GLM-labelled examples help a local model name seam classes?",
+   "source": "fixture-host:exp-seamshot-6799-2026-11-13T1845Z.md",
+   "task_set_description": "",
+   "task_set_hash": null,
+   "baseline": null,
+   "arms": [
+    {
+     "label": "h201 A",
+     "correct": 31,
+     "n": 40,
+     "p50_latency_s": 0.99,
+     "gpu_seconds": 43.5
+    },
+    {
+     "label": "h201 B",
+     "correct": 35,
+     "n": 40,
+     "p50_latency_s": 1.32,
+     "gpu_seconds": 52.1
+    },
+    {
+     "label": "h201 C",
+     "correct": 35,
+     "n": 40,
+     "p50_latency_s": 1.37,
+     "gpu_seconds": 51.7
+    },
+    {
+     "label": "GLM glm-5.3-flash",
+     "correct": 38,
+     "n": 40,
+     "p50_latency_s": null,
+     "gpu_seconds": null
+    }
+   ],
+   "paired": [
+    {
+     "test": "exact McNemar",
+     "arm_a": "A",
+     "arm_b": "B",
+     "only_a_right": 3,
+     "only_b_right": 7,
+     "p_value": 0.3438
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "A",
+     "arm_b": "C",
+     "only_a_right": 3,
+     "only_b_right": 7,
+     "p_value": 0.3438
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "B",
+     "arm_b": "C",
+     "only_a_right": 0,
+     "only_b_right": 0,
+     "p_value": 1.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "A",
+     "arm_b": "GLM",
+     "only_a_right": 1,
+     "only_b_right": 8,
+     "p_value": 0.0391
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "B",
+     "arm_b": "GLM",
+     "only_a_right": 0,
+     "only_b_right": 3,
+     "p_value": 0.25
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "C",
+     "arm_b": "GLM",
+     "only_a_right": 0,
+     "only_b_right": 3,
+     "p_value": 0.25
+    }
+   ],
+   "verdict": null,
+   "date": "2026-11-13T18:45:00Z",
+   "date_source": "filename"
+  },
+  {
+   "id": "exp-triagepow-6800",
+   "question": "triage kinds with enough power (local model, five kinds, grown truth set)",
+   "source": "fixture-host:exp-triagepow-6800-2026-11-13T2045Z.md",
+   "task_set_description": "- Blind truth, hashed before any model call (first model call at 20:10Z, hashes taken 20:09:29Z): u_items.json sha256 de4a24de6aa9eef51a3119b0af3d8cc93a1c42a2d6e260fa6de4c60b4838a85b, u_truth.json 25c",
+   "task_set_hash": "de4a24de6aa9eef51a3119b0af3d8cc93a1c42a2d6e260fa6de4c60b4838a85b",
+   "baseline": null,
+   "arms": [
+    {
+     "label": "local_zero",
+     "correct": 114,
+     "n": 156,
+     "p50_latency_s": 0.58,
+     "gpu_seconds": 89.8
+    },
+    {
+     "label": "local_fewdet",
+     "correct": 130,
+     "n": 156,
+     "p50_latency_s": 1.46,
+     "gpu_seconds": 235.3
+    },
+    {
+     "label": "local_fewsf",
+     "correct": 119,
+     "n": 156,
+     "p50_latency_s": 1.45,
+     "gpu_seconds": 226.3
+    },
+    {
+     "label": "knn1",
+     "correct": 90,
+     "n": 156,
+     "p50_latency_s": 0.0,
+     "gpu_seconds": 0.0
+    },
+    {
+     "label": "knn5",
+     "correct": 71,
+     "n": 156,
+     "p50_latency_s": 0.0,
+     "gpu_seconds": 0.0
+    }
+   ],
+   "paired": [
+    {
+     "test": "exact McNemar",
+     "arm_a": "local_zero",
+     "arm_b": "local_fewdet",
+     "only_a_right": 7,
+     "only_b_right": 23,
+     "p_value": 0.0052
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local_zero",
+     "arm_b": "local_fewsf",
+     "only_a_right": 5,
+     "only_b_right": 10,
+     "p_value": 0.3018
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local_zero",
+     "arm_b": "knn1",
+     "only_a_right": 49,
+     "only_b_right": 25,
+     "p_value": 0.0071
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local_zero",
+     "arm_b": "knn5",
+     "only_a_right": 68,
+     "only_b_right": 25,
+     "p_value": 0.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local_fewdet",
+     "arm_b": "local_fewsf",
+     "only_a_right": 16,
+     "only_b_right": 5,
+     "p_value": 0.0266
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local_fewdet",
+     "arm_b": "knn1",
+     "only_a_right": 46,
+     "only_b_right": 6,
+     "p_value": 0.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local_fewdet",
+     "arm_b": "knn5",
+     "only_a_right": 64,
+     "only_b_right": 5,
+     "p_value": 0.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local_fewsf",
+     "arm_b": "knn1",
+     "only_a_right": 48,
+     "only_b_right": 19,
+     "p_value": 0.0005
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "local_fewsf",
+     "arm_b": "knn5",
+     "only_a_right": 67,
+     "only_b_right": 19,
+     "p_value": 0.0
+    },
+    {
+     "test": "exact McNemar",
+     "arm_a": "knn1",
+     "arm_b": "knn5",
+     "only_a_right": 21,
+     "only_b_right": 2,
+     "p_value": 0.0001
+    }
+   ],
+   "verdict": "Result: product stays current (best F1 0.678); pr-process stays current (0.787, just under the bar); delegation-health-gate gets the local rung (1.000) but a code rule on the check name is the better first rung; runner-infra and pin-unresolvable are undecided (n below 25).",
+   "date": "2026-11-13T20:45:00Z",
+   "date_source": "filename"
+  }
+ ],
+ "sources": [
+  {
+   "id": "projection",
+   "ok": true,
+   "detail": "fixture"
+  },
+  {
+   "id": "routing_overlay",
+   "ok": true,
+   "detail": "fixture"
+  },
+  {
+   "id": "reports:fixture-host",
+   "ok": true,
+   "detail": "fixture"
+  }
+ ]
+}

@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-23933
+title: The lab alarm node raises broker_listener when the dev broker listener refuses a connection
+summary: node_lab_alarm gains the broker_listener condition ported from the old lab alarm script; it dials each external listener address named in its overlay with one Kafka ApiVersions request, reads ALARM when every address refuses or times out and INDETERMINATE when a name cannot be resolved, and hands its verdict to node_lab_alarm_deliver_effect.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23933-broker-listener
+  statement: The dev broker's external listener is watched by node_lab_alarm with the old script's reading, the target and the dial bound come from the overlay, and an unreadable source never reads as healthy.
+  acceptance:
+  - id: AC1
+    statement: "AC1: node_lab_alarm raises broker_listener for exactly the behaviour of the old script, TCP dial of the dev broker external listener from kafka_bootstrap_servers; refused or timed out on every address is ALARM, an unresolvable name is INDETERMINATE (config key kafka_bootstrap_servers), and a healthy fact does not raise -- falsifier: uv run pytest tests/nodes/node_lab_alarm/test_lab_alarm_broker_listener.py -q -k broker_listener"
+  - id: AC2
+    statement: "AC2: an unreadable source reads INDETERMINATE with its reason and never reads as healthy, and the reader is a protocol with an in-memory and a runtime adapter as HandlerBrokerLag has -- falsifier: uv run pytest tests/nodes/node_lab_alarm/test_lab_alarm_broker_listener.py -q -k indeterminate"
+  - id: AC3
+    statement: "AC3: integrated: the alarm is seen raised and delivered by node_lab_alarm on the Mac unit (a drilled fact posts to the notifications channel and writes one FRICTION row), and broker_listener is removed from scripts/lab_alarm.py in omnibase_infra and its config -- falsifier: read the channel post and the ledger FRICTION row after the drill, and grep -c broker_listener scripts/lab_alarm.py returns 0"
+evidence_requirements:
+- kind: tests
+  description: The lab alarm node's and the delivery node's focused tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_lab_alarm tests/nodes/node_lab_alarm_deliver_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23933-ac1
+  description: 'AC1: the broker_listener tests pass; the handler they import does not exist at the merge base, and an injected break (a name that cannot resolve counted as a refusal, or a healthy reading returned as ALARM) turns them red.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_alarm/test_lab_alarm_broker_listener.py -q -n 0 --no-cov -p no:cacheprovider -k broker_listener
+    cwd: .
+- id: dod-omn23933-ac2
+  description: 'AC2: the indeterminate tests pass, including the real TCP probe read against a local socket.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_alarm/test_lab_alarm_broker_listener.py -q -n 0 --no-cov -p no:cacheprovider -k indeterminate
+    cwd: .
+- id: dod-omn23933-ac3
+  description: 'hosted proxy for AC3: the chain tests of both nodes pass; the reading on the Mac unit and the removal from the old script are named as steps left in the pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_alarm tests/nodes/node_lab_alarm_deliver_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23933-integration-proof
+  description: the lab alarm node's focused tests run on a lab host at the pushed head, including the broker_listener tests that fail at the merge base; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23933 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_broker_listener.py -q --no-cov
+    cwd: .

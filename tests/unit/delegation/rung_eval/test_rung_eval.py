@@ -120,7 +120,8 @@ def test_grouping_grader_structural_checks() -> None:
 def test_rungs_config_names_every_configured_rung() -> None:
     ids = [r.rung_id for r in load_rungs()]
     assert ids[:3] == ["lab-201", "lab-202", "planner-200"]
-    assert any(i.startswith("cloud-") for i in ids)
+    assert len(ids) == 3
+    assert not any(i.startswith("cloud-") for i in ids)
     assert len(ids) == len(set(ids))
 
 

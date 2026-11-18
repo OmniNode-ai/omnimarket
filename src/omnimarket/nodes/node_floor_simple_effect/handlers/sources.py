@@ -116,6 +116,7 @@ def record_lanes(record: Mapping[str, Any]) -> tuple[ModelFloorLane, ...]:
             liveness=str(item.get("liveness") or "unread"),
             owns=tuple(str(o) for o in item.get("owns") or () if o),
             parent_ticket=str(item.get("parent_ticket") or ""),
+            read_only=bool(item.get("read_only", False)),
         )
         for item in lanes
         if isinstance(item, dict) and item.get("lane")
@@ -273,6 +274,7 @@ def merge_lanes(
                     "ticket": lane.ticket or extra.ticket,
                     "pr": lane.pr or extra.pr,
                     "owns": tuple(dict.fromkeys((*lane.owns, *extra.owns))),
+                    "read_only": lane.read_only or extra.read_only,
                 }
             )
         )
@@ -960,12 +962,21 @@ def read_deploy_lag(
     # the row, so a red that means "not placed" is not read as "not deployed".
     unread = [str(u) for u in merged.get("evidence_unread") or [] if str(u)]
     unread_note = f"; evidence unread: {unread[0][:110]}" if unread else ""
+    ceiling = overlay.deploy_lag_ceiling_minutes
     subjects = [
         ModelLabSubject(
             name=key,
-            ok=lag <= limit,
+            ok=lag <= limit and (ceiling is None or lag <= ceiling),
             value=float(lag),
-            note=f"merged, not running, {lag} min{'' if lag <= limit else f', over the {limit:g} min limit'}{unread_note}",
+            note=f"merged, not running, {lag} min"
+            + (
+                f", over the {ceiling} min ceiling"
+                if ceiling is not None and lag > ceiling
+                else f", over the {limit:g} min limit"
+                if lag > limit
+                else ""
+            )
+            + unread_note,
         )
         for key, lag in lags[:3]
     ]
@@ -1135,6 +1146,7 @@ def overlay_store_events(
         correlation_id=correlation_id,
         phase="start",
         emitted_at=now,
+        origin="probe",
     )
     if read.status != "read":
         code, detail = "overlay_store_unread", read.reason

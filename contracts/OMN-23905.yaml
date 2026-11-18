@@ -1,0 +1,69 @@
+schema_version: 1.0.0
+ticket_id: OMN-23905
+title: The pool snapshot reaches every lab host from the second PC
+summary: The pool snapshot node's accounts source walks a remote host row's declared fallback destinations when ssh ends 255, so a host with no ssh alias for another lab host reads that host by the second name the lab host table declares. The overlays side (a fallback for the h051 row and the declared public keys) is a separate pull request of the same ticket.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23905-far-reach
+  statement: The pool snapshot's far accounts read honours a lab host row's declared fallback destinations, and the second PC's tick reads every host.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a remote host row's token pool read tries the row's target, then each declared fallback in order, only when ssh ends 255, and ends at any other result -- falsifier: pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_sources.py -q fails on the previous source file"
+  - id: AC2
+    statement: "AC2: the lab host table declares a fallback destination for every host row whose target is a bare alias, and the keys the pool hosts need are declared in one overlay the key distribution node reads -- falsifier: the overlays repository test of those rows fails when a bare-alias row has no fallback or the keys overlay is absent"
+  - id: AC3
+    statement: "AC3: integrated: on host h202 the installed pool snapshot unit's tick writes a snapshot whose rows for h051 and h053 carry accounts (usable or limited labels) and no unread reason, read in pool.json under the unit's state directory -- falsifier: the h202 tick ends failed, or either row still reads an unread reason"
+evidence_requirements:
+- kind: tests
+  description: The accounts source tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_sources.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23905-ac1
+  description: 'AC1: the four fallback walk tests pass with the change; run against the previous source file two of them fail.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_sources.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23905-ac2
+  description: 'AC2: the overlays repository test of the lab host rows and the declared keys overlay, run on a lab host at the overlays main tip; read after the overlays pull request merges.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/overlays --sha "$(git -C "$OMNI_HOME/overlays" rev-parse origin/main)" --lane dod-ac2-23905 --kind test -- env PYTHONDONTWRITEBYTECODE=1 python3 -m pytest tests/test_lab_host_reach_declared.py -q
+    cwd: .
+- id: dod-omn23905-integration-proof-ac3
+  description: 'AC3: the read-at record the unit on h202 wrote carries accounts and no refusal for h051 and h053; run on h202 through the lab work bus.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host h202 --lane dod-ac3-23905 --kind test -- python3 -c 'import json,os,sys; d=json.load(open(os.path.join(os.environ["OMNI_HOME"], ".onex_state/lane-host-pool-snapshot/pool.json.read-at.json"))); r={h["host"]:h for h in d["hosts"]}; sys.exit(0 if all((r[n]["accounts_usable"] or r[n]["accounts_limited"]) and not r[n]["refusal"] for n in ("h051","h053")) else 1)'
+    cwd: .
+- id: dod-omn23905-ac2-hosted-proxy
+  description: 'hosted proxy for AC2: the fallback walk test reads a row declaring fallback_targets; the overlays rows themselves are read by the unbound local Done gate item above.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_sources.py -q -n 0 --no-cov -p no:cacheprovider -k walks_the_row_s_declared_fallbacks
+    cwd: .
+- id: dod-omn23905-ac3-hosted-proxy
+  description: 'hosted proxy for AC3: a failed ssh run on the first destination is answered by the declared fallback; the h202 tick itself is read by the unbound integration proof item above.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_sources.py -q -n 0 --no-cov -p no:cacheprovider -k fallback
+    cwd: .

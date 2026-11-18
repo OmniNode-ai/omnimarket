@@ -12,6 +12,16 @@ node_version:
   patch: 0
 description: Deterministically select lab-fill work using ownership, handoffs and
   input baselines, and mark approved work done from completion facts.
+handler:
+  module: omnimarket.nodes.node_lab_fill_selection_compute.handlers.handler_lab_fill_selection
+  class: HandlerLabFillSelection
+  input_model: omnimarket.nodes.node_lab_fill_selection_compute.models.model_lab_fill_selection_request.ModelLabFillSelectionRequest
+  output_model: omnimarket.nodes.node_lab_fill_selection_compute.models.model_lab_fill_selection_result.ModelLabFillSelectionResult
+runtime_dispatch:
+  external_trigger: Called in process by the lab fill step, with the deployment overlay and the facts supplied by the caller.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
 handler_routing:
   routing_strategy: operation_match
   handlers:
@@ -35,6 +45,7 @@ handler_routing:
     output_model: omnimarket.nodes.node_lab_fill_selection_compute.models.model_lane_resend.ModelLaneResendResult
 descriptor:
   node_archetype: compute
+  runtime_profiles: []
   purity: pure
   idempotent: true
   side_effects: []
@@ -44,5 +55,5 @@ metadata:
   - OMN-17427
   - OMN-20662
   - OMN-23250
-  transport_type: in_process
+  transport_type: local
 lifecycle: experimental

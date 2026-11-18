@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_broker_topic_delete_effect
+version: 1.0.0
+description: Executes the typed delete of broker topics a removal plan already cleared; it re-reads the broker's live evidence and the contracts' declarations, refuses every topic the evidence does not support, and issues deletes only when the overlay enforces and the command names an approval.
+pack: operator_tooling
+node_role: effect
+display_name: Broker Topic Delete Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_broker_topic_delete_effect: omnimarket.nodes.node_broker_topic_delete_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- omnibase-infra>=0.38.3
+- confluent-kafka>=2.12.0,<3.0.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- broker
+- topics

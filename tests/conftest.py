@@ -27,6 +27,7 @@ from omnimarket.config.env_flags import env_flag
 from omnimarket.handlers.routing.task_class_contract_path import (
     TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
 )
+from omnimarket.handlers.runtime_delivery_host import RuntimeDeliveryHost
 
 # OMN-19987: the --refuse-skips option, for evidence checks that must not pass
 # when their proof skipped. Importing the hooks here loads them for every run.
@@ -478,6 +479,30 @@ def _isolate_unit_env(
     # is set (OMN-21099); a lane shell exports the host's live journal, which
     # the resident drainer publishes, so a test falls back to ONEX_STATE_DIR.
     monkeypatch.delenv("ONEX_HOOK_EMIT_JOURNAL_DIR", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _close_runtime_delivery_hosts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[None, None, None]:
+    """OMN-24114: close every RuntimeDeliveryHost a test constructs.
+
+    A projection writer starts a daemon loop thread on its first delivery and
+    nothing ends it; the leftover threads (two with a retry task that never
+    ends) reach tests that patch time or asyncio process-wide, so every test
+    closes the hosts it made.
+    """
+    hosts: list[RuntimeDeliveryHost] = []
+    original_init = RuntimeDeliveryHost.__init__
+
+    def _record_init(self: RuntimeDeliveryHost, *args: Any, **kwargs: Any) -> None:
+        original_init(self, *args, **kwargs)
+        hosts.append(self)
+
+    monkeypatch.setattr(RuntimeDeliveryHost, "__init__", _record_init)
+    yield
+    for host in hosts:
+        host.close()
 
 
 @pytest.fixture(autouse=True)

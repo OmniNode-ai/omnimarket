@@ -1,0 +1,108 @@
+schema_version: 1.0.0
+ticket_id: OMN-23899
+title: The factory status page shows finished work that is not yet running
+summary: The hourly integration pass hands its readings (one typed ModelIntegrationReadingBatch on stdin) to node_integration_reading_publish_effect; node_integration_projection_compute keeps the newest reading per repository and number and derives the counts (merged, seen running, settled elsewhere, unintegrated by gap class, oldest unintegrated) and the groups oldest first; the effect publishes the integration floor projection on onex.snapshot.projection.floor-integration.v1, which node_floor_projection_read_effect declares, so the floor reads the list only from the bus. This pull request is slice one; the floor section is slice two on its own pull request.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - public_api
+  - topics
+requirements:
+  - id: req-omn23899-projection
+    statement: The integration readings are typed and their projection keeps the newest reading per change with the counts and groups.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a typed integration reading and a pure projection compute that keeps the newest reading per repository and number and derives the counts and the groups oldest first -- falsifier: uv run pytest tests/nodes/node_integration_projection_compute; on the base commit the module does not exist, and a not-running reading with gap class none is refused with a typed validation error'
+  - id: req-omn23899-publish
+    statement: One pass's batch reaches the floor's projection bundle over the bus, and an invalid batch publishes nothing.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: the publish effect CLI takes one batch on stdin, projects it and publishes the integration floor projection; on the in-memory bus the floor reader reads it back with the pass''s time; an invalid batch exits 65, publishes nothing and writes an error chain -- falsifier: uv run pytest tests/nodes/node_integration_reading_publish_effect/test_integration_reading_publish.py; with the publish removed the golden chain reads no publication'
+      - id: AC3
+        statement: 'AC3: both nodes are registered in the onex.nodes table, read from pyproject.toml itself -- falsifier: uv run pytest tests/nodes/node_integration_reading_publish_effect/test_integration_nodes_registered.py; the control drops each entry and the read names it (the drift validator exempts experimental nodes)'
+  - id: req-omn23899-overlays
+    statement: The publisher overlay, the reader entry and the dev broker rows are declared in the overlays repository and valid alone.
+    acceptance:
+      - id: AC4
+        statement: 'AC4: the overlays repository holds the publisher overlay, the reader''s integration entry and broker_acls_floor_integration, each loading through a model already on dev -- falsifier: the overlays ci job; the seam test here asserts the example overlays agree on topic and id'
+  - id: req-omn23899-integrated
+    statement: The board on the first HP host shows the section with real rows read from the projection.
+    acceptance:
+      - id: AC6
+        statement: 'AC6: integrated: floor-simple.json served on port 8088 holds the integration section with as_of within the projection''s bound and a row count equal to the pass''s batch -- falsifier: the served floor read, with host and revision named in a comment on this ticket'
+  - id: req-omn23899-contract
+    statement: This file is the definition of done for the ticket and names the runnable checks.
+    acceptance:
+      - id: AC7
+        statement: 'AC7: a definition-of-done contract file for this ticket exists in omnimarket at contracts/OMN-23899.yaml in the standard form -- falsifier: the dod-verify check of the contract against the pull request in CI'
+evidence_requirements:
+  - kind: tests
+    description: The projection cases, the publish golden and error chains on the in-memory bus, and the registration read.
+    command: uv run --frozen pytest tests/nodes/node_integration_projection_compute tests/nodes/node_integration_reading_publish_effect -q -n 0 -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23899-ac1
+    description: AC1 is the golden projection, the newest-reading cases and the typed refusals.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_integration_projection_compute/test_integration_projection.py -q -n 0 -p no:randomly --no-cov
+        cwd: .
+  - id: dod-omn23899-ac2
+    description: AC2 is the golden chain over the in-memory bus into the floor bundle, the stale control and the error chains.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_integration_reading_publish_effect/test_integration_reading_publish.py -q -n 0 -p no:randomly --no-cov
+        cwd: .
+  - id: dod-omn23899-ac3
+    description: AC3 is the registration read with its control.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_integration_reading_publish_effect/test_integration_nodes_registered.py -q -n 0 -p no:randomly --no-cov
+        cwd: .
+  - id: dod-omn23899-ac4
+    description: AC4 hosted part is the seam between the publisher, the reader and their example overlays; the overlays repository's own ci validates the deployed overlays.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_integration_reading_publish_effect/test_integration_reading_publish.py -q -n 0 -p no:randomly --no-cov -k seam
+        cwd: .
+  - id: dod-omn23899-integration-proof-served-board
+    description: AC6 is the served board on the first HP host; hosted CI cannot reach it, so only the local Done gate runs this unbound check, which reads the served floor and fails when the integration section is absent or unread.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: "curl -sf -m 20 \"${FLOOR_SIMPLE_URL:?set FLOOR_SIMPLE_URL to the served floor-simple.json}\" | python3 -c \"import json,sys; d=json.load(sys.stdin); s=d['integration']; assert s['status'] == 'read' and s['rows'], s\""
+        cwd: .
+  - id: dod-omn23899-ac6
+    description: AC6 hosted part is the golden chain into the floor bundle; the served board reading is a ticket comment and the unbound check above.
+    source: manual
+    binds_ac:
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_integration_reading_publish_effect/test_integration_reading_publish.py -q -n 0 -p no:randomly --no-cov -k golden_chain
+        cwd: .
+  - id: dod-omn23899-ac7
+    description: AC7 is this contract read by dod-verify against the pull request; the check reads the new publish topic from the contract the merge base lacks.
+    source: manual
+    binds_ac:
+      - AC7
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_integration_reading_publish_effect/test_integration_reading_publish.py -q -n 0 -p no:randomly --no-cov -k golden_chain
+        cwd: .

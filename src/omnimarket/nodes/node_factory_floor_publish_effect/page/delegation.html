@@ -103,7 +103,7 @@ const $ = id => document.getElementById(id);
 let doc = null, failure = "";
 const st = {q: "", grp: "", page: 0};
 const GROUPS = {done: "Done", merged_awaiting_closer: "Merged, awaiting the closer", pr_open: "Pull request open", lane_running: "Lane running", not_started: "Not started", unread: "Not readable"};
-const SCN = {pass: ["Passing", "green"], fail: ["Failing", "red"], no_workflow: ["Not built", "amber"], no_run: ["No finished run", "amber"], unread: ["Unread", "grey"]};
+const SCN = {pass: ["Passing", "green"], fail: ["Failing", "red"], no_workflow: ["Not built", "amber"], no_run: ["No finished run", "amber"], unread: ["Unread", "grey"], stale: ["Stale", "amber"]};
 const TONE = {done: "green", merged_awaiting_closer: "green", pr_open: "amber", lane_running: "amber", not_started: "grey", unread: "grey"};
 
 const renderable = d => !!d && typeof d === "object" && Number.isFinite(Date.parse(d.generated_at)) && Array.isArray(d.scenarios) && Array.isArray(d.tickets) && !!d.counts && Array.isArray(d.counts.groups);
@@ -132,6 +132,7 @@ function drawCards(){
     + tile(c.scenarios_not_built, "not built", "scs:no_workflow", c.scenarios_not_built ? "a" : "z")
     + tile(c.scenarios_no_run, "no finished run", "scs:no_run", c.scenarios_no_run ? "a" : "z")
     + tile(c.scenarios_unread, "unread", "scs:unread", c.scenarios_unread ? "a" : "z")
+    + tile(c.scenarios_stale || 0, "stale", "scs:stale", c.scenarios_stale ? "a" : "z")
     + `</ul><p>Each scenario passes on its latest scheduled run. Tap a number to see which.</p></section>`;
   const tk = `<section class="card"><h2>Plan tickets <small>(${esc(c.tickets_total)})</small></h2><ul class="cnt">`
     + ["done", "merged_awaiting_closer", "pr_open", "lane_running", "not_started"].map(id => tile(g[id] ? g[id].count : 0, GROUPS[id].toLowerCase(), "grp:" + id, id === "done" || id === "merged_awaiting_closer" ? "g" : id === "not_started" ? "z" : "a")).join("")

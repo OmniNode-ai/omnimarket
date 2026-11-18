@@ -9,6 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.models.lane_closeout.model_lane_closeout_tree_outcome import (
     ModelLaneCloseoutTreeOutcome,
 )
+from omnimarket.models.lane_closeout.model_lane_guard_end_record import (
+    ModelLaneGuardEndRecord,
+)
 
 
 class ModelLaneCloseoutRecord(BaseModel):
@@ -22,6 +25,11 @@ class ModelLaneCloseoutRecord(BaseModel):
     closed_at: str
     ended_by: str  # the end marker's file name, or "orphan-age" / "orphan-lane-dir"
     trees: tuple[ModelLaneCloseoutTreeOutcome, ...] = Field(default=())
+    end_record: ModelLaneGuardEndRecord | None = None
+    end_record_error: str = Field(
+        default="",
+        description="Why a present end record file could not be read; empty otherwise.",
+    )
     run_dir_removed: bool
     complete: bool  # every tree gone and the run directory removed
     error: str = Field(

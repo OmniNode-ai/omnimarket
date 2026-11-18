@@ -61,6 +61,7 @@ class HandlerIdleRunnerStop:
             clock=lambda: self._clock().astimezone(UTC),
             correlation_id=cid,
             backend=self._backend,
+            origin="real",
         )
         chain.start()
         if all(r.name != name for r in self._settings.runners):

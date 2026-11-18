@@ -1,0 +1,7 @@
+# Settings of node_lane_guard_unit_effect. The deployed values live in the overlays
+# repository under node_lane_guard_unit_effect/overlay.yaml; the node holds no default for any of them.
+end_record:
+  record_dir: /var/lib/example/lane-guard/records
+  worktrees_dir: /var/lib/example/omni_worktrees
+  git_timeout_s: 20
+  max_trees: 20

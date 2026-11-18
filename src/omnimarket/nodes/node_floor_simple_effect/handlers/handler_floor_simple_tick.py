@@ -29,7 +29,9 @@ from omnimarket.handlers.emission_sink import (
     ProtocolEmissionSink,
 )
 from omnimarket.handlers.floor_projection import (
+    emissions_from_payload,
     load_bundle,
+    merge_emissions,
     owners_from_payload,
     projection_payload,
 )
@@ -52,6 +54,7 @@ from omnimarket.models.floor_17a import (
     ModelFloorSimpleTickRequest,
     ModelFloorSimpleTickResult,
     ModelGoalScope,
+    ModelJoinChains,
     ModelJoinEnd,
     ModelLabSourceRead,
     ModelLabStateAlarmRequest,
@@ -84,6 +87,13 @@ from omnimarket.nodes.node_floor_simple_compute.handlers.handler_lab_state impor
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.abandoned_starts import (
     abandoned_starts,
+)
+from omnimarket.nodes.node_floor_simple_effect.handlers.handoff_refusals import (
+    handoff_refusals_reading,
+    read_decision_tail,
+)
+from omnimarket.nodes.node_floor_simple_effect.handlers.integration_source import (
+    read_integration,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.ledger_reads import (
     ModelLedgerFloorRead,
@@ -205,6 +215,9 @@ class ModelSourcePaths(BaseModel):
     controller_admissions_name: str
     owner_map_projection: str
     controller_admissions_tail_bytes: int
+    # The controller's decision journal (OMN-23242): the merge deferrals of handed-off pull requests are counted from its tail.
+    controller_decisions_name: str = "decisions.jsonl"
+    controller_decisions_tail_bytes: int = 8388608
     friction_report_relpath: str
     runner_fleet_relpath: str
     lab_alarm_runs_relpath: str
@@ -212,6 +225,9 @@ class ModelSourcePaths(BaseModel):
     broker_lag_condition: str
     projection_reads_relpath: str
     overlay_store_projection: str
+    emissions_projection: str
+    # The integration projection (OMN-23899); ``None`` is a contract that names none and the cycle reads none.
+    integration_projection: str | None = None
     deploy_agent_relpath: str
     readings_relpath: str
     harness_result_relpath: str
@@ -300,6 +316,9 @@ class ModelFloorSimpleRuntime(BaseModel):
     # The joins that end at a node of this node's own piece, because no node downstream can emit a typed refusal for them
     # (OMN-22864). Each names a node among ``pipeline_chains``.
     join_ends: tuple[ModelJoinEnd, ...] = ()
+    # The joins that read only some nodes of their two pieces (OMN-23083): the node of a piece that runs its own pipeline, with
+    # nothing downstream to answer it, is left out of the join that would demand an answer.
+    join_chains: tuple[ModelJoinChains, ...] = ()
     # Where the ledger's rows are read from: the go for rebuild pieces and the events of pieces that write rows.
     ledger: ModelFileLedgerReadRoute | ModelCommandLedgerReadRoute = Field(
         discriminator="route"
@@ -435,6 +454,7 @@ class HandlerFloorSimpleTick:
                         "emitted_at": now,
                         "backend": "real",
                         "drill": extra.pop("drill", drill),
+                        "origin": "probe",
                         **extra,
                     }
                 )
@@ -770,7 +790,17 @@ class HandlerFloorSimpleTick:
         go = ledger.facts.go_given_through if ledger.facts is not None else None
         go_pieces = ledger.facts.go_pieces if ledger.facts is not None else ()
         ledger_events = ledger.facts.events if ledger.facts is not None else ()
-        pre = self._receipts(sink, floor_ov, now, rt, go, ledger_events, go_pieces)
+        # The chains the readiness rule counts as real come from the floor emissions projection on the bus (OMN-23877); the journal
+        # file is read as health only. A projection that reads unknown (never published, older than its bound) holds no chain.
+        emissions_read = projection_payload(
+            load_bundle(home / rt.sources.projection_reads_relpath),
+            rt.sources.emissions_projection,
+            now,
+        )
+        projected = emissions_from_payload(emissions_read.payload or {})
+        pre = self._receipts(
+            sink, floor_ov, now, rt, go, ledger_events, go_pieces, projected
+        )
         row = next(p for p in pre.pieces if p.piece == piece)
         if (
             request.drill_error
@@ -779,7 +809,14 @@ class HandlerFloorSimpleTick:
         ):
             self._drill(step)
             pre = self._receipts(
-                sink, floor_ov, self._clock(), rt, go, ledger_events, go_pieces
+                sink,
+                floor_ov,
+                self._clock(),
+                rt,
+                go,
+                ledger_events,
+                go_pieces,
+                projected,
             )
         if request.drill_error:
             raise FloorSourceError("drill_completed", "the drill ran its defined fault")
@@ -930,7 +967,7 @@ class HandlerFloorSimpleTick:
         receipts = step(
             "node_floor_emission_compute:compute_floor_receipts",
             lambda: self._receipts(
-                sink, floor_ov, now, rt, go, ledger_events, go_pieces
+                sink, floor_ov, now, rt, go, ledger_events, go_pieces, projected
             ),
             lambda out: {
                 "chains": len(out.chains),
@@ -962,6 +999,11 @@ class HandlerFloorSimpleTick:
         delegation_tickets = (
             read_delegation_tickets(work_state, delegation_spec)
             if delegation_spec is not None
+            else None
+        )
+        integration = (
+            read_integration(projections, rt.sources.integration_projection, now)
+            if rt.sources.integration_projection is not None
             else None
         )
         floor_input = ModelFloorSimpleInput(
@@ -999,6 +1041,24 @@ class HandlerFloorSimpleTick:
                 ledger.facts.readings if ledger.facts is not None else (),
             ),
             shadows=ledger.facts.shadows if ledger.facts is not None else (),
+            handoff_refusals=handoff_refusals_reading(
+                ledger=ledger.facts.handoff if ledger.facts is not None else None,
+                ledger_error=(
+                    ledger.facts.handoff_unread
+                    if ledger.facts is not None
+                    else (ledger.error or "")
+                ),
+                decisions=read_decision_tail(
+                    controller_dir / rt.sources.controller_decisions_name,
+                    rt.sources.controller_decisions_tail_bytes,
+                ),
+                admissions=read_admissions(
+                    controller_dir / rt.sources.controller_admissions_name,
+                    rt.sources.controller_admissions_tail_bytes,
+                ),
+                now=now,
+                overlay=floor_ov.handoff_refusals,
+            ),
             alarms=self._alarm_lines(outcome.state, outcome.undelivered),
             go_given_through=go,
             go_pieces=go_pieces,
@@ -1018,8 +1078,14 @@ class HandlerFloorSimpleTick:
                     if delegation_spec is not None
                     else {}
                 ),
+                **(
+                    {"integration_projection": integration.status == "read"}
+                    if integration is not None
+                    else {}
+                ),
             },
             worklist=worklist,
+            integration=integration,
             delegation_tickets=delegation_tickets,
             alarm_heartbeat_at=outcome.state.heartbeat_at,
             outside_goal=self._outside_goal(goal_scope, watcher),
@@ -1230,12 +1296,15 @@ class HandlerFloorSimpleTick:
         go: int | None,
         ledger_events: tuple[ModelNodeEmission, ...],
         go_pieces: tuple[int, ...] = (),
+        projected: tuple[ModelNodeEmission, ...] = (),
     ) -> ModelFloorReceipts:
         since = now - timedelta(hours=rt.state.emission_window_hours)
         # A chain is read whole: the closing failure of an abandoned start is stamped the bound after the start, so
         # at the window edge it is inside the window while its start is not. Read back one bound further and keep
         # every chain that has an event inside the window.
-        read = sink.read(since - timedelta(seconds=rt.abandon_after_seconds))
+        read = merge_emissions(
+            sink.read(since - timedelta(seconds=rt.abandon_after_seconds)), projected
+        )
         in_window = {
             (e.piece, e.node, e.correlation_id) for e in read if e.emitted_at >= since
         }
@@ -1272,6 +1341,8 @@ class HandlerFloorSimpleTick:
                     ),
                 ),
                 join_ends=rt.join_ends,
+                join_chains=rt.join_chains,
+                real_origins=ov.readiness.real_origins,
             )
         )
 

@@ -6,6 +6,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.lane_closeout.model_lane_guard_end_record_settings import (
+    ModelLaneGuardEndRecordSettings,
+)
+
 
 class EnumLaneGuardOperation(StrEnum):
     START = "start"
@@ -29,6 +33,18 @@ class ModelLaneGuardUnitRequest(BaseModel):
     mem_max: str | None = None
     cpu_quota: int | None = None
     kind: str = "lane"
+    end_record: ModelLaneGuardEndRecordSettings | None = Field(
+        default=None,
+        description="Where and how the guard writes its end record on a kill; None writes none.",
+    )
+
+
+class ModelLaneGuardOverlay(BaseModel):
+    """The node overlay: the end-record settings the deployed guard runs with (every value an overlay's)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    end_record: ModelLaneGuardEndRecordSettings
 
 
 class ModelLaneGuardMember(BaseModel):

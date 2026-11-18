@@ -20,6 +20,7 @@ from typing import Literal
 
 from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
 from omnimarket.models.floor_17a import ModelNodeEmission
+from omnimarket.models.floor_17a.model_floor_17a import ChainOrigin
 from omnimarket.models.model_host_reading import EnumHostProbe, ModelProbeReading
 from omnimarket.models.model_join_j1 import (
     EnumGraphNodeVerdict,
@@ -87,6 +88,7 @@ def emit_join_chains(
     *,
     backend: Literal["in_memory", "real"],
     clock: Callable[[], datetime],
+    origin: ChainOrigin = "probe",
 ) -> None:
     """Publish the two chains of the join under the graph run's correlation id, in the order the floor judges them."""
     graph = ChainEmitter(
@@ -96,6 +98,7 @@ def emit_join_chains(
         clock=clock,
         correlation_id=result.correlation_id,
         backend=backend,
+        origin=origin,
     )
     graph.start()
     if result.state == "passed":
@@ -107,6 +110,7 @@ def emit_join_chains(
             clock=clock,
             correlation_id=result.correlation_id,
             backend=backend,
+            origin=origin,
         )
         host.start()
         host.success({"verdicts": len(result.verdicts)})
@@ -120,6 +124,7 @@ def emit_join_chains(
             phase="failure",
             emitted_at=clock(),
             backend=backend,
+            origin=origin,
             failure_code=f"{UPSTREAM_PREFIX}{result.failure_code}",
             failure_detail=result.failure_detail,
         )
@@ -225,5 +230,6 @@ def read_join_j1(
                 sink,
                 backend=source.backend,
                 clock=lambda: clock().astimezone(UTC),
+                origin="control",
             )
     return result, reading

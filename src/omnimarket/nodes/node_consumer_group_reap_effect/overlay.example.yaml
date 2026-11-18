@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_consumer_group_reap_effect/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+#
+#   enabled                 whether the effect may issue deletes at all; a dry run never reads it
+#   dry_run                 whether a run only plans and lists what it would delete, touching nothing
+#   max_deletes_per_run     the most groups one run may delete
+#   batch_size              the most groups one delete call issues at once
+#   request_timeout_seconds the broker request timeout in seconds
+#   read_back_attempts      the most read-back listings taken until the deleted groups are gone
+#   read_back_wait_seconds  the wait between read-back listings, in seconds
+enabled: true
+dry_run: true
+max_deletes_per_run: 1000
+batch_size: 200
+request_timeout_seconds: 30
+read_back_attempts: 3
+read_back_wait_seconds: 5

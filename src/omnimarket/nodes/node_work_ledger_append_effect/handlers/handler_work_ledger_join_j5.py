@@ -141,6 +141,7 @@ class HandlerWorkLedgerJoinJ5:
             sink,
             node=policy.emission_node,
             piece=policy.to_piece,
+            origin="probe",
             clock=self._clock,
             correlation_id=request.correlation_id,
             backend=self._backend,

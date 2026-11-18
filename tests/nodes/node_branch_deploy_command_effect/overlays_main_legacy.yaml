@@ -1,0 +1,9 @@
+trigger_argv_prefix:
+  - bash
+  - /example/scripts/deploy-agent-trigger.sh
+env_file: /example/.env
+timeout_seconds: 300
+detail_max_chars: 4096
+refused_marker: "REFUSED:"
+build_source: workspace
+scope: runtime

@@ -17,17 +17,15 @@ from uuid import UUID
 
 import pytest
 
+from omnimarket.models.merge_sweep.enum_pr_track import EnumPRTrack
+from omnimarket.models.merge_sweep.model_classified_pr import ModelClassifiedPR
+from omnimarket.models.merge_sweep.model_merge_sweep_result import ModelMergeSweepResult
+from omnimarket.models.merge_sweep.model_pr_info import ModelPRInfo
 from omnimarket.nodes.node_ci_rerun_effect.handlers.handler_ci_rerun import (
     HandlerCiRerunEffect,
 )
 from omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect.handlers.handler_auto_merge_arm import (
     HandlerAutoMergeArmEffect,
-)
-from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
-    EnumPRTrack,
-    ModelClassifiedPR,
-    ModelMergeSweepResult,
-    ModelPRInfo,
 )
 from omnimarket.nodes.node_merge_sweep_state_reducer.handlers.handler_sweep_state import (
     HandlerMergeSweepStateReducer,

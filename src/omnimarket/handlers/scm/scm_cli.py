@@ -19,13 +19,17 @@ A lane does GitHub work through this command and no ``gh`` verb:
 - **Other reads** (pr-review, pr-ticket, pr-threads, branch-protection, run-list,
   run-view, job-log, run-download, release-list) publish the gateway's typed request.
 - **PR authoring writes** (pr-create, pr-edit, pr-ready, pr-close, pr-comment,
-  pr-thread-reply, pr-thread-resolve, pr-review-post, workflow-run,
-  check-run-create) publish node_github_repo_write_effect's typed
+  pr-thread-reply, pr-thread-resolve, pr-review-post, pr-label, workflow-run,
+  check-run-create, commit-status-create, required-context-apply, variable-set, variable-get, runner-list, runner-remove,
+  runner-group-get)
+  publish node_github_repo_write_effect's typed
   request. Its guards apply: quota floor, expected head, idempotency, and the claim pr-close
-  needs. pr-edit, pr-ready, pr-close and pr-review-post take the expected head from the
+  needs. pr-edit, pr-ready, pr-close, pr-review-post and pr-label take the expected head from the
   watcher state when ``--head-sha`` is not given. pr-close reads the claim the
   caller took from the caller's own claim registry and carries it on the
-  command: the effect runs elsewhere and cannot read that directory.
+  command: the effect runs elsewhere and cannot read that directory. The
+  runner verbs name the organization as the repo argument's owner part, and
+  the effect serves only the overlay's runner_removals entries.
 - **merge, arm, rerun, update-branch** have no node operation and are refused,
   naming the landing controller that does them.
 
@@ -97,6 +101,7 @@ from omnimarket.handlers.scm.scm_duplicate_guard import (
 )
 from omnimarket.handlers.scm.scm_gateway_open_prs import GatewayOpenPrFactsSource
 from omnimarket.handlers.scm.scm_git_credential import git_credential_command
+from omnimarket.handlers.scm.scm_rerun_request import rerun_request_command
 from omnimarket.lab_work.cli import _with_bus_options
 from omnimarket.models.model_gateway_node_skew import plain_sentence, refused_fields
 from omnimarket.models.model_github_gateway_io import (
@@ -110,6 +115,7 @@ from omnimarket.models.scm import (
     ModelScmAnswer,
     ModelScmLocalAnswer,
     ModelScmLocalReadRequest,
+    ModelScmLocalReadResult,
     ModelScmLocalVerb,
     ModelScmTerminal,
     ModelScmVerb,
@@ -148,6 +154,17 @@ def _target(text: str, *, pr: bool) -> tuple[str, int | None]:
         )
     if not pr and match["number"] is not None:
         raise click.UsageError(f"target {text!r} names a PR; give {_REPO_TARGET_HELP}")
+    number = match["number"]
+    return match["repo"], int(number) if number is not None else None
+
+
+def _target_optional_pr(text: str) -> tuple[str, int | None]:
+    """A repo target with or without a PR number (``OWNER/REPO`` or ``OWNER/REPO#N``)."""
+    match = _TARGET.match(text)
+    if match is None:
+        raise click.UsageError(
+            f"target {text!r} is not {_REPO_TARGET_HELP} or {_PR_TARGET_HELP}"
+        )
     number = match["number"]
     return match["repo"], int(number) if number is not None else None
 
@@ -490,6 +507,9 @@ def verbs_command() -> None:
 
 # ------------------------------------------------------------------- reads
 
+# Reads that take a pull request or a branch: the target may or may not name a PR.
+_PR_OR_REPO_READS: Final[frozenset[str]] = frozenset({"code_scanning_alerts"})
+
 _PR_SCOPED_READS: Final[frozenset[str]] = frozenset(
     {
         "pr_text",
@@ -522,12 +542,14 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
     @click.option("--job-id", type=int, default=None, help="job-log.")
     @click.option("--artifact-id", type=int, default=None, help="run-download.")
     @click.option(
-        "--branch", default=None, help="run-list, branch-protection, pr-heads."
+        "--branch",
+        default=None,
+        help="run-list, branch-protection, pr-heads, code-scanning-alerts.",
     )
     @click.option(
         "--head-sha",
         default=None,
-        help="run-list: runs of this head; pr-heads; commit-check-runs.",
+        help="run-list: runs of this head; pr-heads; commit-check-runs; commit-statuses.",
     )
     @click.option(
         "--check-name", default=None, help="commit-check-runs: runs of this name."
@@ -575,7 +597,11 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
         dispatch_receipt: Path | None,
         **fields: object,
     ) -> None:
-        repo, number = _target(target, pr=pr_scoped)
+        repo, number = (
+            _target_optional_pr(target)
+            if spec.operation in _PR_OR_REPO_READS
+            else _target(target, pr=pr_scoped)
+        )
         bus_opts = {
             name: fields.pop(name)
             for name in ("omnibase_path", "bus", "bus_lane", "kafka_bootstrap")
@@ -654,6 +680,7 @@ _LOCAL_OPTIONS: Final[dict[EnumScmLocalRead, tuple[str, ...]]] = {
     EnumScmLocalRead.FILE_CONTENTS: ("path", "ref", "max_bytes"),
     EnumScmLocalRead.COMMIT_VIEW: ("ref",),
     EnumScmLocalRead.COMMIT_CHECKS: ("sha",),
+    EnumScmLocalRead.RED_FACTS: (),
 }
 _LOCAL_OPTION_DECORATORS: Final[
     dict[str, Callable[[click.decorators.FC], click.decorators.FC]]
@@ -673,8 +700,26 @@ _LOCAL_OPTION_DECORATORS: Final[
 }
 
 
+def _local_read(request: ModelScmLocalReadRequest) -> ModelScmLocalReadResult:
+    """Answer one local read; red-facts reads the head from the CI read, then the record."""
+    if request.read is not EnumScmLocalRead.RED_FACTS:
+        return HandlerScmLocalState().handle(request)
+    # Imported here: the filler node's handlers import this package.
+    from omnimarket.nodes.node_job_log_filler_effect.handlers.adapter_red_facts import (
+        answer_red_facts_read,
+    )
+
+    checks = HandlerScmLocalState().handle(
+        request.model_copy(update={"read": EnumScmLocalRead.PR_CHECKS})
+    )
+    return answer_red_facts_read(request, checks)
+
+
 def _local_command(spec: ModelScmLocalVerb) -> click.Command:
-    pr_scoped = spec.read is EnumScmLocalRead.PR_COMMITS
+    pr_scoped = spec.read in (
+        EnumScmLocalRead.PR_COMMITS,
+        EnumScmLocalRead.RED_FACTS,
+    )
     ref_required = spec.read is EnumScmLocalRead.COMMIT_VIEW
 
     def command(
@@ -700,7 +745,7 @@ def _local_command(spec: ModelScmLocalVerb) -> click.Command:
             )
         except ValidationError as exc:
             raise click.UsageError(str(exc)) from exc
-        local = HandlerScmLocalState().handle(request)
+        local = _local_read(request)
         if not local.answered or local.source is None:
             click.echo(
                 f"local: {local.unanswered_reason} ({spec.verb} has no bus or "
@@ -749,8 +794,22 @@ _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     "pr_comment": ("body", "body_file"),
     "pr_thread_reply": ("thread", "body", "body_file"),
     "pr_thread_resolve": ("review_thread",),
+    "pr_label": ("add_label", "remove_label"),
+    "repo_variable_set": ("variable",),
+    "repo_variable_get": ("variable",),
+    "runner_list": (),
+    "runner_remove": ("runner",),
+    "runner_group_get": ("runner_group",),
     "pr_review_post": ("body", "body_file"),
     "workflow_dispatch": ("workflow", "ref", "input"),
+    "commit_status_create": (
+        "commit_sha",
+        "status_context",
+        "status_state",
+        "status_target_url",
+        "status_description",
+    ),
+    "required_context_apply": ("protected_branch", "required_context"),
     "check_run_create": (
         "name",
         "status",
@@ -760,10 +819,21 @@ _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     ),
 }
 _REPO_SCOPED_WRITES: Final[frozenset[str]] = frozenset(
-    {"pr_create", "workflow_dispatch", "check_run_create"}
+    {
+        "pr_create",
+        "workflow_dispatch",
+        "check_run_create",
+        "commit_status_create",
+        "required_context_apply",
+        "repo_variable_set",
+        "repo_variable_get",
+        "runner_list",
+        "runner_remove",
+        "runner_group_get",
+    }
 )
 _HEAD_FROM_WATCHER: Final[frozenset[str]] = frozenset(
-    {"pr_edit", "pr_ready", "pr_close", "pr_review_post"}
+    {"pr_edit", "pr_ready", "pr_close", "pr_review_post", "pr_label"}
 )
 
 _OPTION_DECORATORS: Final[
@@ -789,6 +859,44 @@ _OPTION_DECORATORS: Final[
                 "timed_out",
             ]
         ),
+    ),
+    "commit_sha": click.option(
+        "--sha", "commit_sha", required=True, help="The full commit sha to post on."
+    ),
+    "status_context": click.option(
+        "--context",
+        "status_context",
+        default="fable-review-gate",
+        show_default=True,
+        type=click.Choice(["fable-review-gate"]),
+    ),
+    "status_state": click.option(
+        "--state",
+        "status_state",
+        required=True,
+        type=click.Choice(["success", "failure"]),
+    ),
+    "status_target_url": click.option(
+        "--target-url",
+        "status_target_url",
+        required=True,
+        help="The link to the verdict.",
+    ),
+    "status_description": click.option(
+        "--description", "status_description", default=None
+    ),
+    "protected_branch": click.option(
+        "--branch",
+        "protected_branch",
+        required=True,
+        help="The branch whose protection gains the context.",
+    ),
+    "required_context": click.option(
+        "--required-context",
+        "required_context",
+        required=True,
+        help="The status-check context to require; it must be in the write node's "
+        "overlay required_contexts allowlist for the repository and branch.",
     ),
     "output_title": click.option("--output-title", default=None),
     "output_summary": click.option("--output-summary", default=None),
@@ -843,7 +951,49 @@ _OPTION_DECORATORS: Final[
     "input": click.option(
         "--input", "inputs", multiple=True, help="KEY=VALUE, repeatable."
     ),
+    "variable": click.option(
+        "--variable",
+        "variable_name",
+        required=True,
+        help="The repository variable's name. It must be in the write node's "
+        "overlay allowlist; its value comes from the overlay's declared source, "
+        "never from this command line.",
+    ),
+    "runner": click.option(
+        "--runner",
+        "runner_name",
+        required=True,
+        help="The runner's registered name. The pair of the repository's "
+        "organization and this name must be in the write node's overlay "
+        "runner_removals, and the runner must be offline and idle before it "
+        "is deleted.",
+    ),
+    "runner_group": click.option(
+        "--group-id",
+        "runner_group_id",
+        required=True,
+        type=click.IntRange(min=1),
+        help="The runner group's id. The pair of the repository's organization "
+        "and this id must be in the write node's overlay runner_group_reads.",
+    ),
+    "add_label": click.option(
+        "--add", "add_labels", multiple=True, help="A label to add (repeatable)."
+    ),
+    "remove_label": click.option(
+        "--remove",
+        "remove_labels",
+        multiple=True,
+        help="A label to remove (repeatable).",
+    ),
 }
+
+
+def _labels_given(raw: object) -> list[JsonValue]:
+    """The labels a repeatable --add or --remove option gave, in the order given."""
+    given: list[JsonValue] = (
+        [str(label) for label in raw] if isinstance(raw, tuple) else []
+    )
+    return given
 
 
 def _carried_claim(
@@ -952,11 +1102,21 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
             if spec.operation == EnumRepoWriteOperation.PR_CLOSE
             else None
         )
+        if spec.operation == EnumRepoWriteOperation.PR_LABEL:
+            add_labels = _labels_given(fields.pop("add_labels", ()))
+            remove_labels = _labels_given(fields.pop("remove_labels", ()))
+            if not add_labels and not remove_labels:
+                raise click.UsageError("give at least one of --add, --remove")
         given: dict[str, JsonValue] = {
             name: value
             for name, value in fields.items()
             if value is not None and isinstance(value, (str, bool, int))
         }
+        if spec.operation == EnumRepoWriteOperation.PR_LABEL:
+            if add_labels:
+                given["add_labels"] = add_labels
+            if remove_labels:
+                given["remove_labels"] = remove_labels
         if spec.operation == EnumRepoWriteOperation.CHECK_RUN_CREATE:
             given["head_sha"] = head_sha
             head_sha = None
@@ -1106,6 +1266,8 @@ for _spec in SCM_VERBS:
 for _local in SCM_LOCAL_VERBS:
     scm_group.add_command(_local_command(_local))
 scm_group.add_command(duplicate_check_command)
+# OMN-23830: any lane asks for one failed job to be re-run; the landing tick orchestrator answers.
+scm_group.add_command(rerun_request_command(_open_bus, _watcher_head))
 scm_group.add_command(git_credential_command)
 scm_group.add_command(cached_job_log_command(_read_command))
 for _refused in SCM_REFUSED_VERBS:

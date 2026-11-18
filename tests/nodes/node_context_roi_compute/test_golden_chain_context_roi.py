@@ -20,6 +20,15 @@ import pytest
 import yaml
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 
+from omnimarket.models.model_factor_arm import (
+    EnumArmLabel,
+    ModelFactorArm,
+)
+from omnimarket.models.model_factor_matrix import (
+    arm_by_label,
+    build_canonical_factor_matrix,
+    build_code_eval_context_arms,
+)
 from omnimarket.nodes.node_context_roi_compute.handlers.handler_context_roi import (
     HandlerContextRoi,
 )
@@ -30,14 +39,6 @@ from omnimarket.nodes.node_context_roi_compute.models.model_context_roi_request 
 from omnimarket.nodes.node_context_roi_compute.models.model_context_roi_result import (
     EnumProofClass,
     ModelContextRoiResult,
-)
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_arm import (
-    EnumArmLabel,
-    ModelFactorArm,
-)
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_matrix import (
-    arm_by_label,
-    build_canonical_factor_matrix,
 )
 from omnimarket.nodes.node_context_roi_compute.models.model_task_manifest import (
     EnumFailureStage,
@@ -155,6 +156,18 @@ class TestContractYaml:
         for topic in bus.get("publish_topics", []):
             assert topic.startswith("onex.evt."), f"publish topic bad prefix: {topic}"
             assert topic.endswith(".v1"), f"publish topic missing .v1: {topic}"
+
+    def test_contract_publishes_the_score_completed_and_failed_topics(
+        self, contract_path: Path
+    ) -> None:
+        data = yaml.safe_load(contract_path.read_text())
+        assert data["terminal_event"] == (
+            "onex.evt.omnimarket.context-roi-score-completed.v1"
+        )
+        assert data["event_bus"]["publish_topics"] == [
+            "onex.evt.omnimarket.context-roi-score-completed.v1",
+            "onex.evt.omnimarket.context-roi-score-failed.v1",
+        ]
 
     def test_contract_declares_handler(self, contract_path: Path) -> None:
         data = yaml.safe_load(contract_path.read_text())
@@ -317,6 +330,7 @@ class TestFactorMatrix:
         self, matrix: tuple[ModelFactorArm, ...]
     ) -> None:
         labels = {arm.label for arm in matrix}
+        labels |= {arm.label for arm in build_code_eval_context_arms()}
         assert labels == set(EnumArmLabel)
 
     def test_matrix_canonical_order(self, matrix: tuple[ModelFactorArm, ...]) -> None:

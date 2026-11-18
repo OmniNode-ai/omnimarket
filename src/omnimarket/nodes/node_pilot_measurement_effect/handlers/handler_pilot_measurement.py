@@ -130,6 +130,7 @@ class HandlerPilotMeasurement:
             piece=emission.piece,
             clock=self._clock,
             correlation_id=correlation_id,
+            origin="probe",
         )
 
     def _refuse(
@@ -150,6 +151,7 @@ class HandlerPilotMeasurement:
                     emitted_at=self._clock(),
                     failure_code=code,
                     failure_detail="the upstream piece failed; no pilot was measured",
+                    origin="probe",
                 )
             )
         return ModelPilotMeasurementResult(

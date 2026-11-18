@@ -41,7 +41,7 @@ def node_files():
 
 def test_43_moved_files_plus_eleven_metadata_files():
     files = node_files()
-    assert len(files) == 56
+    assert len(files) == 57
     assert sum(path.name == "metadata.yaml" for path in files) == 11
     for name in NODES:
         root = ROOT / "src/omnimarket/nodes" / name
@@ -52,7 +52,7 @@ def test_43_moved_files_plus_eleven_metadata_files():
 
 def test_moved_files_do_not_name_the_old_registry_variable():
     files = node_files()
-    assert len(files) == 56
+    assert len(files) == 57
     legacy_name = "OMNI" + "_HOME"
     assert not [
         str(path.relative_to(ROOT)) for path in files if legacy_name in path.read_text()

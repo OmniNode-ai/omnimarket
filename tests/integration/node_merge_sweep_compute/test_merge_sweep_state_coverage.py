@@ -18,10 +18,8 @@ from typing import Any
 
 import yaml
 
-from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
-    EnumFailureCategory,
-    EnumPRTrack,
-)
+from omnimarket.models.merge_sweep.enum_failure_category import EnumFailureCategory
+from omnimarket.models.merge_sweep.enum_pr_track import EnumPRTrack
 
 _CONTRACT_PATH = (
     Path(__file__).resolve().parents[3]

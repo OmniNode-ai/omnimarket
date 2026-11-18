@@ -14,11 +14,9 @@ class EnumPrLandingGithubFailureReason(StrEnum):
     call's resource was under the contract's floor, so no call was made.
     ``TRANSPORT_ERROR`` is the only reason with no GitHub response behind it.
 
-    ``DRAFT``, ``HELD``, ``PR_NOT_OPEN`` and ``MERGE_QUEUE_REQUIRED`` (contract
-    1.1.0, OMN-19831) are refusals an arm or enqueue makes after its own read,
-    before any mutation: the PR is draft, carries a hold marker, is closed or
-    merged, or its base branch has a merge queue so the policy is enqueue, not
-    arm. A head that moved past the expected head is ``HEAD_MOVED``.
+    ``DRAFT``, ``HELD``, ``PR_NOT_OPEN`` and ``MERGE_QUEUE_REQUIRED`` are
+    refusals an arm or enqueue makes after its own read, before any mutation.
+    A head that moved past the expected head is ``HEAD_MOVED``.
     """
 
     QUOTA_FLOOR = "quota_floor"
@@ -38,3 +36,9 @@ class EnumPrLandingGithubFailureReason(StrEnum):
     HELD = "held"
     PR_NOT_OPEN = "pr_not_open"
     MERGE_QUEUE_REQUIRED = "merge_queue_required"
+    # Contract 1.4.0 (OMN-23777): refusals made before any request. A mutation is
+    # sent only with the writer App's repository-scoped installation token. No
+    # such token is the first; a token lacking pull request or contents write,
+    # or not narrowed to the one repository, is the second.
+    LANDING_IDENTITY_NOT_APP = "landing_identity_not_app"
+    MINTED_PERMISSIONS_INSUFFICIENT = "minted_permissions_insufficient"

@@ -26,6 +26,9 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
 from omnimarket.nodes.node_merged_running_count_effect.runtime_merged_running_count import (
     MergedRunningCountReader,
 )
+from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader_factory import (
+    build_cached_source_reader,
+)
 from omnimarket.protocols.protocol_merged_running_count_reader import (
     ProtocolMergedRunningCountReader,
 )
@@ -74,12 +77,15 @@ def request_from_args(a: argparse.Namespace) -> ModelFactoryFloorRunRequest:
 
 
 def main(argv: list[str] | None = None) -> int:
+    cache = build_cached_source_reader()
     try:
         result = HandlerFactoryFloorEffect(
-            merged_running=bind_merged_running_reader()
+            merged_running=bind_merged_running_reader(), source_cache=cache
         ).handle(request_from_args(parse_args(argv)))
     except (SourceRefusedError, NodeOverlayError) as exc:
         sys.stderr.write(f"REFUSED factory-floor: {exc}\n")
         return 2
+    finally:
+        cache.close()
     sys.stdout.write(f"{result.output_path}\n")
     return 0

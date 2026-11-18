@@ -1,0 +1,38 @@
+# Overlay of the node_code_eval_context_arm_compute node (omnimarket, OMN-23629): which context a coding trial is sent with, per arm.
+# The schema is omnimarket's ModelContextArmOverlay; no key has a default and the node holds no value of its own. The plan keys of
+# eval plan section 13.8 are code_eval.context_arms.<arm>.profile and code_eval.context.pack_budget_tokens.
+#
+# context_arms.<arm>.profile: the pack profile the arm asks node_context_pack_orchestrator for; null sends the task alone.
+#   task_plus_exemplar names the exemplar-only profile (omnimarket pack/profiles/delegation_payload_exemplar.yaml), task_plus_pack the
+#   existing delegation_payload_local profile unchanged.
+# pinned_tiers: the tiers read at the task's base commit (tier_revisions), so a tier never carries the task's own change. The
+#   architecture_patterns tier is read from guidance documents and is not pinned by a stamp; it is listed in no arm.
+# arm_label: names the arm in node_context_roi_compute's code-eval arms (build_code_eval_context_arms, ModelFactorArm over core EnumContextFactor), which own the arm's factors and required factors.
+#   min_included_tiers: what the pack answer must hold for the arm to be satisfied. The exemplar factor is required by both pack
+#   arms (a trial that asks for an exemplar and gets none is unscorable, never run as task_alone). The full pack must also include
+#   at least two tiers, so it cannot pass as the exemplar arm.
+# pack_budget_tokens: the ceiling of a pack request, lowered per request to the routed backend's room under its input ceiling.
+# archetype_lane_kind: the lane kind the exemplar tier reads for a node archetype (its commit types are the exemplar tier's own
+#   contract values); a task that names a lane kind itself is never mapped.
+context_arms:
+  task_alone:
+    profile: null
+    arm_label: "off"
+    pinned_tiers: []
+    min_included_tiers: 0
+  task_plus_exemplar:
+    profile: delegation_payload_exemplar
+    arm_label: exemplar_only
+    pinned_tiers: [exemplar]
+    min_included_tiers: 1
+  task_plus_pack:
+    profile: delegation_payload_local
+    arm_label: tiered_pack
+    pinned_tiers: [invariants, canonical_shapes, exemplar]
+    min_included_tiers: 2
+pack_budget_tokens: 8000
+archetype_lane_kind:
+  compute: design-build
+  effect: design-build
+  orchestrator: design-build
+  reducer: design-build

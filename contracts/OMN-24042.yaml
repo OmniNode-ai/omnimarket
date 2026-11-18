@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-24042
+title: A node applies and reads back the lab graphics card power limits from the settings
+summary: An omnimarket effect node, node_gpu_power_caps_effect, reads the GPU power caps of a lab host from the gpu_power_caps settings (the document node_host_installer_net_units reads as its units file), finds each card by product name over the transport its own overlay declares for the host, applies a power limit only where the card differs from the cap, reads the limit back from the card, and refuses an unknown or duplicate card name or an out-of-range value before any write. In-memory backend by default, an ssh-prefixed subprocess backend chosen by overlay.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24042-gpu-power-caps-node
+  statement: The GPU power caps of a lab host are applied and read back by a node whose overlay declares the hosts and the transport, with typed refusals and a failing control for each reading.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a GPU power caps effect node in omnimarket reads the caps from the gpu_power_caps settings, finds each card by product name over its declared transport, applies a limit only where it differs, reads the limit back, and refuses a wrong or duplicate card name before any write -- falsifier: uv run pytest tests/unit/nodes/node_gpu_power_caps_effect -q fails at the merge base"
+  - id: AC2
+    statement: "AC2: the node is held to the real shape of the gpu_power_caps settings and to the shape of its own settings by seam tests that fail when either side changes -- falsifier: uv run pytest tests/unit/nodes/node_gpu_power_caps_effect -q -k seam fails when a GPU_NAME or WATTS key is renamed in the settings fixture"
+  - id: AC3
+    statement: "AC3: a golden chain event test and an error chain event test of the node pass on the in-memory bus -- falsifier: uv run pytest tests/unit/nodes/node_gpu_power_caps_effect -q -k chain fails without the node"
+  - id: AC4
+    statement: "AC4: integrated: in the running dev runtime, the node's run for h201 and for h202 applies the current values and nvidia-smi on both machines reads 450 W for the large card and 300 W for each of the other two cards -- falsifier: the node's result row differs from the nvidia-smi reading, or the run refuses"
+evidence_requirements:
+- kind: tests
+  description: The node's focused tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_gpu_power_caps_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24042-ac1
+  description: 'AC1: the node suite passes on the branch; a wrong card name, a duplicate card name and an out-of-range value are refused with no write, a changed value is applied and read back, and a second run changes nothing.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_gpu_power_caps_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24042-ac2
+  description: 'AC2: the seam tests render the real settings shape and the node overlay shape and fail when a key is renamed.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_gpu_power_caps_effect -q --no-cov -n 0 -p no:randomly -k seam
+    cwd: .
+- id: dod-omn24042-ac3
+  description: 'AC3: the golden chain, the error chain and the injected dropped-result break run on the in-memory bus.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_gpu_power_caps_effect -q --no-cov -n 0 -p no:randomly -k chain
+    cwd: .
+- id: dod-omn24042-ac4
+  description: 'hosted proxy for AC4: the node suite passes here; the running-runtime reading of both hosts is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_gpu_power_caps_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24042-integration-proof
+  description: the focused tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24042 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_gpu_power_caps_effect -q --no-cov -n 0 -p no:randomly

@@ -1,0 +1,7 @@
+# Example only. Copy to <root>/node_merge_override_alarm_effect/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS and set your own values.
+# May be omitted until a repository is listed in s19_repositories.
+landing_app_login: example-landing-app
+# Repositories where S19 (the landing App is the only merger) is in force; empty before S19.
+s19_repositories: []
+pending_read_timeout_seconds: 600
+sweep_interval_seconds: 60

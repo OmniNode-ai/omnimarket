@@ -10,6 +10,7 @@ import pytest
 import yaml
 
 from omnimarket.handlers import ledger_claim_contract as claim_contract
+from omnimarket.handlers import ledger_running_path_cell as running_path_cell
 
 pytestmark = pytest.mark.unit
 
@@ -22,6 +23,7 @@ def isolated_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "empty-overlays"))
     monkeypatch.delenv("ONEX_WORKTREES_ROOT", raising=False)
     monkeypatch.delenv(claim_contract.REQUIRE_CLAIM_CONTRACT_ENV, raising=False)
+    monkeypatch.delenv(running_path_cell.ENFORCE_FROM_ENV, raising=False)
 
 
 @pytest.fixture

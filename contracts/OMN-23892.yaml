@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-23892
+title: Move omnimarket to the infrastructure build that carries the merge alarm watcher's database grants
+summary: omnimarket moves its omnibase-infra dev merge tag from dev-20261111190933-a349fbf4478e to dev-20261111211012-df3f14f5e6b9 (omnibase_infra#5896, the runtime account's grants on the four merge override tables; core stays at dev-20261111160725-6cbe67b216fe), relocks (three lines of uv.lock move, no other package), records the infra commit df3f14f5e6b9 in INFRA_CORE_TAGS, and repins the uv.lock sha256 in the 70 work contract files from 9f58062f0e8621184d841935c00481166daff7ed33c8bd8f630165c5dc4d6c33 to 62a9ccf225796eac3a43661b7fe2b8d0f817ce97a90da68f500dd0659e0a108c
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23892-pin
+  statement: omnimarket's infra pin, uv.lock and the INFRA_CORE_TAGS table name one recorded pair, and the work contracts record the relock.
+  acceptance:
+  - id: AC1
+    statement: "AC1: omnimarket's pyproject.toml pins omnibase-infra to dev-20261111211012-df3f14f5e6b9, uv.lock names that tag and its commit, and INFRA_CORE_TAGS in tests/ci/test_sibling_core_pin_pair_omn17427.py records the pair with core dev-20261111160725-6cbe67b216fe -- falsifier: uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py -q fails with the old pin or a lock that names another commit."
+  - id: AC2
+    statement: "AC2: the uv.lock hash recorded in every work contract under src/omnimarket/configs/work_contracts/contracts matches the new uv.lock -- falsifier: collecting tests/nodes/test_work_contract_checks.py fails with input_pin_mismatch for uv.lock when a contract keeps the old hash."
+  - id: AC3
+    statement: "AC3: integrated: with the change on dev and dev merged into omnimarket#5847, the Event Chain Gate and the Sibling Release Compatibility Gate on that pull request read green from its check state -- falsifier: either gate stays red with the lacks-declared-write-privileges or the conflicting-pin finding."
+evidence_requirements:
+- kind: tests
+  description: The pin pair test passes at the pushed head.
+  command: uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23892-ac1
+  description: 'AC1: pyproject.toml, uv.lock and INFRA_CORE_TAGS agree on the recorded pair, and the newest-pair test names it'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py -q -n 0 --no-cov -p no:cacheprovider -k the_newest_recorded_infra_and_core_pair
+    cwd: .
+- id: dod-omn23892-ac2
+  description: 'AC2: every work contract records the hash of the new uv.lock and the lock names the new infra build; the test file is added by this change and its lock assertion fails at the merge base.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23892-ac3
+  description: 'hosted proxy for AC3: the sibling pin pair test reads the lock naming the newest recorded pair that carries the grants; the reading of the two gates on the open change is posted as a pull request comment naming the head'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23892-integration-proof
+  description: collection of the work contract checks on a lab host at the pushed head; it fails with input_pin_mismatch for uv.lock when a contract records a stale hash; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23892 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/test_work_contract_checks.py --collect-only -q --no-cov
+    cwd: .

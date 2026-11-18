@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -28,6 +29,7 @@ from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
+from omnimarket.models.model_point_query import ModelPointQuery
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
 from omnimarket.models.overlay_keys import ModelLabHostRow
 from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.snapshot_errors import (
@@ -43,6 +45,9 @@ from omnimarket.nodes.node_lane_host_pool_snapshot_effect.models.model_pool_snap
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLedgerQuery,
     ProtocolLedgerRowSource,
+)
+from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
+    ProtocolLedgerPointRead,
 )
 
 
@@ -83,6 +88,10 @@ class AdvertisementFileSource:
                 f"{self._path} unreadable: {type(exc).__name__}"
             ) from None
         return parse_advertisements(text)
+
+
+# What ssh returns when it could not reach the destination (not the remote command's own code).
+SSH_CONNECT_FAILED_RC = 255
 
 
 def _default_runner(argv: Sequence[str], timeout_seconds: int) -> tuple[int, str]:
@@ -195,6 +204,51 @@ class LedgerRunningLanesSource:
         return counts
 
 
+_OPEN_CLAIM_LINE = re.compile(r"^OPEN-CLAIM lane=(?P<lane>\S+) .*\bhost=(?P<host>\S+)")
+
+
+class LedgerOpenClaimsLanesSource:
+    """Open lane counts per host from the ledger node's open-claims answer, one point query read through the bus read command.
+
+    The node answers the open set from its state table with the claim's host cell, so the question is one small call and not the
+    TERMINAL, RELEASE and CLAIM rows of the whole lookback (about two thousand rows, over the node's answer bound and past the read
+    time limit on 2026-11-14). A lane counts once; a claim with no host names no host. The answer's next cursor is followed to the end.
+    """
+
+    name = "ledger-open-claims"
+
+    def __init__(self, read: ProtocolLedgerPointRead, lookback_hours: float) -> None:
+        self._read = read
+        self._lookback = timedelta(hours=lookback_hours)
+
+    def running_lanes(self, now: datetime) -> dict[str, int]:
+        since = now - self._lookback
+        counts: dict[str, int] = {}
+        counted: set[str] = set()
+        cursor: str | None = None
+        while True:
+            answer = self._read.read(
+                ModelPointQuery(query="open-claims", claims_since=since, cursor=cursor)
+            )
+            if answer.error is not None:
+                raise PoolSnapshotSourceError(
+                    f"ledger open claims unread: {answer.error}"
+                )
+            for line in answer.lines:
+                found = _OPEN_CLAIM_LINE.match(line)
+                if found is None or found["host"] == "none" or found["lane"] in counted:
+                    continue
+                counted.add(found["lane"])
+                counts[found["host"]] = counts.get(found["host"], 0) + 1
+            if answer.next_cursor is None:
+                return counts
+            if answer.next_cursor == cursor:
+                raise PoolSnapshotSourceError(
+                    "ledger open claims unread: the next cursor did not advance"
+                )
+            cursor = answer.next_cursor
+
+
 class TokenPoolCommandAccountsSource:
     """Per-host token pool accounts via the token pool status command."""
 
@@ -227,27 +281,48 @@ class TokenPoolCommandAccountsSource:
             return ModelHostAccounts(host=row.name, unread_reason="away")
         if row.local:
             argv = [os.path.expandvars(a) for a in self._route.local_argv]
-        else:
-            if (
-                any("{registry_roots}" in a for a in self._route.remote_argv)
-                and not roots
-            ):
-                return ModelHostAccounts(
-                    host=row.name, unread_reason="no registry root declared"
-                )
-            argv = [
-                a.replace("{target}", row.target).replace("{registry_roots}", roots)
-                for a in self._route.remote_argv
-            ]
+            return self._read_destination(row, argv)[1]
+        if any("{registry_roots}" in a for a in self._route.remote_argv) and not roots:
+            return ModelHostAccounts(
+                host=row.name, unread_reason="no registry root declared"
+            )
+        # The row's destinations in the order it declares them: ssh ends 255 when a name does not resolve or a login is
+        # refused, and only then does the next destination of the same machine get its turn.
+        destinations = (row.target, *row.fallback_targets)
+        for destination in destinations[:-1]:
+            rc, accounts = self._read_destination(
+                row, self._remote_argv(destination, roots)
+            )
+            if rc != SSH_CONNECT_FAILED_RC:
+                return accounts
+        return self._read_destination(row, self._remote_argv(destinations[-1], roots))[
+            1
+        ]
+
+    def _remote_argv(self, destination: str, roots: str) -> list[str]:
+        return [
+            a.replace("{target}", destination).replace("{registry_roots}", roots)
+            for a in self._route.remote_argv
+        ]
+
+    def _read_destination(
+        self, row: ModelLabHostRow, argv: Sequence[str]
+    ) -> tuple[int | None, ModelHostAccounts]:
+        """The run's return code (None when the run never ended in one) and the reading it gave."""
         try:
             rc, stdout = self._runner(argv, self._route.timeout_seconds)
         except PoolSnapshotSourceError as exc:
-            return ModelHostAccounts(host=row.name, unread_reason=str(exc))
+            return None, ModelHostAccounts(host=row.name, unread_reason=str(exc))
         if rc != 0:
-            return ModelHostAccounts(
+            return rc, ModelHostAccounts(
                 host=row.name,
                 unread_reason=f"token pool command rc={rc}: {stdout.strip()[-120:]}",
             )
+        return rc, self._accounts_from_status(row, stdout)
+
+    def _accounts_from_status(
+        self, row: ModelLabHostRow, stdout: str
+    ) -> ModelHostAccounts:
         try:
             result = ModelTokenPoolStatusReading.model_validate_json(stdout)
         except ValidationError:

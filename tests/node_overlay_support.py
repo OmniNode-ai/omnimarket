@@ -60,3 +60,9 @@ RUNTIME_HOST_ROW: dict[str, object] = {
     "target": INTEGRATION_SWEEP_OVERLAY["runtime_host"],
     "ssh_user": "lab-user",
 }
+
+
+#: The capability map's class line as the suite supplies it (the node has no packaged value).
+CAPABILITY_MAP_OVERLAY: dict[str, object] = {
+    "line": {"floor": 0.90, "margin": 0.07, "confidence": 0.95, "power": 0.8}
+}

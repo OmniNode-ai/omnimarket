@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Broker Topic Removal Effect (OMN-23697, piece 3 of the base-first rebuild, OMN-22478)
+#
+# Plans the removal of broker topics that were never produced, hold no data, have no consumer group and (by
+# default) no contract declaration, by wiring the never-produced listing (node_topic_never_produced_compute,
+# OMN-23614) to the broker's public metrics and the contracts' topic declarations. A dry run is the default and
+# changes nothing. An execute run is refused unless the overlay enables it, the command names an approval and
+# the plan is inside the per-run cap. Every value is an overlay value.
+name: node_broker_topic_removal_effect
+contract_name: node_broker_topic_removal_effect
+node_name: node_broker_topic_removal_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  The dev broker holds thousands of topics and most are empty. This node classifies every topic (declared or
+  undeclared by a contract, produced or never produced), lists the removal candidates with the evidence for each
+  and what the broker would hold afterwards, and, only with the overlay's switch and an approval reference,
+  removes them within a per-run cap. A topic with data, a consumer group, a protected prefix or a contract
+  declaration is never a candidate under the default overlay.
+
+handler:
+  module: omnimarket.nodes.node_broker_topic_removal_effect.handlers.handler_broker_topic_removal
+  class: HandlerBrokerTopicRemoval
+  input_model: omnimarket.models.model_topic_removal.ModelTopicRemovalCommand
+
+# HandlerBrokerTopicRemoval takes the overlay, the topic inventory, the declared topics and the remover as
+# constructor parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [broker-topic-delete]
+  timeout_ms: 300000
+
+input_model:
+  name: ModelTopicRemovalCommand
+  module: omnimarket.models.model_topic_removal
+  description: A correlation id, dry run or execute, and the operator's approval reference for an execute run.
+output_model:
+  name: ModelTopicRemovalResult
+  module: omnimarket.models.model_topic_removal
+  description: Topics by class, the removal candidates with evidence, every refusal, and the partitions after.
+
+terminal_event: onex.evt.omnimarket.broker-topic-removal-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  broker_topic_removal_requested: onex.cmd.omnimarket.broker-topic-removal-requested.v1
+  broker_topic_removal_planned: onex.evt.omnimarket.broker-topic-removal-planned.v1
+  broker_topic_removal_refused: onex.evt.omnimarket.broker-topic-removal-refused.v1
+  broker_topic_removal_run_completed: onex.evt.omnimarket.broker-topic-removal-run-completed.v1
+  broker_topic_removal_run_failed: onex.evt.omnimarket.broker-topic-removal-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.broker-topic-removal-planned.v1
+  - onex.evt.omnimarket.broker-topic-removal-refused.v1
+  - onex.evt.omnimarket.broker-topic-removal-run-completed.v1
+  - onex.evt.omnimarket.broker-topic-removal-run-failed.v1
+
+overlay:
+  node: node_broker_topic_removal_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.nodes.node_broker_topic_removal_effect.overlay.ModelTopicRemovalOverlay
+
+metadata:
+  ticket: OMN-23697
+  transport_type: inmemory

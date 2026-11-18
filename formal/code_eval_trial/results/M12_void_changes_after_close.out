@@ -1,0 +1,93 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 22 and seed -4865328634622752294 with 2 workers on 4 cores with 1820MB heap and 64MB offheap memory [pid: 374803] (Linux 7.0.0-31-generic amd64, Ubuntu 21.0.13.0.3 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file CodeEvalTrial.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module CodeEvalTrial
+Starting... (2026-11-14 02:28:10)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-14 02:28:10.
+Error: Action property VoidFrozen is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1 @@ <<t2, m1>> :> 1 @@ <<t2, m2>> :> 1)
+/\ ctrl = (t1 :> "queued" @@ t2 :> "queued")
+/\ np = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ abandoned = FALSE
+/\ slot = ( <<t1, m1>> :> "none" @@
+  <<t1, m2>> :> "none" @@
+  <<t2, m1>> :> "none" @@
+  <<t2, m2>> :> "none" )
+/\ lastLate = FALSE
+/\ void = FALSE
+/\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ hostsUp = TRUE
+/\ closeCount = 0
+/\ vd = ( <<t1, m1>> :> <<"none", "none", "none">> @@
+  <<t1, m2>> :> <<"none", "none", "none">> @@
+  <<t2, m1>> :> <<"none", "none", "none">> @@
+  <<t2, m2>> :> <<"none", "none", "none">> )
+/\ nudging = TRUE
+/\ closed = FALSE
+/\ scoreFlight = Nil
+/\ since = 0
+/\ scoreAge = 0
+
+State 2: <Abandon line 240, col 3 to line 243, col 91 of module CodeEvalTrial>
+/\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1 @@ <<t2, m1>> :> 1 @@ <<t2, m2>> :> 1)
+/\ ctrl = (t1 :> "queued" @@ t2 :> "queued")
+/\ np = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ abandoned = TRUE
+/\ slot = ( <<t1, m1>> :> "none" @@
+  <<t1, m2>> :> "none" @@
+  <<t2, m1>> :> "none" @@
+  <<t2, m2>> :> "none" )
+/\ lastLate = FALSE
+/\ void = FALSE
+/\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ hostsUp = TRUE
+/\ closeCount = 1
+/\ vd = ( <<t1, m1>> :> <<"none", "none", "none">> @@
+  <<t1, m2>> :> <<"none", "none", "none">> @@
+  <<t2, m1>> :> <<"none", "none", "none">> @@
+  <<t2, m2>> :> <<"none", "none", "none">> )
+/\ nudging = TRUE
+/\ closed = TRUE
+/\ scoreFlight = Nil
+/\ since = 0
+/\ scoreAge = 0
+
+State 3: <ReVoid line 247, col 3 to line 249, col 129 of module CodeEvalTrial>
+/\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1 @@ <<t2, m1>> :> 1 @@ <<t2, m2>> :> 1)
+/\ ctrl = (t1 :> "queued" @@ t2 :> "queued")
+/\ np = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ abandoned = TRUE
+/\ slot = ( <<t1, m1>> :> "none" @@
+  <<t1, m2>> :> "none" @@
+  <<t2, m1>> :> "none" @@
+  <<t2, m2>> :> "none" )
+/\ lastLate = FALSE
+/\ void = TRUE
+/\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ hostsUp = TRUE
+/\ closeCount = 1
+/\ vd = ( <<t1, m1>> :> <<"none", "none", "none">> @@
+  <<t1, m2>> :> <<"none", "none", "none">> @@
+  <<t2, m1>> :> <<"none", "none", "none">> @@
+  <<t2, m2>> :> <<"none", "none", "none">> )
+/\ nudging = TRUE
+/\ closed = TRUE
+/\ scoreFlight = Nil
+/\ since = 0
+/\ scoreAge = 0
+
+615 states generated, 23 distinct states found, 12 states left on queue.
+The depth of the complete state graph search is 4.
+The average outdegree of the complete state graph is 3 (minimum is 0, the maximum 5 and the 95th percentile is 5).
+Finished in 00s at (2026-11-14 02:28:10)

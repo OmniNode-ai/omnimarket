@@ -112,6 +112,7 @@ stop_rules:
       accepted: goal_met
       checks_failed: null
       no_progress: no_progress
+      no_change: no_progress
       budget_exhausted: turn_cap
       delegate_failed: infra_fault
       infra_error: infra_fault

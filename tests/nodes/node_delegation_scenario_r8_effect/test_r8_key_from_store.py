@@ -88,7 +88,7 @@ def test_control_missing_key_refuses_http_lane(tmp_path: Path) -> None:
 
     settings = load_lane_settings()
     with pytest.raises(LaneReadError) as excinfo:
-        LANE_BUILDERS["http"](settings, handler._environment)
+        LANE_BUILDERS["http"](settings, handler._environment, None)
     assert KEY_NAME in str(excinfo.value)
 
 

@@ -11,3 +11,4 @@ orphan_age_seconds: 86400
 max_lanes_per_sweep: 100
 tick_budget_seconds: 180
 salvage_branch_prefix: salvage
+end_records_dir: /var/lib/example/lane-guard/records

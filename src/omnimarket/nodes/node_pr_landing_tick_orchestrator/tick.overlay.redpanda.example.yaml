@@ -23,3 +23,14 @@ poll_timeout_s: 30
 join_timeout_s: 15
 run_limit_s: 50
 run_margin_s: 5
+# OMN-23830: rerun requests. Absent, the pass reads none. The limit is declared here and nowhere in code; the request
+# reader joins its own group (this base name, a hyphen and the host identity) and polls after the snapshot read, so
+# run_limit_s above must also cover that join and poll: join_timeout_s + poll_timeout_s + run_margin_s + join_timeout_s
+# + the request poll_timeout_s. The ledger file keeps the granted re-runs across passes.
+# rerun_requests:
+#   max_reruns_per_head: 2
+#   request_topic: onex.cmd.omnimarket.pr-landing-rerun-requested.v1
+#   consumer_group: landing-tick-orchestrator-rerun
+#   poll_timeout_s: 2
+#   max_requests: 20
+#   ledger_path: $OMNIBASE_PATH/.onex_state/landing-tick/rerun-ledger.jsonl

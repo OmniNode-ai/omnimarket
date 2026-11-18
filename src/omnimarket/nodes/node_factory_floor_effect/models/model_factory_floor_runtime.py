@@ -73,7 +73,6 @@ class ModelFactoryFloorLaneSources(BaseModel):
     placement_dir_env: str = Field(min_length=1)
     placement_dir_fallback: str = Field(min_length=1)
     lane_marker_min_id: int = Field(gt=0)
-    host_table_env: str = Field(min_length=1)
     controller_dir_env: str = Field(min_length=1)
     controller_dir_fallback: str = Field(min_length=1)
     process_start_grace_seconds: int = Field(ge=0)
@@ -115,6 +114,43 @@ class ModelFactoryFloorOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     relpath: str = Field(min_length=1)
+
+
+class ModelLedgerArchiveWindow(BaseModel):
+    """Where the file ledger's split archives are and how they are named: the window read caches each archive once (OMN-19998).
+
+    The names are the deployment's, in its overlay: the variable holding the live ledger's path, the variable that says the ledger
+    record is the file, the archive directory beside the live file, the archive file pattern and the date inside an archive's name.
+    ``read_workers`` and ``cache_ttl_seconds`` tune the window read's cache misses: how many archives are read at once and how long
+    a cached archive's rows are kept.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ledger_path_env: str = Field(min_length=1)
+    ledger_record_env: str = Field(min_length=1)
+    archive_subdir: str = Field(min_length=1)
+    archive_glob: str = Field(min_length=1)
+    archive_date_pattern: str = Field(min_length=1)
+    # How many archives the window read may read at once; absent: one at a time, as before.
+    read_workers: int | None = Field(default=None, ge=1)
+    # How long a cached archive's rows are kept; absent: the source read cache's own backstop.
+    cache_ttl_seconds: int | None = Field(default=None, ge=1)
+
+
+class ModelLedgerProjectionWindow(BaseModel):
+    """The declared shape of a work ledger projection window: one UTC day at a time through a named reader (accepted, not read yet).
+
+    ``reader`` is the name the work ledger reader overlay lists in its moved_readers. A closed day's rows are kept for
+    ``cache_ttl_seconds``; ``read_workers`` days are read at once; yesterday is read live until ``settle_seconds`` after midnight UTC.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    reader: str = Field(min_length=1)
+    cache_ttl_seconds: int = Field(ge=1)
+    read_workers: int = Field(ge=1)
+    settle_seconds: int = Field(ge=0)
 
 
 class ModelFactoryFloorRuntime(BaseModel):
@@ -216,6 +252,12 @@ class ModelFactoryFloorOverlay(BaseModel):
     # The ledger reader's row source for the window read (its ``--source``: file, db or compare; the reader refuses another).
     # None names no source and leaves the reader its own default, which on a host whose ledger record is the bus is the bus read.
     ledger_source: str | None = Field(default=None, min_length=1)
+    # Where the file ledger's split archives are, so the window read keeps each archive's rows in the source read cache and reads only
+    # the live ledger each cycle (OMN-19998). Absent: the window is read as before.
+    ledger_archives: ModelLedgerArchiveWindow | None = None
+    # Accepted so an overlay that declares it is not refused (OMN-23963, OMN-24490). No reader in this tree reads it yet: the
+    # window is still read from ledger_source and ledger_archives whether or not it is present.
+    ledger_projection: ModelLedgerProjectionWindow | None = None
     # The line board's declarations (OMN-22368). No default: an overlay without them is refused by name.
     processes: tuple[ModelFloorProcessDecl, ...]
     roles: tuple[str, ...]
