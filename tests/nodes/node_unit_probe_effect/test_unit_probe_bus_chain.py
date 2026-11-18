@@ -31,6 +31,8 @@ EVT = CONTRACT["event_bus"]["publish_topics"][0]
 
 
 def test_contract_declares_the_demand_and_result_topics() -> None:
+    assert CMD == "onex.cmd.omnimarket.unit-probe-requested.v1"
+    assert EVT == "onex.evt.omnimarket.unit-probe-completed.v1"
     assert CONTRACT["runtime_dispatch"]["command_topic"] == CMD
     assert CONTRACT["terminal_event"] == EVT
     assert CONTRACT["event_bus"]["subscribe_topics"] == [CMD]
