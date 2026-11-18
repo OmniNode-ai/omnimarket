@@ -1,0 +1,123 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Temporal Health Alarm Effect (OMN-24900)
+# Shape of the deploy-job-failed alarm (omnibase_infra handler_deploy_job_reading): a STATUS row with src=alarm, the
+# alarm name, the owner and the owner line. Run every 60 s by its registry_module_tick unit
+# (node_host_installer_registry_units: temporal-health-alarm-systemd).
+runtime_profiles: []
+name: node_temporal_health_alarm_effect
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Reads three facts of the self-hosted Temporal server on a lab host: the server answers, a worker is polling its task
+  queue, and the newest workflow task poll is under poll_stale_after_s (600 s) old. When any is false it appends one
+  alarm row per episode, and when all three hold again it appends one recovery row. A row that cannot be appended is
+  reported in the result and tried again on the next tick; nothing is raised.
+input_model:
+  name: ModelTemporalHealthAlarmRequest
+  module: omnimarket.nodes.node_temporal_health_alarm_effect.models.model_temporal_health_alarm
+output_model:
+  name: ModelTemporalHealthAlarmResult
+  module: omnimarket.nodes.node_temporal_health_alarm_effect.models.model_temporal_health_alarm
+handler:
+  class: HandlerTemporalHealthAlarm
+  name: HandlerTemporalHealthAlarm
+  module: omnimarket.nodes.node_temporal_health_alarm_effect.handlers.handler_temporal_health_alarm
+  input_model: omnimarket.nodes.node_temporal_health_alarm_effect.models.model_temporal_health_alarm.ModelTemporalHealthAlarmRequest
+  output_model: omnimarket.nodes.node_temporal_health_alarm_effect.models.model_temporal_health_alarm.ModelTemporalHealthAlarmResult
+entrypoint:
+  name: NodeTemporalHealthAlarmEffect
+  module: omnimarket.nodes.node_temporal_health_alarm_effect.node
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - event_model:
+        name: ModelTemporalHealthAlarmRequest
+        module: omnimarket.nodes.node_temporal_health_alarm_effect.models.model_temporal_health_alarm
+      handler:
+        name: HandlerTemporalHealthAlarm
+        module: omnimarket.nodes.node_temporal_health_alarm_effect.handlers.handler_temporal_health_alarm
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: python -m omnimarket.nodes.node_temporal_health_alarm_effect.runtime_temporal_health_alarm, run every 60 s by the temporal-health-alarm-systemd unit, which reads the facts and calls HandlerTemporalHealthAlarm.handle
+schedule:
+  installer: node_host_installer_registry_units
+  unit: temporal-health-alarm-systemd
+  start_interval_s: 60
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 60000
+  side_effects:
+  - runs the temporal CLI against the declared address
+  - appends an alarm or recovery row to the rolling work ledger
+  - writes the open episode to its state directory
+metadata:
+  ticket: OMN-24900
+  transport_type: local
+execution:
+  deterministic: false
+  side_effects: true
+# The row cells and the facts' bounds. ONEX_TEMPORAL_CLI, ONEX_TEMPORAL_ADDRESS, ONEX_TEMPORAL_NAMESPACE and
+# ONEX_TEMPORAL_TASK_QUEUE in the unit's environment override the matching keys.
+config:
+  alarm: temporal-down
+  poll_stale_after_s: 600
+  row_lane: temporal-health-alarm
+  row_actor: script:temporal-health-alarm
+  row_ticket: OMN-24900
+  alarm_owner: orchestrator
+  alarm_owner_line: restart the Temporal server or worker unit through its declared installer and read its log
+  temporal_cli: temporal
+  address: 127.0.0.1:7233
+  namespace: default
+  task_queue: run-engine
+  cli_timeout_s: 20
+# The self-hosted server and the workflow 1 worker on the lab host, each a long-running registry_module_tick unit of
+# node_host_installer_registry_units (temporal-server-systemd, temporal-worker-systemd): the timer starts the run at
+# load and starts it again within start_interval_s of any exit, a kill included. The server is one pinned release of
+# the official temporalio CLI, fetched once into a durable directory under the home and checked against the sha256
+# its release's own checksums.txt publishes on every start (the release URL is built from release and asset); its SQLite store is in the same directory, never scratch.
+server:
+  release_host: github.com
+  release_path: temporalio/cli/releases/download
+  release: v1.10.1
+  asset: temporal_cli_1.10.1_linux_amd64.tar.gz
+  sha256: 4c1500e2ce2d4de136e5fe8852d9b7f82eb62f19b6b383b3e0c040519a9d20b1
+  data_directory: .local/share/onex-temporal
+  db_filename: temporal.db
+  ip: 127.0.0.1
+  port: 7233
+  ui_port: 8233
+  namespace: default
+  download_timeout_s: 300
+# One persistent unit serves every declared task queue: the runtime starts one child worker per entry from the checkout in
+# $<project_environment> and ends them all when any one ends, so the unit's restart policy starts every queue again.
+# ``module`` is the primary worker (workflow 1, always required); an ``also_serves`` worker whose module the checkout does
+# not carry is left out and named in the start line. {address}, {namespace} and {registry_root} fill from the runtime.
+# Each task queue is the one its schedule starts its workflow on (read from the schedule on the host, never a proof queue).
+worker:
+  module: omnimarket.nodes.node_prove_running_workflow
+  project_environment: ONEX_TEMPORAL_WORKER_PROJECT
+  address: 127.0.0.1:7233
+  namespace: default
+  also_serves:
+    - name: merged-change-runner-read
+      task_queue: onex-merged-change-runner-read
+      module: omnimarket.nodes.node_merged_change_runner_read_workflow.runtime_runner_read_worker
+      args: []
+    - name: sprint-closer
+      task_queue: onex-sprint-closer
+      module: omnimarket.nodes.node_sprint_closer_effect
+      args: [worker, --target-host, "{address}", --namespace, "{namespace}", --omni-home, "{registry_root}"]
+    - name: worktree-prune
+      task_queue: onex-worktree-prune
+      module: omnimarket.nodes.node_worktree_prune_temporal_effect
+      args: [worker, --target-host, "{address}", --namespace, "{namespace}"]

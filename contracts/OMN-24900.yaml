@@ -1,0 +1,83 @@
+schema_version: 1.0.0
+ticket_id: OMN-24900
+title: Temporal server and worker run on h051 under a health alarm
+summary: A scheduled health check node, node_temporal_health_alarm_effect, reads whether the self-hosted Temporal server answers, whether a worker polls its task queue and whether the newest task poll is under 10 minutes old, and appends one alarm row per episode and one recovery row; its 60 s registry_module_tick unit is declared in node_host_installer_registry_units. The server and worker units are not installed by this change; the reason is in the pull request body.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24900-temporal-health
+  statement: The self-hosted Temporal server and worker on h051 run under declared host units with a scheduled health alarm.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the Temporal server and the worker on h051 read installed through a declared host unit at a named revision, running after a host reboot or unit restart with state in the pilot''s store, and the server answers -- falsifier: ssh h051 systemctl status of both units plus a temporal operator cluster health read at the time of the claim'
+  - id: AC2
+    statement: 'AC2: the worker polls and the canary workflow e1-canary-longwait starts and completes, and a kill drill of the worker recovers unattended with no repeated step key -- falsifier: workflow describe and history read for the canary run plus the step ledger query for repeated step keys after the drill'
+  - id: AC3
+    statement: 'AC3: a scheduled health check node writes an alarm row when the server or the worker is down or no workflow task has been polled for 10 minutes, and it has a test that fails when the alarm branch is removed -- falsifier: uv run pytest on the node''s test file in the repository that owns it'
+  - id: AC4
+    statement: 'AC4: the health check runs once and alarms exactly once on a stopped worker, then recovers when the worker restarts -- falsifier: the alarm row count read before the stop, during it and after the restart on the lab'
+  - id: AC5
+    statement: 'AC5: a STATUS row on the rolling ledger carries installed=h051:<revision> and observed=<what ran> -- falsifier: grep -F ''installed=h051:'' on the ledger finds the STATUS row for this ticket'
+evidence_requirements:
+- kind: tests
+  description: The health alarm node's tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_temporal_health_alarm_effect/test_temporal_health_alarm.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24900-ac1
+  description: Pending live evidence. The node's settings load from its contract (address, namespace, task queue); the server and worker units are not installed at this head, so the systemctl and cluster health read on h051 is not yet recorded.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_temporal_health_alarm_effect/test_temporal_health_alarm.py -q --no-cov -n 0 -p no:randomly -k contract_settings
+    cwd: .
+- id: dod-omn24900-ac2
+  description: Pending live evidence. The reader turns listed pollers into the worker-polling fact; the canary run and the kill drill on h051 are not yet recorded.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_temporal_health_alarm_effect/test_temporal_health_alarm.py -q --no-cov -n 0 -p no:randomly -k reader
+    cwd: .
+- id: dod-omn24900-ac3
+  description: Alarm row on a stopped worker or a down server, the 10-minute rule at 599 s and 600 s, and the test that fails when the alarm branch is removed.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_temporal_health_alarm_effect/test_temporal_health_alarm.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24900-ac4
+  description: One alarm row across five unhealthy ticks and one recovery row after; the live count on h051 before, during and after a stop is pending until the units are installed.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_temporal_health_alarm_effect/test_temporal_health_alarm.py -q --no-cov -n 0 -p no:randomly -k once_per_episode
+    cwd: .
+- id: dod-omn24900-ac5
+  description: Pending. The ledger STATUS row with installed=h051 is written by the lane once the units run; until then the lane's STATUS row carries the measured cause.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_temporal_health_alarm_effect/test_temporal_health_alarm.py -q --no-cov -n 0 -p no:randomly -k healthy_writes_nothing
+    cwd: .
+- id: dod-omn24900-integration-proof
+  description: Run the node's tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24900 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_temporal_health_alarm_effect/test_temporal_health_alarm.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

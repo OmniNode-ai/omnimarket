@@ -29,11 +29,7 @@ _identity: list[ProtocolHttpTenantIdentity] = []
 
 def load_http_route() -> ModelCatalogHttpRoute:
     contract = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
-    mount = contract["http_mount"]
-    route = ModelCatalogHttpRoute.model_validate(contract["http_route"])
-    if mount["path_prefix"] != route.path:
-        raise ValueError("the mount prefix must equal the route path")
-    return route
+    return ModelCatalogHttpRoute.model_validate(contract["http_route"])
 
 
 def bind_tenant_identity(resolver: ProtocolHttpTenantIdentity | None) -> None:

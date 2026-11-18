@@ -13,6 +13,7 @@ from omnimarket.models.ticket_closer.model_ticket_closer import (
     ModelCloserWriteReceipt,
     ModelTicketCloserResult,
     ModelTicketCloserScheduleOverlay,
+    closer_status_line,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "ModelCloserWriteReceipt",
     "ModelTicketCloserResult",
     "ModelTicketCloserScheduleOverlay",
+    "closer_status_line",
 ]
