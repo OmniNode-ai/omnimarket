@@ -188,8 +188,8 @@ def compute_baseline_savings(
     """Resolve the baseline and state the saving against it, once.
 
     A local run has no overlay or store in hand, so the baseline is the
-    session-named model or the manifest default, exactly as the receipt resolves
-    it for the same run.
+    session-named model, the ONEX home's configured one, or the manifest
+    default, exactly as the receipt resolves it for the same run.
     """
     baseline = resolve_baseline_model(overlay={}, store={}, session_model=session_model)
     if baseline.state == "BASELINE_UNRESOLVED":
