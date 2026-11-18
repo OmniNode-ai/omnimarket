@@ -36,6 +36,11 @@ requirements:
     acceptance:
       - id: AC7
         statement: 'AC7: uv.lock resolves filelock 4.2.1 -- falsifier: uv run pytest tests/ci/test_filelock_lock_pin_omn20413.py fails while the filelock entry reads version 3.32.6'
+  - id: req-omn20413-census-at-ratchet
+    statement: The census of ledger-file readers and writers counts no more files than its ratchet row on this tree, and the ratchet row is unchanged.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the census counts 186 files against the ratchet row of 186 -- falsifier: uv run pytest tests/unit/validators/test_ledger_file_census.py -q --no-cov -k at_or_under_its_ratchet_row fails at the base head with ratchet-grew omnimarket=188>186'
 evidence_requirements:
   - kind: tests
     description: The deploy-gate run step hands the validator the title and the body, and the validator stays at its pin and mode.
@@ -127,3 +132,12 @@ dod_evidence:
         cwd: .
     binds_ac:
       - AC7
+  - id: dod-omn20413-ac8-census-at-ratchet
+    description: Two test fixtures named a scratch copy with the ledger file's own name and are renamed ledger_copy.md, so the census counts 186 files against the unchanged ratchet row of 186.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/validators/test_ledger_file_census.py tests/unit/nodes/node_projection_work_ledger/test_parity_extra_unsequenced.py tests/nodes/node_compaction_continuation_replay_effect/test_continuation_replay.py -q --no-cov -p no:randomly
+        cwd: .
+    binds_ac:
+      - AC8
