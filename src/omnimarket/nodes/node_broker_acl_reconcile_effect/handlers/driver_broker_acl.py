@@ -35,8 +35,23 @@ RESOURCE_FLAGS = {
 RemoteRunner = Callable[[str, str], str]
 
 
+CREDENTIAL_MISSING_EXIT = 3
+CREDENTIAL_NAMES = ("DEV_KAFKA_SASL_USERNAME", "DEV_KAFKA_SASL_PASSWORD")
+DEFAULT_SUPERUSER_ENV_FILE = "~/.omnibase/.env"
+_ENV_FILE_SAFE = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/"
+)
+
+
 class DeclarationError(ValueError):
     """A declaration or broker listing is malformed."""
+
+
+class BrokerCredentialMissingError(RuntimeError):
+    """A DEV_KAFKA_SASL name is absent or empty in the declared secret source.
+
+    The message names the key and the source file, never a value.
+    """
 
 
 @dataclass(frozen=True, order=True)
@@ -91,6 +106,11 @@ class AclConnection:
     superuser_source_container: str
     ssh_target: str
     timeout_seconds: float = 120
+    # The declared secret source: an env file on the broker host holding the dev superuser
+    # credential under the DEV_KAFKA_SASL_* names (the operator env file the deploy agent
+    # unit declares as DEPLOY_AGENT_ENV_FILE). ``superuser_source_container`` stays a
+    # required legacy cell of the declaration shape and is no longer read.
+    superuser_env_file: str = DEFAULT_SUPERUSER_ENV_FILE
 
     @classmethod
     def from_mapping(
@@ -111,7 +131,14 @@ class AclConnection:
             raise DeclarationError(
                 "an SSH target is required and must not start with '-'"
             )
-        return cls(**values, ssh_target=target, timeout_seconds=timeout)
+        env_file = raw.get("superuser_env_file", DEFAULT_SUPERUSER_ENV_FILE)
+        _remote_path(env_file)
+        return cls(
+            **values,
+            ssh_target=target,
+            timeout_seconds=timeout,
+            superuser_env_file=env_file,
+        )
 
 
 @dataclass(frozen=True)
@@ -120,6 +147,23 @@ class AclDeclaration:
 
     connection: AclConnection
     grants: tuple[AclGrant, ...]
+
+
+def _remote_path(path: object) -> str:
+    """Quote a declared env file path for the broker host, expanding only a leading ``~/``."""
+    if (
+        not isinstance(path, str)
+        or not path
+        or not set(path) <= _ENV_FILE_SAFE | {"~"}
+        or ".." in path.split("/")
+        or not (path.startswith(("/", "~/")))
+    ):
+        raise DeclarationError(
+            "superuser_env_file must be an absolute or ~/ path of letters, digits and ._-/"
+        )
+    if path.startswith("~/"):
+        return f'"$HOME"/{shlex.quote(path[2:])}'
+    return shlex.quote(path)
 
 
 def _required_string(mapping: Mapping[str, Any], key: str) -> str:
@@ -241,20 +285,34 @@ def rpk_create_args(grant: AclGrant) -> list[str]:
 
 
 def build_remote_script(decl: AclConnection, rpk_argvs: list[list[str]]) -> str:
-    """Build a remote script which obtains broker credentials only on the host."""
-    source = shlex.quote(decl.superuser_source_container)
+    """Build a remote script which obtains broker credentials only on the host.
+
+    The credential is read by name from the declared env file on the broker host, never from a
+    container: an exited one-shot container is removed by host cleanup and cannot be relied on.
+    A missing file, name or empty value stops the script with exit ``CREDENTIAL_MISSING_EXIT``
+    and a line naming the key and the file, never a value.
+    """
+    env_file = _remote_path(decl.superuser_env_file)
     broker = shlex.quote(decl.broker_container)
-    env_format = shlex.quote("{{range .Config.Env}}{{println .}}{{end}}")
+    user_name, pass_name = CREDENTIAL_NAMES
+    pick = (
+        "sed -n -e 's/^[[:space:]]*export[[:space:]][[:space:]]*//' "
+        "-e 's/^{name}=//p' \"$F\" | tail -n 1 | "
+        "sed -e 's/^\"\\(.*\\)\"$/\\1/' -e \"s/^'\\(.*\\)'\\$/\\1/\""
+    )
     lines = [
         "set -eu",
-        f'U="$(docker inspect {source} --format {env_format} | '
-        "sed -n 's/^DEV_KAFKA_SASL_USERNAME=//p')\"",
-        f'P="$(docker inspect {source} --format {env_format} | '
-        "sed -n 's/^DEV_KAFKA_SASL_PASSWORD=//p')\"",
+        f"F={env_file}",
+        '[ -r "$F" ] || { echo "no readable declared secret source $F" >&2; '
+        f"exit {CREDENTIAL_MISSING_EXIT}; }}",
+        f'U="$({pick.format(name=user_name)})"',
+        f'P="$({pick.format(name=pass_name)})"',
         # An empty credential would reach the broker unauthenticated and fail
-        # there with a misleading error; stop here and say which source failed.
-        f'[ -n "$U" ] && [ -n "$P" ] || {{ echo "no lane superuser credentials in '
-        f'{source}" >&2; exit 3; }}',
+        # there with a misleading error; stop here and say which key is missing.
+        f'[ -n "$U" ] || {{ echo "{user_name} missing or empty in $F" >&2; '
+        f"exit {CREDENTIAL_MISSING_EXIT}; }}",
+        f'[ -n "$P" ] || {{ echo "{pass_name} missing or empty in $F" >&2; '
+        f"exit {CREDENTIAL_MISSING_EXIT}; }}",
     ]
     for rpk_argv in rpk_argvs:
         quoted_argv = " ".join(shlex.quote(argument) for argument in rpk_argv)
@@ -303,6 +361,8 @@ def run_remote(target: str, script: str, *, timeout: float = 120) -> str:
         timeout=timeout,
         check=False,
     )
+    if completed.returncode == CREDENTIAL_MISSING_EXIT:
+        raise BrokerCredentialMissingError(completed.stderr.strip()[-400:])
     if completed.returncode:
         raise RuntimeError(
             f"remote ACL command failed (exit {completed.returncode}): {completed.stderr.strip()[-400:]}"

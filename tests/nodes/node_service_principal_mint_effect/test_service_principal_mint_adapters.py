@@ -82,7 +82,8 @@ def test_list_logins_parses_stdout() -> None:
     assert target == _broker().ssh_target
     assert "security user list" in script
     assert _broker().broker_container in script
-    assert _broker().superuser_source_container in script
+    assert "docker inspect" not in script
+    assert "DEV_KAFKA_SASL_PASSWORD" in script
 
 
 def test_create_login_script_contains_mechanism() -> None:

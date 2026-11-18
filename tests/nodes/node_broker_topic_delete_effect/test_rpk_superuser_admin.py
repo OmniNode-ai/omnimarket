@@ -237,7 +237,8 @@ def test_seam_script_reads_the_credential_as_the_permission_tool_does() -> None:
     )
     prologue = build_remote_script(connection, [])
     assert script.startswith(prologue)
-    assert "docker inspect omnibase-infra-redpanda-sasl-enable" in script
+    assert "docker inspect" not in script
+    assert "DEV_KAFKA_SASL_PASSWORD" in script
     assert '-X user="$U" -X pass="$P"' in script
     assert "-X brokers=redpanda:9092" in script
     assert "-X sasl.mechanism=SCRAM-SHA-256" in script
@@ -273,10 +274,8 @@ def test_seam_acl_declaration_names_the_same_containers() -> None:
         ENVIRON,
         runner=runner,
     ).read_evidence(["fx-empty"])
-    assert (
-        f"docker inspect {declaration['superuser_source_container']}"
-        in runner.calls[0][1]
-    )
+    assert "docker inspect" not in runner.calls[0][1]
+    assert 'F="$HOME"/.omnibase/.env' in runner.calls[0][1]
 
 
 def test_chain_handler_deletes_through_the_superuser() -> None:
