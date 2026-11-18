@@ -24,7 +24,7 @@
   "repo-evidence / dod-verify": {
     "workflow": "call-repo-evidence-gate.yml",
     "events": [
-      "pull_request_target"
+      "pull_request"
     ],
     "push_branches": []
   },
@@ -118,14 +118,6 @@
       "pull_request",
       "merge_group",
       "workflow_dispatch"
-    ],
-    "push_branches": []
-  },
-  "delegation-health-check / Delegation Health Check": {
-    "workflow": "delegation-health-check.yml",
-    "events": [
-      "pull_request",
-      "merge_group"
     ],
     "push_branches": []
   },
