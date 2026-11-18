@@ -28,12 +28,21 @@ class EnumTopicDirection(StrEnum):
 
 
 class ModelContractTopicUse(BaseModel):
-    """One topic one node's contract declares, and whether the node publishes or subscribes to it."""
+    """One topic one node's contract declares, and whether the node publishes or subscribes to it.
+
+    `command` marks the node's primary command topic (event_bus.subscribe_topics[0], the topic an `onex run-node`
+    request is sent to) and `terminal` the contract's top-level terminal_event, so a caller's reverse rows are derivable.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     node: str = Field(min_length=1)
     topic: str = Field(min_length=1)
     direction: EnumTopicDirection
+    command: bool = False
+    terminal: bool = False
+    # False for a topic only the contract's terminal_event names (not in publish_topics): a caller's row follows from it,
+    # a runner's rows and the topic coverage check do not.
+    declared: bool = True
 
 
 class ModelNodePrincipal(BaseModel):
@@ -44,14 +53,25 @@ class ModelNodePrincipal(BaseModel):
 
 
 class ModelNodeRole(BaseModel):
-    """A set of nodes run under several logins at once (a unit on every lab host): each login holds the rows of each node."""
+    """A set of nodes run under several logins at once (a unit on every lab host): each login holds the rows of each node.
+
+    `calls` names the nodes the role's principals only send an `onex run-node` request to: they hold the reverse of a
+    runner's rows on the called node's command and terminal topics, and no consumer group. A role declares at least one.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     name: str = Field(min_length=1)
     role: str = Field(min_length=1)
-    nodes: tuple[str, ...] = Field(min_length=1)
+    nodes: tuple[str, ...] = ()
+    calls: tuple[str, ...] = ()
     principals: tuple[str, ...] = Field(min_length=1)
     placeholders: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _names_nodes_or_calls(self) -> ModelNodeRole:
+        if not self.nodes and not self.calls:
+            raise ValueError(f"role {self.name!r} declares no nodes and no calls")
+        return self
 
     @model_validator(mode="after")
     def _placeholder_shape(self) -> ModelNodeRole:

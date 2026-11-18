@@ -103,7 +103,11 @@ async def test_lane_intake_command_result_the_callers_key_wins_over_the_derived_
             EnumLaneIntakeFailure.SECRET_UNAVAILABLE,
             ["linear_api_key_unresolved"],
         ),
-        (RuntimeError("boom"), EnumLaneIntakeFailure.OPERATION_FAILED, []),
+        (
+            RuntimeError("boom"),
+            EnumLaneIntakeFailure.OPERATION_FAILED,
+            ["exception:RuntimeError"],
+        ),
     ],
 )
 async def test_lane_intake_command_result_a_typed_refusal_reaches_the_caller_as_a_failure(

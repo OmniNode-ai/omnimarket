@@ -4,8 +4,10 @@
 
 Pure: the topic uses are read from the contracts at composition (contract_topics.py) and the principals from their overlay.
 The operations a publisher or a subscriber needs, and the consumer group prefix, are the contract's config, never a
-constant here. A row passes the same refusals the scoped render applies; a topic with no row (derived or declared)
-is listed and refuses the check, so a new topic with no row fails it.
+constant here. A role may also name calls: the logins of a role that only calls a node hold the reverse of a runner's
+rows on the called node's command and terminal topics, and no consumer group. A row passes the same refusals the scoped
+render applies; a topic with no row (derived or declared) is listed and refuses the check, so a new topic with no row
+fails it.
 """
 
 from __future__ import annotations
@@ -45,6 +47,7 @@ class HandlerBrokerAclDerive:
             uses_by_node[use.node].append(use)
         exclusive: dict[str, str] = {}
         principals_of: dict[str, set[str]] = defaultdict(set)
+        callers_of: dict[str, set[str]] = defaultdict(set)
         checked: set[str] = set()
         no_contract: set[str] = set()
 
@@ -86,11 +89,15 @@ class HandlerBrokerAclDerive:
                 principals_of[node].add(entry.principal)
                 note_node(node)
         # A role is a unit run under several logins at once (every lab host): each member holds the rows of each node.
+        # Its calls are nodes the same logins only send a run-node request to; several roles may call one node.
         for role in request.principals.roles:
             for principal in role.principals:
                 check_principal(principal)
             for node in role.nodes:
                 principals_of[node].update(role.principals)
+                note_node(node)
+            for node in role.calls:
+                callers_of[node].update(role.principals)
                 note_node(node)
         rows: dict[tuple[str, str, str, str, str], ModelBrokerAclRow] = {}
 
@@ -112,7 +119,11 @@ class HandlerBrokerAclDerive:
                 row = ModelBrokerAclRow(principal=principal, **grant.model_dump())
                 rows[_row_key(row)] = row
 
-        if request.only_node is not None and request.only_node not in principals_of:
+        if (
+            request.only_node is not None
+            and request.only_node not in principals_of
+            and request.only_node not in callers_of
+        ):
             findings.append(
                 ModelBrokerAclFinding(
                     code=_CODES.NODE_WITHOUT_PRINCIPAL, detail=request.only_node
@@ -127,6 +138,8 @@ class HandlerBrokerAclDerive:
                 continue
             uses = uses_by_node.get(node, [])
             for use in uses:
+                if not use.declared:
+                    continue
                 operations = (
                     config["derive_publish_operations"]
                     if use.direction == EnumTopicDirection.PUBLISH
@@ -139,7 +152,10 @@ class HandlerBrokerAclDerive:
                     use.topic,
                     operations,
                 )
-            if any(use.direction == EnumTopicDirection.SUBSCRIBE for use in uses):
+            if any(
+                use.direction == EnumTopicDirection.SUBSCRIBE and use.declared
+                for use in uses
+            ):
                 add(
                     principal,
                     EnumAclResourceType.GROUP,
@@ -147,6 +163,56 @@ class HandlerBrokerAclDerive:
                     config["derive_group_prefix_template"].format(node=node),
                     config["derive_group_operations"],
                 )
+        # A caller only sends the node its run-node request and reads its answer: the runner's reverse operations on
+        # exactly the command and terminal topics, and no group row. A called node that declares neither topic refuses;
+        # the finding is hard, like every refusal but topic_without_row.
+        for node in sorted(callers_of):
+            if request.only_node is not None and node != request.only_node:
+                continue
+            uses = uses_by_node.get(node, [])
+            commands = [use.topic for use in uses if use.command]
+            terminals = [use.topic for use in uses if use.terminal]
+            if not commands:
+                findings.append(
+                    ModelBrokerAclFinding(
+                        code=_CODES.CALLED_NODE_WITHOUT_COMMAND, detail=node
+                    )
+                )
+            if not terminals:
+                findings.append(
+                    ModelBrokerAclFinding(
+                        code=_CODES.CALLED_NODE_WITHOUT_TERMINAL, detail=node
+                    )
+                )
+            segment = config["derive_caller_command_segment"]
+            outside = [
+                topic for topic in commands if topic.split(".")[1:2] != [segment]
+            ]
+            if outside:
+                findings.append(
+                    ModelBrokerAclFinding(
+                        code=_CODES.CALLED_NODE_COMMAND_NOT_A_COMMAND_TOPIC,
+                        detail=f"{node}: {', '.join(outside)}",
+                    )
+                )
+                continue
+            for principal in sorted(callers_of[node]):
+                for topic in commands:
+                    add(
+                        principal,
+                        EnumAclResourceType.TOPIC,
+                        EnumAclPattern.LITERAL,
+                        topic,
+                        config["derive_publish_operations"],
+                    )
+                for topic in terminals:
+                    add(
+                        principal,
+                        EnumAclResourceType.TOPIC,
+                        EnumAclPattern.LITERAL,
+                        topic,
+                        config["derive_subscribe_operations"],
+                    )
         covered = {
             row.name
             for row in rows.values()
@@ -160,7 +226,8 @@ class HandlerBrokerAclDerive:
         topics = {
             use.topic
             for use in request.topic_uses
-            if request.only_node is None or use.node == request.only_node
+            if use.declared
+            and (request.only_node is None or use.node == request.only_node)
         }
         uncovered = tuple(sorted(topics - covered))
         findings.extend(

@@ -6,6 +6,20 @@ summary: "The delegate-skill run-step recorder publishes each run step with even
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn21320-ac1-accepted-20261117t1145z:
+      - label: "AC1"
+        criterion_hash: "9b41a5212b1e2071419036670e8c4498e6a68bfd4e7a27dccfaff2937d4f0957"
+        proposed_by: "lane=dod-closeout-bind-2026-11-17T1145Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-11-17T1145Z-c3"
+        accepted_at: "2026-11-17T12:22:32Z"
+    dod-omn21320-ac3-accepted-20261117t1145z:
+      - label: "AC3"
+        criterion_hash: "32d172646ac8e3b62f253f887c5020bf5904cd3a5e39effe3935c40111395203"
+        proposed_by: "lane=dod-closeout-bind-2026-11-17T1145Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-11-17T1145Z-c3"
+        accepted_at: "2026-11-17T12:22:32Z"
 requirements:
   - id: "req-omn21320-ac1"
     statement: |-
@@ -64,4 +78,20 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "curl -fsSL https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_emit_daemon/registries/topics.yaml | grep -F '  delegation.run_step:'"
+        cwd: "."
+  - id: "dod-omn21320-ac1-accepted-20261117t1145z"
+    description: "AC1 binding (accepted 2026-11-17T1145Z, proposed by lane=dod-closeout-bind-2026-11-17T1145Z-c3, accepted by lane=dod-closeout-accept-2026-11-17T1145Z-c3). One recorded run step emitted through node_event_emit_effect with the delegation-run-step.v1 override is delivered, not refused for a missing redaction posture. Re-run on lab host h051 at omnimarket origin/dev 13a7e30415fa passed; with the product paths of eda895d35c reverted at that head it failed with the refusal."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_run_step_publish_posture.py::test_run_step_publish_posture_delivers_one_recorded_step -q -p no:randomly --no-cov"
+        cwd: "."
+  - id: "dod-omn21320-ac3-accepted-20261117t1145z"
+    description: "AC3 binding (accepted 2026-11-17T1145Z, proposed by lane=dod-closeout-bind-2026-11-17T1145Z-c3, accepted by lane=dod-closeout-accept-2026-11-17T1145Z-c3). The run step of receipt 070ef15d is published without the recorded refusal. Re-run on lab host h051 at omnimarket origin/dev 13a7e30415fa passed; with the product paths of eda895d35c reverted it failed, the handler raising the recorded refusal text."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_run_step_publish_posture.py::test_receipt_070ef15d_run_step_is_no_longer_refused -q -p no:randomly --no-cov"
         cwd: "."

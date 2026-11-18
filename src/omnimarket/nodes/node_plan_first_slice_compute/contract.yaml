@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodePlanFirstSliceCompute
+#
+# Whether a plan in review names its first slice section, as a pure definition-B compute:
+#
+#   handle(ModelPlanFirstSliceRequest) -> ModelPlanFirstSliceResult
+#
+# From the plan's markdown text it takes the FIRST heading that names a first slice section,
+# the names coming from the request's settings (which the overlay fills; the packaged
+# contract's `config:` section below is the default), collects the section's lines up to the
+# next heading of the same or higher level or to a later-rung heading, and counts the
+# section's words against the minimum. Headings inside fenced code blocks never match.
+# No clock, no I/O, no model.
+name: "node_plan_first_slice_compute"
+contract_name: "node_plan_first_slice_compute"
+node_name: "node_plan_first_slice_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure definition-B check of a plan in review: does it name a first slice
+  section, and does that section carry more than a stub's words? The first
+  markdown heading whose text, lower-cased with its leading numbering and
+  surrounding punctuation stripped, names one of first_slice_headings is
+  matched; the section runs to the next heading of the same or higher level,
+  to a later_rung_headings heading, or to the end of the text, whichever
+  comes first. Deterministic in the plan text and settings alone.
+input_model:
+  name: "ModelPlanFirstSliceRequest"
+  module: "omnimarket.nodes.node_plan_first_slice_compute.models.model_plan_first_slice"
+  description: "The plan's markdown text and the settings in force."
+output_model:
+  name: "ModelPlanFirstSliceResult"
+  module: "omnimarket.nodes.node_plan_first_slice_compute.models.model_plan_first_slice"
+  description: "The verdict, the matched heading, the section's word count and one plain sentence."
+handler:
+  module: "omnimarket.nodes.node_plan_first_slice_compute.handlers.handler_plan_first_slice"
+  class: "HandlerPlanFirstSlice"
+  input_model: "omnimarket.nodes.node_plan_first_slice_compute.models.model_plan_first_slice.ModelPlanFirstSliceRequest"
+handler_routing:
+  routing_strategy: "payload_type_match"
+  default_handler: "omnimarket.nodes.node_plan_first_slice_compute.handlers.handler_plan_first_slice:HandlerPlanFirstSlice"
+  handlers:
+    - operation: "check_plan_first_slice"
+      handler:
+        name: "HandlerPlanFirstSlice"
+        module: "omnimarket.nodes.node_plan_first_slice_compute.handlers.handler_plan_first_slice"
+      event_model:
+        name: "ModelPlanFirstSliceRequest"
+        module: "omnimarket.nodes.node_plan_first_slice_compute.models.model_plan_first_slice"
+
+terminal_event: "onex.evt.omnimarket.plan-first-slice-check-completed.v1"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.plan-first-slice-check-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.plan-first-slice-check-completed.v1"
+    failure: "onex.evt.omnimarket.plan-first-slice-check-failed.v1"
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.plan-first-slice-check-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.plan-first-slice-check-completed.v1"
+    - "onex.evt.omnimarket.plan-first-slice-check-failed.v1"
+externally_consumed_topics:
+  - "onex.evt.omnimarket.plan-first-slice-check-completed.v1"
+  - "onex.evt.omnimarket.plan-first-slice-check-failed.v1"
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.cmd.omnimarket.plan-first-slice-check-requested.v1", operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.cmd.omnimarket.plan-first-slice-check-requested.v1", operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.plan-first-slice-check-completed.v1", operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.plan-first-slice-check-completed.v1", operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.plan-first-slice-check-failed.v1", operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.plan-first-slice-check-failed.v1", operation: DESCRIBE}
+descriptor:
+  runtime_profiles: [main]
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  deterministic: true
+metadata:
+  transport_type: kafka
+  description: "Whether a plan in review names its first slice section."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-14"
+  tags:
+    - compute
+    - plan-review
+    - pure
+# The settings the overlay fills (every key required there); this section is the
+# packaged default load_settings reads when no overlay is configured.
+config:
+  first_slice_headings:
+    - first slice
+  min_section_words: 20
+  later_rung_headings:
+    - later rungs
+    - ladder

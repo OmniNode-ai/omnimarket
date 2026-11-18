@@ -603,6 +603,26 @@ def _generated_fleet(rng: random.Random) -> dict[str, Any]:
                     },
                 ]
             )
+    # Review gate (OMN-24477): some PRs carry a review fact, and some fleets expect it from every PR. Drawn from a stream
+    # of its own, seeded from the fleet, so the main stream (and every fleet the other reasons were covered with) is unchanged.
+    review_rng = random.Random("review" + repr(prs))
+    if review_rng.random() < 0.3:
+        facts["policy"] = {"review_read_expected": True}
+    for pr in prs:
+        if review_rng.random() < 0.35:
+            continue
+        heads = [pr["head_sha"], f"{98:040x}"]
+        pr["review"] = {
+            "new_work": review_rng.random() < 0.6,
+            "verdicts": [
+                {
+                    "head_sha": review_rng.choice(heads),
+                    "verdict": review_rng.choice(["clean", "changes_needed"]),
+                    "at": "2026-11-07T11:30:00Z",
+                }
+                for _ in range(review_rng.randint(0, 2))
+            ],
+        }
     return facts
 
 

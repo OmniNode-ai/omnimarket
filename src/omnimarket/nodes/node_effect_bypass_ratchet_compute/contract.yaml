@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeEffectBypassRatchetCompute
+#
+# The effect-node bypass ratchet (OMN-24432, RULING 2026-11-14T11:59:02Z): every effect on the outside
+# world goes through its effect node over the bus. This pure compute reads one repository's scan and the
+# shrink-only baseline and says whether a category rose:
+#
+#   handle(ModelBypassRatchetRequest) -> ModelBypassRatchetVerdict
+#
+# No clock, no I/O, no model. The scan is done by node_effect_bypass_scan_effect.
+name: "node_effect_bypass_ratchet_compute"
+contract_name: "node_effect_bypass_ratchet_compute"
+node_name: "node_effect_bypass_ratchet_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure ratchet over one repository's bypass count. A category whose count rose above the baseline
+  is a finding and the verdict is not ok; a repository the baseline does not list is a finding and not
+  ok; when the merge base's baseline is given, a baseline category above the merge base's is a finding
+  and not ok (a baseline only shrinks). A category that fell is noted as lowerable and stays ok.
+input_model:
+  name: "ModelBypassRatchetRequest"
+  module: "omnimarket.models.effect_bypass.model_bypass_ratchet"
+  description: "One repository's scan, the baseline, and optionally the merge base's baseline."
+output_model:
+  name: "ModelBypassRatchetVerdict"
+  module: "omnimarket.models.effect_bypass.model_bypass_ratchet"
+  description: "Per-category reading, the totals and the findings."
+handler:
+  module: "omnimarket.nodes.node_effect_bypass_ratchet_compute.handlers.handler_bypass_ratchet"
+  class: "HandlerBypassRatchet"
+  input_model: "omnimarket.models.effect_bypass.model_bypass_ratchet.ModelBypassRatchetRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_effect_bypass_ratchet_compute.handlers.handler_bypass_ratchet:HandlerBypassRatchet"
+  handlers:
+    - operation: "judge_bypass_ratchet"
+      handler:
+        name: "HandlerBypassRatchet"
+        module: "omnimarket.nodes.node_effect_bypass_ratchet_compute.handlers.handler_bypass_ratchet"
+terminal_event: "onex.evt.omnimarket.effect-bypass-ratchet-completed.v1"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.effect-bypass-ratchet-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.effect-bypass-ratchet-completed.v1"
+    failure: "onex.evt.omnimarket.effect-bypass-ratchet-failed.v1"
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnimarket.effect-bypass-ratchet-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.effect-bypass-ratchet-completed.v1"
+runtime_profiles:
+  - main
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+replay:
+  deterministic: true
+metadata:
+  description: "Pure ratchet over the count of effect-node bypasses."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-14"
+  ticket: "OMN-24432"
+  tags:
+    - compute
+    - ratchet
+    - effect-bypass
+    - pure
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.effect-bypass-ratchet-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.effect-bypass-ratchet-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.effect-bypass-ratchet-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.effect-bypass-ratchet-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.effect-bypass-ratchet-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.effect-bypass-ratchet-failed.v1, operation: DESCRIBE}

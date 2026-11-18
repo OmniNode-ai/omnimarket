@@ -26,8 +26,11 @@ hosts:
   - name: h053
     scheduler: systemd-user
     windows: {retain_hours: 12, pressure_percent: 80, pressure_retain_hours: 2}
+    # h053's root disk holds /tmp (read on 2026-11-14: 512 pytest-tmp-* folders and 5,784 entries in /tmp, 92 percent of the root disk's inodes in use) so it ages out on the same clock as h051's.
     temp_roots:
       - path: /data/lab-run/runs/.tmp
+        protected_name_patterns: ['claude-[0-9]+']
+      - path: /tmp
         protected_name_patterns: ['claude-[0-9]+']
     store_ceilings:
       - {path: /data/lab-run/runs/.pnpm-store, kind: pnpm, ceiling_mib: 2048}
