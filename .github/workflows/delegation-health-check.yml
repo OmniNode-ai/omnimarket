@@ -53,7 +53,6 @@ jobs:
   # `delegation-health-check / Delegation Health Check`, the context the
   # sweep exclusion names and the prefix the advisory-job gate
   # matches a called workflow's job by.
-  # advisory-ok: OMN-25514 dev signal, no longer a required context: out of EXPECTED_EXTERNAL_CONTEXTS and ci_summary_external_producers.json, admitted by a dated sweep exclusion, so a red row cannot block a merge
   delegation-health-check:
     uses: OmniNode-ai/omnibase_infra/.github/workflows/delegation-health-reusable.yml@dev-20261107104119-e3cff8e210fe
     with:
