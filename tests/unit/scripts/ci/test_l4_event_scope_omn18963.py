@@ -127,8 +127,9 @@ def test_pull_request_preserves_the_full_current_tuple(ref_name: str) -> None:
     # OMN-17427 adds the reviewer eval; OMN-21478 adds internal sibling pins;
     # OMN-21588 adds the composed runtime boot; OMN-22126 adds the prompt cost
     # estimate contract. OMN-22478 (operator RULING 2026-11-05T20:27:56Z) removes
-    # the two automated review contexts.
-    assert len(resolved) == 59
+    # the two automated review contexts. OMN-25514 removes the delegation-health
+    # check, a dev signal admitted by a dated sweep exclusion.
+    assert len(resolved) == 58
 
 
 @pytest.mark.parametrize("ref_name", [None, "dev", "main"])
