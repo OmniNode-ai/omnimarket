@@ -1,0 +1,26 @@
+name: node_review_key_credit_probe_effect
+version: "0.1.0"
+description: "A standing per-key credit check for the review gateway's keys that writes one ledger alarm row when a key's state flips"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_review_key_credit_probe_effect: "omnimarket.nodes.node_review_key_credit_probe_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pydantic>=2.0"
+  - "click>=8.0"
+  - "omnibase_infra>=0.38.75,<0.39.0"
+authors: ["OmniNode Team"]
+license: "MIT"
+tags: ["review", "gateway", "anthropic", "effect", "credit-probe"]
+pack: "delegation"
+display_name: "Review Key Credit Probe Effect"
+node_role: "effect"

@@ -27,6 +27,7 @@ from pydantic import ValidationError
 from omnimarket.models.model_landing_review import (
     EnumReviewGateVerdict,
     EnumReviewVerdict,
+    ModelLandingReviewFacts,
     ModelReviewGateReading,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.handlers import (
@@ -41,6 +42,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
     ModelLandingFacts,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.review_gate import (
+    read_review_gate,
 )
 
 pytestmark = pytest.mark.unit
@@ -72,9 +76,30 @@ def _lab_check(*runs: dict[str, Any], **extra: Any) -> dict[str, Any]:
     }
 
 
-def _row(head: str, verdict: str, at: datetime) -> dict[str, Any]:
-    """One recorded review verdict: the head it judged, what it said, when."""
-    return {"head_sha": head, "verdict": verdict, "at": at}
+def _row(
+    head: str,
+    verdict: str,
+    at: datetime,
+    findings: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """One recorded review verdict: the head it judged, what it said, when, and the findings it listed."""
+    row: dict[str, Any] = {"head_sha": head, "verdict": verdict, "at": at}
+    if findings is not None:
+        row["findings"] = findings
+    return row
+
+
+#: The findings of the review gate's classes (OMN-25531): blocking names a failing check or cites file:line + defect.
+BLOCKING_CHECK = {"summary": "the lab check fails", "failing_check": "lab-tests / run"}
+BLOCKING_LINE = {
+    "summary": "off by one",
+    "file": "src/omnimarket/x.py",
+    "line": 47,
+    "defect": "the slice drops the last row",
+}
+ADVISORY_PROOF = {"summary": "no installed= read of the change on the running install"}
+ADVISORY_OBSERVED = {"summary": "add an observed= line showing the tick ran"}
+ADVISORY_FILE = {"summary": "this module looks wrong", "file": "src/omnimarket/x.py"}
 
 
 def _review(*rows: dict[str, Any], new_work: bool = True) -> dict[str, Any]:
@@ -230,6 +255,153 @@ def test_the_same_facts_decide_the_same_twice() -> None:
     assert decide_landing(held) == decide_landing(held)
 
 
+# ------------------------------------------------------------------ finding classes (OMN-25531)
+#
+# A CHANGES_NEEDED verdict holds the head only for a blocking finding (a failing check, or a cited file:line with a
+# defect). A CHANGES_NEEDED verdict whose findings are all advisory (running proof, other evidence) reads pass and
+# carries its advisory findings for post-merge follow-up. A CHANGES_NEEDED verdict that lists no finding at all
+# stays CHANGES_NEEDED (fail closed: a verdict row from before the finding cell has none). Running proof stays the
+# done gate and is not read here.
+
+
+def _reading(*rows: dict[str, Any]) -> ModelReviewGateReading:
+    facts = _facts(_review(*rows))
+    reading = read_review_gate(facts.prs[0], facts.policy)
+    assert reading is not None
+    return reading
+
+
+def _changes(findings: list[dict[str, Any]] | None) -> dict[str, Any]:
+    return _row(HEAD, "changes_needed", NOW - timedelta(minutes=10), findings)
+
+
+def test_finding_class_all_advisory_reads_pass() -> None:
+    reading = _reading(_changes([ADVISORY_PROOF, ADVISORY_OBSERVED, ADVISORY_FILE]))
+    assert reading.verdict is EnumReviewGateVerdict.PASS
+    assert "3 advisory" in reading.detail
+
+
+def test_finding_class_a_failing_check_reads_changes_needed() -> None:
+    reading = _reading(_changes([BLOCKING_CHECK]))
+    assert reading.verdict is EnumReviewGateVerdict.CHANGES_NEEDED
+    assert "1 blocking" in reading.detail
+
+
+def test_finding_class_a_cited_line_with_a_defect_reads_changes_needed() -> None:
+    reading = _reading(_changes([BLOCKING_LINE]))
+    assert reading.verdict is EnumReviewGateVerdict.CHANGES_NEEDED
+    assert "1 blocking" in reading.detail
+
+
+def test_finding_class_one_blocking_among_advisory_reads_changes_needed() -> None:
+    reading = _reading(
+        _changes([ADVISORY_PROOF, BLOCKING_LINE, ADVISORY_OBSERVED, ADVISORY_FILE])
+    )
+    assert reading.verdict is EnumReviewGateVerdict.CHANGES_NEEDED
+    assert "1 blocking" in reading.detail
+
+
+def test_finding_class_a_file_with_no_line_is_advisory_and_reads_pass() -> None:
+    assert _reading(_changes([ADVISORY_FILE])).verdict is EnumReviewGateVerdict.PASS
+
+
+def test_finding_class_empty_findings_stay_changes_needed() -> None:
+    """Fail closed: a verdict row from before this change lists no findings and keeps holding."""
+    assert _reading(_changes([])).verdict is EnumReviewGateVerdict.CHANGES_NEEDED
+    assert _reading(_changes(None)).verdict is EnumReviewGateVerdict.CHANGES_NEEDED
+
+
+def test_finding_class_clean_superseded_and_missing_read_as_before() -> None:
+    clean = _reading(_row(HEAD, "clean", NOW - timedelta(minutes=10)))
+    assert clean.verdict is EnumReviewGateVerdict.PASS
+    assert clean.advisory_findings == ()
+    superseded = _reading(_row(OLD_HEAD, "changes_needed", NOW))
+    assert superseded.verdict is EnumReviewGateVerdict.SUPERSEDED
+    assert _reading().verdict is EnumReviewGateVerdict.MISSING
+
+
+def test_finding_class_only_the_newest_verdict_on_the_head_is_classified() -> None:
+    """A blocking verdict then a later all-advisory one on the head passes; the reverse holds."""
+    older = _row(HEAD, "changes_needed", NOW - timedelta(minutes=30), [BLOCKING_CHECK])
+    newer = _row(HEAD, "changes_needed", NOW - timedelta(minutes=10), [ADVISORY_PROOF])
+    assert _reading(older, newer).verdict is EnumReviewGateVerdict.PASS
+    swapped_old = _row(
+        HEAD, "changes_needed", NOW - timedelta(minutes=30), [ADVISORY_PROOF]
+    )
+    swapped_new = _row(
+        HEAD, "changes_needed", NOW - timedelta(minutes=10), [BLOCKING_CHECK]
+    )
+    assert (
+        _reading(swapped_old, swapped_new).verdict
+        is EnumReviewGateVerdict.CHANGES_NEEDED
+    )
+
+
+def test_finding_class_the_decision_lands_an_all_advisory_new_work_head() -> None:
+    facts = _facts(_review(_changes([ADVISORY_PROOF, ADVISORY_OBSERVED])))
+    _judge(facts, None)
+
+
+def test_finding_class_the_decision_holds_a_blocking_head_review_changes_needed() -> (
+    None
+):
+    facts = _facts(_review(_changes([ADVISORY_PROOF, BLOCKING_LINE])))
+    _judge(facts, EnumLandingLandSkipReason.REVIEW_CHANGES_NEEDED)
+
+
+def test_finding_class_the_decision_holds_a_head_whose_verdict_lists_no_finding() -> (
+    None
+):
+    _judge(
+        _facts(_review(_changes([]))), EnumLandingLandSkipReason.REVIEW_CHANGES_NEEDED
+    )
+    _judge(
+        _facts(_review(_changes(None))), EnumLandingLandSkipReason.REVIEW_CHANGES_NEEDED
+    )
+
+
+# ---------------------------------------------------------------- advisory follow-ups (OMN-25531)
+
+
+def test_advisory_followup_a_passed_head_returns_its_advisory_findings() -> None:
+    reading = _reading(_changes([ADVISORY_PROOF, ADVISORY_OBSERVED, ADVISORY_FILE]))
+    assert reading.verdict is EnumReviewGateVerdict.PASS
+    assert [f.summary for f in reading.advisory_findings] == [
+        ADVISORY_PROOF["summary"],
+        ADVISORY_OBSERVED["summary"],
+        ADVISORY_FILE["summary"],
+    ]
+
+
+def test_advisory_followup_a_head_with_no_advisory_finding_carries_none() -> None:
+    reading = _reading(_row(HEAD, "clean", NOW - timedelta(minutes=10)))
+    assert reading.advisory_findings == ()
+
+
+def test_advisory_followup_a_held_head_carries_no_follow_up() -> None:
+    """A held head is not merged, so nothing is filed for it yet."""
+    reading = _reading(_changes([BLOCKING_CHECK, ADVISORY_PROOF]))
+    assert reading.verdict is EnumReviewGateVerdict.CHANGES_NEEDED
+    assert reading.advisory_findings == ()
+
+
+def test_advisory_followup_running_proof_is_not_read_as_a_merge_gate() -> None:
+    """A finding that asks for installed= or observed= proof does not hold a merge; the done gate is not read here."""
+    facts = _facts(_review(_changes([ADVISORY_PROOF, ADVISORY_OBSERVED])))
+    assert _merges(facts) == [HEAD]
+    assert _skip(facts) is None
+
+
+def test_advisory_followup_the_findings_come_from_the_review_fact_unchanged() -> None:
+    review = ModelLandingReviewFacts.model_validate(_review(_changes([ADVISORY_PROOF])))
+    assert review.verdicts[0].findings[0].summary == ADVISORY_PROOF["summary"]
+
+
+def test_advisory_followup_the_review_fact_refuses_an_unknown_finding_key() -> None:
+    with pytest.raises(ValidationError):
+        _facts(_review(_changes([{"summary": "x", "severity": "high"}])))
+
+
 # -------------------------------------------------------------------------------------------- controls
 
 
@@ -303,3 +475,58 @@ def test_the_review_fact_refuses_an_unknown_key() -> None:
     """The review dict is the decision's input: an unknown key is refused, never dropped."""
     with pytest.raises(ValidationError):
         _facts({"new_work": True, "verdicts": [], "verdict_count": 0})
+
+
+def test_break_advisory_holds_is_caught(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A gate that holds an all-advisory head (the old behaviour) fails the expectation the real gate meets."""
+    facts = _facts(_review(_changes([ADVISORY_PROOF])))
+    _judge(facts, None)  # the real gate lands it
+
+    real = decision_module.read_review_gate
+
+    def advisory_holds(p: Any, policy: Any) -> Any:
+        reading = real(p, policy)
+        if reading is not None and reading.advisory_findings:
+            return ModelReviewGateReading(
+                verdict=EnumReviewGateVerdict.CHANGES_NEEDED,
+                detail="every finding holds",
+            )
+        return reading
+
+    monkeypatch.setattr(decision_module, "read_review_gate", advisory_holds)
+    with pytest.raises(AssertionError):
+        _judge(facts, None)
+
+
+def test_break_blocking_passes_is_caught(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A gate that lets a blocking finding through fails the expectation the real gate meets."""
+    facts = _facts(_review(_changes([BLOCKING_CHECK])))
+    _judge(
+        facts, EnumLandingLandSkipReason.REVIEW_CHANGES_NEEDED
+    )  # the real gate holds it
+
+    def blocking_passes(p: Any, policy: Any) -> Any:
+        return ModelReviewGateReading(
+            verdict=EnumReviewGateVerdict.PASS, detail="a blocking finding is ignored"
+        )
+
+    monkeypatch.setattr(decision_module, "read_review_gate", blocking_passes)
+    with pytest.raises(AssertionError):
+        _judge(facts, EnumLandingLandSkipReason.REVIEW_CHANGES_NEEDED)
+
+
+def test_break_empty_findings_pass_is_caught(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A gate that reads a verdict with no finding as all-advisory fails the fail-closed expectation."""
+    facts = _facts(_review(_changes([])))
+    _judge(
+        facts, EnumLandingLandSkipReason.REVIEW_CHANGES_NEEDED
+    )  # the real gate holds it
+
+    def empty_passes(p: Any, policy: Any) -> Any:
+        return ModelReviewGateReading(
+            verdict=EnumReviewGateVerdict.PASS, detail="no blocking finding listed"
+        )
+
+    monkeypatch.setattr(decision_module, "read_review_gate", empty_passes)
+    with pytest.raises(AssertionError):
+        _judge(facts, EnumLandingLandSkipReason.REVIEW_CHANGES_NEEDED)

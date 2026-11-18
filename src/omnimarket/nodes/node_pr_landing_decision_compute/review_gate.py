@@ -6,7 +6,9 @@
 head counts: a head with verdicts only on other heads reads ``superseded``, a new-work head with none reads
 ``missing``, and a PR with no review fact at all reads ``unread`` when the policy expects the fact, and is decided as
 before otherwise. A PR that is not new work is not the gate's to hold, and a CLEAN verdict on the head reads ``pass``.
-No clock and no I/O.
+The reading of the head's verdicts is ``read_head_review``: a CHANGES_NEEDED verdict holds the head only for a
+blocking finding (a failing check, or a cited file and line with a defect) or when it lists no finding; findings that
+are all advisory read ``pass`` and ride on the reading for post-merge follow-up. No clock and no I/O.
 """
 
 from __future__ import annotations
