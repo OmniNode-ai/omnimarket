@@ -1,0 +1,22 @@
+name: node_plan_review_ladder_compute
+version: "0.1.0"
+description: "the next move of a plan's review ladder"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_plan_review_ladder_compute: "omnimarket.nodes.node_plan_review_ladder_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "plan-review", "pure"]
+pack: "plan_review"
+display_name: "Plan Review Ladder"
+node_role: "compute"

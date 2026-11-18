@@ -952,7 +952,7 @@ function freshRows(rec, status, health, manifest, delegation){
   flag("Factory record", "Friction report", s.stoppage_report);
   flag("Factory record", "Linear issues", num(s.linear_issues) > 0, num(s.linear_issues) > 0 ? `${fmt(num(s.linear_issues))} issues read` : "");
   if (status && Array.isArray(status.steps)){
-    status.steps.filter(st => st.status !== "ok").forEach(st => rows.push({group: "Factory record", name: `Input step: ${st.name}`, ok: false, flag: true, note: `failed (${st.detail || "no detail"})`}));
+    status.steps.filter(st => st.status !== "ok").forEach(st => rows.push({group: "Factory record", name: `Input step: ${st.name}`, ok: false, flag: true, note: st.status === "unread" ? `unread (${st.detail || "no detail"})` : `failed (${st.detail || "no detail"})`}));
   }
   const d = status && status.lines_declared;
   flag("Factory record", "Lines declared by the overlay", !!(d && d.state === "read"), d && d.state === "read" ? `${plural(d.plan_path_contains.length, "line", "lines")} declared` : (d && d.reason) || "");

@@ -32,6 +32,9 @@ broker_acl_declaration:
   compose_project: omnibase-infra
   broker_container: omnibase-infra-redpanda
   superuser_source_container: omnibase-infra-redpanda-sasl-enable
+  # The declared secret source: DEV_KAFKA_SASL_USERNAME and DEV_KAFKA_SASL_PASSWORD are read by name from this
+  # env file on the broker host. The container cell above is a legacy declaration cell and is no longer read.
+  superuser_env_file: "~/.omnibase/.env"
   principals:
     - principal: "${ONEX_ACL_GUARD_PRINCIPAL}"
       grants:

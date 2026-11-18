@@ -11,7 +11,8 @@ absent each fall through to the source, so the cache can only make a step faster
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from pydantic import ValidationError
 
@@ -83,13 +84,23 @@ class CachedSourceReader:
         return None
 
     def store[T](
-        self, key: ModelSourceCacheKey, value: T, encode: Callable[[T], str]
+        self,
+        key: ModelSourceCacheKey,
+        value: T,
+        encode: Callable[[T], str],
+        *,
+        ttl_seconds: int | None = None,
     ) -> None:
         """Keep ``value`` under ``key`` (counted as a store, or as unavailable); a handler that is absent keeps nothing."""
         if self._handler is None:
             return
         stored = self._handler.handle(
-            ModelSourceCacheRequest(operation="store", key=key, payload=encode(value))
+            ModelSourceCacheRequest(
+                operation="store",
+                key=key,
+                payload=encode(value),
+                ttl_seconds=ttl_seconds,
+            )
         )
         if stored.outcome == EnumSourceCacheOutcome.STORED:
             self.tally.stores += 1
@@ -105,6 +116,7 @@ class CachedSourceReader:
         *,
         usable: Callable[[T], bool] = lambda _value: True,
         store_if: Callable[[T], bool] = lambda _value: True,
+        ttl_seconds: int | None = None,
     ) -> tuple[T, EnumSourceCacheOutcome]:
         """The cached value for ``key``, or the source's answer (stored when ``store_if`` says so)."""
         if self._handler is None:
@@ -117,12 +129,105 @@ class CachedSourceReader:
         reachable = self.tally.unavailable == unavailable_before
         value = self._fetch(fetch)
         if reachable and store_if(value):
-            self.store(key, value, encode)
+            self.store(key, value, encode, ttl_seconds=ttl_seconds)
         return value, (
             EnumSourceCacheOutcome.MISS
             if reachable
             else EnumSourceCacheOutcome.UNAVAILABLE
         )
+
+    def read_many[T](
+        self,
+        reads: Sequence[tuple[ModelSourceCacheKey, Callable[[], T]]],
+        encode: Callable[[T], str],
+        decode: Callable[[str], T],
+        *,
+        max_workers: int,
+        ttl_seconds: int | None = None,
+    ) -> list[T]:
+        """The cached value of every read in ``reads``, in that order; a miss is fetched, at most ``max_workers`` misses at once.
+
+        The lookups, the stores and the tally run in the calling thread; only a miss's fetch runs in a worker, and each value is stored as its
+        fetch finishes, so a step cut short mid-batch keeps what it read and the next cycle starts from there. The first fetch that fails
+        propagates (the others still waiting are cancelled).
+        """
+        if max_workers < 1:
+            raise ValueError(f"max_workers must be at least 1, got {max_workers}")
+        if self._handler is None:
+            self.tally.bypassed += len(reads)
+        values: dict[int, T] = {}
+        misses: list[int] = []
+        reachable: list[bool] = []
+        for index, (key, _fetch) in enumerate(reads):
+            if self._handler is None:
+                reachable.append(False)
+                misses.append(index)
+                continue
+            unavailable_before = self.tally.unavailable
+            cached = self.lookup(key, decode)
+            reachable.append(self.tally.unavailable == unavailable_before)
+            if cached is None:
+                misses.append(index)
+            else:
+                values[index] = cached
+        if misses:
+            started = self._clock()
+            try:
+                if max_workers == 1:
+                    for index in misses:
+                        self._keep_fetched(
+                            reads[index],
+                            reads[index][1](),
+                            reachable[index],
+                            encode,
+                            ttl_seconds,
+                            values,
+                            index,
+                        )
+                else:
+                    with ThreadPoolExecutor(
+                        max_workers=min(max_workers, len(misses))
+                    ) as pool:
+                        futures = {
+                            pool.submit(reads[index][1]): index for index in misses
+                        }
+                        try:
+                            for future in as_completed(futures):
+                                index = futures[future]
+                                self._keep_fetched(
+                                    reads[index],
+                                    future.result(),
+                                    reachable[index],
+                                    encode,
+                                    ttl_seconds,
+                                    values,
+                                    index,
+                                )
+                        except BaseException:
+                            for pending in futures:
+                                pending.cancel()
+                            raise
+            finally:
+                self.tally.source_seconds = round(
+                    self.tally.source_seconds + (self._clock() - started), 3
+                )
+        return [values[index] for index in range(len(reads))]
+
+    def _keep_fetched[T](
+        self,
+        read: tuple[ModelSourceCacheKey, Callable[[], T]],
+        value: T,
+        reachable: bool,
+        encode: Callable[[T], str],
+        ttl_seconds: int | None,
+        values: dict[int, T],
+        index: int,
+    ) -> None:
+        """Count one finished fetch, keep its value for the batch and store it at once, so a batch cut short keeps what it read."""
+        self.tally.source_reads += 1
+        values[index] = value
+        if reachable:
+            self.store(read[0], value, encode, ttl_seconds=ttl_seconds)
 
     @property
     def clone_revision_settings(self) -> tuple[str, int] | None:

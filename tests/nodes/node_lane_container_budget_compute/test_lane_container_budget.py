@@ -257,6 +257,14 @@ def test_closing_check_names_a_lane_whose_budget_sits_above_its_live_count() -> 
     assert handler.closing_check(tight) == ()
 
 
+def test_closing_check_names_a_lane_running_more_than_its_budget() -> None:
+    handler = HandlerLaneContainerBudget()
+    over = judge(over_budget_fixture(), declaration("alpha", "proj-alpha", 2))
+    assert over.lanes[0].observed == 3
+    assert over.lanes[0].slack == 0
+    assert handler.closing_check(over) == (over.lanes[0],)
+
+
 def test_closing_check_names_a_lane_that_was_not_read() -> None:
     handler = HandlerLaneContainerBudget()
     verdict = judge("", declaration("alpha", "proj-alpha", 3))

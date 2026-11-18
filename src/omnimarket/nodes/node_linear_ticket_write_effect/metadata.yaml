@@ -16,6 +16,7 @@ capabilities:
 dependencies:
   - "omnibase_core>=0.39.0"
   - "click>=8.1.0"
+  - "omnibase-infra>=0.38.3"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: [effect, linear, ticket]

@@ -63,6 +63,7 @@ BACKENDS = ["memory"] + (
 #: ModelTrialFields at omnimarket pull request 5835 (head 1b97878d38, lane eval-e3-pins-4790):
 #: the columns the result store adds to ModelAttemptReductionRow. Spelled here so the seam holds
 #: whether or not 5835 has merged; the test below fails the day either side differs.
+STAMPS_NOT_IN_RESULT_STORE = frozenset({"model_revision", "generation_settings_hash"})
 E3_TRIAL_COLUMNS = frozenset(
     {
         "check_verdict",
@@ -168,7 +169,10 @@ def test_s3_the_columns_the_orchestrator_fills_are_exactly_the_result_stores() -
         loop_status="accepted",
     )
     filled = set(trial_columns(row, RUN_ID, "digest", "S"))
-    assert filled <= E3_TRIAL_COLUMNS, "a column the result store does not define"
+    # The two stamps of OMN-24173 ride on the row model, not in context_roi_scores (the eval item store keeps them).
+    assert filled - STAMPS_NOT_IN_RESULT_STORE <= E3_TRIAL_COLUMNS, (
+        "a column the result store does not define"
+    )
     declared = E3_TRIAL_COLUMNS & set(ModelAttemptReductionRow.model_fields)
     # Once 5835 merges every one of its columns is declared; until then none is (all or none).
     assert declared in (set(), E3_TRIAL_COLUMNS)
@@ -221,7 +225,7 @@ def test_s6_the_topics_the_orchestrator_names_are_the_other_nodes_own() -> None:
     )
 
 
-def test_s6_the_published_topics_are_exactly_the_five_the_seams_pin() -> None:
+def test_s6_the_published_topics_are_exactly_the_six_the_seams_pin() -> None:
     own = contract("node_code_eval_trial_orchestrator")
     assert set(own["event_bus"]["publish_topics"]) == {
         "onex.cmd.omnimarket.lab-work-unit-requested.v1",
@@ -229,6 +233,7 @@ def test_s6_the_published_topics_are_exactly_the_five_the_seams_pin() -> None:
         "onex.evt.omnimarket.context-roi-run-completed.v1",
         "onex.cmd.omnimarket.code-eval-run-nudge.v1",
         "onex.evt.omnimarket.code-eval-run-closed.v1",
+        "onex.evt.omnimarket.eval-item-traced.v1",
     }
     assert own["runtime_dispatch"]["command_topic"] == (
         "onex.cmd.omnimarket.code-eval-run-requested.v1"

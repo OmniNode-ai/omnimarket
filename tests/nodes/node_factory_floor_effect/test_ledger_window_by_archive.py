@@ -11,6 +11,8 @@ leaves the revision out) serves an archive's old rows after it was rewritten.
 
 from __future__ import annotations
 
+import threading
+import time
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -45,6 +47,7 @@ from omnimarket.nodes.node_source_read_cache_effect.handlers.handler_source_read
 from tests.nodes.node_source_read_cache_effect.support import (
     PREFIX,
     TTL_BACKSTOP,
+    Clock,
     DownBackend,
     memory_reader,
 )
@@ -103,6 +106,24 @@ def _tree(tmp_path: Path) -> Path:
     return live
 
 
+def _archive_tree(tmp_path: Path, count: int = 29) -> Path:
+    """A live ledger and ``count`` split archives whose dates are all inside the window (the window holds 14 days, so dates repeat)."""
+    since_day = (NOW - timedelta(days=14)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    live = tmp_path / "LEDGER.md"
+    _write(live, [_row(NOW - timedelta(hours=1), "CLAIM", "lane-live")])
+    for n in range(count):
+        day = since_day + timedelta(days=n % 14)
+        _write(
+            tmp_path
+            / "archive"
+            / f"LEDGER_{day.strftime('%Y-%m-%d')}-{n:02d}-split.md",
+            [_row(NOW - timedelta(hours=n + 2), "CLAIM", f"lane-{n}")],
+        )
+    return live
+
+
 class Reader:
     """Stands in for the plugin's ledger reader: prints the rows of one file at or after ``--since``, counting each file read."""
 
@@ -121,6 +142,25 @@ class Reader:
         return f"ROWS n={len(lines)}\n" + "".join(f"L{n} {line}\n" for n, line in lines)
 
 
+class SlowReader(Reader):
+    """The ``Reader`` with the 0.2 s a real ledger reader takes per archive, recording how many calls ran at once."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._lock = threading.Lock()
+        self.running = 0
+        self.peak = 0
+
+    def __call__(self, args: Sequence[str], timeout_seconds: int) -> str:
+        with self._lock:
+            self.running += 1
+            self.peak = max(self.peak, self.running)
+        time.sleep(0.2)
+        with self._lock:
+            self.running -= 1
+        return super().__call__(args, timeout_seconds)
+
+
 def _combined(live: Path, now: datetime, window_days: int = 14) -> str:
     """The combined ``--archives`` read: every in-window row of every file, archive rows prefixed with their file name."""
     since = (now - timedelta(days=window_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -134,11 +174,15 @@ def _combined(live: Path, now: datetime, window_days: int = 14) -> str:
 
 
 def _by_archive(
-    live: Path, reader: Reader, cache: CachedSourceReader, now: datetime = NOW
+    live: Path,
+    reader: Reader,
+    cache: CachedSourceReader,
+    now: datetime = NOW,
+    archive: ModelLedgerArchiveWindow = ARCHIVE,
 ) -> tuple[ModelFloorLedgerRow, ...]:
     return read_ledger_rows_by_archive(
         live_path=live,
-        archive=ARCHIVE,
+        archive=archive,
         window_days=14,
         cut_chars=1200,
         timeout_seconds=30,
@@ -428,3 +472,91 @@ def test_the_factory_floor_overlay_accepts_the_archive_block_and_works_without_i
     fields = ModelFactoryFloorOverlay.model_fields
     assert fields["ledger_archives"].default is None
     assert fields["ledger_archives"].annotation == ModelLedgerArchiveWindow | None
+
+
+def test_the_archives_are_read_read_workers_at_a_time_and_the_rows_are_unchanged(
+    tmp_path: Path,
+) -> None:
+    live = _archive_tree(tmp_path)
+    cache, _ = memory_reader()
+    reader = SlowReader()
+    started = time.monotonic()
+    rows = read_ledger_rows_by_archive(
+        live_path=live,
+        archive=ARCHIVE.model_copy(update={"read_workers": 8}),
+        window_days=14,
+        cut_chars=1200,
+        timeout_seconds=30,
+        now=NOW,
+        kinds=KINDS,
+        cache=cache,
+        run=reader,
+    )
+    elapsed = time.monotonic() - started
+    assert elapsed < 2.0, f"the 29 archives took {elapsed:.1f} s: read serially"
+    assert 1 < reader.peak <= 8
+    # the same fixture with read_workers unset, read serially through the instant
+    # reader (the slow one at 0.2 s a read is the failing control and is not asserted)
+    reference = read_ledger_rows_by_archive(
+        live_path=live,
+        archive=ARCHIVE,
+        window_days=14,
+        cut_chars=1200,
+        timeout_seconds=30,
+        now=NOW,
+        kinds=KINDS,
+        cache=memory_reader()[0],
+        run=Reader(),
+    )
+    assert rows == reference
+
+
+def test_the_cache_ttl_given_keeps_the_archives_past_the_backstop(
+    tmp_path: Path,
+) -> None:
+    clock = Clock()
+    live = _tree(tmp_path)
+    kept = ARCHIVE.model_copy(update={"cache_ttl_seconds": 10 * TTL_BACKSTOP})
+    cache, _ = memory_reader(clock)
+    _by_archive(live, Reader(), cache, archive=kept)
+    clock.now += TTL_BACKSTOP + 1
+    second = Reader()
+    _by_archive(live, second, cache, archive=kept)
+    assert second.files == ["LEDGER.md"], (
+        "an archive was read from its file again before its ttl ended"
+    )
+    assert cache.tally.hits == 3
+    # with the ttl unset the same move past the backstop ends the archives' entries
+    fresh, _ = memory_reader(clock)
+    _by_archive(live, Reader(), fresh)
+    clock.now += TTL_BACKSTOP + 1
+    third = Reader()
+    _by_archive(live, third, fresh)
+    assert sorted(third.files) == [
+        "LEDGER.md",
+        "LEDGER_2026-10-30-split.md",
+        "LEDGER_2026-11-05-split.md",
+        "LEDGER_2026-11-11-split.md",
+    ]
+
+
+def test_the_overlay_names_the_worker_count_and_the_archive_ttl_and_refuses_zero() -> (
+    None
+):
+    base = {
+        "ledger_path_env": "TEST_LEDGER_PATH",
+        "ledger_record_env": "TEST_LEDGER_RECORD",
+        "archive_subdir": "archive",
+        "archive_glob": "LEDGER_*-split.md",
+        "archive_date_pattern": r"\d{4}-\d{2}-\d{2}",
+    }
+    named = ModelLedgerArchiveWindow.model_validate(
+        {**base, "read_workers": 6, "cache_ttl_seconds": 172800}
+    )
+    assert (named.read_workers, named.cache_ttl_seconds) == (6, 172800)
+    # an overlay that names neither reads as before: one archive at a time, the cache's own backstop
+    unnamed = ModelLedgerArchiveWindow.model_validate(base)
+    assert (unnamed.read_workers, unnamed.cache_ttl_seconds) == (None, None)
+    for field in ("read_workers", "cache_ttl_seconds"):
+        with pytest.raises(ValueError, match=field):
+            ModelLedgerArchiveWindow.model_validate({**base, field: 0})

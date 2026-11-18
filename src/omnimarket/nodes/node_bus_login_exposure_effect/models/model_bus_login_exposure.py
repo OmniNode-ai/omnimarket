@@ -62,6 +62,7 @@ class ModelBusLoginExposureResult(BaseModel):
     correlation_id: str
     backend: Literal["inmemory", "redpanda"]
     reading: ModelBusLoginExposureReading
+    terminal_failure_cause: str | None = None
 
 
 __all__ = [

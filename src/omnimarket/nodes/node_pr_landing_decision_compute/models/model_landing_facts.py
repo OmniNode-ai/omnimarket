@@ -26,6 +26,9 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.model_landing_review import (
+    ModelLandingReviewFacts,
+)
 from omnimarket.models.review_finding_disposition.model_review_finding_disposition_event import (
     ModelReviewFindingDispositionEntry,
 )
@@ -285,6 +288,15 @@ class ModelLandingPrFacts(BaseModel):
             "an undeclared installer source holds the head with the file named; an "
             "unreadable read holds nothing and is listed as not made. Absent: decided "
             "as before, and listed as not made when the policy expects the read."
+        ),
+    )
+    review: ModelLandingReviewFacts | None = Field(
+        default=None,
+        description=(
+            "The review verdicts recorded for this PR: a PR whose new_work is true "
+            "merges only on a CLEAN verdict for its exact head, and any other reading "
+            "of a new-work PR holds it with its own reason. Absent: decided as before, "
+            "unless policy.review_read_expected, which holds it as review_unread."
         ),
     )
     gate_since: datetime | None = Field(
@@ -550,6 +562,22 @@ class ModelLandingPolicy(BaseModel):
         description=(
             "OMN-23529: the snapshot step runs the liveness read for every PR, so a PR "
             "with no liveness fact is listed as a read not made (it is never held)."
+        ),
+    )
+    review_read_expected: bool = Field(
+        default=False,
+        description=(
+            "The controller sends the review fact for every PR, so a PR with none is "
+            "held as review_unread (it is never merged unread)."
+        ),
+    )
+    review_status_read_expected: bool = Field(
+        default=True,
+        description=(
+            "A new-work PR whose review fact carries no statuses (statuses None: none were read) is held as "
+            "review_status_unread: it is never merged unread. True by default, so a tick whose facts source "
+            "does not read the fable-review-gate statuses holds every new-work head instead of merging it; set "
+            "False only for a facts source that is known to read none."
         ),
     )
     lab_check_wait_seconds: int = Field(

@@ -8,7 +8,8 @@
 
 Prints the typed result as one JSON object. Exit codes: 0 plan printed, lane already at the pin, refreshed or
 healthy; 64 a tag is not a release tag of a clone; 65 the requested set is not the pin's and carries no
-``--bump``; 66 the pin file is unreadable; 3 the overlay is missing; any other nonzero is the refresh's own.
+``--bump``; 66 the pin file is unreadable; 67 the lane volume's free space is below the overlay's disk floor
+or its reading is unreadable; 3 the overlay is missing; any other nonzero is the refresh's own.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from omnimarket.nodes.node_stability_lane_refresh_effect.adapters import (
     FilePinSource,
     GitTagCheck,
     HttpLaneHealth,
+    StatvfsDiskFree,
     SubprocessRefreshExecutor,
 )
 from omnimarket.nodes.node_stability_lane_refresh_effect.handlers.handler_stability_lane_refresh import (
@@ -49,6 +51,7 @@ def build_handler() -> HandlerStabilityLaneRefresh:
         applied=FileAppliedPinStore(overlay.state_dir),
         runner=SubprocessRefreshExecutor(),
         tags=GitTagCheck(overlay.registry_root, overlay.health_timeout_seconds),
+        disk=StatvfsDiskFree(),
         health=HttpLaneHealth(overlay.health_url, overlay.health_timeout_seconds),
     )
 

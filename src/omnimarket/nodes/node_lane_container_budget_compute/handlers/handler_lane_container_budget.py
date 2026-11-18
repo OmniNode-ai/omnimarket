@@ -198,9 +198,14 @@ class HandlerLaneContainerBudget:
     ) -> tuple[ModelLaneContainerBudgetLane, ...]:
         """The plan's closing comparison of each lane's budget with its live count.
 
-        An empty result means every budget equals its live count.
+        A lane is named when its live count is not its budget: above it (slack), below it (slack is floored at zero, so the
+        count is read), or not read at all. An empty result means every budget equals its live count.
         """
-        return tuple(lane for lane in verdict.lanes if lane.slack != 0)
+        return tuple(
+            lane
+            for lane in verdict.lanes
+            if lane.observed is None or lane.observed != lane.budget
+        )
 
     def upsert_alarms(
         self,
