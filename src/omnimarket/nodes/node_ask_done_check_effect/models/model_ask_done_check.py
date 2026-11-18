@@ -60,6 +60,9 @@ class ModelAskDoneCheckResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     verdicts: tuple[ModelAskCheckVerdict, ...]
+    # Set only when the deployment cannot be read; the runtime's failure-terminal guard then
+    # publishes the result on the failed topic. None on every checked request.
+    terminal_failure_cause: str | None = None
 
 
 class ModelFloorRoute(BaseModel):

@@ -81,6 +81,7 @@ class HandlerAskDoneCheckBus:
     ) -> ModelAskDoneCheckResult:
         reason = f"deployment-unreadable:{' '.join(cause.split())[:200]}"
         return ModelAskDoneCheckResult(
+            terminal_failure_cause="deployment-unreadable",
             verdicts=tuple(
                 ModelAskCheckVerdict(
                     ask_id=ask.ask_id,
@@ -91,7 +92,7 @@ class HandlerAskDoneCheckBus:
                     written="no",
                 )
                 for ask in request.asks
-            )
+            ),
         )
 
 
