@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 """A node's declared command topic is one of its subscribe topics, so the runtime attaches it (OMN-25454).
 
-Five operation-routed nodes declared ``runtime_dispatch.command_topic`` and an empty
-``event_bus.subscribe_topics``: node_lab_fill_effect, node_floor_simple_compute,
-node_floor_simple_effect, node_code_graph_effect and node_bus_login_exposure_effect.
+Four operation-routed nodes declared ``runtime_dispatch.command_topic`` and an empty
+``event_bus.subscribe_topics``: node_floor_simple_compute, node_daily_line_compute,
+node_pr_landing_ledger_facts_compute and node_bus_login_exposure_effect.
 The runtime attaches a contract only through its subscribe topics, so a demand published on
 the command topic reached nobody. Each case loads the real contract from disk, reads it back
 the way the runtime does (``discover_contracts_from_paths``), boots it through
@@ -29,10 +29,9 @@ pytestmark = pytest.mark.unit
 
 NODES = Path(__file__).resolve().parents[1] / "src" / "omnimarket" / "nodes"
 GROUP = [
-    "node_lab_fill_effect",
     "node_floor_simple_compute",
-    "node_floor_simple_effect",
-    "node_code_graph_effect",
+    "node_daily_line_compute",
+    "node_pr_landing_ledger_facts_compute",
     "node_bus_login_exposure_effect",
 ]
 

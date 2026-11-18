@@ -66,28 +66,13 @@ runtime_dispatch:
   external_trigger: python -m omnimarket.nodes.node_floor_simple_effect, and as a step of python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares.
 
 event_bus:
-  subscribe_topics:
-    - onex.cmd.omnimarket.floor-simple-cycle-requested.v1
+  subscribe_topics: []
   publish_topics:
     - onex.evt.omnimarket.floor-simple-written.v1
     # The emission contract: every node of the cycle emits a start and then a success or a typed failure through the sink.
     - onex.evt.omnimarket.floor-node-started.v1
     - onex.evt.omnimarket.floor-node-succeeded.v1
     - onex.evt.omnimarket.floor-node-failed.v1
-
-broker_acl_grants:
-  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
-    grants:
-      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.cmd.omnimarket.floor-simple-cycle-requested.v1", operation: READ}
-      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.cmd.omnimarket.floor-simple-cycle-requested.v1", operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.floor-simple-written.v1", operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.floor-simple-written.v1", operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.floor-node-started.v1", operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.floor-node-started.v1", operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.floor-node-succeeded.v1", operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.floor-node-succeeded.v1", operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.floor-node-failed.v1", operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.floor-node-failed.v1", operation: DESCRIBE}
 
 externally_consumed_topics:
   - onex.evt.omnimarket.floor-simple-written.v1
