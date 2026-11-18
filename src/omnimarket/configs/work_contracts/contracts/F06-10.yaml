@@ -22,7 +22,7 @@ acceptance:
     - '{answer}'
     environment:
       path: uv.lock
-      sha256: f3ea197087b1e6d1e170321d7cdf8663e7e27570682847513e6fed854b7551dd
+      sha256: b03b97c0e18b8bc720deeee0e6b600cb8be19e6d6cc479b2d29bbf7c46276092
     expected_exit: 0
     target: src/omnibase_core/models/delegation/model_remote_task_state.py
     patch:
