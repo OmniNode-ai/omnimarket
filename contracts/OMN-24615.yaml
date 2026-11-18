@@ -75,6 +75,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/projection/test_omn24615_savings_view_priced_spend.py -q -p no:randomly --no-cov -k flat_rate_on_a_model_with_no_price
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_routing_priced_spend.py -q -p no:randomly --no-cov
+    cwd: .
 - id: dod-omn24615-ac5
   description: 'AC5: a measured run, an unknown-usage run, a run with no call record and a zero-token, no-cost call; metering and usage-by-model-day both read 313 in and 16 out and the zero-token call is unmeasured; fails when metering sums the no-call run or drops the unknown-usage run.'
   source: manual

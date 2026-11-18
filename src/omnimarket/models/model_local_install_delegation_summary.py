@@ -83,4 +83,12 @@ DELEGATION_VIEW_REPLACE_STEPS: tuple[tuple[str, tuple[str, str], str], ...] = (
         ("projection_delegation_daily", "sqlite/delegation_daily_view_v2.sql"),
         "counted unrecorded runs and unmeasured tokens from the store's markers",
     ),
+    (
+        "omn24615_model_routing_priced_spend",
+        (
+            "projection_delegation_model_routing",
+            "sqlite/delegation_model_routing_view_v4.sql",
+        ),
+        "served each tier model's cost from a named price only",
+    ),
 )

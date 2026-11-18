@@ -1,9 +1,11 @@
 -- SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 -- SPDX-License-Identifier: MIT
 -- OMN-24615 AC1, AC3 (follow-up, after the 2026-11-18 independent review): the
--- one-definition view with spend from a named price only -- a run whose stored
--- savings_measurement is unknown_spend (no price for the model that ran) adds no
--- spend and counts as unpriced -- and a store that has recorded no call reading
+-- one-definition view with spend from a named price only -- the rule of
+-- omnimarket.models.priced_spend, judged against the store's local_priced_models
+-- (the pricing manifest's keys, refreshed when it changes): a run on a model the
+-- manifest does not name, or a positive cost on a model it lists as free, adds
+-- no spend and counts as unpriced -- and a store that has recorded no call reading
 -- its runs as measured, as the metering headline does, so both serve one saving.
 -- Otherwise unchanged from the OMN-24615 AC1, AC2 revision: the null-cost savings
 -- view, serving one definition of a saving. Each session's saving is the run's modelled saving against the named
@@ -38,11 +40,11 @@ event_sessions AS (
         COALESCE(events.task_type, '') AS task_type,
         COALESCE(NULLIF(events.model_name, ''), NULLIF(events.delegated_to, ''), 'local')
             AS model_name,
-        CAST(CASE WHEN events.savings_measurement = 'unknown_spend' THEN NULL ELSE events.cost_usd END AS REAL) AS local_cost_usd,
-        CAST(COALESCE(CASE WHEN events.savings_measurement = 'unknown_spend' THEN NULL ELSE events.cost_usd END, 0) + COALESCE(CASE WHEN COALESCE(events.terminal_failure_cause, '') <> '' THEN 0.0
+        CAST(CASE WHEN COALESCE(pm_exact.free, pm_lower.free) IS NULL THEN NULL WHEN COALESCE(pm_exact.free, pm_lower.free) = 1 AND events.cost_usd > 0 THEN NULL ELSE events.cost_usd END AS REAL) AS local_cost_usd,
+        CAST(COALESCE(CASE WHEN COALESCE(pm_exact.free, pm_lower.free) IS NULL THEN NULL WHEN COALESCE(pm_exact.free, pm_lower.free) = 1 AND events.cost_usd > 0 THEN NULL ELSE events.cost_usd END, 0) + COALESCE(CASE WHEN COALESCE(events.terminal_failure_cause, '') <> '' THEN 0.0
             ELSE CAST(events.modelled_savings_usd AS REAL) END, 0) AS REAL)
             AS cloud_cost_usd,
-        CAST(COALESCE(CASE WHEN events.savings_measurement = 'unknown_spend' THEN NULL ELSE events.cost_usd END, 0) + COALESCE(CASE WHEN COALESCE(events.terminal_failure_cause, '') <> '' THEN 0.0
+        CAST(COALESCE(CASE WHEN COALESCE(pm_exact.free, pm_lower.free) IS NULL THEN NULL WHEN COALESCE(pm_exact.free, pm_lower.free) = 1 AND events.cost_usd > 0 THEN NULL ELSE events.cost_usd END, 0) + COALESCE(CASE WHEN COALESCE(events.terminal_failure_cause, '') <> '' THEN 0.0
             ELSE CAST(events.modelled_savings_usd AS REAL) END, 0) AS REAL)
             AS counterfactual_baseline_usd,
         CASE WHEN COALESCE(events.terminal_failure_cause, '') <> '' THEN 0.0
@@ -59,9 +61,10 @@ event_sessions AS (
         CAST(COALESCE(events.delegation_latency_ms, events.latency_ms) AS INTEGER)
             AS latency_ms,
         COALESCE(events.created_at, events.timestamp) AS created_at,
-        CASE WHEN events.cost_usd IS NULL OR events.savings_measurement = 'unknown_spend'
-            THEN 1 ELSE 0 END AS unpriced
+        CASE WHEN (CASE WHEN COALESCE(pm_exact.free, pm_lower.free) IS NULL THEN NULL WHEN COALESCE(pm_exact.free, pm_lower.free) = 1 AND events.cost_usd > 0 THEN NULL ELSE events.cost_usd END) IS NULL THEN 1 ELSE 0 END AS unpriced
     FROM delegation_events AS events
+    LEFT JOIN local_priced_models AS pm_exact ON pm_exact.model_key = COALESCE(NULLIF(events.model_name, ''), NULLIF(events.delegated_to, ''), '')
+    LEFT JOIN local_priced_models AS pm_lower ON pm_lower.model_key = lower(COALESCE(NULLIF(events.model_name, ''), NULLIF(events.delegated_to, ''), ''))
     LEFT JOIN call_usage ON call_usage.correlation_id = events.correlation_id
     CROSS JOIN store_calls
     WHERE events.tenant_id IS NOT NULL

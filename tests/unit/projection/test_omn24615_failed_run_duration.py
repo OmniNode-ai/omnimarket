@@ -21,6 +21,12 @@ import pytest
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     _canonical_result_to_task_delegated_payload as convert,
 )
+from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from tests.unit.projection.test_delegation_backend_id_and_host_omn20162 import (
+    _attempt,
+    _project,
+    _skill_terminal,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -58,3 +64,20 @@ def test_failed_run_duration_a_run_without_a_failure_keeps_its_duration() -> Non
     """F3."""
     assert convert(_terminal(850, None))["execution_ms"] == 850
     assert convert(_terminal(0, None))["execution_ms"] == 0
+
+
+# The review of #6442 (2026-11-18): the skill-terminal path stamps execution_ms through
+# _stamp_terminal_timing_and_requested_model, not the canonical converter, so it needs the same rule.
+
+
+def test_failed_run_duration_skill_terminal_at_zero_is_not_measured() -> None:
+    """F4: a skill terminal whose every attempt failed and that timed nothing stores no duration."""
+    payload = _skill_terminal([_attempt(backend_id="only", host="h201", passed=False)])
+    payload.update(
+        quality_gate_passed=False,
+        execution_duration_ms=0,
+        terminal_failure_cause="provider_error",
+    )
+    row = _project(payload, InmemoryDatabaseAdapter())
+    assert row.get("terminal_failure_cause")  # the fixture is a failed run
+    assert row.get("execution_ms") is None

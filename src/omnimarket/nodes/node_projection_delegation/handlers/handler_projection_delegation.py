@@ -2265,6 +2265,8 @@ def _stamp_terminal_timing_and_requested_model(
     """Name only the terminal's requested model and measured timings (0058)."""
     if not _is_blank(requested_model):
         row["requested_model"] = requested_model
+    # OMN-24615 AC8: the same rule as the canonical converter, on the skill-terminal path.
+    execution_ms = _failed_zero_to_none(execution_ms, row.get("terminal_failure_cause"))
     for key, value in (
         ("queue_wait_ms", queue_wait_ms),
         ("execution_ms", execution_ms),

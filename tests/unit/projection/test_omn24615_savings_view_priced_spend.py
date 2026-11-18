@@ -40,6 +40,8 @@ _NOW = datetime(2026, 11, 16, tzinfo=UTC)
 
 
 def _priced_and_flat_rate(tmp_path: Path) -> Path:
+    # Review of #6442 (2026-11-18): the writer stores baseline_unresolved or unknown_timestamp before it classifies
+    # spend, so the view must judge the price itself, as priced_spend does, not read savings_measurement.
     runs: tuple[dict[str, Any], ...] = (
         _delegation(
             "priced",
@@ -49,11 +51,18 @@ def _priced_and_flat_rate(tmp_path: Path) -> Path:
             savings_measurement="measured",
         ),
         _delegation(
-            "flat-rate",
+            "unlisted-flat-rate",
             model_name="vendor/model:free",
             delegated_to="vendor/model:free",
             cost_usd=0.05,
-            savings_measurement="unknown_spend",
+            savings_measurement="baseline_unresolved",
+        ),
+        _delegation(
+            "free-listed-flat-rate",
+            model_name="qwen2.5-7b",
+            delegated_to="qwen2.5-7b",
+            cost_usd=0.05,
+            savings_measurement="unknown_timestamp",
         ),
     )
     return _store(
@@ -67,7 +76,7 @@ def test_savings_view_priced_spend_excludes_a_flat_rate_on_a_model_with_no_price
     """P1 and P3: the AC3 falsifier on the savings topic."""
     row = _row(_priced_and_flat_rate(tmp_path))
     assert row["cumulative_local_cost_usd"] == pytest.approx(0.0001)
-    assert row["unpriced_call_count"] == 1
+    assert row["unpriced_call_count"] == 2
 
 
 def test_savings_view_priced_spend_a_store_with_no_call_record_reads_the_headline(

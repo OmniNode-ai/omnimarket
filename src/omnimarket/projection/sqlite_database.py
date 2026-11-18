@@ -53,10 +53,8 @@ from omnimarket.models.model_local_install_delegation_summary import (
 )
 from omnimarket.models.model_local_install_schema import (
     _CURSOR_TABLE_STEPS,
-    FAILED_ZERO_DURATION_STEP,
-    RUN_SAVINGS_RECOMPUTE_STEP,
-    clear_failed_zero_durations,
-    recompute_run_savings,
+    pending_local_run_steps,
+    refresh_local_priced_models,
     relabel_usage_source,
 )
 from omnimarket.models.model_local_install_schema import (
@@ -801,6 +799,8 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
         naming every step it still lacks. Anything else, a busy store included,
         is a real failure and raises.
         """
+        # OMN-24615 AC3: the priced models, before any view reads them.
+        refresh_local_priced_models(conn, db_path)
         pending: list[tuple[str, Callable[[sqlite3.Connection], None], str]] = []
         if not cls._store_step_recorded(
             conn, _USAGE_SOURCE_VOCABULARY_STEP
@@ -895,17 +895,7 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                     "indexed the delegate-skill command claims by correlation",
                 )
             )
-        if not cls._store_step_recorded(conn, RUN_SAVINGS_RECOMPUTE_STEP):
-            redo = "recomputed each run's modelled saving"
-            pending.append((RUN_SAVINGS_RECOMPUTE_STEP, recompute_run_savings, redo))
-        if not cls._store_step_recorded(conn, FAILED_ZERO_DURATION_STEP):
-            pending.append(
-                (
-                    FAILED_ZERO_DURATION_STEP,
-                    clear_failed_zero_durations,
-                    "cleared the 0 ms stored on failed runs that timed nothing",
-                )
-            )
+        pending.extend(pending_local_run_steps(conn, cls._store_step_recorded))
         pending.extend(cls._credential_store_steps(conn))
         for index, (step, apply, _) in enumerate(pending):
             try:

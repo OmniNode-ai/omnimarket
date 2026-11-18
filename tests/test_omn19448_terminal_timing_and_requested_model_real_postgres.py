@@ -115,3 +115,27 @@ async def test_failed_terminal_timed_at_zero_stores_no_measured_duration() -> No
         row = await admin_conn.fetchrow(_SELECT, cid)
         assert row is not None
         assert row["execution_ms"] is None
+
+
+@pytest.mark.integration
+async def test_failed_skill_terminal_timed_at_zero_stores_no_measured_duration() -> (
+    None
+):
+    """OMN-24615 AC8, the skill-terminal path: a failed run that timed nothing stores no execution_ms."""
+    payload = _timed_skill_terminal()
+    payload.update(
+        tenant_id=_TENANT,
+        quality_gate_passed=False,
+        terminal_failure_cause="provider_error",
+        execution_duration_ms=0,
+    )
+    cid = str(payload["correlation_id"])
+    async with _provisioned_runner() as (runner, admin_conn, _schema):
+        assert await runner.project_event(
+            runner._topic_delegate_skill_completed,
+            payload,
+            MessageMeta(partition=0, offset=0, fallback_id=cid),
+        )
+        row = await admin_conn.fetchrow(_SELECT, cid)
+        assert row is not None
+        assert row["execution_ms"] is None
