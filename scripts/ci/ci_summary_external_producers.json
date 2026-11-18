@@ -121,14 +121,6 @@
     ],
     "push_branches": []
   },
-  "delegation-health-check / Delegation Health Check": {
-    "workflow": "delegation-health-check.yml",
-    "events": [
-      "pull_request",
-      "merge_group"
-    ],
-    "push_branches": []
-  },
   "Dep Provenance Gate": {
     "workflow": "dep-provenance-gate.yml",
     "events": [
