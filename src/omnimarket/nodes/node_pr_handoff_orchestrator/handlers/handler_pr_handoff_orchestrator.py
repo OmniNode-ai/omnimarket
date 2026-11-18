@@ -41,11 +41,13 @@ from omnimarket.nodes.node_pr_handoff_orchestrator.models.model_pr_handoff_workf
 from omnimarket.nodes.node_pr_handoff_orchestrator.orchestration.core import (
     PR_HANDOFF_NAMESPACE,
     NoLedgerHolds,
+    NoReviewStatus,
     PrHandoffMessage,
     PrHandoffPorts,
     PrHandoffStepResult,
     ProtocolPrHandoffDecider,
     ProtocolPrHandoffHoldReader,
+    ProtocolPrHandoffReviewStatusReader,
     run_leg,
 )
 from omnimarket.nodes.node_pr_handoff_orchestrator.orchestration.row_store import (
@@ -69,6 +71,7 @@ class HandlerPrHandoffOrchestrator:
         *,
         decider: ProtocolPrHandoffDecider | None = None,
         holds: ProtocolPrHandoffHoldReader | None = None,
+        review_status: ProtocolPrHandoffReviewStatusReader | None = None,
         store: ProtocolPrHandoffRowStore | None = None,
         landing_scope: ModelPrHandoffLandingScopeReading | None = None,
         environ: Mapping[str, str] | None = None,
@@ -77,6 +80,9 @@ class HandlerPrHandoffOrchestrator:
         self._ports = PrHandoffPorts(
             decider=decider if decider is not None else HandlerPrHandoffDecision(),
             holds=holds if holds is not None else NoLedgerHolds(),
+            review_status=review_status
+            if review_status is not None
+            else NoReviewStatus(),
             landing_scope=scope.repos,
             landing_scope_problem=scope.problem,
         )

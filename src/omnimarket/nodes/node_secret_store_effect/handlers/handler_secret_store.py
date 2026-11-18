@@ -409,7 +409,9 @@ class HandlerSecretStore:
 
     # ------------------------------------------------------------------ handle
 
-    async def handle(self, request: ModelSecretStoreRequest) -> ModelSecretStoreResult:
+    async def handle(
+        self, request: ModelSecretStoreRequest, *, report_detail: bool = True
+    ) -> ModelSecretStoreResult:
         def result(
             outcome: EnumSecretStoreOutcome,
             *,
@@ -419,14 +421,15 @@ class HandlerSecretStore:
             value: SecretStr | None = None,
             detail: str | None = None,
         ) -> ModelSecretStoreResult:
-            logger.info(
-                "secret store %s folder=%s key=%s outcome=%s%s",
-                request.operation.value,
-                folder,
-                key,
-                outcome.value,
-                f" detail={detail}" if detail else "",
-            )
+            if report_detail:
+                logger.info(
+                    "secret store %s folder=%s key=%s outcome=%s%s",
+                    request.operation.value,
+                    folder,
+                    key,
+                    outcome.value,
+                    f" detail={detail}" if detail else "",
+                )
             return ModelSecretStoreResult(
                 operation=request.operation,
                 outcome=outcome,
@@ -434,7 +437,7 @@ class HandlerSecretStore:
                 key=key,
                 keys=keys,
                 value=value,
-                detail=detail,
+                detail=detail if report_detail else None,
                 correlation_id=request.correlation_id,
             )
 
@@ -505,13 +508,13 @@ class HandlerSecretStore:
             )
         except PermissionError as exc:
             outcome = EnumSecretStoreOutcome.REFUSED
-            detail = _safe_detail(exc)
+            detail = _safe_detail(exc) if report_detail else None
         except (ConnectionError, TimeoutError, OSError) as exc:
             outcome = EnumSecretStoreOutcome.UNREACHABLE
-            detail = _safe_detail(exc)
+            detail = _safe_detail(exc) if report_detail else None
         except Exception as exc:
             outcome = EnumSecretStoreOutcome.FAILED
-            detail = _safe_detail(exc)
+            detail = _safe_detail(exc) if report_detail else None
         return result(outcome, folder=folder, key=key, detail=detail)
 
 

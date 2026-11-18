@@ -355,6 +355,11 @@ class ModelByokProviderBackend(BaseModel):
     limit_model: ModelByokLimitModel
     #: OMN-20154. Declared only when the model's price is not its tier's.
     pricing: ModelByokPricing | None = None
+    #: Further models this row prices, each true of its own model id. A row
+    #: resolves its model per key from the provider's list (OMN-20157), so a
+    #: key that resolves a model ``pricing`` does not name is priced from here
+    #: rather than left unpriced.
+    model_prices: tuple[ModelByokPricing, ...] = ()
     #: OMN-21215. The models onboarding offers as this key's "Default", in
     #: order, cheapest first. A recommendation the developer accepts or changes,
     #: never a model routed without their choice (``customer_chooses_model``).
@@ -385,6 +390,20 @@ class ModelByokProviderBackend(BaseModel):
                     f"{model!r}, which no model_preference entry matches; a "
                     "recommended model must be one the row's preferences describe"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _model_prices_name_each_model_once(self) -> ModelByokProviderBackend:
+        named = [price.model_name for price in self.model_prices]
+        if self.pricing is not None:
+            named.append(self.pricing.model_name)
+        repeated = sorted({name for name in named if named.count(name) > 1})
+        if repeated:
+            raise ValueError(
+                f"model_prices of {self.provider!r} plan {self.plan!r} names "
+                f"{repeated} more than once (counting pricing.model_name); a "
+                "model has one declared price"
+            )
         return self
 
     @model_validator(mode="after")
@@ -1095,15 +1114,14 @@ def byok_declared_price_per_1m(
     if not endpoint_url:
         return None
     for backend in load_byok_plan_catalog().values():
-        if (
-            backend.pricing is not None
-            and backend.endpoint_url == endpoint_url
-            and backend.pricing.model_name == model_name
-        ):
-            return (
-                backend.pricing.input_per_1m_usd,
-                backend.pricing.output_per_1m_usd,
-            )
+        if backend.endpoint_url != endpoint_url:
+            continue
+        declared = (
+            (backend.pricing,) if backend.pricing is not None else ()
+        ) + backend.model_prices
+        for price in declared:
+            if price.model_name == model_name:
+                return (price.input_per_1m_usd, price.output_per_1m_usd)
     return None
 
 
