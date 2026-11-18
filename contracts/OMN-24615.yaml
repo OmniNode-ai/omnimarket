@@ -106,13 +106,16 @@ dod_evidence:
     check_value: uv run pytest tests/unit/projection/test_omn24615_evaluated_runs_and_served_model.py -q -p no:randomly --no-cov -k "quality_gate_counts_only_evaluated_runs or summary_keeps_a_null_data_source_run or experiment_run_stays_out or three_views_serve_one_run_count"
     cwd: .
 - id: dod-omn24615-ac6
-  description: 'AC6: one model reached through a backend alias is one group in model-routing.v1; fails when the view groups by delegated_to.'
+  description: 'AC6: one model reached through a backend alias is one group in model-routing.v1 and in metering-summary.v1 by_model, which also serves the backend as its own field; fails when either groups by delegated_to.'
   source: manual
   binds_ac:
   - AC6
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/projection/test_omn24615_evaluated_runs_and_served_model.py -q -p no:randomly --no-cov -k one_model_reached_through_a_backend_is_one_group
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_metering_groups_by_model_that_ran.py -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn24615-ac7
   description: 'AC7: the daily view counts a never-evaluated run as unrecorded and a run without tokens as unmeasured; fails when it tests IS NULL on NOT NULL DEFAULT 0 columns.'
