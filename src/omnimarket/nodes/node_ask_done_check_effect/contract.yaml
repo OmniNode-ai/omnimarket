@@ -22,12 +22,33 @@ description: >
   never FALSE and never TRUE.
 
 handler:
-  module: omnimarket.nodes.node_ask_done_check_effect.handlers.handler_ask_done_check
-  class: HandlerAskDoneCheck
+  module: omnimarket.nodes.node_ask_done_check_effect.handlers.handler_ask_done_check_bus
+  class: HandlerAskDoneCheckBus
   input_model: omnimarket.nodes.node_ask_done_check_effect.models.model_ask_done_check.ModelAskDoneCheckRequest
+  output_model: omnimarket.nodes.node_ask_done_check_effect.models.model_ask_done_check.ModelAskDoneCheckResult
 
-# HandlerAskDoneCheck takes the overlay, the floor read, the ledger row source, the appender and
-# the clock as constructor parameters, so it runs through its own CLI, not handler_routing.
+# The runtime builds a handler with no arguments, so a command on the bus reaches HandlerAskDoneCheckBus,
+# which reads the overlay and the environment when it is called and hands the request to
+# HandlerAskDoneCheck. HandlerAskDoneCheck takes the overlay, the floor read, the ledger row source, the
+# appender and the clock as constructor parameters, so the CLI builds it and routes nothing through
+# handler_routing. A deployment with no overlay answers every ask UNKNOWN, never TRUE and never FALSE.
+secondary_handlers:
+  ask_done_check:
+    handler:
+      name: HandlerAskDoneCheck
+      module: omnimarket.nodes.node_ask_done_check_effect.handlers.handler_ask_done_check
+
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: ask_done_check_requested
+      topic: onex.cmd.omnimarket.ask-done-check-requested.v1
+      message_category: command
+      event_model: omnimarket.nodes.node_ask_done_check_effect.models.model_ask_done_check.ModelAskDoneCheckRequest
+      handler_module: omnimarket.nodes.node_ask_done_check_effect.handlers.handler_ask_done_check_bus
+      handler:
+        name: HandlerAskDoneCheckBus
+        module: omnimarket.nodes.node_ask_done_check_effect.handlers.handler_ask_done_check_bus
 
 descriptor:
   node_archetype: effect
@@ -46,12 +67,40 @@ output_model:
   module: omnimarket.nodes.node_ask_done_check_effect.models.model_ask_done_check
   description: Per ask, the verdict, its reason, the verdict row and whether it landed.
 
-runtime_dispatch:
-  external_trigger: true
+terminal_event: onex.evt.omnimarket.ask-done-check-completed.v1
 
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.ask-done-check-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.ask-done-check-completed.v1
+    failure: onex.evt.omnimarket.ask-done-check-failed.v1
+  external_trigger: "python -m omnimarket.nodes.node_ask_done_check_effect --ask <id> --said-at <UTC stamp> --check <spec> (runtime_ask_done_check.py), or a command on the request topic."
+
+# The bus demand path: a command on the request topic runs the checks and the verdicts return on the
+# completed topic (the failed topic on a refused request), so the dev runtime subscribes and a dispatch
+# reaches the handler.
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.ask-done-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.ask-done-check-completed.v1
+    - onex.evt.omnimarket.ask-done-check-failed.v1
+
+# No node contract subscribes to the result events: the caller that sent the request reads the verdicts from them.
+externally_consumed_topics:
+  - onex.evt.omnimarket.ask-done-check-completed.v1
+  - onex.evt.omnimarket.ask-done-check-failed.v1
+
+# The broker grants the three topics need (coverage gate): the runtime login reads the request and writes both answers.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.ask-done-check-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.ask-done-check-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ask-done-check-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ask-done-check-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ask-done-check-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ask-done-check-failed.v1, operation: DESCRIBE}
 
 overlay:
   node: node_ask_done_check_effect

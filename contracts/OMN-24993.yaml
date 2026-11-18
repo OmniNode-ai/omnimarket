@@ -19,6 +19,10 @@ requirements:
   - id: AC3
     statement: 'AC3: integrated: after a dev deploy of the merge, the dev runtime on h201 subscribes the ask-state command topic and one demand on it is handled with one run line -- falsifier: the dev runtime
       subscription list holds no ask-state topic after the deploy'
+  - id: AC4
+    statement: 'AC4: the contract of node_ask_done_check_effect subscribes its command topic, publishes its completed and failed topics with the broker grants they need, and names a handler the runtime builds with no arguments -- falsifier: pytest tests/unit/nodes/node_ask_done_check_effect/test_ask_done_check_bus.py -q fails when event_bus is absent, a grant is missing, or the handler needs constructor arguments'
+  - id: AC5
+    statement: 'AC5: a deployment with no overlay or no floor URL answers every ask UNKNOWN and appends no row, and a deployment hands the request to the checking handler -- falsifier: the bus handler tests fail when an unreadable deployment reads TRUE or FALSE or appends a row'
 evidence_requirements:
 - kind: tests
   description: The contract test for the event_bus mapping and the existing ask state handler tests.
@@ -54,6 +58,24 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_ask_state_compute/test_contract_event_bus.py -q --no-cov -n 0 -p no:randomly -k subscribes_the_command_topic
+    cwd: .
+- id: dod-omn24993-ac4-done-check-mapping
+  description: The contract tests read event_bus, the broker grants and the zero-argument handler of node_ask_done_check_effect.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_ask_done_check_effect/test_ask_done_check_bus.py -q --no-cov -n 0 -p no:randomly -k 'event_bus or broker_grant or externally_consumed or no_arguments'
+    cwd: .
+- id: dod-omn24993-ac5-unreadable-deployment
+  description: The bus handler reads UNKNOWN and appends nothing when the overlay or the floor URL is absent, and delegates when a deployment exists.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_ask_done_check_effect/test_ask_done_check_bus.py -q --no-cov -n 0 -p no:randomly -k 'no_overlay or floor_url or checking_handler'
     cwd: .
 - id: dod-omn24993-ac3-integration-proof
   description: Hosted CI cannot reach the dev runtime on h201, so only the local Done gate runs this unbound check; the running reading is the dev runtime subscription list and one run line after the deploy,
