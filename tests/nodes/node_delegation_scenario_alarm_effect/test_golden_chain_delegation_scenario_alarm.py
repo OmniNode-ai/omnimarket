@@ -12,8 +12,9 @@ import shlex
 import subprocess
 import sys
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
+from typing import Self
 from uuid import UUID
 
 import pytest
@@ -32,7 +33,10 @@ from omnibase_infra.runtime.auto_wiring.discovery import (
 )
 from omnibase_infra.runtime.auto_wiring.handler_wiring import wire_from_manifest
 from omnibase_infra.runtime.auto_wiring.models import ModelAutoWiringManifest
-from omnibase_infra.runtime.auto_wiring.report import EnumWiringOutcome
+from omnibase_infra.runtime.auto_wiring.report import (
+    EnumWiringOutcome,
+    ModelAutoWiringReport,
+)
 from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
@@ -130,9 +134,9 @@ def _record(
 
     class _Clock(datetime):
         @classmethod
-        def now(cls, tz: object = None) -> datetime:  # type: ignore[override]
+        def now(cls, tz: tzinfo | None = None) -> Self:
             del tz
-            return moment
+            return cls.combine(moment.date(), moment.time(), moment.tzinfo)
 
     monkeypatch.setattr(readiness_scenario, "datetime", _Clock)
     state_dir = home / f".local/state/omni/delegation-scenario-{scenario}"
@@ -238,9 +242,9 @@ def test_an_unappended_alarm_fails_the_tick(
 
     class _AlarmClock(datetime):
         @classmethod
-        def now(cls, tz: object = None) -> datetime:  # type: ignore[override]
+        def now(cls, tz: tzinfo | None = None) -> Self:
             del tz
-            return _NOW
+            return cls.combine(_NOW.date(), _NOW.time(), _NOW.tzinfo)
 
     monkeypatch.setattr(alarm_module, "datetime", _AlarmClock)
     state = tmp_path / "state"
@@ -641,7 +645,9 @@ def test_runtime_discovery_reads_the_top_level_handler_of_the_alarm_contract() -
     assert probe.ok, probe.reason
 
 
-async def _wire(contract_path: Path, monkeypatch: pytest.MonkeyPatch, strict: bool):  # type: ignore[no-untyped-def]
+async def _wire(
+    contract_path: Path, monkeypatch: pytest.MonkeyPatch, strict: bool
+) -> ModelAutoWiringReport:
     """Run infra's real ``wire_from_manifest`` over one contract with an in-memory bus, as the effects runtime does."""
     if strict:
         monkeypatch.setenv("ONEX_WIRING_STRICT_MODE", "1")
