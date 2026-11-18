@@ -19,6 +19,7 @@ from collections.abc import Callable, Mapping, Sequence
 
 from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.driver_broker_acl import (
     AclConnection,
+    BrokerCredentialMissingError,
     DeclarationError,
     build_remote_script,
     run_remote,
@@ -34,7 +35,6 @@ from omnimarket.nodes.node_broker_topic_delete_effect.protocols import BrokerAdm
 #: The only lane whose superuser this adapter reads.
 DEV_LANE = "dev"
 _TOPIC_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
-_CREDENTIAL_MARKER = "no lane superuser credentials"
 _Runner = Callable[..., str]
 
 
@@ -88,6 +88,11 @@ class RpkSuperuserTopicAdmin:
                     "compose_project": access.compose_project,
                     "broker_container": access.broker_container,
                     "superuser_source_container": access.superuser_source_container,
+                    **(
+                        {"superuser_env_file": access.superuser_env_file}
+                        if access.superuser_env_file
+                        else {}
+                    ),
                 },
                 target,
             )
@@ -111,7 +116,7 @@ class RpkSuperuserTopicAdmin:
                 self._runner(self._target, self._script(lines), timeout=self._timeout)
             )
         except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
-            if isinstance(exc, RuntimeError) and _CREDENTIAL_MARKER in str(exc):
+            if isinstance(exc, BrokerCredentialMissingError):
                 raise BrokerAdminError("broker_credential_unresolved") from None
             raise BrokerAdminError(f"remote_failed:{type(exc).__name__}") from None
 

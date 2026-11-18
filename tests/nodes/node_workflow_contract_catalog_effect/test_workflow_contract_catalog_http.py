@@ -73,12 +73,11 @@ def _get(client: TestClient, key: str | None = TENANT_A_KEY) -> Any:
 
 
 class TestContractDeclaresTheMount:
-    def test_mount_prefix_is_the_route_path_and_never_a_parent(self) -> None:
+    def test_contract_declares_no_mount_inside_the_gateway_prefix(self) -> None:
         contract = yaml.safe_load(CONTRACT.read_text())
-        assert contract["http_mount"]["path_prefix"] == ROUTE
+        assert "http_mount" not in contract
         assert contract["http_route"]["path"] == ROUTE
         assert contract["http_route"]["methods"] == ["GET"]
-        assert contract["http_mount"]["factory"].endswith("http_app:create_app")
 
     def test_contract_names_the_identity_protocol_and_no_environment_reads(
         self,
