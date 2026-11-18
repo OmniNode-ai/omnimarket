@@ -23,7 +23,8 @@ stays read-only). Each check names the failure it exists to catch:
 * M4f ``onex secret delete`` of another declared ``llm.<provider>.<field>``
       reference skips the guard, though the store classifies it as that
       provider's and withdraws its route;
-* M5  the page lists a provider it does not show (Anthropic, a local URL);
+* M5  a provider set up in the terminal is not listed on the page (OMN-24615
+      AC9 supersedes decision (b): the page lists what ``onex models list`` lists);
 * M7  the page and the CLI disagree about one store: a key added in the
       terminal is not what ``GET /models`` lists;
 * M9  a terminal add leaves Credentials updates an earlier fold could not
@@ -33,6 +34,15 @@ stays read-only). Each check names the failure it exists to catch:
       runs a test delegation, or carries the submitted key back;
 * RO2 ``GET /models`` carries a stored key, whole or encoded or its tail.
 
+OMN-24615 AC9 (supersedes decision (b)): ``GET /models`` serves every provider
+``onex models list --json`` prints, with the same set-up and last-test values:
+
+* P1  a provider set up in the terminal outside the old four is not served;
+* P2  the served rows differ from the terminal's, a provider missing or added or a
+      value that disagrees;
+* P3  an allow-list is put back in the dashboard serve path.
+dev has no reflection provider (the OMN-23413 branch adds it), so P1 uses Anthropic.
+
 Fakes only at the edges: the provider's model list is a stub and the pinned test
 delegation is a recorder that writes the receipt ``onex delegate`` would write.
 """
@@ -40,6 +50,7 @@ delegation is a recorder that writes the receipt ``onex delegate`` would write.
 from __future__ import annotations
 
 import base64
+import inspect
 import json
 import sqlite3
 from collections.abc import Iterator
@@ -204,7 +215,7 @@ def test_m1_the_page_lists_its_four_providers_in_each_state(
 ) -> None:
     client = _client(tmp_path)
     rows = _rows(client)
-    assert sorted(rows) == sorted(_PAGE_PROVIDERS)
+    assert set(_PAGE_PROVIDERS) <= set(rows)
     assert all(not row["set_up"] for row in rows.values())
 
     delegations.models[_backend("openrouter")] = _OR_MODEL
@@ -252,7 +263,7 @@ def test_m4_the_terminal_refuses_the_last_usable_provider(
     assert _rows(_client(tmp_path))["openrouter"]["set_up"] is True
 
 
-def test_m5_a_provider_set_up_in_the_terminal_outside_the_four_is_not_listed(
+def test_m5_a_provider_set_up_in_the_terminal_outside_the_four_is_listed(
     delegations: _Delegations, tmp_path: Path
 ) -> None:
     delegations.models[_backend("anthropic")] = _ANT_MODEL
@@ -269,7 +280,7 @@ def test_m5_a_provider_set_up_in_the_terminal_outside_the_four_is_not_listed(
         )
     }
     assert cli_rows["anthropic"]["set_up"] is True
-    assert sorted(_rows(_client(tmp_path))) == sorted(_PAGE_PROVIDERS)
+    assert _rows(_client(tmp_path))["anthropic"] == cli_rows["anthropic"]
 
 
 def test_m7_a_key_added_in_the_terminal_is_what_the_page_lists(
@@ -573,3 +584,38 @@ def test_m4f_secret_delete_refuses_another_declared_ref_of_the_last_usable_provi
     assert refused.exit_code != 0, refused.output
     assert "at least one is required" in refused.output
     assert resolve_local_byok_credential_ref("openrouter") is not None
+
+
+def _cli_rows() -> dict[str, dict[str, Any]]:
+    result = CliRunner().invoke(models_group, ["list", "--json"])
+    assert result.exit_code == 0, result.output
+    return {row["provider"]: row for row in map(json.loads, result.output.splitlines())}
+
+
+def test_models_every_provider_a_terminal_provider_is_served_as_set_up(
+    delegations: _Delegations, tmp_path: Path
+) -> None:
+    """P1: the AC9 falsifier, with Anthropic as the provider outside the old four."""
+    delegations.models[_backend("anthropic")] = _ANT_MODEL
+    added = _cli_add("anthropic", _ANT_KEY, _ANT_MODEL)
+    assert added.exit_code == 0, added.output
+    served = _rows(_client(tmp_path))
+    assert served["anthropic"]["set_up"] is True
+    assert served["anthropic"]["last_test"]["status"] == "passed"
+
+
+def test_models_every_provider_the_page_serves_the_terminal_rows(
+    delegations: _Delegations, tmp_path: Path
+) -> None:
+    """P2: the same providers, and each row equal to the terminal's."""
+    delegations.models[_backend("anthropic")] = _ANT_MODEL
+    assert _cli_add("anthropic", _ANT_KEY, _ANT_MODEL).exit_code == 0
+    assert _rows(_client(tmp_path)) == _cli_rows()
+
+
+def test_models_every_provider_no_allow_list_in_the_serve_path() -> None:
+    """P3: the allow-list is gone from the key module and the dashboard route."""
+    assert not hasattr(handler_model_keys, "DASHBOARD_PROVIDERS")
+    source = inspect.getsourcefile(create_dashboard_app)
+    assert source is not None
+    assert "DASHBOARD_PROVIDERS" not in Path(source).read_text(encoding="utf-8")

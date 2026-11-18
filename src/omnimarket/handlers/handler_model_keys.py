@@ -113,15 +113,6 @@ LOCAL_HOW = (
     "ONEX never installs a server or downloads models."
 )
 
-
-#: The providers the dashboard's Credentials page lists (OMN-20816 decision (b)):
-#: the ticket's keyed three. Anthropic and a Local Model are managed in the
-#: terminal.
-DASHBOARD_PROVIDERS: tuple[ModelProvider, ...] = (
-    "gemini",
-    "openrouter",
-    "openai",
-)
 #: The providers whose key ``remove_key`` deletes.
 KEYED_PROVIDERS: tuple[ModelProvider, ...] = (
     "gemini",
@@ -806,7 +797,6 @@ def remove_key(provider: str, echo: Echo = _quiet) -> None:
 
 
 __all__ = [
-    "DASHBOARD_PROVIDERS",
     "KEYED_PROVIDERS",
     "LOCAL_HOW",
     "PENDING_CREDENTIAL_EVENTS_NAME",

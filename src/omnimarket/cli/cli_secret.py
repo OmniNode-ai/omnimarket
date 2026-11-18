@@ -48,6 +48,8 @@ import yaml
 from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
+import omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_lab_host_bus_lane as lane_reader
+import omnimarket.nodes.node_review_key_credit_probe_effect.handlers.handler_review_key_credit_probe as key_probe
 from omnimarket.handlers import handler_model_keys as model_keys
 from omnimarket.handlers import model_provider_labels as provider_labels
 from omnimarket.handlers.models_list_edit_commands import (
@@ -311,25 +313,8 @@ def _environment_names_broker() -> bool:
 
 
 def _lab_host_bus_lane(bound_host: str | None) -> str | None:
-    """The bound host's declared ``ledger_bus_lane`` in the lab host table (OMN-20910).
-
-    A lab host carries no KAFKA_BOOTSTRAP_SERVERS, but its lab host table row
-    names the bus lane it publishes on; the lane's broker and login come from
-    the lane declaration, never from the shell.
-    """
-    table = _lab_host_table()
-    if table is None or bound_host is None:
-        return None
-    try:
-        document = yaml.safe_load(table.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError):
-        return None
-    rows = document.get("hosts") if isinstance(document, dict) else None
-    for row in rows if isinstance(rows, list) else []:
-        if isinstance(row, dict) and row.get("name") == bound_host:
-            lane = row.get("ledger_bus_lane")
-            return lane.strip() if isinstance(lane, str) and lane.strip() else None
-    return None
+    """The bound host's declared ``ledger_bus_lane`` in the lab host table."""
+    return lane_reader.lab_host_bus_lane(_lab_host_table(), bound_host)
 
 
 async def _register_on_declared_bus[T](
@@ -1183,6 +1168,13 @@ _REVIEW_GATEWAY_DRY_RUN_PAYLOAD: dict[str, object] = {
 }
 
 
+key_probe.attach_review_key_probe_command(
+    models_group,
+    resolve_host=lambda host: _resolve_bound_host(host),
+    key_store=lambda: _tenant_key_store(),
+)
+
+
 @models_group.command("review-gateway")
 @click.option(
     "--tenant",
@@ -1249,13 +1241,14 @@ def review_gateway(
     dry_run: bool,
 ) -> None:
     """Serve a Hostile Review voter endpoint on this host's Claude keys (OMN-21014)."""
+    from omnimarket.models.model_claude_review_gateway_request import (
+        ModelClaudeReviewGatewayRequest,
+    )
     from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
         GATEWAY_PLAN,
         HandlerClaudeReviewGateway,
+        ProtocolGatewayEventBus,
         run_dry,
-    )
-    from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
-        ModelClaudeReviewGatewayRequest,
     )
 
     try:
@@ -1334,4 +1327,16 @@ def review_gateway(
         f"/v1/chat/completions (host {bound_host}, model {model_option}, "
         f"{len(cloud_refused_repositories)} repositories refused cloud review)"
     )
-    asyncio.run(handler.handle(request))
+
+    # OMN-24577: the launchd unit (ai.omninode.review-gateway) passes no
+    # KAFKA_BOOTSTRAP_SERVERS and a lab host never carries one, so serving used
+    # to exit 1 in a crash loop. The bound host's lab host table row names the
+    # bus lane it publishes on; the helper opens that lane's bus and hands the
+    # handler its bus. A broker the environment names (or no lane declared)
+    # reaches the callback with None, where the handler's own refusal stands.
+    async def serve(event_bus: ProtocolCredentialEventBus | None) -> None:
+        await handler.with_event_bus(
+            cast(ProtocolGatewayEventBus | None, event_bus)
+        ).handle(request)
+
+    asyncio.run(_register_on_declared_bus(serve, lane=_lab_host_bus_lane(bound_host)))
