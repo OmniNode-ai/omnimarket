@@ -13,12 +13,12 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
+from omnimarket.models.ticket_write_io import ModelTicketWriteRequest
 from omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer import (
     FINGERPRINT_PREFIX,
     HandlerSprintCloser,
@@ -30,6 +30,13 @@ from omnimarket.nodes.node_sprint_closer_effect.models.model_sprint_closer impor
     ModelSprintCloserPlan,
     ModelTicketEvidence,
     ModelTicketOutcome,
+)
+from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.ticket_bus_call import (
+    TicketBusCallError,
+    bus_ticket_call,
+)
+from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.ticket_done_writer import (
+    ProtocolTicketWriteCall,
 )
 
 _CRITERION = re.compile(r"^\s*[-*]\s*\[( |x|X)\]\s*\**\s*(AC\d+)\b", re.MULTILINE)
@@ -155,56 +162,47 @@ class LinearIssue:
 
 
 @dataclass
-class HandlerOnexNodeCall:
-    """Runs node_linear_ticket_write_effect as the node's declared CLI (``onex node``) and returns its terminal payload.
+class HandlerBusTicketCall:
+    """Sends each Linear request to node_linear_ticket_write_effect over the event bus and returns its result.
 
-    The input is one JSON request file, the answer is the ``terminal_payload`` the runtime writes to its state root.
-    A failed terminal raises with the node's reason and finding codes, never a Linear error text.
+    The request rides the node's contract command topic and the call waits for the one terminal event that names it
+    (the scheduled closer's ``bus_ticket_call``, the transport ``onex ticket`` uses). The node runs inside the runtime
+    that hosts it and resolves its own secrets: this process holds no store identity, no Linear key and no in-process
+    copy of the node. A failed terminal raises with the node's reason and finding codes, never a Linear error text; a
+    missing terminal or an unopenable bus raises too, as an unknown outcome to read before retrying.
     """
 
-    onex_argv: tuple[str, ...]
+    bus_lane: str = "dev"
     lane: str = "sprint-closer-workflow"
-    timeout_seconds: int = 120
+    timeout_seconds: float = 90.0
+    call: ProtocolTicketWriteCall | None = None
+
+    def _call(self) -> ProtocolTicketWriteCall:
+        if self.call is not None:
+            return self.call
+        return bus_ticket_call(bus_lane=self.bus_lane, timeout_s=self.timeout_seconds)
 
     def __call__(self, payload: dict[str, object]) -> dict[str, object]:
-        request = {
-            **payload,
-            "correlation_id": str(uuid.uuid4()),
-            "requested_by_lane": self.lane,
-        }
-        with tempfile.TemporaryDirectory(prefix="sprint-closer-node-") as scratch:
-            source = Path(scratch) / "request.json"
-            source.write_text(json.dumps(request), encoding="utf-8")
-            proc = subprocess.run(
-                [
-                    *self.onex_argv,
-                    "node",
-                    NODE_ID,
-                    "--input",
-                    str(source),
-                    "--state-root",
-                    str(Path(scratch) / "state"),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=self.timeout_seconds,
-                check=False,
-            )
-            result_file = Path(scratch) / "state" / "workflow_result.json"
-            if proc.returncode != 0 or not result_file.is_file():
-                raise RuntimeError(
-                    f"{NODE_ID} exited {proc.returncode}: {proc.stderr.strip()[-300:]}"
-                )
-            terminal = cast(
-                dict[str, object],
-                json.loads(result_file.read_text(encoding="utf-8"))["terminal_payload"],
-            )
-        if terminal.get("outcome") != "completed":
+        request = ModelTicketWriteRequest.model_validate(
+            {
+                **payload,
+                "correlation_id": uuid.uuid4(),
+                "requested_by_lane": self.lane,
+            }
+        )
+        try:
+            terminal = self._call()(request)
+        except TicketBusCallError as exc:
             raise RuntimeError(
-                f"{NODE_ID} {payload.get('operation')} failed: {terminal.get('reason')} "
-                f"{terminal.get('finding_codes')}"
+                f"{NODE_ID} {payload.get('operation')}: {exc} (unknown outcome; read before retrying)"
+            ) from None
+        body = cast(dict[str, object], terminal.payload)
+        if terminal.failed or body.get("outcome") != "completed":
+            raise RuntimeError(
+                f"{NODE_ID} {payload.get('operation')} failed: {body.get('reason')} "
+                f"{body.get('finding_codes')}"
             )
-        return cast(dict[str, object], terminal["result"])
+        return cast(dict[str, object], body["result"])
 
 
 @dataclass
@@ -405,9 +403,6 @@ class LiveSprintCloserSources:
 
 def live_sources_from_env(home_root: Path) -> LiveSprintCloserSources:
     declared = os.environ.get("ONEX_SPRINT_CLOSER_LEDGER_READ_ARGV", "").strip()
-    onex = os.environ.get("ONEX_SPRINT_CLOSER_ONEX") or str(
-        Path(sys.executable).with_name("onex")
-    )
     state_dir = Path(
         os.environ.get(
             "ONEX_SPRINT_CLOSER_STATE_DIR",
@@ -415,7 +410,7 @@ def live_sources_from_env(home_root: Path) -> LiveSprintCloserSources:
         )
     )
     return LiveSprintCloserSources(
-        linear=HandlerLinearTicketNode(HandlerOnexNodeCall((onex,)), state_dir),
+        linear=HandlerLinearTicketNode(HandlerBusTicketCall(), state_dir),
         dod=HandlerDodVerifyCall(
             home_root=home_root,
             python=os.environ.get("ONEX_SPRINT_CLOSER_DOD_PYTHON", sys.executable),

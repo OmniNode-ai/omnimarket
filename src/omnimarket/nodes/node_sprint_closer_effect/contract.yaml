@@ -48,9 +48,9 @@ handler_routing:
       handler:
         name: HandlerSprintCloserEligibility
         module: omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer_eligibility
-    - operation: onex_node_call
+    - operation: bus_ticket_call
       handler:
-        name: HandlerOnexNodeCall
+        name: HandlerBusTicketCall
         module: omnimarket.nodes.node_sprint_closer_effect.handlers.sprint_closer_sources
     - operation: linear_ticket_node
       handler:
