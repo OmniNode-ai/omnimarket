@@ -9,12 +9,17 @@ passes, and only with none of those the fixed default. The history is a
 mapping of model id to use count; a blank id or a count below one is not use.
 A tie goes to the lowest model id, so the same history always names the same
 baseline.
+
+OMN-24615 AC2: a caller with no overlay in hand (every local run) is given the
+ONEX home's ``pricing`` block as its overlay, the only file this module reads.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Literal
+
+from omnimarket.models.local_pricing_overlay import local_pricing_overlay
 
 __all__ = ["BaselineSelectionCase", "configured_or_most_used"]
 
@@ -51,7 +56,10 @@ def configured_or_most_used(
     overlay: object, store: object, history: Mapping[str, int] | None
 ) -> tuple[str, BaselineSelectionCase] | None:
     """The baseline and its case, or None when the fixed default applies."""
-    for config, case in ((overlay, "overlay"), (store, "store")):
+    for config, case in (
+        (overlay or local_pricing_overlay(), "overlay"),
+        (store, "store"),
+    ):
         model = _configured(config)
         if model is not None:
             return model, "overlay" if case == "overlay" else "store"

@@ -44,8 +44,10 @@ from datetime import datetime
 from pathlib import Path
 
 from omnimarket.nodes.node_metering_summary_compute.models.model_metering_record_row import (
+    METERING_CALLS_PRESENT,
     METERING_CAUSE_COLUMN,
     METERING_COLUMNS,
+    metering_events_select,
     metering_record_from_row,
     normalise_occurred_at,
 )
@@ -63,7 +65,6 @@ __all__ = [
     "read_metering_records",
 ]
 
-_SELECT = f"SELECT {', '.join(METERING_COLUMNS)} FROM delegation_events"
 # OMN-19970: provenance column, present on stores written since migration 0049's
 # local twin. Read only when the store has it; a store written before the label
 # existed holds real rows only.
@@ -122,12 +123,9 @@ def _iter_rows(db_path: Path) -> Iterator[sqlite3.Row]:
                 for column in (_DATA_SOURCE_COLUMN, METERING_CAUSE_COLUMN)
                 if column in columns
             )
-            select = (
-                f"SELECT {', '.join((*METERING_COLUMNS, *optional))} "
-                "FROM delegation_events"
-                if optional
-                else _SELECT
-            )
+            # OMN-24615 AC1: each run's provider usage, where the store has calls.
+            calls = conn.execute(METERING_CALLS_PRESENT).fetchone() is not None
+            select = metering_events_select((*METERING_COLUMNS, *optional), calls)
             cursor = conn.execute(select)
         except sqlite3.Error as exc:
             raise MeteringRecordsUnavailableError(

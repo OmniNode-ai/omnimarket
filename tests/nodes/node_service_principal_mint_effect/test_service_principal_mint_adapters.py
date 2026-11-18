@@ -45,7 +45,7 @@ pytestmark = pytest.mark.unit
 SENTINEL = SecretStr("SENTINEL-PASSWORD-VALUE")
 
 
-def _broker() -> ModelServicePrincipalBroker:
+def _broker(**cells: str) -> ModelServicePrincipalBroker:
     return ModelServicePrincipalBroker(
         lane="lane-a",
         host="broker.test",
@@ -54,6 +54,7 @@ def _broker() -> ModelServicePrincipalBroker:
         superuser_source_container="superuser",
         ssh_target="broker.test",
         mechanism="SCRAM-SHA-256",
+        **cells,
     )
 
 
@@ -82,7 +83,23 @@ def test_list_logins_parses_stdout() -> None:
     assert target == _broker().ssh_target
     assert "security user list" in script
     assert _broker().broker_container in script
-    assert _broker().superuser_source_container in script
+    assert "docker inspect" not in script
+    assert "DEV_KAFKA_SASL_PASSWORD" in script
+
+
+def test_superuser_env_file_declared_non_default_path_reaches_the_script() -> None:
+    """The broker declaration carries the cell to the connection builder and into ``F=``."""
+    import asyncio
+
+    runner, calls = _fake_runner("")
+    broker = _broker(superuser_env_file="/srv/custom/operator.env")
+    asyncio.run(RpkSshBrokerLoginAdmin(broker, runner=runner).list_logins())
+    assert "F=/srv/custom/operator.env" in calls[0][1].splitlines()
+    assert 'F="$HOME"/.omnibase/.env' not in calls[0][1]
+
+    runner, calls = _fake_runner("")
+    asyncio.run(RpkSshBrokerLoginAdmin(_broker(), runner=runner).list_logins())
+    assert 'F="$HOME"/.omnibase/.env' in calls[0][1].splitlines()
 
 
 def test_create_login_script_contains_mechanism() -> None:
@@ -324,3 +341,26 @@ def test_ssh_credential_delivery_wrong_owner(tmp_path: Path) -> None:
 
         reading = asyncio.run(delivery.deliver(target, content, apply=True))
         assert reading.owner == "12345:12345"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "relative/operator.env",
+        "/srv/../etc/operator.env",
+        "/srv/op erator.env",
+        "~",
+        "/srv/$HOME/x",
+    ],
+)
+def test_superuser_env_file_a_bad_path_is_refused_when_the_broker_row_loads(
+    bad: str,
+) -> None:
+    """The row refuses at load, so the adapter never holds a path whose first call would raise."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="superuser_env_file"):
+        _broker(superuser_env_file=bad)
+    assert _broker(superuser_env_file="~/ops/operator.env").superuser_env_file == (
+        "~/ops/operator.env"
+    )
