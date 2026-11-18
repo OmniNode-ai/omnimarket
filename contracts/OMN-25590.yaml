@@ -69,7 +69,7 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/unit/nodes/node_secret_store_effect/test_secret_env_file.py -q -k secret_env_file_write_cli_fake_store --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn25590-ac4-orchestrator-post-install
-    description: Pending the orchestrator's post-install read on h051. The lab-run receipt must report count 1 and mode 600, and the first tick after apply must no longer report store-dsn-unset.
+    description: The post-install read on h051 of the env file at the overlay path floor_fill_live.store_dsn_env_file. The receipt must report count 1 and mode 600, and the first tick after the apply must no longer report store-dsn-unset.
     source: manual
     execution_scope: local_done_gate
     checks:
