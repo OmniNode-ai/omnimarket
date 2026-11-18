@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+route:
+  backend: inmemory
+emission:
+  node: node_review_gate_context_effect
+  piece: 8
+  backend: inmemory

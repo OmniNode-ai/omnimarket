@@ -4,7 +4,7 @@
 
 Run by its registry_module_tick unit (``node_host_installer_registry_units``), every 60 s. ``--probe`` validates the
 contract settings and returns without a read, a row or a write. Rows are appended with
-``onex-ledger <ONEX_LEDGER_PATH> --append <row>`` from the project OMNIBASE_INTERNAL_HOME names, the ledger writer every lane uses.
+``onex-ledger <ONEX_TEMPORAL_LEDGER_FILE> --append <row>`` from the project OMNIBASE_INTERNAL_HOME names, the ledger writer every lane uses.
 """
 
 from __future__ import annotations
@@ -52,12 +52,12 @@ def load_settings(environ: Mapping[str, str]) -> ModelTemporalHealthSettings:
 
 
 def ledger_appender(environ: Mapping[str, str]) -> Appender:
-    ledger = environ.get("ONEX_LEDGER_PATH", "")
+    ledger = environ.get("ONEX_TEMPORAL_LEDGER_FILE", "")
     project = environ.get("OMNIBASE_INTERNAL_HOME", "")
 
     def append(row: str) -> str:
         if not ledger or not project:
-            return "ONEX_LEDGER_PATH or OMNIBASE_INTERNAL_HOME is not set"
+            return "ONEX_TEMPORAL_LEDGER_FILE or OMNIBASE_INTERNAL_HOME is not set"
         done = subprocess.run(
             ["uv", "run", "--project", project, "onex-ledger", ledger, "--append", row],
             capture_output=True,
