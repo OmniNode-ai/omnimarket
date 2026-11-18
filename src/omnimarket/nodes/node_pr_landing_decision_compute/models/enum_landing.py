@@ -164,6 +164,10 @@ class EnumLandingLandSkipReason(StrEnum):
     REVIEW_CHANGES_NEEDED = "review_changes_needed"
     REVIEW_SUPERSEDED = "review_superseded"
     REVIEW_UNREAD = "review_unread"
+    REVIEW_STATUS_MISSING = "review_status_missing"
+    REVIEW_STATUS_FAILING = "review_status_failing"
+    REVIEW_STATUS_OTHER_HEAD = "review_status_other_head"
+    REVIEW_STATUS_UNREAD = "review_status_unread"
 
 
 # A person's hold, a draft and do-not-land keep a PR out of every shared cause;

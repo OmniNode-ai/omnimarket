@@ -15,6 +15,9 @@ reads the source as the value itself (``text``) or as a YAML document in the ove
 ``runner_group_reads`` names each (organization, runner group id) pair a runner_group_get may read: a group of another
 id, or of another organization, is never read.
 
+``required_contexts`` names each (repository, branch, context) a required_context_apply may add to a branch's
+protection: any other repository, branch or context is refused before any GitHub call.
+
 ``runner_removals`` names each organization whose runners a lane may list and, per organization, the runners a
 runner_remove may delete: an offline runner of another name is never deleted.
 
@@ -191,10 +194,46 @@ class ModelRunnerRemovalOverlay(BaseModel):
         return self
 
 
+class ModelRequiredContextEntry(BaseModel):
+    """One (repository, branch, context) a required_context_apply may add; none is named in code."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repository: str = Field(pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+    branch: str = Field(pattern=r"^[A-Za-z0-9._/-]+$")
+    context: str = Field(min_length=1, max_length=200)
+
+
+class ModelRequiredContextOverlay(BaseModel):
+    """The required contexts a required_context_apply may add, per repository and branch, none in code.
+
+    The operation is served only for a named (repository, branch, context) triple; any other repository,
+    branch or context is refused before any GitHub call.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    entries: tuple[ModelRequiredContextEntry, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _shape(self) -> ModelRequiredContextOverlay:
+        seen: set[tuple[str, str, str]] = set()
+        for entry in self.entries:
+            key = (entry.repository.lower(), entry.branch, entry.context)
+            if key in seen:
+                raise ValueError(
+                    "a required context entry is named twice: "
+                    f"{entry.repository} {entry.branch} {entry.context}"
+                )
+            seen.add(key)
+        return self
+
+
 class ModelRepoWriteOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     pr_label: ModelPrLabelOverlay
+    required_contexts: ModelRequiredContextOverlay | None = None
     repo_variables: ModelRepoVariablesOverlay | None = None
     runner_removals: ModelRunnerRemovalOverlay | None = None
     runner_group_reads: ModelRunnerGroupReadOverlay | None = None
