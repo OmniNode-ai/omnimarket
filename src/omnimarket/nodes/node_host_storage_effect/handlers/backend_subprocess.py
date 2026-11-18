@@ -26,7 +26,11 @@ from collections import deque
 from io import BufferedReader
 from typing import cast
 
+from omnimarket.nodes.node_host_storage_effect.handlers.entry_remover_local import (
+    EntryRemoverLocal,
+)
 from omnimarket.nodes.node_host_storage_effect.models.model_host_storage import (
+    ModelHostStorageEntryRun,
     ModelHostStorageRun,
 )
 from omnimarket.nodes.node_host_storage_effect.models.model_host_storage_overlay import (
@@ -118,10 +122,23 @@ def _run_bounded(
 
 class BackendHostStorageSubprocess:
     def __init__(
-        self, free_bytes_argv: tuple[str, ...], free_bytes_timeout_seconds: float
+        self,
+        free_bytes_argv: tuple[str, ...],
+        free_bytes_timeout_seconds: float,
+        entry_remover: EntryRemoverLocal | None = None,
     ) -> None:
         self._free_argv = free_bytes_argv
         self._free_timeout = free_bytes_timeout_seconds
+        self._entry_remover = entry_remover or EntryRemoverLocal()
+
+    def remove_entries(
+        self,
+        host: ModelStorageHost,
+        command: ModelStorageCommand,
+        entries: tuple[str, ...],
+    ) -> ModelHostStorageEntryRun:
+        """Entry commands run on this machine: the overlay validator keeps a transport prefix off them."""
+        return self._entry_remover.remove_entries(host, command, entries)
 
     def free_bytes(self, host: ModelStorageHost, path: str) -> int | None:
         argv = _transport_argv(

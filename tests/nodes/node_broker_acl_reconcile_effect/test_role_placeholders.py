@@ -37,11 +37,11 @@ from tests.nodes.node_broker_acl_reconcile_effect.test_aggregates_declared_grant
 
 pytestmark = pytest.mark.unit
 
-GPU = "node_gpu_power_caps_effect"
-PLACEHOLDER = "ONEX_ACL_GPU_POWER_CAPS_PRINCIPAL"
+NODE = "node_branch_deploy_orchestrator"
+PLACEHOLDER = "ONEX_ACL_BRANCH_DEPLOY_PRINCIPAL"
 ROLE_LOGIN = "User:role-login"
 ENV_LOGIN = "User:env-login"
-TOPIC = "onex.cmd.omnimarket.gpu-power-caps-requested.v1"
+TOPIC = "onex.cmd.omnimarket.branch-deploy-command-requested.v1"
 
 
 def _env(
@@ -74,7 +74,7 @@ def _role(
     return {
         "name": "dev_runtime_effects",
         "role": "a unit on every lab host",
-        "nodes": [GPU],
+        "nodes": [NODE],
         "principals": list(principals),
         "placeholders": list(placeholders),
     }
@@ -126,7 +126,7 @@ def test_refused_role_with_two_logins_and_placeholder() -> None:
         ModelNodeRole(
             name="units",
             role="a unit",
-            nodes=[GPU],
+            nodes=[NODE],
             principals=(ROLE_LOGIN, ENV_LOGIN),
             placeholders=(PLACEHOLDER,),
         )
@@ -139,7 +139,7 @@ def test_refused_placeholder_named_twice() -> None:
         ModelNodeRole(
             name="units",
             role="a unit",
-            nodes=[GPU],
+            nodes=[NODE],
             principals=(ROLE_LOGIN,),
             placeholders=(PLACEHOLDER, PLACEHOLDER),
         )
@@ -153,14 +153,14 @@ def test_refused_placeholder_named_twice() -> None:
                 ModelNodeRole(
                     name="first",
                     role="a unit",
-                    nodes=[GPU],
+                    nodes=[NODE],
                     principals=(ROLE_LOGIN,),
                     placeholders=(PLACEHOLDER,),
                 ),
                 ModelNodeRole(
                     name="second",
                     role="a unit",
-                    nodes=[GPU],
+                    nodes=[NODE],
                     principals=(ENV_LOGIN,),
                     placeholders=(PLACEHOLDER,),
                 ),
@@ -179,7 +179,7 @@ def test_placeholder_logins_maps_each_name() -> None:
             ModelNodeRole(
                 name="units",
                 role="a unit",
-                nodes=[GPU],
+                nodes=[NODE],
                 principals=(ROLE_LOGIN,),
                 placeholders=("ONEX_ACL_A_PRINCIPAL", "ONEX_ACL_B_PRINCIPAL"),
             ),

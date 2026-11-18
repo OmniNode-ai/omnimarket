@@ -53,7 +53,7 @@ _SHIM_CLAUSE = re.compile(r"replaces gh ([a-z]+) ([a-z]+)\.")
 # must still be served exactly once and match a one-line, explicit HTTP request.
 _API_CLAUSE = re.compile(
     r"  - name: ([a-z_]+)\n    description: [^\n]*replaces "
-    r'(gh api (?:--method (?:POST|PATCH|PUT|DELETE) /repos/[^\s".]+|graphql [a-z][A-Za-z]+))\.'
+    r'(gh api (?:--method (?:POST|PATCH|PUT|DELETE|GET) /(?:repos|orgs)/[^\s".]+|graphql [a-z][A-Za-z]+))\.'
 )
 
 
@@ -152,20 +152,28 @@ def shim_coverage_violations(
     return violations
 
 
+#: The verbs declared outside the dispatch module (a baselined file that only shrinks) count as its table.
+_DECLARED_OUTSIDE = _DISPATCH.parent / "scm_status_write_verbs.py"
+
+
 def _real() -> tuple[str, str]:
-    return _CONTRACT.read_text("utf-8"), _DISPATCH.read_text("utf-8")
+    return _CONTRACT.read_text("utf-8"), (
+        _DISPATCH.read_text("utf-8") + "\n" + _DECLARED_OUTSIDE.read_text("utf-8")
+    )
 
 
 def test_the_shim_reads_every_write_operation_the_repo_serves() -> None:
     contract_text, dispatch_text = _real()
     assert shim_coverage_violations(contract_text, dispatch_text, SCM_VERBS) == []
-    # Positive control: all six native CLI writes remain covered by the shim.
+    # Positive control: all eight native CLI writes remain covered by the shim.
     assert sorted(_shim_table(contract_text)) == [
         "pr_close",
         "pr_comment",
         "pr_create",
         "pr_edit",
         "pr_ready",
+        "repo_variable_get",
+        "repo_variable_set",
         "workflow_dispatch",
     ]
 

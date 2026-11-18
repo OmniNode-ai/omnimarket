@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host Local Config Drift Compute (OMN-24242)
+#
+# Compares one host's declared hand-set local configuration (ssh aliases, git safe.directory entries, the repo-local git keys it may
+# carry, env file directories with a bound on backup copies) with a snapshot of names measured on the host, and names each
+# difference. Pure: it writes, changes and deletes nothing, and never receives a file's contents.
+name: node_host_local_config_drift_compute
+contract_name: node_host_local_config_drift_compute
+node_name: node_host_local_config_drift_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  The drift read of a host's hand-set local configuration. A host whose measured names all match its declaration reads working;
+  an undeclared or missing ssh alias, an alias with another target, an undeclared git safe.directory entry (the wildcard
+  included), an undeclared repo-local git key, an env directory holding more backup copies than its declared bound, a missing
+  live env file and an undeclared env directory each read not working and are named. A measurement of another host, or a payload
+  that is not a command, is answered with a typed failure event. Without its overlay the run is refused.
+
+handler:
+  module: omnimarket.nodes.node_host_local_config_drift_compute.handlers.handler_host_local_config_drift
+  class: HandlerHostLocalConfigDrift
+  input_model: omnimarket.nodes.node_host_local_config_drift_compute.models.model_host_local_config_drift.ModelLocalConfigDriftCommand
+  output_model: omnimarket.nodes.node_host_local_config_drift_compute.models.model_host_local_config_drift.ModelLocalConfigDriftResult
+
+descriptor:
+  node_archetype: compute
+  runtime_profiles: []
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 10000
+
+input_model:
+  name: ModelLocalConfigDriftCommand
+  module: omnimarket.nodes.node_host_local_config_drift_compute.models.model_host_local_config_drift
+  description: A correlation id, the host's declaration (from the overlay) and the measured names.
+output_model:
+  name: ModelLocalConfigDriftResult
+  module: omnimarket.nodes.node_host_local_config_drift_compute.models.model_host_local_config_drift
+  description: The verdict and each finding with its kind, subject and detail.
+
+terminal_event: onex.evt.omnimarket.host-local-config-drift-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: python -m omnimarket.nodes.node_host_local_config_drift_compute --host <name> --correlation-id <id> with the measured names on stdin and the overlay found under ONEX_SKILL_OVERLAY_ROOTS.
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  host_local_config_drift_requested: onex.cmd.omnimarket.host-local-config-drift-requested.v1
+  host_local_config_drift_clean: onex.evt.omnimarket.host-local-config-drift-clean.v1
+  host_local_config_drift_found: onex.evt.omnimarket.host-local-config-drift-found.v1
+  host_local_config_drift_failed: onex.evt.omnimarket.host-local-config-drift-failed.v1
+  host_local_config_drift_run_completed: onex.evt.omnimarket.host-local-config-drift-run-completed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+dependency_ownership:
+  overlay: "Supplied by the node's own command line, which loads the overlay and constructs the handler in process."
+
+metadata:
+  transport_type: local
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-local-config-drift-clean.v1
+  - onex.evt.omnimarket.host-local-config-drift-found.v1
+  - onex.evt.omnimarket.host-local-config-drift-failed.v1
+  - onex.evt.omnimarket.host-local-config-drift-run-completed.v1

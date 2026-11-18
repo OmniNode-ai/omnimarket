@@ -193,7 +193,8 @@ class HandlerWorkLedgerReader:
         """Every page of the open set, following next_cursor up to max_pages; a set that does
         not end within max_pages is an error, never a cut-short answer. A rows read names its
         window: since is the injected clock's now minus window_hours, read once at the start
-        of handle and used for every page."""
+        of handle and used for every page. An open-claims read names its window the same way:
+        claims_since is now minus window_hours, so only claims opened inside it are sent."""
         pages: list[ModelPointAnswer] = []
         cursor: str | None = None
         for _ in range(self._overlay.max_pages):
@@ -212,7 +213,17 @@ class HandlerWorkLedgerReader:
                         and request.window_hours is not None
                         else None
                     ),
-                    page_size=self._overlay.page_size,
+                    claims_since=(
+                        now - timedelta(hours=request.window_hours)
+                        if request.query is EnumReaderQuery.OPEN_CLAIMS
+                        and request.window_hours is not None
+                        else None
+                    ),
+                    kinds=request.kinds,
+                    term=request.term,
+                    page_size=self._overlay.page_size_by_query.get(
+                        request.query, self._overlay.page_size
+                    ),
                     cursor=cursor,
                     lines_only=self._overlay.rows_lines_only
                     and request.query is EnumReaderQuery.ROWS,

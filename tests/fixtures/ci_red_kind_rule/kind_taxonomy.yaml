@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The two sides of the rule node's kind seam, read from their owners, never guessed (OMN-24322).
+#
+# taxonomy: the ten kinds of the frozen triage truth set (the answer set the triage experiment gave the model),
+# read from the experiment's class definitions of lane exp-triagepow-6800.
+#
+# routing_declared_kinds: the kinds the routing overlay's task_kind_rungs route for ci_red_triage declares, read
+# from tests/fixtures/task_kind_rungs/overlay.yaml at head b8886c3c57ac3a45ae6634b613a3bba1add13801 of the branch
+# omn-19998-task-kind-rung (pull request 6093, lane exp-route-6799). Not merged when this was written; when it
+# merges, replace this list by reading that fixture and rerun the seam test.
+#
+# rule_kinds_not_in_routing: the rule node's kinds the routing overlay does not declare. A kind routing does not
+# declare is KIND_UNDECLARED to the routing guard, so a rule-decided kind must never be sent to that guard as a
+# model answer. The seam test fails when either side changes this set.
+taxonomy:
+  - product
+  - pr-process
+  - runner-infra
+  - delegation-health-gate
+  - pin-unresolvable
+  - review-gate-degraded
+  - base-red
+  - cancelled
+  - superseded
+  - follower
+routing_declared_kinds:
+  - base-red
+  - cancelled
+  - follower
+  - review-gate-degraded
+  - superseded
+  - pr-process
+  - product
+  - runner-infra
+rule_kinds_not_in_routing:
+  - delegation-health-gate
+  - pin-unresolvable

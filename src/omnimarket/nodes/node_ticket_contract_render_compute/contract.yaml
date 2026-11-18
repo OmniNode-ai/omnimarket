@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ticket_contract_render_compute
+node_type: compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >-
+  Renders the standard (schema 1.1.0) ticket contract into the ticket body: the filing lines the
+  caller passes in, the business brief, the Gate line, the Diagnosis line when set, the labelled
+  criteria with falsifiers and integrated marked, the Probe line when set, then one fenced block of
+  the contract's own YAML. Parses a body back into its filing lines and contract, and reports by
+  name a block whose contract_fingerprint no longer recomputes (contract_not_synced) and text that
+  differs from a fresh render of the block (rendered_text_drift). The filing lines are never compared.
+  Render refuses text that does not parse back with the same fingerprint.
+input_model: omnimarket.nodes.node_ticket_contract_render_compute.models.model_ticket_contract_render.ModelTicketContractRenderRequest
+output_model: omnimarket.nodes.node_ticket_contract_render_compute.models.model_ticket_contract_render.ModelTicketContractRenderResult
+handler:
+  module: omnimarket.nodes.node_ticket_contract_render_compute.handlers.handler_ticket_contract_render
+  class: HandlerTicketContractRender
+  input_model: omnimarket.nodes.node_ticket_contract_render_compute.models.model_ticket_contract_render.ModelTicketContractRenderRequest
+  output_model: omnimarket.nodes.node_ticket_contract_render_compute.models.model_ticket_contract_render.ModelTicketContractRenderResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerTicketContractRender
+        module: omnimarket.nodes.node_ticket_contract_render_compute.handlers.handler_ticket_contract_render
+      event_model:
+        name: ModelTicketContractRenderRequest
+        module: omnimarket.nodes.node_ticket_contract_render_compute.models.model_ticket_contract_render
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+terminal_event: onex.evt.omnimarket.ticket-contract-rendered.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.ticket-contract-render.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.ticket-contract-render.v1]
+  publish_topics: [onex.evt.omnimarket.ticket-contract-rendered.v1]
+externally_consumed_topics: [onex.evt.omnimarket.ticket-contract-rendered.v1]
+inputs:
+  operation: {type: string, required: true, description: render or parse}
+  contract: {type: object, required: false, description: The schema 1.1.0 ticket contract to render; render only}
+  filing_lines: {type: list, required: false, description: The lane stamp and correlation stamp; never compared; render only}
+  body: {type: string, required: false, description: The ticket body to read; parse only}
+  normalizations: {type: list, required: false, description: The overlay's regular-expression rewrites applied to both texts before comparison}
+outputs:
+  outcome: {type: string, description: rendered, parsed or refused}
+  body: {type: string, description: The rendered ticket body; render only}
+  filing_lines: {type: list, description: The filing lines read from the body}
+  contract: {type: object, description: The contract the block holds}
+  block_fingerprint: {type: string, description: The fingerprint the block states}
+  recomputed_fingerprint: {type: string, description: The fingerprint recomputed from the block's contract}
+  findings: {type: list, description: Each finding by code, with its detail}
+# The broker grants the node's two topics need (OMN-24005 coverage gate): the runtime login reads the request and
+# writes the answer.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.ticket-contract-render.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.ticket-contract-render.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ticket-contract-rendered.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ticket-contract-rendered.v1, operation: DESCRIBE}
+
+metadata:
+  ticket: OMN-23759
+  transport_type: kafka

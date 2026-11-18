@@ -11,11 +11,29 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import click
+from omnibase_core.enums.enum_delegation_traffic_class import (
+    EnumDelegationTrafficClass,
+)
 
 
 def loop_limit_options[F: Callable[..., object]](command: F) -> F:
-    """Declare --max-turns, --check-timeout-s and --wall-budget-s on a click command."""
+    """Declare the loop limits and the run's origin (--traffic-class, --source-surface)."""
     for option in (
+        click.option(
+            "--source-surface",
+            default=None,
+            help="Named producer surface stamped on each turn; required with "
+            "--traffic-class synthetic.",
+        ),
+        click.option(
+            "--traffic-class",
+            type=click.Choice([member.value for member in EnumDelegationTrafficClass]),
+            default=EnumDelegationTrafficClass.UNCLASSIFIED.value,
+            show_default=True,
+            callback=lambda _ctx, _param, value: EnumDelegationTrafficClass(value),
+            help="Declared origin of the run, stamped on each delegate turn. Synthetic "
+            "marks a trial or probe run as not real work and needs --source-surface.",
+        ),
         click.option(
             "--wall-budget-s",
             type=click.IntRange(1, 7200),

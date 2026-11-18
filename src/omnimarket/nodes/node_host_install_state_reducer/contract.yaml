@@ -61,11 +61,24 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.host-install-state-updated.v1
 
-externally_produced_topics:
-  - topic: onex.evt.omnimarket.host-install-step.v1
-    producer: "the host install workflow, which publishes one step event per install step directly -- not a node contract"
 externally_consumed_topics:
   - onex.evt.omnimarket.host-install-state-updated.v1
+
+# The folded record is an EVENT to publish, not a reducer projection. The runtime classifies a reducer's bare model return
+# as a projection unless the contract declares the model class here (event_type -> topic), and a projection is never
+# published: without this map the branch deploy orchestrator and the host install orchestrator waited on the state-updated
+# topic, which stayed empty, and stopped after their first step.
+published_events:
+  - event_type: HostInstallRecord
+    topic: onex.evt.omnimarket.host-install-state-updated.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-step.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-step.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-state-updated.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-state-updated.v1, operation: DESCRIBE}
 
 dependencies:
   packages:

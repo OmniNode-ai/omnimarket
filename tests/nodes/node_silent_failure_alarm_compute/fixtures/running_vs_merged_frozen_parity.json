@@ -1,0 +1,1158 @@
+{
+ "cases": [
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": []
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [],
+    "held": [],
+    "state": "OK"
+   },
+   "name": "empty-fold-ok",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "plugin:omni@omninode-internal",
+        "kind": "plugin",
+        "observed": "installed 0.4.477 merged 0.4.478",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "on h101: claude plugin marketplace update omninode-internal && claude plugin update omni@omninode-internal (the host-drift update-plugin action; read why it has not run in the sync hub's state)",
+      "level": "missing",
+      "loop": "running-vs-merged:plugin:h101",
+      "why": "h101 plugin:omni@omninode-internal differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT installed 0.4.477 merged 0.4.478"
+     }
+    ],
+    "held": [],
+    "state": "MISSING"
+   },
+   "name": "plugin-drift",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "plugin:omni@omninode-internal",
+        "kind": "plugin",
+        "observed": "tree modified: 2 files hotpatch",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "on h101: python3 \"$(ls -d ~/.claude/plugins/cache/omninode-internal/omni/*/skills/adopt-merged | sort -V | tail -1)/scripts/adopt_merged.py\" backups --since 2026-11-14T00:00:00Z, land or drop each hot-patched file, then the host-drift repair-plugin action reinstalls the shipped revision",
+      "level": "missing",
+      "loop": "running-vs-merged:plugin:h101",
+      "why": "h101 plugin:omni@omninode-internal differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT tree modified: 2 files hotpatch"
+     }
+    ],
+    "held": [],
+    "state": "MISSING"
+   },
+   "name": "plugin-hotpatch",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "plugin:omni@omninode-internal",
+        "kind": "plugin",
+        "observed": "hotpatch-declared 1 file",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [],
+    "held": [
+     {
+      "loop": "running-vs-merged:plugin:h101",
+      "until": "",
+      "why": "h101 plugin:omni@omninode-internal hotpatch-declared 1 file"
+     }
+    ],
+    "state": "OK"
+   },
+   "name": "plugin-hotpatch-declared-held",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "plugin:omni@omninode-internal",
+        "kind": "plugin",
+        "observed": "plugin-behind: installed 0.4.477 merged 0.4.478",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "on h101: python3 \"$(ls -d ~/.claude/plugins/cache/omninode-internal/omni/*/skills/adopt-merged | sort -V | tail -1)/scripts/adopt_merged.py\" install-tree --branch main --with-installed --lane h101-by-hand (the host-drift install-plugin-tree action; read why it has not run in the sync hub's state)",
+      "level": "missing",
+      "loop": "running-vs-merged:plugin:h101",
+      "why": "h101 plugin:omni@omninode-internal differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT plugin-behind: installed 0.4.477 merged 0.4.478"
+     }
+    ],
+    "held": [],
+    "state": "MISSING"
+   },
+   "name": "plugin-behind",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "plugin:omni@omninode-internal",
+        "kind": "plugin",
+        "observed": "plugin-stale: installed 0.4.470",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "on h101: python3 \"$(ls -d ~/.claude/plugins/cache/omninode-internal/omni/*/skills/adopt-merged | sort -V | tail -1)/scripts/adopt_merged.py\" install-tree --branch main --with-installed --lane h101-by-hand (the host-drift install-plugin-tree action; read why it has not run in the sync hub's state)",
+      "level": "missing",
+      "loop": "running-vs-merged:plugin:h101",
+      "why": "h101 plugin:omni@omninode-internal differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT plugin-stale: installed 0.4.470"
+     }
+    ],
+    "held": [],
+    "state": "MISSING"
+   },
+   "name": "plugin-stale",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "dispatch-venv:/srv/registry/omnimarket",
+        "kind": "dispatch-venv",
+        "observed": "uv.lock differs",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "on h101: bash \"$OMNI_HOME/omnibase_infra/scripts/reconcile-workspace-venvs.sh\" for the root holding /srv/registry/omnimarket (the host-drift update-venv action; read its last fix outcome in the sync hub's state)",
+      "level": "missing",
+      "loop": "running-vs-merged:dispatch-venv:h101:/srv/registry/omnimarket",
+      "why": "h101 dispatch-venv:/srv/registry/omnimarket differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT uv.lock differs"
+     }
+    ],
+    "held": [],
+    "state": "MISSING"
+   },
+   "name": "dispatch-venv-drift",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "controller:landing-controller",
+        "kind": "controller",
+        "observed": "installed 53aef241cbce matches none of the last 50 controller commits",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "on h101: if ~/.omninode/landing-controller/landing_install.json exists, never replace it: the next controller tick refreshes from origin/main through its own install path (landing_g_act.refresh_install); read why it has not in the controller log. Only when landing_install.json is absent, move the newest landing_install.json.moved-aside.* back.",
+      "level": "missing",
+      "loop": "running-vs-merged:controller:h101:landing-controller",
+      "why": "h101 controller:landing-controller differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT installed 53aef241cbce matches none of the last 50 controller commits"
+     }
+    ],
+    "held": [],
+    "state": "MISSING"
+   },
+   "name": "controller-drift",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "controller:landing-controller",
+        "kind": "controller",
+        "observed": "installed 53aef241cbce branch-held until 2026-11-14T08:00:00Z by INSTALLED-FROM-BRANCHES.txt entry lane-x branch-y",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [],
+    "held": [
+     {
+      "loop": "running-vs-merged:controller:h101:landing-controller",
+      "until": "2026-11-14T08:00:00Z",
+      "why": "h101 controller:landing-controller branch-held until 2026-11-14T08:00:00Z by INSTALLED-FROM-BRANCHES.txt entry lane-x branch-y"
+     }
+    ],
+    "state": "OK"
+   },
+   "name": "controller-declared-hold-held",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "controller:landing-controller",
+        "kind": "controller",
+        "observed": "installed 53aef241cbce branch-held until 2026-11-14T08:00:00Z by undeclared record",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "on h101: a live branch_until (2026-11-14T08:00:00Z) in ~/.omninode/landing-controller/landing_install.json names no INSTALLED-FROM-BRANCHES.txt entry: the lane that installed it appends its entry (lane, branch, commit, branch_until), or the hold runs out at 2026-11-14T08:00:00Z. Never replace or move landing_install.json while branch_until is live.",
+      "level": "missing",
+      "loop": "running-vs-merged:controller:h101:landing-controller",
+      "why": "h101 controller:landing-controller differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT installed 53aef241cbce branch-held until 2026-11-14T08:00:00Z by undeclared record"
+     }
+    ],
+    "held": [],
+    "state": "MISSING"
+   },
+   "name": "controller-undeclared-hold-missing",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "controller:landing-controller",
+        "kind": "controller",
+        "observed": "installed 53aef241cbce branch-held until 2026-11-14T01:00:00Z by INSTALLED-FROM-BRANCHES.txt entry lane-x branch-y",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "on h101: if ~/.omninode/landing-controller/landing_install.json exists, never replace it: the next controller tick refreshes from origin/main through its own install path (landing_g_act.refresh_install); read why it has not in the controller log. Only when landing_install.json is absent, move the newest landing_install.json.moved-aside.* back.",
+      "level": "missing",
+      "loop": "running-vs-merged:controller:h101:landing-controller",
+      "why": "h101 controller:landing-controller differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT installed 53aef241cbce branch-held until 2026-11-14T01:00:00Z by INSTALLED-FROM-BRANCHES.txt entry lane-x branch-y"
+     }
+    ],
+    "held": [],
+    "state": "MISSING"
+   },
+   "name": "controller-expired-hold-missing",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "serve-checkout:ai.omninode.work-ledger-serve",
+        "kind": "serve-checkout",
+        "observed": "head 1bb6a66b0f69 behind origin/main",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "on h101: the host-drift advance-serve action reruns the node installer of ai.omninode.work-ledger-serve with --advance (it fetches the serve checkout's ref, syncs the venv and restarts the unit); read why it has not run in the sync hub's state",
+      "level": "missing",
+      "loop": "running-vs-merged:serve-checkout:h101:ai.omninode.work-ledger-serve",
+      "why": "h101 serve-checkout:ai.omninode.work-ledger-serve differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT head 1bb6a66b0f69 behind origin/main"
+     }
+    ],
+    "held": [],
+    "state": "MISSING"
+   },
+   "name": "serve-checkout-drift",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "launchd-plist:ai.omninode.pr-watcher",
+        "kind": "launchd-plist",
+        "observed": "differs: lib/watch.py",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "on h101: land or drop any hot-patched file, then rerun the installer of ai.omninode.pr-watcher from the internal tooling canonical clone at origin/main (python3 \"$(ls -d ~/.claude/plugins/cache/omninode-internal/omni/*/skills/adopt-merged | sort -V | tail -1)/scripts/adopt_merged.py\" run reruns the installers it lists)",
+      "level": "missing",
+      "loop": "running-vs-merged:launchd-lib:h101:ai.omninode.pr-watcher",
+      "why": "h101 launchd-plist:ai.omninode.pr-watcher differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT differs: lib/watch.py"
+     }
+    ],
+    "held": [],
+    "state": "MISSING"
+   },
+   "name": "launchd-lib-drift",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "launchd-plist:ai.omninode.pr-watcher",
+        "kind": "launchd-plist",
+        "observed": "@@ -1 +1 @@",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [],
+    "held": [],
+    "state": "OK"
+   },
+   "name": "launchd-plist-content-ignored",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "thing:x",
+        "kind": "thing",
+        "observed": "x",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [],
+    "held": [],
+    "state": "OK"
+   },
+   "name": "unknown-kind-ignored",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T02:40:00Z",
+        "key": "plugin:omni@omninode-internal",
+        "kind": "plugin",
+        "observed": "installed 0.4.477",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [],
+    "held": [],
+    "state": "OK"
+   },
+   "name": "inside-bound-no-finding",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "acknowledgements": [
+    {
+     "acknowledged_at": "2026-11-13T12:00:00Z",
+     "by": "orchestrator-31d9",
+     "cites": "RULING 2026-11-13T00:00:00Z",
+     "expires_at": "2026-11-14T12:00:00Z",
+     "surface": "plugin:h101",
+     "while_observed": "installed 0.4.452",
+     "why": "deliberate branch install"
+    }
+   ],
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "plugin:omni@omninode-internal",
+        "kind": "plugin",
+        "observed": "installed 0.4.452",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [
+     {
+      "fix": "",
+      "level": "note",
+      "loop": "running-vs-merged:plugin:h101",
+      "why": "acknowledged by orchestrator-31d9: deliberate branch install (cites RULING 2026-11-13T00:00:00Z; expires 2026-11-14T12:00:00Z); h101 plugin:omni@omninode-internal differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT installed 0.4.452"
+     }
+    ],
+    "findings": [],
+    "held": [],
+    "state": "OK"
+   },
+   "name": "ack-active-note",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "acknowledgements": [
+    {
+     "acknowledged_at": "2026-11-13T12:00:00Z",
+     "by": "orchestrator-31d9",
+     "cites": "RULING 2026-11-13T00:00:00Z",
+     "expires_at": "2026-11-14T02:00:00Z",
+     "surface": "plugin:h101",
+     "while_observed": "installed 0.4.452",
+     "why": "deliberate branch install"
+    }
+   ],
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "plugin:omni@omninode-internal",
+        "kind": "plugin",
+        "observed": "installed 0.4.452",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "on h101: claude plugin marketplace update omninode-internal && claude plugin update omni@omninode-internal (the host-drift update-plugin action; read why it has not run in the sync hub's state)",
+      "level": "missing",
+      "loop": "running-vs-merged:plugin:h101",
+      "why": "h101 plugin:omni@omninode-internal differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT installed 0.4.452 (acknowledgement by orchestrator-31d9 expired 2026-11-14T02:00:00Z)"
+     }
+    ],
+    "held": [],
+    "state": "MISSING"
+   },
+   "name": "ack-expired-missing",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "acknowledgements": [
+    {
+     "acknowledged_at": "2026-11-13T12:00:00Z",
+     "by": "orchestrator-31d9",
+     "cites": "RULING 2026-11-13T00:00:00Z",
+     "expires_at": "2026-11-14T12:00:00Z",
+     "surface": "plugin:h101",
+     "while_observed": "installed 0.4.452",
+     "why": "deliberate branch install"
+    }
+   ],
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "plugin:omni@omninode-internal",
+        "kind": "plugin",
+        "observed": "installed 0.4.460",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "on h101: claude plugin marketplace update omninode-internal && claude plugin update omni@omninode-internal (the host-drift update-plugin action; read why it has not run in the sync hub's state)",
+      "level": "missing",
+      "loop": "running-vs-merged:plugin:h101",
+      "why": "h101 plugin:omni@omninode-internal differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT installed 0.4.460 (acknowledged drift no longer matches: 'installed 0.4.452' is not in what the host observes)"
+     }
+    ],
+    "held": [],
+    "state": "MISSING"
+   },
+   "name": "ack-no-longer-matches",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "acknowledgements": [
+    {
+     "acknowledged_at": "2026-11-13T12:00:00Z",
+     "by": "orchestrator-31d9",
+     "cites": "RULING 2026-11-13T00:00:00Z",
+     "expires_at": "2026-11-14T02:00:00Z",
+     "surface": "plugin:h101",
+     "while_observed": "installed 0.4.452",
+     "why": "deliberate branch install"
+    },
+    {
+     "acknowledged_at": "2026-11-13T12:00:00Z",
+     "by": "orchestrator-31d9",
+     "cites": "RULING 2026-11-13T00:00:00Z",
+     "expires_at": "2026-11-14T12:00:00Z",
+     "surface": "plugin:h101",
+     "while_observed": "installed 0.4.452",
+     "why": "deliberate branch install"
+    }
+   ],
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "plugin:omni@omninode-internal",
+        "kind": "plugin",
+        "observed": "installed 0.4.452",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [
+     {
+      "fix": "",
+      "level": "note",
+      "loop": "running-vs-merged:plugin:h101",
+      "why": "acknowledged by orchestrator-31d9: deliberate branch install (cites RULING 2026-11-13T00:00:00Z; expires 2026-11-14T12:00:00Z); h101 plugin:omni@omninode-internal differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT installed 0.4.452"
+     }
+    ],
+    "findings": [],
+    "held": [],
+    "state": "OK"
+   },
+   "name": "ack-renewal-latest-wins",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h201",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "plugin:omni@omninode-internal",
+        "kind": "plugin",
+        "observed": "installed 0.4.477",
+        "verdict": "DRIFT"
+       },
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "dispatch-venv:/x/omnimarket",
+        "kind": "dispatch-venv",
+        "observed": "stale",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "on h201: bash \"$OMNI_HOME/omnibase_infra/scripts/reconcile-workspace-venvs.sh\" for the root holding /x/omnimarket (the host-drift update-venv action; read its last fix outcome in the sync hub's state)",
+      "level": "missing",
+      "loop": "running-vs-merged:dispatch-venv:h201:/x/omnimarket",
+      "why": "h201 dispatch-venv:/x/omnimarket differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT stale"
+     },
+     {
+      "fix": "on h201: claude plugin marketplace update omninode-internal && claude plugin update omni@omninode-internal (the host-drift update-plugin action; read why it has not run in the sync hub's state)",
+      "level": "missing",
+      "loop": "running-vs-merged:plugin:h201",
+      "why": "h201 plugin:omni@omninode-internal differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT installed 0.4.477"
+     }
+    ],
+    "held": [],
+    "state": "MISSING"
+   },
+   "name": "two-surfaces-sorted",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "folded_at": "2026-11-13T20:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": []
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "read the host-drift run on the operator host: tail ~/.omninode/host-drift/launchd.out.log and launchctl list ai.omninode.host-drift; its fold is $OMNI_HOME/.onex_state/host-drift/fleet.json",
+      "level": "unknown",
+      "loop": "running-vs-merged",
+      "why": "host-drift fleet fold is 7h00m old (folded 2026-11-13T20:00:00Z), over 45m"
+     }
+    ],
+    "held": [],
+    "state": "UNKNOWN"
+   },
+   "name": "fold-stale-unknown",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "hosts": []
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "read the host-drift run on the operator host: tail ~/.omninode/host-drift/launchd.out.log and launchctl list ai.omninode.host-drift; its fold is $OMNI_HOME/.onex_state/host-drift/fleet.json",
+      "level": "unknown",
+      "loop": "running-vs-merged",
+      "why": "host-drift fleet fold names no folded_at"
+     }
+    ],
+    "held": [],
+    "state": "UNKNOWN"
+   },
+   "name": "fold-no-folded-at-unknown",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "fleet": {
+    "hosts": "nope"
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "read the host-drift run on the operator host: tail ~/.omninode/host-drift/launchd.out.log and launchctl list ai.omninode.host-drift; its fold is $OMNI_HOME/.onex_state/host-drift/fleet.json",
+      "level": "unknown",
+      "loop": "running-vs-merged",
+      "why": "host-drift fleet fold unreadable: malformed: hosts is not a list"
+     }
+    ],
+    "held": [],
+    "state": "UNKNOWN"
+   },
+   "name": "fold-malformed-unknown",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "branch_installs": {
+    "payload": {
+     "declared": [
+      {
+       "id": "omnibase_infra#5990"
+      }
+     ],
+     "last_check": {
+      "checked_at": "2026-11-14T02:55:00Z",
+      "readbacks": [
+       {
+        "files": [],
+        "install_key": "omnibase_infra#5990",
+        "pr": 5990,
+        "repo": "omnibase_infra",
+        "state": "present"
+       }
+      ]
+     }
+    },
+    "why": ""
+   },
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": []
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [],
+    "held": [],
+    "state": "OK"
+   },
+   "name": "branch-installs-ok",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "branch_installs": {
+    "payload": {
+     "declared": [
+      {
+       "id": "omnibase_infra#5990"
+      }
+     ],
+     "last_check": {
+      "checked_at": "2026-11-14T02:55:00Z",
+      "readbacks": [
+       {
+        "files": [
+         {
+          "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "observed_sha256": "",
+          "path": "src/a.py",
+          "state": "missing"
+         }
+        ],
+        "install_key": "omnibase_infra#5990",
+        "pr": 5990,
+        "repo": "omnibase_infra",
+        "state": "missing"
+       }
+      ]
+     }
+    },
+    "why": ""
+   },
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": []
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "the dev deploy agent puts a recorded install back on its next idle tick (two minutes) and after every dev job; if it stays missing, read the agent's journal on the dev lane host (journalctl --user -u deploy-agent-dev | grep BRANCH-INSTALL-MISSING) and apply by hand with python -m omnibase_infra.handlers.handler_dev_lane_branch_install apply, from a checkout that holds the handler, against the agent's DEPLOY_AGENT_STATE_DIR",
+      "level": "missing",
+      "loop": "running-vs-merged:branch-installs:omnibase_infra#5990",
+      "why": "dev lane omnibase_infra#5990 installed from its branch is missing in the running container (agent readback 2026-11-14T02:55:00Z): src/a.py expected aaaaaaaaaaaa observed absent"
+     }
+    ],
+    "held": [],
+    "state": "MISSING"
+   },
+   "name": "branch-installs-missing",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "branch_installs": {
+    "payload": {
+     "declared": [
+      {
+       "id": "omnibase_infra#5990"
+      }
+     ],
+     "last_check": {
+      "checked_at": "2026-11-14T01:00:00Z",
+      "readbacks": []
+     }
+    },
+    "why": ""
+   },
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": []
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "read the dev deploy agent's /branch-installs and its unit: curl the agent's health port at /branch-installs, and journalctl --user -u deploy-agent-dev on the dev lane host. An agent that does not serve the path predates omnibase_infra's dev-lane branch install record",
+      "level": "unknown",
+      "loop": "running-vs-merged:branch-installs",
+      "why": "dev deploy agent's branch install readback is 2h00m old (read 2026-11-14T01:00:00Z), over 15m"
+     }
+    ],
+    "held": [],
+    "state": "UNKNOWN"
+   },
+   "name": "branch-installs-stale-readback-unknown",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "branch_installs": {
+    "payload": {
+     "declared": [
+      {
+       "id": "omnibase_infra#5990"
+      }
+     ],
+     "last_check": {
+      "checked_at": "2026-11-14T02:55:00Z",
+      "readbacks": []
+     }
+    },
+    "why": ""
+   },
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": []
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "read the dev deploy agent's /branch-installs and its unit: curl the agent's health port at /branch-installs, and journalctl --user -u deploy-agent-dev on the dev lane host. An agent that does not serve the path predates omnibase_infra's dev-lane branch install record",
+      "level": "unknown",
+      "loop": "running-vs-merged:branch-installs",
+      "why": "declared branch install(s) with no readback: omnibase_infra#5990"
+     }
+    ],
+    "held": [],
+    "state": "UNKNOWN"
+   },
+   "name": "branch-installs-unread-declared-unknown",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "branch_installs": {
+    "payload": {
+     "declared": [
+      {
+       "id": "omnibase_infra#5990"
+      }
+     ],
+     "last_check": null
+    },
+    "why": ""
+   },
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": []
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "read the dev deploy agent's /branch-installs and its unit: curl the agent's health port at /branch-installs, and journalctl --user -u deploy-agent-dev on the dev lane host. An agent that does not serve the path predates omnibase_infra's dev-lane branch install record",
+      "level": "unknown",
+      "loop": "running-vs-merged:branch-installs",
+      "why": "dev deploy agent declares 1 branch install(s) and has not read any back"
+     }
+    ],
+    "held": [],
+    "state": "UNKNOWN"
+   },
+   "name": "branch-installs-no-readback-unknown",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "branch_installs": {
+    "payload": {
+     "installs": null,
+     "reason": "agent store unreadable"
+    },
+    "why": ""
+   },
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": []
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "read the dev deploy agent's /branch-installs and its unit: curl the agent's health port at /branch-installs, and journalctl --user -u deploy-agent-dev on the dev lane host. An agent that does not serve the path predates omnibase_infra's dev-lane branch install record",
+      "level": "unknown",
+      "loop": "running-vs-merged:branch-installs",
+      "why": "dev deploy agent /branch-installs unreadable: malformed: the agent says: agent store unreadable"
+     }
+    ],
+    "held": [],
+    "state": "UNKNOWN"
+   },
+   "name": "branch-installs-agent-unreadable-unknown",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "branch_installs": {
+    "payload": null,
+    "why": "connection refused"
+   },
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": []
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "read the dev deploy agent's /branch-installs and its unit: curl the agent's health port at /branch-installs, and journalctl --user -u deploy-agent-dev on the dev lane host. An agent that does not serve the path predates omnibase_infra's dev-lane branch install record",
+      "level": "unknown",
+      "loop": "running-vs-merged:branch-installs",
+      "why": "dev deploy agent /branch-installs unreadable: connection refused"
+     }
+    ],
+    "held": [],
+    "state": "UNKNOWN"
+   },
+   "name": "branch-installs-fetch-failed-unknown",
+   "now": "2026-11-14T03:00:00Z"
+  },
+  {
+   "branch_installs": {
+    "payload": {
+     "declared": [
+      {
+       "id": "omnibase_infra#5990"
+      }
+     ],
+     "last_check": {
+      "checked_at": "2026-11-14T02:55:00Z",
+      "readbacks": [
+       {
+        "files": [
+         {
+          "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "observed_sha256": "",
+          "path": "src/a.py",
+          "state": "missing"
+         }
+        ],
+        "install_key": "omnibase_infra#5990",
+        "pr": 5990,
+        "repo": "omnibase_infra",
+        "state": "missing"
+       }
+      ]
+     }
+    },
+    "why": ""
+   },
+   "fleet": {
+    "folded_at": "2026-11-14T03:00:00Z",
+    "hosts": [
+     {
+      "host": "h101",
+      "open": [
+       {
+        "first_seen_at": "2026-11-14T00:00:00Z",
+        "key": "plugin:omni@omninode-internal",
+        "kind": "plugin",
+        "observed": "installed 0.4.477",
+        "verdict": "DRIFT"
+       }
+      ]
+     }
+    ]
+   },
+   "frozen": {
+    "acknowledged": [],
+    "findings": [
+     {
+      "fix": "the dev deploy agent puts a recorded install back on its next idle tick (two minutes) and after every dev job; if it stays missing, read the agent's journal on the dev lane host (journalctl --user -u deploy-agent-dev | grep BRANCH-INSTALL-MISSING) and apply by hand with python -m omnibase_infra.handlers.handler_dev_lane_branch_install apply, from a checkout that holds the handler, against the agent's DEPLOY_AGENT_STATE_DIR",
+      "level": "missing",
+      "loop": "running-vs-merged:branch-installs:omnibase_infra#5990",
+      "why": "dev lane omnibase_infra#5990 installed from its branch is missing in the running container (agent readback 2026-11-14T02:55:00Z): src/a.py expected aaaaaaaaaaaa observed absent"
+     },
+     {
+      "fix": "on h101: claude plugin marketplace update omninode-internal && claude plugin update omni@omninode-internal (the host-drift update-plugin action; read why it has not run in the sync hub's state)",
+      "level": "missing",
+      "loop": "running-vs-merged:plugin:h101",
+      "why": "h101 plugin:omni@omninode-internal differs from merged main for 3h00m (since 2026-11-14T00:00:00Z): DRIFT installed 0.4.477"
+     }
+    ],
+    "held": [],
+    "state": "MISSING"
+   },
+   "name": "missing-plus-branch-installs-missing",
+   "now": "2026-11-14T03:00:00Z"
+  }
+ ],
+ "now": "2026-11-14T03:00:00Z"
+}

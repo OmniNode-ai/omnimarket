@@ -15,16 +15,16 @@ import json
 import re
 from typing import Any
 
-from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_binding_rules import (
-    refusal_reason,
-    same_actor,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
+from omnimarket.models.dod_closeout_sweep import (
     EnumTicketDecision,
     ModelAcceptanceState,
     ModelBoxTick,
     ModelRotationRecord,
     ModelUnmetCriterion,
+)
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_binding_rules import (
+    refusal_reason,
+    same_actor,
 )
 
 COMMENT_MARKER = "dod-closeout-sweep"

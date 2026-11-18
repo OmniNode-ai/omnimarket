@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+refusal_rules:
+  - name: refused_component_line
+    pattern: "^REFUSED(?: [0-9]+)? (?P<component>[a-z][a-z0-9._-]*):"
+    tool_names: [Bash]
+  - name: refused_ticket_held
+    pattern: "^REFUSED OMN-[0-9]+ is held by"
+    component: ticket-hold
+    tool_names: [Bash]
+  - name: status_refused_json
+    pattern: '"status": "(?P<component>refused|no_terminal|no_consumer_for_topic)"'
+    tool_names: [Bash]
+timeout_markers:
+  - "Command timed out"
+  - "timed out after"
+interrupted_is_timeout: true
+timeout_exit_codes:
+  - 124
+exit_code_pattern: "^Exit code ([0-9]+)"

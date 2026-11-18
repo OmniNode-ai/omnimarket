@@ -346,12 +346,14 @@ class JoinJ2:
             or receipt.exit_code != 0
             or marked not in receipt.output_tail
         ):
-            return failed(
-                EnumJoinJ2Outcome.COMMAND_FAILED,
-                FAIL_COMMAND,
+            detail = (
                 f"status {receipt.status.value}, exit {receipt.exit_code}, "
-                f"nonce {'seen' if marked in receipt.output_tail else 'not seen'}",
+                f"nonce {'seen' if marked in receipt.output_tail else 'not seen'}"
             )
+            receipt_detail = " ".join(receipt.detail.split())
+            if receipt_detail:
+                detail = f"{detail}: {receipt_detail}"
+            return failed(EnumJoinJ2Outcome.COMMAND_FAILED, FAIL_COMMAND, detail)
         seam.success({"results": 1})
         return ModelJoinJ2HostResult(
             host=host,

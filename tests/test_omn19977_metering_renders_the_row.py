@@ -98,8 +98,8 @@ def _seed_events(path: Path, records: Any = RECORDS) -> None:
             {
                 "correlation_id": cid,
                 "created_at": at.isoformat(),
-                "delegated_to": "worker",
-                "model_name": "worker",
+                "delegated_to": "gpt-4o-mini",
+                "model_name": "gpt-4o-mini",
                 "task_type": "",
                 "cost_savings_usd": None,
                 "tokens_input": tokens_in,
@@ -120,7 +120,7 @@ def _other_tenant_rows(path: Path) -> None:
                     ModelMeteringRecord(
                         correlation_id="other",
                         occurred_at=AS_OF - timedelta(days=3),
-                        model="worker",
+                        model="gpt-4o-mini",
                         tokens_in=9000,
                         tokens_out=900,
                         spend_usd=Decimal("7"),

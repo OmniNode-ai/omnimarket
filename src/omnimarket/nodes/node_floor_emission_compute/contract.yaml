@@ -13,7 +13,6 @@ contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 node_type: compute
 lifecycle: experimental
-runtime_profiles: [main]
 
 description: >
   Folds emission events into golden and error receipts per piece and per join. A chain that breaks the emission
@@ -26,6 +25,7 @@ handler:
   module: omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt
   class: HandlerFloorReceipt
   input_model: omnimarket.models.floor_17a.ModelFloorReceiptInput
+  output_model: omnimarket.models.floor_17a.ModelFloorReceipts
 
 handler_routing:
   routing_strategy: operation_match
@@ -42,6 +42,7 @@ descriptor:
   purity: pure
   idempotent: true
   timeout_ms: 1000
+  runtime_profiles: []
 
 input_model:
   name: ModelFloorReceiptInput
@@ -52,16 +53,15 @@ output_model:
   module: omnimarket.models.floor_17a
   description: Chains, golden and error receipts per piece and join, and the named findings.
 
-terminal_event: onex.evt.omnimarket.floor-receipts-computed.v1
+# Run in process by node_floor_simple_effect (OMN-24298): the input is a whole window of emissions, never a single event, so no bus topic
+# reaches this node. The emission topics are published by node_floor_simple_effect and read at once by node_floor_emissions_publish_effect
+# (its snapshot_reads); the receipts are returned to the caller, so the node publishes no topic of its own.
+runtime_dispatch:
+  external_trigger: node_floor_simple_effect (chain node_floor_emission_compute:compute_floor_receipts, in-process call)
 
 event_bus:
-  subscribe_topics:
-    - onex.evt.omnimarket.floor-node-started.v1
-    - onex.evt.omnimarket.floor-node-succeeded.v1
-    - onex.evt.omnimarket.floor-node-failed.v1
-  # The three emission topics are published by the nodes that emit (the 17a cycle's sink); this node folds them.
-  publish_topics:
-    - onex.evt.omnimarket.floor-receipts-computed.v1
+  subscribe_topics: []
+  publish_topics: []
 
-externally_consumed_topics:
-  - onex.evt.omnimarket.floor-receipts-computed.v1
+metadata:
+  transport_type: local

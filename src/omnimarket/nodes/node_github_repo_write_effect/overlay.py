@@ -1,9 +1,25 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The overlay of node_github_repo_write_effect: the labels a pr_label write may touch, none in code.
+"""The overlay of node_github_repo_write_effect: the labels a pr_label write may touch, the repository variables a
+repo_variable_set/get write may read or write and the self-hosted runners a runner_list/remove write may act on, none
+in code.
 
 Found at ``<root>/node_github_repo_write_effect/overlay.yaml`` under a root named in ``ONEX_SKILL_OVERLAY_ROOTS``. The
 package ships ``overlay.example.yaml`` with synthetic values. Nothing here has a default: an absent key refuses the load.
+
+``repo_variables`` names each allowed repository variable and the file its value is read from, so no value is ever in
+code, on a command line or on a request; names or values that look like secrets are refused. An entry's ``format``
+reads the source as the value itself (``text``) or as a YAML document in the overlays repository whose declared
+``select`` key's value is rendered as compact JSON (``json_compact``) or, for a string, used as it is (``scalar``).
+
+``runner_group_reads`` names each (organization, runner group id) pair a runner_group_get may read: a group of another
+id, or of another organization, is never read.
+
+``required_contexts`` names each (repository, branch, context) a required_context_apply may add to a branch's
+protection: any other repository, branch or context is refused before any GitHub call.
+
+``runner_removals`` names each organization whose runners a lane may list and, per organization, the runners a
+runner_remove may delete: an offline runner of another name is never deleted.
 
 The document also carries ``event_bus`` and ``comment_author_logins`` for their own readers; they are optional here
 because the node never reads them, and each reader refuses on its own when its key is absent.
@@ -12,6 +28,7 @@ because the node never reads them, and each reader refuses on its own when its k
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -37,10 +54,189 @@ class ModelPrLabelOverlay(BaseModel):
         return self
 
 
+class ModelRepoVariablesEntry(BaseModel):
+    """One repository variable the overlay allows the node to read or write.
+
+    ``format`` selects how ``source`` is read: ``text`` holds the value itself,
+    ``json_compact`` holds a YAML document that declares ``variable`` and
+    ``repository`` and whose ``select`` key's value the variable carries,
+    rendered as compact JSON.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repository: str = Field(pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+    name: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,99}$")
+    source: str
+    format: Literal["text", "json_compact", "scalar"] = "text"
+    select: str | None = None
+
+    @model_validator(mode="after")
+    def _shape(self) -> ModelRepoVariablesEntry:
+        if self.format in ("json_compact", "scalar"):
+            if self.select is None or not self.select.strip():
+                raise ValueError(
+                    "a json_compact or scalar repository variable source requires select, "
+                    "the name of the document's top-level key the variable holds"
+                )
+        elif self.select is not None:
+            raise ValueError("a text repository variable source must not carry select")
+        return self
+
+
+class ModelRepoVariablesOverlay(BaseModel):
+    """The repository variables a repo_variable_set/get write may touch, none in code."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    entries: tuple[ModelRepoVariablesEntry, ...] = Field(min_length=1)
+    refuse_name_markers: tuple[str, ...] = Field(min_length=1)
+    refuse_value_markers: tuple[str, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _shape(self) -> ModelRepoVariablesOverlay:
+        for marker in self.refuse_name_markers:
+            if not marker.strip():
+                raise ValueError("a refuse_name_marker is blank")
+        for marker in self.refuse_value_markers:
+            if not marker.strip():
+                raise ValueError("a refuse_value_marker is blank")
+        seen: set[tuple[str, str]] = set()
+        for entry in self.entries:
+            key = (entry.repository.lower(), entry.name)
+            if key in seen:
+                raise ValueError(
+                    f"a repository variable is named twice: "
+                    f"{entry.repository} {entry.name}"
+                )
+            seen.add(key)
+            if not entry.source.strip():
+                raise ValueError("a repository variable source is blank")
+            if entry.source.startswith("/") or ".." in entry.source.split("/"):
+                raise ValueError(
+                    "a repository variable source must be a relative path under "
+                    "the overlay root"
+                )
+            lowered_name = entry.name.lower()
+            if any(m.lower() in lowered_name for m in self.refuse_name_markers):
+                raise ValueError(
+                    "a repository variable name carries a refuse_name_marker, "
+                    f"and a secret can never be allowlisted: {entry.name}"
+                )
+        return self
+
+
+class ModelRunnerEntry(BaseModel):
+    """One organization whose runners a lane may list, and one of its runners
+    a runner_remove may delete; no runner is named in code."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    organization: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+
+
+class ModelRunnerGroupEntry(BaseModel):
+    """One runner group a runner_group_get read may act on; no group id is named in code."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    organization: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    group_id: int = Field(gt=0)
+
+
+class ModelRunnerGroupReadOverlay(BaseModel):
+    """The runner groups a runner_group_get read may act on, none in code.
+
+    ``runner_group_get`` is served only for a named (organization, group_id) pair.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    entries: tuple[ModelRunnerGroupEntry, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _shape(self) -> ModelRunnerGroupReadOverlay:
+        seen: set[tuple[str, int]] = set()
+        for entry in self.entries:
+            key = (entry.organization.lower(), entry.group_id)
+            if key in seen:
+                raise ValueError(
+                    "a runner group read entry is named twice: "
+                    f"{entry.organization} {entry.group_id}"
+                )
+            seen.add(key)
+        return self
+
+
+class ModelRunnerRemovalOverlay(BaseModel):
+    """The runners a runner_list/runner_remove write may act on, none in code.
+
+    ``runner_list`` is served for an organization named by at least one entry;
+    ``runner_remove`` only for a named (organization, name) pair.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    entries: tuple[ModelRunnerEntry, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _shape(self) -> ModelRunnerRemovalOverlay:
+        seen: set[tuple[str, str]] = set()
+        for entry in self.entries:
+            key = (entry.organization.lower(), entry.name)
+            if key in seen:
+                raise ValueError(
+                    "a runner removal entry is named twice: "
+                    f"{entry.organization} {entry.name}"
+                )
+            seen.add(key)
+        return self
+
+
+class ModelRequiredContextEntry(BaseModel):
+    """One (repository, branch, context) a required_context_apply may add; none is named in code."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repository: str = Field(pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+    branch: str = Field(pattern=r"^[A-Za-z0-9._/-]+$")
+    context: str = Field(min_length=1, max_length=200)
+
+
+class ModelRequiredContextOverlay(BaseModel):
+    """The required contexts a required_context_apply may add, per repository and branch, none in code.
+
+    The operation is served only for a named (repository, branch, context) triple; any other repository,
+    branch or context is refused before any GitHub call.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    entries: tuple[ModelRequiredContextEntry, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _shape(self) -> ModelRequiredContextOverlay:
+        seen: set[tuple[str, str, str]] = set()
+        for entry in self.entries:
+            key = (entry.repository.lower(), entry.branch, entry.context)
+            if key in seen:
+                raise ValueError(
+                    "a required context entry is named twice: "
+                    f"{entry.repository} {entry.branch} {entry.context}"
+                )
+            seen.add(key)
+        return self
+
+
 class ModelRepoWriteOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     pr_label: ModelPrLabelOverlay
+    required_contexts: ModelRequiredContextOverlay | None = None
+    repo_variables: ModelRepoVariablesOverlay | None = None
+    runner_removals: ModelRunnerRemovalOverlay | None = None
+    runner_group_reads: ModelRunnerGroupReadOverlay | None = None
     event_bus: ModelNodeEventBus | None = None
     comment_author_logins: tuple[str, ...] | None = None
 

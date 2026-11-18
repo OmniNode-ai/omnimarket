@@ -15,6 +15,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+
 
 class EnumCodeBudgetRefusal(StrEnum):
     """Why no budget was returned."""
@@ -82,6 +84,8 @@ class ModelCodeBudgetOverlay(BaseModel):
     ceiling_s: float = Field(gt=0)
     input_ceilings: dict[str, dict[str, int]]
     class_sampling: dict[str, ModelClassSampling] | None = None
+    # The bus `onex run-node` reads to reach this node (OMN-24265)
+    event_bus: ModelNodeEventBus | None = None
 
     @model_validator(mode="after")
     def validate_class_sampling(self) -> ModelCodeBudgetOverlay:

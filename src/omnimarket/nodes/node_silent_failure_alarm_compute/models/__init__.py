@@ -3,11 +3,21 @@
 """Models of the silent-failure alarm compute node (OMN-17427)."""
 
 from omnimarket.models.model_running_vs_merged_alarm import (
+    ModelBranchInstallReading,
     ModelFleetFoldAbsence,
+    ModelHostOmniHome,
     ModelRunningSurface,
+    ModelRunningVsMergedAcknowledgement,
     ModelRunningVsMergedFinding,
+    ModelRunningVsMergedHeld,
     ModelRunningVsMergedRequest,
     ModelRunningVsMergedResult,
+)
+from omnimarket.models.silent_failure_alarm.model_install_failure_alarm import (
+    ModelInstallFailureAlarmRequest,
+    ModelInstallFailureAlarmResult,
+    ModelInstallFailureRow,
+    ModelInstallFailureState,
 )
 
 from .model_drainer_alarm import (
@@ -21,6 +31,7 @@ from .model_job_exit_alarm import (
     ModelJobExitAlarmResult,
     ModelJobExitEpisode,
     ModelJobExitReading,
+    ModelJobExitReraise,
     ModelJobExitStreak,
 )
 from .model_placement_share_alarm import (
@@ -41,16 +52,23 @@ from .model_throughput_results_alarm import (
 from .model_tick_liveness_alarm import ModelTickLivenessRequest, ModelTickLivenessResult
 
 __all__ = [
+    "ModelBranchInstallReading",
     "ModelDrainerObservation",
     "ModelDrainerRepair",
     "ModelDrainerRequest",
     "ModelDrainerResult",
     "ModelFleetFoldAbsence",
     "ModelHostActivity",
+    "ModelHostOmniHome",
+    "ModelInstallFailureAlarmRequest",
+    "ModelInstallFailureAlarmResult",
+    "ModelInstallFailureRow",
+    "ModelInstallFailureState",
     "ModelJobExitAlarmRequest",
     "ModelJobExitAlarmResult",
     "ModelJobExitEpisode",
     "ModelJobExitReading",
+    "ModelJobExitReraise",
     "ModelJobExitStreak",
     "ModelLaneRefusal",
     "ModelPlacementRun",
@@ -59,7 +77,9 @@ __all__ = [
     "ModelQuietHostRequest",
     "ModelQuietHostResult",
     "ModelRunningSurface",
+    "ModelRunningVsMergedAcknowledgement",
     "ModelRunningVsMergedFinding",
+    "ModelRunningVsMergedHeld",
     "ModelRunningVsMergedRequest",
     "ModelRunningVsMergedResult",
     "ModelThroughputResultsRequest",

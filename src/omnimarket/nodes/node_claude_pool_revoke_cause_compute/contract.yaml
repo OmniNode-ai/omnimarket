@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_claude_pool_revoke_cause_compute
+lifecycle: experimental
+node_type: compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Decides, for one runner-written revoke of a Claude token-pool label, whether the
+  mark is a real revoke or only a challenge: a 403 challenge page from the lab
+  egress says nothing about the token. The judge reads only the closing output the
+  runner carried back and the challenge markers declared in the overlay, both
+  passed in on the request; nothing is hard-coded in the handler and it reads no
+  host state.
+input_model:
+  name: ModelRevokeCauseRequest
+  module: omnimarket.models.model_claude_pool_revoke_cause
+output_model:
+  name: ModelRevokeCauseResult
+  module: omnimarket.models.model_claude_pool_revoke_cause
+handler:
+  module: omnimarket.nodes.node_claude_pool_revoke_cause_compute.handlers.handler_revoke_cause
+  class: HandlerRevokeCause
+  input_model: omnimarket.models.model_claude_pool_revoke_cause.ModelRevokeCauseRequest
+  output_model: omnimarket.models.model_claude_pool_revoke_cause.ModelRevokeCauseResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_claude_pool_revoke_cause_compute.handlers.handler_revoke_cause:HandlerRevokeCause
+  handlers:
+    - operation: decide_revoke_cause
+      handler:
+        name: HandlerRevokeCause
+        module: omnimarket.nodes.node_claude_pool_revoke_cause_compute.handlers.handler_revoke_cause
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+  runtime_profiles: []
+runtime_dispatch:
+  addressable: false
+  invocation_mode: local
+  reason: Called in process by the Claude token pool rotation tick; no bus topic reaches it.
+  external_trigger: node_claude_token_pool_effect rotation tick (in-process call)
+# The node publishes nothing: the pool tick calls it in process.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+metadata:
+  transport_type: local
+  description: Claude token pool revoke cause compute
+  author: OmniNode Team
+  created: "2026-11-13"
+  related_tickets: [OMN-19998]

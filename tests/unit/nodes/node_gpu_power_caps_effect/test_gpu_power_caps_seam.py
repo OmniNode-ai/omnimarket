@@ -9,6 +9,7 @@ transport. Shape followed: tests/unit/nodes/node_host_storage_effect/test_host_s
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import sys
 from pathlib import Path
@@ -59,10 +60,14 @@ from tests.unit.nodes.node_gpu_power_caps_effect.fixtures import (
     subprocess_overlay,
     unit_entry,
 )
+from tests.unit.nodes.node_gpu_power_caps_effect.test_gpu_power_caps_direct_bootstrap import (
+    runtime_overlay,
+)
 from tests.unit.nodes.node_gpu_power_caps_effect.test_gpu_power_caps_lab_work import (
     FakeSender,
     lab_work_overlay,
     overlay_document,
+    receipt,
 )
 
 pytestmark = pytest.mark.unit
@@ -153,7 +158,11 @@ def test_seam_installer_the_default_loader_reads_the_settings_through_the_instal
     monkeypatch.setattr(handler_gpu_power_caps, "load_structured_overlay", recorder)
     overlay = in_memory_overlay()
     handler = HandlerGpuPowerCaps(overlay)
-    handler.handle(ModelGpuPowerCapsRequest(host="sim-host-a", requested_by="lane-a"))
+    asyncio.run(
+        handler.handle(
+            ModelGpuPowerCapsRequest(host="sim-host-a", requested_by="lane-a")
+        )
+    )
     assert calls == [(overlay.caps_overlay_id, ModelNetUnitsOverlay)]
 
 
@@ -184,12 +193,46 @@ def test_seam_lab_work_unit_the_nodes_unit_is_the_lab_work_request_shape() -> No
         commit_sha="0" * 40,
         status=EnumLabWorkUnitStatus.INFRA_ERROR,
     )
-    handler_gpu_power_caps.HandlerGpuPowerCaps(
-        overlay=lab_work_overlay(), sender=sender
-    ).handle(ModelGpuPowerCapsRequest(host="sim-host-a", requested_by="lane-a"))
+    asyncio.run(
+        handler_gpu_power_caps.HandlerGpuPowerCaps(
+            overlay=lab_work_overlay(), sender=sender
+        ).handle(ModelGpuPowerCapsRequest(host="sim-host-a", requested_by="lane-a"))
+    )
     wire = sender.calls[0].model_dump(mode="json", exclude_none=True)
     assert set(wire) <= set(ModelLabWorkUnitRequest.model_fields)
     assert ModelLabWorkUnitRequest.model_validate(wire) == sender.calls[0]
+
+
+def test_seam_direct_bootstrap_the_runtime_profile_unit_is_the_lab_work_request_shape() -> (
+    None
+):
+    sender = FakeSender(receipt(EnumLabWorkUnitStatus.INFRA_ERROR, exit_code=None))
+    overlay = runtime_overlay()
+    asyncio.run(
+        handler_gpu_power_caps.HandlerGpuPowerCaps(
+            overlay=overlay, sender=sender
+        ).handle(
+            ModelGpuPowerCapsRequest(host=overlay.hosts[0].name, requested_by="lane-a")
+        )
+    )
+    wire = sender.calls[0].model_dump(mode="json", exclude_none=True)
+    assert set(wire) <= set(ModelLabWorkUnitRequest.model_fields)
+    assert ModelLabWorkUnitRequest.model_validate(wire) == sender.calls[0]
+
+
+def test_seam_direct_bootstrap_the_overlay_profiles_of_the_contract_exist() -> None:
+    contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
+    profiles = contract["overlay_profiles"]
+    assert "lab_work_runtime" in profiles
+    for path in profiles.values():
+        assert (NODE_DIR / path).exists()
+    runtime = ModelGpuPowerCapsOverlay.model_validate(
+        yaml.safe_load(
+            (NODE_DIR / profiles["lab_work_runtime"]).read_text(encoding="utf-8")
+        )
+    )
+    assert runtime.lab_work is not None
+    assert runtime.lab_work.kafka_bootstrap is not None
 
 
 def grants_of_the_contract() -> set[tuple[str, str]]:
@@ -274,9 +317,11 @@ def test_seam_lab_work_host_command_the_overlays_argv_runs_the_nodes_command_lin
             output_tail=out,
         )
     )
-    result = handler_gpu_power_caps.HandlerGpuPowerCaps(
-        overlay=lab_work_overlay(), sender=sender
-    ).handle(ModelGpuPowerCapsRequest(host="sim-host-a", requested_by="lane-a"))
+    result = asyncio.run(
+        handler_gpu_power_caps.HandlerGpuPowerCaps(
+            overlay=lab_work_overlay(), sender=sender
+        ).handle(ModelGpuPowerCapsRequest(host="sim-host-a", requested_by="lane-a"))
+    )
     assert result.outcome is EnumGpuPowerCapsOutcome.OK
     assert [c.after_watts for c in result.cards] == [500, 300]
     assert [c.name for c in result.cards] == [BIG, SMALL]

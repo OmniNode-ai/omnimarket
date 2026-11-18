@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_work_ledger_append_effect/overlay.yaml under a root
+# named in ONEX_SKILL_OVERLAY_ROOTS. It names the service logins the ledger serve takes rows from beside the machine rows
+# of the developer principal overlay; a login is a broker principal, never a credential.
+schema_version: service_writers.v1
+writers:
+  - principal: example-service-login
+    why: a service login that appends to the ledger and has no person login

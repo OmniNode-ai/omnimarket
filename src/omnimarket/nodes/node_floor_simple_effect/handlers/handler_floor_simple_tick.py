@@ -54,6 +54,7 @@ from omnimarket.models.floor_17a import (
     ModelFloorSimpleTickRequest,
     ModelFloorSimpleTickResult,
     ModelGoalScope,
+    ModelJoinChains,
     ModelJoinEnd,
     ModelLabSourceRead,
     ModelLabStateAlarmRequest,
@@ -86,6 +87,10 @@ from omnimarket.nodes.node_floor_simple_compute.handlers.handler_lab_state impor
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.abandoned_starts import (
     abandoned_starts,
+)
+from omnimarket.nodes.node_floor_simple_effect.handlers.handoff_refusals import (
+    handoff_refusals_reading,
+    read_decision_tail,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.integration_source import (
     read_integration,
@@ -210,6 +215,9 @@ class ModelSourcePaths(BaseModel):
     controller_admissions_name: str
     owner_map_projection: str
     controller_admissions_tail_bytes: int
+    # The controller's decision journal (OMN-23242): the merge deferrals of handed-off pull requests are counted from its tail.
+    controller_decisions_name: str = "decisions.jsonl"
+    controller_decisions_tail_bytes: int = 8388608
     friction_report_relpath: str
     runner_fleet_relpath: str
     lab_alarm_runs_relpath: str
@@ -308,6 +316,9 @@ class ModelFloorSimpleRuntime(BaseModel):
     # The joins that end at a node of this node's own piece, because no node downstream can emit a typed refusal for them
     # (OMN-22864). Each names a node among ``pipeline_chains``.
     join_ends: tuple[ModelJoinEnd, ...] = ()
+    # The joins that read only some nodes of their two pieces (OMN-23083): the node of a piece that runs its own pipeline, with
+    # nothing downstream to answer it, is left out of the join that would demand an answer.
+    join_chains: tuple[ModelJoinChains, ...] = ()
     # Where the ledger's rows are read from: the go for rebuild pieces and the events of pieces that write rows.
     ledger: ModelFileLedgerReadRoute | ModelCommandLedgerReadRoute = Field(
         discriminator="route"
@@ -1030,6 +1041,24 @@ class HandlerFloorSimpleTick:
                 ledger.facts.readings if ledger.facts is not None else (),
             ),
             shadows=ledger.facts.shadows if ledger.facts is not None else (),
+            handoff_refusals=handoff_refusals_reading(
+                ledger=ledger.facts.handoff if ledger.facts is not None else None,
+                ledger_error=(
+                    ledger.facts.handoff_unread
+                    if ledger.facts is not None
+                    else (ledger.error or "")
+                ),
+                decisions=read_decision_tail(
+                    controller_dir / rt.sources.controller_decisions_name,
+                    rt.sources.controller_decisions_tail_bytes,
+                ),
+                admissions=read_admissions(
+                    controller_dir / rt.sources.controller_admissions_name,
+                    rt.sources.controller_admissions_tail_bytes,
+                ),
+                now=now,
+                overlay=floor_ov.handoff_refusals,
+            ),
             alarms=self._alarm_lines(outcome.state, outcome.undelivered),
             go_given_through=go,
             go_pieces=go_pieces,
@@ -1312,6 +1341,7 @@ class HandlerFloorSimpleTick:
                     ),
                 ),
                 join_ends=rt.join_ends,
+                join_chains=rt.join_chains,
                 real_origins=ov.readiness.real_origins,
             )
         )

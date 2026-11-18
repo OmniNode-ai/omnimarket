@@ -66,6 +66,7 @@ class ModelSendRequest(_Frozen):
     prompt: str = Field(min_length=1)
     traffic_class: str | None = None
     source_surface: str | None = None
+    backend_id: str | None = None
 
 
 class LaneReadError(RuntimeError):
@@ -99,6 +100,9 @@ class ModelBusSettings(_Frozen):
     savings_node: str = Field(min_length=1)
     delegations_node: str = Field(min_length=1)
     workspace_env: str = Field(min_length=1)
+    tenant_env: str = Field(min_length=1)
+    #: The command the delegate command is started through so the tenant variable is set for it alone.
+    env_command: str = Field(min_length=1)
 
 
 class ModelLaneSettings(_Frozen):
@@ -122,6 +126,12 @@ class ModelLaneSettings(_Frozen):
     runs_list_key: str = Field(min_length=1)
     #: Key of the correlation id in the ``onex delegate --json`` output.
     delegate_id_key: str = Field(min_length=1)
+    #: Key of the delegation status in the ``onex delegate --json`` output.
+    delegate_status_key: str = Field(min_length=1)
+    #: Status value in that key that means the delegation ended failed.
+    delegate_failed_status: str = Field(min_length=1)
+    #: Dotted paths of the failure reason in the output, read in order until one is a non-empty string.
+    delegate_reason_keys: tuple[str, ...] = Field(min_length=1)
     #: The bus sub-block, required when the backend is ``bus``.
     bus: ModelBusSettings | None = None
 
@@ -211,6 +221,25 @@ def _subprocess_run(argv: Sequence[str], timeout: float) -> tuple[int, str]:
     return done.returncode, done.stdout
 
 
+def _subprocess_run_as(
+    env_command: str, extra_environment: Mapping[str, str]
+) -> CommandRunner:
+    """A runner that starts the delegate command through ``env_command`` with ``extra_environment`` set.
+
+    The command is prefixed with the contract's environment command and one ``NAME=value`` per setting, so the host
+    environment is inherited by the child as it is and this module reads no process environment.
+    """
+    prefix = [
+        env_command,
+        *(f"{name}={value}" for name, value in extra_environment.items()),
+    ]
+
+    def run(argv: Sequence[str], timeout: float) -> tuple[int, str]:
+        return _subprocess_run([*prefix, *argv], timeout)
+
+    return run
+
+
 def _decimal(value: object, name: str) -> Decimal:
     try:
         return Decimal(str(value))
@@ -295,6 +324,16 @@ def delegate_transport_args(
     return ("--bus", overlay.bus)
 
 
+def _dig(document: object, path: str) -> object:
+    """The value at the dotted ``path`` of nested mappings in ``document``, or ``None`` where the path breaks."""
+    node = document
+    for part in path.split("."):
+        if not isinstance(node, dict):
+            return None
+        node = node.get(part)
+    return node
+
+
 def send_delegate(
     settings: ModelLaneSettings,
     request: ModelSendRequest,
@@ -313,6 +352,8 @@ def send_delegate(
         argv += ["--traffic-class", request.traffic_class]
     if request.source_surface is not None:
         argv += ["--source-surface", request.source_surface]
+    if request.backend_id is not None:
+        argv += ["--backend-id", request.backend_id]
     argv += list(transport_args)
     code, out = run_command(argv, settings.delegate_timeout_seconds)
     try:
@@ -321,6 +362,18 @@ def send_delegate(
         raise LaneReadError(
             f"the delegate command (exit {code}) printed no JSON"
         ) from exc
+    if isinstance(parsed, dict) and (
+        parsed.get(settings.delegate_status_key) == settings.delegate_failed_status
+    ):
+        reason = "no reason given"
+        for reason_path in settings.delegate_reason_keys:
+            value = _dig(parsed, reason_path)
+            if isinstance(value, str) and value:
+                reason = value
+                break
+        raise LaneReadError(
+            f"the delegate command (exit {code}) ended failed: {reason}"
+        )
     correlation_id = (
         parsed.get(settings.delegate_id_key) if isinstance(parsed, dict) else None
     )
@@ -386,7 +439,7 @@ class BusLane:
         request: BusRequest,
         *,
         workspace: str | None = None,
-        run_command: CommandRunner = _subprocess_run,
+        run_command: CommandRunner | None = None,
     ) -> None:
         if settings.bus is None:
             raise LaneReadError("the R8 overlay document has no bus block")
@@ -394,7 +447,14 @@ class BusLane:
         self._overlay = overlay
         self._workspace = workspace
         self._request = request
-        self._run = run_command
+        self._run = (
+            run_command
+            if run_command is not None
+            else _subprocess_run_as(
+                settings.bus.env_command,
+                {settings.bus.tenant_env: str(overlay.probe_tenant_id)},
+            )
+        )
 
     def _answer(self, kind: EnumTenantReadKind, limit: int) -> Mapping[str, object]:
         command = ModelTenantReadCommand(
@@ -419,6 +479,14 @@ class BusLane:
         return parse_runs(self._settings, body)
 
     def send(self, request: ModelSendRequest) -> str:
+        # The organic control (no traffic class) is pinned to the overlay's control backend so it carries spend; every other request is sent unchanged.
+        if (
+            request.traffic_class is None
+            and self._overlay.control_backend_id is not None
+        ):
+            request = request.model_copy(
+                update={"backend_id": self._overlay.control_backend_id}
+            )
         return send_delegate(
             self._settings,
             request,

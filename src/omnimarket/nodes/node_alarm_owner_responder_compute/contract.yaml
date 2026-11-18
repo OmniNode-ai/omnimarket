@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_alarm_owner_responder_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  OMN-24200. The lab alarm wrote 255 FRICTION rows from 2026-11-02 to 2026-11-13, every one citing the
+  same umbrella ticket, and nothing read them: the delegation chain canary was raised once, on
+  2026-11-03T12:52:08Z, and no lane covered it until 2026-11-13. This pure node answers those rows
+  without I/O. Operation decide_alarm_owner reads the rows the policy's alarm actor wrote, takes each
+  row's condition and subject as a cause key (condition slug:subject) and answers one dispatch per
+  distinct key whose first raise is older than the policy's bound, that was not dispatched inside the
+  redispatch window and that no live lane covers by naming the key or by carrying its lane stem. The
+  ticket a row cites never covers a key. Every threshold and the list of conditions that require an
+  owner come from the request's policy (the example overlay file names the keys). The node starts
+  nothing and writes nothing: the caller reads the ledger and the live lanes and starts the lanes.
+
+input_model: omnimarket.nodes.node_alarm_owner_responder_compute.models.model_alarm_owner_responder.ModelAlarmOwnerRequest
+output_model: omnimarket.nodes.node_alarm_owner_responder_compute.models.model_alarm_owner_responder.ModelAlarmOwnerResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: decide_alarm_owner
+      handler:
+        name: HandlerAlarmOwnerResponder
+        module: omnimarket.nodes.node_alarm_owner_responder_compute.handlers.handler_alarm_owner_responder
+      event_model:
+        name: ModelAlarmOwnerRequest
+        module: omnimarket.nodes.node_alarm_owner_responder_compute.models.model_alarm_owner_responder
+
+handler:
+  module: omnimarket.nodes.node_alarm_owner_responder_compute.handlers.handler_alarm_owner_responder
+  class: HandlerAlarmOwnerResponder
+  input_model: omnimarket.nodes.node_alarm_owner_responder_compute.models.model_alarm_owner_responder.ModelAlarmOwnerRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+terminal_event: onex.evt.omnimarket.alarm-owner-responder-decided.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.alarm-owner-responder-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.alarm-owner-responder-decided.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.alarm-owner-responder-requested.v1
+
+# OMN-24200 -- explicit SINK declaration (contract topic graph closure). No node contract
+# subscribes to the result event: the node starts nothing and writes nothing, so its caller
+# reads the answer from this topic and starts the lanes outside the ONEX node graph.
+externally_consumed_topics:
+  - onex.evt.omnimarket.alarm-owner-responder-decided.v1
+
+# The broker grants the node's two topics need (OMN-24005 coverage gate): the runtime login reads the request and
+# writes the answer.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.alarm-owner-responder-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.alarm-owner-responder-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.alarm-owner-responder-decided.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.alarm-owner-responder-decided.v1, operation: DESCRIBE}
+
+dod_evidence:
+  - test: tests/nodes/node_alarm_owner_responder_compute/test_alarm_owner_responder.py
+    description: "Replaying the recorded lab alarm rows of 2026-11-03 answers one dispatch for the delegation chain canary key and for every other uncovered key of the policy's conditions"
+
+metadata:
+  transport_type: kafka
+  description: "Pure compute node: lab alarm FRICTION rows answered with one lane dispatch per uncovered cause key past its bound"
+  author: "OmniNode Platform Team"
+  created: "2026-11-13"
+  tags:
+    - "compute"
+    - "alarm"
+    - "deterministic"

@@ -164,7 +164,9 @@ class HandlerServeUnits:
         declared: ModelServeUnitsOverlay,
     ) -> list[tuple[str, ModelUnitDeclaration]]:
         """The units in install order, each with the role that names its template."""
-        return [("serve", declared.serve), ("clone_refresh", declared.clone_refresh)]
+        units = [("serve", declared.serve), ("clone_refresh", declared.clone_refresh)]
+        units.extend(("serve", entry) for entry in declared.lane_serves)
+        return units
 
     def _template(self, role: str, entry: ModelUnitDeclaration) -> bytes:
         text = (NODE_DIR / str(self._unit["templates"][role])).read_text("utf-8")
@@ -300,6 +302,13 @@ class HandlerServeUnits:
                 66, "serve-python-missing", f"{python} is not executable"
             )
         row, bus_lane = self._row(request)
+        for lane_serve in declared.lane_serves:
+            if lane_serve.bus_lane == bus_lane:
+                raise RefusalError(
+                    2,
+                    "lane-serve-duplicates-table-lane",
+                    f"lane serve {lane_serve.name!r} runs on bus lane {lane_serve.bus_lane!r}, the same as the lab_hosts table",
+                )
         overlay_roots = self._roots(request, declared)
         for _role, entry in self._declared_units(declared):
             probe = self._run(
@@ -353,20 +362,24 @@ class HandlerServeUnits:
         def header(entry: ModelUnitDeclaration) -> str:
             return str(unit["header"]).format(ticket=entry.ticket)
 
-        lab = [
-            f"OMNIBASE_PATH={request.serve_root}",
-            f"LAB_WORK_HOST_NAME={row.name}",
-            f"LAB_WORK_BUS_LANE={bus_lane}",
-            f"LAB_WORK_RANK_PENALTY={row.penalty:g}",
-        ]
-        if row.unit_slots is not None:
-            lab.append(f"LAB_WORK_MAX_UNITS={row.unit_slots}")
-        if lane_values:
-            lab.append(f"OMNI_HOME={root}")
-            lab.extend(f"{key}={value}" for key, value in lane_values.items())
-        lab.append(f"{SKILL_OVERLAY_ROOTS_ENV}={overlay_roots}")
-        lab.append(f"LAB_WORK_ROOT={request.home}/{unit['work_directory']}")
-        lab.append(f"PATH={path}")
+        def lab_lines(lane: str, work_directory: str) -> list[str]:
+            lines = [
+                f"OMNIBASE_PATH={request.serve_root}",
+                f"LAB_WORK_HOST_NAME={row.name}",
+                f"LAB_WORK_BUS_LANE={lane}",
+                f"LAB_WORK_RANK_PENALTY={row.penalty:g}",
+            ]
+            if row.unit_slots is not None:
+                lines.append(f"LAB_WORK_MAX_UNITS={row.unit_slots}")
+            if lane_values:
+                lines.append(f"OMNI_HOME={root}")
+                lines.extend(f"{key}={value}" for key, value in lane_values.items())
+            lines.append(f"{SKILL_OVERLAY_ROOTS_ENV}={overlay_roots}")
+            lines.append(f"LAB_WORK_ROOT={request.home}/{work_directory}")
+            lines.append(f"PATH={path}")
+            return lines
+
+        lab = lab_lines(bus_lane, str(unit["work_directory"]))
 
         sync = _quoted_env_value(
             shlex.join(["python3", f"{root}/{unit['sync_engine']}", "sync", "--repo"])
@@ -387,12 +400,17 @@ class HandlerServeUnits:
                 f"ONEX_WORKSPACE_CONFIG_ROOT={lane_values['ONEX_WORKSPACE_CONFIG_ROOT']}"
             )
         clone.append(f"PATH={path}")
-        return {
+        texts = {
             Path(declared.serve.env_file).name: header(declared.serve)
             + "".join(f"{line}\n" for line in lab),
             Path(declared.clone_refresh.env_file).name: header(declared.clone_refresh)
             + "".join(f"{line}\n" for line in clone),
         }
+        for entry in declared.lane_serves:
+            texts[Path(entry.env_file).name] = header(entry) + "".join(
+                f"{line}\n" for line in lab_lines(entry.bus_lane, entry.work_directory)
+            )
+        return texts
 
     def _write(
         self,
@@ -405,6 +423,8 @@ class HandlerServeUnits:
         unit_dir = home / str(unit["unit_directory"])
         unit_dir.mkdir(parents=True, exist_ok=True)
         (home / str(unit["work_directory"])).mkdir(parents=True, exist_ok=True)
+        for lane_serve in declared.lane_serves:
+            (home / lane_serve.work_directory).mkdir(parents=True, exist_ok=True)
         changed = False
         for role, entry in self._declared_units(declared):
             env_file = home / entry.env_file

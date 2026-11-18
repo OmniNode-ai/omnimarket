@@ -5,9 +5,16 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 _LANE = r"^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,127}$"
 
@@ -57,15 +64,30 @@ class ModelReaderRequest(BaseModel):
     lane: str | None = Field(default=None, pattern=_LANE)
     ticket: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9]*-[0-9]+$")
     read_parity: bool = False
+    # Required for a rows read; also allowed (optional) for an open-claims read, where it
+    # means "claims opened within the last window_hours"; refused for every other query.
     window_hours: int | None = Field(default=None, ge=1, le=24 * 30)
+    # Only a rows read may narrow: the ledger row types it wants (CLAIM, STATUS, ...) and a
+    # case-insensitive substring the row's first line must hold; refused for every other query.
+    kinds: tuple[Annotated[str, Field(min_length=1)], ...] = ()
+    term: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def _window_hours_matches_query(self) -> ModelReaderRequest:
         if self.query is EnumReaderQuery.ROWS:
             if self.window_hours is None:
                 raise ValueError("a rows read names its window_hours")
-        elif self.window_hours is not None:
-            raise ValueError("window_hours is only for a rows read")
+        elif (
+            self.query is not EnumReaderQuery.OPEN_CLAIMS
+            and self.window_hours is not None
+        ):
+            raise ValueError("window_hours is only for a rows or an open-claims read")
+        return self
+
+    @model_validator(mode="after")
+    def _filters_only_for_rows(self) -> ModelReaderRequest:
+        if self.query is not EnumReaderQuery.ROWS and (self.kinds or self.term):
+            raise ValueError("kinds and term are only for a rows read")
         return self
 
 
@@ -192,6 +214,11 @@ class ModelReaderOverlay(BaseModel):
     # is read a page at a time, following next_cursor, and never cut short.
     page_size: int = Field(ge=1, le=5000)
     max_pages: int = Field(ge=1, le=1000)
+    # The page size one kind of read asks for in place of page_size (an open-claims page
+    # carries each claim's activity and is far larger than a rows line, so its pages must be
+    # smaller to fit under the query node's answer bound); absent means every read uses
+    # page_size, so every overlay written before this key still loads.
+    page_size_by_query: dict[EnumReaderQuery, int] = Field(default_factory=dict)
     # Optional; absent means False so every overlay document written before this key still loads.
     # True asks the query node for lines-only rows pages.
     rows_lines_only: bool = False
@@ -200,3 +227,13 @@ class ModelReaderOverlay(BaseModel):
     )
     parity: ModelReaderParity
     events: ModelReaderEvents
+
+    @field_validator("page_size_by_query")
+    @classmethod
+    def _page_size_by_query_in_bounds(
+        cls, value: dict[EnumReaderQuery, int]
+    ) -> dict[EnumReaderQuery, int]:
+        for size in value.values():
+            if not 1 <= size <= 5000:
+                raise ValueError("page_size_by_query values must be between 1 and 5000")
+        return value
