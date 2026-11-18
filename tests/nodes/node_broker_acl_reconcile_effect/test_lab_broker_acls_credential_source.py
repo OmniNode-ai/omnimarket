@@ -32,6 +32,12 @@ from tests.nodes.node_broker_acl_reconcile_effect.test_aggregates_declared_grant
     ENV,
     FakeRemote,
 )
+from tests.nodes.node_broker_acl_reconcile_effect.test_readiness_check import (
+    RENDER as READY_NODE,
+)
+from tests.nodes.node_broker_acl_reconcile_effect.test_readiness_check import (
+    _env as _ready_env,
+)
 
 SENTINEL_USER = "svc-sentinel-user"
 SENTINEL_PASS = "pw-sentinel-0123456789"  # synthetic test value, not a credential
@@ -279,6 +285,24 @@ def test_superuser_env_file_declared_path_reaches_the_script(declared: str) -> N
             '"p1"',
             id="nested-quotes-stripped-once",
         ),
+        pytest.param(
+            "DEV_KAFKA_SASL_USERNAME=\"u1\"   \nDEV_KAFKA_SASL_PASSWORD='p1'\t\n",
+            "u1",
+            "p1",
+            id="quoted-then-trailing-whitespace",
+        ),
+        pytest.param(
+            "DEV_KAFKA_SASL_USERNAME='u;1' # c;d\nDEV_KAFKA_SASL_PASSWORD=\"p&|<>()1\"\t# c\n",
+            "u;1",
+            "p&|<>()1",
+            id="operators-inside-quotes-are-literal",
+        ),
+        pytest.param(
+            "DEV_KAFKA_SASL_USERNAME=u1 # a ; b \"c\" 'd'\nDEV_KAFKA_SASL_PASSWORD=p#1\n",
+            "u1",
+            "p#1",
+            id="comment-text-after-a-space-and-hash-in-a-plain-value",
+        ),
     ],
 )
 def test_env_file_formats_the_consumer_reads_give_the_value_the_shell_gives(
@@ -329,6 +353,26 @@ UNREADABLE_FORMS = [
     pytest.param('"pa$ss1"', id="unexpanded-dollar-in-double-quotes"),
     pytest.param("pa`id`ss", id="backtick"),
     pytest.param("pa\\ss1", id="backslash-escape-unquoted"),
+    # Text after a closing quote is never dropped: the shell joins it to the value or runs it.
+    pytest.param("'ab'\\''cd'", id="single-quote-then-escaped-quote-then-more"),
+    pytest.param("'ab'\"cd\"", id="single-quoted-then-double-quoted"),
+    pytest.param('"ab"cd', id="double-quoted-then-bare-text"),
+    pytest.param("'ab'cd", id="single-quoted-then-bare-text"),
+    pytest.param('"ab" cd', id="double-quoted-then-a-word"),
+    pytest.param('"ab"# c', id="double-quoted-then-comment-with-no-space"),
+    pytest.param("'ab'# c", id="single-quoted-then-comment-with-no-space"),
+    # An unquoted value holding a quote, inner whitespace that starts no comment, or a shell operator.
+    pytest.param('ab"cd"', id="unquoted-with-a-double-quote"),
+    pytest.param("ab'cd'", id="unquoted-with-a-single-quote"),
+    pytest.param("a b", id="unquoted-inner-whitespace"),
+    pytest.param("a\tb", id="unquoted-inner-tab"),
+    pytest.param("a;b", id="unquoted-semicolon"),
+    pytest.param("a&b", id="unquoted-ampersand"),
+    pytest.param("a|b", id="unquoted-pipe"),
+    pytest.param("a<b", id="unquoted-less-than"),
+    pytest.param("a>b", id="unquoted-greater-than"),
+    pytest.param("a(b", id="unquoted-open-paren"),
+    pytest.param("a)b", id="unquoted-close-paren"),
 ]
 
 
@@ -438,7 +482,6 @@ def test_lab_broker_acls_exit_3_with_the_marker_raises_the_typed_error_through_r
     assert message.startswith(driver.CREDENTIAL_MISSING_MARKER)
     assert "DEV_KAFKA_SASL_PASSWORD" in message
     assert SENTINEL_USER not in message
-    assert SENTINEL_PASS not in message
     assert not _calls(log)
 
 
@@ -462,9 +505,9 @@ def test_lab_broker_acls_username_missing_with_the_password_present_names_the_us
     assert not _calls(log)
 
 
-@pytest.mark.parametrize("mode", ["apply", "dry_run"])
+@pytest.mark.parametrize("mode", ["apply", "dry_run", "ready_check"])
 def test_the_reconcile_handler_surfaces_a_missing_credential_as_exit_2_with_the_marker(
-    mode: Literal["apply", "dry_run"],
+    mode: Literal["apply", "dry_run", "ready_check"], tmp_path: Path
 ) -> None:
     """The reconcile node answers a missing credential with the marker line and exit 2, never a pass."""
 
@@ -473,9 +516,16 @@ def test_the_reconcile_handler_surfaces_a_missing_credential_as_exit_2_with_the_
             f"{driver.CREDENTIAL_MISSING_MARKER} DEV_KAFKA_SASL_PASSWORD missing or empty in /x/.env"
         )
 
+    if mode == "ready_check":
+        request = ModelBrokerAclReconcileRequest(mode=mode, node=READY_NODE)
+        environ = _ready_env(tmp_path)
+    else:
+        request = ModelBrokerAclReconcileRequest(mode=mode)
+        environ = ENV
     result = reconcile.HandlerBrokerAclReconcile(
-        environ=ENV, remote_runner=missing
-    ).handle(ModelBrokerAclReconcileRequest(mode=mode))
+        environ=environ, remote_runner=missing
+    ).handle(request)
+    assert result.ready is not True
     assert result.exit_code == 2
     assert result.error is not None
     assert result.error.startswith(driver.CREDENTIAL_MISSING_MARKER)

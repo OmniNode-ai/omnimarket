@@ -292,11 +292,15 @@ def build_remote_script(decl: AclConnection, rpk_argvs: list[list[str]]) -> str:
 
     The file's real consumer sources it as shell (the deploy agent launcher), so the reader
     takes the last ``[export ]NAME=value`` assignment and strips what the shell would: CR, one
-    level of surrounding quotes, and an unquoted value's trailing whitespace and `` # comment``.
-    ``NAME = value`` is not a shell assignment and is not read. A form the shell reads differently
-    from this reader fails closed with the same exit and marker, never a guessed value: a leading
-    space after the equals sign (the shell runs the rest as a command), and outside single quotes
-    a backslash, a dollar sign or a backtick (the shell decodes or expands them).
+    level of surrounding quotes, and the trailing whitespace and `` # comment`` the shell drops.
+    ``NAME = value`` is not a shell assignment and is not read. A value is read only in one of
+    three forms, whole: ``'...'`` or ``"..."`` followed by nothing, whitespace or a `` # comment``,
+    or a bare word of no quote, whitespace, ``;&|<>()``, backslash, dollar or backtick, followed
+    the same way. Any other form the shell reads differently from this reader (text after a
+    closing quote, a quote or an operator in a bare word, inner whitespace that starts no comment,
+    a leading space after the equals sign, and inside double quotes or a bare word a backslash, a
+    dollar sign or a backtick) fails closed with the same exit and marker, never a guessed or
+    truncated value.
     """
     env_file = _remote_path(decl.superuser_env_file)
     broker = shlex.quote(decl.broker_container)
@@ -314,16 +318,28 @@ def build_remote_script(decl: AclConnection, rpk_argvs: list[list[str]]) -> str:
         "-e 's/^'\\''\\([^'\\'']*\\)'\\''.*$/\\1/' -e t "
         "-e 's/[[:space:]][[:space:]]*#.*$//' -e 's/[[:space:]]*$//'"
     )
-    # Forms the shell consumer reads differently from this reader are refused, never guessed at:
-    # a leading space (``NAME= v`` runs ``v`` with NAME empty), and, outside single quotes, a
-    # backslash (an escape the shell decodes), a dollar sign or a backtick (the shell expands them).
+    # Forms the shell consumer reads differently from this reader are refused, never guessed at or
+    # cut short: a leading space (``NAME= v`` runs ``v`` with NAME empty), and any value that is not,
+    # whole, one of three accepted shapes. Single quotes are literal; double quotes and a bare word
+    # may not hold a backslash, dollar or backtick (the shell decodes or expands them), and a bare
+    # word may hold no quote, whitespace or ``;&|<>()``. After a closing quote or a bare word only
+    # whitespace, or whitespace then ``#`` and a comment, may follow.
+    tail = r"([[:space:]]*|[[:space:]]+#.*)$"
+    accepted = " || ".join(
+        f"printf '%s\\n' \"$R_{{var}}\" | grep -Eq {shlex.quote(pattern)}"
+        for pattern in (
+            "^'[^']*'" + tail,
+            '^"[^"$`\\]*"' + tail,
+            "^[^[:space:]'\"$`\\;&|<>()]+" + tail,
+        )
+    )
     check_form = (
         f'case "$R_{{var}}" in\n'
         f'  [[:space:]]*) echo "{marker} {{name}} has an unreadable form (leading whitespace) in $F" >&2; '
         f"exit {CREDENTIAL_MISSING_EXIT};;\n"
-        "  \\'*) ;;\n"
-        f"  *\\\\*|*'$'*|*'`'*) echo \"{marker} {{name}} has an unreadable form (backslash, dollar or backtick) in $F\" >&2; "
-        f"exit {CREDENTIAL_MISSING_EXIT};;\n"
+        "  '') ;;\n"
+        f'  *) {accepted} || {{{{ echo "{marker} {{name}} has an unreadable form (text the shell reads '
+        f'differently) in $F" >&2; exit {CREDENTIAL_MISSING_EXIT}; }}}};;\n'
         "esac"
     )
     lines = [
