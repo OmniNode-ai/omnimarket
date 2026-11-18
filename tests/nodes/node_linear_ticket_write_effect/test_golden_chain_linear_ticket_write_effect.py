@@ -11,11 +11,15 @@ from uuid import uuid4
 import pytest
 from click.testing import CliRunner
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_core.models.ticket.model_done_write_decision import (
+    ModelDoneWriteDecision,
+)
 from omnibase_core.runtime.runtime_dispatch import RuntimeDispatch
 from omnibase_core.runtime.transport.runtime_in_memory_broker import InMemoryBroker
 from omnibase_core.runtime.transport.runtime_in_memory_transport import (
     InMemoryTransport,
 )
+from omnibase_infra.handlers.done_write_receipt_guard import DoneWriteRefusedError
 from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
 from omnibase_infra.runtime.core_runtime.dlq_resolver import derive_canonical_dlq_topic
 from omnibase_infra.runtime.core_runtime.routing_map_builder import build_routing_map
@@ -138,6 +142,37 @@ async def test_unresolved_linear_key_is_named_not_operation_failed(error):
     assert result.terminal_failure_cause == "secret_unavailable"
     assert result.finding_codes == ["linear_api_key_unresolved"]
     assert "Infisical" not in result.model_dump_json()
+
+
+async def test_done_write_refusal_carries_its_cause():
+    """A Done-write gate refusal names its gate and carries the refusal reason."""
+    error = DoneWriteRefusedError(
+        "OMN-20077",
+        ModelDoneWriteDecision(
+            allowed=False,
+            reason=(
+                "dod_verify for OMN-20077 is not a PASS: status='failed' (OMN-20368)."
+            ),
+        ),
+    )
+    handler = HandlerLinearTicketWriteEffect(handler_factory=lambda _: Core(error))
+    result = await handler.handle(request())
+    assert result.outcome == "failed"
+    assert result.reason == "done_write_refused"
+    assert result.finding_codes == ["done_write_gate_refused"]
+    assert "not a PASS" in result.terminal_failure_cause
+    assert len(result.terminal_failure_cause) <= 300
+
+
+async def test_unknown_failure_names_its_exception_class_not_its_text():
+    """An unexpected error is named by its class alone, never by its text."""
+    handler = HandlerLinearTicketWriteEffect(
+        handler_factory=lambda _: Core(RuntimeError("could contain credentials"))
+    )
+    result = await handler.handle(request())
+    assert result.reason == "operation_failed"
+    assert result.finding_codes == ["exception:RuntimeError"]
+    assert "could contain credentials" not in result.model_dump_json()
 
 
 async def test_reads_are_fresh_and_dry_run_does_not_poison_replay():
