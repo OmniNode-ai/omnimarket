@@ -47,6 +47,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # aa87c2dd6abe: omnibase_infra#5901 (OMN-23896) grants the runtime account the two host disk tables; core is unchanged.
 # b0b00a52dd57: omnibase_infra#5906 (OMN-23932) moves infra to core a85cb916d4c1, which carries ModelDevTagLineageFacts.version_derived the moved dev-tag lineage handler fills.
 # 2b0c3eacdf4d: omnibase_infra#5924 (OMN-24048) adds failed_phase to the dev roll incident; core is unchanged.
+# 6cea249fb8cf: omnibase_infra#5925 (OMN-24063) moves infra to core a09066caf945, which carries the task_type field of the inference intent (omnibase_core#2316).
 # 2a1bd13b5c3e: omnibase_infra#5956 (OMN-24323) grants the tenant projection writer the experiment results table and moves infra to core a09066caf945.
 INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("091013fd7adb", "dev-20261030152335-66d35d2283c3"),
@@ -66,6 +67,7 @@ INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("aa87c2dd6abe", "dev-20261111160725-6cbe67b216fe"),
     ("b0b00a52dd57", "dev-20261111183916-a85cb916d4c1"),
     ("2b0c3eacdf4d", "dev-20261111183916-a85cb916d4c1"),
+    ("6cea249fb8cf", "dev-20261113013358-a09066caf945"),
     ("2a1bd13b5c3e", "dev-20261113013358-a09066caf945"),
 )
 

@@ -34,7 +34,7 @@ MIN_CONTRACT_FILES = 70
 
 
 def test_the_lock_names_the_pinned_infra_build() -> None:
-    """The relocked uv.lock names the dev merge tag and commit of the pinned infra build (moved to 2b0c3eacdf4d by OMN-24071)."""
+    """The relocked uv.lock names the dev merge tag and commit of the pinned infra build (moved to 6cea249fb8cf by OMN-24079)."""
     lock_text = LOCK_PATH.read_text(encoding="utf-8")
     assert INFRA_LOCK_URL in lock_text
 
