@@ -62,6 +62,11 @@ description: >
   --evidence-stdin reads the failing engine's closing output on stdin and asks node_claude_pool_revoke_cause_compute
   whether a runner-written revoke is a 403 challenge page, recorded challenged (out of rotation like a revoke until the
   recheck clears it) instead of revoked.
+  After its pass the tick also says which pool label this host's login is, on a login board of one small record per host
+  beside the marks source's mirror (a host name and a label, never a token or a fingerprint), then reads every label fresh
+  and rewrites the host's labels mirror: one line naming each label with its limit state, the reset it reads and the hosts
+  whose fresh record names it, which `status --labels` prints. A host with no record younger than three ticks is listed as
+  unread and counted on no label.
 
 output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool.ModelClaudeTokenPoolResult
 
