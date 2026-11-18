@@ -541,6 +541,43 @@ units:
   # until this declaration replaced it. The database address (no password) and the reference of the login's password are request
   # inputs persisted in the unit (OMN-24325); the environment file stays an optional place for overrides and is never required.
   # The unit holds no secret value.
+  # OMN-25405: the alarm for a stalled orchestrating session, on the operator Mac. One tick every 300 s reads the newest
+  # session transcript the node's overlay names (the overlays repository, node_session_stall_alarm_effect), judges its queue
+  # rows and delivers a stall once through the lab alarm delivery (node_lab_alarm_deliver_effect, whose overlay names the
+  # alert channel and the ledger). A run that outlives run_timeout_s is ended with its process group and exits 124.
+  session-stall-alarm:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.session-stall-alarm
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 300
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    # Equal to the node contract's timeout_ms (120000 / 1000); under the 300 s interval.
+    run_timeout_s: 120
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_session_stall_alarm_effect.runtime_session_stall_tick
+    entry_file: src/omnimarket/nodes/node_session_stall_alarm_effect/runtime_session_stall_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+    evidence_file: .local/state/omni/session-stall-alarm/last-run.json
+    state_directory: .onex_state/session-stall-alarm
+    log_directory: .local/state/omni/session-stall-alarm
   capture-silence-watch:
     platform: systemd
     kind: registry_module_tick
