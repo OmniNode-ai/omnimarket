@@ -12,6 +12,14 @@ summary: >-
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn21030-ac1-accepted-20261115t2345z:
+    - label: AC1
+      criterion_hash: 9bffbfce7df6b3aedf47fdf68ca3c138b788b5c1987d73161d35955dac926711
+      proposed_by: lane=dod-closeout-bind-2026-11-15T2345Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-15T2345Z-c2
+      accepted_at: '2026-11-16T00:22:10Z'
 requirements:
   - id: "req-handoff-ingress-transported-payload"
     statement: "Every contract-routed subscriber of pr-state-observed.v1 accepts the transported payload, and the handoff ingress keeps refusing a mismatched handoff_key."
@@ -51,3 +59,11 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_handoff_orchestrator/models/model_pr_handoff_observation_ingress.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'if k in cls.model_fields'"
+  - id: "dod-omn21030-ac1-accepted-20261115t2345z"
+    description: "AC1 binding (accepted 2026-11-15T2345Z, proposed by lane=dod-closeout-bind-2026-11-15T2345Z-c2, accepted by lane=dod-closeout-accept-2026-11-15T2345Z-c2). ModelPrHandoffObservationIngress, the extra=forbid consumer of pr-state-observed.v1, validates a payload carrying the emit transport's enrichment keys on schema versions 1 and 2. Re-run at omnimarket origin/dev ac5c2f4622 passed (2 passed); with the product changes of 4f2cd57b33 reverted it fails with extra_forbidden (2 failed)."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_pr_state/test_pr_state_schema_versions.py::test_handoff_ingress_takes_the_transported_payload -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"

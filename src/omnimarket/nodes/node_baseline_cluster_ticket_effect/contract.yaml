@@ -1,0 +1,135 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_baseline_cluster_ticket_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Find or continue the one ticket of a dev-baseline test failure cluster through the ticket store. The cluster's stable
+  signature (the exact Cluster signature line, or the two legacy Repo and Cluster lines the old reporter filed; never the
+  title) is searched first and a ticket is created only when none usable exists: the oldest open ticket that carries the
+  signature gets one comment with the new occurrence and nothing is created (commented); a ticket closed as a duplicate points
+  at its surviving ticket, which gets the comment (linked, at most baseline_cluster.max_duplicate_hops reads, a cycle or a dead
+  link ends the chain); otherwise one ticket is created under baseline_cluster.parent that the ticket-creation gate admits
+  (created, naming the closed ticket it continues). A search, read or comment that fails or runs past
+  baseline_cluster.timeout_seconds ends the report with no ticket (unavailable) and creates nothing; the next run reports again.
+  The command on the command topic is answered on the completed topic with the same result, correlated by the command's
+  correlation id. Overlay baseline_cluster.ticket_store selects the store (inmemory, or linear for the real tracker); a missing
+  or invalid overlay ends the command with a typed unavailable answer naming the keys, never a default.
+handler:
+  module: omnimarket.nodes.node_baseline_cluster_ticket_effect.handlers.handler_baseline_cluster_ticket
+  class: HandlerBaselineClusterTicket
+  input_model: omnimarket.nodes.node_baseline_cluster_ticket_effect.models.model_baseline_cluster_ticket.ModelBaselineClusterReportRequest
+  output_model: omnimarket.nodes.node_baseline_cluster_ticket_effect.models.model_baseline_cluster_ticket.ModelBaselineClusterReportResult
+input_model:
+  name: ModelBaselineClusterReportCommand
+  module: omnimarket.nodes.node_baseline_cluster_ticket_effect.models.model_baseline_cluster_ticket
+# `onex run-node` reads this: a payload that lacks correlation_id gets the command envelope's id injected, and the completed
+# answer is matched to the command by that id.
+inputs:
+  correlation_id:
+    type: str
+    description: The command's correlation id; the completed answer carries it.
+    required: true
+output_model:
+  name: ModelBaselineClusterReportCompleted
+  module: omnimarket.nodes.node_baseline_cluster_ticket_effect.models.model_baseline_cluster_ticket
+event_bus:
+  version: {major: 1, minor: 0, patch: 0}
+  subscribe_topics:
+  - onex.cmd.omnimarket.baseline-cluster-report-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.baseline-cluster-report-completed.v1
+published_events:
+- event_type: BaselineClusterReportCompleted
+  topic: onex.evt.omnimarket.baseline-cluster-report-completed.v1
+  description: The report ended for the command; its result is a created, commented or linked ticket, a refusal or no answer this time (unavailable).
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - operation: baseline_cluster.report
+    message_category: command
+    handler:
+      name: HandlerBaselineClusterTicketBus
+      module: omnimarket.nodes.node_baseline_cluster_ticket_effect.handlers.handler_baseline_cluster_ticket_bus
+    event_model:
+      name: ModelBaselineClusterReportCommand
+      module: omnimarket.nodes.node_baseline_cluster_ticket_effect.models.model_baseline_cluster_ticket
+    topic: onex.cmd.omnimarket.baseline-cluster-report-requested.v1
+terminal_event: onex.evt.omnimarket.baseline-cluster-report-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.baseline-cluster-report-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.baseline-cluster-report-completed.v1
+  external_trigger: The cluster report command on the command topic, sent by onex run-node from the dev-baseline publisher workflow, one command per failing cluster of its run.
+externally_consumed_topics:
+- onex.evt.omnimarket.baseline-cluster-report-completed.v1
+# The bus handler reads the overlay's baseline_cluster section when it handles a command and carries its values on the request.
+deployment_overlay:
+  name: baseline_cluster
+  required: true
+  fields:
+  - baseline_cluster.timeout_seconds
+  - baseline_cluster.ticket_store
+  - baseline_cluster.parent
+  - baseline_cluster.gate
+  - baseline_cluster.diagnosis
+  - baseline_cluster.max_duplicate_hops
+  - baseline_cluster.example_limit
+  description: The deadline of each call of the ticket store, the store the bus handler binds (inmemory or linear), the parent ticket and the gate and diagnosis lines a created ticket carries, the most duplicate-chain reads, and the most examples listed. A key no overlay supplies refuses naming the key.
+overlay:
+  example: overlay.example.yaml
+  section: baseline_cluster
+protocol_dependencies:
+- name: cluster_ticket_store
+  protocol: omnimarket.nodes.node_baseline_cluster_ticket_effect.handlers.protocol_cluster_ticket_store:ProtocolClusterTicketStore
+  bind_as: store
+  required: true
+dependencies:
+- name: cluster_ticket_store
+  dependency_type: protocol
+  description: The ticket store the bus handler injects as the handler's store; the node does not construct it.
+  required: true
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  side_effects:
+  - linear_ticket_create
+  - linear_ticket_comment
+  timeout_ms: 120000
+  runtime_profiles: [effects]
+secrets:
+  LINEAR_API_KEY:
+    description: Contract-declared key the linear store resolves through the secret store; the inmemory store reads none.
+    required: false
+integrations:
+  linear:
+    graphql_url_ref: linear.graphql_url
+# The broker grants the node's two topics need (OMN-24005 coverage gate): the runtime login reads the command and writes the
+# answer. The caller's login (the one that runs `onex run-node` for the reporter) is declared where that login is declared.
+broker_acl_grants:
+- principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+  grants:
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.baseline-cluster-report-requested.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.baseline-cluster-report-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.baseline-cluster-report-completed.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.baseline-cluster-report-completed.v1, operation: DESCRIBE}
+dod_evidence:
+- test: src/omnimarket/nodes/node_baseline_cluster_ticket_effect/tests/test_handler_baseline_cluster_ticket.py
+  description: Two reports of the same cluster make one ticket and one comment; with the signature search blinded the same two reports make two tickets.
+- test: tests/nodes/node_baseline_cluster_ticket/test_baseline_cluster_ticket_gate_seam.py
+  description: The description the node writes passes the real ticket-creation gate, and a description without the Diagnosis or Gate line is refused by it.
+metadata:
+  ticket: OMN-19998
+  origin_tickets:
+  - OMN-19998
+  transport_type:
+  - kafka
+lifecycle: experimental
