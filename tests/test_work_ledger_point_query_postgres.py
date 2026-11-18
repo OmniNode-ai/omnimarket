@@ -210,9 +210,9 @@ def test_point_query_postgres_inbox_lists_unanswered_work_for_a_lane(
     project(conn, schema, LEDGER)
     result = ask(node(schema), K.INBOX, lanes=("lane-open",))
     assert result.status == "ok"
-    # an expired hold stays in the inbox, as in the verb: only a RELEASE removes it
+    # an expired hold drops out of the inbox as out of the holds read (OMN-24555)
     assert result.lines[0].startswith(
-        "inbox lane-open: 3 open, 3 need action (HOLD:2 ask:1)"
+        "inbox lane-open: 2 open, 2 need action (HOLD:1 ask:1)"
     )
     assert any("MSG id=msg-open" in line for line in result.lines)
     assert not any("msg-acked" in line for line in result.lines)

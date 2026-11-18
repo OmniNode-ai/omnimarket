@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerOnexSetup is resolved at boot from handler_routing in contract.yaml, by module path, not by a Python import
 """HandlerOnexSetup: run the onboarding walk a developer needs after installing the CLI.
 
 Steps, in order (``SETUP_STEPS``):
@@ -29,12 +30,15 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import threading
+import uuid
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from omnibase_core.cli.cli_user_config import USER_CONFIG_TEMPLATE, read_user_config
 from omnibase_core.errors.model_onex_error import ModelOnexError
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from omnimarket.nodes.node_onex_setup_effect.models import (
     ModelOnexSetupFailure,
@@ -473,6 +477,45 @@ def prove_model(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
 ModelStep = Callable[[ModelOnexSetupRequest], ModelOnexSetupReceipt]
 
 
+def _off_event_loop[T](call: Callable[[], T]) -> T:
+    """Run ``call`` on a worker thread and return its result (a raised error propagates).
+
+    The runtime calls this handler on its running event loop, and the model step stores the key
+    through code that starts its own loop with asyncio.run, which refuses to start on a thread
+    that already runs one.
+    """
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(call).result()
+
+
+# The CLI hosts this node on the local runtime, which records every command it carries, so the
+# provider key cannot ride on the command. The CLI parks it here, in this process only, and the
+# command carries the token; handle() takes the key back out before any step runs.
+_PARKED_KEYS: dict[str, SecretStr] = {}
+_PARKED_KEYS_LOCK = threading.Lock()
+
+
+def park_key(key: SecretStr) -> str:
+    """Hold ``key`` in this process and return the token that names it."""
+    token = uuid.uuid4().hex
+    with _PARKED_KEYS_LOCK:
+        _PARKED_KEYS[token] = key
+    return token
+
+
+def take_key(token: str | None) -> SecretStr | None:
+    """Remove and return the key parked under ``token``; None for no token or an unknown one."""
+    if token is None:
+        return None
+    with _PARKED_KEYS_LOCK:
+        return _PARKED_KEYS.pop(token, None)
+
+
+def discard_key(token: str | None) -> None:
+    """Drop a parked key nobody took."""
+    take_key(token)
+
+
 class HandlerOnexSetup:
     """Run every step in order; stop at the first that fails and name its fix."""
 
@@ -480,6 +523,10 @@ class HandlerOnexSetup:
         self._model_step: ModelStep = model_step or prove_model
 
     def handle(self, request: ModelOnexSetupRequest) -> ModelOnexSetupResult:
+        if request.key is None and request.key_handoff is not None:
+            request = request.model_copy(
+                update={"key": take_key(request.key_handoff), "key_handoff": None}
+            )
         refused = refused_before_any_step(request)
         if refused is not None:
             return refused
@@ -518,7 +565,7 @@ class HandlerOnexSetup:
                     step="runtime_config", changed=changed, detail=str(runtime_config)
                 )
             )
-            receipt = self._prove_model(request)
+            receipt = _off_event_loop(lambda: self._prove_model(request))
             steps.append(
                 ModelOnexSetupStepOutcome(
                     step="model",
@@ -567,9 +614,12 @@ __all__ = [
     "URL_PROVIDERS",
     "HandlerOnexSetup",
     "compose_available",
+    "discard_key",
+    "park_key",
     "prove_model",
     "recorded_state",
     "refused_before_any_step",
     "retry_command",
+    "take_key",
     "which",
 ]

@@ -1,0 +1,142 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeFederationEdgeDecisionCompute
+#
+# The edge decision of the federation forwarder, as a pure compute:
+#
+#   handle(ModelEdgeDecisionRequest) -> ModelEdgeDecision
+#
+# One in-memory runtime hands its recorded events to one lane through one
+# topic, and the decision answers for the recording's one event on the
+# overlay's allowed topic: pass, with the record as it may leave the wire,
+# or refuse, with one named reason. The checks, in order, first failure
+# wins: the selection of exactly one event on the allowed topic
+# (unit-not-single), the topic registry naming the allowed topic and both
+# sides declaring the topic class internal (topic-not-allowed,
+# class-not-declared), the connection's who-and-where against the lane
+# declaration, the binding and the route (lane-unauthenticated,
+# principal-binding-mismatch, lane-not-permitted, route-outside-tenant),
+# the recorded ACL probe's identity, freshness and per-step verdicts
+# (acl-not-measured, now-absent, acl-probe-mismatch, acl-probe-stale,
+# acl-probe-not-denied), and then the egress gate under the policy built
+# from the overlay's wire limits and the registry entry's closed value
+# shape (the gate's own refusal names, word for word). A pass carries the
+# record with its key and value base64 strings unchanged and the three
+# stamp headers appended; the handler never re-encodes either string.
+#
+# No clock (now arrives in the request), no I/O, no env, no model. The edge
+# overlay arrives inside the request, loaded the way the overlay block below
+# declares; the handler itself reads no settings.
+name: "node_federation_edge_decision_compute"
+contract_name: "node_federation_edge_decision_compute"
+node_name: "node_federation_edge_decision_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure decision of one recorded runtime event at the federation edge.
+  Selects the recording's one event on the overlay's allowed topic, checks
+  the topic registry entry and the declared topic class, the connection's
+  lane declaration, authenticated identity, permitted lane and resolved
+  route, and the recorded ACL probe's identity, freshness and per-step
+  verdicts, then gates the record with the egress gate under the policy
+  built from the overlay's wire limits and the registry entry's closed
+  value shape. Returns pass, with the record as it may leave the wire
+  (topic the pinned physical topic, key and value base64 strings unchanged,
+  the three stamp headers appended), or refuse with one named reason.
+  Deterministic for the same request; no clock (now arrives in the
+  request), no I/O, no model.
+input_model:
+  name: "ModelEdgeDecisionRequest"
+  module: "omnimarket.nodes.node_federation_edge_decision_compute.models.model_edge_decision"
+  description: "One recording, the edge overlay, the connection's who-and-where, the topic registry entry, the ACL probe record and the decision's own now."
+output_model:
+  name: "ModelEdgeDecision"
+  module: "omnimarket.nodes.node_federation_edge_decision_compute.models.model_edge_decision"
+  description: "Pass with the record as it may leave the edge, or refuse with one named reason; not_selected counts the recording's other events."
+handler:
+  module: "omnimarket.nodes.node_federation_edge_decision_compute.handlers.handler_federation_edge_decision"
+  class: "HandlerFederationEdgeDecision"
+  input_model: "omnimarket.nodes.node_federation_edge_decision_compute.models.model_edge_decision.ModelEdgeDecisionRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_federation_edge_decision_compute.handlers.handler_federation_edge_decision:HandlerFederationEdgeDecision"
+  handlers:
+    - operation: "decide_edge"
+      handler:
+        name: "HandlerFederationEdgeDecision"
+        module: "omnimarket.nodes.node_federation_edge_decision_compute.handlers.handler_federation_edge_decision"
+    - operation: "validate_edge_overlay"
+      handler:
+        name: "HandlerEdgeOverlayValidation"
+        module: "omnimarket.nodes.node_federation_edge_decision_compute.handlers.handler_edge_overlay_validation"
+# The edge decision command, sent by the federation forwarder for the one
+# event it selected from a runtime's recording; the two terminals are
+# runtime_dispatch.terminal_events.
+terminal_event: "onex.evt.omnimarket.federation-edge-decision-completed.v1"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.federation-edge-decision-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.federation-edge-decision-completed.v1"
+    failure: "onex.evt.omnimarket.federation-edge-decision-failed.v1"
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnimarket.federation-edge-decision-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.federation-edge-decision-completed.v1"
+    - "onex.evt.omnimarket.federation-edge-decision-failed.v1"
+# main, beside the federation forwarder and the egress gate: the
+# runtime-profile validator requires a profile on a contract that consumes
+# a command.
+runtime_profiles:
+  - main
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+replay:
+  deterministic: true
+# The edge overlay (the one binding and the one up direction) is loaded from
+# <root>/node_federation_edge_decision_compute/overlay.yaml under a root
+# named in ONEX_SKILL_OVERLAY_ROOTS and arrives inside the request; the
+# handler itself reads no settings and no environment.
+overlay:
+  node: node_federation_edge_decision_compute
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  description: "Pure edge decision of the federation forwarder: who-and-where, ACL probe and egress gate for one recorded runtime event, pass or one named refusal."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-14"
+  ticket: OMN-24488
+  tags:
+    - compute
+    - federation
+    - edge
+    - pure
+
+# The broker grants the node's three topics need (OMN-24005 coverage gate): the runtime login reads the request and
+# writes the two terminals. The decision node holds no wire topic of the edge itself: the edge's own topics are the overlay's, granted by broker_acls_federation_edge_e1.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.federation-edge-decision-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.federation-edge-decision-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.federation-edge-decision-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.federation-edge-decision-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.federation-edge-decision-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.federation-edge-decision-failed.v1, operation: DESCRIBE}

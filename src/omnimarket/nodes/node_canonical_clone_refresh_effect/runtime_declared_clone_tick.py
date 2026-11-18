@@ -167,7 +167,11 @@ def main(argv: list[str] | None = None) -> int:
             table = resolve_lab_hosts_table()
             repo_dir = resolve_overlay_key(f"repos.{topics.repo_role}")
             handler = HandlerDeclaredCloneRefresh(
-                table, repo_dir, TransportSubprocess(local_host_name=host)
+                table,
+                repo_dir,
+                TransportSubprocess(
+                    local_host_name=host, local_omni_home=str(args.registry_root)
+                ),
             )
         except (NodeOverlayError, ValueError) as exc:
             sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")

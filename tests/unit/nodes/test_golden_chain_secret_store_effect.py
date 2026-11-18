@@ -125,6 +125,7 @@ async def _run_over_bus(
         "list",
         "resolve_house_model_key",
         "generate_key",
+        "write_env_file",
     }
     route = routes[request.operation.value]
     assert route.event_model is not None

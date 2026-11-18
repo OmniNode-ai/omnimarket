@@ -111,7 +111,10 @@ async def test_real_postgres_ten_calls_give_four_rows_and_a_replay_changes_nothi
 @pytest.mark.integration
 async def test_real_postgres_measured_cost_excludes_unmeasured_calls() -> None:
     """OMN-20006 AC3/AC4 on real Postgres: the recount's FILTER clauses and the
-    typed NULL for a key with no measured call, plus 0002 over existing rows."""
+    typed NULL for a key with no measured call, plus 0002 over existing rows.
+
+    OMN-24615 AC5: a call sent as measured with 0 tokens each way and no cost
+    is stored unmeasured, so its day has no measured cost."""
     conn = await _connect_or_skip()
     schema = f"{_SCHEMA}_measured"
     try:
@@ -136,7 +139,7 @@ async def test_real_postgres_measured_cost_excludes_unmeasured_calls() -> None:
         assert old["usage_source"] == "unknown"
 
         def _event_of(
-            call_id: str, day: str, cost: float, source: str
+            call_id: str, day: str, cost: float, source: str, tokens: int = 10
         ) -> ModelUsageCallDelta:
             return HandlerProjectionUsageByModelDay().handle(
                 ModelUsageCallEvent.model_validate(
@@ -144,8 +147,8 @@ async def test_real_postgres_measured_cost_excludes_unmeasured_calls() -> None:
                         "call_id": call_id,
                         "model_name": "m",
                         "timestamp": f"{day}T10:00:00Z",
-                        "prompt_tokens": 10,
-                        "completion_tokens": 2,
+                        "prompt_tokens": tokens,
+                        "completion_tokens": 2 if tokens else 0,
                         "estimated_cost_usd": cost,
                         "usage_source": source,
                         "tenant_id": "t",
@@ -153,12 +156,13 @@ async def test_real_postgres_measured_cost_excludes_unmeasured_calls() -> None:
                 )
             )
 
-        for call_id, day, cost, source in (
-            ("m1", "2026-09-28", 0.25, "measured"),
-            ("e1", "2026-09-28", 9.0, "estimated"),
-            ("u1", "2026-09-29", 4.0, "unknown"),
+        for call_id, day, cost, source, tokens in (
+            ("m1", "2026-09-28", 0.25, "measured", 10),
+            ("e1", "2026-09-28", 9.0, "estimated", 10),
+            ("u1", "2026-09-29", 4.0, "unknown", 10),
+            ("z1", "2026-09-30", 0.0, "measured", 0),
         ):
-            delta = _event_of(call_id, day, cost, source)
+            delta = _event_of(call_id, day, cost, source, tokens)
             async with conn.transaction():
                 await write_usage_call(conn, delta, schema=schema)
         rows = {
@@ -172,6 +176,8 @@ async def test_real_postgres_measured_cost_excludes_unmeasured_calls() -> None:
         assert rows["2026-09-28"]["cost_usd"] == Decimal("9.25")
         assert rows["2026-09-29"]["measured_cost_usd"] is None
         assert rows["2026-09-29"]["unmeasured_call_count"] == 1
+        assert rows["2026-09-30"]["measured_cost_usd"] is None
+        assert rows["2026-09-30"]["unmeasured_call_count"] == 1
     finally:
         await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
         await conn.close()

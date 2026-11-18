@@ -6,5 +6,22 @@ from omnimarket.nodes.node_claude_pool_refill_effect.models.model_claude_pool_re
     ModelClaudePoolRefillRequest,
     ModelClaudePoolRefillResult,
 )
+from omnimarket.nodes.node_claude_pool_refill_effect.models.model_claude_pool_refill_overlay import (
+    ModelClaudePoolRefillOverlay,
+    ModelClaudePoolRefillOverlayAdopt,
+    ModelClaudePoolRefillOverlayPatterns,
+    ModelClaudePoolRefillOverlayProbe,
+    ModelClaudePoolRefillOverlayStore,
+    ModelClaudePoolRefillOverlayToken,
+)
 
-__all__ = ["ModelClaudePoolRefillRequest", "ModelClaudePoolRefillResult"]
+__all__ = [
+    "ModelClaudePoolRefillOverlay",
+    "ModelClaudePoolRefillOverlayAdopt",
+    "ModelClaudePoolRefillOverlayPatterns",
+    "ModelClaudePoolRefillOverlayProbe",
+    "ModelClaudePoolRefillOverlayStore",
+    "ModelClaudePoolRefillOverlayToken",
+    "ModelClaudePoolRefillRequest",
+    "ModelClaudePoolRefillResult",
+]
