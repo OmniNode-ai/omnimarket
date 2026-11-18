@@ -95,6 +95,7 @@ if "runs" in scenario:
             "run_started_at": (
                 infra_test.NOW - timedelta(hours=row["hours_ago"])
             ).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            **{key: row[key] for key in ("event", "display_title") if key in row},
         }
         for row in scenario["runs"]
     ]
@@ -285,11 +286,13 @@ def test_caller_concurrency_separates_refs() -> None:
     assert "github.ref" in group, group
 
 
-def test_ci_summary_enforces_the_context_without_an_exemption() -> None:
+def test_ci_summary_requires_the_context_nowhere() -> None:
+    """OMN-25514: a dev signal, admitted by a dated exclusion, never required."""
     gate = importlib.import_module("scripts.ci.ci_summary_gate")
-    assert CONTEXT in gate.EXPECTED_EXTERNAL_CONTEXTS
+    assert CONTEXT not in gate.EXPECTED_EXTERNAL_CONTEXTS
+    assert CONTEXT not in gate.EXTERNAL_CONTEXT_PRODUCERS
     gate_tests = importlib.import_module("tests.unit.scripts.ci.test_ci_summary_gate")
-    assert (WORKFLOW_FILE, JOB_ID) not in gate_tests.EXEMPT_CONTEXTS
+    assert (WORKFLOW_FILE, JOB_ID) in gate_tests.EXEMPT_CONTEXTS
 
 
 def test_omnimarket_does_not_fork_infra_sources() -> None:

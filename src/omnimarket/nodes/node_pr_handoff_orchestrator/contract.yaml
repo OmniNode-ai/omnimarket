@@ -156,6 +156,21 @@ state_machine:
       to_state: REFUSED
       trigger: evaluated_missing_lab_proof
     - version: {major: 1, minor: 0, patch: 0}
+      transition_name: waiting_to_refused_on_evaluated_review_status_missing
+      from_state: WAITING
+      to_state: REFUSED
+      trigger: evaluated_review_status_missing
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: waiting_to_refused_on_evaluated_review_status_failing
+      from_state: WAITING
+      to_state: REFUSED
+      trigger: evaluated_review_status_failing
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: waiting_to_refused_on_evaluated_review_status_other_head
+      from_state: WAITING
+      to_state: REFUSED
+      trigger: evaluated_review_status_other_head
+    - version: {major: 1, minor: 0, patch: 0}
       transition_name: waiting_to_refused_on_evaluated_held
       from_state: WAITING
       to_state: REFUSED
