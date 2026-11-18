@@ -33,8 +33,8 @@ class ModelHostMirrorRequest(BaseModel):
     overlap_seconds: int = Field(default=600, ge=0)
     # The read node refuses an answer over about 900 KB; 200 rows of about 2 KB each stay well under it.
     page_size: int = Field(default=200, ge=1, le=5000)
-    # Six pages of about 12 s each fit the tick's 100 s run limit; a longer backfill resumes on the next tick.
-    max_pages: int = Field(default=6, ge=1)
+    # Ten pages of about 5 s each, for two files, fit the tick's 100 s run limit; a longer backfill resumes on the next tick.
+    max_pages: int = Field(default=10, ge=1)
     now: datetime | None = None
 
 

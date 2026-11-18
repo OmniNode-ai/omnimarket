@@ -3,7 +3,7 @@
 """One tick of the work ledger host mirror, the unit the host installer renders (OMN-25537).
 
 The unit passes ``--omni-home`` and ``--state-dir`` and declares ``ONEX_LEDGER_BUS_READ_COMMAND``. The mirror is
-``<omni-home>/.onex_state/ledger-mirror/host-ledger-mirror.md`` (authority rows, 3 days) and
+``<omni-home>/.onex_state/ledger-mirror/host-ledger-mirror.md`` (authority rows, 1 day) and
 ``host-ledger-rulings.md`` (rulings and consents, 30 days). ``last-run.json`` in the state directory holds
 the tick's receipt, with the mirror's lag behind the record, so the unit's installer can tell a ticking unit from a
 silent one. Exit 0: the mirror holds every row the record held at the read. Exit 1: the read failed or the page
@@ -63,10 +63,10 @@ class Stream:
 
 # The recent authority rows in one file; a ruling is cited for weeks, so the rulings and consents go back further.
 STREAMS = (
-    Stream("host-ledger-mirror", AUTHORITY_KINDS, 3 * DAY_SECONDS),
+    Stream("host-ledger-mirror", AUTHORITY_KINDS, DAY_SECONDS),
     Stream("host-ledger-rulings", RULING_KINDS, 30 * DAY_SECONDS),
 )
-# One read answers in 5 to 12 s; two streams of up to six pages each end inside the contract's 100 s run limit,
+# One read answers in 5 to 12 s; two streams of up to ten pages each end inside the contract's 100 s run limit,
 # and a read that hangs ends at this bound with the pages before it kept.
 READ_TIMEOUT_SECONDS = 25.0
 
