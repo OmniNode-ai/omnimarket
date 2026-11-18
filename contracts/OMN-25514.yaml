@@ -40,6 +40,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_delegation_health_check_caller_omn19451.py tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -p no:cacheprovider --no-cov
     cwd: .
+- id: dod-omn25514-safety-dated-exception
+  description: 'The Dependency Security Scan policy file config/safety-policy.yml carries exactly one ignored advisory, SFTY-20261018-93041 (opentelemetry-exporter-otlp-proto-http 1.44.0), expiring 2026-11-25 and citing OMN-25587, and the enforcing safety command reads it. On the lab with the scan commands the policy gives rc 0, the same tree without the entry gives rc 64 on that id only, and an expiry in the past gives rc 64.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: uv run --frozen python -c "import yaml; p=yaml.safe_load(open('config/safety-policy.yml')); e=p['security']['ignore-vulnerabilities']; k='SFTY-20261018-93041'; assert list(e)==[k] and e[k]['expires']=='2026-11-25' and 'OMN-25587' in e[k]['reason']; assert '--policy-file config/safety-policy.yml' in open('.github/workflows/security-scan.yml').read()"
+    cwd: .
 - id: dod-omn25514-integration-proof
   description: 'The pushed head ran the CI Summary gate cases, the event-scope count and the delegation-health-check caller pin on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.'
   source: manual
