@@ -6,15 +6,22 @@
 head counts: a head with verdicts only on other heads reads ``superseded``, a new-work head with none reads
 ``missing``, and a PR with no review fact at all reads ``unread`` when the policy expects the fact, and is decided as
 before otherwise. A PR that is not new work is not the gate's to hold, and a CLEAN verdict on the head reads ``pass``.
-No clock and no I/O.
+The reading of the head's verdicts is ``read_head_review``: a CHANGES_NEEDED verdict holds the head only for a
+blocking finding (a failing check, or a cited file and line with a defect) or when it lists no finding; findings that
+are all advisory read ``pass`` and ride on the reading for post-merge follow-up. No clock and no I/O.
 """
 
 from __future__ import annotations
 
+from omnimarket.handlers.review_head_reading import read_head_review
+from omnimarket.handlers.review_status_reading import read_head_review_status
 from omnimarket.models.model_landing_review import (
     EnumReviewGateVerdict,
-    EnumReviewVerdict,
     ModelReviewGateReading,
+)
+from omnimarket.models.model_review_status import (
+    EnumReviewStatusVerdict,
+    ModelReviewStatusReading,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     EnumLandingLandSkipReason,
@@ -33,6 +40,35 @@ SKIP_FOR_REVIEW: dict[EnumReviewGateVerdict, EnumLandingLandSkipReason] = {
 }
 
 
+#: The named reason a held head carries, one per non-pass review status reading.
+SKIP_FOR_REVIEW_STATUS: dict[EnumReviewStatusVerdict, EnumLandingLandSkipReason] = {
+    EnumReviewStatusVerdict.MISSING: EnumLandingLandSkipReason.REVIEW_STATUS_MISSING,
+    EnumReviewStatusVerdict.FAILING: EnumLandingLandSkipReason.REVIEW_STATUS_FAILING,
+    EnumReviewStatusVerdict.OTHER_HEAD: EnumLandingLandSkipReason.REVIEW_STATUS_OTHER_HEAD,
+    EnumReviewStatusVerdict.UNREAD: EnumLandingLandSkipReason.REVIEW_STATUS_UNREAD,
+}
+
+
+def read_review_status_gate(
+    p: ModelLandingPrFacts, policy: ModelLandingPolicy
+) -> ModelReviewStatusReading | None:
+    """The reading of the PR's fable-review-gate commit status, or None when the gate holds nothing.
+
+    Only a new-work PR is gated; the ledger verdict gate (``read_review_gate``) holds a PR with no review fact at
+    all. A new-work PR whose statuses were not read is held as unread when the policy expects the read.
+    """
+    if p.review is None or not p.review.new_work:
+        return None
+    if p.review.statuses is None:
+        if policy.review_status_read_expected:
+            return ModelReviewStatusReading(
+                verdict=EnumReviewStatusVerdict.UNREAD,
+                detail="the fable-review-gate commit statuses were not read for the PR",
+            )
+        return None
+    return read_head_review_status(p.review.statuses, p.head_sha)
+
+
 def read_review_gate(
     p: ModelLandingPrFacts, policy: ModelLandingPolicy
 ) -> ModelReviewGateReading | None:
@@ -46,27 +82,12 @@ def read_review_gate(
         return None
     if not p.review.new_work:
         return None
-    on_head = [r for r in p.review.verdicts if r.head_sha == p.head_sha]
-    if on_head:
-        newest = max(reversed(on_head), key=lambda r: r.at)  # ties: the later row
-        if newest.verdict is EnumReviewVerdict.CLEAN:
-            return ModelReviewGateReading(
-                verdict=EnumReviewGateVerdict.PASS,
-                detail=f"review CLEAN on the head {p.head_sha[:12]}",
-            )
-        return ModelReviewGateReading(
-            verdict=EnumReviewGateVerdict.CHANGES_NEEDED,
-            detail=f"review changes needed on the head {p.head_sha[:12]}",
-        )
-    if p.review.verdicts:
-        return ModelReviewGateReading(
-            verdict=EnumReviewGateVerdict.SUPERSEDED,
-            detail="review verdicts exist only for other heads",
-        )
-    return ModelReviewGateReading(
-        verdict=EnumReviewGateVerdict.MISSING,
-        detail="no review verdict recorded for the head",
-    )
+    return read_head_review(p.review, p.head_sha)
 
 
-__all__ = ["SKIP_FOR_REVIEW", "read_review_gate"]
+__all__ = [
+    "SKIP_FOR_REVIEW",
+    "SKIP_FOR_REVIEW_STATUS",
+    "read_review_gate",
+    "read_review_status_gate",
+]

@@ -1,0 +1,109 @@
+schema_version: 1.0.0
+ticket_id: OMN-24874
+title: A tenant overlay run is priced from the declared model price, and the revision running on h053 and the dev runtime carries the fix
+summary: "The R8 organic control runs on the dev probe tenant's own key, so its route is the tenant overlay and its tier name is tenant_overlay. The routing registry declares no such tier, so the workflow terminal and the projection both re-priced the run through resolve_tier_cost as no_cost_model and stored cost_usd 0.0, while the catalogue declares a price for glm-5.3-flash on that endpoint. The terminal now prices a tier with no registry cost model from the declared per-1M price for the endpoint and model (booked metered), and the projection keeps a priced terminal cost instead of overwriting it with the zero re-measurement; a model no table prices stays unpriced. Own-key spend is not the platform's: resolve_tier_cost returns None for the tenant_overlay tier for every caller, so the two ceiling budget readers read it as not budgeted and skip it, and the measurement reads it as no cost model before the declared price applies. The alarm that reads the R8 and R9 last-run records is not in this change, it is omnimarket#6353 and its own contract. This contract declares AC1 only, the one criterion a hosted check can fail at the merge base: the live readings of AC2, AC3 and AC5 (the R9 record, the running revision, the CLEAN verdict rows) are local_done_gate items that stay unbound, because the hosted gate refuses a bound local_done_gate item and no hosted test can go red with R9 red or the fix undeployed."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24874-priced
+  statement: A run on a customer's own key is stored with the declared model price.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the newest r8 run on h053 reads 13 of 13 checks passed with a real provider cost above zero, read from its own job record -- falsifier: journalctl --user -u onex-delegation-scenario-r8 on h053 for the newest run shows fewer than 13 passed checks or a cost_usd of 0.0'
+evidence_requirements:
+- kind: tests
+  description: The tenant overlay pricing tests, the ceiling budget reader tests, the existing cost path tests and the registry unit tests.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/unit/delegation/test_omn24874_tenant_overlay_budget_readers.py tests/unit/delegation/test_escalation_metered_cost_reaches_projection_omn13535.py tests/unit/delegation/test_omn24562_glm_53_flash_priced_cost_row.py tests/nodes/node_host_installer_registry_units/test_registry_units.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24874-ac1-tenant-overlay-priced
+  description: Hosted proxy for AC1. The terminal of a tenant overlay run on glm-5.3-flash is priced above zero from the declared price, the projection keeps that cost, and an undeclared model stays no_cost_model. Fails at the merge base (the projection stores 0.0). The live r8 reading on h053 is taken after the fix runs on the dev runtime.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24874-live-readings
+  description: 'Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check. It fails unless it runs on h053 (hostname pinned), and parses the conclusion field of the newest R8 and R9 last-run records there, read at most the alarm contract''s max_age_seconds ago (R8 27000, R9 4500), and both read success; a record whose conclusion is failure or refused, or whose time is older, fails it.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      sh -c 'test "$(hostname -s)" = hp-gen9 && for p in "r8 27000" "r9 4500"; do set -- $p; python3 -c "import json,sys,datetime as D; d=json.load(open(sys.argv[1])); a=(D.datetime.now(D.timezone.utc)-D.datetime.fromisoformat(d[sys.argv[4]])).total_seconds(); sys.exit(0 if d[sys.argv[2]]==sys.argv[3] and a<=int(sys.argv[5]) else 1)" "$HOME/.local/state/omni/delegation-scenario-$1/last-run.json" conclusion success ran_at "$2" || exit 1; done'
+    cwd: .
+- id: dod-omn24874-ac1-r8-live-13-of-13
+  description: Live reading for AC1. On h053 (hostname pinned) the newest R8 scenario result in the host's event journal concluded success with 13 assertions all held (each reads +name), including +organic_run_has_values, which the R8 handler sets to cost above 0 and tokens above 0, and was recorded at most 27000 seconds ago (the alarm contract's R8 max age). Local Done gate only; the reading is taken on h053 after the fix runs on the dev runtime.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      sh -c 'test "$(hostname -s)" = hp-gen9 && python3 -c "import json,sys,datetime as D; f,sc,pl,sid,asr,cc,ok,n,plus,cost,rec,age=sys.argv[1:]; rows=[json.loads(l)[pl] for l in open(f) if l.strip()]; p=[r for r in rows if r.get(sid)==sc][-1]; a=p[asr]; t=D.datetime.fromisoformat(p[rec]); sys.exit(0 if p[cc]==ok and len(a)==int(n) and all(x.startswith(plus) for x in a) and plus+cost in a and (D.datetime.now(D.timezone.utc)-t).total_seconds()<=int(age) else 1)" "${OMNI_HOME:?}/.onex_state/delegation-scenario-r8/events.jsonl" R8 payload scenario_id assertions conclusion success 13 + organic_run_has_values recorded_at 27000'
+    cwd: .
+- id: dod-omn24874-ac2-r9-live
+  description: Live reading for AC2. On h053 (hostname pinned) the newest R9 last-run record parses to conclusion success and was written at most 4500 seconds ago (the alarm contract's R9 max age). Local Done gate only.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      sh -c 'test "$(hostname -s)" = hp-gen9 && python3 -c "import json,sys,datetime as D; d=json.load(open(sys.argv[1])); a=(D.datetime.now(D.timezone.utc)-D.datetime.fromisoformat(d[sys.argv[4]])).total_seconds(); sys.exit(0 if d[sys.argv[2]]==sys.argv[3] and a<=int(sys.argv[5]) else 1)" "$HOME/.local/state/omni/delegation-scenario-r9/last-run.json" conclusion success ran_at 4500'
+    cwd: .
+- id: dod-omn24874-ac4-alarm-ledger-row
+  description: 'Live reading for AC4, kept unbound: AC4 is not declared here because it is not met (the alarm is omnimarket#6353, unmerged) and the ticket criterion is unchanged on Linear. On h053 (hostname pinned) the squash commit of #6353 on the first-parent line of origin/dev is an ancestor of the revision the alarm unit (scenario-alarm-systemd) was installed at (its installed.json), and the ledger holds a STATUS row with src=alarm and alarm=delegation-scenario-r8-failed or alarm=delegation-scenario-r9-failed stamped at or after that unit''s installed_at, so a row left before the unit was installed, or while #6353 is unmerged, passes nothing. Local Done gate only. Behavioural test: tests/test_omn24874_contract_checks.py runs this command over a temp repository with a hostname shim, an install record and ledger rows.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      sh -c 'test "$(hostname -s)" = hp-gen9 && A=$(git log origin/dev --first-parent --no-merges --format="%H %s" | grep -m1 -E " \(#6353\)\$" | cut -d" " -f1) && test -n "$A" && I="${OMNI_HOME:?}/.onex_state/delegation-scenario-alarm/scenario-alarm-systemd.installed.json" && R=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])" "$I" revision) && git -C "${OMNI_HOME:?}/omnimarket" merge-base --is-ancestor "$A" "$R" && python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "src=alarm.*alarm=delegation-scenario-r[89]-failed" | python3 -c "import re,sys,json,datetime as D; t=D.datetime.fromisoformat(json.load(open(sys.argv[1]))[sys.argv[3]]); sys.exit(0 if any((m:=re.search(sys.argv[2],l)) and D.datetime.fromisoformat(m.group(1))>=t for l in sys.stdin) else 1)" "$I" "^(?:\S+:\d+:)?(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ) \| STATUS \|(?=.* \| src=alarm )(?=.* \| alarm=delegation-scenario-r[89]-failed )" installed_at'
+    cwd: .
+- id: dod-omn24874-integration-proof
+  description: The tenant overlay pricing tests and the registry unit tests run on a lab host at the pushed head through the lab work runner; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The live r8 and r9 readings on h053 follow the dev deploy of the merged fix.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path "${OMNI_HOME:?}" --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24874 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/nodes/node_host_installer_registry_units/test_registry_units.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24874-real-postgres
+  description: The real-Postgres file of this change runs on a lab host against a disposable postgres:16-alpine container that the command starts (random password, loopback port) and removes; it fails when any of the file's tests is skipped, so a host without Docker or a database cannot pass it. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path "${OMNI_HOME:?}" --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-real-postgres-24874 --kind test -- sh -c 'PW=$(head -c 18 /dev/urandom | base64 | tr -dc A-Za-z0-9); N=dod-omn24874-pg-$$; OUT=/tmp/$N.out; docker run -d --rm --name "$N" -e POSTGRES_PASSWORD="$PW" -e POSTGRES_DB=omnibase_infra -p 127.0.0.1::5432 postgres:16-alpine >/dev/null; trap "docker rm -f $N >/dev/null; rm -f $OUT" EXIT; for i in $(seq 1 40); do docker exec "$N" pg_isready -U postgres -q && break; sleep 1; done; PORT=$(docker port "$N" 5432/tcp | head -1 | sed "s/.*://"); INTEGRATION_POSTGRES_PASSWORD="$PW" INTEGRATION_POSTGRES_HOST=127.0.0.1 INTEGRATION_POSTGRES_PORT="$PORT" env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn24874_tenant_overlay_cost_real_postgres.py -q --no-cov -n 0 -p no:randomly -rs > "$OUT" 2>&1; R=$?; cat "$OUT"; ! grep -q skipped "$OUT" && exit $R'
+    cwd: .
+- id: dod-omn24874-ac3-running-revision
+  description: 'Live reading for AC3, the cost fix. On h053 (hostname pinned) the squash commit of this change on the first-parent line of origin/dev (squash merges only, so the non-merge commit whose subject ends (#6335) is the squash) is an ancestor of the revision the R8 unit was installed at (its installed.json), a dev-merge tag contains that revision, and the newest dev-merge tag on the registry clone is at most a day old. On the dev runtime the reading is pinned to the container named omninode-runtime that carries the compose project label omnibase-infra (ssh on ONEX_RUNTIME_SSH_HOST only says where to connect: a container with another name is never read and one with another project label fails the reading; the host is not named in this public file). The running revision is the omnimarket commit that container''s own build-provenance.json records as a dev-merge-tag first-party source whose named commit is that vcs_ref, and the squash commit must be its ancestor; the container must also import the workflow handler''s declared-price function and the projection''s overlay floor (_tenant_overlay_cost_usd), the two sites the fix changes. Local Done gate only; it fails before the merge, when no commit on origin/dev names the ticket, when the container still runs older code, and when the runtime host variable is unset. Behavioural test: tests/test_omn24874_contract_checks.py runs this command over a temp repository with ssh and hostname shims. The alarm is omnimarket#6353, whose own contract carries it; its review verdict is read by the AC5 item.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      sh -c 'test "$(hostname -s)" = hp-gen9 && F=$(git log origin/dev --first-parent --no-merges --format="%H %s" | grep -m1 -E " \(#6335\)\$" | cut -d" " -f1) && test -n "$F" && R=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])" "${OMNI_HOME:?}/.onex_state/delegation-scenario-r8/scenario-r8-systemd.installed.json" revision) && git -C "${OMNI_HOME:?}/omnimarket" merge-base --is-ancestor "$F" "$R" && test -n "$(git -C "${OMNI_HOME:?}/omnimarket" tag --contains "$R" --list "dev-*")" && T=$(git -C "${OMNI_HOME:?}/omnimarket" for-each-ref --sort=-creatordate --count=1 --format="%(creatordate:unix)" "refs/tags/dev-*") && test $(( $(date +%s) - T )) -le 86400 && P=$(ssh -o BatchMode=yes "${ONEX_RUNTIME_SSH_HOST:?set ONEX_RUNTIME_SSH_HOST to the dev runtime host}" "docker inspect omninode-runtime; docker exec omninode-runtime cat /app/build-provenance.json") && S=$(printf %s "$P" | jq -s -r "select(.[0][0].Name == \"/omninode-runtime\" and .[0][0].Config.Labels[\"com.docker.compose.project\"] == \"omnibase-infra\") | .[1].per_repo_vcs_provenance.siblings.omnimarket | select(.vcs_dirty == false and (.dev_merge_tag | startswith(\"dev-\"))) | .vcs_ref + \" \" + .dev_merge_tag") && C=${S% *} && N=${S#* } && test -n "$C" && test "$(git -C "${OMNI_HOME:?}/omnimarket" rev-parse "$N^{commit}")" = "$C" && git -C "${OMNI_HOME:?}/omnimarket" merge-base --is-ancestor "$F" "$C" && ssh -o BatchMode=yes "$ONEX_RUNTIME_SSH_HOST" "docker exec omninode-runtime python -c \"import omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow as w, omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation as p; assert w.byok_declared_price_per_1m and p._tenant_overlay_cost_usd\""'
+    cwd: .
+- id: dod-omn24874-ac5-clean-verdict-row
+  description: Live reading for AC5. The ledger holds a STATUS row with verdict=CLEAN for this pull request (#6335) written by the Fable review lane of #6335 (lane=fable-omnimarket-6335-*, actor=fable-reviewer) whose head= cell is the 12-character head of the checkout the gate runs in, and a STATUS row with verdict=CLEAN written by the review lane of the alarm pull request #6353 (lane=fable-omnimarket-6353-*) whose head= cell is the head the PR watcher's state records for #6353 (a pull request the watcher cannot read fails the check), so a CLEAN row for an older head of either pull request does not pass after a new push. Local Done gate only.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      sh -c 'H=$(git rev-parse HEAD | cut -c1-12) && J=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6353 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]][:12])" facts head_sha) && test -n "$J" && V=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "verdict=CLEAN") && printf %s "$V" | grep -F "| lane=fable-omnimarket-6335-" | grep -F "| actor=fable-reviewer |" | grep -F "head=$H" | grep -q STATUS && printf %s "$V" | grep -F "| lane=fable-omnimarket-6353-" | grep -F "| actor=fable-reviewer |" | grep -F "head=$J" | grep -q STATUS'
+    cwd: .
+- id: dod-omn24874-reading-commands-behaviour
+  description: The behavioural tests of the live reading commands in this contract (the R9 and R8 and R9 readings over success, failure, refused, stale and wrong-host records, the running-revision reading over a temporary repository with ssh and hostname shims, the CLEAN verdict reading over ledger rows at the head of each pull request) run as the whole file, so no selection can shrink the evidence. This item binds no criterion, because a hosted test of a reading command passes whether or not R9 reads passed or the fix is deployed; the readings themselves are the unbound local_done_gate items above.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
