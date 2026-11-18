@@ -17,7 +17,7 @@ from __future__ import annotations
 import stat
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 
@@ -319,6 +319,64 @@ def test_assignment_with_spaces_around_equals_is_not_a_shell_assignment_and_fail
     assert not _calls(log)
 
 
+# Forms the shell consumer reads differently from the reader: each is refused with the exit and the
+# marker naming the key, never a guessed value. ``$`` and a backslash escape are decoded or expanded by
+# the shell; ``NAME= v`` runs ``v`` as a command with NAME empty.
+UNREADABLE_FORMS = [
+    pytest.param('"a\\"b"', id="escaped-quote-in-double-quotes"),
+    pytest.param(" v1", id="leading-space-after-equals"),
+    pytest.param("pa$ss1", id="unexpanded-dollar-unquoted"),
+    pytest.param('"pa$ss1"', id="unexpanded-dollar-in-double-quotes"),
+    pytest.param("pa`id`ss", id="backtick"),
+    pytest.param("pa\\ss1", id="backslash-escape-unquoted"),
+]
+
+
+@pytest.mark.parametrize("name", driver.CREDENTIAL_NAMES)
+@pytest.mark.parametrize("value", UNREADABLE_FORMS)
+def test_value_forms_the_shell_reads_differently_fail_closed_with_the_marker(
+    tmp_path: Path, name: str, value: str
+) -> None:
+    lines = {
+        "DEV_KAFKA_SASL_USERNAME": f"DEV_KAFKA_SASL_USERNAME={SENTINEL_USER}\n",
+        "DEV_KAFKA_SASL_PASSWORD": f"DEV_KAFKA_SASL_PASSWORD={SENTINEL_PASS}\n",
+    }
+    lines[name] = f"{name}={value}\n"
+    done, log = _run_prologue(tmp_path, "".join(lines.values()), ARGV)
+    assert done.returncode == driver.CREDENTIAL_MISSING_EXIT, done.stderr
+    assert f"{driver.CREDENTIAL_MISSING_MARKER} {name}" in done.stderr
+    # rpk was never reached with a guessed value, and no value reached an output.
+    assert not _calls(log)
+    combined = done.stdout + done.stderr
+    assert SENTINEL_USER not in combined
+    assert SENTINEL_PASS not in combined
+    assert value.strip("\"'") not in combined
+
+
+def test_dollar_and_backslash_inside_single_quotes_are_literal_in_the_shell_and_read_as_such(
+    tmp_path: Path,
+) -> None:
+    """Positive control: single quotes make ``$`` and a backslash literal for the shell, so they are read."""
+    text = "DEV_KAFKA_SASL_USERNAME='u$1'\nDEV_KAFKA_SASL_PASSWORD='p\\2'\n"
+    done, log = _run_prologue(tmp_path, text, ARGV)
+    assert done.returncode == 0, done.stderr
+    assert log.read_text(encoding="utf-8").rstrip().endswith("-X user=u$1 -X pass=p\\2")
+    sourced = subprocess.run(
+        [
+            "sh",
+            "-c",
+            '. "$1"; printf "%s\\n%s" "$DEV_KAFKA_SASL_USERNAME" "$DEV_KAFKA_SASL_PASSWORD"',
+            "sh",
+            str(tmp_path / "operator.env"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"PATH": "/usr/bin:/bin"},
+    )
+    assert sourced.stdout == "u$1\np\\2"
+
+
 @pytest.mark.parametrize(
     "missing", ["DEV_KAFKA_SASL_USERNAME", "DEV_KAFKA_SASL_PASSWORD"]
 )
@@ -382,6 +440,46 @@ def test_lab_broker_acls_exit_3_with_the_marker_raises_the_typed_error_through_r
     assert SENTINEL_USER not in message
     assert SENTINEL_PASS not in message
     assert not _calls(log)
+
+
+def test_lab_broker_acls_username_missing_with_the_password_present_names_the_username_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The password is in the file here, so a message that carried it would fail this test."""
+    script, log = _run_remote_locally(
+        monkeypatch,
+        tmp_path,
+        f"DEV_KAFKA_SASL_PASSWORD={SENTINEL_PASS}\n",
+        ARGV,
+    )
+    with pytest.raises(driver.BrokerCredentialMissingError) as raised:
+        driver.run_remote("lab-target", script)
+    message = str(raised.value)
+    assert message.startswith(driver.CREDENTIAL_MISSING_MARKER)
+    assert "DEV_KAFKA_SASL_USERNAME" in message
+    assert "DEV_KAFKA_SASL_PASSWORD" not in message
+    assert SENTINEL_PASS not in message
+    assert not _calls(log)
+
+
+@pytest.mark.parametrize("mode", ["apply", "dry_run"])
+def test_the_reconcile_handler_surfaces_a_missing_credential_as_exit_2_with_the_marker(
+    mode: Literal["apply", "dry_run"],
+) -> None:
+    """The reconcile node answers a missing credential with the marker line and exit 2, never a pass."""
+
+    def missing(target: str, script: str) -> str:
+        raise driver.BrokerCredentialMissingError(
+            f"{driver.CREDENTIAL_MISSING_MARKER} DEV_KAFKA_SASL_PASSWORD missing or empty in /x/.env"
+        )
+
+    result = reconcile.HandlerBrokerAclReconcile(
+        environ=ENV, remote_runner=missing
+    ).handle(ModelBrokerAclReconcileRequest(mode=mode))
+    assert result.exit_code == 2
+    assert result.error is not None
+    assert result.error.startswith(driver.CREDENTIAL_MISSING_MARKER)
+    assert "DEV_KAFKA_SASL_PASSWORD" in result.error
 
 
 @pytest.mark.parametrize(

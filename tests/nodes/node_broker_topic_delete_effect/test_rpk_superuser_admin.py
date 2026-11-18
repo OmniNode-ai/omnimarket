@@ -281,8 +281,9 @@ def test_seam_acl_declaration_names_the_same_containers() -> None:
         runner=runner,
     ).read_evidence(["fx-empty"])
     assert "docker inspect" not in runner.calls[0][1]
-    # Tied to the declared cell, not to a literal: a dropped cell would give the default, which this
-    # test reads from the declaration, so change the declaration's value and this follows it.
+    # The shipped declaration's value is the default (``~/.omnibase/.env``), so this assertion cannot
+    # tell a dropped cell from a carried one: it pins that the declared value reaches the script. A
+    # dropped cell is caught by the non-default case in the test below.
     declared_file = declaration["superuser_env_file"]
     assert declared_file.startswith("~/")
     assert f'F="$HOME"/{declared_file[2:]}' in runner.calls[0][1].splitlines()
@@ -517,3 +518,25 @@ def test_control_golden_goes_red_on_a_named_break() -> None:
     outcome = admin(FakeRunner(delete_out="")).delete(["fx-empty"])
     assert outcome == {"fx-empty": "delete_unconfirmed"}
     assert outcome != {"fx-empty": ""}
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "relative/operator.env",
+        "/srv/../etc/operator.env",
+        "/srv/op erator.env",
+        "~",
+        "/srv/$HOME/x",
+    ],
+)
+def test_superuser_env_file_a_bad_path_is_refused_when_the_overlay_loads(
+    bad: str,
+) -> None:
+    """The overlay's superuser block refuses a path the script cannot take at load, not at the first call."""
+    with pytest.raises(ValueError, match="superuser_env_file"):
+        ModelSuperuserAccess.model_validate({**ACCESS, "superuser_env_file": bad})
+    good = ModelSuperuserAccess.model_validate(
+        {**ACCESS, "superuser_env_file": "/srv/custom/operator.env"}
+    )
+    assert good.superuser_env_file == "/srv/custom/operator.env"

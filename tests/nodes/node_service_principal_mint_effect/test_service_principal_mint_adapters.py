@@ -341,3 +341,26 @@ def test_ssh_credential_delivery_wrong_owner(tmp_path: Path) -> None:
 
         reading = asyncio.run(delivery.deliver(target, content, apply=True))
         assert reading.owner == "12345:12345"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "relative/operator.env",
+        "/srv/../etc/operator.env",
+        "/srv/op erator.env",
+        "~",
+        "/srv/$HOME/x",
+    ],
+)
+def test_superuser_env_file_a_bad_path_is_refused_when_the_broker_row_loads(
+    bad: str,
+) -> None:
+    """The row refuses at load, so the adapter never holds a path whose first call would raise."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="superuser_env_file"):
+        _broker(superuser_env_file=bad)
+    assert _broker(superuser_env_file="~/ops/operator.env").superuser_env_file == (
+        "~/ops/operator.env"
+    )

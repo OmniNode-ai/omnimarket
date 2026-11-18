@@ -13,6 +13,8 @@ from typing import Any, Literal
 
 import yaml
 
+from omnimarket.models.broker_acl_reconcile import validate_superuser_env_file
+
 RESOURCE_TYPES = frozenset({"TOPIC", "GROUP", "CLUSTER", "TRANSACTIONAL_ID"})
 PATTERNS = frozenset({"LITERAL", "PREFIXED"})
 OPERATIONS = frozenset(
@@ -40,9 +42,6 @@ CREDENTIAL_MISSING_EXIT = 3
 CREDENTIAL_MISSING_MARKER = "onex-broker-credential-missing"
 CREDENTIAL_NAMES = ("DEV_KAFKA_SASL_USERNAME", "DEV_KAFKA_SASL_PASSWORD")
 DEFAULT_SUPERUSER_ENV_FILE = "~/.omnibase/.env"
-_ENV_FILE_SAFE = frozenset(
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/"
-)
 
 
 class DeclarationError(ValueError):
@@ -153,16 +152,11 @@ class AclDeclaration:
 
 def _remote_path(path: object) -> str:
     """Quote a declared env file path for the broker host, expanding only a leading ``~/``."""
-    if (
-        not isinstance(path, str)
-        or not path
-        or not set(path) <= _ENV_FILE_SAFE | {"~"}
-        or ".." in path.split("/")
-        or not (path.startswith(("/", "~/")))
-    ):
-        raise DeclarationError(
-            "superuser_env_file must be an absolute or ~/ path of letters, digits and ._-/"
-        )
+    try:
+        checked = validate_superuser_env_file(path)
+    except ValueError as exc:
+        raise DeclarationError(str(exc)) from None
+    path = checked
     if path.startswith("~/"):
         return f'"$HOME"/{shlex.quote(path[2:])}'
     return shlex.quote(path)
@@ -299,27 +293,50 @@ def build_remote_script(decl: AclConnection, rpk_argvs: list[list[str]]) -> str:
     The file's real consumer sources it as shell (the deploy agent launcher), so the reader
     takes the last ``[export ]NAME=value`` assignment and strips what the shell would: CR, one
     level of surrounding quotes, and an unquoted value's trailing whitespace and `` # comment``.
-    ``NAME = value`` is not a shell assignment and is not read; backslash escapes are not decoded.
+    ``NAME = value`` is not a shell assignment and is not read. A form the shell reads differently
+    from this reader fails closed with the same exit and marker, never a guessed value: a leading
+    space after the equals sign (the shell runs the rest as a command), and outside single quotes
+    a backslash, a dollar sign or a backtick (the shell decodes or expands them).
     """
     env_file = _remote_path(decl.superuser_env_file)
     broker = shlex.quote(decl.broker_container)
     user_name, pass_name = CREDENTIAL_NAMES
     marker = CREDENTIAL_MISSING_MARKER
-    pick = (
+    # The last ``[export ]NAME=`` line, with only the CR stripped: ``raw`` is what the shell would parse.
+    raw = (
         "tr -d '\\r' < \"$F\" | "
         "sed -n -e 's/^[[:space:]]*export[[:space:]][[:space:]]*//' "
-        "-e 's/^[[:space:]]*{name}=//p' | tail -n 1 | "
+        "-e 's/^[[:space:]]*{name}=//p' | tail -n 1"
+    )
+    # Strip what the shell strips from a value ``check_form`` has already accepted.
+    strip = (
         'sed -e \'s/^"\\([^"]*\\)".*$/\\1/\' -e t '
         "-e 's/^'\\''\\([^'\\'']*\\)'\\''.*$/\\1/' -e t "
         "-e 's/[[:space:]][[:space:]]*#.*$//' -e 's/[[:space:]]*$//'"
+    )
+    # Forms the shell consumer reads differently from this reader are refused, never guessed at:
+    # a leading space (``NAME= v`` runs ``v`` with NAME empty), and, outside single quotes, a
+    # backslash (an escape the shell decodes), a dollar sign or a backtick (the shell expands them).
+    check_form = (
+        f'case "$R_{{var}}" in\n'
+        f'  [[:space:]]*) echo "{marker} {{name}} has an unreadable form (leading whitespace) in $F" >&2; '
+        f"exit {CREDENTIAL_MISSING_EXIT};;\n"
+        "  \\'*) ;;\n"
+        f"  *\\\\*|*'$'*|*'`'*) echo \"{marker} {{name}} has an unreadable form (backslash, dollar or backtick) in $F\" >&2; "
+        f"exit {CREDENTIAL_MISSING_EXIT};;\n"
+        "esac"
     )
     lines = [
         "set -eu",
         f"F={env_file}",
         f'[ -r "$F" ] || {{ echo "{marker} no readable declared secret source $F" >&2; '
         f"exit {CREDENTIAL_MISSING_EXIT}; }}",
-        f'U="$({pick.format(name=user_name)})"',
-        f'P="$({pick.format(name=pass_name)})"',
+        f'R_U="$({raw.format(name=user_name)})"',
+        f'R_P="$({raw.format(name=pass_name)})"',
+        check_form.format(var="U", name=user_name),
+        check_form.format(var="P", name=pass_name),
+        f'U="$(printf \'%s\\n\' "$R_U" | {strip})"',
+        f'P="$(printf \'%s\\n\' "$R_P" | {strip})"',
         # An empty credential would reach the broker unauthenticated and fail
         # there with a misleading error; stop here and say which key is missing.
         f'[ -n "$U" ] || {{ echo "{marker} {user_name} missing or empty in $F" >&2; '

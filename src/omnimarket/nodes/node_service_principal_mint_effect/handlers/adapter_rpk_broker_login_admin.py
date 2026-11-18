@@ -12,6 +12,7 @@ from pydantic import SecretStr
 from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.driver_broker_acl import (
     DEFAULT_SUPERUSER_ENV_FILE,
     AclConnection,
+    BrokerCredentialMissingError,
     RemoteRunner,
     build_remote_script,
     run_remote,
@@ -19,6 +20,7 @@ from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.driver_broker_ac
 
 from ..models.model_service_principal_mint import ModelServicePrincipalBroker
 from ..protocols.protocol_service_principal_mint import (
+    BrokerCredentialUnresolvedError,
     BrokerLoginAdminError,
 )
 
@@ -54,6 +56,8 @@ class RpkSshBrokerLoginAdmin:
         script = build_remote_script(self._connection, rpk_argvs)
         try:
             stdout = await asyncio.to_thread(self._run, script)
+        except BrokerCredentialMissingError as exc:
+            raise BrokerCredentialUnresolvedError(str(exc)) from None
         except Exception as exc:
             raise BrokerLoginAdminError(
                 f"list logins failed: {type(exc).__name__}"
@@ -85,6 +89,8 @@ class RpkSshBrokerLoginAdmin:
         script = build_remote_script(self._connection, rpk_argvs)
         try:
             await asyncio.to_thread(self._run, script)
+        except BrokerCredentialMissingError as exc:
+            raise BrokerCredentialUnresolvedError(str(exc)) from None
         except Exception as exc:
             error_msg = f"create login failed: {type(exc).__name__}"
             if password.get_secret_value() in error_msg:
