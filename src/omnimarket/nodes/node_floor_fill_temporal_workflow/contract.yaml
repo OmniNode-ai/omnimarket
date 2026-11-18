@@ -7,7 +7,7 @@ runtime_profiles: []
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >-
-  Workflow 2: the floor fill on a Temporal Schedule. The Schedule fires every 5 minutes with overlap policy SKIP and
+  Workflow 2: the floor fill on a Temporal Schedule. The Schedule fires every 15 minutes with overlap policy SKIP and
   starts one workflow whose steps are one activity that runs a node command each: read free lab Claude slots and
   unowned work through the fill node's own read, run the floor fill node once through its declared one-run command,
   read back from the ledger that each lane it placed wrote its CLAIM within 10 minutes, and write an alarm row through
@@ -70,13 +70,15 @@ metadata:
 floor_fill_schedule:
   schedule_id: onex-floor-fill
   task_queue: onex-floor-fill
-  every_seconds: 300
+  every_seconds: 900
   overlap: skip
   lane: floor-fill-schedule
   ticket: OMN-24927
   claim_poll_seconds: 60
   step_timeout_seconds: 600
   step_max_attempts: 3
+  # Where run_fill keeps the answer of each finished step key (under the home), so a repeat delivery runs the fill once.
+  step_state_directory: .local/state/omni/floor-fill-steps
   rule:
     free_slots_above: 5
     zero_runs: 2
@@ -86,7 +88,9 @@ floor_fill_schedule:
     run_fill: ["{python}", "-m", "omnimarket.nodes.node_floor_fill_temporal_workflow", "run-fill"]
     read_claims: ["{python}", "-m", "omnimarket.nodes.node_floor_fill_temporal_workflow", "read-claims"]
     write_alarm: ["{python}", "-m", "omnimarket.nodes.node_floor_fill_temporal_workflow", "write-alarm"]
-  # The fill node's own one-run command and pool read, as its owner declares them. Empty until declared: the step
-  # then refuses (exit 3) and names the key, so the workflow never runs a substitute fill.
-  fill_one_run_argv: []
-  pool_read_argv: []
+  # The fill node's own one-run command (tick) and its read-only pool read (inspect), run through its runtime entry on
+  # its live profile: the entry reads its overlay from the deployment's overlay roots and ends with one typed JSON answer
+  # line (--answer-json). An environment variable of the worker (ONEX_FLOOR_FILL_ONE_RUN_ARGV, ONEX_FLOOR_FILL_POOL_READ_ARGV)
+  # replaces either. A key left empty makes the step refuse (exit 3) and name it: no substitute fill is ever run here.
+  fill_one_run_argv: ["{python}", "-m", "omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator", "--overlay-from-roots", "--profile", "live", "--answer-json", "tick"]
+  pool_read_argv: ["{python}", "-m", "omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator", "--overlay-from-roots", "--profile", "live", "--answer-json", "inspect"]

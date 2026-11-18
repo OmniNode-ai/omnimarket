@@ -55,6 +55,8 @@ class ModelFloorFillPoolAnswer(_Frozen):
     unowned_work: int = Field(ge=0)
     detail: str = ""
     read_at: str = Field(min_length=1)
+    # The cause when the fill could not read the pool: ``free_slots`` is then 0 only because there is no count.
+    unread: str = ""
 
 
 class ModelFloorFillRunAnswer(_Frozen):
@@ -64,6 +66,8 @@ class ModelFloorFillRunAnswer(_Frozen):
     why_none: str = ""
     free_slots: int | None = Field(default=None, ge=0)
     read_at: str = Field(min_length=1)
+    # The sources the fill could not read, as the fill names them; a run with a cause here is not an idle run.
+    unread: str = ""
 
 
 class ModelFloorFillLaneClaim(_Frozen):
@@ -117,6 +121,7 @@ class ModelFloorFillAlarmDecision(_Frozen):
     zero_streak: int = Field(ge=0)
     alarms: tuple[str, ...] = ()
     rows: tuple[str, ...] = ()
+    status_row: str = Field(min_length=1)
 
 
 class ModelFloorFillAlarmAnswer(_Frozen):

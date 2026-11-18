@@ -5,7 +5,7 @@
 Verbs:
 
 * ``worker``: run the Temporal worker for workflow 2 against a server (``--target-host``, ``--namespace``).
-* ``schedule``: ``create`` the Schedule (every 5 minutes, overlap policy SKIP), ``describe`` it, or ``delete`` it.
+* ``schedule``: ``create`` the Schedule (every 15 minutes, overlap policy SKIP), ``describe`` it, or ``delete`` it.
 * ``read-pool``: a step command. Runs the fill node's declared pool read and answers free slots and unowned work.
 * ``run-fill``: a step command. Runs the fill node's declared one-run command once and answers the lanes it placed
   and why it placed none.
@@ -24,6 +24,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
@@ -56,6 +57,8 @@ ENV_FILL_ARGV = "ONEX_FLOOR_FILL_ONE_RUN_ARGV"
 ENV_POOL_ARGV = "ONEX_FLOOR_FILL_POOL_READ_ARGV"
 ENV_LEDGER_APPEND_ARGV = "ONEX_FLOOR_FILL_LEDGER_ARGV"
 ENV_LEDGER_READ_ARGV = "ONEX_FLOOR_FILL_LEDGER_READ_ARGV"
+ENV_STEP_STATE_DIR = "ONEX_FLOOR_FILL_STEP_STATE_DIR"
+ENV_STEP_KEY = "ONEX_RUN_STEP_KEY"
 
 
 def contract_config() -> dict[str, Any]:
@@ -100,19 +103,35 @@ def _read_step_input() -> ModelFloorFillStepInput:
     return ModelFloorFillStepInput.model_validate_json(sys.stdin.read())
 
 
+def _last_json(text: str) -> dict[str, Any] | None:
+    lines = text.strip().splitlines()
+    if not lines:
+        return None
+    try:
+        loaded = json.loads(lines[-1])
+    except json.JSONDecodeError:
+        return None
+    return dict(loaded) if isinstance(loaded, dict) else None
+
+
 def _run_declared(
     argv: tuple[str, ...], stdin: str, timeout: int
 ) -> dict[str, Any] | None:
+    """Run a declared node command and read its last output line as its answer.
+
+    The fill node answers a refusal (an unset store, an unread pool) as a typed ``status`` line beside a failing exit
+    code: that line is its answer and is read as one. A failing exit with no such line is a failed attempt.
+    """
     proc = subprocess.run(
         argv, input=stdin, capture_output=True, text=True, timeout=timeout, check=False
     )
-    if proc.returncode != 0:
+    answer = _last_json(proc.stdout)
+    if proc.returncode != 0 and not (answer is not None and "status" in answer):
         sys.stderr.write(
             f"{argv[0]} exited {proc.returncode}: {proc.stderr.strip()[-300:]}\n"
         )
         return None
-    lines = proc.stdout.strip().splitlines()
-    return dict(json.loads(lines[-1])) if lines else {}
+    return answer if answer is not None else {}
 
 
 def _refuse_undeclared(what: str, cfg_key: str) -> int:
@@ -130,11 +149,13 @@ def cmd_read_pool(cfg: dict[str, Any]) -> int:
     raw = _run_declared(argv, step.model_dump_json(), int(cfg["step_timeout_seconds"]))
     if raw is None:
         return 1
+    free = raw.get("free_slots", raw.get("free_slots_total"))
     answer = ModelFloorFillPoolAnswer(
-        free_slots=int(raw.get("free_slots", raw.get("free_slots_total", 0))),
-        unowned_work=int(raw.get("unowned_work", 0)),
+        free_slots=int(free) if free is not None else 0,
+        unowned_work=int(raw.get("unowned_work") or 0),
         detail=str(raw.get("detail", "")),
         read_at=str(raw.get("read_at") or _now()),
+        unread=str(raw.get("unread") or ""),
     )
     sys.stdout.write(answer.model_dump_json() + "\n")
     return 0
@@ -151,11 +172,27 @@ def _placed_lanes(raw: dict[str, Any]) -> tuple[str, ...]:
     )
 
 
+def _memo_path(step_key: str, cfg: dict[str, Any]) -> Path:
+    """Where the answer of a finished step key is kept: the worker's ``ONEX_FLOOR_FILL_STEP_STATE_DIR``, else the
+    contract's ``step_state_directory`` under the home."""
+    directory = os.environ.get(ENV_STEP_STATE_DIR, "").strip()
+    base = (
+        Path(directory) if directory else Path.home() / str(cfg["step_state_directory"])
+    )
+    return base / (re.sub(r"[^A-Za-z0-9._-]", "_", step_key) + ".json")
+
+
 def cmd_run_fill(cfg: dict[str, Any]) -> int:
     step = _read_step_input()
     argv = _declared(ENV_FILL_ARGV, "fill_one_run_argv", cfg)
     if not argv:
         return _refuse_undeclared("one-run command", "fill_one_run_argv")
+    # Temporal delivers an activity at least once: a step key whose fill already finished answers what it recorded
+    # and places nothing a second time.
+    memo = _memo_path(step.step_key, cfg)
+    if memo.is_file():
+        sys.stdout.write(memo.read_text(encoding="utf-8").strip() + "\n")
+        return 0
     raw = _run_declared(argv, step.model_dump_json(), int(cfg["step_timeout_seconds"]))
     if raw is None:
         return 1
@@ -168,7 +205,10 @@ def cmd_run_fill(cfg: dict[str, Any]) -> int:
         why_none="" if placed else why or "the fill gave no reason",
         free_slots=int(free) if free is not None else None,
         read_at=str(raw.get("read_at") or _now()),
+        unread=str(raw.get("unread") or ""),
     )
+    memo.parent.mkdir(parents=True, exist_ok=True)
+    memo.write_text(answer.model_dump_json() + "\n", encoding="utf-8")
     sys.stdout.write(answer.model_dump_json() + "\n")
     return 0
 
@@ -250,22 +290,25 @@ def cmd_write_alarm(cfg: dict[str, Any]) -> int:
         )
     )
     written = 0
-    if decision.rows:
-        # A repeat delivery of this step key finds its own rows on the ledger and appends nothing.
-        seen = any(
-            f"step={step.step_key} " in r or r.endswith(f"step={step.step_key}")
-            for r in _ledger_rows()
+    # The counts row and each alarm row carry their own step token; a repeat delivery of this step finds the rows it
+    # already wrote on the ledger and appends only what is missing.
+    existing = _ledger_rows()
+    for row in (decision.status_row, *decision.rows):
+        token = re.search(r"step=(\S+)", row)
+        if token is not None and any(
+            f"step={token.group(1)} " in r or r.endswith(f"step={token.group(1)}")
+            for r in existing
+        ):
+            continue
+        proc = subprocess.run(
+            _ledger_append_argv(row), capture_output=True, text=True, check=False
         )
-        for row in () if seen else decision.rows:
-            proc = subprocess.run(
-                _ledger_append_argv(row), capture_output=True, text=True, check=False
+        if proc.returncode != 0:
+            sys.stderr.write(
+                f"ledger append exited {proc.returncode}: {proc.stderr[-300:]}\n"
             )
-            if proc.returncode != 0:
-                sys.stderr.write(
-                    f"ledger append exited {proc.returncode}: {proc.stderr[-300:]}\n"
-                )
-                return proc.returncode
-            written += 1
+            return proc.returncode
+        written += 1
     answer = ModelFloorFillAlarmAnswer(
         zero_streak=decision.zero_streak, alarms=decision.alarms, written=written
     )

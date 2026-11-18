@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """The Temporal workflow, its one activity and its Schedule for workflow 2: the floor fill on a schedule.
 
-The Schedule fires every 5 minutes with overlap policy SKIP: a run still in progress at the next fire is skipped,
+The Schedule fires every 15 minutes with overlap policy SKIP: a run still in progress at the next fire is skipped,
 never queued. The workflow body orders the steps and owns the durable claim wait; it holds no fill logic. Every step
 is the one activity ``floor_fill_step``, which runs the step's declared node command as a plain process (the step
 runner of workflow 1). The step key is ``<workflow id>/<step name>``, with the reading number on claim reads, so a

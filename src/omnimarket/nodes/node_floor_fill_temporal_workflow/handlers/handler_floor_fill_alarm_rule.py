@@ -6,6 +6,10 @@
   The streak is carried from run to run in the workflow result (Temporal's last completion result).
 * ``floor-fill-no-claim``: a lane the fill placed wrote no CLAIM inside the claim window.
 
+A source the fill could not read (the pool, the store, the floor) is not an idle run: it neither raises nor resets the
+streak and raises no placement alarm. Every run also yields one STATUS counts row (``src=floor-fill-run``): the free slots
+read, the lanes placed, the claims read back and the alarm decision.
+
 No alarm row is written when neither holds. The rows are STATUS rows with ``src=alarm`` (the alarm row shape the
 prove-running workflow writes), so the ledger's typed grammar accepts them as they are.
 """
@@ -45,8 +49,13 @@ class HandlerFloorFillAlarmRule:
         rule = request.rule
         free = request.pool.free_slots
         placed = request.fill.placed_lanes
-        zero_run = not placed and free > rule.free_slots_above
-        streak = request.prior_zero_streak + 1 if zero_run else 0
+        unread = request.pool.unread or request.fill.unread
+        zero_run = not placed and not unread and free > rule.free_slots_above
+        if unread and not placed:
+            # A source the fill could not read is not an idle run: the streak is neither raised nor reset.
+            streak = request.prior_zero_streak
+        else:
+            streak = request.prior_zero_streak + 1 if zero_run else 0
         head = (
             f"{request.written_at} | STATUS | lane={request.lane} | ticket={request.ticket}"
             f" | actor={ACTOR} | model=none | src=alarm"
@@ -56,7 +65,7 @@ class HandlerFloorFillAlarmRule:
         )
         alarms: list[str] = []
         rows: list[str] = []
-        if streak >= rule.zero_runs:
+        if zero_run and streak >= rule.zero_runs:
             alarms.append(ALARM_NO_PLACEMENT)
             rows.append(
                 f"{head} | alarm={ALARM_NO_PLACEMENT} | free_slots={free}"
@@ -75,6 +84,22 @@ class HandlerFloorFillAlarmRule:
                 f" | {tail} | {len(unclaimed)} placed lane(s) wrote no CLAIM within"
                 f" {rule.claim_window_seconds // 60} minutes of placement"
             )
+        claims = request.claims
+        claimed = len(claims.claimed) if claims is not None else 0
+        status_row = (
+            f"{request.written_at} | STATUS | lane={request.lane} | ticket={request.ticket}"
+            f" | actor={ACTOR} | model=none | src=floor-fill-run"
+            f" | free_slots={free} | unowned_work={request.pool.unowned_work}"
+            f" | placed={len(placed)} | placed_lanes={_token(','.join(placed))}"
+            f" | claimed={claimed} | unclaimed={len(unclaimed)}"
+            f" | alarm={_token(','.join(alarms))} | zero_streak={streak}"
+            f" | unread={_token(unread)} | read_at={_token(request.pool.read_at)}"
+            f" | workflow={_token(request.workflow_id)} | step={_token(request.step_key)}/counts"
+            f" | the floor fill run read {free} free slots and placed {len(placed)} lanes"
+        )
         return ModelFloorFillAlarmDecision(
-            zero_streak=streak, alarms=tuple(alarms), rows=tuple(rows)
+            zero_streak=streak,
+            alarms=tuple(alarms),
+            rows=tuple(rows),
+            status_row=status_row,
         )

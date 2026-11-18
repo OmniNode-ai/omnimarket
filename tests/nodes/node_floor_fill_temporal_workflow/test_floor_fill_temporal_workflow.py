@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import io
 import json
 import os
 import subprocess
@@ -51,6 +52,8 @@ from omnimarket.nodes.node_floor_fill_temporal_workflow.handlers.temporal_floor_
 from omnimarket.nodes.node_floor_fill_temporal_workflow.models import (
     ModelFloorFillAlarmRequest,
     ModelFloorFillAlarmRule,
+    ModelFloorFillClaimAnswer,
+    ModelFloorFillLaneClaim,
     ModelFloorFillPoolAnswer,
     ModelFloorFillRunAnswer,
     ModelFloorFillRunResult,
@@ -58,6 +61,7 @@ from omnimarket.nodes.node_floor_fill_temporal_workflow.models import (
 from omnimarket.nodes.node_floor_fill_temporal_workflow.runtime_floor_fill_temporal import (
     build_plan,
     build_schedule,
+    cmd_run_fill,
     contract_config,
     schedule_action,
 )
@@ -87,6 +91,7 @@ def files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
     py = sys.executable
     monkeypatch.setenv("FAKE_STEP_LOG", str(log))
     monkeypatch.setenv("FAKE_LEDGER", str(ledger))
+    monkeypatch.setenv("ONEX_FLOOR_FILL_STEP_STATE_DIR", str(tmp_path / "step-state"))
     monkeypatch.setenv("ONEX_FLOOR_FILL_POOL_READ_ARGV", json.dumps([py, FAKE, "pool"]))
     monkeypatch.setenv("ONEX_FLOOR_FILL_ONE_RUN_ARGV", json.dumps([py, FAKE, "fill"]))
     monkeypatch.setenv(
@@ -139,15 +144,23 @@ async def _start(
     )
 
 
-def _steps(log: Path) -> Counter[str]:
-    """``<verb>:<step>`` per recorded run; the step is the key after the workflow id."""
+def _steps(log: Path, *, done: bool = False) -> Counter[str]:
+    """``<verb>:<step>`` per recorded start (``done=True``: per finish); the step is the key after the workflow id."""
     if not log.exists():
         return Counter()
     out: Counter[str] = Counter()
     for line in log.read_text().splitlines():
         verb, key = line.split(" ", 1)
+        if verb.startswith("done-") != done:
+            continue
         out[f"{verb}:{key.split('/', 1)[1] if '/' in key else key}"] += 1
     return out
+
+
+def _counts_rows(ledger: Path) -> list[str]:
+    if not ledger.exists():
+        return []
+    return [r for r in ledger.read_text().splitlines() if "src=floor-fill-run" in r]
 
 
 def _alarm_rows(ledger: Path) -> list[str]:
@@ -163,16 +176,30 @@ async def _result(handle: WorkflowHandle[Any, Any]) -> ModelFloorFillRunResult:
 # ---- AC1: the Schedule ------------------------------------------------------------------------------------------
 
 
-def test_schedule_overlap_skip_spec_every_five_minutes() -> None:
+def test_schedule_overlap_skip_spec_every_fifteen_minutes() -> None:
     cfg = contract_config()
     schedule = build_schedule(cfg, cfg["task_queue"])
-    assert [i.every for i in schedule.spec.intervals] == [timedelta(minutes=5)]
+    assert [i.every for i in schedule.spec.intervals] == [timedelta(minutes=15)]
     assert schedule.policy.overlap is ScheduleOverlapPolicy.SKIP
     action = schedule.action
     assert isinstance(action, ScheduleActionStartWorkflow)
     assert action.workflow == WORKFLOW_NAME
-    assert cfg["every_seconds"] == 300
+    assert cfg["every_seconds"] == 900
     assert cfg["overlap"] == "skip"
+
+
+@pytest.mark.parametrize("seconds", [300, 900])
+def test_schedule_overlap_skip_interval_is_the_one_contract_field(seconds: int) -> None:
+    cfg = {**contract_config(), "every_seconds": seconds}
+    schedule = build_schedule(cfg, cfg["task_queue"])
+    assert [i.every for i in schedule.spec.intervals] == [timedelta(seconds=seconds)]
+    assert schedule.policy.overlap is ScheduleOverlapPolicy.SKIP
+
+
+def test_schedule_overlap_skip_refuses_a_queueing_policy() -> None:
+    cfg = {**contract_config(), "overlap": "buffer_one"}
+    with pytest.raises(ValueError, match="skips a fire"):
+        build_schedule(cfg, cfg["task_queue"])
 
 
 async def _wait_running(handle: ScheduleHandle, count: int) -> None:
@@ -321,19 +348,90 @@ async def test_no_alarm_when_every_placed_lane_claims(
     assert _alarm_rows(files["ledger"]) == []
 
 
+async def test_status_counts_row_lands_on_the_ledger_once_per_run(
+    env: WorkflowEnvironment, files: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_FREE_SLOTS", "8")
+    monkeypatch.setenv("FAKE_UNOWNED", "3")
+    monkeypatch.setenv("FAKE_PLACED", "lane-a")
+    monkeypatch.setenv("FAKE_CLAIMS", "lane-a")
+    async with _worker(env.client, "q"):
+        result = await _result(await _start(env.client, _cfg(), "q"))
+    rows = _counts_rows(files["ledger"])
+    assert len(rows) == 1
+    for cell in (
+        "| STATUS |",
+        "free_slots=8",
+        "unowned_work=3",
+        "placed=1",
+        "placed_lanes=lane-a",
+        "claimed=1",
+        "unclaimed=0",
+        "alarm=none",
+        f"workflow={result.workflow_id}",
+        f"step={result.workflow_id}/write_alarm/counts",
+    ):
+        assert cell in rows[0], cell
+    assert _alarm_rows(files["ledger"]) == []
+
+
+async def test_status_counts_row_for_a_fill_that_could_not_read_says_so(
+    env: WorkflowEnvironment, files: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    unread = "fill-state:store-dsn-unset:SOME_STORE_DSN"
+    monkeypatch.setenv("FAKE_UNREAD", unread)
+    async with _worker(env.client, "q"):
+        result = await _result(await _start(env.client, _cfg(), "q"))
+    # The refusal is an answer: the run ends, nothing is retried into a failed workflow, and nothing reads as idle.
+    assert result.pool.unread == unread
+    assert result.fill.unread == unread
+    assert result.fill.placed_lanes == ()
+    assert result.zero_streak == 0
+    assert result.alarms == ()
+    rows = _counts_rows(files["ledger"])
+    assert len(rows) == 1
+    assert f"unread={unread}" in rows[0]
+    assert "placed=0" in rows[0]
+    assert _alarm_rows(files["ledger"]) == []
+
+
 def _request(
-    free: int, placed: tuple[str, ...], prior: int
+    free: int,
+    placed: tuple[str, ...],
+    prior: int,
+    *,
+    claimed: tuple[str, ...] = (),
+    unclaimed: tuple[str, ...] = (),
+    unread: str = "",
 ) -> ModelFloorFillAlarmRequest:
     return ModelFloorFillAlarmRequest(
         rule=ModelFloorFillAlarmRule(),
         pool=ModelFloorFillPoolAnswer(
-            free_slots=free, unowned_work=3, read_at="2026-11-16T18:00:00Z"
+            free_slots=free,
+            unowned_work=3,
+            read_at="2026-11-16T18:00:00Z",
+            unread=unread,
         ),
         fill=ModelFloorFillRunAnswer(
             placed_lanes=placed,
             why_none="" if placed else "held",
             read_at="2026-11-16T18:00:01Z",
+            unread=unread,
         ),
+        claims=ModelFloorFillClaimAnswer(
+            claimed=tuple(
+                ModelFloorFillLaneClaim(
+                    lane=lane,
+                    claimed_at="2026-11-16T18:00:30Z",
+                    row=f"2026-11-16T18:00:30Z | CLAIM | lane={lane}",
+                )
+                for lane in claimed
+            ),
+            unclaimed=unclaimed,
+            read_at="2026-11-16T18:10:01Z",
+        )
+        if placed
+        else None,
         prior_zero_streak=prior,
         workflow_id="wf",
         step_key="wf/write_alarm",
@@ -354,6 +452,48 @@ def test_no_alarm_rule_cases() -> None:
     second = rule.handle(_request(6, (), 1))
     assert second.alarms == ("floor-fill-no-placement",)
     assert len(second.rows) == 1
+
+
+def test_status_counts_row_names_what_the_run_read_and_did() -> None:
+    decision = HandlerFloorFillAlarmRule().handle(
+        _request(8, ("lane-a", "lane-b"), 1, claimed=("lane-a",), unclaimed=("lane-b",))
+    )
+    row = decision.status_row
+    for cell in (
+        " | STATUS | ",
+        "src=floor-fill-run",
+        "free_slots=8",
+        "unowned_work=3",
+        "placed=2",
+        "placed_lanes=lane-a,lane-b",
+        "claimed=1",
+        "unclaimed=1",
+        "alarm=floor-fill-no-claim",
+        "zero_streak=0",
+        "unread=none",
+        "step=wf/write_alarm/counts",
+    ):
+        assert cell in row, cell
+    assert "\n" not in row
+    assert len(decision.rows) == 1  # the counts row is not an alarm row
+
+
+def test_status_counts_row_without_an_alarm_says_none() -> None:
+    decision = HandlerFloorFillAlarmRule().handle(_request(2, (), 0))
+    assert decision.rows == ()
+    assert "alarm=none" in decision.status_row
+    assert "placed=0" in decision.status_row
+    assert "placed_lanes=none" in decision.status_row
+
+
+def test_no_alarm_when_a_source_was_not_read_a_failed_read_is_not_zero_slots() -> None:
+    rule = HandlerFloorFillAlarmRule()
+    unread = rule.handle(_request(0, (), 1, unread="pool:unbound:pool"))
+    # Not a zero-placement run: the streak is neither raised nor reset, and no alarm row says the fill idled.
+    assert (unread.zero_streak, unread.alarms, unread.rows) == (1, (), ())
+    assert "unread=pool:unbound:pool" in unread.status_row
+    after = rule.handle(_request(8, (), unread.zero_streak))
+    assert after.alarms == ("floor-fill-no-placement",)
 
 
 # ---- AC3: a worker restart mid-run ------------------------------------------------------------------------------
@@ -389,8 +529,10 @@ async def test_worker_restart_mid_run_runs_no_activity_twice(
     assert steps["fill:run_fill"] == 1
     assert [steps[f"ledger-read:read_claims/{n}"] for n in range(1, 11)] == [1] * 10
     assert steps["ledger-read:write_alarm"] == 1  # the repeat-delivery check
-    assert steps["ledger-append:write_alarm"] == 1  # the one alarm row
-    assert max(steps.values()) == 1
+    assert (
+        steps["ledger-append:write_alarm"] == 2
+    )  # the counts row and the one alarm row
+    assert max(v for k, v in steps.items() if not k.startswith("ledger-append")) == 1
     history = await handle.fetch_history()
     scheduled = [
         e
@@ -399,6 +541,42 @@ async def test_worker_restart_mid_run_runs_no_activity_twice(
     ]
     assert len(scheduled) == 1 + 1 + 10 + 1
     assert len(_alarm_rows(files["ledger"])) == 1
+    assert len(_counts_rows(files["ledger"])) == 1
+
+
+async def test_worker_restart_mid_run_during_an_activity_completes_each_step_once(
+    env: WorkflowEnvironment,
+    files: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The worker goes away while the fill step is running: that step is delivered again once, and no step finishes twice."""
+    hang = tmp_path / "hang"
+    hang.write_text("x")
+    monkeypatch.setenv("FAKE_HANG", str(hang))
+    monkeypatch.setenv("FAKE_FREE_SLOTS", "8")
+    monkeypatch.setenv("FAKE_PLACED", "lane-a")
+    monkeypatch.setenv("FAKE_CLAIMS", "lane-a")
+    cfg = _cfg()
+    cfg["step_max_attempts"] = 3
+    async with _worker(env.client, "q", cached=False):
+        handle = await _start(env.client, cfg, "q")
+        for _ in range(300):
+            if _steps(files["log"])["fill:run_fill"] == 1:
+                break
+            await asyncio.sleep(0.1)
+        assert _steps(files["log"])["fill:run_fill"] == 1
+    hang.unlink()  # the worker is gone, taking the step's process with it
+    async with _worker(env.client, "q", cached=False):
+        result = await _result(handle)
+    steps = _steps(files["log"])
+    assert steps["fill:run_fill"] == 2  # started, cut short, delivered again
+    finished = _steps(files["log"], done=True)
+    assert finished["done-fill:run_fill"] == 1
+    assert set(finished.values()) == {1}, finished  # no step finished twice
+    assert result.fill.placed_lanes == ("lane-a",)
+    assert result.alarms == ()
+    assert len(_counts_rows(files["ledger"])) == 1
 
 
 # ---- AC2: every step is an activity that calls one of our nodes -------------------------------------------------
@@ -468,7 +646,7 @@ def test_activities_call_nodes_contract_steps_name_node_commands() -> None:
 
 
 def test_activities_call_nodes_run_fill_refuses_while_the_one_run_command_is_undeclared(
-    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     step = {
         "step": "run_fill",
@@ -476,19 +654,169 @@ def test_activities_call_nodes_run_fill_refuses_while_the_one_run_command_is_und
         "workflow_id": "wf",
         "rule": ModelFloorFillAlarmRule().model_dump(),
     }
-    env = {
-        k: v
-        for k, v in __import__("os").environ.items()
-        if not k.startswith("ONEX_FLOOR_FILL_")
+    monkeypatch.delenv("ONEX_FLOOR_FILL_ONE_RUN_ARGV", raising=False)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(step)))
+    code = cmd_run_fill({**contract_config(), "fill_one_run_argv": []})
+    captured = capsys.readouterr()
+    assert code == 3, captured.err
+    assert "fill_one_run_argv" in captured.err
+    assert captured.out == ""
+
+
+# ---- the step commands against the fill node's own entry -----------------------------------------------------------
+
+
+def _run_step(
+    verb: str, step: str, env: dict[str, str], state: dict[str, Any] | None = None
+) -> subprocess.CompletedProcess[str]:
+    payload = {
+        "step": step,
+        "step_key": f"wf/{step}",
+        "workflow_id": "wf",
+        "rule": ModelFloorFillAlarmRule().model_dump(),
+        **(state or {}),
     }
-    proc = subprocess.run(
-        [sys.executable, "-m", NODE, "run-fill"],
-        input=json.dumps(step),
+    return subprocess.run(
+        [sys.executable, "-m", NODE, verb],
+        input=json.dumps(payload),
         capture_output=True,
         text=True,
         env=env,
         check=False,
     )
-    assert proc.returncode == 3, proc.stderr
-    assert "fill_one_run_argv" in proc.stderr
-    assert proc.stdout == ""
+
+
+def _fill_overlay_root(tmp_path: Path) -> Path:
+    root = tmp_path / "overlays"
+    (root / "node_floor_fill_orchestrator").mkdir(parents=True)
+    section = {
+        "scope": "test-floor-fill",
+        "host_id": "host-a",
+        "url": "file:///nonexistent/factory-floor.json",
+        "plans_root": str(tmp_path / "plans"),
+        "runner_command": ["node-entry", "--lane", "{lane}", "--brief", "{brief}"],
+        "line_brief_text": "Work {task_id} of {line_id} on {ticket} as {lane} ({key}) under {plans_root}",
+        "reserved_timeout_seconds": 600,
+        "sent_window_minutes": 120,
+        "command_timeout_seconds": 60,
+        "tick_interval_seconds": 300,
+        "remote_argv": ["ssh", "host-a", "node-entry", "{argv}"],
+        "process_environment": {"LANG": "C.UTF-8"},
+        "process_working_directory": str(tmp_path),
+        "max_age_minutes": 15,
+        "max_fill_lanes_per_line": 1,
+        "stopped_max_lanes": 2,
+        "stopped_report_chars": 2000,
+        "stopped_continue_rule": "Continue; do not repeat.",
+        "stopped_runner_command": [
+            "node-entry",
+            "--lane",
+            "{lane}",
+            "--brief",
+            "{brief}",
+        ],
+        "stopped_reports_root": str(tmp_path),
+        "stopped_brief_directory": str(tmp_path / "briefs"),
+    }
+    live = {
+        "store_dsn_env": "ONEX_TEST_UNSET_DSN",
+        "store_schema_name": "public",
+        "store_table_name": "floor_fill_state",
+        "store_connect_timeout_seconds": 5,
+        "floor_fetch_timeout_seconds": 10.0,
+        "plan_file_pattern": "{line_id}.md",
+        "ledger_path": str(tmp_path / "ledger.md"),
+        "process_output_dir": str(tmp_path / "logs"),
+    }
+    import yaml
+
+    (root / "node_floor_fill_orchestrator" / "overlay.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "floor_fill": section,
+                "floor_fill_live": live,
+                "lab_hosts": [{"name": "host-a", "available": True}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return root
+
+
+def _clean_env(overlays: Path) -> dict[str, str]:
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith(("ONEX_FLOOR_FILL_", "ONEX_TEST_UNSET_DSN"))
+    }
+    env["ONEX_SKILL_OVERLAY_ROOTS"] = str(overlays)
+    return env
+
+
+def test_contract_declares_the_fill_nodes_two_commands() -> None:
+    cfg = contract_config()
+    entry = (
+        "omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator"
+    )
+    for key, command in (("fill_one_run_argv", "tick"), ("pool_read_argv", "inspect")):
+        argv = cfg[key]
+        assert argv[:3] == ["{python}", "-m", entry], argv
+        assert "--overlay-from-roots" in argv, argv
+        assert "--answer-json" in argv, argv
+        assert argv[argv.index("--profile") + 1] == "live", argv
+        assert argv[-1] == command, argv
+
+
+def test_activities_call_nodes_read_pool_reads_the_real_fill_entrys_refusal_as_unread(
+    tmp_path: Path,
+) -> None:
+    proc = _run_step("read-pool", "read_pool", _clean_env(_fill_overlay_root(tmp_path)))
+    assert proc.returncode == 0, proc.stderr
+    answer = ModelFloorFillPoolAnswer.model_validate_json(
+        proc.stdout.strip().splitlines()[-1]
+    )
+    assert answer.unread == "fill-state:store-dsn-unset:ONEX_TEST_UNSET_DSN"
+    assert answer.free_slots == 0  # never read as a count; ``unread`` is what says so
+
+
+def test_activities_call_nodes_run_fill_reads_the_real_fill_entrys_refusal_as_unread(
+    tmp_path: Path,
+) -> None:
+    proc = _run_step("run-fill", "run_fill", _clean_env(_fill_overlay_root(tmp_path)))
+    assert proc.returncode == 0, proc.stderr
+    answer = ModelFloorFillRunAnswer.model_validate_json(
+        proc.stdout.strip().splitlines()[-1]
+    )
+    assert answer.placed_lanes == ()
+    assert answer.unread == "fill-state:store-dsn-unset:ONEX_TEST_UNSET_DSN"
+    assert "store-dsn-unset" in answer.why_none
+
+
+def test_run_fill_repeat_delivery_of_one_step_key_runs_the_fill_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    log = tmp_path / "steps.log"
+    ledger = tmp_path / "ledger.md"
+    env = {
+        **os.environ,
+        "FAKE_STEP_LOG": str(log),
+        "FAKE_LEDGER": str(ledger),
+        "FAKE_PLACED": "lane-a",
+        "ONEX_FLOOR_FILL_ONE_RUN_ARGV": json.dumps([sys.executable, FAKE, "fill"]),
+        "ONEX_FLOOR_FILL_STEP_STATE_DIR": str(tmp_path / "state"),
+        "ONEX_RUN_STEP_KEY": "wf/run_fill",
+    }
+    first = _run_step("run-fill", "run_fill", env)
+    second = _run_step("run-fill", "run_fill", env)
+    other = _run_step(
+        "run-fill",
+        "run_fill",
+        {**env, "ONEX_RUN_STEP_KEY": "wf2/run_fill"},
+        {"step_key": "wf2/run_fill", "workflow_id": "wf2"},
+    )
+    assert first.returncode == second.returncode == other.returncode == 0
+    assert first.stdout == second.stdout  # the recorded answer, not a second placement
+    # Two step keys, three deliveries: the node ran twice (the first key once, the other key once).
+    assert _steps(log)["fill:run_fill"] == 2
+    assert log.read_text().splitlines().count("fill wf/run_fill") == 1
+    assert log.read_text().splitlines().count("fill wf2/run_fill") == 1
