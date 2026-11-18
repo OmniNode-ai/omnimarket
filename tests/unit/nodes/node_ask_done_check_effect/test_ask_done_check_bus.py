@@ -150,3 +150,9 @@ def test_a_deployment_hands_the_request_to_the_checking_handler() -> None:
     assert verdict.verdict is EnumCheckVerdict.TRUE
     assert verdict.written == "yes"
     assert f"ask={ASK}" in ledger.lines[-1]
+
+
+def test_node_ask_done_check_effect_publishes_the_two_named_result_events() -> None:
+    publish = _contract()["event_bus"]["publish_topics"]
+    assert "onex.evt.omnimarket.ask-done-check-completed.v1" in publish
+    assert "onex.evt.omnimarket.ask-done-check-failed.v1" in publish
