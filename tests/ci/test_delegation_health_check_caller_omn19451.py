@@ -95,6 +95,7 @@ if "runs" in scenario:
             "run_started_at": (
                 infra_test.NOW - timedelta(hours=row["hours_ago"])
             ).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            **{key: row[key] for key in ("event", "display_title") if key in row},
         }
         for row in scenario["runs"]
     ]
