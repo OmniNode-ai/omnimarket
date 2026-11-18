@@ -185,13 +185,28 @@ class HandlerLabAlarmDeliver:
             for key, entry in dict(loaded.get(_OWNER_PENDING, {})).items()
         }
         prefix = f"{request.condition}:"
-        cleared: tuple[str, ...] = ()
-        if request.outcome is EnumDeliveryCondition.OK:
-            cleared = tuple(key for key in active if key.startswith(prefix))
-            for key in cleared:
-                del active[key]
-
         steps: dict[str, ModelAlarmDelivery] = {}
+        cleared: list[str] = []
+        if request.outcome is EnumDeliveryCondition.OK:
+            for key in tuple(active):
+                if not key.startswith(prefix):
+                    continue
+                if request.recovery_detail:
+                    channel, channel_ref, failure = self._send(
+                        f"Recovered: {request.recovery_detail}"
+                    )
+                    steps[key] = ModelAlarmDelivery(
+                        key=key,
+                        channel=channel,
+                        channel_ref=channel_ref,
+                        ledger=EnumDeliveryStep.NOT_DUE,
+                        failure=failure,
+                    )
+                    if failure:
+                        continue
+                del active[key]
+                cleared.append(key)
+
         work: dict[str, dict[str, str]] = dict(pending)
         owner_work: dict[str, dict[str, str]] = dict(owner_pending)
         retried = tuple(pending)
@@ -326,7 +341,7 @@ class HandlerLabAlarmDeliver:
             condition=request.condition,
             outcome=outcome,
             deliveries=deliveries,
-            cleared=cleared,
+            cleared=tuple(cleared),
             retried=retried,
             state_kept=True,
             failure="; ".join(f"{d.key}: {d.failure}" for d in failed),
@@ -334,12 +349,14 @@ class HandlerLabAlarmDeliver:
 
     def _post(self, alarm: Any) -> tuple[EnumDeliveryStep, str, str]:
         settings = self._overlay.channel
-        receipt = self._channel.send(
-            category=settings.category,
-            text=settings.message_template.format(
+        return self._send(
+            settings.message_template.format(
                 condition=alarm.condition, subject=alarm.subject, detail=alarm.detail
-            ),
+            )
         )
+
+    def _send(self, text: str) -> tuple[EnumDeliveryStep, str, str]:
+        receipt = self._channel.send(category=self._overlay.channel.category, text=text)
         if receipt.delivered:
             return EnumDeliveryStep.DELIVERED, receipt.message_ref or "", ""
         return (

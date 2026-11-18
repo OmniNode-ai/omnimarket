@@ -6,9 +6,9 @@ Verbs:
 
 * ``worker``: run the Temporal worker of the runner read against the contract's server (``--target-host``,
   ``--namespace`` override it). ``--probe`` checks the imports and returns without a connection.
-* ``schedule``: create the Temporal schedule of the full read, or update it to the contract's interval and plan.
+* ``schedule``: create or update the Temporal ready-edge schedule.
 * ``start``: start one full read now (``--wait`` prints its result; ``--no-publish`` reads without publishing).
-* ``lines``: a step command. Prints the keys of every line the runner overlay declares, as a JSON list.
+* ``lines``: a step command. Prints the declared runner keys or selects changes in the requested build window.
 * ``publish``: a step command. Reads one ``ModelRunnerReadPublishInput`` on stdin, reads each change's merge from its
   canonical clone, builds the integration reading batch, pipes it to ``node_integration_reading_publish_effect``,
   appends the run record and prints it.
@@ -23,15 +23,18 @@ import os
 import socket
 import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from importlib import resources
 from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import TypeAdapter
+from temporalio.client import Client
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.model_merged_change_reading import ModelMcrChange
 from omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.handler_runner_reading_integration import (
     HandlerRunnerReadingIntegration,
 )
@@ -43,6 +46,11 @@ from omnimarket.nodes.node_merged_change_runner_read_workflow.models.model_runne
     ModelRunnerReadPlan,
     ModelRunnerReadPublishInput,
     ModelRunnerReadSteps,
+    ModelRunnerReadWindow,
+    ModelRunnerSelectedLine,
+)
+from omnimarket.nodes.node_merged_change_runner_read_workflow.models.model_runner_read_ready_edge import (
+    ModelRunnerReadReadySettings,
 )
 
 NODE = "node_merged_change_runner_read_workflow"
@@ -65,7 +73,12 @@ def _argv(template: list[str]) -> tuple[str, ...]:
     return tuple(sys.executable if part == "{python}" else part for part in template)
 
 
-def build_plan(cfg: dict[str, Any], *, publish: bool = True) -> ModelRunnerReadPlan:
+def build_plan(
+    cfg: dict[str, Any],
+    *,
+    publish: bool = True,
+    previous_build_at: datetime | None = None,
+) -> ModelRunnerReadPlan:
     steps = {name: _argv(list(argv)) for name, argv in cfg["steps"].items()}
     return ModelRunnerReadPlan(
         steps=ModelRunnerReadSteps(**steps),
@@ -73,6 +86,7 @@ def build_plan(cfg: dict[str, Any], *, publish: bool = True) -> ModelRunnerReadP
         step_timeout_seconds=int(cfg["step_timeout_seconds"]),
         step_max_attempts=int(cfg["step_max_attempts"]),
         publish=publish,
+        previous_build_at=previous_build_at,
     )
 
 
@@ -88,10 +102,88 @@ def declared_lines(
     )
 
 
-def cmd_lines(cfg: dict[str, Any]) -> int:
+def cmd_lines(cfg: dict[str, Any], window: ModelRunnerReadWindow | None = None) -> int:
     lines = declared_lines(cfg, os.environ)
-    sys.stdout.write(json.dumps([line.key for line in lines.runners]) + "\n")
+    if window is None:
+        sys.stdout.write(json.dumps([line.key for line in lines.runners]) + "\n")
+        return 0
+
+    changes = tuple(
+        ModelMcrChange(repo=line.repo, number=line.number) for line in lines.runners
+    )
+    resolution_failure: str | None = None
+    if changes:
+        try:
+            changes = resolve_merge_shas(cfg, changes)
+        except RuntimeError as exc:
+            resolution_failure = str(exc)
+    home = Path(os.environ[str(cfg["home_env"])])
+    result = select_window_lines(
+        changes,
+        window.previous_build_at,
+        window.as_of,
+        lambda repo, sha: merge_facts(home, repo, sha, int(cfg["git_timeout_seconds"])),
+        resolution_failure=resolution_failure,
+    )
+    sys.stdout.write(
+        json.dumps([line.model_dump(mode="json") for line in result]) + "\n"
+    )
     return 0
+
+
+def resolve_merge_shas(
+    cfg: dict[str, Any], changes: tuple[ModelMcrChange, ...]
+) -> tuple[ModelMcrChange, ...]:
+    argv = [*_argv(cfg["steps"]["read_line"]), "--resolve-only"]
+    for change in changes:
+        argv.extend(("--change", f"{change.repo}#{change.number}"))
+    try:
+        proc = subprocess.run(
+            argv,
+            capture_output=True,
+            timeout=int(cfg["step_timeout_seconds"]),
+            check=True,
+        )
+        resolved = TypeAdapter(tuple[ModelMcrChange, ...]).validate_json(proc.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        raise RuntimeError(f"merge resolution failed: {type(exc).__name__}") from exc
+    if [(c.repo, c.number) for c in changes] != [(c.repo, c.number) for c in resolved]:
+        raise RuntimeError("merge resolution returned different runner rows")
+    return resolved
+
+
+def select_window_lines(
+    changes: Sequence[ModelMcrChange],
+    since: datetime,
+    until: datetime,
+    lookup: Callable[[str, str], ModelMergeFacts],
+    *,
+    resolution_failure: str | None = None,
+) -> tuple[ModelRunnerSelectedLine, ...]:
+    selected = []
+    for change in changes:
+        facts = (
+            lookup(change.repo, change.merge_sha)
+            if change.merge_sha
+            else ModelMergeFacts()
+        )
+        if facts.merged_at is not None and not since < facts.merged_at <= until:
+            continue
+        unread_cause = ""
+        if not change.merge_sha:
+            unread_cause = resolution_failure or "merge SHA could not be resolved"
+        elif facts.merged_at is None:
+            unread_cause = "merge time could not be read from the canonical clone"
+        selected.append(
+            ModelRunnerSelectedLine(
+                repo=change.repo,
+                number=change.number,
+                merge_sha=change.merge_sha,
+                merge=facts,
+                unread_cause=unread_cause,
+            )
+        )
+    return tuple(selected)
 
 
 def merge_facts(home: Path, repo: str, sha: str, timeout: int) -> ModelMergeFacts:
@@ -125,7 +217,7 @@ def build_request(
 ) -> ModelRunnerIntegrationRequest:
     integration = ModelRunnerIntegrationConfig.model_validate(cfg["integration"])
     lines = {line.key: line for line in declared_lines(cfg, environ).runners}
-    facts = {
+    facts = payload.merge_facts or {
         o.key: merge_facts(
             home, o.repo, o.reading.merge_sha, int(cfg["git_timeout_seconds"])
         )
@@ -155,9 +247,17 @@ def cmd_publish(cfg: dict[str, Any]) -> int:
         build_request(payload, cfg, os.environ, home, host)
     )
     published: dict[str, Any] = {"published": False, "detail": "publish off"}
-    if payload.publish:
+    if payload.publish and payload.windowed and not result.batch.readings:
+        published = {
+            "published": False,
+            "detail": "no declared runner merges in the read window",
+        }
+    elif payload.publish:
+        argv = [sys.executable, "-m", str(cfg["publish_module"]), "--home", str(home)]
+        if payload.windowed:
+            argv.append("--incremental")
         proc = subprocess.run(
-            [sys.executable, "-m", str(cfg["publish_module"]), "--home", str(home)],
+            argv,
             input=result.batch.model_dump_json(),
             capture_output=True,
             text=True,
@@ -189,31 +289,44 @@ def cmd_publish(cfg: dict[str, Any]) -> int:
     return 0
 
 
-async def connect(target_host: str, namespace: str) -> Any:
-    from temporalio.client import Client
-
+async def connect(target_host: str, namespace: str) -> Client:
     return await Client.connect(target_host, namespace=namespace)
 
 
 async def run_worker(target_host: str, namespace: str, task_queue: str) -> None:
     from temporalio.worker import Worker
 
+    from omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.ready_edge_runtime import (
+        ReadyEdgeActivities,
+    )
+    from omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.temporal_ready_edge import (
+        MergedChangeRunnerReadReadyEdge,
+    )
     from omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.temporal_runner_read import (
         MergedChangeRunnerReadWorkflow,
         runner_read_step,
     )
 
     client = await connect(target_host, namespace)
+    cfg = contract_config()
+    activities = ReadyEdgeActivities(
+        client,
+        build_plan(cfg),
+        ModelRunnerReadReadySettings.model_validate(cfg["ready_edge"]),
+        task_queue=task_queue,
+        workflow_id_prefix=str(cfg["workflow_id_prefix"]),
+        home=Path(os.environ[str(cfg["home_env"])]),
+    )
     await Worker(
         client,
         task_queue=task_queue,
-        workflows=[MergedChangeRunnerReadWorkflow],
-        activities=[runner_read_step],
+        workflows=[MergedChangeRunnerReadWorkflow, MergedChangeRunnerReadReadyEdge],
+        activities=[runner_read_step, activities.tick],
     ).run()
 
 
 async def upsert_schedule(
-    client: Any, cfg: dict[str, Any], task_queue: str
+    client: Client, cfg: dict[str, Any], task_queue: str
 ) -> dict[str, str]:
     """Create the schedule, or update an existing one to the contract's interval and plan."""
     from temporalio.client import (
@@ -228,21 +341,22 @@ async def upsert_schedule(
         ScheduleUpdateInput,
     )
 
-    from omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.temporal_runner_read import (
-        WORKFLOW_NAME,
+    from omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.temporal_ready_edge import (
+        READY_WORKFLOW_NAME,
     )
 
+    settings = ModelRunnerReadReadySettings.model_validate(cfg["ready_edge"])
     schedule = Schedule(
         action=ScheduleActionStartWorkflow(
-            WORKFLOW_NAME,
-            build_plan(cfg).model_dump_json(),
-            id=str(cfg["workflow_id_prefix"]),
+            READY_WORKFLOW_NAME,
+            settings.tick_timeout_seconds,
+            id=f"{cfg['workflow_id_prefix']}-watch",
             task_queue=task_queue,
         ),
         spec=ScheduleSpec(
             intervals=[
                 ScheduleIntervalSpec(
-                    every=timedelta(seconds=int(cfg["interval_seconds"]))
+                    every=timedelta(seconds=settings.probe_interval_seconds)
                 )
             ]
         ),
@@ -262,7 +376,7 @@ async def upsert_schedule(
 
 
 async def start_once(
-    client: Any, cfg: dict[str, Any], task_queue: str, *, publish: bool, wait: bool
+    client: Client, cfg: dict[str, Any], task_queue: str, *, publish: bool, wait: bool
 ) -> dict[str, Any]:
     from omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.temporal_runner_read import (
         WORKFLOW_NAME,
@@ -303,12 +417,17 @@ def main(argv: list[str] | None = None) -> int:
     sub.choices["worker"].add_argument("--state-dir", default="")
     sub.choices["start"].add_argument("--wait", action="store_true")
     sub.choices["start"].add_argument("--no-publish", action="store_true")
-    sub.add_parser("lines")
+    sub.add_parser("lines").add_argument("--window", action="store_true")
     sub.add_parser("publish")
     args = ap.parse_args(argv)
 
     if args.verb == "lines":
-        return cmd_lines(cfg)
+        window = (
+            ModelRunnerReadWindow.model_validate_json(sys.stdin.read())
+            if args.window
+            else None
+        )
+        return cmd_lines(cfg, window)
     if args.verb == "publish":
         return cmd_publish(cfg)
     if args.verb == "worker":

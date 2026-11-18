@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_merged_change_reading_effect
 version: "1.0.0"
-description: Reads a list of merged changes against the running system (build provenance, runtime log, unit state) and answers per change
+description: Reads a list of merged changes against the running system (build provenance, runtime log, unit state) and answers per change, or resolves merge SHAs without probing the runtime
 omnibase_core_compat: ">=0.47.28,<0.48.0"
 entry_points:
   onex.nodes:

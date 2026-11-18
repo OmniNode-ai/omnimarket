@@ -21,11 +21,15 @@ from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError
 
 with workflow.unsafe.imports_passed_through():
+    from pydantic import TypeAdapter
+
     from omnimarket.models.model_merged_change_reading import ModelMcrReading
     from omnimarket.nodes.node_merged_change_runner_read_workflow.models.model_runner_read import (
         ModelRunnerLineOutcome,
         ModelRunnerReadPlan,
         ModelRunnerReadPublishInput,
+        ModelRunnerReadWindow,
+        ModelRunnerSelectedLine,
     )
 
 WORKFLOW_NAME = "MergedChangeRunnerReadWorkflow"
@@ -42,7 +46,13 @@ async def runner_read_step(argv: list[str], stdin_text: str) -> str:
         stderr=asyncio.subprocess.PIPE,
     )
     activity.heartbeat(argv[-1])
-    out, err = await proc.communicate(stdin_text.encode("utf-8"))
+    try:
+        out, err = await proc.communicate(stdin_text.encode("utf-8"))
+    except asyncio.CancelledError:
+        if proc.returncode is None:
+            proc.kill()
+        await proc.wait()
+        raise
     if proc.returncode != 0:
         raise RuntimeError(
             f"{' '.join(argv[-2:])} exited {proc.returncode}: {err.decode('utf-8', 'replace').strip()[-300:]}"
@@ -82,35 +92,67 @@ class MergedChangeRunnerReadWorkflow:
                 )
             )
 
-        keys: list[str] = json.loads(
-            await run_step(list(plan.steps.lines), "", "lines")
-        )
+        if plan.previous_build_at is None:
+            keys = TypeAdapter(list[str]).validate_json(
+                await run_step(list(plan.steps.lines), "", "lines")
+            )
+            selected = []
+            for key in keys:
+                repo, _, number = key.rpartition("#")
+                selected.append(ModelRunnerSelectedLine(repo=repo, number=int(number)))
+        else:
+            window = ModelRunnerReadWindow(
+                previous_build_at=plan.previous_build_at, as_of=started
+            )
+            selected = TypeAdapter(list[ModelRunnerSelectedLine]).validate_json(
+                await run_step(
+                    [*plan.steps.lines, "--window"], window.model_dump_json(), "lines"
+                )
+            )
 
-        async def read_one(key: str) -> ModelRunnerLineOutcome:
-            repo, _, number = key.rpartition("#")
-            try:
-                answer = await run_step(
-                    [*plan.steps.read_line, "--change", key], "", f"read/{key}"
-                )
-                readings = json.loads(answer)["reading"]["readings"]
-                return ModelRunnerLineOutcome(
-                    repo=repo,
-                    number=int(number),
-                    reading=ModelMcrReading.model_validate(readings[0]),
-                    read_at=workflow.now(),
-                )
-            except (ActivityError, ValueError, KeyError, IndexError) as exc:
-                return ModelRunnerLineOutcome(
-                    repo=repo,
-                    number=int(number),
-                    unread_cause=_cause(exc),
-                    read_at=workflow.now(),
-                )
+        async def read_one(line: ModelRunnerSelectedLine) -> ModelRunnerLineOutcome:
+            cause = line.unread_cause
+            if not cause:
+                try:
+                    change = (
+                        f"{line.key}={line.merge_sha}" if line.merge_sha else line.key
+                    )
+                    answer = await run_step(
+                        [*plan.steps.read_line, "--change", change],
+                        "",
+                        f"read/{line.key}",
+                    )
+                    readings = json.loads(answer)["reading"]["readings"]
+                    reading = ModelMcrReading.model_validate(readings[0])
+                    if (reading.repo, reading.number) != (line.repo, line.number):
+                        raise ValueError("the reader answered for a different change")
+                    if line.merge_sha and reading.merge_sha != line.merge_sha:
+                        raise ValueError("the reader answered for a different merge")
+                    return ModelRunnerLineOutcome(
+                        repo=line.repo,
+                        number=line.number,
+                        reading=reading,
+                        read_at=workflow.now(),
+                    )
+                except (
+                    ActivityError,
+                    ValueError,
+                    KeyError,
+                    IndexError,
+                    TypeError,
+                ) as exc:
+                    cause = _cause(exc)
+            return ModelRunnerLineOutcome(
+                repo=line.repo,
+                number=line.number,
+                unread_cause=cause,
+                read_at=workflow.now(),
+            )
 
         outcomes: list[ModelRunnerLineOutcome] = []
-        for start in range(0, len(keys), plan.line_concurrency):
-            chunk = keys[start : start + plan.line_concurrency]
-            outcomes.extend(await asyncio.gather(*(read_one(k) for k in chunk)))
+        for start in range(0, len(selected), plan.line_concurrency):
+            chunk = selected[start : start + plan.line_concurrency]
+            outcomes.extend(await asyncio.gather(*(read_one(line) for line in chunk)))
         read_seconds = (workflow.now() - started).total_seconds()
         payload = ModelRunnerReadPublishInput(
             as_of=started,
@@ -118,6 +160,10 @@ class MergedChangeRunnerReadWorkflow:
             read_seconds=read_seconds,
             outcomes=tuple(outcomes),
             publish=plan.publish,
+            windowed=plan.previous_build_at is not None,
+            merge_facts={line.key: line.merge for line in selected}
+            if plan.previous_build_at is not None
+            else {},
         )
         return await run_step(
             list(plan.steps.publish), payload.model_dump_json(), "publish"

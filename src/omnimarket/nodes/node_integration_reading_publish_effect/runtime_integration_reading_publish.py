@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import fcntl
 import os
 import sys
 from collections.abc import Callable
@@ -28,15 +29,19 @@ from omnimarket.handlers.emission_sink import (
     JsonlEmissionSink,
     ProtocolEmissionSink,
 )
+from omnimarket.handlers.floor_projection import ProtocolSnapshotSource
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
 from omnimarket.models.floor_projection import (
+    ModelFloorProjectionEnvelope,
     ModelFloorProjectionPublishOverlay,
     ModelFloorProjectionPublishResult,
+    ModelFloorProjectionReadOverlay,
 )
 from omnimarket.models.integration_reading import (
+    ModelIntegrationProjection,
     ModelIntegrationPublishCommand,
     ModelIntegrationReadingBatch,
 )
@@ -45,6 +50,9 @@ from omnimarket.nodes.node_floor_owner_map_publish_effect.handlers import (
 )
 from omnimarket.nodes.node_floor_owner_map_publish_effect.runtime_floor_owner_map_publish import (
     build_publisher,
+)
+from omnimarket.nodes.node_floor_projection_read_effect.runtime_floor_projection_read import (
+    build_source,
 )
 from omnimarket.nodes.node_integration_projection_compute.handlers import (
     HandlerIntegrationProjection,
@@ -124,9 +132,90 @@ async def run(
     return result
 
 
+async def retain_previous_readings(
+    batch: ModelIntegrationReadingBatch,
+    source: ProtocolSnapshotSource,
+    *,
+    topic: str,
+    projection_id: str,
+) -> ModelIntegrationReadingBatch:
+    """Merge the new readings with the latest bus snapshot before replacing it."""
+    latest = None
+    for payload in await source.publications(topic):
+        item = ModelFloorProjectionEnvelope.model_validate_json(payload)
+        if item.projection_id == projection_id and (
+            latest is None or item.as_of >= latest.as_of
+        ):
+            latest = item
+    if latest is None:
+        raise ValueError(
+            "no existing integration snapshot was readable for incremental publication"
+        )
+    previous = ModelIntegrationProjection.model_validate(latest.payload)
+    return ModelIntegrationReadingBatch(
+        as_of=max(previous.as_of, batch.as_of),
+        origin=batch.origin,
+        readings=(*previous.rows.values(), *batch.readings),
+    )
+
+
+def _publish_incremental(
+    *,
+    home: Path,
+    batch: ModelIntegrationReadingBatch,
+    overlay: ModelFloorProjectionPublishOverlay,
+    publisher: ProtocolEnvelopePublisher,
+    sink: ProtocolEmissionSink,
+    producer: str,
+) -> ModelFloorProjectionPublishResult:
+    runtime = _contract()["runtime"]
+    config = runtime["incremental"]
+    read_overlay = load_structured_overlay(
+        config["overlay_id"],
+        ModelFloorProjectionReadOverlay,
+        os.environ,
+        file_env=config["file_env"],
+    )
+    if (read_overlay.bus, read_overlay.kafka_bootstrap, read_overlay.bus_lane) != (
+        overlay.bus,
+        overlay.kafka_bootstrap,
+        overlay.bus_lane,
+    ):
+        raise ValueError(
+            "integration projection reader and publisher are on different buses"
+        )
+    source = build_source(read_overlay, os.environ, config["group_prefix"])
+
+    async def publish() -> ModelFloorProjectionPublishResult:
+        try:
+            merged = await retain_previous_readings(
+                batch,
+                source,
+                topic=runtime["topic"],
+                projection_id=overlay.projection_id,
+            )
+        except Exception as exc:
+            refuse("integration_previous_snapshot_unread", type(exc).__name__, sink)
+            raise
+        return await run(merged, overlay, publisher, sink, producer=producer)
+
+    # Every ready-edge publisher on this worker shares one read-and-publish lock.
+    # A process exit also releases it, so a timed-out attempt cannot strand the next read.
+    lock = home / config["lock_relpath"]
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with lock.open("a", encoding="utf-8") as held:
+        fcntl.flock(held.fileno(), fcntl.LOCK_EX)
+        return asyncio.run(publish())
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog=NODE, description=__doc__)
     parser.add_argument("--home", required=True, type=Path)
+    parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help="Retain existing readings on the integration projection while applying this batch.",
+    )
     args = parser.parse_args(argv)
     env = os.environ
     runtime = _contract()["runtime"]
@@ -152,15 +241,21 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_UNREADABLE
     host = env.get("HOSTNAME", "") or os.uname().nodename
     try:
-        result = asyncio.run(
-            run(
-                batch,
-                overlay,
-                build_publisher(overlay, env, runtime["topic"]),
-                sink,
-                producer=f"{NODE}:{host}",
+        publisher = build_publisher(overlay, env, runtime["topic"])
+        producer = f"{NODE}:{host}"
+        if args.incremental:
+            result = _publish_incremental(
+                home=args.home,
+                batch=batch,
+                overlay=overlay,
+                publisher=publisher,
+                sink=sink,
+                producer=producer,
             )
-        )
+        else:
+            result = asyncio.run(
+                run(batch, overlay, publisher, sink, producer=producer)
+            )
     except Exception as exc:
         sys.stderr.write(f"{NODE}: {type(exc).__name__}: {exc}\n")
         return EXIT_NOT_PUBLISHED

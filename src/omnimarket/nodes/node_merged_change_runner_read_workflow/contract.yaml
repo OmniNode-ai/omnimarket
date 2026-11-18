@@ -5,16 +5,15 @@ node_type: ORCHESTRATOR_GENERIC
 lifecycle: experimental
 runtime_profiles: []
 contract_version: {major: 1, minor: 0, patch: 0}
-node_version: "1.0.0"
+node_version: "1.1.0"
 description: >-
-  The merged-change runner reader as a Temporal workflow behind node_merged_change_reading_effect. A Temporal
-  schedule starts one full read every interval_seconds; the workflow lists every line the merged_change_runners
-  overlay declares, runs one activity per declared line (node_merged_change_reading_effect for that change, bounded by
-  line_concurrency, retried up to step_max_attempts), and hands every outcome to the publish step, which builds one
-  ModelIntegrationReadingBatch (SEEN RUNNING, NOT RUNNING or unread, each with its reading and its time) and pipes it to
-  node_integration_reading_publish_effect. No model runs anywhere in the read. A line whose activity fails every
-  attempt is published unread with its cause, never as running. The worker runs on the lab host that runs the Temporal
-  server, as a registry_module_tick unit of node_host_installer_registry_units (merged-change-runner-read-systemd).
+  The managed Temporal schedule samples the dev runtime's readiness and build record. For each observed
+  restart it queues one read when the runtime reports ready. The read selects the declared runner merges
+  newer than the preceding build and no later than the start of the read. The reader invokes one activity
+  per selected change and publishes its result through the integration reading publish effect. A merge or
+  read that cannot be verified is published UNREAD with its cause. The schedule watches each read until it
+  completes and delivers one idle alarm and recovery through the lab alarm delivery effect. No model
+  is used. The host registry unit runs the worker and installs its schedule.
 input_model:
   name: ModelRunnerReadPlan
   module: omnimarket.nodes.node_merged_change_runner_read_workflow.models.model_runner_read
@@ -35,7 +34,11 @@ dependencies:
     required: true
   - name: omnimarket.nodes.node_integration_reading_publish_effect
     dependency_type: internal
-    description: "publishes the integration projection of one full read, through its declared CLI."
+    description: "publishes the integration projection through its declared CLI."
+    required: true
+  - name: omnimarket.nodes.node_lab_alarm_deliver_effect
+    dependency_type: internal
+    description: "delivers ready-edge idle and recovery notices."
     required: true
 handler_routing:
   routing_strategy: operation_match
@@ -50,9 +53,9 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: >-
-    A Temporal schedule (runner_read.schedule_id) on the lab host's Temporal server starts the workflow every
-    interval_seconds; python -m omnimarket.nodes.node_merged_change_runner_read_workflow schedule creates or updates
-    it, start runs one full read now, and worker is the registry_module_tick unit's long-running process.
+    The Temporal schedule runner_read.schedule_id runs one readiness check every
+    ready_edge.probe_interval_seconds. The schedule command creates or updates it. The start command
+    is an explicit full-read diagnostic. The registry_module_tick unit hosts the worker.
 descriptor:
   node_archetype: orchestrator
   purity: effectful
@@ -61,7 +64,7 @@ descriptor:
   timeout_ms: 900000
 metadata:
   transport_type: local
-  description: Read every declared merged-change runner on a Temporal schedule and publish the integration readings.
+  description: Read declared merged-change runners after dev runtime readiness and supervise publication.
   author: OmniNode Team
   created: '2026-11-17'
 runner_read:
@@ -70,7 +73,14 @@ runner_read:
   task_queue: onex-merged-change-runner-read
   schedule_id: merged-change-runner-read
   workflow_id_prefix: merged-change-runner-read
-  interval_seconds: 900
+  ready_edge:
+    probe_interval_seconds: 30
+    probe_timeout_seconds: 8
+    tick_timeout_seconds: 180
+    idle_bound_seconds: 600
+    host_reads_overlay_id: runtime_host_reads
+    host_reads_file_env: RUNTIME_HOST_READS_OVERLAY_PATH
+    alarm_state_relpath: .onex_state/merged-change-runner-read/alarm-state.json
   line_concurrency: 8
   step_timeout_seconds: 180
   step_max_attempts: 3

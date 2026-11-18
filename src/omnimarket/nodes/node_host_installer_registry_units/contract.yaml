@@ -2174,8 +2174,8 @@ units:
     state_directory: .onex_state/friction-rollup
   # The merged-change runner read (node_merged_change_runner_read_workflow) on the lab host that runs the Temporal server:
   # a long-running run that creates or updates the Temporal schedule of the full read and then serves its task queue,
-  # started again within 60 s of any exit. Each full read runs node_merged_change_reading_effect once per declared line,
-  # which reads the runtime host over ssh and the unit hosts' user units, so the unit takes the runtime host's ssh target
+  # started again within 60 s of any exit. The schedule reads the dev runtime's readiness and build window;
+  # the reader probes the runtime and user units over ssh, so the unit takes the runtime host's ssh target
   # (ONEX_RUNTIME_SSH_HOST) and the unit hosts' targets from its host-owned environment file; a missing file is not an
   # error (those lines then read unread, with the cause). The publish step publishes the integration projection.
   merged-change-runner-read-systemd:
