@@ -20,7 +20,6 @@ by OMN-16738).
 from __future__ import annotations
 
 import re
-from datetime import datetime
 from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import Literal
