@@ -16,6 +16,7 @@ the runtime's read of the command topic and write of every published topic.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -36,14 +37,14 @@ GROUP = [
 ]
 
 
-def _contract(name: str) -> dict[str, object]:
-    return yaml.safe_load((NODES / name / "contract.yaml").read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+def _contract(name: str) -> dict[str, Any]:
+    return yaml.safe_load((NODES / name / "contract.yaml").read_text(encoding="utf-8"))
 
 
-def _terminal_topics(contract: dict[str, object]) -> list[str]:
+def _terminal_topics(contract: dict[str, Any]) -> list[str]:
     dispatch = contract["runtime_dispatch"]
     topics: list[str] = []
-    events = dispatch.get("terminal_events") or {}  # type: ignore[attr-defined]
+    events = dispatch.get("terminal_events") or {}
     topics.extend(events.values())
     single = contract.get("terminal_event")
     if isinstance(single, str):
@@ -54,33 +55,29 @@ def _terminal_topics(contract: dict[str, object]) -> list[str]:
 @pytest.mark.parametrize("name", GROUP)
 def test_command_topic_is_subscribed_and_node_has_a_profile(name: str) -> None:
     contract = _contract(name)
-    command = contract["runtime_dispatch"]["command_topic"]  # type: ignore[index]
-    bus = contract["event_bus"]  # type: ignore[index]
-    assert command in bus["subscribe_topics"], (  # type: ignore[index]
+    command = contract["runtime_dispatch"]["command_topic"]
+    bus = contract["event_bus"]
+    assert command in bus["subscribe_topics"], (
         f"{name}: command topic {command} is not in subscribe_topics, so the runtime never attaches it"
     )
-    profiles = contract.get("runtime_profiles") or contract["descriptor"].get(  # type: ignore[attr-defined,index]
+    profiles = contract.get("runtime_profiles") or contract["descriptor"].get(
         "runtime_profiles"
     )
     assert profiles, f"{name}: no runtime profile"
     terminals = _terminal_topics(contract)
     assert terminals, f"{name}: no terminal event declared"
     for topic in terminals:
-        assert topic in bus["publish_topics"], f"{name}: {topic} not published"  # type: ignore[index]
+        assert topic in bus["publish_topics"], f"{name}: {topic} not published"
 
 
 @pytest.mark.parametrize("name", GROUP)
 def test_broker_grants_cover_the_command_and_every_published_topic(name: str) -> None:
     contract = _contract(name)
-    command = contract["runtime_dispatch"]["command_topic"]  # type: ignore[index]
-    published = contract["event_bus"]["publish_topics"]  # type: ignore[index]
+    command = contract["runtime_dispatch"]["command_topic"]
+    published = contract["event_bus"]["publish_topics"]
     grants = contract.get("broker_acl_grants") or []
     assert grants, f"{name}: no broker_acl_grants"
-    pairs = {
-        (g["name"], g["operation"])
-        for entry in grants  # type: ignore[attr-defined]
-        for g in entry["grants"]
-    }
+    pairs = {(g["name"], g["operation"]) for entry in grants for g in entry["grants"]}
     assert (command, "READ") in pairs
     for topic in published:
         assert (topic, "WRITE") in pairs, f"{name}: no WRITE grant for {topic}"
@@ -89,7 +86,7 @@ def test_broker_grants_cover_the_command_and_every_published_topic(name: str) ->
 @pytest.mark.parametrize("name", GROUP)
 async def test_runtime_discovers_the_subscription_and_wires_the_node(name: str) -> None:
     path = NODES / name / "contract.yaml"
-    command = _contract(name)["runtime_dispatch"]["command_topic"]  # type: ignore[index]
+    command = _contract(name)["runtime_dispatch"]["command_topic"]
     manifest = discover_contracts_from_paths([path])
     assert not manifest.errors, manifest.errors
     (discovered,) = manifest.contracts
@@ -110,3 +107,42 @@ async def test_runtime_discovers_the_subscription_and_wires_the_node(name: str) 
         await bus.close()
     assert report.total_failed == 0
     assert report.total_wired == 1
+
+
+@pytest.mark.parametrize(
+    ("name", "command", "published"),
+    [
+        (
+            "node_floor_simple_compute",
+            "onex.cmd.omnimarket.floor-simple-compute-requested.v1",
+            ["onex.evt.omnimarket.floor-simple-computed.v1"],
+        ),
+        (
+            "node_daily_line_compute",
+            "onex.cmd.omnimarket.daily-line-compute-requested.v1",
+            ["onex.evt.omnimarket.daily-line-computed.v1"],
+        ),
+        (
+            "node_pr_landing_ledger_facts_compute",
+            "onex.cmd.omnimarket.pr-landing-ledger-facts-requested.v1",
+            [
+                "onex.evt.omnimarket.pr-landing-ledger-facts-completed.v1",
+                "onex.evt.omnimarket.pr-landing-ledger-facts-failed.v1",
+            ],
+        ),
+        (
+            "node_bus_login_exposure_effect",
+            "onex.cmd.omnimarket.bus-login-exposure-probe-requested.v1",
+            [
+                "onex.evt.omnimarket.bus-login-exposure-probed.v1",
+                "onex.evt.omnimarket.bus-login-exposure-probe-failed.v1",
+            ],
+        ),
+    ],
+)
+def test_declared_topics_are_the_expected_ones(
+    name: str, command: str, published: list[str]
+) -> None:
+    contract = _contract(name)
+    assert contract["event_bus"]["subscribe_topics"] == [command]
+    assert contract["event_bus"]["publish_topics"] == published
