@@ -10,6 +10,10 @@ names are drawn, in the overlay's order, up to its model cap.
 
 from __future__ import annotations
 
+from omnimarket.enums.enum_eval_run_state import EnumEvalRunState
+from omnimarket.models.eval_item.model_eval_snapshot import (
+    ModelEvalSnapshotModel,
+)
 from omnimarket.nodes.node_eval_board_compute.handlers.board_chart1 import (
     build_series,
     latest_run,
@@ -40,12 +44,6 @@ from omnimarket.nodes.node_eval_board_compute.models.model_eval_board_record imp
 )
 from omnimarket.nodes.node_eval_board_compute.models.model_eval_board_request import (
     ModelEvalBoardRequest,
-)
-from omnimarket.nodes.node_projection_eval_results.models.model_eval_rows import (
-    EnumEvalRunState,
-)
-from omnimarket.nodes.node_projection_eval_results.models.model_eval_snapshot import (
-    ModelEvalSnapshotModel,
 )
 
 CHART1_TITLE = "Are the models getting better?"

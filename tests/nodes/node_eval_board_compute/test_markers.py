@@ -6,13 +6,13 @@ from __future__ import annotations
 
 import pytest
 
+from omnimarket.models.eval_item.model_eval_snapshot import (
+    ModelEvalSnapshotRun,
+)
 from omnimarket.nodes.node_eval_board_compute.handlers import HandlerEvalBoard
 from omnimarket.nodes.node_eval_board_compute.models.model_eval_board_record import (
     EnumEvalBoardMarkerKind,
     ModelEvalBoardChart1,
-)
-from omnimarket.nodes.node_projection_eval_results.models.model_eval_snapshot import (
-    ModelEvalSnapshotRun,
 )
 from tests.nodes.node_eval_board_compute.support import (
     FIRST_TEST,

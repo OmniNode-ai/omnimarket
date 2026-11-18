@@ -10,6 +10,12 @@ tasks" marker.
 
 from __future__ import annotations
 
+from omnimarket.enums.enum_eval_run_state import EnumEvalRunState
+from omnimarket.models.eval_item.model_eval_snapshot import (
+    ModelEvalSnapshotModel,
+    ModelEvalSnapshotRate,
+    ModelEvalSnapshotRun,
+)
 from omnimarket.nodes.node_eval_board_compute.handlers.board_text import (
     SIZE_BAND_ALL,
     rate_of,
@@ -19,14 +25,6 @@ from omnimarket.nodes.node_eval_board_compute.models.model_eval_board_record imp
     ModelEvalBoardMarker,
     ModelEvalBoardPoint,
     ModelEvalBoardSeries,
-)
-from omnimarket.nodes.node_projection_eval_results.models.model_eval_rows import (
-    EnumEvalRunState,
-)
-from omnimarket.nodes.node_projection_eval_results.models.model_eval_snapshot import (
-    ModelEvalSnapshotModel,
-    ModelEvalSnapshotRate,
-    ModelEvalSnapshotRun,
 )
 
 LABEL_TASK_SET = "new set of test tasks"

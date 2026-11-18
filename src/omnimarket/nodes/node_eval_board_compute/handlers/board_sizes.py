@@ -12,6 +12,10 @@ from __future__ import annotations
 from omnimarket.models.delegation_capability_map.model_capability_line import (
     ModelCapabilityLine,
 )
+from omnimarket.models.eval_item.model_eval_snapshot import (
+    ModelEvalSnapshotRate,
+    ModelEvalSnapshotRun,
+)
 from omnimarket.models.ranges import (
     EnumIncompleteRunTreatment,
     EnumRangeSampleOutcome,
@@ -31,10 +35,6 @@ from omnimarket.nodes.node_eval_board_compute.models.model_eval_board_record imp
     EnumEvalBoardVerdict,
     ModelEvalBoardSizeCell,
     ModelEvalBoardSizeRow,
-)
-from omnimarket.nodes.node_projection_eval_results.models.model_eval_snapshot import (
-    ModelEvalSnapshotRate,
-    ModelEvalSnapshotRun,
 )
 from omnimarket.ranges import evaluate_range_line
 from omnimarket.ranges.power import required_sample_size

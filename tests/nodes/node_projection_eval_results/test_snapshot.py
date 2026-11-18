@@ -11,6 +11,10 @@ import pytest
 
 from omnimarket.enums.enum_eval_engine import EnumEvalEngine
 from omnimarket.enums.enum_eval_scorer import EnumEvalScorer
+from omnimarket.models.eval_item.model_eval_snapshot import (
+    EnumEvalSnapshotRefusal,
+    EvalSnapshotRefusedError,
+)
 from omnimarket.nodes.node_projection_eval_results.handlers.eval_results_snapshot import (
     build_snapshot,
 )
@@ -21,10 +25,6 @@ from omnimarket.nodes.node_projection_eval_results.models.model_eval_projection_
 from omnimarket.nodes.node_projection_eval_results.models.model_eval_rows import (
     EnumEvalRunState,
     ModelEvalRateRow,
-)
-from omnimarket.nodes.node_projection_eval_results.models.model_eval_snapshot import (
-    EnumEvalSnapshotRefusal,
-    EvalSnapshotRefusedError,
 )
 from tests.nodes.node_projection_eval_results.support import (
     MODEL,

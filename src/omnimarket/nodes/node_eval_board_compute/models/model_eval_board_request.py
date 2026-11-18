@@ -6,11 +6,11 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.models.eval_item.model_eval_snapshot import (
+    ModelEvalSnapshot,
+)
 from omnimarket.nodes.node_eval_board_compute.models.model_eval_board_overlay import (
     ModelEvalBoardOverlay,
-)
-from omnimarket.nodes.node_projection_eval_results.models.model_eval_snapshot import (
-    ModelEvalSnapshot,
 )
 
 

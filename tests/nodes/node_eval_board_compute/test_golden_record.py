@@ -11,12 +11,10 @@ from typing import Any
 
 import pytest
 
+from omnimarket.enums.enum_eval_run_state import EnumEvalRunState
 from omnimarket.nodes.node_eval_board_compute.handlers import HandlerEvalBoard
 from omnimarket.nodes.node_eval_board_compute.models.model_eval_board_overlay import (
     ModelEvalBoardOverlay,
-)
-from omnimarket.nodes.node_projection_eval_results.models.model_eval_rows import (
-    EnumEvalRunState,
 )
 from tests.nodes.node_eval_board_compute.support import (
     FIRST_TEST,

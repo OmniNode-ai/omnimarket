@@ -8,11 +8,11 @@ import itertools
 
 import pytest
 
-from omnimarket.nodes.node_eval_board_compute.handlers import HandlerEvalBoard
-from omnimarket.nodes.node_eval_board_compute.handlers.board_chart1 import latest_run
-from omnimarket.nodes.node_projection_eval_results.models.model_eval_snapshot import (
+from omnimarket.models.eval_item.model_eval_snapshot import (
     ModelEvalSnapshotRun,
 )
+from omnimarket.nodes.node_eval_board_compute.handlers import HandlerEvalBoard
+from omnimarket.nodes.node_eval_board_compute.handlers.board_chart1 import latest_run
 from tests.nodes.node_eval_board_compute.support import (
     FIRST_TEST,
     LOCAL_ID,

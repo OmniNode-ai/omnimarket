@@ -7,15 +7,15 @@ from __future__ import annotations
 import re
 from datetime import UTC, date, datetime
 
+from omnimarket.models.eval_item.model_eval_snapshot import (
+    ModelEvalSnapshotLiveWeek,
+    ModelEvalSnapshotRate,
+)
 from omnimarket.nodes.node_eval_board_compute.models.model_eval_board_overlay import (
     ID_SHAPED,
 )
 from omnimarket.nodes.node_eval_board_compute.models.model_eval_board_record import (
     ModelEvalBoardRate,
-)
-from omnimarket.nodes.node_projection_eval_results.models.model_eval_snapshot import (
-    ModelEvalSnapshotLiveWeek,
-    ModelEvalSnapshotRate,
 )
 
 SIZE_WORDS: dict[str, str] = {"S": "small", "M": "medium", "L": "large"}

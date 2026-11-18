@@ -29,6 +29,9 @@ from omnimarket.models.eval_item.model_eval_item_traced import (
     ModelEvalTraceBound,
     split_trace,
 )
+from omnimarket.models.eval_item.model_eval_snapshot import (
+    ModelEvalResultsOverlay,
+)
 from omnimarket.nodes.node_projection_eval_results.models.model_eval_projection_io import (
     ModelEvalProjectionResult,
     ModelEvalReadPlan,
@@ -38,9 +41,6 @@ from omnimarket.nodes.node_projection_eval_results.models.model_eval_rows import
     ModelEvalRateRow,
     ModelEvalRunRecord,
     ModelEvalTraceRow,
-)
-from omnimarket.nodes.node_projection_eval_results.models.model_eval_snapshot import (
-    ModelEvalResultsOverlay,
 )
 
 TENANT = "11111111-1111-1111-1111-111111111111"

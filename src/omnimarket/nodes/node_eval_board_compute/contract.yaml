@@ -65,6 +65,7 @@ metadata:
   description: "Model tests tab content, computed from the eval-results projection"
   author: "OmniNode Team"
   license: MIT
+  transport_type: local
   created: "2026-11-14"
   tags: [compute, eval-board, pure]
   related_tickets: ["OMN-24174"]

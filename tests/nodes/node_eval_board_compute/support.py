@@ -7,21 +7,19 @@ from __future__ import annotations
 import math
 from datetime import UTC, datetime, timedelta
 
-from omnimarket.nodes.node_eval_board_compute.models.model_eval_board_overlay import (
-    ModelEvalBoardOverlay,
-)
-from omnimarket.nodes.node_eval_board_compute.models.model_eval_board_request import (
-    ModelEvalBoardRequest,
-)
-from omnimarket.nodes.node_projection_eval_results.models.model_eval_rows import (
-    EnumEvalRunState,
-)
-from omnimarket.nodes.node_projection_eval_results.models.model_eval_snapshot import (
+from omnimarket.enums.enum_eval_run_state import EnumEvalRunState
+from omnimarket.models.eval_item.model_eval_snapshot import (
     ModelEvalSnapshot,
     ModelEvalSnapshotLiveWeek,
     ModelEvalSnapshotModel,
     ModelEvalSnapshotRate,
     ModelEvalSnapshotRun,
+)
+from omnimarket.nodes.node_eval_board_compute.models.model_eval_board_overlay import (
+    ModelEvalBoardOverlay,
+)
+from omnimarket.nodes.node_eval_board_compute.models.model_eval_board_request import (
+    ModelEvalBoardRequest,
 )
 
 LOCAL_ID = "qwen-local-coder-27b"

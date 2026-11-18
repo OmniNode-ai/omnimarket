@@ -18,29 +18,12 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_eval_engine import EnumEvalEngine
+from omnimarket.enums.enum_eval_run_state import EnumEvalRunState
 from omnimarket.enums.enum_eval_scorer import EnumEvalScorer
 from omnimarket.models.eval_item.model_eval_item_scored import ModelEvalItemScored
 
 SIZE_BAND_ALL = "all"
 """The size label of a rate row that counts every band of its run."""
-
-
-class EnumEvalRunState(StrEnum):
-    """Where a run stands, from its close and the first tries held for it.
-
-    open     -- no close has arrived.
-    closing  -- the close has arrived and a first try it counts is missing or still unscorable
-                for an infrastructure reason; no rate is shown.
-    closed   -- every first try is in, none infrastructure-unscorable, over the registered tasks.
-    void     -- the close named a cause, or the held tries are not the registered ones.
-    live     -- a week of live work: no close, one row per model.
-    """
-
-    OPEN = "open"
-    CLOSING = "closing"
-    CLOSED = "closed"
-    VOID = "void"
-    LIVE = "live"
 
 
 class EnumEvalRefusal(StrEnum):
