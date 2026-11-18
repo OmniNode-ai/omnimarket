@@ -1,15 +1,16 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Answer the five typed queries over a work ledger graph.
+"""Answer structural and similarity queries over the work ledger.
 
 The graph comes inline or from a JSON file (the effect: the file read). A
 graph that cannot be read, does not validate, names another schema version,
 fails its content hash or holds no rows answers status=error, never an empty
-answer. No model is called; model_tokens is always 0.
+answer. Structural queries always report zero model tokens.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import time
@@ -17,6 +18,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 
+import httpx
 from pydantic import ValidationError
 
 from omnimarket.models.work_ledger_graph.model_work_ledger_graph import (
@@ -30,6 +32,12 @@ from omnimarket.models.work_ledger_graph.model_work_ledger_graph import (
     ModelWorkLedgerGraphAnswer,
     ModelWorkLedgerGraphQueryRequest,
     ModelWorkLedgerGraphQueryResult,
+)
+from omnimarket.nodes.node_work_ledger_graph_query_effect.handlers.work_ledger_similarity import (
+    WorkLedgerSimilarity,
+)
+from omnimarket.nodes.node_work_ledger_graph_query_effect.handlers.work_ledger_similarity_projection import (
+    LedgerSimilarityPageReader,
 )
 
 __all__ = [
@@ -385,6 +393,8 @@ def answer_query(
 ) -> ModelWorkLedgerGraphQueryResult:
     started = time.perf_counter()
     try:
+        if not isinstance(request.query, EnumWorkLedgerGraphQuery):
+            raise GraphUnreadableError("request is not a structural graph query")
         graph = load_graph(request)
     except GraphUnreadableError as exc:
         return ModelWorkLedgerGraphQueryResult(
@@ -404,9 +414,26 @@ def answer_query(
 
 
 class HandlerWorkLedgerGraphQuery:
-    """ONEX effect handler: one typed query over a work ledger graph."""
+    """Handle structural queries and tagged similarity over the ledger."""
+
+    def __init__(
+        self,
+        http_transport: httpx.BaseTransport | None = None,
+        page_reader: LedgerSimilarityPageReader | None = None,
+    ) -> None:
+        self._similarity = WorkLedgerSimilarity(http_transport, page_reader)
 
     def handle(
         self, request: ModelWorkLedgerGraphQueryRequest
     ) -> ModelWorkLedgerGraphQueryResult:
+        if not isinstance(request.query, EnumWorkLedgerGraphQuery):
+            return self._similarity.handle(request)
         return answer_query(request)
+
+    async def handle_async(
+        self, request: ModelWorkLedgerGraphQueryRequest
+    ) -> ModelWorkLedgerGraphQueryResult:
+        """Keep network and index work off the runtime's event loop."""
+        if isinstance(request.query, EnumWorkLedgerGraphQuery):
+            return answer_query(request)
+        return await asyncio.to_thread(self.handle, request)
