@@ -10,9 +10,18 @@ lives here: the documents are private deployment data and stay in the overlay ho
 
 from __future__ import annotations
 
+import re
+from fnmatch import fnmatch
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    StringConstraints,
+    field_validator,
+)
 
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
@@ -58,10 +67,48 @@ class ModelLabDiskHygieneOverlay(_ModelOverlayDocument):
     census_path: NonBlank
 
 
+class ModelSharedCatalogLine(_ModelOverlayDocument):
+    """One line a rendered catalog rewrites in every pull request that touches it, scoped to the files that hold it.
+
+    ``path`` is a glob matched against the whole path of a changed file; ``line`` is a regular expression searched
+    in a removed line (stripped). A removed line that matches both never counts toward a diff's scored digest. The
+    expression is compiled once, when the document loads, and an expression that does not compile refuses the load.
+    """
+
+    path: NonBlank
+    line: NonBlank
+    _compiled: re.Pattern[str] = PrivateAttr()
+
+    @field_validator("line")
+    @classmethod
+    def _line_compiles(cls, value: str) -> str:
+        try:
+            re.compile(value)
+        except re.error as exc:
+            raise ValueError(
+                f"shared catalog line pattern {value!r} does not compile: {exc}"
+            ) from None
+        return value
+
+    def model_post_init(self, __context: object) -> None:
+        self._compiled = re.compile(self.line)
+
+    def matches(self, path: str, text: str) -> bool:
+        """True when a removed line ``text`` of the file ``path`` is this declared catalog line."""
+        return fnmatch(path, self.path) and self._compiled.search(text) is not None
+
+
 class ModelDuplicateGuardGeneratedPathsOverlay(_ModelOverlayDocument):
-    """``node_pr_duplicate_guard_compute``: per repository, the paths every pull request of a kind regenerates."""
+    """``node_pr_duplicate_guard_compute``: per repository, what every pull request of a kind rewrites.
+
+    ``generated_paths``: the files a repository regenerates. ``shared_catalog_lines`` (optional, beside it): the
+    lines of a rendered catalog that every pull request touching it rewrites, each a path glob and a line pattern.
+    """
 
     generated_paths: dict[NonBlank, tuple[NonBlank, ...]] = Field(min_length=1)
+    shared_catalog_lines: dict[NonBlank, tuple[ModelSharedCatalogLine, ...]] = Field(
+        default_factory=dict
+    )
 
 
 class ModelRouteCheckOverlay(_ModelOverlayDocument):

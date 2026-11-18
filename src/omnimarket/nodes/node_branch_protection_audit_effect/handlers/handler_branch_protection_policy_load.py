@@ -11,8 +11,8 @@ from omnimarket.nodes.node_branch_protection_audit_effect.models import (
     ModelBranchProtectionPolicyLoadRequest,
 )
 
-# The one overlay list whose entries are mappings, not strings.
-_STRUCTURED_KEY = "landing_branches"
+# The overlay lists whose entries are mappings, not strings.
+_STRUCTURED_KEYS = ("landing_branches", "review_verdict_required")
 
 
 class BranchProtectionOverlayError(ValueError):
@@ -53,7 +53,14 @@ class HandlerBranchProtectionPolicyLoad:
                 continue
             if not isinstance(key, str) or key not in fields:
                 raise BranchProtectionOverlayError(f"overlay unknown key: {key!r}")
-            if key == _STRUCTURED_KEY:
+            if key == "review_verdict_context":
+                if not isinstance(value, str) or not value:
+                    raise BranchProtectionOverlayError(
+                        "overlay review_verdict_context must be a non-empty string"
+                    )
+                updates[key] = value
+                continue
+            if key in _STRUCTURED_KEYS:
                 if not isinstance(value, list) or not all(
                     isinstance(item, dict) for item in value
                 ):
