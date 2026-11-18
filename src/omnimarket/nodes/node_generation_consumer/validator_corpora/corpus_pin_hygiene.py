@@ -6,7 +6,7 @@
 """Acceptance corpus for the sibling-pin-hygiene mechanical scanner (OMN-13509, G2).
 
 Ground truth: the #2071 / OMN-13507 saga — a feature PR pinned a sibling
-dependency (``omnibase-core`` / ``omnibase-spi`` / ``omnibase-compat``) to a git
+dependency (``omnibase-core`` / ``omnibase-spi``) to a git
 ``rev`` (or a ``branch=main``) that had DIVERGED from that sibling's ``dev`` line.
 The pin compiled and tests passed locally, but the pinned revision was not an
 ancestor of the sibling's ``dev`` HEAD, so it dragged in (or stranded) work that

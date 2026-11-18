@@ -89,7 +89,7 @@ def test_reject_underscore_spelling(mod, tmp_path: Path) -> None:
 def test_reject_branch_override(mod, tmp_path: Path) -> None:
     block = (
         "[tool.uv.sources]\n"
-        'omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", '
+        'omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", '
         'branch = "dev" }\n'
     )
     path = _write_pyproject(tmp_path, block)

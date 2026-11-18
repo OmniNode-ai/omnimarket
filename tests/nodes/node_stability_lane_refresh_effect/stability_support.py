@@ -41,7 +41,6 @@ bumped_by: example owner
 pin:
   omnibase_infra: v1.2.3
   omnibase_core: v2.3.4
-  omnibase_compat: v9.9.9
   omnimarket: v3.4.5
 previous: null
 """

@@ -29,6 +29,7 @@ from omnimarket.nodes.node_branch_protection_audit_effect.models import (
 
 ORG = DEFAULT_ORG
 ORDINARY_REPO = "ordinary_main_repo"
+MAIN_EXEMPT_REPO = "fixture-main-exempt"
 
 POLICY = ModelBranchProtectionAuditPolicy(
     private_repos=(ORDINARY_REPO,),
@@ -42,12 +43,12 @@ POLICY = ModelBranchProtectionAuditPolicy(
         "omnimarket",
         "omniclaude",
     ),
-    main_audit_exempt_repos=("omnibase_compat",),
+    main_audit_exempt_repos=(MAIN_EXEMPT_REPO,),
     review_gated_main_repos=("onex_change_control",),
     receipt_gate_required_repos=(
         "omniclaude",
         "omnimarket",
-        "omnibase_compat",
+        MAIN_EXEMPT_REPO,
         "omnibase_core",
         "omnibase_infra",
         "omniintelligence",

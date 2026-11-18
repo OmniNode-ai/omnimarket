@@ -5,7 +5,7 @@ title: "Classify duplicate model collisions and burn down delegation event wrapp
 summary: >
   Classifies the high-risk delegation/routing/task-contract D4 model-name
   collision families and removes omnimarket's local ModelDelegationEvent class
-  definition by re-exporting the canonical omnibase_compat delegation event
+  definition by re-exporting the shared delegation event
   envelope while preserving existing omnimarket import paths.
 is_seam_ticket: false
 interface_change: false

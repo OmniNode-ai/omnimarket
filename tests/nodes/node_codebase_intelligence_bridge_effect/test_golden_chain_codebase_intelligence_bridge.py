@@ -175,8 +175,8 @@ class TestGetWhy:
 
         req = ModelCodebaseIntelligenceQueryRequest(
             operation="get_why",
-            query="why is compat a separate repo",
-            targets=("omnibase_compat/",),
+            query="why is the worker a separate repo",
+            targets=("fixture-worker/",),
         )
         resp = await handler.handle(req)
 

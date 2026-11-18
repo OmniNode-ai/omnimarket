@@ -34,8 +34,10 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
+
 from benchmarks.delegation_ladder.models import EnumOutcome, ModelScore
-from omnimarket.handlers.vendor_compat import vendor_compat
+from omnimarket.handlers.historical_tree import import_failure, replay_paths
 from omnimarket.handlers.workflow_request_score import (
     same_literal,
     score_workflow_request,
@@ -640,6 +642,7 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 def git_text(*args: str) -> str:
     return subprocess.run(
         ["git", "-C", str(REPO_ROOT), *args],
+        env=scrub_git_location_env(),
         capture_output=True,
         text=True,
         check=True,
@@ -647,7 +650,7 @@ def git_text(*args: str) -> str:
 
 
 def materialise_tree(commit: str, dest: Path, revert_to_parent: list[str]) -> None:
-    """Write src, tests and pyproject at ``commit``, with some files at the parent."""
+    """Write src, tests, scripts, config and pyproject at ``commit``, some at the parent."""
     archive = subprocess.run(
         [
             "git",
@@ -655,10 +658,9 @@ def materialise_tree(commit: str, dest: Path, revert_to_parent: list[str]) -> No
             str(REPO_ROOT),
             "archive",
             commit,
-            "src",
-            "tests",
-            "pyproject.toml",
+            *replay_paths(REPO_ROOT, commit),
         ],
+        env=scrub_git_location_env(),
         capture_output=True,
         check=True,
     ).stdout
@@ -671,12 +673,10 @@ def materialise_tree(commit: str, dest: Path, revert_to_parent: list[str]) -> No
 
 def run_tree_test(tree: Path, test_path: str, timeout_s: int) -> tuple[int, str]:
     """Run one repository test file against ``tree/src``; return ``(rc, output)``."""
-    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    env = {**scrub_git_location_env(), "PYTHONDONTWRITEBYTECODE": "1"}
     argv = [sys.executable, "-m", "pytest", test_path, "-q", "-x", "--no-header"]
     argv += ["-p", "no:cacheprovider", "-o", "addopts="]
-    failure = vendor_compat(tree, env)
-    if failure is not None:
-        return failure
+    env["PYTHONPATH"] = str(tree / "src")
     try:
         completed = subprocess.run(
             argv,
@@ -771,19 +771,25 @@ def score_multi_file_edit_and_test(
         tree = Path(tmp)
         materialise_tree(commit, tree, changed)
         control_rc, control_out = run_tree_test(tree, test_path, timeout_s)
+        broken = import_failure(control_out, REPO_ROOT, commit)
+        if control_rc == 0 or broken is not None:
+            return ModelScore(
+                outcome=EnumOutcome.HARNESS_ERROR,
+                score=0.0,
+                mechanical=True,
+                detail=f"historical tree is not runnable: {broken}"
+                if broken
+                else "the commit's test PASSES on the files as shown; the task cannot "
+                "discriminate: " + control_out[-400:],
+                checklist={
+                    "control_fails": control_rc != 0,
+                    "tree_imports": broken is None,
+                },
+            )
         refused = apply_search_replace(tree, edits, editable)
         patched_rc, patched_out = 1, ""
         if refused is None:
             patched_rc, patched_out = run_tree_test(tree, test_path, timeout_s)
-    if control_rc == 0:
-        return ModelScore(
-            outcome=EnumOutcome.HARNESS_ERROR,
-            score=0.0,
-            mechanical=True,
-            detail="the commit's test PASSES on the files as shown; the task cannot "
-            "discriminate: " + control_out[-400:],
-            checklist={"control_fails": False},
-        )
     files_edited = len({path for path, _, _ in edits})
     if refused is not None:
         return ModelScore(

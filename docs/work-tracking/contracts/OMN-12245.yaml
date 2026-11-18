@@ -15,7 +15,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-release-omnibase-compat-pr-112"
-    description: "omnibase_compat release PR #112 is mergeable release evidence for OMN-12245."
+    description: "The retired dependency release PR #112 is mergeable release evidence for OMN-12245."
     source: "manual"
     status: "verified"
     checks:

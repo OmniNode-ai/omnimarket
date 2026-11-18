@@ -1,10 +1,9 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Local definition of ModelPostMortemReport and ModelFrictionEvent.
+"""ModelPostMortemReport and ModelFrictionEvent for node_session_post_mortem.
 
-Mirrors the wire types in omnibase_compat.telemetry.model_post_mortem_report.
-When omnibase_compat ships the telemetry namespace, this file can be removed
-and imports updated to point at the canonical location.
+These two models are defined in this module; omnibase_core, omnibase_spi and
+omnibase_infra define neither, so a change to their wire shape is made here.
 """
 
 from __future__ import annotations
@@ -36,7 +35,9 @@ class ModelFrictionEvent(BaseModel, frozen=True, extra="forbid"):
     friction_type: str
     description: str
     recorded_at: datetime
-    schema_version: str = "1.0"  # string-version-ok: wire envelope field mirrors omnibase_compat telemetry wire type
+    schema_version: str = (
+        "1.0"  # string-version-ok: wire envelope field of the telemetry type
+    )
 
 
 class ModelPostMortemReport(BaseModel, frozen=True, extra="forbid"):
@@ -63,7 +64,9 @@ class ModelPostMortemReport(BaseModel, frozen=True, extra="forbid"):
     report_path: str
     started_at: datetime
     completed_at: datetime
-    schema_version: str = "1.0"  # string-version-ok: wire envelope field mirrors omnibase_compat telemetry wire type
+    schema_version: str = (
+        "1.0"  # string-version-ok: wire envelope field of the telemetry type
+    )
 
 
 __all__: list[str] = [

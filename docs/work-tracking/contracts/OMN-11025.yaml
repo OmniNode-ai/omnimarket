@@ -1,10 +1,10 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-11025"
-title: "Migrate omnimarket delegation DTOs to omnibase_compat wire models"
+title: "Centralize omnimarket delegation wire models"
 summary: >
   Replaces duplicate omnimarket delegation DTO definitions with compatibility
-  imports from canonical omnibase_compat.contracts.delegation.wire models while
+  imports from the then-shared delegation wire models while
   preserving existing omnimarket module paths for callers and contract refs.
 is_seam_ticket: false
 interface_change: false
@@ -29,7 +29,7 @@ dod_evidence:
   - id: "dod-d4-delegation-wire"
     description: >
       D4 overlay check with the OMN-11025 worktree and OMN-11024
-      omnibase_compat source removes targeted delegation wire DTO collisions;
+      the former shared package removes targeted delegation wire DTO collisions;
       unrelated residual D4 findings, including ModelRoutingDecision, remain
       outside this ticket scope.
     source: "manual"

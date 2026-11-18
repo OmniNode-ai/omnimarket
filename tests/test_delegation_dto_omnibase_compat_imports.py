@@ -4,7 +4,7 @@
 
 Verifies that omnimarket shim paths resolve to models whose canonical home is
 omnibase_core.models.delegation.wire — the single source of truth for
-platform-primitive delegation wire DTOs (graduated from omnibase_compat, OMN-12126).
+platform-primitive delegation wire DTOs.
 
 Omnimarket-specific projection models (ModelDelegateSkillResponse,
 ModelDelegateSkillTerminalProjection, etc.) remain in omnimarket.

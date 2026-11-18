@@ -1,8 +1,8 @@
 ---
 schema_version: "1.0.0"
 ticket_id: OMN-11183
-title: "Graduate delegation wire models from omnibase_compat to omnimarket"
-summary: "Move all 23 delegation wire DTOs from the temporary omnibase_compat/contracts/delegation/wire/ staging area to omnimarket/src/omnimarket/models/delegation/wire/ — single-consumer rule, every import was omnimarket-only."
+title: "Graduate delegation wire models into omnimarket"
+summary: "Move all 23 delegation wire DTOs from the former shared staging area to omnimarket/src/omnimarket/models/delegation/wire/ — single-consumer rule, every import was omnimarket-only."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -25,7 +25,7 @@ dod_evidence:
       - check_type: command
         check_value: "uv run pytest tests/ -m unit --tb=short"
   - id: dod-deploy
-    description: "No live deploy required — pure import path refactor; node models are import shims only, no runtime topology change, no Kafka topic addition or removal, no container restart needed. Wire models now resolve from omnimarket.models.delegation.wire.* instead of omnibase_compat.contracts.delegation.wire.*"
+    description: "No live deploy required — pure import path refactor; node models are import shims only, no runtime topology change, no Kafka topic addition or removal, no container restart needed. Wire models now resolve from omnimarket.models.delegation.wire.*"
     source: manual
     checks:
       - check_type: command

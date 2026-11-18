@@ -33,8 +33,12 @@ from tests.bus_lane_guard import (
     load_lane_overlay,
     resolve_test_bus_broker,
 )
-from tests.test_host_reconcile_effect import run_git, setup_workspace
-from tests.test_retired_repository_reconcile import retired_clone
+from tests.test_host_reconcile_effect import run_git
+from tests.test_retired_repository_reconcile import (
+    RETIRED_FIXTURE_REPO,
+    retired_clone,
+    setup_retirement_workspace,
+)
 
 pytestmark = [pytest.mark.kafka, pytest.mark.integration]
 
@@ -58,7 +62,7 @@ async def test_retirement_redpanda_installed_dev_profile(
     auth = build_aiokafka_auth_kwargs_from_env()
     topic = apply_topic_namespace(publish_topics()[1])
 
-    root = setup_workspace(tmp_path, monkeypatch)
+    root = setup_retirement_workspace(tmp_path, monkeypatch)
     clone = retired_clone(root)
     head = run_git(clone, "rev-parse", "HEAD")
     monkeypatch.setenv("KAFKA_BROKERS", broker)
@@ -140,7 +144,7 @@ async def test_retirement_redpanda_installed_dev_profile(
                     run_git(tmp_path, "clone", str(bundle), str(restored))
                     assert run_git(restored, "rev-parse", "HEAD") == head
                     assert any(
-                        s.surface == "retired-clone:omnibase_compat"
+                        s.surface == f"retired-clone:{RETIRED_FIXTURE_REPO}"
                         and s.verdict == "MOVED"
                         for s in delivered.surfaces
                     )

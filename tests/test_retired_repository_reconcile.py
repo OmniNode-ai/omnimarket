@@ -41,11 +41,27 @@ pytestmark = pytest.mark.unit
 RETIRED_BY_RULING = (
     "onex_change_control",
     "ycbench_onex",
-    "omnibase_compat",
 )
 
 
-def retired_clone(root: Path, name: str = "omnibase_compat") -> Path:
+RETIRED_FIXTURE_REPO = "retired-fixture"
+
+
+def setup_retirement_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    root = setup_workspace(tmp_path, monkeypatch)
+    overlay_root = tmp_path / "retirement-overlays"
+    overlay = overlay_root / "node_host_reconcile_effect" / "overlay.yaml"
+    overlay.parent.mkdir(parents=True)
+    overlay.write_text(
+        yaml.safe_dump(
+            {"retirement": {"additional_retired_repositories": [RETIRED_FIXTURE_REPO]}}
+        )
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(overlay_root))
+    return root
+
+
+def retired_clone(root: Path, name: str = RETIRED_FIXTURE_REPO) -> Path:
     clone = root / name
     clone.mkdir()
     run_git(clone, "init", "--initial-branch=dev")
@@ -60,7 +76,7 @@ def retired_clone(root: Path, name: str = "omnibase_compat") -> Path:
 def test_retired_clone_is_deleted_after_a_restorable_bundle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    root = setup_workspace(tmp_path, monkeypatch)
+    root = setup_retirement_workspace(tmp_path, monkeypatch)
     clone = retired_clone(root)
     head = run_git(clone, "rev-parse", "HEAD")
     publisher = RecordingPublisher()
@@ -119,7 +135,7 @@ def test_retirement_policy_cannot_drop_a_retired_repository() -> None:
 def test_check_reports_retired_clone_without_writing_a_backup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    root = setup_workspace(tmp_path, monkeypatch)
+    root = setup_retirement_workspace(tmp_path, monkeypatch)
     clone = retired_clone(root)
     result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
         command(root, "check")
@@ -128,7 +144,8 @@ def test_check_reports_retired_clone_without_writing_a_backup(
     assert clone.is_dir()
     assert not (root / ".onex_state/retired-repository-bundles").exists()
     assert any(
-        s.surface == "retired-clone:omnibase_compat" and s.verdict == "DID_NOT_MOVE"
+        s.surface == f"retired-clone:{RETIRED_FIXTURE_REPO}"
+        and s.verdict == "DID_NOT_MOVE"
         for s in result.surfaces
     )
 
@@ -140,7 +157,7 @@ def test_check_reports_retired_clone_without_writing_a_backup(
 def test_unbundled_work_is_never_deleted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
-    root = setup_workspace(tmp_path, monkeypatch)
+    root = setup_retirement_workspace(tmp_path, monkeypatch)
     clone = retired_clone(root)
     if kind == "tracked":
         (clone / "tracked").write_text("uncommitted work\n")
@@ -162,7 +179,8 @@ def test_unbundled_work_is_never_deleted(
     assert result.exit_code == 2, result.diagnostics
     assert clone.exists()
     assert any(
-        s.surface == "retired-clone:omnibase_compat" and s.verdict == "UNHEALTHY"
+        s.surface == f"retired-clone:{RETIRED_FIXTURE_REPO}"
+        and s.verdict == "UNHEALTHY"
         for s in result.surfaces
     )
     assert not list(root.glob(".onex_state/retired-repository-bundles/*.bundle"))
@@ -172,7 +190,7 @@ def test_unbundled_work_is_never_deleted(
 def test_failed_bundle_preserves_clone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
 ) -> None:
-    root = setup_workspace(tmp_path, monkeypatch)
+    root = setup_retirement_workspace(tmp_path, monkeypatch)
     clone = retired_clone(root)
     original = _ReconcilePass.command
 
@@ -192,7 +210,7 @@ def test_failed_bundle_preserves_clone(
 def test_failed_backup_persistence_preserves_clone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    root = setup_workspace(tmp_path, monkeypatch)
+    root = setup_retirement_workspace(tmp_path, monkeypatch)
     clone = retired_clone(root)
 
     def failed_sync(fd: int) -> None:
@@ -208,7 +226,7 @@ def test_failed_backup_persistence_preserves_clone(
 def test_clone_changed_during_backup_is_retained(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    root = setup_workspace(tmp_path, monkeypatch)
+    root = setup_retirement_workspace(tmp_path, monkeypatch)
     clone = retired_clone(root)
     original = _ReconcilePass.command
 
@@ -231,7 +249,7 @@ def test_clone_changed_during_backup_is_retained(
 def test_shallow_clone_is_retained(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    root = setup_workspace(tmp_path, monkeypatch)
+    root = setup_retirement_workspace(tmp_path, monkeypatch)
     clone = retired_clone(root)
     (clone / ".git/shallow").write_text(run_git(clone, "rev-parse", "HEAD") + "\n")
     assert run_git(clone, "rev-parse", "--is-shallow-repository") == "true"
@@ -244,7 +262,7 @@ def test_shallow_clone_is_retained(
 def test_detached_head_tags_and_other_branches_survive_in_the_bundle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    root = setup_workspace(tmp_path, monkeypatch)
+    root = setup_retirement_workspace(tmp_path, monkeypatch)
     clone = retired_clone(root)
     first = run_git(clone, "rev-parse", "HEAD")
     run_git(clone, "tag", "kept-tag")
@@ -265,11 +283,11 @@ def test_detached_head_tags_and_other_branches_survive_in_the_bundle(
     assert (restored / "tracked").read_text() == "detached work\n"
 
 
-@pytest.mark.parametrize("relative", ["omnibase_compat/bundles", "../outside"])
+@pytest.mark.parametrize("relative", [f"{RETIRED_FIXTURE_REPO}/bundles", "../outside"])
 def test_unsafe_backup_destination_preserves_clone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relative: str
 ) -> None:
-    root = setup_workspace(tmp_path, monkeypatch)
+    root = setup_retirement_workspace(tmp_path, monkeypatch)
     clone = retired_clone(root)
     policy = load_retirement_policy().model_copy(update={"backup_directory": relative})
     monkeypatch.setattr(effect, "load_retirement_policy", lambda: policy)
@@ -368,9 +386,12 @@ def test_operational_registry_constants_are_all_checked(
 ) -> None:
     source = tmp_path / "src/pkg/registry.py"
     source.parent.mkdir(parents=True)
-    source.write_text(f'{constant} = ["omnibase_compat"]\n')
-    findings = retired_repository_findings(tmp_path, load_retirement_policy())
-    assert {finding.repository for finding in findings} == {"omnibase_compat"}
+    source.write_text(f'{constant} = ["{RETIRED_FIXTURE_REPO}"]\n')
+    policy = load_retirement_policy().model_copy(
+        update={"retired_repositories": (RETIRED_FIXTURE_REPO,)}
+    )
+    findings = retired_repository_findings(tmp_path, policy)
+    assert {finding.repository for finding in findings} == {RETIRED_FIXTURE_REPO}
 
 
 @pytest.mark.parametrize(
@@ -476,13 +497,13 @@ def test_host_refuses_a_retired_target_in_a_sibling_before_sync_runs(
 def test_stale_sync_manifest_cannot_recreate_the_archived_retired_clone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    root = setup_workspace(tmp_path, monkeypatch)
+    root = setup_retirement_workspace(tmp_path, monkeypatch)
     clone = retired_clone(root)
     manifest = root / "omnibase_infra/scripts/runtime_build/sibling_clone_manifest.sh"
     manifest.write_text(
         manifest.read_text().replace(
             "SIBLING_CLONE_MANIFEST=(omnibase_infra omnimarket)",
-            "SIBLING_CLONE_MANIFEST=(omnibase_infra omnimarket omnibase_compat)",
+            f"SIBLING_CLONE_MANIFEST=(omnibase_infra omnimarket {RETIRED_FIXTURE_REPO})",
         )
     )
     result = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
@@ -496,7 +517,7 @@ def test_stale_sync_manifest_cannot_recreate_the_archived_retired_clone(
 def test_retirement_inmemory_profile(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    root = setup_workspace(tmp_path, monkeypatch)
+    root = setup_retirement_workspace(tmp_path, monkeypatch)
     clone = retired_clone(root)
     bus = EventBusInmemory(environment="test", group="retirement")
     received: list[ModelHostReconcileRunResult] = []
@@ -525,7 +546,7 @@ def test_retirement_inmemory_profile(
     assert not clone.exists()
     assert received == [result]
     assert any(
-        s.surface == "retired-clone:omnibase_compat" and s.verdict == "MOVED"
+        s.surface == f"retired-clone:{RETIRED_FIXTURE_REPO}" and s.verdict == "MOVED"
         for s in received[0].surfaces
     )
 

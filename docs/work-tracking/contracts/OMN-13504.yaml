@@ -23,7 +23,7 @@ evidence_requirements:
     command: "git -C ../../omnibase_core merge-base --is-ancestor 81c865f69a15781d526125ee13f39834a3ce69fd origin/dev && echo is_ancestor=true"
   - kind: "manual"
     description: "OMN-12977 sibling-pin guard reports omnibase-core [OK] and exits 0 against the canonical clones."
-    command: "uv run python ../../omnibase_infra/scripts/runtime_build/check_sibling_lock_pins.py --lock uv.lock --repo omnibase-infra=../../omnibase_infra --repo omnibase-core=../../omnibase_core --repo omnibase-spi=../../omnibase_spi --repo omnibase-compat=../../omnibase_compat --repo onex-change-control=../../onex_change_control --repo omnimarket=."
+    command: "uv run python ../../omnibase_infra/scripts/runtime_build/check_sibling_lock_pins.py --lock uv.lock --repo omnibase-infra=../../omnibase_infra --repo omnibase-core=../../omnibase_core --repo omnibase-spi=../../omnibase_spi --repo onex-change-control=../../onex_change_control --repo omnimarket=."
 emergency_bypass:
   enabled: false
   justification: ""
@@ -40,7 +40,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "uv run python ../../omnibase_infra/scripts/runtime_build/check_sibling_lock_pins.py --lock uv.lock --repo omnibase-infra=../../omnibase_infra --repo omnibase-core=../../omnibase_core --repo omnibase-spi=../../omnibase_spi --repo omnibase-compat=../../omnibase_compat --repo onex-change-control=../../onex_change_control --repo omnimarket=."
+        check_value: "uv run python ../../omnibase_infra/scripts/runtime_build/check_sibling_lock_pins.py --lock uv.lock --repo omnibase-infra=../../omnibase_infra --repo omnibase-core=../../omnibase_core --repo omnibase-spi=../../omnibase_spi --repo onex-change-control=../../onex_change_control --repo omnimarket=."
   - id: "dod-003"
     description: "Lock resolves and the package imports: uv sync --all-extras resolves 213 packages; python -c 'import omnibase_core' loads v0.46.0. ruff check + format clean on the changed files; no old SHA (79ec3ad9) remains in pyproject.toml or uv.lock."
     source: "manual"

@@ -133,7 +133,8 @@ class HandlerOverseerVerifier:
     """Deterministic verification layer for overseer model outputs.
 
     Runs six check dimensions and returns a verdict dict compatible with
-    ``ModelVerifierOutput`` from omnibase_compat. The ``pr_checks_live``
+    ``ModelVerifierOutput`` in omnibase_core
+    (``src/omnibase_core/models/overseer/model_verifier_output.py``). The ``pr_checks_live``
     dimension is skipped when ``claimed_prs`` is empty, preserving the
     pure-Python contract for non-PR verifications.
 
@@ -152,7 +153,8 @@ class HandlerOverseerVerifier:
 
         Returns:
             A dict with keys: verdict, checks, failure_class, summary.
-            Shape mirrors ModelVerifierOutput from omnibase_compat (OMN-8030).
+            Shape mirrors ModelVerifierOutput in omnibase_core (OMN-8030):
+            ``src/omnibase_core/models/overseer/model_verifier_output.py``.
         """
         checks = [
             self._check_input_completeness(request),

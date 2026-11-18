@@ -10,15 +10,15 @@ nodes (`node_occ_evidence_draft_orchestrator`,
 into a sibling node's private model package.
 
 Runtime-deployment primitives (`EnumRuntimeLane`, `ModelRuntimeDeploymentProof`)
-are re-exported from their canonical `omnibase_core` home (graduated from
-omnibase_compat in OMN-13209); this surface keeps a stable import path for the
+are re-exported from their canonical `omnibase_core` home (graduated there in
+OMN-13209); this surface keeps a stable import path for the
 OCC nodes.
 
 The OCC creation path is deliberately split into model generation and
 deterministic acceptance: a local model drafts the OCC contract/receipt/PR body
 (``ModelOccEvidenceDraft``, always PROVISIONAL); a deterministic validator
 decides acceptance. The PASS path publishes the existing
-``omnibase_compat ... ModelEvidenceValidationResult`` on
+``ModelEvidenceValidationResult`` from the evidence-pipeline wire models on
 ``onex.evt.omnimarket.evidence-validated.v1`` so the OCC PR writer fires;
 ``ModelOccEvidenceDraftValidationResult`` here is the INTERNAL reject/audit shape
 ONLY — it is never published on ``evidence-validated.v1``.

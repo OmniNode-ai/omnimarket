@@ -30,15 +30,20 @@ from omnimarket.nodes.node_merge_sweep_plan_compute.models import (
     ModelMergeSweepRetryRequest,
 )
 
+RETIRED_REPO = "omnibase_compat"
+# Preserve the recorded repository ordering, which the dispatch cap uses.
+RETIRED_FIXTURE_REPO = "omnibase_archived_fixture"
+
 CASES = json.loads(
-    (Path(__file__).parent / "fixtures" / "parity_cases.json").read_text()
+    (Path(__file__).parent / "fixtures" / "parity_cases.json")
+    .read_text()
+    .replace(RETIRED_REPO, RETIRED_FIXTURE_REPO)
 )
 
 
 # The fleet the old tools planned against when the cases were recorded. A reading with no
-# scope falls back to the fleet, so parity replays it under this set. The live fleet has
-# since retired omnibase_compat (OMN-21284); the test below pins that difference.
-RECORDED_FLEET = FLEET_REPOS | {"omnibase_compat"}
+# scope falls back to the fleet, so parity includes the retired fixture repo in that scope.
+RECORDED_FLEET = FLEET_REPOS | {RETIRED_FIXTURE_REPO}
 
 
 def _planned(case: dict[str, Any], *, recorded_fleet: bool = True) -> Any:
@@ -125,6 +130,7 @@ def test_plan_matches_the_sweep_rules_and_the_workflow_cap(index: int) -> None:
 
 def test_the_live_fleet_skips_the_retired_repository() -> None:
     """With no scope, a retired repository's PR the old fleet planned is now skipped as out of scope."""
+    assert RETIRED_REPO not in FLEET_REPOS
     changed = 0
     for case in CASES["plan"]:
         if case["request"]["reading"].get("scope"):
@@ -135,13 +141,14 @@ def test_the_live_fleet_skips_the_retired_repository() -> None:
             pr.pr
             for lane in recorded.lanes
             for pr in lane.prs
-            if pr.pr.startswith("omnibase_compat#")
+            if pr.pr.startswith(f"{RETIRED_FIXTURE_REPO}#")
         } | {
             s.pr
             for s in recorded.skipped
-            if s.pr.startswith("omnibase_compat#") and s.why != "out-of-scope-repo"
+            if s.pr.startswith(f"{RETIRED_FIXTURE_REPO}#")
+            and s.why != "out-of-scope-repo"
         }
-        assert all(lane.repo != "omnibase_compat" for lane in live.lanes)
+        assert all(lane.repo != RETIRED_FIXTURE_REPO for lane in live.lanes)
         live_skips = {s.pr: s.why for s in live.skipped}
         for key in planned:
             assert live_skips.get(key) == "out-of-scope-repo", (key, case["request"])

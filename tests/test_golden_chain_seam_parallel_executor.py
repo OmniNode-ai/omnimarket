@@ -14,11 +14,18 @@ Related:
 from __future__ import annotations
 
 import asyncio
+import json
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import pytest
+import yaml
+from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.runtime.runtime_local import RuntimeLocal
 
+import omnimarket.nodes.node_seam_parallel_executor as node_pkg
 from omnimarket.nodes.node_seam_parallel_executor.handlers.handler_seam_parallel_executor import (
     HandlerSeamParallelExecutor,
 )
@@ -329,3 +336,68 @@ class TestSeamParallelExecutorGoldenChain:
         # A must be first, D must be last
         assert tracker.order[0] == "A"
         assert tracker.order[-1] == "D"
+
+
+_SEAM_TERMINAL = "onex.evt.omnimarket.seam-parallel-completed.v1"
+
+
+async def _run_contract_on_shared_bus(
+    contract: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> EventBusInmemory:
+    """Run one request through ``contract`` with the runtime's bus replaced by ours."""
+    bus = EventBusInmemory()
+    monkeypatch.setattr(RuntimeLocal, "_create_event_bus", lambda _self: bus)
+    request = tmp_path / "request.json"
+    request.write_text(json.dumps({"correlation_id": str(uuid4()), "tasks": []}))
+    runtime = RuntimeLocal(
+        workflow_path=contract,
+        input_path=request,
+        state_root=tmp_path / "state",
+        backend_overrides={"event_bus": "inmemory"},
+        timeout=10,
+    )
+    assert await runtime.run_async() is EnumWorkflowResult.COMPLETED
+    return bus
+
+
+@pytest.mark.asyncio
+async def test_a_run_of_the_node_publishes_its_result_on_the_declared_terminal_topic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The node's result reaches the bus on the contract's terminal topic.
+
+    The handler returns its result and the runtime publishes it on the topic the
+    contract declares, so the proof is a real run of the contract through the
+    runtime on a bus the test can read, not a comparison of the contract to a literal.
+    """
+    contract = Path(node_pkg.__file__).parent / "contract.yaml"
+    declared = yaml.safe_load(contract.read_text(encoding="utf-8"))["terminal_event"]
+    assert declared == _SEAM_TERMINAL
+
+    bus = await _run_contract_on_shared_bus(contract, tmp_path, monkeypatch)
+
+    published = await bus.get_event_history(topic=_SEAM_TERMINAL)
+    assert len(published) == 1
+    body = json.loads(published[0].value)
+    assert body["all_succeeded"] is False
+    assert body["waves_executed"] == 0
+    assert body["shims_removed"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_contract_that_declares_another_terminal_topic_publishes_nothing_here(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Control: the published topic follows the contract, so the test above can fail."""
+    source = Path(node_pkg.__file__).parent / "contract.yaml"
+    other = "onex.evt.omnimarket.seam-parallel-other.v1"
+    moved = tmp_path / "contract.yaml"
+    moved.write_text(
+        source.read_text(encoding="utf-8").replace(_SEAM_TERMINAL, other),
+        encoding="utf-8",
+    )
+
+    bus = await _run_contract_on_shared_bus(moved, tmp_path, monkeypatch)
+
+    assert await bus.get_event_history(topic=_SEAM_TERMINAL) == []
+    assert len(await bus.get_event_history(topic=other)) == 1

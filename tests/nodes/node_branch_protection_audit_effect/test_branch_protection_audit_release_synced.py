@@ -23,6 +23,7 @@ import pytest
 from tests.nodes.node_branch_protection_audit_effect.audit_fixtures import (
     GQL_REVIEW_GATED_MAIN,
     GQL_RULES,
+    MAIN_EXEMPT_REPO,
     ORDINARY_REPO,
     ORG,
     PROTECTION_CI_SUMMARY,
@@ -210,7 +211,7 @@ def test_review_gated_repo_dev_reviews_reenabled_fails() -> None:
 
 def test_main_audit_exempt_repo_skips_main_but_keeps_dev() -> None:
     """A main-exempt repo: main is not audited, dev still is."""
-    repo = "omnibase_compat"
+    repo = MAIN_EXEMPT_REPO
     result = run_audit(
         repo,
         _fixtures(repo, PROTECTION_NO_CONTEXTS, [RULESET_MERGE_QUEUE_DISABLED]),

@@ -1,0 +1,137 @@
+schema_version: "1.0.0"
+ticket_id: OMN-24629
+title: Remove the retired shared-structure dependency from omnimarket
+summary: >-
+  Remove install and checkout references, historical-tree vendoring, and repository list entries.
+  Replay the wire controls with the type from its canonical home and report historical benchmark trees
+  with missing dependencies as unavailable for scoring.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn24629-running-references
+    statement: The repository no longer installs, clones, lists, or imports the retired package.
+    acceptance:
+      - id: AC1
+        statement: >-
+          AC1: no blocking reference remains at the pull request head. The tracked source, build,
+          workflow and configuration scan lists only explicit guards and preserved historical data.
+  - id: req-omn24629-replay
+    statement: The focused tests and workflow contract tests pass, with failing controls shown at the base.
+    acceptance:
+      - id: AC2
+        statement: >-
+          AC2: the focused tests and CI-contract tests pass on a lab host. The lab proof records the
+          failing base assertions and the head test output.
+  - id: req-omn24629-lock
+    statement: The lock and dependency pins remain free of the retired package.
+    acceptance:
+      - id: AC3
+        statement: >-
+          AC3: the lock and dependency pin scan reports zero matches at the pull request head.
+  - id: req-omn24629-landing
+    statement: The landing controller receives the exact head after the required contexts succeed.
+    acceptance:
+      - id: AC4
+        statement: >-
+          AC4: the local watcher shows success for the required contexts on the exact proposed head
+          and records a landing-controller handoff naming that head.
+evidence_requirements:
+  - kind: tests
+    description: Exercise the retirement guards, repository list readers and wire replay controls.
+    command: >-
+      uv run --frozen pytest tests/unit/test_no_retired_package_running_references.py
+      tests/test_retired_repository_reconcile.py tests/ci/test_check_wire_compatibility_omn18868.py
+      -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn24629-running-references
+    description: A zero-match scan of the runtime surfaces on the checked-out commit, with executable controls for forbidden imports and installs.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -c 'git cat-file -e HEAD:.github/workflows/ci.yml && git cat-file -e HEAD:pyproject.toml || exit 1;
+          git grep -nIE "omnibase[_-]compat" HEAD -- .github src scripts "Dockerfile*" pyproject.toml
+          benchmarks/delegation_ladder/build_bundles.py benchmarks/delegation_ladder/scorers.py;
+          test "$?" -eq 1 && printf "0 matches on runtime surfaces\n"'
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/test_no_retired_package_running_references.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn24629-focused-tests
+    description: >-
+      Run the portable regression and contract tests. The dedicated wire gate runs both real-history
+      controls with full history and the consumer pins.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/ci/test_check_wire_compatibility_omn18868.py
+          tests/ci/test_ticket_contracts_schema_omn17427.py tests/test_retired_repository_reconcile.py
+          tests/nodes/node_dod_closeout_sweep_compute/test_retired_repository_dod_closeout_sweep_compute.py
+          tests/nodes/node_lab_fill_effect/test_retired_repository_lab_fill.py
+          -q --no-cov -n 0 -p no:randomly -m 'not integration'
+        cwd: .
+  - id: dod-omn24629-lock-pins
+    description: The lock is present and neither it nor the project file names a retired package pin.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -c 'git cat-file -e HEAD:uv.lock && git cat-file -e HEAD:pyproject.toml || exit 1;
+          git grep -cIE "omnibase[_-]compat" HEAD -- uv.lock pyproject.toml;
+          test "$?" -eq 1 && printf "0 matches in lock and project\n"'
+        cwd: .
+  - id: dod-omn24629-watcher-and-handoff
+    description: >-
+      Read exact-head required contexts and the handoff from the local watcher after hosted checks finish.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC4]
+    checks:
+      - check_type: command
+        check_value: |-
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from datetime import UTC, datetime, timedelta
+          from pathlib import Path
+
+          state = json.loads(Path(os.environ["ONEX_PR_WATCHER_STATE"]).read_text())
+          tick = datetime.fromisoformat(state["last_tick"])
+          assert datetime.now(UTC) - tick <= timedelta(minutes=8), tick
+          pr = state["prs"]["omnimarket#6300"]
+          ci, facts = pr["ci"], pr["facts"]
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          assert facts["head_sha"] == ci["sha"] == head
+          assert facts["base"] == "dev"
+          policy = state["settings"]["omnimarket"]["branches"]["dev"]
+          assert policy["rules_read"] and not policy["unread"]
+          required = set(policy["contexts"]) | set(policy["rule_contexts"])
+          success = {name for name, status, result, *_ in ci["runs"] if status == "completed" and result == "success"}
+          assert required and required <= success, sorted(required - success)
+          assert pr["handoff"]["head"] == head and pr["handoff"]["needs"] == "land"
+          print(head, ci["read_at"], pr["handoff"]["at"])
+          PY
+        cwd: .
+  - id: dod-omn24629-deploy-contract
+    description: >-
+      Read the published host reconcile policy at the exact proposed commit. This probe fails on the
+      base policy, where the retired clone is still configured.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'gh api
+          "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_reconcile_effect/contract.yaml?ref=$(git rev-parse HEAD)"
+          --jq .content | base64 -d | python3 -c "import re, sys; policy = sys.stdin.read();
+          assert \"retired_repositories:\" in policy and not re.search(r\"omnibase[_-]compat\", policy)"'
+        cwd: .

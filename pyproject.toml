@@ -152,7 +152,7 @@ dependencies = [
     # OMN-21264: floor raised 0.47.48 -> 0.47.53, the first release whose terminal
     # cause enum carries returned_to_caller (core#2081). Raised in BOTH places.
     # OMN-22385: floor raised 0.47.53 -> 0.47.60, the first release that carries the
-    # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
+    # PR OCC stamp schema (core#2173), so no module imports the retired package.
     # Raised in BOTH places.
     "omnibase-core>=0.47.60,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
@@ -218,22 +218,22 @@ dependencies = [
     # that prices claude-sonnet-5-5 (omnibase_infra#4400). omnimarket#3172
     # changed DEFAULT_BASELINE_MODEL to claude-sonnet-5-5; below 0.38.61 the
     # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
-    # 0.38.61 declares omnibase-compat==0.5.7 and omnibase-spi==0.23.5; the
-    # core floor above admits it, so this bump cascades nothing.
+    # 0.38.61 declares omnibase-spi==0.23.5 and a since-retired package; the core
+    # floor above admits it, so this bump cascades nothing.
     # OMN-20833: floor raised to 0.38.70, the first omnibase_infra release whose
     # pricing manifest carries the providers' published rates (omnibase_infra#4631):
     # claude-opus-4-6 at $5 / $25 per MTok, not $15 / $75. 0.38.70 declares
-    # omnibase-compat==0.5.7, omnibase-core>=0.47.31 and omnibase-spi==0.23.5; the
-    # floors above admit them, so this bump cascades nothing.
+    # omnibase-core>=0.47.31, omnibase-spi==0.23.5 and a since-retired package;
+    # the floors above admit them, so this bump cascades nothing.
     # OMN-17427: floor raised to 0.38.71, the first omnibase_infra release that
     # vendors the lab_job, run_trace and tenant_credentials 0006/0007 node
     # migrations, so the Sibling Release Compatibility Gate finds them in the
-    # pinned release. 0.38.71 declares the same omnibase-compat, omnibase-core
-    # and omnibase-spi bounds as 0.38.70, so this bump cascades nothing.
+    # pinned release. 0.38.71 declares the same omnibase-core and omnibase-spi
+    # bounds as 0.38.70, so this bump cascades nothing.
     # OMN-18946: floor raised to 0.38.72, the first omnibase_infra release that
     # vendors the claude_hook_events 0007 node migration (omnibase_infra#4933), so the
     # Sibling Release Compatibility Gate finds it in the pinned release. 0.38.72
-    # declares the same omnibase-compat, omnibase-core and omnibase-spi bounds as
+    # declares the same omnibase-core and omnibase-spi bounds as
     # 0.38.71, so this bump cascades nothing.
     # OMN-19438: floor raised to 0.38.74, the first omnibase_infra release that
     # vendors the savings_estimates 095 house-tenant rebackfill node migration
@@ -1758,10 +1758,9 @@ omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", ta
 omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261113013358-a09066caf945" }
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261108170744-52946639a23a" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261118033152-967ddaf9eed2" }
-# OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
-# their git-source overrides). The version-range overrides below already target
-# the released artifacts: core>=0.46.7,<0.47.0 and
-# compat==0.5.5 (the former rev c0fc716 IS the v0.5.5 tag == PyPI 0.5.5).
+# OMN-13878: omnibase-core now resolves from PyPI (its git-source override was
+# removed). The version-range overrides below already target the released
+# artifacts: core>=0.46.7,<0.47.0.
 # OMN-15539: the omnibase-core git-rev override is DELETED. Every field this
 # lane depends on (ModelDelegationRequest.backend_id / response_contract /
 # system_prompt / temperature / response_format, and the
@@ -1900,7 +1899,7 @@ override-dependencies = [
     # OMN-21264: floor raised 0.47.48 -> 0.47.53, the first release whose terminal
     # cause enum carries returned_to_caller (core#2081). Raised in BOTH places.
     # OMN-22385: floor raised 0.47.53 -> 0.47.60, the first release that carries the
-    # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
+    # PR OCC stamp schema (core#2173), so no module imports the retired package.
     # Raised in BOTH places.
     "omnibase-core>=0.47.60,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
@@ -1936,22 +1935,22 @@ override-dependencies = [
     # that prices claude-sonnet-5-5 (omnibase_infra#4400). omnimarket#3172
     # changed DEFAULT_BASELINE_MODEL to claude-sonnet-5-5; below 0.38.61 the
     # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
-    # 0.38.61 declares omnibase-compat==0.5.7 and omnibase-spi==0.23.5; the
-    # core floor above admits it, so this bump cascades nothing.
+    # 0.38.61 declares omnibase-spi==0.23.5 and a since-retired package; the core
+    # floor above admits it, so this bump cascades nothing.
     # OMN-20833: floor raised to 0.38.70, the first omnibase_infra release whose
     # pricing manifest carries the providers' published rates (omnibase_infra#4631):
     # claude-opus-4-6 at $5 / $25 per MTok, not $15 / $75. 0.38.70 declares
-    # omnibase-compat==0.5.7, omnibase-core>=0.47.31 and omnibase-spi==0.23.5; the
-    # floors above admit them, so this bump cascades nothing.
+    # omnibase-core>=0.47.31, omnibase-spi==0.23.5 and a since-retired package;
+    # the floors above admit them, so this bump cascades nothing.
     # OMN-17427: floor raised to 0.38.71, the first omnibase_infra release that
     # vendors the lab_job, run_trace and tenant_credentials 0006/0007 node
     # migrations, so the Sibling Release Compatibility Gate finds them in the
-    # pinned release. 0.38.71 declares the same omnibase-compat, omnibase-core
-    # and omnibase-spi bounds as 0.38.70, so this bump cascades nothing.
+    # pinned release. 0.38.71 declares the same omnibase-core and omnibase-spi
+    # bounds as 0.38.70, so this bump cascades nothing.
     # OMN-18946: floor raised to 0.38.72, the first omnibase_infra release that
     # vendors the claude_hook_events 0007 node migration (omnibase_infra#4933), so the
     # Sibling Release Compatibility Gate finds it in the pinned release. 0.38.72
-    # declares the same omnibase-compat, omnibase-core and omnibase-spi bounds as
+    # declares the same omnibase-core and omnibase-spi bounds as
     # 0.38.71, so this bump cascades nothing.
     # OMN-19438: floor raised to 0.38.74, the first omnibase_infra release that
     # vendors the savings_estimates 095 house-tenant rebackfill node migration

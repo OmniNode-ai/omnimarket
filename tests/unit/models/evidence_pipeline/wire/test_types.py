@@ -226,7 +226,7 @@ _VALIDATION_RESULT_BASE: dict[str, object] = {
     "correlation_id": "corr-001",
     "validation_run_id": "run-001",
     "ticket_id": "OMN-99999",
-    "repository": "omnibase_compat",
+    "repository": "omnibase_core",
     "contract_hash": "abc123",
     "evidence_bundle_hash": "def456",
     "verifier_identity": "ci-bot",

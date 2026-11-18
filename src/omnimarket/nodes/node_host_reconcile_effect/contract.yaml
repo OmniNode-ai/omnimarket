@@ -21,7 +21,6 @@ retirement:
   retired_repositories:
   - onex_change_control
   - ycbench_onex
-  - omnibase_compat
   # Deployment-specific names extend this policy through the node overlay.
   backup_directory: .onex_state/retired-repository-bundles
   sync_directories: [scripts, systemd, launchd, deploy]

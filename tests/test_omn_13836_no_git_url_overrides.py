@@ -2,7 +2,7 @@
 
 OMN-13829 proved omnimarket could not be declared as a real dependency of
 omnibase_infra because the ``[tool.uv] override-dependencies`` git-pinned
-``omnibase-core`` / ``omnibase-infra`` / ``omnibase-compat`` to foreign revs.
+``omnibase-core`` / ``omnibase-infra`` to foreign revs.
 A git-URL override forces a URL requirement that clashes with a consumer's own
 core/infra pins ("conflicting-URL / broken-lock"), so any reintroduction of a
 git-URL override is a regression.
@@ -65,7 +65,7 @@ def test_no_git_url_override_for_onex_packages() -> None:
     data = _load()
     overrides = data.get("tool", {}).get("uv", {}).get("override-dependencies", [])
 
-    onex_pkgs = ("omnibase-core", "omnibase-spi", "omnibase-infra", "omnibase-compat")
+    onex_pkgs = ("omnibase-core", "omnibase-spi", "omnibase-infra")
     for override in overrides:
         for pkg in onex_pkgs:
             if not override.startswith(pkg):

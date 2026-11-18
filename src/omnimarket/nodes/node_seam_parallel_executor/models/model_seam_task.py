@@ -22,8 +22,9 @@ from pydantic import BaseModel, ConfigDict, Field
 class EnumSeamTaskStatus(StrEnum):
     """Task lifecycle states for seam parallel execution.
 
-    Mirrors the overseer EnumTaskStatus subset relevant to parallel execution.
-    Will be replaced by omnibase_compat.overseer.EnumTaskStatus once OMN-8026 merges.
+    Mirrors the overseer EnumTaskStatus subset relevant to parallel execution;
+    the full enum is in omnibase_core
+    (``src/omnibase_core/enums/overseer/enum_task_status.py``).
     """
 
     PENDING = "pending"

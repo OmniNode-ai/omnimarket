@@ -34,7 +34,7 @@ pytestmark = pytest.mark.unit
 
 REVIEW_VERDICT_CONTEXT = "review / verdict"
 REVIEW_VERDICT_REPO = "omnibase_core"
-OTHER_REPO = "omnibase_compat"
+OTHER_REPO = "fixture-unlisted-repo"
 
 _DEV_WITH_REVIEW_VERDICT: dict[str, object] = {
     "required_status_checks": {
