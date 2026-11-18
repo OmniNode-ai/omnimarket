@@ -33,6 +33,13 @@ emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
+context:
+  ac_binding_provenance:
+    "dod-omn21034-ac4-rebase-push-head-only":
+      - label: "AC4"
+        criterion_hash: "ca558f9b50718e5653a31f7f6d285b14de0f2b50833170e814b66acc9a97ae11"
+        proposed_by: "lane=dod-closeout-bind-2026-11-15T2345Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-11-15T2345Z-c3"
 dod_evidence:
   - id: "dod-omn21034-ac1-rebase-head-only"
     description: "Landing-branch and malformed heads are refused without git, a moved head is not pushed, and the real-git case advances only the PR head branch."
@@ -62,3 +69,10 @@ dod_evidence:
       - check_type: "command"
         check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime-effects} python -c 'import inspect; from omnimarket.nodes.node_pr_polish.handlers.handler_pr_polish import HandlerPrPolish; from omnimarket.nodes.node_rebase_effect.handlers import handler_rebase; assert inspect.iscoroutinefunction(HandlerPrPolish.handle_async); assert \"head_moved: origin/\" in inspect.getsource(handler_rebase)'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21034-ac4-rebase-push-head-only"
+    description: "AC4 (ticket criterion): the rebase effect makes exactly one push, a lease on refs/heads/<PR head> to origin HEAD:refs/heads/<PR head>, with no --force, -f, --mirror, --all or --tags, so a push to any other ref fails the test. Re-run by the accepting lane on lab host h051 at omnimarket dev ac5c2f4622266d90158aa019bf7b09e01552aaf6: passed. The same test fails against the product code at the parent of omnimarket#3815 (38ff38286e7b), where the lease named the bare branch."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_rebase_effect.py::test_push_targets_only_the_pr_head_branch -q -n 0"
+    binds_ac: ["AC4"]

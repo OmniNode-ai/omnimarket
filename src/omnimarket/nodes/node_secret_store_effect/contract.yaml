@@ -95,6 +95,10 @@ generated_keys:
   dev_keycloak_client_secret: {folder: /shared/env, key: KEYCLOAK_DEV_CLIENT_SECRET, bytes: 32, prefix: ""}
   # The probe tenant key scenario R8 reads (settings overlay of node_delegation_scenario_r8_effect).
   r8_probe_tenant_key: {folder: /shared/env, key: R8_PROBE_TENANT_API_KEY, bytes: 32, prefix: ""}
+  # OMN-24278: the NUT monitor users' passwords (overlay nut_ups of the overlays repository reads them through node_host_installer_net_units).
+  # The primary user is upsmon's login on the host that owns the UPS cable; the secondary user is the login of every host that only watches it.
+  nut_primary_password: {folder: /shared/env, key: NUT_PRIMARY_PASSWORD, bytes: 24, prefix: ""}
+  nut_secondary_password: {folder: /shared/env, key: NUT_SECONDARY_PASSWORD, bytes: 24, prefix: ""}
   # (OMN-24115) the dev probe user's password, read by node_dev_identity_provision_effect
   dev_probe_user_password: {folder: /shared/env, key: DEV_PROBE_USER_PASSWORD, bytes: 24, prefix: "Dp1!"}
 

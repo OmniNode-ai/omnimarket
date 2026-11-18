@@ -76,7 +76,12 @@ DOCUMENTS: list[tuple[str, type[BaseModel], dict[str, object]]] = [
     (
         "node_pr_duplicate_guard_compute",
         ModelDuplicateGuardGeneratedPathsOverlay,
-        {"generated_paths": {"repo": ["plans/INDEX.md"]}},
+        {
+            "generated_paths": {"repo": ["plans/INDEX.md"]},
+            "shared_catalog_lines": {
+                "repo": [{"path": "docker/catalog/*", "line": "^sha256: [0-9a-f]{64}$"}]
+            },
+        },
     ),
 ]
 

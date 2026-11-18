@@ -96,6 +96,13 @@ async def test_golden_chain_over_the_bus_reads_the_recorded_facts(
     runtime = await _run(NODE_DIR, tmp_path, json.loads(request.model_dump_json()))
     result = runtime.handler_result
     assert isinstance(result, ModelThroughputTickFactsResult)
-    assert result.facts.model_dump(exclude_none=True) == {
+    facts = result.facts.model_dump(exclude_none=True)
+    # OMN-24521: the register is read from the overlay roots through the default source;
+    # these roots hold no register overlay, so the facts name why it could not be read
+    # (the retired script never read a register, so the recorded facts hold no such key).
+    unread = facts.pop("ruling_register_unread")
+    assert unread.startswith("NodeOverlayNotFoundError: ")
+    assert "ruling_register" not in facts
+    assert facts == {
         k: v for k, v in tick["expected"]["facts"].items() if v is not None
     }

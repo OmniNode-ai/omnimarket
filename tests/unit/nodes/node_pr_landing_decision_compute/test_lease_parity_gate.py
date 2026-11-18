@@ -25,8 +25,8 @@ from tests.unit.nodes.node_pr_landing_decision_compute.lease_parity import (
 )
 
 REPO_ROOT: Final = GOLDEN_PATH.parents[3]
-GOLDEN_IDS: Final = 506
-GOLDEN_FILES: Final = 19
+GOLDEN_IDS: Final = 586
+GOLDEN_FILES: Final = 24
 
 
 def _sha(seed: str) -> str:
