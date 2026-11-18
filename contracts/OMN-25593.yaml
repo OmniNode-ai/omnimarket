@@ -1,0 +1,37 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-25593"
+title: "The work-state floor projection topic is declared under the producing node's publish_topics"
+summary: >
+  node_work_state_projection_effect lists its runtime.publish.topic only under
+  externally_consumed_topics, so the runtime boot provisioner never creates it.
+  The contract now also lists it under event_bus.publish_topics, the shape of
+  node_floor_emissions_publish_effect. externally_consumed_topics is unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn25593-publish-topic"
+    statement: "The topic the work-state projection publishes on is declared under publish_topics."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a contract test reads the node's contract and its runtime.publish.topic and finds the topic under event_bus.publish_topics -- falsifier: the test passes at the base commit"
+      - id: "AC2"
+        statement: "AC2: the contract lists the topic under event_bus.publish_topics and keeps externally_consumed_topics as it was -- falsifier: git diff shows a changed line under externally_consumed_topics"
+evidence_requirements:
+  - kind: "tests"
+    description: "The contract test passes"
+    command: "uv run pytest tests/nodes/node_work_state_projection_effect/test_publish_topic_declared.py -q --no-cov -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn25593-contract-test"
+    description: "Hermetic check: the node's contract is read from the repository and its runtime.publish.topic is found under event_bus.publish_topics and still under externally_consumed_topics. Red on the base, green on the branch."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_work_state_projection_effect/test_publish_topic_declared.py -q --no-cov -n 0 --refuse-skips"
+        cwd: "."
