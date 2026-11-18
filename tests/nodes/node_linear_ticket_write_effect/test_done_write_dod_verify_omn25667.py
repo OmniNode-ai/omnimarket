@@ -184,3 +184,45 @@ async def test_a_passing_verdict_that_binds_every_criterion_allows_done():
 
     assert result.outcome == "completed"
     assert core.wrote is True
+
+
+def _guard_with_no_output(stderr: str) -> DoneWriteReceiptGuard:
+    async def run(
+        ticket_id: str, cwd: str, timeout: float
+    ) -> tuple[dict[str, object] | None, int, str]:
+        return None, 1, stderr
+
+    return DoneWriteReceiptGuard(run_dod_verify=run)
+
+
+async def test_done_write_refused_verdict_of_a_silent_verifier_reaches_the_terminal_whole():
+    """Through the real guard, the refusal keeps the verifier's stderr to its exception line."""
+    core = _Core(_guard_with_no_output(_RECORDED_STDERR))
+    handler = HandlerLinearTicketWriteEffect(handler_factory=lambda _: core)
+    result = await handler.handle(_done_request())
+
+    assert result.reason == "done_write_refused"
+    assert core.wrote is False
+    assert result.terminal_failure_cause.endswith(
+        "PermissionError: [Errno 13] Permission denied: '.onex_state'"
+    )
+
+
+async def test_a_passing_verdict_that_binds_every_criterion_allows_done_after_a_whole_refusal():
+    """The refusal reaches the terminal whole, and the passing verdict then completes the write."""
+    refused = _Core(_guard_with_no_output(_RECORDED_STDERR))
+    refusal = await HandlerLinearTicketWriteEffect(
+        handler_factory=lambda _: refused
+    ).handle(_done_request())
+    assert refusal.terminal_failure_cause.endswith(
+        "PermissionError: [Errno 13] Permission denied: '.onex_state'"
+    )
+
+    passing = _Core(
+        _guard_returning(_verdict(status="verified", bind=True), exit_code=0)
+    )
+    result = await HandlerLinearTicketWriteEffect(
+        handler_factory=lambda _: passing
+    ).handle(_done_request())
+    assert result.outcome == "completed"
+    assert passing.wrote is True
