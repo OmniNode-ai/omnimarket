@@ -1,0 +1,164 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-25379"
+title: "Review findings 1 to 7 on omnimarket PR 6358 at the fifth review of head 03ef655b49c2 are fixed or argued: the Split 2/20 run is recorded, the receipts name one host, the ac2 selection is split, the verifier tag is read and the live item and the merged guard are shown"
+summary: >-
+  Evidence only. The fifth review of the pull request that records the accepted
+  AC2 binding of the OMN-21217 contract. The Tests (Split 2/20) run at
+  63b11bfe0bb4 is recorded with its run and job id; the run receipts name one
+  host and a test refuses any other host-shaped token in them; every -k
+  selection of the contracts is tested for its run time against the local Done
+  gate budget and the unsplit ac2 selection is split; the AC2 check of the
+  OMN-21217 contract carries no pipefail prefix (the verifier's own runner supplies
+  pipefail, and a prefix made the check indeterminate) and a local item reads the
+  verifier tag and requires the recorded runner lines to equal it; the gate's
+  control is read from the gate source at the pin; the reader stage of the live
+  hash item runs against a stand-in handler; and the merged guard runs on real
+  onex scm pr-view output. No product code changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn25379-review-findings"
+    statement: "Every blocking finding of the fifth review is fixed or argued with evidence."
+    acceptance:
+      - id: "AC1"
+        statement: "The run id and conclusion of the Tests (Split 2/20) read at 63b11bfe0bb4 are recorded, the required contexts and dod-verify read success at the new head, and the commit bodies of the range from the merge base are shown."
+      - id: "AC2"
+        statement: "The receipts name one host and run_receipts refuses any other host-shaped token; no receipt claims a log is attached to a pull request comment."
+      - id: "AC3"
+        statement: "Every contract's -k selection is tested for its run time, the ac2 selection of the OMN-25208 contract is split so no item selects all ten ac2_binding cases, and the test that said no check is over budget is corrected."
+      - id: "AC4"
+        statement: "A local item reads the verifier tag and then the recorded_runner tests, so the verifier_tag tests cannot pass on hand-typed literals."
+      - id: "AC5"
+        statement: "The gate's control is read from the gate source at the pin: a full detached worktree of the merge base, the fix's non-test paths reverted, and a bound check passing the control only by failing in it."
+      - id: "AC6"
+        statement: "The live item exits 0 at this head, the reader stage of the live hash command is tested for read_ticket arguments and a JSON-serialisable return with description, and the pinned-criterion test no longer asserts typed note text."
+      - id: "AC7"
+        statement: "The merged guard is tested against a fixture taken from real onex scm pr-view output, and the pr-checks spelling merged is handled."
+  - id: "req-omn25429-review-findings"
+    statement: "Every blocking finding of the sixth review is fixed or argued with evidence."
+    acceptance:
+      - id: "AC8"
+        statement: "The pr-checks check judges the required contexts at the head and the commit bodies of the range are read by the trailer check (OMN-25429 AC1)."
+      - id: "AC9"
+        statement: "No receipt of the OMN-25198 contract claims a log is attached to a pull request comment, and the run host is stated as the host that ran the control pair (OMN-25429 AC2)."
+      - id: "AC10"
+        statement: "The criteria of the OMN-25286 and OMN-25316 contracts claim no exit-5 control at the merge base, and the merge-base item says the gate overlays the head's tests and takes TEST_ONLY_DIFF (OMN-25429 AC3)."
+      - id: "AC11"
+        statement: "The checks that ran on the state MERGED judge the merged head_sha's runs and the merged range's trailers, and fail on the real merged read with CI Summary pending (OMN-25429 AC4)."
+      - id: "AC12"
+        statement: "The summary of this contract no longer says the OMN-21217 AC2 check sets pipefail in its own text (OMN-25429 AC5)."
+evidence_requirements:
+  - kind: "tests"
+    description: "The evidence tests of this pull request pass."
+    command: "uv run pytest tests/test_refuse_skips_omn19987.py tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov"
+dod_evidence:
+  - id: "dod-omn25379-split-run-recorded"
+    description: "The Tests (Split 2/20) run at 63b11bfe0bb4 is recorded in the run receipts with its run id, job id and conclusion; the contracts bind every criterion to a test. The required contexts at the new head are read by the unbound live item below."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'split_2_of_20 or this_pull_requests_contracts_bind'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25379-one-host"
+    description: "The run receipts name one host and refuse any other host-shaped token wherever it is named."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'run_receipts_name or run_receipts_refuse'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25379-selection-run-time"
+    description: "Every -k selection of every contract fits the local Done gate budget by the measured seconds of its tests, the unsplit ac2 selection is over it, and no check selects all ten ac2_binding cases."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'every_selection_of_every_contract or measured_seconds or unsplit_ac2 or covered_once or recorded_split_time'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25379-verifier-tag-tests"
+    description: "The AC2 check stays a behavior-class check (a pipefail prefix would make it indeterminate), the comparison of the recorded runner lines fails when the tag is required and absent, and a local item reads the tag."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_refuse_skips_omn19987.py -q -n 0 --no-cov -k 'classified_behavior or comparison_fails_when_the_tag or comparison_refuses or local_done_gate_item_reads'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25379-gate-control-reader"
+    description: "The reader of the gate source refuses a control built from a src-only revert and accepts the full base tree; a nonzero runner status fails a check. The read of the real file at the pin is the local item of the OMN-25198 contract."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'gate_control_reader or gate_source_is_required or gate_counts'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25379-reader-stage"
+    description: "The reader stage of the live hash item runs as written against a stand-in handler: its arguments, a JSON-serialisable return with description, and a return JSON cannot hold or a missing ticket fail it."
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'reader_stage or read_ticket or pinned_criterion'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25379-merged-guard-fixtures"
+    description: "The merged guard and the pr-checks merged class are run on fixtures taken from real onex scm output, and another spelling is not read."
+    source: "manual"
+    binds_ac: ["AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'real_pr_view or real_pr_checks or merged_guard or pr_checks_item'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25429-contexts"
+    description: "The pr-checks check passes a green read at the head and fails a red, pending, cancelled, stale or empty read; the trailer check reads the range of the head_sha. The required contexts at the new head are read by the unbound live item below."
+    source: "manual"
+    binds_ac: ["AC8"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'passes_only_a_green_read or merged_range_that_reads or fails_a_merged_range or merged_head_sha_is_not_in_the_clone'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25429-receipts"
+    description: "No receipt claims a log attached to a pull request comment, the run receipts name one host, and the receipt criterion claims no attached log."
+    source: "manual"
+    binds_ac: ["AC9"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'claims_a_log_attached or receipt_criterion_claims_no or receipts_name_one_host'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25429-control-claims"
+    description: "The OMN-25286 and OMN-25316 criteria and descriptions claim no control at the merge base, and the OMN-25316 merge-base item names TEST_ONLY_DIFF and the overlay."
+    source: "manual"
+    binds_ac: ["AC10"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'claim_no_exit_5_control or says_what_the_gate_does'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25429-merged-judged"
+    description: "No check exits 0 on the state MERGED alone; each judges the merged head_sha's runs or range, and the real merged fixture fails the pr-checks and lab-comment items while a merged read with every required context successful passes."
+    source: "manual"
+    binds_ac: ["AC11"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k 'exits_0_on_the_state_merged or live_items_fail or live_item_passes or lab_comment_item_fails or judged_on_its_merged'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25429-summary"
+    description: "The OMN-21217 AC2 check carries no pipefail prefix and this contract's summary does not say it does."
+    source: "manual"
+    binds_ac: ["AC12"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_refuse_skips_omn19987.py -q -n 0 --no-cov -k 'omn25379_summary'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25379-pr-checks-live"
+    description: "Every required context of the pull request reads success at its head; a merged pull request is judged on its merged head_sha's runs, and a pending context fails it. The check is the same JSON read as the OMN-25198 contract's; only the local Done gate runs it."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "onex scm pr-checks OmniNode-ai/omnimarket#6358 | python3 -c \"import json,subprocess,sys; r=json.load(sys.stdin)['result']; h=subprocess.run(['git','rev-parse','HEAD'],capture_output=True,text=True,check=True).stdout.strip(); t=open(sys.argv[1]).read(); req=[c for k,e in ((' contexts=',' required_reviews='),(' rule_contexts=',' rule_strict=')) for c in t[t.index(k)+len(k):t.index(e,t.index(k)+len(k))].split(',')]; ok={n for n,s,c,_ in r['runs'] if s=='completed' and c=='success'}; sys.exit(0 if (r['class']=='merged' or (r['head_sha']==h and r['class'] in ('green','green-unarmed','green-armed'))) and not r['red'] and not r['pending'] and not r['cancelled'] and r['runs'] and req and all(c in ok for c in req) else 1)\" <(python3 \"$OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py\" --settings OmniNode-ai/omnimarket:dev)"
+        cwd: "."
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""

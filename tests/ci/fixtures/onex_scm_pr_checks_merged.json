@@ -1,0 +1,93 @@
+{
+ "verb": "pr-checks",
+ "node": "node_github_repo_gateway_effect",
+ "operation": "ci_checks",
+ "repo": "OmniNode-ai/omnimarket",
+ "source": "watcher",
+ "outcome": "completed",
+ "watcher_tick": "2026-11-17T14:26:24Z",
+ "bus": null,
+ "result": {
+  "repo": "OmniNode-ai/omnimarket",
+  "number": 6351,
+  "head_sha": "51b01336be42dc3162d0c3cb05c055d97ef32e6e",
+  "class": "merged",
+  "read_at": "2026-11-17T01:08:02Z",
+  "red": [],
+  "pending": [
+   "CI Summary"
+  ],
+  "cancelled": [],
+  "red_facts": [],
+  "runs": [
+   [
+    "AC1 exact revision row on PostgreSQL 16",
+    "completed",
+    "skipped",
+    "2026-11-17T00:41:15Z"
+   ],
+   [
+    "Aislop Sweep (strict, PR diff)",
+    "completed",
+    "success",
+    "2026-11-17T00:44:34Z"
+   ],
+   [
+    "Architectural Compliance Lint",
+    "completed",
+    "success",
+    "2026-11-17T00:41:47Z"
+   ],
+   [
+    "BYOK Catalogue No House Entry",
+    "completed",
+    "success",
+    "2026-11-17T00:41:51Z"
+   ],
+   [
+    "BYOK Customer Chooses Model (OMN-20844)",
+    "completed",
+    "success",
+    "2026-11-17T00:41:59Z"
+   ],
+   [
+    "Bus Model Seam Gate (OMN-23995)",
+    "completed",
+    "success",
+    "2026-11-17T00:42:14Z"
+   ]
+  ],
+  "detail": [
+   [
+    "AC1 exact revision row on PostgreSQL 16",
+    "133726569240",
+    "2026-11-17T00:41:16Z"
+   ],
+   [
+    "Aislop Sweep (strict, PR diff)",
+    "133727810263",
+    "2026-11-17T00:44:02Z"
+   ],
+   [
+    "Architectural Compliance Lint",
+    "133726639691",
+    "2026-11-17T00:41:28Z"
+   ],
+   [
+    "BYOK Catalogue No House Entry",
+    "133726568435",
+    "2026-11-17T00:41:19Z"
+   ],
+   [
+    "BYOK Customer Chooses Model (OMN-20844)",
+    "133726570983",
+    "2026-11-17T00:41:20Z"
+   ],
+   [
+    "Bus Model Seam Gate (OMN-23995)",
+    "133726571136",
+    "2026-11-17T00:41:20Z"
+   ]
+  ]
+ }
+}

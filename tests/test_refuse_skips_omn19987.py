@@ -24,11 +24,27 @@ decides the outcome.
 
 from __future__ import annotations
 
+import ast
+import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+import yaml
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
+
+from tests.ci.verifier_shell import (
+    EVIDENCE_COLLECTOR,
+    VERIFIER_TAG,
+    VERIFIER_TAG_CMD,
+    VERIFIER_TAG_DISPATCH,
+    VERIFIER_TAG_RUN,
+    VERIFIER_TAG_STATUS,
+    verifier_shell,
+    verifier_shell_at_tag,
+)
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -184,3 +200,515 @@ def test_the_shared_conftest_offers_the_option(request: pytest.FixtureRequest) -
     assert conftest.pytest_addoption is refuse_skips.pytest_addoption
     assert conftest.pytest_sessionfinish is refuse_skips.pytest_sessionfinish
     assert conftest.pytest_terminal_summary is refuse_skips.pytest_terminal_summary
+
+
+# The AC2 binding of contracts/OMN-21217.yaml is one test with two
+# parametrizations. Its check is the case this option exists for: before it asked
+# for --refuse-skips, a run in which both parametrizations skipped exited 0.
+_AC2_CONTRACT = _ROOT / "contracts" / "OMN-21217.yaml"
+_AC2_ITEM = "dod-omn21217-ac2-accepted-20261117t0145z"
+_SKIP_EVERY_TEST = """
+import pytest
+
+def pytest_collection_modifyitems(items):
+    for item in items:
+        item.add_marker(pytest.mark.skip(reason="every test skipped by the control"))
+"""
+
+
+def _ac2_check_value() -> str:
+    contract = yaml.safe_load(_AC2_CONTRACT.read_text(encoding="utf-8"))
+    items = [i for i in contract["dod_evidence"] if i["id"] == _AC2_ITEM]
+    assert len(items) == 1, "the AC2 binding item is missing or repeated"
+    assert items[0]["binds_ac"] == ["AC2"]
+    checks = items[0]["checks"]
+    assert len(checks) == 1
+    value = checks[0]["check_value"]
+    assert isinstance(value, str)
+    return value
+
+
+# The verifier runs a contract check under the shell its own runner names; the
+# argv prefix is read from that runner's source (tests/ci/verifier_shell.py), not
+# written here, so these tests stop passing when the verifier drops pipefail.
+# Without pipefail a pipeline's status is the last stage's, which is the case the
+# regression tests below pin.
+_VERIFIER_SHELL = verifier_shell()
+_NO_PIPEFAIL_SHELL = ["bash", "-c"]
+
+
+def _run_command(
+    tmp_path: Path,
+    command: str,
+    *,
+    shell: list[str] = _VERIFIER_SHELL,
+    cwd: Path = _ROOT,
+) -> subprocess.CompletedProcess[str]:
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(
+        part for part in (str(tmp_path), env.get("PYTHONPATH", "")) if part
+    )
+    return subprocess.run(
+        [*shell, command],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+        env=env,
+    )
+
+
+def _run_check(
+    tmp_path: Path, check_value: str, *extra: str
+) -> subprocess.CompletedProcess[str]:
+    """Run a contract check as the verifier does (bash, pipefail), with this interpreter."""
+    assert check_value.startswith("uv run pytest ")
+    (tmp_path / "skip_every_test.py").write_text(_SKIP_EVERY_TEST, encoding="utf-8")
+    command = check_value.replace(
+        "uv run pytest",
+        f"{shlex.quote(sys.executable)} -m pytest -p no:cacheprovider {' '.join(extra)}",
+        1,
+    )
+    return _run_command(tmp_path, command)
+
+
+def _pytest_stage_and_filter(check_value: str) -> tuple[str, str]:
+    """The pytest stage and the grep stage of the AC2 check, split at its one pipe."""
+    stages = check_value.split(" | ")
+    assert len(stages) == 2, check_value
+    assert stages[1].startswith("grep -E "), stages[1]
+    return stages[0], stages[1]
+
+
+def test_the_shell_these_cases_run_under_is_the_verifiers_and_has_pipefail() -> None:
+    # Read from the verifier's runner, so these cases follow it: a verifier that
+    # dropped pipefail would change this prefix and fail the case below that
+    # needs a failed pytest stage to fail the check.
+    assert _VERIFIER_SHELL[0] == "bash"
+    assert "pipefail" in _VERIFIER_SHELL
+    assert _VERIFIER_SHELL[-1] == "-c"
+
+
+def test_the_ac2_binding_check_asks_for_the_refusal_and_the_count() -> None:
+    value = _ac2_check_value()
+    assert "--refuse-skips" in value
+    assert "2 passed" in value
+
+
+def test_the_ac2_binding_check_passes_when_both_parametrizations_run(
+    tmp_path: Path,
+) -> None:
+    # The positive control: the check is not one that always fails.
+    done = _run_check(tmp_path, _ac2_check_value())
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "2 passed" in done.stdout
+
+
+# The AC2 binding check is run by the local Done gate too, whose per-check budget
+# is 30 s unless the operator sets DOD_VERIFY_CHECK_TIMEOUT_S. Each case below
+# starts one to three nested pytest runs of about 8 s each, so the cases are small
+# enough for the contract to select them in groups that each fit that budget.
+
+
+def test_the_ac2_binding_check_old_form_exits_zero_when_both_skip(
+    tmp_path: Path,
+) -> None:
+    value = _ac2_check_value()
+    # The old check, as it stood before the option: no refusal, no count.
+    old = value.split(" --refuse-skips")[0]
+    assert "--refuse-skips" not in old
+    control = _run_check(tmp_path, old, "-p", "skip_every_test")
+    assert control.returncode == 0, control.stdout + control.stderr
+    assert "2 skipped" in control.stdout
+
+
+def test_the_ac2_binding_check_refusal_stage_names_both_skips(
+    tmp_path: Path,
+) -> None:
+    # The pytest stage alone names the refusal and both parametrizations.
+    pytest_stage, _ = _pytest_stage_and_filter(_ac2_check_value())
+    refusal = _run_check(tmp_path, pytest_stage, "-p", "skip_every_test")
+    assert refusal.returncode == 1, refusal.stdout + refusal.stderr
+    assert "refuse-skips: tests that did not run" in refusal.stdout
+    assert "[False]" in refusal.stdout
+    assert "[True]" in refusal.stdout
+
+
+def test_the_ac2_binding_check_whole_check_prints_no_count_when_both_skip(
+    tmp_path: Path,
+) -> None:
+    # The whole check prints no "2 passed" line, so grep's status refuses it too.
+    new = _run_check(tmp_path, _ac2_check_value(), "-p", "skip_every_test")
+    assert new.returncode == 1, new.stdout + new.stderr
+    assert "2 passed" not in new.stdout
+
+
+def test_the_ac2_binding_check_old_form_exits_zero_when_only_one_runs(
+    tmp_path: Path,
+) -> None:
+    # One parametrization selected: pytest exits 0 with one test run and nothing
+    # skipped, so only the count in the check can refuse it.
+    only_one = (
+        _ac2_check_value().split(" --refuse-skips")[0] + " --refuse-skips -k False"
+    )
+    control = _run_check(tmp_path, only_one)
+    assert control.returncode == 0, control.stdout + control.stderr
+    assert "1 passed" in control.stdout
+    assert "2 passed" not in control.stdout
+
+
+def test_the_ac2_binding_check_fails_when_only_one_parametrization_runs(
+    tmp_path: Path,
+) -> None:
+    value = _ac2_check_value()
+    selected = value.replace(" --refuse-skips |", " --refuse-skips -k False |", 1)
+    assert selected != value
+    done = _run_check(tmp_path, selected)
+    # grep finds no "2 passed" line: its status 1 is the refusal, and nothing is
+    # printed because the only stage that prints is the one that matched nothing.
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert done.stdout == ""
+
+
+_PYTEST_FAILS_AFTER_TWO_PASS = """
+import pytest
+
+@pytest.fixture
+def broken():
+    raise RuntimeError("fixture refused")
+
+def test_one():
+    assert True
+
+def test_two():
+    assert True
+
+def test_errors(broken):
+    assert True
+"""
+
+
+def test_the_ac2_binding_filter_alone_passes_a_failed_run_that_prints_the_counted_line(
+    tmp_path: Path,
+) -> None:
+    # The hazard the verifier's pipefail closes. pytest ends "2 passed, 1 error"
+    # and exits 1; the grep stage matches that line. Without pipefail the
+    # pipeline's status is grep's (0), so the check would pass a run in which
+    # pytest failed. This is the control: it must read 0.
+    _, filter_stage = _pytest_stage_and_filter(_ac2_check_value())
+    (tmp_path / "test_mixed.py").write_text(_PYTEST_FAILS_AFTER_TWO_PASS, "utf-8")
+    command = (
+        f"{shlex.quote(sys.executable)} -m pytest -p no:cacheprovider -q "
+        f"{shlex.quote(str(tmp_path / 'test_mixed.py'))} | {filter_stage}"
+    )
+    plain = _run_command(tmp_path, command, shell=_NO_PIPEFAIL_SHELL, cwd=tmp_path)
+    assert plain.returncode == 0, plain.stdout + plain.stderr
+    assert "2 passed, 1 error" in plain.stdout
+
+
+def test_the_ac2_binding_check_fails_when_pytest_fails_but_the_counted_line_prints(
+    tmp_path: Path,
+) -> None:
+    # The same run under the verifier's shell: the matching line is printed,
+    # and the check still fails because pytest's status (1) is the pipeline's.
+    _, filter_stage = _pytest_stage_and_filter(_ac2_check_value())
+    (tmp_path / "test_mixed.py").write_text(_PYTEST_FAILS_AFTER_TWO_PASS, "utf-8")
+    command = (
+        f"{shlex.quote(sys.executable)} -m pytest -p no:cacheprovider -q "
+        f"{shlex.quote(str(tmp_path / 'test_mixed.py'))} | {filter_stage}"
+    )
+    done = _run_command(tmp_path, command, cwd=tmp_path)
+    assert "2 passed, 1 error" in done.stdout, done.stdout + done.stderr
+    assert done.returncode == 1, done.stdout + done.stderr
+
+
+def test_the_ac2_binding_check_is_not_rescued_by_a_stubbed_pytest_line(
+    tmp_path: Path,
+) -> None:
+    # A stage that prints the counted line and exits non-zero, in place of the
+    # pytest stage of the real check, is refused under the verifier's shell.
+    _, filter_stage = _pytest_stage_and_filter(_ac2_check_value())
+    command = f"(echo '2 passed, 1 error in 0.10s'; exit 3) | {filter_stage}"
+    refused = _run_command(tmp_path, command)
+    assert refused.returncode == 3, refused.stdout + refused.stderr
+    assert "2 passed, 1 error" in refused.stdout
+    unguarded = _run_command(tmp_path, command, shell=_NO_PIPEFAIL_SHELL)
+    assert unguarded.returncode == 0, unguarded.stdout + unguarded.stderr
+
+
+# --- the verifier the hosted gate installs (verifier-tag) -----------------------
+#
+# The cases above run under the shell read from this tree's collector. The hosted
+# gate installs the verifier at the caller's ``verifier-tag``, a tag this tree's
+# collector may have moved past, so the shell the AC2 check really runs under
+# there is the one that tag's runner names.
+
+_CALLER = _ROOT / ".github" / "workflows" / "call-repo-evidence-gate.yml"
+_COLLECTOR_REL = EVIDENCE_COLLECTOR.relative_to(_ROOT).as_posix()
+
+
+def _caller_verifier_tag() -> str:
+    caller = yaml.safe_load(_CALLER.read_text(encoding="utf-8"))
+    tag = caller["jobs"]["repo-evidence"]["with"]["verifier-tag"]
+    assert isinstance(tag, str)
+    return tag
+
+
+def _collector_at_tag() -> list[str] | None:
+    """The collector's lines at the pinned tag, or None where the clone lacks it."""
+    shown = subprocess.run(
+        ["git", "-C", str(_ROOT), "show", f"{VERIFIER_TAG}:{_COLLECTOR_REL}"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=scrub_git_location_env(os.environ),
+    )
+    return shown.stdout.splitlines() if shown.returncode == 0 else None
+
+
+def test_the_verifier_tag_the_caller_installs_is_the_one_whose_runner_is_recorded() -> (
+    None
+):
+    # Moving the pin without re-reading the runner's lines fails here.
+    assert _caller_verifier_tag() == VERIFIER_TAG
+
+
+def test_the_runner_at_the_verifier_tag_has_pipefail_and_runs_a_test_passes_check() -> (
+    None
+):
+    shell = verifier_shell_at_tag()
+    assert shell == ["bash", "-o", "pipefail", "-c"]
+    # a test_passes check takes the one command path, with the check's own text
+    assert 'check_type in ("command", "test_passes")' in VERIFIER_TAG_DISPATCH[0]
+    assert "_run_command_check(" in VERIFIER_TAG_DISPATCH[1]
+    assert "cmd_str = check.get(" in VERIFIER_TAG_CMD[0]
+    assert VERIFIER_TAG_RUN[1].endswith("cmd_str],")
+    # any non-zero status fails the check, so pytest's exit 5 fails it too
+    assert VERIFIER_TAG_STATUS[0].strip() == "if result.returncode != 0:"
+
+
+def _require_the_tag_object(
+    required: bool, lines: list[str] | None
+) -> list[str] | None:
+    """The collector's lines, or None where the clone lacks the tag and it is not required."""
+    if lines is None and required:
+        raise AssertionError(
+            f"the verifier tag {VERIFIER_TAG} is not in this clone, so the recorded "
+            "runner lines were not compared with the verifier"
+        )
+    return lines
+
+
+def test_the_recorded_runner_lines_are_the_lines_of_the_collector_at_the_tag() -> None:
+    # Compared with the tag's own file wherever the clone holds that object. A
+    # shallow hosted checkout does not, and there the pin test above is what
+    # holds; the local Done gate item of contracts/OMN-25198.yaml sets
+    # REQUIRE_VERIFIER_TAG, which turns the absence of the tag into a failure.
+    lines = _require_the_tag_object(
+        os.environ.get("REQUIRE_VERIFIER_TAG") == "1", _collector_at_tag()
+    )
+    if lines is None:
+        return
+    # Each recorded line is a line of the tag's file, in order, and the run call
+    # is the contiguous block that file holds.
+    for recorded in (VERIFIER_TAG_DISPATCH, VERIFIER_TAG_CMD, VERIFIER_TAG_STATUS):
+        positions = [lines.index(line) for line in recorded]
+        assert positions == sorted(positions), recorded
+    start = lines.index(VERIFIER_TAG_RUN[0])
+    assert tuple(lines[start : start + len(VERIFIER_TAG_RUN)]) == VERIFIER_TAG_RUN
+
+
+def test_the_recorded_runner_comparison_fails_when_the_tag_is_required_and_absent() -> (
+    None
+):
+    with pytest.raises(AssertionError, match="not in this clone"):
+        _require_the_tag_object(True, None)
+    assert _require_the_tag_object(False, None) is None
+    assert _require_the_tag_object(True, ["x"]) == ["x"]
+
+
+def test_the_recorded_runner_comparison_refuses_a_recorded_line_the_tag_lacks() -> None:
+    # The control: the comparison is not one that always passes. A tag file
+    # without the runner's call fails the lookup the real comparison does.
+    lines = (_collector_at_tag() or list(VERIFIER_TAG_RUN)).copy()
+    lines = [line for line in lines if "pipefail" not in line]
+    with pytest.raises(ValueError, match="not in list"):
+        lines.index(VERIFIER_TAG_RUN[1])
+
+
+def test_a_local_done_gate_item_reads_the_verifier_tag_before_the_recorded_runner_tests() -> (
+    None
+):
+    contract = yaml.safe_load(
+        (_ROOT / "contracts" / "OMN-25198.yaml").read_text(encoding="utf-8")
+    )
+    found = [
+        i
+        for i in contract["dod_evidence"]
+        if i["id"] == "dod-omn25198-verifier-tag-read"
+    ]
+    assert len(found) == 1
+    item = found[0]
+    assert item["execution_scope"] == "local_done_gate"
+    assert "binds_ac" not in item
+    (check,) = item["checks"]
+    value = check["check_value"]
+    assert value.startswith(f"git cat-file -e '{VERIFIER_TAG}^{{commit}}' && ")
+    assert "REQUIRE_VERIFIER_TAG=1" in value
+    assert "tests/test_refuse_skips_omn19987.py" in value
+    assert "-k recorded_runner" in value
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    selected = [
+        n.name
+        for n in tree.body
+        if isinstance(n, ast.FunctionDef) and "recorded_runner" in n.name
+    ]
+    assert len(selected) >= 3, selected
+
+
+def test_the_ac2_check_is_classified_behavior_and_a_pipefail_prefix_would_unbind_it() -> (
+    None
+):
+    # The check does not set pipefail in its own text: the verifier's proof-class
+    # grammar reads `set -o pipefail; uv run pytest ...` as indeterminate, and an
+    # indeterminate check does not release the AC it binds. The shell it runs
+    # under is the runner's (read from its source above and, where the clone
+    # holds the tag, from the tag's file by the local Done gate item).
+    from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
+        classify_command,
+    )
+
+    value = _ac2_check_value()
+    assert str(classify_command(value)).endswith("behavior")
+    prefixed = "set -o pipefail; " + value
+    assert str(classify_command(prefixed)).endswith("indeterminate")
+
+
+def test_the_omn25379_summary_does_not_say_the_ac2_check_sets_pipefail() -> None:
+    # contracts/OMN-21217.yaml carries the AC2 check without a pipefail prefix (a
+    # prefix made the check indeterminate); the verifier's runner supplies it.
+    ticket = yaml.safe_load((_ROOT / "contracts" / "OMN-21217.yaml").read_text("utf-8"))
+    checks = [
+        c["check_value"]
+        for item in ticket["dod_evidence"]
+        for c in item["checks"]
+        if "refuse-skips" in c["check_value"]
+    ]
+    assert checks
+    assert all("pipefail" not in value for value in checks)
+    summary = yaml.safe_load(
+        (_ROOT / "contracts" / "OMN-25379.yaml").read_text("utf-8")
+    )["summary"]
+    flat = " ".join(summary.split())
+    assert "sets pipefail in its own text" not in flat
+
+
+# Finding 6 of the sixth review: the recorded dispatch, command and status lines
+# are compared by `lines.index` (first occurrence) and by order, so a copy of a
+# line elsewhere in the file would satisfy them. The structure is read by ast: the
+# dispatch of `command` and `test_passes` calls `_run_command_check` in one branch,
+# and the run call and the status test sit inside `_run_command_check`.
+def _runner_structure_problems(source: str) -> list[str]:
+    tree = ast.parse(source)
+    runners = [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_run_command_check"
+    ]
+    if len(runners) != 1:
+        return [f"expected one _run_command_check, found {len(runners)}"]
+    runner = runners[0]
+    problems: list[str] = []
+    dispatch = [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.If)
+        and isinstance(n.test, ast.Compare)
+        and isinstance(n.test.left, ast.Name)
+        and n.test.left.id == "check_type"
+        and isinstance(n.test.ops[0], ast.In)
+        and isinstance(n.test.comparators[0], ast.Tuple)
+        and {e.value for e in n.test.comparators[0].elts if isinstance(e, ast.Constant)}
+        == {"command", "test_passes"}
+    ]
+    if len(dispatch) != 1:
+        problems.append(f"expected one dispatch branch, found {len(dispatch)}")
+    else:
+        calls = [
+            c
+            for stmt in dispatch[0].body
+            for c in ast.walk(stmt)
+            if isinstance(c, ast.Call)
+            and isinstance(c.func, ast.Attribute)
+            and c.func.attr == "_run_command_check"
+        ]
+        if len(calls) != 1:
+            problems.append("the dispatch branch does not call _run_command_check")
+    status = [
+        n
+        for n in ast.walk(runner)
+        if isinstance(n, ast.If) and ast.unparse(n.test) == "result.returncode != 0"
+    ]
+    if len(status) != 1:
+        problems.append("the non-zero status test is not in _run_command_check")
+    runs = [
+        n
+        for n in ast.walk(runner)
+        if isinstance(n, ast.Call) and ast.unparse(n.func) == "subprocess.run"
+    ]
+    if len(runs) != 1:
+        problems.append("the subprocess.run call is not in _run_command_check")
+    return problems
+
+
+_RUNNER_OK = """
+class V:
+    def _verify(self, check_type, check):
+        if check_type in ("command", "test_passes"):
+            ok, msg = self._run_command_check(check)
+    def _run_command_check(self, check):
+        cmd_str = check.get("check_value", "")
+        result = subprocess.run(["bash", "-o", "pipefail", "-c", cmd_str])
+        if result.returncode != 0:
+            return False, "failed"
+        return True, "ok"
+"""
+
+
+def test_the_runner_structure_reader_accepts_the_shape_the_tag_has() -> None:
+    assert _runner_structure_problems(_RUNNER_OK) == []
+
+
+def test_the_runner_structure_reader_refuses_a_status_test_outside_the_runner() -> None:
+    moved = _RUNNER_OK.replace(
+        '        if result.returncode != 0:\n            return False, "failed"\n',
+        "",
+    ).replace(
+        "            ok, msg = self._run_command_check(check)",
+        "            ok, msg = self._run_command_check(check)\n"
+        "        if result.returncode != 0:\n            return False, 'x'",
+    )
+    assert _runner_structure_problems(moved) == [
+        "the non-zero status test is not in _run_command_check"
+    ]
+
+
+def test_the_runner_structure_reader_refuses_a_dispatch_that_calls_something_else() -> (
+    None
+):
+    other = _RUNNER_OK.replace(
+        "ok, msg = self._run_command_check(check)", "ok, msg = self._other(check)"
+    )
+    assert _runner_structure_problems(other) == [
+        "the dispatch branch does not call _run_command_check"
+    ]
+
+
+def test_the_runner_at_the_verifier_tag_has_the_recorded_structure() -> None:
+    lines = _require_the_tag_object(
+        os.environ.get("REQUIRE_VERIFIER_TAG") == "1", _collector_at_tag()
+    )
+    if lines is None:
+        return
+    assert _runner_structure_problems("\n".join(lines)) == []
