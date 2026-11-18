@@ -759,14 +759,14 @@ def test_contract_checks_omn25071_paths_named_by_each_contract_exist_at_the_head
 def test_contract_checks_omn25071_paths_check_fails_on_a_missing_falsifier_path() -> (
     None
 ):
-    # The negative control, through the same reader: a contract whose falsifier names the cost pull request's test file
+    # The negative control, through the same reader: a contract whose falsifier names a test file that no head carries
     # (absent here), and one whose check names a file that is not in the tree, are both reported.
     contract = {
         "requirements": [
             {
                 "acceptance": [
                     {
-                        "statement": "falsifier: `uv run --frozen pytest tests/test_omn24874_contract_checks.py -k ac3 -q` fails"
+                        "statement": "falsifier: `uv run --frozen pytest tests/test_omn24874_contract_checks_absent_at_this_head.py -k ac3 -q` fails"
                     }
                 ]
             }
@@ -783,7 +783,7 @@ def test_contract_checks_omn25071_paths_check_fails_on_a_missing_falsifier_path(
     }
     assert _missing_paths(contract, _REPO) == [
         "contracts/OMN-24874-absent-at-this-head.yaml",
-        "tests/test_omn24874_contract_checks.py",
+        "tests/test_omn24874_contract_checks_absent_at_this_head.py",
     ]
     assert _missing_paths({"requirements": [], "dod_evidence": []}, _REPO) == []
 
