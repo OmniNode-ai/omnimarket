@@ -4,6 +4,7 @@
 # Shape of the deploy-job-failed alarm (omnibase_infra handler_deploy_job_reading): a STATUS row with src=alarm, the
 # alarm name, the owner and the owner line. Run every 60 s by its registry_module_tick unit
 # (node_host_installer_registry_units: temporal-health-alarm-systemd).
+runtime_profiles: []
 name: node_temporal_health_alarm_effect
 node_type: EFFECT_GENERIC
 version: 1.0.0
@@ -25,6 +26,8 @@ handler:
   class: HandlerTemporalHealthAlarm
   name: HandlerTemporalHealthAlarm
   module: omnimarket.nodes.node_temporal_health_alarm_effect.handlers.handler_temporal_health_alarm
+  input_model: omnimarket.nodes.node_temporal_health_alarm_effect.models.model_temporal_health_alarm.ModelTemporalHealthAlarmRequest
+  output_model: omnimarket.nodes.node_temporal_health_alarm_effect.models.model_temporal_health_alarm.ModelTemporalHealthAlarmResult
 entrypoint:
   name: NodeTemporalHealthAlarmEffect
   module: omnimarket.nodes.node_temporal_health_alarm_effect.node
@@ -37,6 +40,11 @@ handler_routing:
       handler:
         name: HandlerTemporalHealthAlarm
         module: omnimarket.nodes.node_temporal_health_alarm_effect.handlers.handler_temporal_health_alarm
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: python -m omnimarket.nodes.node_temporal_health_alarm_effect.runtime_temporal_health_alarm, run every 60 s by the temporal-health-alarm-systemd unit, which reads the facts and calls HandlerTemporalHealthAlarm.handle
 schedule:
   installer: node_host_installer_registry_units
   unit: temporal-health-alarm-systemd
@@ -44,6 +52,7 @@ schedule:
 descriptor:
   node_archetype: effect
   purity: effectful
+  runtime_profiles: []
   idempotent: true
   timeout_ms: 60000
   side_effects:
@@ -52,7 +61,7 @@ descriptor:
   - writes the open episode to its state directory
 metadata:
   ticket: OMN-24900
-  transport_type: in_process
+  transport_type: local
 execution:
   deterministic: false
   side_effects: true
