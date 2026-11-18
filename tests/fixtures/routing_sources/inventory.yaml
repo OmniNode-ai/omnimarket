@@ -140,6 +140,8 @@ not_routing_resolution_sites:
     reason: finds each pinned node's overlay document in the overlays main checkout to prove the document loads through the node's own model; it only reads and validates and chooses no backend, model, tier or provider
   - site: "src/omnimarket/handlers/work_ledger_consume/service_writers.py:find_node_overlay(policy.overlay_id)"
     reason: finds the work ledger append node overlay to read the service logins it declares as writers; it admits ledger writers and chooses no backend, model, tier or provider
+  - site: "src/omnimarket/nodes/node_secret_store_effect/handlers/handler_secret_env_file.py:find_node_overlay(binding.overlay)"
+    reason: finds the overlay document that names the secret env file destination and the environment variable names to write; it chooses no backend, model, tier or provider
   - site: "src/omnimarket/handlers/goal_scope_overlay.py:find_node_overlay(overlay_id)"
     reason: finds the goal scope ticket rule and ticket scope overlay documents, store first and then the plugin path, to read the goal's root tickets, depth and listed projects for the goal-scope admission; it chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_host_tree_install_effect/handlers/handler_tree_install.py:resolve_overlay_file(NODE_DIR.name)"
