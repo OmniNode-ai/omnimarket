@@ -53,6 +53,7 @@ handler_routing:
       handler:
         name: "HandlerPrLandingLedgerFacts"
         module: "omnimarket.nodes.node_pr_landing_ledger_facts_compute.handlers.handler_pr_landing_ledger_facts"
+terminal_event: "onex.evt.omnimarket.pr-landing-ledger-facts-completed.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.pr-landing-ledger-facts-requested.v1"
   terminal_events:
@@ -63,7 +64,6 @@ event_bus:
     - "onex.cmd.omnimarket.pr-landing-ledger-facts-requested.v1"
   publish_topics:
     - "onex.evt.omnimarket.pr-landing-ledger-facts-completed.v1"
-    - "onex.evt.omnimarket.pr-landing-ledger-facts-failed.v1"
 externally_consumed_topics:
   - "onex.evt.omnimarket.pr-landing-ledger-facts-completed.v1"
   - "onex.evt.omnimarket.pr-landing-ledger-facts-failed.v1"

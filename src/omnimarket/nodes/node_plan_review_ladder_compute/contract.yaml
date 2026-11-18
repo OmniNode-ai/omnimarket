@@ -61,6 +61,7 @@ handler_routing:
         name: "ModelPlanReviewLadderRequest"
         module: "omnimarket.nodes.node_plan_review_ladder_compute.models.model_plan_review_ladder"
 
+terminal_event: "onex.evt.omnimarket.plan-review-ladder-decide-completed.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.plan-review-ladder-decide-requested.v1"
   terminal_events:

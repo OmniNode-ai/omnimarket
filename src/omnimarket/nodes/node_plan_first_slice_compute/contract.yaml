@@ -59,6 +59,7 @@ handler_routing:
         name: "ModelPlanFirstSliceRequest"
         module: "omnimarket.nodes.node_plan_first_slice_compute.models.model_plan_first_slice"
 
+terminal_event: "onex.evt.omnimarket.plan-first-slice-check-completed.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.plan-first-slice-check-requested.v1"
   terminal_events:

@@ -45,7 +45,12 @@ def _terminal_topics(contract: dict[str, Any]) -> list[str]:
     dispatch = contract["runtime_dispatch"]
     topics: list[str] = []
     events = dispatch.get("terminal_events") or {}
-    topics.extend(events.values())
+    # The success terminal must be a declared publish topic. A failure terminal is
+    # published by the runtime's failure-terminal guard, which fires only for a result
+    # carrying terminal_failure_cause; a node whose result has no such field leaves it
+    # out of publish_topics (contract publish parity, OMN-17017).
+    if "success" in events:
+        topics.append(events["success"])
     single = contract.get("terminal_event")
     if isinstance(single, str):
         topics.append(single)
@@ -127,7 +132,6 @@ async def test_runtime_discovers_the_subscription_and_wires_the_node(name: str) 
             "onex.cmd.omnimarket.pr-landing-ledger-facts-requested.v1",
             [
                 "onex.evt.omnimarket.pr-landing-ledger-facts-completed.v1",
-                "onex.evt.omnimarket.pr-landing-ledger-facts-failed.v1",
             ],
         ),
         (
