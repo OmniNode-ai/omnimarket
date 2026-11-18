@@ -18,7 +18,7 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
 lifecycle: experimental
-runtime_profiles: [effects]
+runtime_profiles: []
 
 description: >
   Review lock and scope check for the review workflow. acquire reads the repository's STATUS rows
@@ -37,31 +37,16 @@ handler:
   module: omnimarket.nodes.node_review_lock_effect.handlers.handler_review_lock
   class: HandlerReviewLock
   input_model: omnimarket.nodes.node_review_lock_effect.models.model_review_lock.ModelReviewLockRequest
+  output_model: omnimarket.nodes.node_review_lock_effect.models.model_review_lock.ModelReviewLockResult
 
 additional_handlers:
   - module: omnimarket.nodes.node_review_lock_effect.handlers.handler_scope_check
     class: HandlerScopeCheck
     input_model: omnimarket.nodes.node_review_lock_effect.models.model_review_lock.ModelScopeCheckRequest
 
-handler_routing:
-  routing_strategy: payload_type_match
-  handlers:
-    - handler:
-        name: HandlerReviewLock
-        module: omnimarket.nodes.node_review_lock_effect.handlers.handler_review_lock
-      event_model:
-        name: ModelReviewLockRequest
-        module: omnimarket.nodes.node_review_lock_effect.models.model_review_lock
-    - handler:
-        name: HandlerScopeCheck
-        module: omnimarket.nodes.node_review_lock_effect.handlers.handler_scope_check
-      event_model:
-        name: ModelScopeCheckRequest
-        module: omnimarket.nodes.node_review_lock_effect.models.model_review_lock
-
 descriptor:
   node_archetype: effect
-  runtime_profiles: [effects]
+  runtime_profiles: []
   purity: impure
   idempotent: false
   side_effects: [ledger-append]
@@ -77,7 +62,7 @@ output_model:
   description: acquired, refused_lock, refused_verdict or undecided, with the first review's pointer.
 
 runtime_dispatch:
-  external_trigger: true
+  external_trigger: "python -m omnimarket.nodes.node_review_lock_effect <acquire|check-scope> (runtime_review_lock.py), which reads the ledger, calls HandlerReviewLock.handle or HandlerScopeCheck.handle and prints one JSON line"
 
 event_bus:
   subscribe_topics: []
@@ -85,4 +70,4 @@ event_bus:
 
 metadata:
   ticket: OMN-25407
-  transport_type: inmemory
+  transport_type: local
