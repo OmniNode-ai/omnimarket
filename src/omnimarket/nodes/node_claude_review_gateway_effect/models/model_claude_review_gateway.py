@@ -19,21 +19,40 @@ from uuid import UUID, uuid4
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
-from omnimarket.handlers.network_bindings import network_host
 from omnimarket.handlers.routing.byok_provider_backends import (
     ANTHROPIC_WORKSPACE_ID_PATTERN,
+)
+from omnimarket.models.model_claude_review_gateway_request import (
+    ModelClaudeReviewGatewayRequest,
 )
 from omnimarket.projection.credential_publisher import LAB_HOST_NAME_PATTERN
 
 
 class ModelReviewGatewayOverlay(BaseModel):
-    """Required deployment policy; no process-lifetime or numeric fallback."""
+    """Required deployment policy; no process-lifetime or numeric fallback.
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    The host's one gateway policy file also carries the privacy list that
+    ``review-gateway --privacy-overlay`` reads, so keys that are not this
+    model's are ignored here; the TTL itself stays required and strict.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
 
     key_set_aside_ttl_seconds: Annotated[
         float, Field(gt=0, allow_inf_nan=False, strict=True)
     ]
+
+
+class ModelReviewGatewayKeyEventPolicy(BaseModel):
+    """The declared bound on the key-state publication a request may wait for.
+
+    Read from the node contract (``config.key_event_publish``), never defaulted.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    wait_seconds: Annotated[float, Field(gt=0, allow_inf_nan=False, strict=True)]
+    backoff_seconds: Annotated[float, Field(gt=0, allow_inf_nan=False, strict=True)]
 
 
 class ModelReviewGatewaySetAside(BaseModel):
@@ -101,46 +120,6 @@ class ModelReviewGatewayKey(BaseModel):
         pattern=ANTHROPIC_WORKSPACE_ID_PATTERN,
         description="The Anthropic workspace the key belongs to (OMN-20967), if any.",
     )
-
-
-class ModelClaudeReviewGatewayRequest(BaseModel):
-    """Serve (or, with ``dry_run``, plan) the gateway for one host and tenant."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    host: str = Field(
-        pattern=LAB_HOST_NAME_PATTERN,
-        description="This machine's lab host table row: the only keys it spends.",
-    )
-    tenant_id: str = Field(min_length=1, description="The tenant whose keys these are.")
-    model: str = Field(
-        pattern=r"^claude-[a-z0-9.-]+$",
-        description="The Claude model every review runs on, served as /v1/models.",
-    )
-    cloud_refused_repositories: tuple[str, ...] = Field(
-        min_length=1,
-        description="Repositories whose diffs never go to a cloud model, from a private overlay.",
-    )
-    bind_host: str = Field(
-        default_factory=lambda: network_host("loopback.ipv4"), min_length=1
-    )
-    bind_port: int = Field(default=8140, ge=1, le=65535)
-    thinking_mode: Literal["disabled", "adaptive"] = Field(
-        default="disabled",
-        description="Native thinking protocol supported by this gateway's model, from its host overlay.",
-    )
-    upstream_timeout_seconds: float = Field(default=300.0, gt=0, le=1800)
-    dry_run: bool = False
-
-    @field_validator("cloud_refused_repositories")
-    @classmethod
-    def validate_refused_repositories(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        repositories = tuple(name.strip() for name in value)
-        if any(not name for name in repositories):
-            raise ValueError(
-                "cloud_refused_repositories entries must be non-empty strings"
-            )
-        return repositories
 
 
 class ModelReviewGatewayPlan(BaseModel):

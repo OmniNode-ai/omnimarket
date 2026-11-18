@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+route:
+  backend: bus
+  bus_lane: review-gate-context
+  workspace_env: ONEX_WORKSPACE_ROOT
+  timeout_seconds: 30.0
+  requested_by_lane: review-gate-context
+emission:
+  node: node_review_gate_context_effect
+  piece: 8
+  backend: inmemory
