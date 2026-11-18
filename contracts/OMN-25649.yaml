@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-25649
+title: OmniMarket Repo Evidence Gate runs on pull_request
+summary: >-
+  The Repo Evidence Gate caller and its event readers use pull_request. The
+  caller keeps the repo-evidence job ID and the repo-evidence / dod-verify
+  required context.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn25649-caller-event
+    statement: The OmniMarket caller produces the existing required context on pull_request.
+    acceptance:
+      - id: AC1
+        statement: >-
+          AC1: each public repository's call-repo-evidence-gate.yml on its default branch triggers on pull_request,
+          keeps the job id repo-evidence so the context name repo-evidence / dod-verify is unchanged, and no longer
+          names pull_request_target -- falsifier: git grep -c pull_request_target origin/dev --
+          .github/workflows/call-repo-evidence-gate.yml returns 0 in each of the nine repositories
+  - id: req-omn25649-trigger-tests
+    statement: The OmniMarket tests require pull_request for the caller and the preflight lookup.
+    acceptance:
+      - id: AC2
+        statement: >-
+          AC2: each repository's own tests that pin the old trigger are rewritten to pin the new one and pass --
+          falsifier: uv run pytest tests/ci -k repo_evidence in each repository
+evidence_requirements:
+  - kind: tests
+    description: The OmniMarket caller and preflight regression tests.
+    command: >-
+      uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py
+      tests/ci/test_repo_evidence_preflight_startup_failure_omn23087.py -q
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn25649-ac1-caller-event
+    description: The tracked caller contains zero old-event references and keeps the required job ID.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: command
+        check_value: >-
+          git ls-files --error-unmatch -- .github/workflows/call-repo-evidence-gate.yml >/dev/null &&
+          (git grep -c -F pull_request_target -- .github/workflows/call-repo-evidence-gate.yml;
+          test "$?" -eq 1)
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py::test_caller_workflow_shape -q
+        cwd: .
+  - id: dod-omn25649-ac2-trigger-tests
+    description: The caller shape and preflight tests pin the new trigger and verify the existing checks.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py
+          tests/ci/test_repo_evidence_preflight_startup_failure_omn23087.py -q
+        cwd: .
