@@ -69,6 +69,18 @@ class InMemoryTags:
         return (repo, tag) in self._tags
 
 
+class InMemoryDiskFree:
+    """One free-space reading answered for every path; records each path it was asked for."""
+
+    def __init__(self, free_bytes: int) -> None:
+        self._free_bytes = free_bytes
+        self.asked: list[str] = []
+
+    def free_bytes(self, path: str) -> int:
+        self.asked.append(path)
+        return self._free_bytes
+
+
 class InMemoryHealth:
     def __init__(self, reading: ModelLaneHealthReading | None) -> None:
         self._reading = reading
@@ -81,6 +93,7 @@ class InMemoryHealth:
 
 __all__ = [
     "InMemoryAppliedPinStore",
+    "InMemoryDiskFree",
     "InMemoryHealth",
     "InMemoryPinSource",
     "InMemoryTags",

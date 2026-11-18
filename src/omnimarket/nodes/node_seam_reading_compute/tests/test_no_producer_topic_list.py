@@ -190,3 +190,23 @@ def test_no_producer_topic_list_committed_consumers_in_this_repo_still_subscribe
             assert entry["topic"] in contract["event_bus"]["subscribe_topics"], consumer
             checked += 1
     assert checked > 0
+
+
+REFRESH_ADDED_TOPICS = frozenset(
+    {
+        "onex.evt.omniclaude.work-result-recorded.v1",
+        "onex.evt.omnimarket.consumer-group-census.v1",
+        "onex.evt.omnimarket.goal-disposition-recorded.v1",
+        "onex.evt.omnimarket.host-disk-evict-completed.v1",
+        "onex.evt.omnimarket.host-disk-evict-failed.v1",
+        "onex.evt.omnimarket.host-disk-low-reported.v1",
+        "onex.evt.omnimarket.local-identity-minted.v1",
+    }
+)
+
+
+def test_no_producer_topic_list_committed_file_lists_the_refreshed_topics() -> None:
+    doc = _committed()
+    listed = {t["topic"] for t in doc["topics"]}
+    assert listed >= REFRESH_ADDED_TOPICS
+    assert doc["count"] == len(listed) == 17

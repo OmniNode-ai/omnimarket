@@ -43,11 +43,15 @@ handler_routing:
     handler:
       name: HandlerLaneReaderInputs
       module: omnimarket.nodes.node_host_capability_compute.handlers.handler_lane_reader_inputs
+  - operation: select_lab_ssh_peers
+    handler:
+      name: HandlerLabSshPeers
+      module: omnimarket.nodes.node_host_capability_compute.handlers.handler_lab_ssh_peers
 event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
-  external_trigger: Direct Python invocation with supplied host readings (handle), or with the candidate hosts' readings to judge which take a pull-request-creating unit (place_pr_create), or with declared lane hosts to judge which lack the catalog path or lab env file the catalog find and ledger parity readers need (check_lane_reader_inputs), or with a host's measured probes of its declared lane toolchain (onex entry point, pyright, node, pnpm, make, jq, python) to name each missing or broken tool (check_lane_toolchain).
+  external_trigger: Direct Python invocation with supplied host readings (handle), or with the candidate hosts' readings to judge which take a pull-request-creating unit (place_pr_create), or with declared lane hosts to judge which lack the catalog path or lab env file the catalog find and ledger parity readers need (check_lane_reader_inputs), or with a host's measured probes of its declared lane toolchain (onex entry point, pyright, node, pnpm, make, jq, python) to name each missing or broken tool (check_lane_toolchain), or with the lab host table's rows to name, for one lab host, the peers its lab-ssh probe must try a route to (select_lab_ssh_peers).
 descriptor:
   node_archetype: compute
   purity: pure

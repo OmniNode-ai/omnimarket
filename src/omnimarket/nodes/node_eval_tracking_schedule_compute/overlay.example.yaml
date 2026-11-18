@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository
+# (overlays/node_eval_tracking_schedule_compute/overlay.yaml). The schema is ModelEvalTrackingOverlay; no key has a default.
+local_days: 7             # evals.tracking.local_days: a local model runs once per window of this many days
+glm_days: 28              # evals.tracking.glm_days: the hosted model's window
+resend_seconds: 900       # how often one arm's current-window request is sent again (a tick names one arm per resend)
+record:                   # evals.tracking.record: frozen; changing any key is a new record and new run ids
+  epoch: 2026-11-16T00:00:00Z   # window 0 opens here (UTC)
+  seed: example-seed            # the seed the sample was drawn with
+  band_target: 1                # sampled tasks per usable size band
+  tenant_id: example-tenant
+  harness_revision: example-rev
+  generation_settings:
+    temperature: "0"
+  prompt_template: example-template-v1
+  candidates:
+    - repository: example/repo
+      merge_commit: "0000000000000000000000000000000000000001"
+      contract_id: OMN-1000
+    - repository: example/repo
+      merge_commit: "0000000000000000000000000000000000000002"
+      contract_id: OMN-1001
+    - repository: example/repo
+      merge_commit: "0000000000000000000000000000000000000003"
+      contract_id: OMN-1002
+  task_sample_digest: 97f3785d9588184d762b9f5d74c0177b7d8595e4a1ca11ee8412bd171d173e6c   # sha256 of the sorted repository|merge_commit|contract_id lines
+  arms:
+    - {model: example-local-model, backend_id: example-local-backend, cadence: local}
+    - {model: example-hosted-model, backend_id: example-hosted-backend, cadence: glm}

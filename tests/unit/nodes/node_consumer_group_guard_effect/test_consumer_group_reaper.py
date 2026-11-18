@@ -35,6 +35,14 @@ RECEIPT = "receipt-mode-client.5525153f0632.__t.onex.evt.omnimarket.context-comp
 CANARY = "gateway-canary-probe-local-56b55982360f41b49a7eed46e752773f"
 DRIFT_RUN = "local.example_fleet.host_drift_fleet.h105.0123456789ab.__t.onex.evt.omnimarket.host-drift-heartbeat.v1"
 DRIFT = "local.example_fleet.host_drift_fleet.h105.__t.onex.evt.omnimarket.host-drift-heartbeat.v1"
+# The host drift check keeps ONE reader group per host between its 15 minute runs, named
+# local.<package>.host_drift_fleet.<host>.<reader id, 12 hex>, one consumer per topic (the
+# per-topic suffix is `.__t.<topic>`). It is Empty between runs; deleting it sent every run back
+# to the start of the topic (measured 2026-11-12).
+DRIFT_READER_GROUPS = [
+    f"local.example_fleet.host_drift_fleet.h053.9c33e8cf9802.__t.onex.evt.example.host-drift-{kind}.v1"
+    for kind in ("heartbeat", "detected", "resolved")
+]
 GATEWAY = "onex.gateway-session.dc01928a-654e-4568-b42e-0123456789ab"
 STABLE = "agent-observability-postgres"
 PROJECTION = "local.omnimarket.projection_work_ledger.consume.1.1.1.__i.runtime-main.__t.onex.evt.omnimarket.x.v1"
@@ -47,10 +55,17 @@ LIVE_PER_RUN = [
     LAB_WORK,
     RECEIPT,
     CANARY,
-    DRIFT_RUN,
     GATEWAY,
 ]
-STABLE_NAMES = ["onex-deploy-agent", "onex-dlq-replay", DRIFT, PROJECTION, STABLE]
+STABLE_NAMES = [
+    "onex-deploy-agent",
+    "onex-dlq-replay",
+    DRIFT,
+    PROJECTION,
+    STABLE,
+    DRIFT_RUN,
+    *DRIFT_READER_GROUPS,
+]
 CONFIG: Mapping[str, str] = {}
 
 
@@ -249,6 +264,41 @@ def test_an_unreadable_listing_deletes_nothing(tmp_path: Path) -> None:
     deleted, detail = reaper.reap(CONFIG, tmp_path)
     assert deleted == 0
     assert "hunter2" not in detail
+
+
+def test_the_host_drift_checks_persisted_reader_group_is_never_reapable() -> None:
+    assert len(DRIFT_READER_GROUPS) == 3
+    assert not any(is_reapable(n, RULES) for n in DRIFT_READER_GROUPS)
+
+
+def test_golden_reap_leaves_the_live_drift_reader_groups_and_deletes_the_per_call_groups(
+    tmp_path: Path,
+) -> None:
+    states = dict.fromkeys([*PER_CALL, *DRIFT_READER_GROUPS], "EMPTY")
+    broker, clock = Broker(states), [0.0]
+    reaper = _reaper(broker, clock)
+    for _ in range(4):
+        reaper.reap(CONFIG, tmp_path)
+        clock[0] += 300
+    assert sorted(broker.deleted) == sorted(PER_CALL)
+    assert set(DRIFT_READER_GROUPS) <= set(broker.states)
+
+
+def test_error_chain_a_refused_delete_still_stops_the_run_and_spares_the_drift_groups(
+    tmp_path: Path,
+) -> None:
+    states = dict.fromkeys([*PER_CALL, *DRIFT_READER_GROUPS], "EMPTY")
+    rules = RULES.model_copy(update={"batch_size": 1})
+    broker, clock = Broker(states), [0.0]
+    reaper = _reaper(broker, clock, rules)
+    reaper.reap(CONFIG, tmp_path)
+    clock[0] = 600
+    broker.error_name = "COORDINATOR_NOT_AVAILABLE"
+    deleted, detail = reaper.reap(CONFIG, tmp_path)
+    assert deleted == 0
+    assert broker.batches == [1]
+    assert "COORDINATOR_NOT_AVAILABLE" in detail
+    assert set(DRIFT_READER_GROUPS) <= set(broker.states)
 
 
 def test_a_contract_that_disables_reaping_deletes_nothing(tmp_path: Path) -> None:

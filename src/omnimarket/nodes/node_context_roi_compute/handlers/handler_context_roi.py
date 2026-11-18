@@ -27,6 +27,13 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from omnimarket.models.model_factor_arm import (
+    EnumArmLabel,
+    ModelFactorArm,
+)
+from omnimarket.models.model_factor_matrix import (
+    build_canonical_factor_matrix,
+)
 from omnimarket.nodes.node_context_roi_compute.models.model_context_roi_request import (
     ModelArmRunRow,
     ModelContextRoiRequest,
@@ -36,13 +43,6 @@ from omnimarket.nodes.node_context_roi_compute.models.model_context_roi_result i
     ModelArmAggregateRow,
     ModelArmSummaryRow,
     ModelContextRoiResult,
-)
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_arm import (
-    EnumArmLabel,
-    ModelFactorArm,
-)
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_matrix import (
-    build_canonical_factor_matrix,
 )
 from omnimarket.nodes.node_context_roi_compute.models.model_task_manifest import (
     EnumFailureStage,

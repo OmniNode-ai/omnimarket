@@ -13,7 +13,10 @@ description: >-
   releases, consent shape, the TERMINAL delegation cells and the CLAIM and TERMINAL worktree cells.
   Reads the environment variables and paths those rules name (the registry root, the lane's
   delegation receipt directory, the worktree a TERMINAL says it removed, and the private data clone
-  the repos overlay names for relative worktree paths) and writes nothing. Publishes the library
+  the repos overlay names for relative worktree paths) and writes nothing. Its
+  ``running_path_share`` operation (OMN-24535) reads a payload of ledger text and answers the share
+  of its done and handed-off TERMINAL rows that carry the running-path cell, judging every row and
+  reading no environment variable. Publishes the library
   only; no caller is switched to it by this node.
 input_model:
   name: ModelLedgerRowGrammarRequest
@@ -40,7 +43,7 @@ descriptor:
   idempotent: true
   timeout_ms: 5000
 inputs:
-  operation: {type: str, required: true, enum: [row_refusals, payload_refusal, state_refusal, grammar], description: Which question is asked.}
+  operation: {type: str, required: true, enum: [row_refusals, payload_refusal, state_refusal, running_path_share, grammar], description: Which question is asked.}
   line: {type: str, required: false, description: The row to judge, for row_refusals.}
   payload: {type: str, required: false, description: The rows to append, for payload_refusal and state_refusal.}
   existing: {type: str, required: false, description: The ledger text already written, for state_refusal.}
@@ -52,6 +55,9 @@ outputs:
   admitted: {type: bool}
   grammar_version: {type: str}
   grammar_json: {type: str}
+  confirming_rows: {type: int}
+  carrying_rows: {type: int}
+  share: {type: float}
 terminal_event: onex.evt.omnimarket.ledger-row-grammar-completed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.ledger-row-grammar-requested.v1
@@ -67,4 +73,4 @@ metadata:
   description: ledger row grammar judgments
   author: OmniNode Team
   created: "2026-11-01"
-  related_tickets: [OMN-21373]
+  related_tickets: [OMN-21373, OMN-24535]

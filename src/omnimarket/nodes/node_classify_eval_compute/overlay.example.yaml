@@ -1,0 +1,26 @@
+# Synthetic values. A deployment's real overlay lives in the overlays repository
+# (overlays/node_classify_eval_compute/overlay.yaml). The schema is ModelClassifyEvalOverlay; no key has a default.
+section_labels:                # classify_eval.section_labels: ledger section heading start -> class its lines carry
+  "NOT RUNNING": not_running
+  "BLOCKED": blocked
+  "DEFECT": defect
+  "SEEN RUNNING": seen_running
+  "IN PLACE OR UNPROVEN": run_not_seen
+per_class_n:                   # classify_eval.per_class_n: lines drawn per class
+  not_running: 2
+  blocked: 1
+  defect: 1
+  seen_running: 2
+  run_not_seen: 2
+seed: synthetic-seed           # classify_eval.seed: orders each class's lines for the draw
+min_total: 8                   # classify_eval.min_total: the smallest set that is a result
+rubric: >                      # classify_eval.rubric: the instruction an engine gets with each line
+  Classify one merged change into exactly one class word. Answer with the class word only.
+leak_phrases:                  # classify_eval.leak_phrases: class words that leak the answer in a task's text cells
+  - DEFECT
+  - SEEN RUNNING
+  - NOT RUNNING
+  - BLOCKED
+  - UNPROVEN
+  - IN PLACE
+leak_mask: "[class word]"       # classify_eval.leak_mask: the text each leak phrase is replaced with

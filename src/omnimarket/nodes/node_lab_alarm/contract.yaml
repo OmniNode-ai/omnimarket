@@ -34,12 +34,48 @@ description: >
   An ALARM opens one lane through the overlay's dispatch command, once per episode; a dispatch that cannot
   start is retried on the next run and the run exits ALARM with escalation=failed until one starts.
 
+  The broker-listener condition (HandlerBrokerListener, verb broker-listener, OMN-23933) dials the dev broker's
+  external listener addresses from the overlay's bootstrap_servers with one Kafka ApiVersions request each. It
+  is OK as soon as one address answers, ALARM when every address refused or timed out, INDETERMINATE when a
+  name cannot be resolved or the bootstrap string is malformed. The verdict is handed to the alarm delivery
+  when the overlay's alarm_delivery block turns it on.
+
+  The dev-tag-heartbeat condition (HandlerDevTagHeartbeat, verb dev-tag-heartbeat) reads the deploy agent's
+  heartbeat document at the overlay's agent_url and endpoint_path. For every repository in the overlay's
+  repositories, a beat that is missing, stale or alarmed is a breach; a repository alarms only after its
+  streak of consecutive breaching runs reaches the overlay's persistence bound, before that the run is OK
+  with a waiting reason. An unreadable source, a document with no heartbeat object, or a malformed beat is
+  INDETERMINATE, never ALARM and never OK. The verdict is handed to the alarm delivery when the overlay's
+  alarm_delivery block turns it on.
+
+  The delegation-chain-canary condition (HandlerDelegationChainCanary, verb delegation-chain-canary, OMN-24400) reads the
+  runs of the overlay's canary workflow through the GitHub gateway node. The newest completed run of an admitted event
+  decides, in both directions: red, or older than the overlay's bound, or no completed run, is a breach; an unreadable
+  surface is INDETERMINATE. A breach alarms after the overlay's persist_runs consecutive runs.
+
+  The work-ledger-projection-stale condition (HandlerWorkLedgerProjectionStale, verb work-ledger-projection-stale,
+  OMN-24400) compares the newest canonical row of the rolling ledger file with the newest row of the work-ledger
+  projection, asked of the work-ledger query node. A projection behind the file by more than the overlay's bound is a
+  breach, alarming after persist_runs consecutive runs; an unreadable file or projection is INDETERMINATE. It measures
+  file-versus-projection freshness only, never the liveness of the emit path.
+
+  The lane-drift and container-unhealthy conditions (HandlerLaneCensus, verbs lane-drift and container-unhealthy, OMN-24425)
+  read one lane census snapshot, from the overlay's file or declared command. A finding of container_unhealthy kind alarms the
+  second condition; every other finding alarms the first, one alarm per snapshot named by its alert key. A snapshot that is
+  unreadable, invalid, of another event type, with a mismatched alert key, or older than the overlay's bound is INDETERMINATE.
+
+  The lab-pass-receipt condition (HandlerLabPassReceipt, verb lab-pass-receipt) reads the sha the lane runs from the deploy
+  agent and the lab-pass receipt of exactly that sha through the GitHub gateway node. A FAIL receipt is an ALARM; an unresolved sha,
+  an absent, stale (another commit or lane) or malformed receipt, or a surface that cannot be read is INDETERMINATE.
+
+  The stale-indeterminate condition (HandlerStaleIndeterminate, verb stale-indeterminate) reads the run records of the overlay's
+  watched conditions. A condition whose last after_runs runs all read INDETERMINATE, with no OK and no ALARM between them, alarms.
+
   The container-restarts condition (HandlerContainerRestarts, verb container-restarts, OMN-23934) reads the restart count of
   every container the lane manifest gives a restart_bound for the overlay's census lane (docker inspect through the overlay's
   docker command). It is ALARM for each container whose count is above its own bound, OK when none is, and INDETERMINATE when a
   container or the manifest cannot be read or the lane declares no bound: an unreadable source never reads as healthy, and it
-  dominates an alarm found on the containers that could be read. The verdict is handed to the alarm delivery when the overlay's
-  alarm_delivery block turns it on.
+  dominates an alarm found on the containers that could be read.
 
 handler:
   module: omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag
@@ -55,6 +91,38 @@ cli_handlers:
     handler:
       name: HandlerEffectsHeld
       module: omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held
+  - operation: broker_listener
+    handler:
+      name: HandlerBrokerListener
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_broker_listener
+  - operation: dev_tag_heartbeat
+    handler:
+      name: HandlerDevTagHeartbeat
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_dev_tag_heartbeat
+  - operation: delegation_chain_canary
+    handler:
+      name: HandlerDelegationChainCanary
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_delegation_chain_canary
+  - operation: work_ledger_projection_stale
+    handler:
+      name: HandlerWorkLedgerProjectionStale
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_work_ledger_projection_stale
+  - operation: lane_drift
+    handler:
+      name: HandlerLaneCensus
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_lane_census
+  - operation: container_unhealthy
+    handler:
+      name: HandlerLaneCensus
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_lane_census
+  - operation: lab_pass_receipt
+    handler:
+      name: HandlerLabPassReceipt
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_lab_pass_receipt
+  - operation: stale_indeterminate
+    handler:
+      name: HandlerStaleIndeterminate
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_stale_indeterminate
   - operation: container_restarts
     handler:
       name: HandlerContainerRestarts
@@ -101,6 +169,38 @@ topics:
   effects_held_lane_dispatch: onex.evt.omnimarket.lab-alarm-effects-held-lane-dispatched.v1
   effects_held_run_completed: onex.evt.omnimarket.lab-alarm-effects-held-completed.v1
   effects_held_run_failed: onex.evt.omnimarket.lab-alarm-effects-held-failed.v1
+  broker_listener_requested: onex.cmd.omnimarket.lab-alarm-broker-listener-requested.v1
+  broker_listener_run_started: onex.evt.omnimarket.lab-alarm-broker-listener-started.v1
+  broker_listener_run_completed: onex.evt.omnimarket.lab-alarm-broker-listener-completed.v1
+  broker_listener_run_failed: onex.evt.omnimarket.lab-alarm-broker-listener-failed.v1
+  dev_tag_heartbeat_requested: onex.cmd.omnimarket.lab-alarm-dev-tag-heartbeat-requested.v1
+  dev_tag_heartbeat_run_started: onex.evt.omnimarket.lab-alarm-dev-tag-heartbeat-started.v1
+  dev_tag_heartbeat_run_completed: onex.evt.omnimarket.lab-alarm-dev-tag-heartbeat-completed.v1
+  dev_tag_heartbeat_run_failed: onex.evt.omnimarket.lab-alarm-dev-tag-heartbeat-failed.v1
+  delegation_chain_canary_requested: onex.cmd.omnimarket.lab-alarm-delegation-chain-canary-requested.v1
+  delegation_chain_canary_run_started: onex.evt.omnimarket.lab-alarm-delegation-chain-canary-started.v1
+  delegation_chain_canary_run_completed: onex.evt.omnimarket.lab-alarm-delegation-chain-canary-completed.v1
+  delegation_chain_canary_run_failed: onex.evt.omnimarket.lab-alarm-delegation-chain-canary-failed.v1
+  work_ledger_projection_stale_requested: onex.cmd.omnimarket.lab-alarm-work-ledger-projection-stale-requested.v1
+  work_ledger_projection_stale_run_started: onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-started.v1
+  work_ledger_projection_stale_run_completed: onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-completed.v1
+  work_ledger_projection_stale_run_failed: onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-failed.v1
+  lane_drift_requested: onex.cmd.omnimarket.lab-alarm-lane-drift-requested.v1
+  lane_drift_run_started: onex.evt.omnimarket.lab-alarm-lane-drift-started.v1
+  lane_drift_run_completed: onex.evt.omnimarket.lab-alarm-lane-drift-completed.v1
+  lane_drift_run_failed: onex.evt.omnimarket.lab-alarm-lane-drift-failed.v1
+  container_unhealthy_requested: onex.cmd.omnimarket.lab-alarm-container-unhealthy-requested.v1
+  container_unhealthy_run_started: onex.evt.omnimarket.lab-alarm-container-unhealthy-started.v1
+  container_unhealthy_run_completed: onex.evt.omnimarket.lab-alarm-container-unhealthy-completed.v1
+  container_unhealthy_run_failed: onex.evt.omnimarket.lab-alarm-container-unhealthy-failed.v1
+  lab_pass_receipt_requested: onex.cmd.omnimarket.lab-alarm-lab-pass-receipt-requested.v1
+  lab_pass_receipt_run_started: onex.evt.omnimarket.lab-alarm-lab-pass-receipt-started.v1
+  lab_pass_receipt_run_completed: onex.evt.omnimarket.lab-alarm-lab-pass-receipt-completed.v1
+  lab_pass_receipt_run_failed: onex.evt.omnimarket.lab-alarm-lab-pass-receipt-failed.v1
+  stale_indeterminate_requested: onex.cmd.omnimarket.lab-alarm-stale-indeterminate-requested.v1
+  stale_indeterminate_run_started: onex.evt.omnimarket.lab-alarm-stale-indeterminate-started.v1
+  stale_indeterminate_run_completed: onex.evt.omnimarket.lab-alarm-stale-indeterminate-completed.v1
+  stale_indeterminate_run_failed: onex.evt.omnimarket.lab-alarm-stale-indeterminate-failed.v1
   container_restarts_requested: onex.cmd.omnimarket.lab-alarm-container-restarts-requested.v1
   container_restarts_run_started: onex.evt.omnimarket.lab-alarm-container-restarts-started.v1
   container_restarts_run_completed: onex.evt.omnimarket.lab-alarm-container-restarts-completed.v1
@@ -123,6 +223,30 @@ externally_consumed_topics:
   - onex.evt.omnimarket.lab-alarm-container-restarts-started.v1
   - onex.evt.omnimarket.lab-alarm-container-restarts-completed.v1
   - onex.evt.omnimarket.lab-alarm-container-restarts-failed.v1
+  - onex.evt.omnimarket.lab-alarm-broker-listener-started.v1
+  - onex.evt.omnimarket.lab-alarm-broker-listener-completed.v1
+  - onex.evt.omnimarket.lab-alarm-broker-listener-failed.v1
+  - onex.evt.omnimarket.lab-alarm-dev-tag-heartbeat-started.v1
+  - onex.evt.omnimarket.lab-alarm-dev-tag-heartbeat-completed.v1
+  - onex.evt.omnimarket.lab-alarm-dev-tag-heartbeat-failed.v1
+  - onex.evt.omnimarket.lab-alarm-delegation-chain-canary-started.v1
+  - onex.evt.omnimarket.lab-alarm-delegation-chain-canary-completed.v1
+  - onex.evt.omnimarket.lab-alarm-delegation-chain-canary-failed.v1
+  - onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-started.v1
+  - onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-completed.v1
+  - onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-failed.v1
+  - onex.evt.omnimarket.lab-alarm-lane-drift-started.v1
+  - onex.evt.omnimarket.lab-alarm-lane-drift-completed.v1
+  - onex.evt.omnimarket.lab-alarm-lane-drift-failed.v1
+  - onex.evt.omnimarket.lab-alarm-container-unhealthy-started.v1
+  - onex.evt.omnimarket.lab-alarm-container-unhealthy-completed.v1
+  - onex.evt.omnimarket.lab-alarm-container-unhealthy-failed.v1
+  - onex.evt.omnimarket.lab-alarm-lab-pass-receipt-started.v1
+  - onex.evt.omnimarket.lab-alarm-lab-pass-receipt-completed.v1
+  - onex.evt.omnimarket.lab-alarm-lab-pass-receipt-failed.v1
+  - onex.evt.omnimarket.lab-alarm-stale-indeterminate-started.v1
+  - onex.evt.omnimarket.lab-alarm-stale-indeterminate-completed.v1
+  - onex.evt.omnimarket.lab-alarm-stale-indeterminate-failed.v1
 
 overlay:
   node: node_lab_alarm

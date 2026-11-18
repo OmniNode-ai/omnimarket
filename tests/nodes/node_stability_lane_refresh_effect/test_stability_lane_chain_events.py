@@ -151,6 +151,16 @@ def test_error_chain_requested_set_without_bump_is_a_refusal() -> None:
     assert rig.runner.calls == []
 
 
+def test_error_chain_low_disk_is_one_refused_event_and_runs_nothing() -> None:
+    rig = Rig(free_gib=99.5)
+    events = run(rig)
+    assert_refusal_chain(events, "refused-low-disk")
+    assert rig.runner.calls == []
+    assert {t for t, _ in events}.isdisjoint(
+        {TOPICS["stability_refresh_completed"], TOPICS["stability_refresh_failed"]}
+    )
+
+
 def test_error_chain_refresh_that_fails_ends_in_a_failed_event() -> None:
     rig = Rig(runner=RecordingExecutor(ModelRunOutcome(return_code=2, output_tail="x")))
     events = run(rig)
@@ -193,6 +203,12 @@ def test_break_wrong_refusal_named_turns_the_refusal_chain_red() -> None:
     events = run(Rig(pin_text=PIN_TEXT.replace("v3.4.5", "main")))
     with pytest.raises(AssertionError):
         assert_refusal_chain(events, "refused-pin-differs")
+
+
+def test_break_free_space_above_the_floor_turns_the_low_disk_chain_red() -> None:
+    events = run(Rig(free_gib=500))
+    with pytest.raises(AssertionError):
+        assert_refusal_chain(events, "refused-low-disk")
 
 
 def test_contract_declares_the_exact_stability_refresh_event_topics() -> None:

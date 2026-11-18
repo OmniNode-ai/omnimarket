@@ -37,14 +37,16 @@ class EnumLandingCi(StrEnum):
 class EnumLandingRedClass(StrEnum):
     """What clears a red head (the ci-watch classes).
 
-    ``cascade``, ``replay``, ``cancelled_producer`` and ``runner_saturation``
-    earn one whole-run rerun per head; ``product`` goes to a fix worker.
+    ``cascade``, ``replay``, ``cancelled_producer``, ``runner_saturation`` and
+    ``stale_fleet`` earn one whole-run rerun per head; ``product`` goes to a
+    fix worker.
     """
 
     CASCADE = "cascade"
     REPLAY = "replay"
     CANCELLED_PRODUCER = "cancelled_producer"
     RUNNER_SATURATION = "runner_saturation"
+    STALE_FLEET = "stale_fleet"
     PRODUCT = "product"
 
 
@@ -54,6 +56,7 @@ RERUNNABLE_RED_CLASSES: frozenset[EnumLandingRedClass] = frozenset(
         EnumLandingRedClass.REPLAY,
         EnumLandingRedClass.CANCELLED_PRODUCER,
         EnumLandingRedClass.RUNNER_SATURATION,
+        EnumLandingRedClass.STALE_FLEET,
     }
 )
 
@@ -136,7 +139,10 @@ class EnumLandingLandSkipReason(StrEnum):
     whose verified head is not this one, a runtime PR inside an open companion,
     or a runtime PR while another holds the token. A PR that carries a lab-bound
     check (J8, OMN-22919) is also held, by name, while that check is missing, from
-    a superseded attempt, failing or still running on the exact head.
+    a superseded attempt, failing or still running on the exact head. A new-work
+    PR with no clean review verdict on its exact head is held by name too:
+    ``review_missing``, ``review_changes_needed``, ``review_superseded`` and
+    ``review_unread``.
     """
 
     HOLD = "hold"
@@ -154,6 +160,10 @@ class EnumLandingLandSkipReason(StrEnum):
     LAB_CHECK_FAILED = "lab_check_failed"
     LAB_CHECK_PENDING = "lab_check_pending"
     LIVENESS_UNDECLARED = "liveness_undeclared"
+    REVIEW_MISSING = "review_missing"
+    REVIEW_CHANGES_NEEDED = "review_changes_needed"
+    REVIEW_SUPERSEDED = "review_superseded"
+    REVIEW_UNREAD = "review_unread"
 
 
 # A person's hold, a draft and do-not-land keep a PR out of every shared cause;

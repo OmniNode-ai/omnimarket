@@ -431,6 +431,11 @@ def test_writer_topic_attribution_and_negative_controls(
                 assert receipt.principal == writer
                 assert ledger.calls == 1
                 assert f" | principal={writer} | " in ledger.rows
+                # OMN-24205: the host stamps the bus cell of the requesting host after the request cell.
+                assert (
+                    f" | req={request.request_id} | via=bus:lab-host | text"
+                    in ledger.rows
+                )
             else:
                 assert receipt.status is EnumWorkLedgerAppendStatus.REFUSED
                 assert receipt.exit_code == 65

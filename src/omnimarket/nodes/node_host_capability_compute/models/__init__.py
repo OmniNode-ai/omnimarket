@@ -7,6 +7,12 @@ from .model_host_capability import (
     ModelHostCapabilityRequest,
     ModelHostCapabilityResult,
 )
+from .model_lab_ssh_peers import (
+    ModelLabSshPeerExclusion,
+    ModelLabSshPeerRow,
+    ModelLabSshPeersRequest,
+    ModelLabSshPeersResult,
+)
 from .model_lane_reader_inputs import (
     ModelLaneReaderFailure,
     ModelLaneReaderHost,
@@ -35,6 +41,10 @@ __all__ = [
     "ModelHostCapabilityResult",
     "ModelHostReading",
     "ModelHostToolchainReading",
+    "ModelLabSshPeerExclusion",
+    "ModelLabSshPeerRow",
+    "ModelLabSshPeersRequest",
+    "ModelLabSshPeersResult",
     "ModelLaneReaderFailure",
     "ModelLaneReaderHost",
     "ModelLaneReaderInputsRequest",

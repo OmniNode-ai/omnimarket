@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import base64
 import binascii
+import bisect
 import json
 from collections.abc import Sequence
 from datetime import datetime
+from typing import NamedTuple
 
 from omnimarket.models.work_ledger_query import ModelWorkLedgerRowRecord
 from omnimarket.nodes.node_work_ledger_query_effect.handlers import (
@@ -27,41 +29,61 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_r
 _QUERY = "rows"
 
 
-def encode_rows_cursor(row: ModelWorkLedgerRowRecord) -> str:
-    """Opaque cursor naming the last row of a page and the query it belongs to."""
+class RowsCursor(NamedTuple):
+    """What a rows cursor names: the last row of a page and the window's end it was read to."""
+
+    row_ts: datetime
+    row_id: str
+    until: datetime | None
+
+
+def encode_rows_cursor(row: ModelWorkLedgerRowRecord, until: datetime) -> str:
+    """Opaque cursor naming the last row of a page, the query it belongs to and the window's end.
+
+    The ``until`` pins every later page to the first page's window (OMN-24031): the window's total
+    and rows no longer move with the clock between pages, and a held window can be found by it.
+    """
     body = json.dumps(
-        {"q": _QUERY, "t": row.row_ts.isoformat(), "i": row.row_id},
+        {
+            "q": _QUERY,
+            "t": row.row_ts.isoformat(),
+            "i": row.row_id,
+            "u": until.isoformat(),
+        },
         separators=(",", ":"),
     )
     return base64.urlsafe_b64encode(body.encode()).decode().rstrip("=")
 
 
-def decode_rows_cursor(cursor: str) -> tuple[datetime, str]:
+def decode_rows_cursor(cursor: str) -> RowsCursor:
     try:
         body = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
         if body["q"] != _QUERY:
             raise WorkLedgerReadError(f"cursor belongs to query {body['q']!r}")
-        return datetime.fromisoformat(body["t"]), str(body["i"])
+        until = body.get("u")
+        return RowsCursor(
+            datetime.fromisoformat(body["t"]),
+            str(body["i"]),
+            datetime.fromisoformat(until) if until is not None else None,
+        )
     except WorkLedgerReadError:
         raise
     except (binascii.Error, ValueError, KeyError, TypeError):
         raise WorkLedgerReadError("cursor is not a page cursor of this query") from None
 
 
-def rows_page(
+def select_ordered(
     rows: Sequence[replay.LedgerRow],
     *,
     lanes: Sequence[str],
-    page_size: int,
-    cursor: str | None,
     kinds: Sequence[str],
     since: datetime | None,
     ticket: str | None,
     pr: str | None,
     row_ref: str | None,
     term: str | None,
-) -> tuple[int, list[ModelWorkLedgerRowRecord], str | None]:
-    """The matched total, one page of the selection and the cursor of the next page."""
+) -> tuple[ModelWorkLedgerRowRecord, ...]:
+    """The selection of a rows query, taken per named lane, joined without repeats, oldest first."""
     chosen: dict[str, ModelWorkLedgerRowRecord] = {}
     for lane in lanes or (None,):
         selected = replay.select_rows(
@@ -76,11 +98,24 @@ def rows_page(
         )
         for row in selected:
             chosen.setdefault(row.record.row_id, row.record)
-    ordered = sorted(chosen.values(), key=lambda r: (r.row_ts, r.row_id))
-    left = ordered
-    if cursor:
-        after = decode_rows_cursor(cursor)
-        left = [r for r in ordered if (r.row_ts, r.row_id) > after]
-    page = left[:page_size]
-    more = len(left) > len(page)
-    return len(ordered), page, encode_rows_cursor(page[-1]) if more and page else None
+    return tuple(sorted(chosen.values(), key=_order_key))
+
+
+def _order_key(row: ModelWorkLedgerRowRecord) -> tuple[datetime, str]:
+    return (row.row_ts, row.row_id)
+
+
+def page_of(
+    ordered: Sequence[ModelWorkLedgerRowRecord],
+    *,
+    page_size: int,
+    after: RowsCursor | None,
+) -> tuple[int, list[ModelWorkLedgerRowRecord], bool]:
+    """The matched total, one page cut after the cursor's row, and whether more rows remain."""
+    start = (
+        bisect.bisect_right(ordered, (after.row_ts, after.row_id), key=_order_key)
+        if after is not None
+        else 0
+    )
+    page = list(ordered[start : start + page_size])
+    return len(ordered), page, start + len(page) < len(ordered)

@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_branch_deploy_orchestrator
+version: "1.0.0"
+description: "Orchestrator composing a branch deploy over the bus: deploy command, job completion, probe verification, rollback."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_branch_deploy_orchestrator: "omnimarket.nodes.node_branch_deploy_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "click>=8.1.0"
+  - "omnibase_core>=0.39.0"
+  - "pydantic>=2.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "branch", "deploy", "OMN-24027"]
+pack: "operator_tooling"
+display_name: "Branch Deploy Orchestrator"
+node_role: "orchestrator"

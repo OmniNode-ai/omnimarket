@@ -15,7 +15,7 @@ import re
 import shlex
 import subprocess
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import singledispatch
 from pathlib import Path
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -116,6 +116,25 @@ class InMemoryLedger:
         return ModelAppendOutcome(status="accepted", message=request_id)
 
 
+_ROLL_DAY_RE = re.compile(r"_(\d{4}-\d{2}-\d{2})-split\.md$")
+_STAMP_TEXT_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def _roll_ends_before(path: Path, since: datetime) -> bool:
+    """True when a roll was cut more than a day before ``since``: it holds no row of the window (OMN-23081).
+
+    A roll ``<name>_<day>-split.md`` is named for the day it was cut and holds rows no newer than that. The day is the
+    cutting host's local day, so a row can be stamped up to a day later in UTC: only a roll named more than one day
+    before ``since`` is passed over. A name that carries no day is never passed over. The name, unlike the file's
+    modification time, survives a copy or a restore of the ledger.
+    """
+    match = _ROLL_DAY_RE.search(path.name)
+    if match is None:
+        return False
+    named = datetime.strptime(match.group(1), "%Y-%m-%d").replace(tzinfo=UTC)
+    return named + timedelta(days=1) < since
+
+
 class FileLedgerRowSource:
     """Reads the live ledger file and the rolls beside it that can hold rows of the window."""
 
@@ -132,6 +151,7 @@ class FileLedgerRowSource:
                     for path in self._archive_dir.iterdir()
                     if path.is_file()
                     and datetime.fromtimestamp(path.stat().st_mtime, UTC) >= since
+                    and not _roll_ends_before(path, since)
                 )
             )
         return files
@@ -146,7 +166,8 @@ class FileLedgerRowSource:
 
         Each file is opened once whatever the number of queries, only the lines of a wanted row type are parsed, and a
         parsed row is offered to each query of its type. Each answer holds what a read of that query alone would hold,
-        in the same order. A file that cannot be read fails every query, with the reason a single read gives.
+        in the same order. A file that cannot be read fails every query, with the reason a single read gives. A roll cut
+        more than a day before the earliest window is not opened, and a line stamped before it is not parsed (OMN-23081).
         """
         if not queries:
             return ()
@@ -163,10 +184,16 @@ class FileLedgerRowSource:
             else ()
         )
         found: list[list[ModelLedgerEvidenceRow]] = [[] for _ in queries]
+        earliest = min(query.since for query in queries)
+        # A row line starts with its 20-character UTC stamp, which sorts as time does: a line stamped before every query's
+        # window is passed over before the grammar runs (a line that does not start with a stamp is no row either way).
+        not_before = earliest.astimezone(UTC).strftime(_STAMP_TEXT_FMT)
         try:
-            for path in self._files(min(query.since for query in queries)):
+            for path in self._files(earliest):
                 with path.open(encoding="utf-8", errors="replace") as handle:
                     for line in handle:
+                        if line[:20] < not_before:
+                            continue
                         if needles and not any(needle in line for needle in needles):
                             continue
                         row = evidence_row_from_text(line, types=types)

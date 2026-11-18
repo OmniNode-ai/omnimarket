@@ -12,9 +12,16 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.models.landing_decision import (
+    EnumLandingActionKind,
+    ModelLandingAction,
+)
 from omnimarket.models.landing_tick import (
     TICK_LEVEL_SUBJECT,
     ModelTickReduceInput,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
+    ModelLandingPrRecord,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator import (
     ModelTickSnapshot,
@@ -104,3 +111,42 @@ def test_a_changed_tick_level_field_diverges_on_the_tick_row_not_on_a_pull_reque
         ModelTickReduceInput(decision=SNAPSHOT.decision, recorded=recorded)
     )
     assert [d.subject for d in out.divergences] == [TICK_LEVEL_SUBJECT]
+
+
+def _action(kind: EnumLandingActionKind, subject: str) -> ModelLandingAction:
+    return ModelLandingAction.model_construct(kind=kind, subject=subject)
+
+
+def test_a_changed_global_action_order_diverges_even_when_each_subjects_order_holds() -> (
+    None
+):
+    a1 = _action(EnumLandingActionKind.RERUN, "acme/app#1")
+    a2 = _action(EnumLandingActionKind.MERGE, "acme/app#1")
+    b1 = _action(EnumLandingActionKind.RERUN, "acme/app#2")
+    recorded = SNAPSHOT.decision.model_copy(update={"actions": (a1, b1, a2)})
+    node = SNAPSHOT.decision.model_copy(update={"actions": (a1, a2, b1)})
+    out = HandlerPrLandingTickReducer().handle(
+        ModelTickReduceInput(decision=node, recorded=recorded)
+    )
+    assert out.equal is False
+    assert [d.subject for d in out.divergences] == [TICK_LEVEL_SUBJECT]
+
+
+def test_a_pull_request_owned_next_state_difference_names_that_pull_request() -> None:
+    state = SNAPSHOT.decision.next_state
+    record = ModelLandingPrRecord(pr="acme/app#7", awaiting_head="a" * 40)
+    recorded = SNAPSHOT.decision.model_copy(
+        update={"next_state": state.model_copy(update={"records": (record,)})}
+    )
+    node = SNAPSHOT.decision.model_copy(
+        update={
+            "next_state": state.model_copy(
+                update={"records": (record.model_copy(update={"awaiting_head": None}),)}
+            )
+        }
+    )
+    out = HandlerPrLandingTickReducer().handle(
+        ModelTickReduceInput(decision=node, recorded=recorded)
+    )
+    assert out.equal is False
+    assert "acme/app#7" in {d.subject for d in out.divergences}

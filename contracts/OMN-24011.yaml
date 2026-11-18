@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-24011
+title: The installer takes a unit's file text inline from the settings file
+summary: A file entry of a host net unit may carry its text inline as content instead of a source file name; the installer writes those bytes with the same value filling, serving restart check and sha256 pin, and refuses an entry that names both or neither.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24011-inline-unit-content
+  statement: node_host_installer_net_units installs a file entry's inline content byte for byte under the same render, serving restart and pin rules as a source file, and refuses an entry with both or neither of source and content.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a file entry that carries inline content is installed byte for byte with the same value filling, restart-rule check and fingerprint check as a separate file, and an entry naming both or neither is refused -- falsifier: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_overlay_file.py -q -p no:randomly --no-cov -k inline fails at the merge base"
+  - id: AC2
+    statement: "AC2: the typed document model refuses a file entry with neither or both of a source and content -- falsifier: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_overlay_file.py -q -p no:randomly --no-cov -k model_accepts_inline fails at the merge base"
+  - id: AC3
+    statement: "AC3: the settings repository holds the vllm-gpu0 unit with its template inline in overlay.yaml and no other file, and its digest pin equals the rendered bytes -- falsifier: python -m pytest tests/test_vllm_gpu0_unit_overlay.py -q fails when RESTART_POLICY is set to on-failure"
+  - id: AC4
+    statement: "AC4: integrated: on h201 a dry run of vllm-gpu0 from the merged installer code reads the inline overlay.yaml and reports Restart=always, gpu 0.83 and the pinned rendered digest -- falsifier: the dry run on h201 reports a different restart rule, share or digest, or refuses the document"
+evidence_requirements:
+- kind: tests
+  description: The overlay-file tests and the existing net unit installer tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_installer_net_units -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24011-ac1
+  description: 'AC1: the inline content tests pass at the head and fail at the merge base, where a file entry has no content field.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_overlay_file.py -q -p no:randomly --no-cov -k inline
+    cwd: .
+- id: dod-omn24011-ac2
+  description: 'AC2: the document model tests pass at the head; the test that a content-only entry is accepted fails at the merge base, where a file entry requires source.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_overlay_file.py -q -p no:randomly --no-cov -k "model_accepts_inline or model_refuses_file_with_neither or model_refuses_file_with_both"
+    cwd: .
+- id: dod-omn24011-ac3
+  description: 'AC3: the overlay-side test lives in the overlays repository (pull request OmniNode-ai/overlays#358); here the node tests that load a fixture document through the same model pass.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24011-ac4
+  description: 'hosted proxy for AC4: the golden chain test that installs an inline unit passes here; the dry run on h201 is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_overlay_file.py -q -p no:randomly --no-cov -k inline_content_install
+    cwd: .
+- id: dod-omn24011-integration-proof
+  description: the overlay-file tests run on a lab host at the pushed head; hosted CI cannot reach h201, so the dry run there is posted as a pull request comment naming the head and only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24011 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_net_units/test_host_net_units_overlay_file.py -q --no-cov -p no:randomly

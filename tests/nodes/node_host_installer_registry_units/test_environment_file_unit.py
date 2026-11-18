@@ -219,6 +219,7 @@ def test_an_install_without_the_lane_config_root_is_refused(tmp_path: Path) -> N
             expected_revision=revision,
             path_overrides={},
             ledger_host_name="h201",
+            workspace_config_root="",
         )
     )
     assert result.status == "failure"

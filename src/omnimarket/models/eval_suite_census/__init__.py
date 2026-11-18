@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Shared models of the code eval suite census (OMN-23883)."""
 
+from omnimarket.models.eval_suite_census.committed_suite import load_committed_suite
 from omnimarket.models.eval_suite_census.enum_suite_census_failure import (
     EnumSuiteCensusFailure,
 )
@@ -40,4 +41,5 @@ __all__ = [
     "ModelCodeEvalSuiteCheck",
     "ModelCodeEvalSuiteExclusion",
     "ModelCodeEvalSuiteTask",
+    "load_committed_suite",
 ]

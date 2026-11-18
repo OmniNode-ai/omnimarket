@@ -101,6 +101,14 @@ class GitTagCheck:
         return done.returncode == 0
 
 
+class StatvfsDiskFree:
+    """The free bytes of the volume holding a path, from ``os.statvfs`` (available, not total)."""
+
+    def free_bytes(self, path: str) -> int:
+        counts = os.statvfs(path)
+        return counts.f_bavail * counts.f_frsize
+
+
 class HttpLaneHealth:
     """The runtime's /health: version, the event bus environment and the runtime wiring component."""
 
@@ -126,5 +134,6 @@ __all__ = [
     "FilePinSource",
     "GitTagCheck",
     "HttpLaneHealth",
+    "StatvfsDiskFree",
     "SubprocessRefreshExecutor",
 ]

@@ -29,7 +29,11 @@
      in flight; any other message is late or unknown and changes nothing. Messages may be
      delivered any number of times (at-least-once).
    * The run closes once, on the leg where every task has its control verdict and every
-     sequence has ended. The contract's completion_bound ends a stalled row (no write for
+     sequence has ended. The close may end void (OMN-24173: a try still infrastructure-
+     unscorable after its retries, or more than a tenth of first tries unscorable for
+     infrastructure, or a revision change mid-run). Void is a function of the closed row, so
+     it is a label the one close step sets (any value) and a closed row never changes it: a
+     void close is the same single close, never a second one. The contract's completion_bound ends a stalled row (no write for
      CompletionBound ticks) with one abandoned close, without the close rule.
 
    Two modes (constant Timed). Timed = FALSE leaves time out: a nudge may expire any item in
@@ -44,7 +48,9 @@
    * PlaceBeforeControl: a try is placed without its control passing.
    * ConcurrentScores: a second score is sent while one is in flight.
    * NoNudgeExpiry: the nudge never expires an item in flight.
-   * BoundBelowTimeout: the completion bound is not above the try timeout (cfg only). *)
+   * BoundBelowTimeout: the completion bound is not above the try timeout (cfg only).
+   * CloseTwice: a closed run closes again (the void close step is not guarded by closed).
+   * VoidChangesAfterClose: a closed row's void label is rewritten. *)
 (* Seam: the model's actions against the plan's message-flow rows (plan revision 44, E1).
      Run       Init (the run leg's result: every control queued). Not expressed: reading the overlay,
                pinning the suite, admission and exclusion counts, size bands, the configuration
@@ -69,7 +75,8 @@ CONSTANTS Nil, Tasks, Models, Bound,
           TryDeadline, ScoreDeadline, CompletionBound,
           CloseWithTryPending, LateAnswerChangesRow, PlaceBeforeControl,
           ConcurrentScores, NoNudgeExpiry, BoundBelowTimeout, Timed, HostsFlap, NudgeLoss,
-          UnknownAnswerChangesRow, DropOrdinalGuard, ContinueAfterPass
+          UnknownAnswerChangesRow, DropOrdinalGuard, ContinueAfterPass,
+          CloseTwice, VoidChangesAfterClose
 
 \* The run leg raises a configuration error (dead letter, no row) when the timeouts plus
 \* slack do not fit under the completion bound, so a row exists only under this assumption.
@@ -83,7 +90,7 @@ VARIABLES ctrl,         \* task -> control slot
           since, tryAge, scoreAge,
           hostsUp, nudging,
           np,           \* sequence -> tries placed so far
-          closed, abandoned, closeCount,
+          closed, abandoned, closeCount, void,
           lastLate      \* ghost: the last step delivered a late or unknown message
 
 S == Tasks \X Models
@@ -91,11 +98,11 @@ TryIds == Tasks \X Models \X (1..Bound)
 CtlIds == Tasks \X {"ctl"} \X {0}
 Ids == TryIds \cup CtlIds
 
-rowVars == <<ctrl, slot, ord, vd, scoreFlight, np, closed, abandoned, closeCount>>
+rowVars == <<ctrl, slot, ord, vd, scoreFlight, np, closed, abandoned, closeCount, void>>
 envVars == <<hostsUp, nudging>>
 timeVars == <<since, tryAge, scoreAge>>
 vars == <<ctrl, slot, ord, vd, scoreFlight, np, since, tryAge, scoreAge,
-          hostsUp, nudging, closed, abandoned, closeCount, lastLate>>
+          hostsUp, nudging, closed, abandoned, closeCount, void, lastLate>>
 
 \* Try o of sequence s was placed (its unit was sent), derived from the row.
 Sent(s, o) == o < ord[s] \/ (o = ord[s] /\ slot[s] \in {"try", "scoreq", "score", "done"})
@@ -121,7 +128,7 @@ Init == /\ ctrl = [t \in Tasks |-> "queued"]
         /\ np = [s \in S |-> 0]
         /\ since = 0 /\ tryAge = [s \in S |-> 0] /\ scoreAge = 0
         /\ hostsUp = TRUE /\ nudging = TRUE
-        /\ closed = FALSE /\ abandoned = FALSE /\ closeCount = 0
+        /\ closed = FALSE /\ abandoned = FALSE /\ closeCount = 0 /\ void = FALSE
         /\ lastLate = FALSE
 
 \* A verdict v for try ordinal o of sequence s: record it, end the sequence on pass or at the
@@ -148,7 +155,7 @@ SendControl(t) ==
   /\ ctrl' = [ctrl EXCEPT ![t] = "inflight"]
   /\ scoreFlight' = <<t, "ctl", 0>>
   /\ since' = 0 /\ scoreAge' = 0 /\ lastLate' = FALSE
-  /\ UNCHANGED <<slot, ord, vd, tryAge, hostsUp, nudging, np, closed, abandoned, closeCount>>
+  /\ UNCHANGED <<slot, ord, vd, tryAge, hostsUp, nudging, np, closed, abandoned, closeCount, void>>
 
 SendTryScore(s) ==
   /\ ~closed /\ slot[s] = "scoreq"
@@ -156,7 +163,7 @@ SendTryScore(s) ==
   /\ slot' = [slot EXCEPT ![s] = "score"]
   /\ scoreFlight' = <<s[1], s[2], ord[s]>>
   /\ since' = 0 /\ scoreAge' = 0 /\ lastLate' = FALSE
-  /\ UNCHANGED <<ctrl, ord, vd, tryAge, hostsUp, nudging, np, closed, abandoned, closeCount>>
+  /\ UNCHANGED <<ctrl, ord, vd, tryAge, hostsUp, nudging, np, closed, abandoned, closeCount, void>>
 
 Place(s) ==
   /\ ~closed /\ slot[s] = "pending" /\ hostsUp
@@ -165,7 +172,7 @@ Place(s) ==
   /\ np' = [np EXCEPT ![s] = np[s] + 1]
   /\ tryAge' = [tryAge EXCEPT ![s] = 0]
   /\ since' = 0 /\ lastLate' = FALSE
-  /\ UNCHANGED <<ctrl, ord, vd, scoreFlight, scoreAge, hostsUp, nudging, closed, abandoned, closeCount>>
+  /\ UNCHANGED <<ctrl, ord, vd, scoreFlight, scoreAge, hostsUp, nudging, closed, abandoned, closeCount, void>>
 
 \* The host answers (or re-delivers an answer for) the unit of try o of sequence s, content k.
 \* The host may never answer (lost); an answer for a try not in flight, or never sent, is late or unknown.
@@ -176,12 +183,12 @@ DeliverUnit(s, o, k) ==
             /\ IF k = "scorable"
                  THEN /\ slot' = [slot EXCEPT ![s] = "scoreq"] /\ UNCHANGED <<ctrl, ord, vd>>
                  ELSE Record(s, o, "nopass")
-            /\ UNCHANGED <<scoreFlight, scoreAge, hostsUp, nudging, np, closed, abandoned, closeCount>>
+            /\ UNCHANGED <<scoreFlight, scoreAge, hostsUp, nudging, np, closed, abandoned, closeCount, void>>
        ELSE \* late or unknown: changes nothing
             /\ lastLate' = TRUE
             /\ IF ((LateAnswerChangesRow /\ Sent(s, o)) \/ (UnknownAnswerChangesRow /\ ~Sent(s, o))) /\ k = "unscorable"
                  THEN vd' = [vd EXCEPT ![s][o] = "nopass"] ELSE UNCHANGED vd
-            /\ UNCHANGED <<ctrl, slot, ord, scoreFlight, timeVars, hostsUp, nudging, np, closed, abandoned, closeCount>>
+            /\ UNCHANGED <<ctrl, slot, ord, scoreFlight, timeVars, hostsUp, nudging, np, closed, abandoned, closeCount, void>>
 
 \* E2 answers (or re-delivers an answer for) score id with verdict v.
 DeliverScore(id, v) ==
@@ -191,7 +198,7 @@ DeliverScore(id, v) ==
             /\ IF id[2] = "ctl"
                  THEN CtlResult(id[1], CtlOf(v))
                  ELSE Record(<<id[1], id[2]>>, id[3], VdOf(v))
-            /\ UNCHANGED <<tryAge, hostsUp, nudging, np, closed, abandoned, closeCount>>
+            /\ UNCHANGED <<tryAge, hostsUp, nudging, np, closed, abandoned, closeCount, void>>
        ELSE \* late or unknown: changes nothing
             /\ lastLate' = TRUE
             /\ IF (LateAnswerChangesRow /\ (IF id[2] = "ctl" THEN ctrl[id[1]] # "queued" ELSE ScoreSent(<<id[1], id[2]>>, id[3])))
@@ -200,7 +207,7 @@ DeliverScore(id, v) ==
                         THEN /\ ctrl' = [ctrl EXCEPT ![id[1]] = CtlOf(v)] /\ UNCHANGED vd
                         ELSE /\ vd' = [vd EXCEPT ![<<id[1], id[2]>>][id[3]] = VdOf(v)] /\ UNCHANGED ctrl
                  ELSE UNCHANGED <<ctrl, vd>>
-            /\ UNCHANGED <<slot, ord, scoreFlight, timeVars, hostsUp, nudging, np, closed, abandoned, closeCount>>
+            /\ UNCHANGED <<slot, ord, scoreFlight, timeVars, hostsUp, nudging, np, closed, abandoned, closeCount, void>>
 
 \* The nudge (tick) is processed before time moves on: expiry is enabled past a deadline.
 ExpireTry(s) ==
@@ -209,7 +216,7 @@ ExpireTry(s) ==
   /\ Record(s, ord[s], "nopass")
   /\ tryAge' = [tryAge EXCEPT ![s] = 0]
   /\ since' = 0 /\ lastLate' = FALSE
-  /\ UNCHANGED <<scoreFlight, scoreAge, hostsUp, nudging, np, closed, abandoned, closeCount>>
+  /\ UNCHANGED <<scoreFlight, scoreAge, hostsUp, nudging, np, closed, abandoned, closeCount, void>>
 
 ExpireScore ==
   /\ ~NoNudgeExpiry /\ nudging /\ ~closed
@@ -219,20 +226,27 @@ ExpireScore ==
        ELSE Record(<<scoreFlight[1], scoreFlight[2]>>, scoreFlight[3], "nopass")
   /\ scoreFlight' = Nil /\ scoreAge' = 0
   /\ since' = 0 /\ lastLate' = FALSE
-  /\ UNCHANGED <<tryAge, hostsUp, nudging, np, closed, abandoned, closeCount>>
+  /\ UNCHANGED <<tryAge, hostsUp, nudging, np, closed, abandoned, closeCount, void>>
 
+\* The close step: void is any value (a function of the closed row), set with the close and no later.
 Close ==
-  /\ ~closed /\ CanClose
-  /\ closed' = TRUE /\ closeCount' = closeCount + 1
+  /\ (CloseTwice \/ ~closed) /\ CanClose
+  /\ closed' = TRUE /\ closeCount' = closeCount + 1 /\ void' \in BOOLEAN
   /\ since' = 0 /\ lastLate' = FALSE
   /\ UNCHANGED <<ctrl, slot, ord, vd, scoreFlight, np, tryAge, scoreAge, hostsUp, nudging, abandoned>>
 
 \* The contract's completion_bound: a row with no write for CompletionBound ticks.
 Abandon ==
   /\ ~closed /\ (~Timed \/ since > CompletionBound)
-  /\ closed' = TRUE /\ abandoned' = TRUE /\ closeCount' = closeCount + 1
+  /\ closed' = TRUE /\ abandoned' = TRUE /\ closeCount' = closeCount + 1 /\ void' = FALSE
   /\ since' = 0 /\ lastLate' = FALSE
   /\ UNCHANGED <<ctrl, slot, ord, vd, scoreFlight, np, tryAge, scoreAge, hostsUp, nudging>>
+
+\* Mutant only: a closed row's void label is rewritten.
+ReVoid ==
+  /\ VoidChangesAfterClose /\ closed
+  /\ void' = ~void /\ lastLate' = FALSE
+  /\ UNCHANGED <<ctrl, slot, ord, vd, scoreFlight, np, tryAge, scoreAge, since, hostsUp, nudging, closed, abandoned, closeCount>>
 
 \* Work a leg dispatches before time moves on: a score to send, a try to place on a free host,
 \* a close the rule allows.
@@ -273,6 +287,7 @@ Next == \/ \E t \in Tasks : SendControl(t)
         \/ ExpireScore
         \/ Close
         \/ Abandon
+        \/ ReVoid
         \/ Tick
         \/ EnvHosts
         \/ EnvNudging
@@ -305,7 +320,7 @@ TypeOK ==
   /\ np \in [S -> 0..(Bound + 1)]
   /\ scoreAge \in 0..ScoreDeadline
   /\ hostsUp \in BOOLEAN /\ nudging \in BOOLEAN
-  /\ closed \in BOOLEAN /\ abandoned \in BOOLEAN /\ closeCount \in 0..2 /\ lastLate \in BOOLEAN
+  /\ closed \in BOOLEAN /\ abandoned \in BOOLEAN /\ closeCount \in 0..2 /\ void \in BOOLEAN /\ lastLate \in BOOLEAN
 
 \* The run closes only under the close rule, unless the completion bound abandoned it.
 CloseOnlyUnderRule == closed /\ ~abandoned => CloseRule
@@ -313,6 +328,9 @@ CloseOnlyUnderRule == closed /\ ~abandoned => CloseRule
 \* Exactly one close event is published, ever.
 ExactlyOneClose == /\ closeCount <= 1
                    /\ (closed <=> closeCount = 1)
+
+\* A void label sits only on a closed row (the run closes void or not, in the one close).
+VoidOnlyOnClose == void => closed /\ ~abandoned
 
 \* No try before its task's control reads pass.
 NoTryBeforeControl ==
@@ -348,6 +366,9 @@ VerdictsStable ==
 
 \* A closed row is frozen.
 ClosedRowFrozen == [][ closed => UNCHANGED rowVars ]_vars
+
+\* A closed row's void label never changes: a redelivered close changes nothing.
+VoidFrozen == [][ closed => void' = void ]_vars
 
 \* A late or unknown message changes no part of the row.
 LateNoEffect == [][ lastLate' => UNCHANGED rowVars ]_vars

@@ -1,0 +1,212 @@
+[
+ {
+  "excerpt": "(Use `node --trace-deprecation ...` to show where the warning was created)\nUnexpected HTTP response: 504\nWaiting 16 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T015"
+ },
+ {
+  "excerpt": "(Use `node --trace-deprecation ...` to show where the warning was created)\nUnexpected HTTP response: 504\nWaiting 18 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T018"
+ },
+ {
+  "excerpt": "Unexpected HTTP response: 504\nWaiting 16 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T036"
+ },
+ {
+  "excerpt": "(Use `node --trace-deprecation ...` to show where the warning was created)\nUnexpected HTTP response: 504\nWaiting 20 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T039"
+ },
+ {
+  "excerpt": "(Use `node --trace-deprecation ...` to show where the warning was created)\nUnexpected HTTP response: 504\nWaiting 12 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T043"
+ },
+ {
+  "excerpt": "Unexpected HTTP response: 504\nWaiting 18 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T044"
+ },
+ {
+  "excerpt": "(Use `node --trace-deprecation ...` to show where the warning was created)\nUnexpected HTTP response: 504\nWaiting 18 seconds before trying again\n##[error]Unexpected HTTP response: 504\nwith:",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T048"
+ },
+ {
+  "excerpt": "Unexpected HTTP response: 504\nWaiting 18 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T051"
+ },
+ {
+  "excerpt": "Unexpected HTTP response: 504\nWaiting 10 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T054"
+ },
+ {
+  "excerpt": "Unexpected HTTP response: 504\nWaiting 18 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T057"
+ },
+ {
+  "excerpt": "Unexpected HTTP response: 504\nWaiting 16 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T059"
+ },
+ {
+  "excerpt": "  PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib/pkgconfig\nUnexpected HTTP response: 504\nWaiting 16 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T063"
+ },
+ {
+  "excerpt": "(Use `node --trace-deprecation ...` to show where the warning was created)\nUnexpected HTTP response: 504\nWaiting 19 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T065"
+ },
+ {
+  "excerpt": "(Use `node --trace-deprecation ...` to show where the warning was created)\nUnexpected HTTP response: 504\nWaiting 18 seconds before trying again\n##[error]Unexpected HTTP response: 504\nwith:",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T069"
+ },
+ {
+  "excerpt": "  PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib/pkgconfig\nUnexpected HTTP response: 504\nWaiting 13 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T072"
+ },
+ {
+  "excerpt": "(Use `node --trace-deprecation ...` to show where the warning was created)\nUnexpected HTTP response: 504\nWaiting 17 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T073"
+ },
+ {
+  "excerpt": "Unexpected HTTP response: 504\nWaiting 19 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T080"
+ },
+ {
+  "excerpt": "Unexpected HTTP response: 504\nWaiting 10 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T089"
+ },
+ {
+  "excerpt": "Unexpected HTTP response: 504\nWaiting 20 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T138"
+ },
+ {
+  "excerpt": "(node:2868) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.\nUnexpected HTTP response: 504\nWaiting 13 seconds before trying again\n##[error]Unexpected HTTP response: 504\nshell: /usr/bin/bash -e {0}",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T141"
+ },
+ {
+  "excerpt": "Unexpected HTTP response: 504\nWaiting 10 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T142"
+ },
+ {
+  "excerpt": "(Use `node --trace-deprecation ...` to show where the warning was created)\nUnexpected HTTP response: 504\nWaiting 12 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T145"
+ },
+ {
+  "excerpt": "(Use `node --trace-deprecation ...` to show where the warning was created)\nUnexpected HTTP response: 504\nWaiting 11 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T148"
+ },
+ {
+  "excerpt": "Unexpected HTTP response: 504\nWaiting 12 seconds before trying again\n##[error]Unexpected HTTP response: 504\nPost job cleanup.",
+  "group": "runner_infra_consistent",
+  "hand_label": "runner-infra",
+  "id": "T153"
+ },
+ {
+  "excerpt": "(Use `node --trace-deprecation ...` to show where the warning was created)\nUnexpected HTTP response: 504\nWaiting 13 seconds before trying again\n##[error]Unexpected HTTP response: 504\nshell: /usr/bin/bash -e {0}",
+  "group": "hand_label_inconsistent",
+  "hand_label": "other",
+  "id": "T002"
+ },
+ {
+  "excerpt": "(Use `node --trace-deprecation ...` to show where the warning was created)\nUnexpected HTTP response: 504\nWaiting 15 seconds before trying again\n##[error]Unexpected HTTP response: 504\nshell: /usr/bin/bash -e {0}",
+  "group": "hand_label_inconsistent",
+  "hand_label": "other",
+  "id": "T014"
+ },
+ {
+  "excerpt": "(Use `node --trace-deprecation ...` to show where the warning was created)\nUnexpected HTTP response: 504\nWaiting 13 seconds before trying again\n##[error]Unexpected HTTP response: 504\nshell: /usr/bin/bash -e {0}",
+  "group": "hand_label_inconsistent",
+  "hand_label": "other",
+  "id": "T103"
+ },
+ {
+  "excerpt": "Unexpected HTTP response: 504\nWaiting 18 seconds before trying again\n##[error]Unable to download and extract CodeQL CLI: Unexpected HTTP response: 504\nDetails: Error: Unexpected HTTP response: 504\n    at /runner/work/_actions/github/codeql-action/2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2/lib/entry-points.js:82743:23",
+  "group": "retry_or_codeql_text_only",
+  "hand_label": "other",
+  "id": "T038"
+ },
+ {
+  "excerpt": "1b132d2e6d271fde1545db0f32ce788c933522d7\nUnexpected HTTP response: 504\nWaiting 14 seconds before trying again\n##[error]Unable to download and extract CodeQL CLI: Unexpected HTTP response: 504\nDetails: Error: Unexpected HTTP response: 504\n    at /runner/work/_actions/github/codeql-action/v4/lib/entry-points.js:114414:23",
+  "group": "retry_or_codeql_text_only",
+  "hand_label": "other",
+  "id": "T045"
+ },
+ {
+  "excerpt": "Unexpected HTTP response: 504\nWaiting 18 seconds before trying again\n##[error]Unable to download and extract CodeQL CLI: Unexpected HTTP response: 504\nDetails: Error: Unexpected HTTP response: 504\n    at /runner/work/_actions/github/codeql-action/v4/lib/entry-points.js:114414:23",
+  "group": "retry_or_codeql_text_only",
+  "hand_label": "other",
+  "id": "T102"
+ },
+ {
+  "excerpt": "  (OMN-17068). Do not add one.\n##[error]Process completed with exit code 1.\nPost job cleanup.",
+  "group": "other_unknown_reds",
+  "hand_label": "product",
+  "id": "T005"
+ },
+ {
+  "excerpt": " \tWITH meta AS (",
+  "group": "other_unknown_reds",
+  "hand_label": "other",
+  "id": "T012"
+ },
+ {
+  "excerpt": "pre-push set finished in 188s (rc=1, timeout 1800s)\n##[error]the pre-push set refused the sample push (rc=1): a controller worker's push would be refused\n##[error]Process completed with exit code 1.\nPost job cleanup.",
+  "group": "other_unknown_reds",
+  "hand_label": "pr-process",
+  "id": "T034"
+ },
+ {
+  "excerpt": "[notice] To update, run: pip install --upgrade pip\n##[error]DEPLOY GATE FAILED: PR touches runtime paths but no cited ticket has deploy DoD evidence. Runtime paths: ['src/omnimarket/nodes/node_friction_rollup_compute/tests/__init__.py', 'src/omnimarket/nodes/node_friction_rollup_compute/tests/test_parity_recorded_day.py', 'src/omnimarket/nodes/node_friction_rollup_tick_effect/__init__.py', 'src/omnimarket/nodes/node_friction_rollup_tick_effect/__main__.py', 'src/omnimarket/nodes/node_friction_rollup_tick_effect/contract.yaml', 'src/omnimarket/nodes/node_friction_rollup_tick_effect/handlers/__init__.py', 'src/omnimarket/nodes/node_friction_rollup_tick_effect/handlers/friction_rollup_tick_core.py', 'src/omnimarket/nodes/node_friction_rollup_tick_effect/handlers/friction_rollup_tick_io.py', 'src/omnimarket/nodes/node_friction_rollup_tick_effect/handlers/handler_friction_rollup_tick.py', 'sr",
+  "group": "other_unknown_reds",
+  "hand_label": "pr-process",
+  "id": "T101"
+ },
+ {
+  "excerpt": "redis-cli', 'rpk', 'ssh', 'valkey-cli', 'wget'])   OMN-22845 [dod-omn22845-deploy] REJECTED \u2014 no live-surface probe in command position \u2014 the check's exit status cannot depend on the state of the deployed system (commands found: ['grep']; expected one of: ['curl', 'docker', 'docker-compose', 'gh-api', 'httpie', 'kafkacat', 'kcat', 'kubectl', 'mongosh', 'mysql', 'nerdctl', 'onex', 'podman', 'psql', 'redis-cli', 'rpk', 'ssh', 'valkey-cli', 'wget'])   OMN-22845 [dod-omn22845-restore-missing-effects] REJECTED \u2014 no live-surface probe in command position \u2014 the check's exit status cannot depend on the state of the deployed system (commands found: ['cd', 'uv']; expected one of: ['curl', 'docker', 'docker-compose', 'gh-api', 'httpie', 'kafkacat', 'kcat', 'kubectl', 'mongosh', 'mysql', 'nerdctl', 'onex', 'podman', 'psql', 'redis-cli', 'rpk', 'ssh', 'valkey-cli', 'wget'])   OMN-22845 [dod-omn22845-",
+  "group": "other_unknown_reds",
+  "hand_label": "pr-process",
+  "id": "T123"
+ }
+]

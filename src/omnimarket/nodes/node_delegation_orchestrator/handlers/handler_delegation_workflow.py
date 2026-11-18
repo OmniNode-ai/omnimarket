@@ -1361,6 +1361,7 @@ def _build_model_inference_intent(
     route: str | None,
     provider: str | None,
     expected_credential_source: EnumCredentialSource,
+    task_type: str | None = None,
 ) -> ModelInferenceIntent:
     # OMN-12815: base_url carries the COMPLETE endpoint URL from the routing
     # authority (decision.endpoint_url); the inference effect posts it verbatim.
@@ -1424,6 +1425,13 @@ def _build_model_inference_intent(
     # auth-free backend, and that is the fail-open shape being removed.
     if "expected_credential_source" in model_fields:
         payload["expected_credential_source"] = expected_credential_source
+    # OMN-24039: stamp the task class so the inference effect resolves this call's
+    # time ceiling from the code budget overlay budget of that class. Guarded on
+    # the field existing, like its neighbours above: a core older than the
+    # release that carries it would raise on ``extra="forbid"``. The effect reads
+    # an intent that names no class against the overlay's own ``ceiling_s``.
+    if task_type is not None and "task_type" in model_fields:
+        payload["task_type"] = task_type
     intent = ModelInferenceIntent.model_validate(payload)
     # OMN-18201: the seam invariant, asserted at the only place that holds both
     # sides. A reference the routing decision named and the built intent does not
@@ -1650,6 +1658,7 @@ def _evaluate_compliance(
             expected_credential_source=expected_credential_source_for(
                 workflow.routing_decision
             ),
+            task_type=workflow.request.task_type,
         )
     ]
 
@@ -3093,6 +3102,7 @@ class HandlerDelegationWorkflow:
                 # derived from the decision rather than from the reference alone
                 # -- see expected_credential_source_for.
                 expected_credential_source=expected_credential_source_for(decision),
+                task_type=workflow.request.task_type,
             )
         ]
 

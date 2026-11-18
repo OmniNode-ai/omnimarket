@@ -1,0 +1,46 @@
+schema_version: 1.0.0
+ticket_id: OMN-23985
+title: A ceiling on how long one merged change may wait to run on dev, read by the floor's deploy-lag row
+summary: >-
+  The floor's lab:deploy_lag row judged each not-running merge only against a 1440-minute limit, so the 2026-11-12 stall (no merge after 07:06Z running for over five hours) read WORKING. The lab-state overlay model gains deploy_lag_ceiling_minutes (optional; an overlay without it loads as before) and read_deploy_lag marks a merge not ok when its wait is over that ceiling, with the note "over the N min ceiling". The first value, 150 minutes (ruling 2026-11-12T15:51:18Z, D12), is an overlay value in the overlays repository and lands after this change is running; no number is in code.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23985-deploy-lag-ceiling
+    statement: >-
+      A merge that is not running reads NOT WORKING on the deploy_lag row once its wait is over the overlay's ceiling, and still reads healthy at the ceiling or under it; an overlay without the ceiling key reads as before.
+    acceptance:
+      - id: AC1
+        statement: "AC1: a seeded oldest-not-running merge of 151 minutes reads NOT WORKING and red through the floor tick, and one of 149 minutes reads WORKING, with the ceiling taken from an overlay value -- falsifier: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_deploy_lag_ceiling_floor_simple.py -q --no-cov, which fails 2 of 6 tests with sources.py taken from origin/dev"
+      - id: AC2
+        statement: "AC2: an overlay without the ceiling key loads as None and the limit alone decides; a ceiling of 0 is refused -- falsifier: the two error tests in that file, which fail with the model taken from origin/dev"
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The ceiling test file (two golden tests, one of them through the floor tick, and three error chain tests) and the deploy-agent source tests that already read the deploy lag.
+    command: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_deploy_lag_ceiling_floor_simple.py tests/unit/nodes/node_floor_simple_effect/test_deploy_agent_source.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23985-ac1-ceiling
+    description: >-
+      The new test file and the existing deploy-agent source tests pass on the branch (18 pass). With sources.py restored to origin/dev 2 of the 6 new tests fail: the 151-minute merge reads WORKING and green through the floor tick, and the reader returns an ok subject for it. With the model also restored to origin/dev 5 of 6 fail, the overlay key being refused as an extra input.
+    source: manual
+    binds_ac:
+      - AC1
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_deploy_lag_ceiling_floor_simple.py tests/unit/nodes/node_floor_simple_effect/test_deploy_agent_source.py -q -n 0 --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn23985-integration-proof
+    description: >-
+      Run the two test files on a lab host at the pushed head. Hosted CI cannot place a lab job, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23985 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_deploy_lag_ceiling_floor_simple.py tests/unit/nodes/node_floor_simple_effect/test_deploy_agent_source.py -q -n 0 --no-cov

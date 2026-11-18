@@ -110,6 +110,10 @@ class World:
         # OMN-21146: every merged PR as GitHub holds it, including the ones
         # the watcher's window no longer does (see ``forget``).
         self.github_prs: dict[str, dict[str, Any]] = {}
+        # OMN-21146: repository files at a commit the gateway can read, keyed
+        # (repo, commit sha, path); a value of "UNREADABLE" makes the gateway
+        # raise for that file.
+        self.repo_files: dict[tuple[str, str, str], str] = {}
         self._hour = 0
 
     def clone(self, name: str) -> Path:
@@ -264,7 +268,7 @@ class World:
                 WorldGateway,
             )
 
-            gateway = WorldGateway(self.check_runs, self.github_prs)
+            gateway = WorldGateway(self.check_runs, self.github_prs, self.repo_files)
             monkeypatch.setattr(hd_mod, "_default_gateway_client", lambda: gateway)
 
 

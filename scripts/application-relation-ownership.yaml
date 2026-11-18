@@ -185,6 +185,15 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_alert_channel_liveness/migrations/0000_create_alert_channel_liveness_verdicts.sql
       access: write
       role: alert_channel_liveness
+    # One row per skill-started or skill-completed event, written by
+    # node_projection_skill_lifecycle in place of the omnibase_infra skill
+    # lifecycle consumer. TENANT data under row level security.
+    - name: skill_executions
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_skill_lifecycle/migrations/0001_create_skill_executions.sql
+      access: write
+      role: skill_executions
     # OMN-23865: newest host disk reading per host and class, and per host and volume.
     - name: host_disk_class
       database_ref: application
@@ -1218,12 +1227,33 @@ db_io:
       migration: docker/migrations/forward/114_create_code_eval_trial_state.sql
       access: read_write
       role: code_eval_trial_orchestrator_state
+    # OMN-24118: the durable per-deploy stored record of the branch deploy
+    # orchestrator, keyed by correlation_id. The CREATE lives in the
+    # omnibase_infra forward migration 116
+    # (docker/migrations/forward/116_create_branch_deploy_state.sql).
+    - name: branch_deploy_state
+      database_ref: application
+      schema: public
+      migration: docker/migrations/forward/116_create_branch_deploy_state.sql
+      access: read_write
+      role: branch_deploy_orchestrator_state
 
 database_objects:
   # OMN-23888: the trigger helper migration 114 creates for code_eval_trial_state.
   # The gate treats a function a migration creates, and one a trigger names, as
   # an application target needing exactly one owner; a table row does not cover it.
   - name: refresh_code_eval_trial_state_updated_at
+    kind: function
+    database_ref: application
+    schema: public
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    function_signature: ()
+    writers: []
+  # OMN-24118: the trigger helper migration 116 creates for branch_deploy_state.
+  # The gate treats a function a migration creates, and one a trigger names, as
+  # an application target needing exactly one owner; a table row does not cover it.
+  - name: refresh_branch_deploy_state_updated_at
     kind: function
     database_ref: application
     schema: public

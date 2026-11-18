@@ -1,0 +1,24 @@
+name: node_lab_fill_fire_outcome_compute
+version: "0.1.0"
+description: "Lab-fill fire outcome judge: the pure receipt, alert and published file of one fire"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_lab_fill_fire_outcome_compute: "omnimarket.nodes.node_lab_fill_fire_outcome_compute"
+capabilities:
+  standalone: true
+  # false until the lab-fill launcher calls the handler: the two-pass caller
+  # drives it in process, and runtime auto-wiring prepares it as SKIPPED.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "lab-fill", "morning-workflows", "pure"]
+pack: "operator_tooling"
+display_name: "Lab Fill Fire Outcome"
+node_role: "compute"

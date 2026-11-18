@@ -64,12 +64,198 @@ effects_held:
     ticket: OMN-1
     settle_seconds: 20
     brief_dir: .onex_state/lab-alarm/escalation-briefs
+# The broker-listener condition (OMN-23933). Needed by the broker-listener verbs only; the other verbs run without
+# it. The timeout is the alarm script's own 10 seconds, held here as data.
+broker_listener:
+  bootstrap_servers: example-host:9092
+  timeout_seconds: 10
+# The dev-tag heartbeat condition (OMN-24400). Needed by the dev-tag-heartbeat verbs only; the other verbs run without it.
+# The deploy agent re-reads every followed repository each minute and publishes a beat every 15 minutes, so the alarm script's
+# 30 minute bound (two publish periods) is held here as data. A repository alarms only after persist_runs consecutive
+# breaching runs: no single-run alarm.
+dev_tag_heartbeat:
+  agent_url: http://example-host:8098
+  endpoint_path: /dev-tag-heartbeat
+  repositories: [examplepkg]
+  max_age_seconds: 1800
+  timeout_seconds: 10
+  persistence:
+    persist_runs: 3
+    streak_path: .onex_state/lab-alarm/dev-tag-heartbeat-streaks.json
+# The delegation chain canary condition (OMN-24400). Needed by the delegation-chain-canary verbs only. The newest completed run of
+# the workflow decides, in both directions; the alarm script's 180 minute bound (one two-hour period plus slack) is held here as data.
+delegation_chain_canary:
+  repository: example-org/example-repo
+  workflow: example-canary.yml
+  branch: main
+  events: [schedule]
+  max_age_seconds: 10800
+  per_page: 20
+  timeout_seconds: 45
+  persistence:
+    persist_runs: 3
+    streak_path: .onex_state/lab-alarm/delegation-chain-canary-streaks.json
+# The work-ledger projection condition (OMN-24400). Needed by the work-ledger-projection-stale verbs only. The alarm script's 30 minute
+# bound and 256 KiB tail are held here as data; projection_window_seconds is how far back the projection is asked for its newest row.
+work_ledger_projection_stale:
+  ledger_path: .onex_state/example-ledger.md
+  tail_bytes: 262144
+  row_types: [CLAIM, STATUS, TERMINAL]
+  projection_name: example.work_ledger_rows
+  max_lag_seconds: 1800
+  projection_window_seconds: 86400
+  timeout_seconds: 30
+  persistence:
+    persist_runs: 3
+    streak_path: .onex_state/lab-alarm/work-ledger-projection-streaks.json
 # The container-restarts condition (OMN-23934). Needed by the container-restarts verbs only; the other verbs run without it.
-# lane_manifest and census_lane are the old alarm script's keys of the same names: each service of the census lane that declares a
-# restart_bound is read, and a restart count above its own bound is an ALARM. docker_command reaches docker where the lane runs
-# (ssh to the lab host), and the 30 second bound on one docker inspect is the alarm script's own, held here as data.
+# Each service of census_lane that declares a restart_bound in lane_manifest is read, and a restart count above its own bound
+# is an ALARM. docker_command reaches docker where the lane runs (ssh to the lab host).
 container_restarts:
   lane_manifest: ${ONEX_WORKSPACE_CONFIG_ROOT}/config/lab/lane-census/lane-manifest.yaml
   census_lane: dev
   docker_command: [ssh, -o, BatchMode=yes, -o, ConnectTimeout=10, example-user@example-host, docker]
   timeout_seconds: 30
+# The lane census conditions (OMN-24425): lane-drift and container-unhealthy read one census snapshot. Needed by those verbs only.
+# The old script's 120 minute age bound and 15 second command bound are held here as data. Declaring snapshot_command replaces the file read:
+# snapshot_command: [example-census-snapshot]
+lane_census:
+  snapshot_path: .onex_state/lab-alarm/lane-census.json
+  max_age_seconds: 7200
+  timeout_seconds: 15
+# The lab-pass receipt condition (OMN-24425). Needed by the lab-pass-receipt verbs only. The sha the lane runs comes from the deploy
+# agent (ready_url is tried when it answers none); the receipt is the artifact lab-pass-receipt-<lane>-<sha> of the workflow's runs at that sha.
+lab_pass_receipt:
+  repository: example-org/example-repo
+  workflow: example-rebuild.yml
+  lane: example-receipt-lane
+  agent_url: http://example-host:8098
+  ready_url: http://example-host:8085/ready
+  runs_limit: 20
+  max_archive_bytes: 262144
+  timeout_seconds: 30
+# The stale-indeterminate condition (OMN-24425): a watched condition whose last after_runs runs all read INDETERMINATE alarms.
+stale_indeterminate:
+  watched:
+    - {condition: dev_tag_heartbeat, record_path: .onex_state/lab-alarm/verdicts.jsonl}
+    - {condition: consumer_group_lag, record_path: .onex_state/lab-alarm/broker-lag-runs.jsonl}
+  after_runs: 6
+  tail_bytes: 262144
+# Where the journaled verbs append each finished run, for the stale-indeterminate verb to read.
+verdict_record:
+  path: .onex_state/lab-alarm/verdicts.jsonl
+# One schedule per condition (OMN-24400), keyed by the verb its unit runs; the schedule block above stays the broker lag's.
+# Each has its own unit name and launchd label (two schedules never share one) and logs under its verb.
+condition_schedules:
+  dev-tag-heartbeat:
+    unit_name: example-lab-alarm-dev-tag-heartbeat
+    launchd_label: example.lab-alarm-dev-tag-heartbeat
+    state_directory: .onex_state/lab-alarm
+    interval_seconds: 600
+    timeout_seconds: 120
+    hosts:
+      - name: example-mac
+        scheduler: launchd
+        venv: examplepkg/.venv
+        environment:
+          EXAMPLE_SETTING: $OMNI_HOME/example
+      - name: example-linux
+        scheduler: systemd-user
+        venv: examplepkg/.venv
+        environment: {}
+  delegation-chain-canary:
+    unit_name: example-lab-alarm-delegation-chain-canary
+    launchd_label: example.lab-alarm-delegation-chain-canary
+    state_directory: .onex_state/lab-alarm
+    interval_seconds: 900
+    timeout_seconds: 120
+    hosts:
+      - name: example-mac
+        scheduler: launchd
+        venv: examplepkg/.venv
+        environment:
+          EXAMPLE_SETTING: $OMNI_HOME/example
+      - name: example-linux
+        scheduler: systemd-user
+        venv: examplepkg/.venv
+        environment: {}
+  work-ledger-projection-stale:
+    unit_name: example-lab-alarm-work-ledger-projection-stale
+    launchd_label: example.lab-alarm-work-ledger-projection-stale
+    state_directory: .onex_state/lab-alarm
+    interval_seconds: 900
+    timeout_seconds: 120
+    hosts:
+      - name: example-mac
+        scheduler: launchd
+        venv: examplepkg/.venv
+        environment:
+          EXAMPLE_SETTING: $OMNI_HOME/example
+      - name: example-linux
+        scheduler: systemd-user
+        venv: examplepkg/.venv
+        environment: {}
+  lane-drift:
+    unit_name: example-lab-alarm-lane-drift
+    launchd_label: example.lab-alarm-lane-drift
+    state_directory: .onex_state/lab-alarm
+    interval_seconds: 900
+    timeout_seconds: 120
+    hosts:
+      - name: example-mac
+        scheduler: launchd
+        venv: examplepkg/.venv
+        environment:
+          EXAMPLE_SETTING: $OMNI_HOME/example
+      - name: example-linux
+        scheduler: systemd-user
+        venv: examplepkg/.venv
+        environment: {}
+  container-unhealthy:
+    unit_name: example-lab-alarm-container-unhealthy
+    launchd_label: example.lab-alarm-container-unhealthy
+    state_directory: .onex_state/lab-alarm
+    interval_seconds: 900
+    timeout_seconds: 120
+    hosts:
+      - name: example-mac
+        scheduler: launchd
+        venv: examplepkg/.venv
+        environment:
+          EXAMPLE_SETTING: $OMNI_HOME/example
+      - name: example-linux
+        scheduler: systemd-user
+        venv: examplepkg/.venv
+        environment: {}
+  lab-pass-receipt:
+    unit_name: example-lab-alarm-lab-pass-receipt
+    launchd_label: example.lab-alarm-lab-pass-receipt
+    state_directory: .onex_state/lab-alarm
+    interval_seconds: 900
+    timeout_seconds: 120
+    hosts:
+      - name: example-mac
+        scheduler: launchd
+        venv: examplepkg/.venv
+        environment:
+          EXAMPLE_SETTING: $OMNI_HOME/example
+      - name: example-linux
+        scheduler: systemd-user
+        venv: examplepkg/.venv
+        environment: {}
+  stale-indeterminate:
+    unit_name: example-lab-alarm-stale-indeterminate
+    launchd_label: example.lab-alarm-stale-indeterminate
+    state_directory: .onex_state/lab-alarm
+    interval_seconds: 1800
+    timeout_seconds: 120
+    hosts:
+      - name: example-mac
+        scheduler: launchd
+        venv: examplepkg/.venv
+        environment:
+          EXAMPLE_SETTING: $OMNI_HOME/example
+      - name: example-linux
+        scheduler: systemd-user
+        venv: examplepkg/.venv
+        environment: {}

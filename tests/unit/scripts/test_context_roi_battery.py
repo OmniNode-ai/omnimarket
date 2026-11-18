@@ -24,8 +24,8 @@ from typing import Any
 
 import pytest
 
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_arm import (
-    EnumArmLabel,
+from omnimarket.models.model_factor_matrix import (
+    build_canonical_factor_matrix,
 )
 from omnimarket.nodes.node_context_roi_runner.models.model_context_roi_run_request import (
     ModelContextRoiRunRequest,
@@ -109,7 +109,7 @@ def test_e1_e6_difficulty_ladder_is_the_default_task_battery(battery: Any) -> No
 def test_arms_come_from_the_canonical_seven_arm_matrix(battery: Any) -> None:
     arms = battery.build_arms()
     labels = [a.label for a in arms]
-    assert labels == [member.value for member in EnumArmLabel]
+    assert labels == [arm.label.value for arm in build_canonical_factor_matrix()]
     # off baseline present, negative control present.
     assert "off" in labels
     assert "full_guidance_negative_control" in labels

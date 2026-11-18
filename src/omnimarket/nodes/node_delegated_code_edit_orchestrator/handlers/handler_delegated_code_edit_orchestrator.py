@@ -70,9 +70,16 @@ import posixpath
 import re
 import shlex
 import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
+from omnimarket.handlers.code_edit_ports_from_overlay import (
+    build_code_edit_ports_from_overlay,
+)
+from omnimarket.models.model_code_edit_ports_overlay import (
+    CODE_EDIT_PORTS_OVERLAY_ID,
+)
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.turn_protocol import (
     RESPONSE_CONTRACT,
     TOOL_SCHEMAS,
@@ -194,6 +201,16 @@ def relevant_first(
         return any(path.startswith(anchor + "/") for anchor in anchors)
 
     return [p for p in paths if near(p)] + [p for p in paths if not near(p)]
+
+
+def _turn_revision(replies: Sequence[ModelTurnReply]) -> str:
+    """The one model revision every delegate turn of the loop reported, else empty (OMN-24173).
+
+    A turn that reported none, or two turns that reported different ones, leave the try with no
+    single revision: the trial driver reads an empty revision as not observed.
+    """
+    seen = {reply.model_revision for reply in replies if reply.run_id}
+    return seen.pop() if len(seen) == 1 else ""
 
 
 def _cap(text: str, limit: int = MAX_OBSERVATION_BYTES) -> str:
@@ -372,6 +389,8 @@ class _State:
     resumes: int = 0
     read_only_streak: int = 0
     empty_finishes: int = 0
+    loop_started: float = 0.0
+    turn_seconds: list[float] = field(default_factory=list)
 
     def record_good(self, turn: int) -> None:
         """Snapshot the history boundary after a received reply was processed."""
@@ -389,18 +408,30 @@ class _TerminalError(Exception):
 class HandlerDelegatedCodeEditOrchestrator:
     """ORCHESTRATOR: sequences the loop's turns through injected ports."""
 
-    def __init__(self, ports: ProtocolDelegatedCodeEditPorts | None = None) -> None:
+    def __init__(
+        self,
+        ports: ProtocolDelegatedCodeEditPorts | None = None,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         # Optional so the handler constructs at boot from defaults alone; a run
         # without bound ports is refused rather than half-wired.
         self._bound = ports
+        self._clock = clock
 
     @property
     def _ports(self) -> ProtocolDelegatedCodeEditPorts:
         if self._bound is None:
-            raise RuntimeError(
-                "no loop ports are bound; `onex code-edit run` binds onex "
-                "delegate, the worktree and the declared checks"
-            )
+            ports = build_code_edit_ports_from_overlay()
+            if ports is None:
+                raise RuntimeError(
+                    "no loop ports are bound; the node's ports overlay "
+                    f"({CODE_EDIT_PORTS_OVERLAY_ID}) is not configured, and "
+                    "`onex code-edit run` binds onex delegate, the worktree "
+                    "and the declared checks"
+                )
+            self._bound = ports
+            return ports
         return self._bound
 
     @property
@@ -426,6 +457,7 @@ class HandlerDelegatedCodeEditOrchestrator:
         prior = self._resume_receipt(request) if resume else None
         self._ports.claim_loop_receipt(loop_run_id, resume=resume)
         state = self._seed(prior) if prior is not None else _State()
+        state.loop_started = self._clock()
         status = EnumCodeEditStatus.INFRA_ERROR
         detail = ""
         manifest: tuple[tuple[str, int], ...] = ()
@@ -480,8 +512,12 @@ class HandlerDelegatedCodeEditOrchestrator:
             local_tokens_in=sum(r.tokens_in for r in state.replies),
             local_tokens_out=sum(r.tokens_out for r in state.replies),
             wall_ms=int((time.monotonic() - started) * 1000),
+            model_revision=_turn_revision(state.replies),
             summary=state.summary[:1000],
             detail=bound_error(detail, 300),
+            terminal_failure_cause=(
+                None if status == EnumCodeEditStatus.ACCEPTED else status.value
+            ),
         )
         self._ports.write_loop_receipt(
             loop_run_id,
@@ -568,6 +604,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                     run_id=cast(str, turn["run_id"]),
                     ok=cast(bool, turn["ok"]),
                     model=cast(str, turn["model"]),
+                    model_revision=cast(str, turn.get("model_revision", "")),
                     invalid_reason=cast(str, turn["invalid_reason"]),
                     tokens_in=cast(int, turn.get("tokens_in", 0)),
                     tokens_out=cast(int, turn.get("tokens_out", 0)),
@@ -680,7 +717,13 @@ class HandlerDelegatedCodeEditOrchestrator:
         state.paths = tuple(path for path, _ in manifest)
         index = relevant_first(request, [path for path, _ in manifest])
         failed_delegates = 0
+        wall_stopped = False
         for turn in range(start_turn, request.max_turns + 1):
+            if request.wall_budget_seconds is not None and state.turn_seconds:
+                elapsed = self._clock() - state.loop_started
+                if elapsed + max(state.turn_seconds) > request.wall_budget_seconds:
+                    wall_stopped = True
+                    break
             prompt = self._prompt(
                 request,
                 index,
@@ -689,6 +732,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                 turn,
                 reads_paused=state.read_only_streak >= MAX_READ_ONLY_TURNS,
             )
+            turn_started = self._clock()
             try:
                 reply = self._ports.delegate(request, prompt, RESPONSE_CONTRACT, turn)
             except DelegatePinViolationError as exc:
@@ -696,6 +740,8 @@ class HandlerDelegatedCodeEditOrchestrator:
                 raise _TerminalError(
                     EnumCodeEditStatus.DELEGATE_FAILED, bound_error(str(exc))
                 ) from exc
+            finally:
+                state.turn_seconds.append(self._clock() - turn_started)
             if not reply.run_id and (reply.ok or reply.raw_text):
                 # Model output the receipt cannot name by its `onex delegate`
                 # run is a model call outside the delegation path (AC2 of
@@ -707,6 +753,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                     tokens_in=reply.tokens_in,
                     tokens_out=reply.tokens_out,
                     model=reply.model,
+                    model_revision=reply.model_revision,
                 )
             state.replies.append(reply)
             record: dict[str, object] = {
@@ -714,6 +761,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                 "run_id": reply.run_id,
                 "ok": reply.ok,
                 "model": reply.model,
+                "model_revision": reply.model_revision,
                 "tokens_in": reply.tokens_in,
                 "tokens_out": reply.tokens_out,
                 "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
@@ -787,18 +835,23 @@ class HandlerDelegatedCodeEditOrchestrator:
                     self._progress_or_stop(request, checks, state)
             finally:
                 state.record_good(turn)
+        n = len(state.turn_seconds)
         if not self._ports.diff(request).strip():
-            raise _TerminalError(
-                EnumCodeEditStatus.NO_CHANGE,
-                f"the turn cap ({request.max_turns}) was reached with no file changed",
+            detail = (
+                f"the wall budget ({request.wall_budget_seconds} s) was reached after {n} turns with no file changed"
+                if wall_stopped
+                else f"the turn cap ({request.max_turns}) was reached with no file changed"
             )
+            raise _TerminalError(EnumCodeEditStatus.NO_CHANGE, detail)
         checks = self._run_checks(request, state)
         if all(c.status == "passed" for c in checks):
             return EnumCodeEditStatus.ACCEPTED
-        raise _TerminalError(
-            EnumCodeEditStatus.BUDGET_EXHAUSTED,
-            f"the turn cap ({request.max_turns}) was reached with checks failing",
+        detail = (
+            f"the wall budget ({request.wall_budget_seconds} s) was reached after {n} turns with checks failing"
+            if wall_stopped
+            else f"the turn cap ({request.max_turns}) was reached with checks failing"
         )
+        raise _TerminalError(EnumCodeEditStatus.BUDGET_EXHAUSTED, detail)
 
     @staticmethod
     def _prompt(

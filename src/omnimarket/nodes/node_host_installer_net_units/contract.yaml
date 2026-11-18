@@ -8,11 +8,14 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >-
   Install, inspect and remove the root-owned files of a Linux pool host that a lane would otherwise install by hand:
-  a systemd system service with its script, and sshd drop-in files. The units are declared as data in an overlay
+  a systemd system service with its script, sshd drop-in files, and a resource-limited systemd system slice. The units
+  are declared as data in an overlay
   (`units.yaml` beside the payload files), never in this node: each declares the hosts it may install on, its
   destinations, modes and the sha256 its rendered bytes must have, and this node installs the bytes unchanged, writes
   nothing when the installed bytes and mode already match, validates sshd with `sshd -t` after placing a drop-in and
-  restores the previous file when the check fails, and reloads sshd (never restarts it). A payload that is rendered
+  restores the previous file when the check fails, and reloads sshd (never restarts it). A systemd unit may also
+  declare drop-in files beside its unit file: the kind's `dropin_roots`, `dropin_dir_suffix` and `dropin_suffix`
+  allow exactly the files inside that unit's own `<service>.d` directory. A payload that is rendered
   from the host takes the interface that carries the lowest-metric IPv4 default route. Any host that is not Linux is
   refused with a typed reason.
 input_model:
@@ -30,7 +33,9 @@ entrypoint:
 execution:
   deterministic: false
   side_effects: true
-# The overlay file this node reads: `<overlay_root>/units.yaml`, schema `host_net_units.v1`.
+# The overlay file this node reads: `<overlay_root>/<units_file>`, schema `host_net_units.v1`. A request that names no `units_file`
+# reads `units_file` below; the overlays repository names `overlay.yaml` so that its ci loads the document through
+# ModelNetUnitsOverlay. The whole document is validated through that model before a unit is looked up.
 overlay:
   units_file: units.yaml
   schema: host_net_units.v1
@@ -38,17 +43,47 @@ overlay:
 # installer write anywhere else.
 unit_kinds:
   systemd-system-service:
+    dropin_roots: [/etc/systemd/system/]
+    dropin_dir_suffix: .d
+    dropin_suffix: .conf
     destination_roots: [/usr/local/sbin/, /etc/systemd/system/]
     needs_service: true
   sshd-dropin:
     destination_roots: [/etc/ssh/sshd_config.d/]
     destination_suffix: .conf
     needs_service: false
+  systemd-system-slice:
+    destination_roots: [/etc/systemd/system/]
+    destination_suffix: .slice
+    needs_service: false
+    needs_slice: true
 # `render: interface` fills this placeholder with the interface that carries the lowest-metric IPv4 default route
 # (`ip -4 route show default`), which must also carry an IPv4 address (`ip -4 -o addr show dev <it>`).
 render:
   interface:
     placeholder: __INTERFACE__
+  # `render: values` fills every placeholder of the payload (`__NAME__`) from the entry's `values` map; a placeholder with
+  # no value, or a value with no placeholder, is refused. `gpu_budget_placeholder` is the one placeholder that is computed:
+  # from the unit's `gpu_budget` measurements (see `serving_unit`), never typed.
+  values:
+    placeholder_pattern: "__[A-Z0-9_]+__"
+    gpu_budget_placeholder: __GPU_MEMORY_UTILIZATION__
+# A unit that declares `serving: true` keeps a model server up. Its rendered unit file must restart on any exit while the
+# unit is enabled (an engine that exits 0 after an out-of-memory error is not restarted by `on-failure`), so a `Restart=`
+# line outside `restart_policies` is refused before anything is written. The GPU fraction is computed from the measured
+# resident sizes of the engine and of every process that shares the card; the result must still hold one full context of
+# KV cache.
+serving_unit:
+  restart_policies: [always]
+  gpu_fraction_decimals: 2
+# A `systemd-system-slice` unit limits a pool of units: after its file is written and the slice started, the limits are
+# read back from systemd (`read_properties`, through `systemctl show`); a property in `bounded_required` that still
+# reads `unbounded_value`, or one in `zero_required` that is not 0, fails the install: the limits must actually hold.
+slice:
+  read_properties: [MemoryMax, MemorySwapMax, CPUQuotaPerSecUSec, TasksMax]
+  unbounded_value: infinity
+  bounded_required: [MemoryMax, CPUQuotaPerSecUSec]
+  zero_required: [MemorySwapMax]
 sshd:
   binary: /usr/sbin/sshd
   services: [ssh.service, sshd.service]

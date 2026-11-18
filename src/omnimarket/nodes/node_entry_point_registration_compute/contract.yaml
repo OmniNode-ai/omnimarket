@@ -1,0 +1,122 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Entry Point Registration Compute
+# Direct invocation only: no event bus or terminal event.
+#
+# The one reviewed list of node directories that may have no entry point in pyproject.toml. It is the
+# `config.reviewed_unregistered_nodes` section below, read by this node's handler. node-drift-gate (scripts/
+# validate_node_drift.py) and the node inventory test (tests/test_market_node_runtime_dogfood.py) both ask this
+# node, so the two cannot disagree about a directory. Each entry carries the reason it has no entry point. A
+# lifecycle of experimental or deprecated does not excuse a node on its own: add it here, reviewed.
+name: "node_entry_point_registration_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  Judges whether one node directory is acceptable for the entry-point check: it is registered in
+  pyproject.toml, or it is named in the reviewed list of nodes that may go without an entry point (each with its
+  reason). Pure: it reads the entry-point names it is given and the list in this contract, and writes nothing.
+input_model:
+  name: "ModelEntryPointRegistrationRequest"
+  module: "omnimarket.nodes.node_entry_point_registration_compute.models.model_entry_point_registration"
+  description: "One node directory name and the registered entry-point names."
+output_model:
+  name: "ModelEntryPointRegistrationVerdict"
+  module: "omnimarket.nodes.node_entry_point_registration_compute.models.model_entry_point_registration"
+  description: "Whether the node is registered, reviewed-unregistered (with its reason), or refused."
+handler:
+  module: "omnimarket.nodes.node_entry_point_registration_compute.handlers.handler_entry_point_registration"
+  class: "HandlerEntryPointRegistration"
+  input_model: "omnimarket.nodes.node_entry_point_registration_compute.models.model_entry_point_registration.ModelEntryPointRegistrationRequest"
+  output_model: "omnimarket.nodes.node_entry_point_registration_compute.models.model_entry_point_registration.ModelEntryPointRegistrationVerdict"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_entry_point_registration_compute.handlers.handler_entry_point_registration:HandlerEntryPointRegistration"
+  handlers:
+    - operation: "judge_registration"
+      handler:
+        name: "HandlerEntryPointRegistration"
+        module: "omnimarket.nodes.node_entry_point_registration_compute.handlers.handler_entry_point_registration"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation of the handler by node-drift-gate and the node inventory test."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: "Entry Point Registration Compute - pure policy with no external transport."
+  author: "OmniNode Team"
+  created: "2026-11-14"
+  tags: ['compute', 'entry-point-registration', 'OMN-24354']
+  related_tickets: ['OMN-24354']
+config:
+  reviewed_unregistered_nodes:
+    - node: "node_auto_merge_effect"
+      reason: "no entry point; listed in the inventory test before this file existed"
+    - node: "node_captured_secret_resolve_effect"
+      reason: "OMN-20926: the captured secret resolver is called in-process by a consumer that holds a captured record, with a store built from the consumer's own identity; it returns the value as a SecretStr, publishes nothing and subscribes to no topic, so it has no entry point."
+    - node: "node_dev_seed_effect"
+      reason: "OMN-19970: the dev seed runs from `onex seed` against the store or broker it names; it publishes fixture terminals but subscribes to no topic and has no entry point."
+    - node: "node_factory_floor_unresolved_effect"
+      reason: "OMN-23606: the factory floor unresolved rows effect runs as a step of the floor publisher through its own `python -m` module, about every six hours; it publishes nothing and subscribes to no topic, so it has no entry point."
+    - node: "node_lab_daemon_sync_effect"
+      reason: "OMN-19998: the lab daemon sync effect installs on the host's own filesystem, so a host timer runs it with python -m; it publishes events but subscribes to no topic and has no entry point."
+    - node: "node_lab_disk_hygiene_effect"
+      reason: "OMN-20712: hosted from the operator tooling repository, whose copy is still registered; called in process by its host scheduler, so it subscribes to no topic and has no entry point until the registration hand-over (nodes-to-market plan step B)."
+    - node: "node_lab_fill_fire_outcome_compute"
+      reason: "OMN-24109: the lab-fill fire judge is called in process by the lab-fill launcher effect and declares no topic; the launcher effect is run by the Mac lab-fill tick with python -m, which is its external trigger, and registers no runtime profile or broker route here. Neither has an entry point."
+    - node: "node_lab_fill_launcher_effect"
+      reason: "OMN-24109: the lab-fill fire judge is called in process by the lab-fill launcher effect and declares no topic; the launcher effect is run by the Mac lab-fill tick with python -m, which is its external trigger, and registers no runtime profile or broker route here. Neither has an entry point."
+    - node: "node_lab_secret_store_override_effect"
+      reason: "OMN-17427: the lab secret-store override edits an ephemeral render copy on the caller's own filesystem, so the lab apply script runs it in process from its console script; it subscribes to no topic and has no entry point."
+    - node: "node_lane_ctx_ledger_dedupe_effect"
+      reason: "OMN-23297: the lane context ledger dedupe links files on the host's own filesystem, so the lab daemon sync's host tick runs it with python -m; it publishes events but subscribes to no topic and has no entry point."
+    - node: "node_legacy_worktree_audit_effect"
+      reason: "OMN-17427: the legacy worktree audit reads the host's own worktrees, so its console script runs it from the command line; it subscribes to no topic and has no entry point."
+    - node: "node_local_alert_compute"
+      reason: "OMN-19988: the local alert compute is called in process by the local environment projection on every report it stores; it subscribes to no topic and publishes none, so it has no entry point."
+    - node: "node_local_alert_transition_compute"
+      reason: "OMN-19991: the local alert transition compute is called in process by the local environment writer around each write it makes; it subscribes to no topic, so it has no entry point."
+    - node: "node_local_secret_store_effect"
+      reason: "OMN-19985: the local secret store runs from `onex secret set` / `onex secret delete`; it returns credential events for the CLI shim to fold and subscribes to no topic, so it has no entry point."
+    - node: "node_merge_sweep_auto_merge_arm_effect"
+      reason: "no entry point; listed in the inventory test before this file existed"
+    - node: "node_merge_sweep_triage_orchestrator"
+      reason: "no entry point; listed in the inventory test before this file existed"
+    - node: "node_model_setup_effect"
+      reason: "OMN-20817: the model setup effect runs from `onex models`; it returns its status and test results to the CLI shim and subscribes to no topic, so it has no entry point."
+    - node: "node_pr_lifecycle_triage_compute"
+      reason: "OMN-24121: the PR lifecycle triage compute is called in process by the PR lifecycle orchestrator since its inventory subscription was removed, and the seam field diff compute and its check effect run from the merge check's own command line; none subscribes to a command topic with a terminal event, so none has an entry point."
+    - node: "node_rsd_b1_projection_binding_validate_compute"
+      reason: "B1 keeps its historical-map comparison private to offline evidence verification; the inventory surface has no live route or entry point."
+    - node: "node_rsd_target_delivery_artifact_manifest_v2_validate_compute"
+      reason: "B2 only revalidates supplied signed evidence; it has no live route."
+    - node: "node_rsd_v4_artifact_evidence_validate_compute"
+      reason: "The V4 artifact-evidence verifier is likewise an offline inventory surface only: supplied signed claims are validated without collection, build, delivery, replay, runtime, or live-effect authority."
+    - node: "node_rsd_v4_static_profile_validate_compute"
+      reason: "OMN-17982 validates a supplied historical V4 profile offline.  It is discoverable inventory metadata, but deliberately has no addressable runtime entry point, bus route, or live side-effect capability."
+    - node: "node_rsd_v5_artifact_evidence_validate_compute"
+      reason: "The V5 worker-evidence closure validator is likewise inventory-only."
+    - node: "node_rsd_v5_oci_safe_config_validate_compute"
+      reason: "OMN-17982 V5 is deliberately offline-only: its pure validator has no command/terminal route, event bus, runtime, or effect capability."
+    - node: "node_seam_field_diff_check_effect"
+      reason: "OMN-24121: the PR lifecycle triage compute is called in process by the PR lifecycle orchestrator since its inventory subscription was removed, and the seam field diff compute and its check effect run from the merge check's own command line; none subscribes to a command topic with a terminal event, so none has an entry point."
+    - node: "node_seam_field_diff_compute"
+      reason: "OMN-24121: the PR lifecycle triage compute is called in process by the PR lifecycle orchestrator since its inventory subscription was removed, and the seam field diff compute and its check effect run from the merge check's own command line; none subscribes to a command topic with a terminal event, so none has an entry point."
+    - node: "node_worktree_reconcile_effect"
+      reason: "OMN-19399: the worktree-reconcile effect reads the host's own filesystem, so a host timer runs it from the command line; it publishes events but subscribes to no topic and has no entry point."

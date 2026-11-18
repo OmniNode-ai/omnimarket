@@ -41,11 +41,11 @@ def test_both_nodes_are_registered_under_their_own_package() -> None:
 
 
 @pytest.mark.parametrize("node", NODES)
-def test_named_break_a_dropped_entry_is_caught_here_though_the_drift_validator_exempts_it(
+def test_named_break_a_dropped_entry_is_caught_here_and_by_the_drift_validator(
     node: str,
 ) -> None:
-    """Both nodes are lifecycle experimental, which the drift validator's pyproject_entry check exempts (OMN-14151), so
-    a dropped line would pass it; this read is what catches it."""
+    """Both nodes are lifecycle experimental, which no longer excuses a node from the drift validator's pyproject_entry
+    check (OMN-24354: only the reviewed list does), so a dropped line fails there too as well as in this read."""
     text = (REPO_ROOT / "pyproject.toml").read_text()
     line = f'{node} = "omnimarket.nodes.{node}"\n'
     assert line in text
@@ -53,7 +53,7 @@ def test_named_break_a_dropped_entry_is_caught_here_though_the_drift_validator_e
     drift = _drift()
     node_dir = REPO_ROOT / "src" / "omnimarket" / "nodes" / node
     registered = set(_entries(text))
-    assert drift.validate_node(node_dir, registered - {node}).passed
+    assert not drift.validate_node(node_dir, registered - {node}).passed
 
 
 @pytest.mark.parametrize("node", NODES)

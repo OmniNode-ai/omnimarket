@@ -4,10 +4,12 @@
 
 A topic that cannot be read publishes nothing, so the projection ages and the floor reads it unknown, rather than a partial fold being
 sent on as the whole. A publication that is not an event is counted and skipped, never read as data.
+The emission topics are read at once, so a pass costs one read window, not one per topic.
 """
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
@@ -58,16 +60,24 @@ class HandlerFloorEmissionsPublish:
 
     async def handle(self, request: None = None) -> ModelFloorEmissionsPublishResult:
         as_of = self._clock()
+        topics = self._overlay.emission_topics
+        results = await asyncio.gather(
+            *(self._source.publications(topic) for topic in topics),
+            return_exceptions=True,
+        )
         publications: list[bytes] = []
-        for topic in self._overlay.emission_topics:
-            try:
-                publications.extend(await self._source.publications(topic))
-            except Exception as exc:  # the broker being down is a reading, not a crash
+        for topic, outcome in zip(topics, results, strict=True):
+            if isinstance(
+                outcome, Exception
+            ):  # the broker being down is a reading, not a crash
                 return ModelFloorEmissionsPublishResult(
                     published=False,
                     projection_id=self._overlay.projection_id,
-                    reason=f"{topic} cannot be read ({type(exc).__name__})",
+                    reason=f"{topic} cannot be read ({type(outcome).__name__})",
                 )
+            if isinstance(outcome, BaseException):
+                raise outcome
+            publications.extend(outcome)
         events, skipped = fold_emissions(
             publications,
             since=as_of - timedelta(hours=self._overlay.window_hours),

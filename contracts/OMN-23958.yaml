@@ -1,0 +1,100 @@
+schema_version: 1.0.0
+ticket_id: OMN-23958
+title: Work record readers get a window read of rows from the record store
+summary: The moved work-ledger reader answered only point queries (inbox, holds, open claims). It now also answers a rows read over a window of hours from the query node, page by page following the cursor,
+  with the same freshness bound, the same golden and error events and no file read, so the shared loaders (the landing controller read, the drain map rows load, the queue status) can take their rows from
+  the bus-fed store.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23958-rows-window
+  statement: A reader named as moved reads the rows of a window from the query node and never from the file.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a moved reader asks for the rows of a window and receives every page, oldest first, with the window''s total and the oldest watermark. -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_rows_window.py
+      -k pages_in_order'
+  - id: AC2
+    statement: 'AC2: a rows read whose node answer is an error, has no watermark or is older than the bound is unreadable or stale and never an empty list. -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_rows_window.py
+      -k fault_is_never_empty'
+  - id: AC3
+    statement: 'AC3: a reader not named as moved is told not-moved for a rows read and nothing is read. -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_rows_window.py
+      -k not_moved'
+  - id: AC4
+    statement: 'AC4: the rows window read against the real query node handler on the in-memory bus returns the same lines the file read rules return for the window. -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_rows_window.py
+      -k query_node_seam'
+- id: req-omn23958-integrated
+  statement: The rows read answers from the running runtime on a lab host.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: integrated: on a lab host the reader''s rows read answers a window from the running runtime''s record store with status ok and file_read no. -- falsifier: onex node run of node_work_ledger_reader_effect
+      --reader <name> --query rows --window-hours 1 prints status=ok source=node on a lab host with the overlay route command'
+evidence_requirements:
+- kind: tests
+  description: The rows window reader tests and the existing reader chain tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_rows_window.py tests/unit/nodes/node_work_ledger_reader_effect/test_reader_chain_events.py -q --no-cov -n 0
+    -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23958-ac1
+  description: The paged rows read returns every page in order with the window total and the oldest watermark.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_rows_window.py tests/unit/nodes/node_work_ledger_reader_effect/test_reader_chain_events.py -q --no-cov
+      -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23958-ac2
+  description: A node error, a missing watermark and a stale watermark are unreadable or stale and never an empty list.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_rows_window.py tests/unit/nodes/node_work_ledger_reader_effect/test_reader_chain_events.py -q --no-cov
+      -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23958-ac3
+  description: A reader not named as moved is told not-moved and nothing is read.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_rows_window.py tests/unit/nodes/node_work_ledger_reader_effect/test_reader_chain_events.py -q --no-cov
+      -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23958-ac4
+  description: The reader against the real query node handler returns the lines of one direct rows query and omits rows older than the window (seam test).
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_rows_window.py tests/unit/nodes/node_work_ledger_reader_effect/test_reader_chain_events.py -q --no-cov
+      -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23958-ac5
+  description: The tests behind the integrated reading pass at the head; the reading itself is taken on a lab host from the installed branch after the push.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_rows_window.py tests/unit/nodes/node_work_ledger_reader_effect/test_reader_chain_events.py -q --no-cov
+      -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23958-integration-proof
+  description: Run the rows window reader tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check; it binds no criterion for the hosted check. The live reading itself (the reader's rows read answering from the running dev runtime on h202) is recorded in the pull request's Lab line.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23958 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_rows_window.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

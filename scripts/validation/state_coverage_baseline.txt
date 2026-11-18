@@ -33,14 +33,6 @@ node_authorize onex.evt.omnimarket.authorize-failed.v1
 node_chain_diff_compute onex.evt.omnimarket.chain-diff-completed.v1
 node_close_out onex.evt.omnimarket.close-out-skipped.v1
 node_codebase_intelligence_bridge_effect onex.evt.omnimarket.codebase-intelligence-query-response.v1
-node_context_experiment_compute errors
-node_context_experiment_compute failure_class
-node_context_experiment_compute onex.evt.omnimarket.context-experiment-completed.v1
-node_context_experiment_compute onex.evt.omnimarket.context-experiment-failed.v1
-node_context_exploration_policy_compute onex.evt.omnimarket.context-exploration-policy-completed.v1
-node_context_exploration_policy_compute selection_reason_class
-node_context_roi_compute onex.evt.omnimarket.context-roi-score-completed.v1
-node_context_roi_compute onex.evt.omnimarket.context-roi-score-failed.v1
 node_cross_cli_originator onex.cmd.omnimarket.cross-cli-delegation-requested.v1
 node_cross_cli_originator onex.evt.omnimarket.cross-cli-delegation-completed.v1
 node_cross_cli_originator onex.evt.omnimarket.cross-cli-originator-completed.v1
@@ -50,7 +42,6 @@ node_demo_cost_compute onex.evt.omnimarket.demo-cost-computed.v1
 node_demo_fanout_orchestrator onex.cmd.omnimarket.demo-inference-request.v1
 node_demo_fanout_orchestrator onex.evt.omnimarket.demo-fanout-completed.v1
 node_demo_fix_dispatcher onex.evt.omnimarket.demo-fixes-dispatched.v1
-node_design_plan_context_compute onex.evt.omnimarket.design-plan-context-completed.v1
 node_dispatch_worker_execution_effect onex.cmd.omnimarket.delegation-request.v1
 node_dispatch_worker_execution_effect onex.evt.omnimarket.dispatch-worker-execution-completed.v1
 node_entropy_experiment_orchestrator onex.evt.omnimarket.entropy-experiment-completed.v1
@@ -168,7 +159,6 @@ node_recall_compute sources
 node_refill_sprint_orchestrator onex.evt.omnimarket.sprint-auto-pull-completed.v1
 node_refill_sprint_orchestrator onex.evt.omnimarket.tech-debt-queue-empty.v1
 node_repo_health_classify_compute onex.evt.omnimarket.repo-health-classified.v1
-node_report_format_compute onex.evt.omnimarket.report-format-completed.v1
 node_resume_session_compute onex.evt.omnimarket.resume-session-completed.v1
 node_resume_session_compute phase
 node_resume_session_compute progress_pct

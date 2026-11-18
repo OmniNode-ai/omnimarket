@@ -18,11 +18,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.nodes.node_lab_alarm.adapters.inmemory_adapters import (
+from omnimarket.nodes.node_lab_alarm.adapters.restart_adapters import (
     InMemoryRestartBounds,
     InMemoryRestartReader,
-)
-from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import (
     SshDockerRestartReader,
     YamlLaneManifestBounds,
 )
@@ -45,7 +43,7 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     ContainerUnreadableError,
     RestartBoundsUnreadableError,
 )
-from omnimarket.nodes.node_lab_alarm.runtime_lab_alarm import (
+from omnimarket.nodes.node_lab_alarm.runtime_lab_alarm_conditions import (
     build_container_restarts_handler,
     run_container_restarts,
 )

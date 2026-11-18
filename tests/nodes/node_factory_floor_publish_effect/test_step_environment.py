@@ -27,6 +27,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
     ModelFactoryFloorPublishOverlay,
     ModelPublishStep,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 
 pytestmark = pytest.mark.unit
 
@@ -40,6 +41,7 @@ def run(tmp_path: Path, step: ModelPublishStep) -> tuple[str, str]:
         step,
         home,
         ModelFactoryFloorPublishOverlay(
+            limits=TEST_LIMITS,
             ssh_target="lab-web",
             remote_dir=str(home / "site"),
             serve_url="http://example.invalid:8088/",
@@ -67,7 +69,11 @@ def check_step(**kw: object) -> ModelPublishStep:
 
 
 def test_golden_the_floor_step_reads_the_ledger_file() -> None:
-    floor = next(s for s in load_runtime().steps if s.name == "factory_floor")
+    floor = next(
+        s
+        for s in load_runtime().with_limits(TEST_LIMITS).steps
+        if s.name == "factory_floor"
+    )
     assert floor.required
     assert floor.environment == {"ONEX_LEDGER_RECORD": "file"}
 
@@ -90,7 +96,9 @@ def test_error_control_without_the_variable_the_step_runs_with_the_units(
 
 
 def test_error_only_the_floor_step_changes_its_ledger_record() -> None:
-    named = [s.name for s in load_runtime().steps if s.environment]
+    named = [
+        s.name for s in load_runtime().with_limits(TEST_LIMITS).steps if s.environment
+    ]
     assert named == ["factory_floor"]
 
 

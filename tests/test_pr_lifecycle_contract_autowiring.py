@@ -17,6 +17,13 @@ PR_LIFECYCLE_CONTRACTS = (
 )
 
 
+#: Nodes the runtime does not feed from the bus. The orchestrator calls the triage
+#: handler in process, and its former subscription (the inventory completed topic)
+#: carried a payload its route could not validate, so the dispatcher failed on every
+#: event (OMN-24121). Such a node still declares what it publishes.
+NO_BUS_INPUT: frozenset[str] = frozenset({"node_pr_lifecycle_triage_compute"})
+
+
 def _load_contract(node_name: str) -> dict[str, Any]:
     contract_path = NODES_ROOT / node_name / "contract.yaml"
     with contract_path.open() as handle:
@@ -37,9 +44,17 @@ def test_pr_lifecycle_contracts_are_runtime_autowireable() -> None:
         contract = _load_contract(node_name)
         event_bus = contract.get("event_bus")
         assert isinstance(event_bus, dict), f"{node_name} must declare event_bus"
-        assert event_bus.get("subscribe_topics"), (
-            f"{node_name} must declare event_bus.subscribe_topics for runtime wiring"
-        )
+        if node_name in NO_BUS_INPUT:
+            assert event_bus.get("subscribe_topics") == [], (
+                f"{node_name} is in-process only; it must declare no subscribe_topics"
+            )
+            assert event_bus.get("publish_topics"), (
+                f"{node_name} must still declare event_bus.publish_topics"
+            )
+        else:
+            assert event_bus.get("subscribe_topics"), (
+                f"{node_name} must declare event_bus.subscribe_topics for runtime wiring"
+            )
         assert "subscribe_topics" not in contract, (
             f"{node_name} must not use legacy top-level subscribe_topics"
         )

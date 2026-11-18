@@ -120,3 +120,25 @@ def test_classify_reads_an_unreadable_proof_as_its_own_class() -> None:
         )
     )
     assert [c.cause for c in result.classes] == ["installed-revision-unread"]
+
+
+def test_classify_reads_both_printings_of_the_title_ticket_refusal() -> None:
+    """handoff_row.sh prints 'must cite' when the body has no ticket id and 'must include' when it cites another."""
+    result = HandlerInstallRefusalTraceCompute().handle(
+        _request(
+            _rec(
+                "none-cited",
+                "omnimarket#3900",
+                "body cites no ticket id; it must cite the title ticket OMN-20278",
+            ),
+            _rec(
+                "other-cited",
+                "omnimarket#3901",
+                "body cites OMN-1; it must include the title ticket OMN-20278",
+            ),
+        )
+    )
+    assert [(c.cause, c.count) for c in result.classes] == [
+        ("body-misses-title-ticket", 2)
+    ]
+    assert result.unclassified == ()

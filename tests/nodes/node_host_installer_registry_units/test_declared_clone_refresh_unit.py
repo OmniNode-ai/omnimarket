@@ -91,6 +91,32 @@ def test_install_renders_the_unit_running_the_tick_from_the_branch_checkout(
 
 
 @pytest.mark.usefixtures("canonical")
+def test_golden_the_tick_reads_the_registry_root_while_the_job_stands_in_the_state_directory(
+    tmp_path: Path,
+) -> None:
+    assert load_units()[UNIT]["tick_omni_home"] == "registry_root"
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch, entry=ENTRY)
+    result = HandlerRegistryUnits(Recorder()).handle(
+        request(
+            tmp_path,
+            unit=UNIT,
+            mode="install",
+            project_path=str(branch),
+            expected_revision=revision,
+            path_overrides={"LAB_WORK_HOST_NAME": "h101"},
+        )
+    )
+    assert result.status == "success", result.stderr
+    plist = plist_of(result.rendered)
+    job_root = str(tmp_path / "home/.local/state/omni/declared-clone-refresh")
+    args = plist["ProgramArguments"]
+    assert args[args.index("--omni-home") + 1] == str(tmp_path / "omni")
+    assert plist["EnvironmentVariables"]["OMNI_HOME"] == job_root
+    assert plist["WorkingDirectory"] == job_root
+
+
+@pytest.mark.usefixtures("canonical")
 def test_a_checkout_without_the_tick_entry_file_is_refused(tmp_path: Path) -> None:
     branch = tmp_path / "branch"
     make_checkout(

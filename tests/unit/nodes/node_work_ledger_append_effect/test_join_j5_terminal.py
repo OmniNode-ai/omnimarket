@@ -15,7 +15,6 @@ import threading
 import time
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -26,6 +25,7 @@ from omnimarket.models.work_ledger_append import EnumJoinJ5Outcome
 from omnimarket.nodes.node_work_ledger_append_effect.overlay_join_j5 import (
     ModelJoinJ5Overlay,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 from tests.unit.nodes.node_work_ledger_append_effect.test_join_j5 import (
     CHAIN_DEADLINE_S,
     NOW,
@@ -232,10 +232,8 @@ def test_deadline_not_in_the_main_thread_raises_runtime_error() -> None:
 _NODES = Path(__file__).resolve().parents[4] / "src/omnimarket/nodes"
 
 
-def _publish_step_limit(contract: dict[str, Any], step: str) -> int:
-    return next(
-        s["timeout_seconds"] for s in contract["runtime"]["steps"] if s["name"] == step
-    )
+def _publish_step_limit(limits: dict[str, int], step: str) -> int:
+    return limits[step]
 
 
 def _example_deadline() -> int:
@@ -247,25 +245,19 @@ def _example_deadline() -> int:
     ).run_deadline_seconds
 
 
-def _publish_contract() -> dict[str, Any]:
-    return yaml.safe_load(
-        (_NODES / "node_factory_floor_publish_effect/contract.yaml").read_text(
-            encoding="utf-8"
-        )
-    )
+def _publish_limits() -> dict[str, int]:
+    return dict(TEST_LIMITS.step_timeout_seconds)
 
 
 def test_seam_the_run_deadline_sits_inside_the_publish_steps_time_limit() -> None:
-    limit = _publish_step_limit(_publish_contract(), "join_j5")
+    limit = _publish_step_limit(_publish_limits(), "join_j5")
     assert _example_deadline() < limit
 
 
 def test_control_a_publish_step_limit_at_or_below_the_deadline_fails_the_seam() -> None:
-    contract = _publish_contract()
-    for step in contract["runtime"]["steps"]:
-        if step["name"] == "join_j5":
-            step["timeout_seconds"] = _example_deadline()
-    assert not _example_deadline() < _publish_step_limit(contract, "join_j5")
+    limits = _publish_limits()
+    limits["join_j5"] = _example_deadline()
+    assert not _example_deadline() < _publish_step_limit(limits, "join_j5")
 
 
 def test_seam_an_overlay_without_a_run_deadline_is_refused_naming_the_key() -> None:

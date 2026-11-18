@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dev_roll_decision_request_effect
+version: "0.1.0"
+description: "Publishes one decision request (ModelDevRollFacts) per queued dev roll for node_dev_roll_request_compute, and records what each observed decision cleared (shadow only)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_dev_roll_decision_request_effect: "omnimarket.nodes.node_dev_roll_decision_request_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: file_write
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "dev-runtime", "roll-batching", "shadow"]
+pack: "pr_lifecycle"
+display_name: "Dev Roll Decision Request"
+node_role: "effect"
+standalone: false
