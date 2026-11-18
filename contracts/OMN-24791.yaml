@@ -1,0 +1,66 @@
+schema_version: 1.0.0
+ticket_id: OMN-24791
+title: 'Unblock omnimarket pull request 5972: CI Summary, Bus Model Seam Gate and Tests splits 18, 2 and 8 read green at its head'
+summary: The pull request's required checks read red at its head for causes in the pull request and in its base. The install-failure alarm models move to the shared silent-failure models package so the effect node no longer reaches into the compute node's models, the disk growth result sits beside the watermark node's output model so the bus-model seam pin keeps matching, and the branch takes the current base, which carries the dependency-health allowlist fix.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24791-unblock-5972
+  statement: The required checks of the pull request read green at its new head.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the required checks of omnimarket pull request 5972 (CI Summary, Bus Model Seam Gate, Tests split 18, 2 and 8) read green at its new head, read from the check-runs of that exact head -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#5972` shows the head's check-runs list every required context as success"
+  - id: AC2
+    statement: "AC2: the fix is made on the pull request's own branch with no check widened, skipped or bypassed, and a PR comment starting `Lab: head=<full head sha>` carries the red-then-green lab proof for the new head -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#5972` comments contain a `Lab: head=` line whose sha equals the head, and the diff against the base touches no check or ratchet file"
+  - id: AC3
+    statement: "AC3: when the cause is outside the pull request, the lane writes a STATUS row with `cause=<one line> shared=yes` and the evidence, and patches nothing around it -- falsifier: `grep -F 'shared=yes' <the rolling ledger file> | grep -F 'unblk5972-1125'` returns the row, or AC1 holds"
+evidence_requirements:
+- kind: tests
+  description: The focused tests pass at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_bus_model_seam_check_effect tests/test_no_cross_node_reach_in.py tests/nodes/test_dep_health_contract_topology.py -q -n 0 --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24791-ac1
+  description: 'AC1 hosted proxy: the three checks whose tests failed pass on the runner, the seam golden, the cross-node reach-in test and the dependency-health allowlist test; the required contexts are read from the check-runs of the new head.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_bus_model_seam_check_effect/test_bus_model_seam_check.py tests/test_no_cross_node_reach_in.py tests/nodes/test_dep_health_contract_topology.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24791-ac2
+  description: 'AC2 hosted proxy: the diff against the base touches no check, ratchet, baseline or allowlist file (the first check fails when it does), and the tests of the review fixes pass; the Lab: comment naming the head is posted on the pull request.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c '! git diff --name-only origin/dev...HEAD | grep -E "^(\.onex_ratchets/|\.github/|scripts/ci/)|baseline|allowlist"'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_silent_failure_alarm_compute tests/nodes/node_silent_failure_alarm_effect/test_install_failure_reraise_omn21663.py tests/nodes/node_silent_failure_alarm_effect/test_job_exit_reraise_omn21663.py tests/nodes/node_silent_failure_alarm_effect/test_install_failure_options_omn21663.py tests/nodes/node_lab_disk_watermark_effect/test_disk_growth_rate_omn21663.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24791-ac3
+  description: 'AC3 hosted proxy: no shared cause was found, so nothing is patched around; the check fails when the diff against the base edits a ratchet, baseline or allowlist file, and AC1 is the branch the criterion takes.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c '! git diff --name-only origin/dev...HEAD | grep -E "^\.onex_ratchets/|baseline|allowlist"'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_no_cross_node_reach_in.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24791-integration-proof
+  description: the focused tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-omn24791 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_bus_model_seam_check_effect tests/test_no_cross_node_reach_in.py tests/nodes/test_dep_health_contract_topology.py tests/nodes/node_lab_disk_watermark_effect -q --no-cov -n 0 -p no:randomly
