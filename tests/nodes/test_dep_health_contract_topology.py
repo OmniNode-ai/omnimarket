@@ -103,6 +103,20 @@ def test_this_repo_allowlist_has_no_task_delegated_row() -> None:
     assert TASK_DELEGATED_TOPIC_V1 not in topics
 
 
+def test_this_repo_allowlist_has_no_daemon_health_row() -> None:
+    """The expired daemon-health topic row is gone from the committed allowlist."""
+    import yaml
+
+    root = Path(__file__).resolve().parents[2]
+    data = yaml.safe_load((root / "src" / "dep_health_allowlist.yaml").read_text())
+    topics = [
+        entry.get("topic")
+        for entry in data.get("allowlist", []) or []
+        if isinstance(entry, dict)
+    ]
+    assert "onex.evt.diagnostic.daemon-health.v1" not in topics
+
+
 def test_matched_pub_sub_no_orphans(tmp_path: Path) -> None:
     """Two contracts with matching pub/sub produce no orphan topics."""
     _write_contract(

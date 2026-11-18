@@ -123,3 +123,18 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run --frozen pytest tests/test_golden_chain_context_source_ledger_pinned.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21127-ac3-linked-label-needs-both-cells"
+    description: "AC3: an entry is labelled recorded, linked only when its row carries both prompt_id and covers, and recorded, unlinked otherwise; a forged label fails model validation. Re-run by the accepting lane on h051 at omnimarket dev 6efbe3ee5027: 14 parametrized cases passed. The test file does not exist at the parent of the implementing merge aff005f2fada."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_context_source_ledger_effect/test_ledger_provenance.py::test_provenance_label_requires_both_linking_cells -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+context:
+  ac_binding_provenance:
+    dod-omn21127-ac3-linked-label-needs-both-cells:
+      - label: "AC3"
+        criterion_hash: "f53de8773252d6fa0143c558d12fd8a9bc31b4d1b464dcd6251be8ef00fb1c61"
+        proposed_by: "lane=dod-closeout-bind-2026-11-16T1745Z-c2"
+        accepted_by: "lane=dod-closeout-accept-2026-11-16T1745Z-c2"
