@@ -219,3 +219,6 @@ jobs:
               print(f"[{issue.severity.value}] {issue.file_path}:{issue.line_number}: {issue.message}")
           raise SystemExit(0 if result.is_valid else 1)
           PY
+
+      - name: Validate typed runtime command subscriptions
+        run: uv run --frozen pytest tests/test_runtime_command_subscriptions.py -q -n 0 --no-cov -k typed_runtime_commands_are_subscribed
