@@ -246,7 +246,15 @@ BAD_ENVIRONMENT_FILES = [
 def test_live_profile_refuses_an_environment_file_store_dsn_env_file_a_unit_line_cannot_carry(
     tmp_path: Path, bad_path: str
 ) -> None:
-    """Without ``--dry-run``: exit 1, the key named, no unit directory, and no command run."""
+    """Without ``--dry-run``: exit 1, the key named, no unit directory, and no command run.
+
+    The same overlay with a good path installs first: a build that does not know the key refuses every value
+    naming it, so only the good path tells a refused bad path from an unknown key.
+    """
+    good = live_section(tmp_path, store_dsn_env_file="/srv/example/secrets/x.env")
+    code, out, _ = _install_live(tmp_path, good, "--dry-run", "--profile", "live")
+    assert code == 0
+    assert "EnvironmentFile=-/srv/example/secrets/x.env\n" in out
     section = live_section(tmp_path, store_dsn_env_file=bad_path)
     calls: list[list[str]] = []
 
