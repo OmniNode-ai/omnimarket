@@ -144,15 +144,16 @@ def test_old_packaged_window_turns_the_golden_assertion_red(
         _golden_assertion(broken)
 
 
-def test_no_overlay_root_is_a_typed_refusal_naming_the_key(
+def test_no_overlay_root_offers_no_packaged_local_rung(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Error chain: no overlay names the windows, so the ladder does not parse."""
+    """No overlay names the windows, so the packaged local rungs are not offered."""
     empty = tmp_path / "empty_roots"
     empty.mkdir()
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(empty))
-    with pytest.raises(InputLimitNotDeclaredError):
-        _parse_packaged_tiers()
+    offered = {m.backend_ref for t in _parse_packaged_tiers().tiers for m in t.models}
+    assert _CODER not in offered
+    assert _HEAVY not in offered
 
 
 def test_backend_the_overlay_does_not_name_is_refused_naming_its_key(

@@ -22,6 +22,7 @@ from __future__ import annotations
 import importlib.resources
 from collections.abc import Mapping
 from functools import lru_cache
+from typing import Protocol
 
 import yaml
 
@@ -63,6 +64,10 @@ CODE_BUDGET_OVERLAY_ID = "node_delegation_code_budget_compute"
 
 class InputLimitNotDeclaredError(NodeOverlayError):
     """Raised when a caller requires an input limit the overlay does not declare."""
+
+
+class CodeBudgetOverlayAbsentError(InputLimitNotDeclaredError):
+    """Raised when no overlay root names the code budget overlay at all."""
 
 
 def measure_grounding_input_tokens(text: str) -> int:
@@ -132,7 +137,7 @@ def local_input_window(
             CODE_BUDGET_OVERLAY_ID, ModelCodeBudgetOverlay, environ
         )
     except NodeOverlayNotFoundError:
-        raise InputLimitNotDeclaredError(
+        raise CodeBudgetOverlayAbsentError(
             f"{CODE_BUDGET_OVERLAY_ID}: no overlay root names the code budget "
             "overlay, so no local input limit is declared"
         ) from None
@@ -173,11 +178,35 @@ def required_input_ceiling(
     return ceiling
 
 
-def grounded_input_budget(backend_id: str, task_type: str) -> int | None:
+class _BackendBudgetDeclaration(Protocol):
+    """The two backend fields that say whether a local backend carries a packaged budget."""
+
+    @property
+    def tier(self) -> str: ...
+
+    @property
+    def max_grounded_input_tokens(self) -> int | None: ...
+
+
+def grounded_input_budget(
+    backend_id: str,
+    task_type: str,
+    backend: _BackendBudgetDeclaration | None = None,
+) -> int | None:
     """The class budget for ``backend_id``, bounded by its measured correct ceiling (OMN-22220).
 
-    ``None`` when no budget is declared and no ceiling is named.
+    ``None`` when no budget is declared and no ceiling is named. A ``backend``
+    that is local with no packaged budget (OMN-23631) is held to the overlay's
+    ceiling for the class, required when the overlay names the backend.
     """
+    if (
+        backend is not None
+        and backend.tier == "local"
+        and backend.max_grounded_input_tokens is None
+    ):
+        required = required_input_ceiling(backend_id, task_type)
+        if required is not None:
+            return required
     declared = load_grounding_budget_by_task_class().budget_for(backend_id, task_type)
     ceiling = measured_correct_ceiling(backend_id, task_type)
     if ceiling is None:
@@ -238,6 +267,7 @@ def refuse_above_measured_correct_ceiling(
 
 __all__ = [
     "CODE_BUDGET_OVERLAY_ID",
+    "CodeBudgetOverlayAbsentError",
     "InputLimitNotDeclaredError",
     "exceeds_measured_correct_ceiling",
     "grounded_input_budget",
