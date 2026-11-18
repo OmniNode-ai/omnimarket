@@ -117,12 +117,13 @@ def test_remove_last_local_then_delegate_with_isolated_home(tmp_path: Path) -> N
         assert (
             "No delegation backend 'local-url' with a populated endpoint_url" in output
         ), output
-        assert str(overlay) in output
         assert "schema validation failed" not in output
         receipt_path = Path(output.split("(receipt: ", 1)[1].strip().removesuffix(")"))
         assert receipt_path.is_relative_to(tmp_path / "state")
         receipt = json.loads(receipt_path.read_text())
-        assert receipt
+        # The console shortens a long message in the middle, so the overlay's path is read from the receipt,
+        # which keeps the full error: the refusal still names the file the user has to fix.
+        assert str(overlay) in json.dumps(receipt), receipt
     finally:
         server.shutdown()
         server.server_close()

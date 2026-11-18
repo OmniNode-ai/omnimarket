@@ -45,6 +45,7 @@ def test_null_backends_preserve_valid_committed_config(
 
 
 def test_null_backends_do_not_change_other_null_merge_semantics() -> None:
+    """Control: a null overlay key other than backends still clears its base value, as before the fix."""
     base = {"backends": [{"backend_id": "existing", "max_tokens": 64}], "other": 123}
     assert deep_merge_bifrost_delegation_config(
         base, {"backends": None, "other": None}
@@ -53,6 +54,7 @@ def test_null_backends_do_not_change_other_null_merge_semantics() -> None:
 
 
 def test_nonempty_backend_overlay_still_updates_by_identity() -> None:
+    """Control: a non-empty backends overlay still updates by backend_id, as before the fix."""
     assert deep_merge_bifrost_delegation_config(
         {"backends": [{"backend_id": "existing", "max_tokens": 64}]},
         {"backends": [{"backend_id": "existing", "max_tokens": 128}]},
