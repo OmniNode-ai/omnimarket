@@ -155,7 +155,7 @@ jobs:
           # The repo-owned verifier has a 40-minute job timeout. Allow another
           # 180 seconds for scheduling; a missing verdict still fails closed.
           # The window belongs to one verifier run, not to this job: an edited
-          # event restarts the pull_request_target verifier (its concurrency
+          # event restarts the pull_request verifier (its concurrency
           # cancels the run in flight), and a restart late in this job's wait
           # used to time out here while the new run was still verifying. Each
           # new verifier run id therefore restarts the clock (OMN-17427).
@@ -230,7 +230,7 @@ jobs:
                 waits=$((waits + 1))
                 if [ $(( (waits - 1) % 3 )) -eq 0 ]; then
                   gate_run="" gate_status="" gate_conclusion=""
-                  if gate="$(gh api "repos/${REPO}/actions/workflows/call-repo-evidence-gate.yml/runs?head_sha=${HEAD_SHA}&event=pull_request_target&per_page=20" --jq '[.workflow_runs[]] | sort_by(.created_at) | last | "\(.id // "-") \(.status // "-") \(.conclusion // "-")"' 2>&1)"; then
+                  if gate="$(gh api "repos/${REPO}/actions/workflows/call-repo-evidence-gate.yml/runs?head_sha=${HEAD_SHA}&event=pull_request&per_page=20" --jq '[.workflow_runs[]] | sort_by(.created_at) | last | "\(.id // "-") \(.status // "-") \(.conclusion // "-")"' 2>&1)"; then
                     read -r gate_run gate_status gate_conclusion <<< "$gate" || true
                   else
                     echo "::notice::Repo Evidence Gate run read failed; still waiting: ${gate}"
@@ -2238,7 +2238,10 @@ jobs:
   direct-model-call-gate:
     name: Direct Model Call Gate (OMN-20287)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Seven whole-repository scans of about two minutes each (four planted refusals, two
+    # accepts, the real check) took 13.5 to 14.7 minutes against a 15 minute limit; the
+    # push run for the OMN-24409 merge was cancelled at the limit and left CI Summary red.
+    timeout-minutes: 30
     env:
       DIRECT_MODEL_CALL_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@031148215620031436cba30619bbae67c0bb38ad"
     steps:

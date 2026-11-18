@@ -50,21 +50,43 @@ handler:
   class: "HandlerPlanReviewLadder"
   input_model: "omnimarket.nodes.node_plan_review_ladder_compute.models.model_plan_review_ladder.ModelPlanReviewLadderRequest"
 handler_routing:
-  routing_strategy: "operation_match"
+  routing_strategy: "payload_type_match"
   default_handler: "omnimarket.nodes.node_plan_review_ladder_compute.handlers.handler_plan_review_ladder:HandlerPlanReviewLadder"
   handlers:
     - operation: "decide_plan_review_ladder"
       handler:
         name: "HandlerPlanReviewLadder"
         module: "omnimarket.nodes.node_plan_review_ladder_compute.handlers.handler_plan_review_ladder"
-# Addressable the way the other directly-invoked compute nodes are; the topics are
-# declared here and no caller publishes the command until the plan-review flow switches.
+      event_model:
+        name: "ModelPlanReviewLadderRequest"
+        module: "omnimarket.nodes.node_plan_review_ladder_compute.models.model_plan_review_ladder"
+
+terminal_event: "onex.evt.omnimarket.plan-review-ladder-decide-completed.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.plan-review-ladder-decide-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.plan-review-ladder-decide-completed.v1"
     failure: "onex.evt.omnimarket.plan-review-ladder-decide-failed.v1"
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.plan-review-ladder-decide-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.plan-review-ladder-decide-completed.v1"
+    - "onex.evt.omnimarket.plan-review-ladder-decide-failed.v1"
+externally_consumed_topics:
+  - "onex.evt.omnimarket.plan-review-ladder-decide-completed.v1"
+  - "onex.evt.omnimarket.plan-review-ladder-decide-failed.v1"
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.cmd.omnimarket.plan-review-ladder-decide-requested.v1", operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.cmd.omnimarket.plan-review-ladder-decide-requested.v1", operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.plan-review-ladder-decide-completed.v1", operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.plan-review-ladder-decide-completed.v1", operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.plan-review-ladder-decide-failed.v1", operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.plan-review-ladder-decide-failed.v1", operation: DESCRIBE}
 descriptor:
+  runtime_profiles: [main]
   node_archetype: compute
   purity: pure
   idempotent: true
@@ -72,6 +94,7 @@ descriptor:
 replay:
   deterministic: true
 metadata:
+  transport_type: kafka
   description: "The next move of a plan's review ladder."
   author: "OmniNode Team"
   license: "MIT"
