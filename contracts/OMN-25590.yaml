@@ -101,14 +101,12 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/unit/nodes/node_secret_store_effect/test_secret_env_file.py -q -k secret_env_file_write_cli_fake_store --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn25590-deploy-private-file
-    description: A disposable container installs the checked-out package and runs the node entry point against an isolated store file. A missing apply route, wrong count or wider mode fails the command.
+    description: A disposable virtualenv installs the checked-out package and runs the node entry point against an isolated store file. A missing apply route, wrong count or wider mode fails the command.
     source: manual
     checks:
       - check_type: command
         check_value: >-
-          docker run --rm -v "${PWD}:/workspace:ro" -w /workspace
-          -e UV_PROJECT_ENVIRONMENT=/tmp/env-file-venv -e UV_CACHE_DIR=/tmp/uv-cache
-          ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
-          uv run --frozen --python 3.12 pytest tests/unit/nodes/node_secret_store_effect/test_secret_env_file.py
+          env UV_PROJECT_ENVIRONMENT="$(mktemp -d)/env-file-venv"
+          uv run --frozen --python 3.12 --no-editable pytest tests/unit/nodes/node_secret_store_effect/test_secret_env_file.py
           -q -k secret_env_file_write_cli_fake_store --no-cov -n 0 -p no:randomly -p no:cacheprovider
         cwd: .
