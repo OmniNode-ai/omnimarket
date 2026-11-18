@@ -29,6 +29,8 @@ class ModelServicePrincipalBroker(BaseModel):
     compose_project: str = Field(min_length=1)
     broker_container: str = Field(min_length=1)
     superuser_source_container: str = Field(min_length=1)
+    #: Env file on the broker host the credential is read from; unset means the permission tool's default.
+    superuser_env_file: str | None = Field(default=None, min_length=1)
     ssh_target: str = Field(min_length=1)
     mechanism: str = Field(min_length=1)
 

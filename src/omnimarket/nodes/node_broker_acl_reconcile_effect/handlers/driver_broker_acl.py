@@ -36,6 +36,8 @@ RemoteRunner = Callable[[str, str], str]
 
 
 CREDENTIAL_MISSING_EXIT = 3
+#: First word of the one stderr line the script prologue prints before it exits ``CREDENTIAL_MISSING_EXIT``.
+CREDENTIAL_MISSING_MARKER = "onex-broker-credential-missing"
 CREDENTIAL_NAMES = ("DEV_KAFKA_SASL_USERNAME", "DEV_KAFKA_SASL_PASSWORD")
 DEFAULT_SUPERUSER_ENV_FILE = "~/.omnibase/.env"
 _ENV_FILE_SAFE = frozenset(
@@ -290,28 +292,39 @@ def build_remote_script(decl: AclConnection, rpk_argvs: list[list[str]]) -> str:
     The credential is read by name from the declared env file on the broker host, never from a
     container: an exited one-shot container is removed by host cleanup and cannot be relied on.
     A missing file, name or empty value stops the script with exit ``CREDENTIAL_MISSING_EXIT``
-    and a line naming the key and the file, never a value.
+    and one stderr line that starts with ``CREDENTIAL_MISSING_MARKER`` and names the key and the
+    file, never a value. Only those branches print the marker, so an exit 3 from ``docker exec``,
+    rpk or a later script line carries no marker and is not read as a missing credential.
+
+    The file's real consumer sources it as shell (the deploy agent launcher), so the reader
+    takes the last ``[export ]NAME=value`` assignment and strips what the shell would: CR, one
+    level of surrounding quotes, and an unquoted value's trailing whitespace and `` # comment``.
+    ``NAME = value`` is not a shell assignment and is not read; backslash escapes are not decoded.
     """
     env_file = _remote_path(decl.superuser_env_file)
     broker = shlex.quote(decl.broker_container)
     user_name, pass_name = CREDENTIAL_NAMES
+    marker = CREDENTIAL_MISSING_MARKER
     pick = (
+        "tr -d '\\r' < \"$F\" | "
         "sed -n -e 's/^[[:space:]]*export[[:space:]][[:space:]]*//' "
-        "-e 's/^{name}=//p' \"$F\" | tail -n 1 | "
-        "sed -e 's/^\"\\(.*\\)\"$/\\1/' -e \"s/^'\\(.*\\)'\\$/\\1/\""
+        "-e 's/^[[:space:]]*{name}=//p' | tail -n 1 | "
+        'sed -e \'s/^"\\([^"]*\\)".*$/\\1/\' -e t '
+        "-e 's/^'\\''\\([^'\\'']*\\)'\\''.*$/\\1/' -e t "
+        "-e 's/[[:space:]][[:space:]]*#.*$//' -e 's/[[:space:]]*$//'"
     )
     lines = [
         "set -eu",
         f"F={env_file}",
-        '[ -r "$F" ] || { echo "no readable declared secret source $F" >&2; '
+        f'[ -r "$F" ] || {{ echo "{marker} no readable declared secret source $F" >&2; '
         f"exit {CREDENTIAL_MISSING_EXIT}; }}",
         f'U="$({pick.format(name=user_name)})"',
         f'P="$({pick.format(name=pass_name)})"',
         # An empty credential would reach the broker unauthenticated and fail
         # there with a misleading error; stop here and say which key is missing.
-        f'[ -n "$U" ] || {{ echo "{user_name} missing or empty in $F" >&2; '
+        f'[ -n "$U" ] || {{ echo "{marker} {user_name} missing or empty in $F" >&2; '
         f"exit {CREDENTIAL_MISSING_EXIT}; }}",
-        f'[ -n "$P" ] || {{ echo "{pass_name} missing or empty in $F" >&2; '
+        f'[ -n "$P" ] || {{ echo "{marker} {pass_name} missing or empty in $F" >&2; '
         f"exit {CREDENTIAL_MISSING_EXIT}; }}",
     ]
     for rpk_argv in rpk_argvs:
@@ -362,7 +375,14 @@ def run_remote(target: str, script: str, *, timeout: float = 120) -> str:
         check=False,
     )
     if completed.returncode == CREDENTIAL_MISSING_EXIT:
-        raise BrokerCredentialMissingError(completed.stderr.strip()[-400:])
+        # Typed only when the prologue itself said so; the message is that marker line alone.
+        marked = [
+            line.strip()
+            for line in completed.stderr.splitlines()
+            if line.strip().startswith(CREDENTIAL_MISSING_MARKER)
+        ]
+        if marked:
+            raise BrokerCredentialMissingError(marked[-1][:400])
     if completed.returncode:
         raise RuntimeError(
             f"remote ACL command failed (exit {completed.returncode}): {completed.stderr.strip()[-400:]}"

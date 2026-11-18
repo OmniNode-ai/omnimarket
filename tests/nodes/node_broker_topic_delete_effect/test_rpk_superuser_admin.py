@@ -20,7 +20,9 @@ from pydantic import ValidationError
 
 from omnimarket.models.model_topic_removal import EnumTopicClass
 from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.driver_broker_acl import (
+    CREDENTIAL_MISSING_MARKER,
     AclConnection,
+    BrokerCredentialMissingError,
     build_remote_script,
 )
 from omnimarket.nodes.node_broker_topic_delete_effect import runtime_broker_topic_delete
@@ -137,9 +139,9 @@ class FakeRunner:
 
 class CredentialFailingRunner:
     def __call__(self, target: str, script: str, *, timeout: float) -> str:
-        raise RuntimeError(
-            "remote ACL command failed (exit 3): no lane superuser credentials in "
-            "omnibase-infra-redpanda-sasl-enable"
+        # What the real driver raises: the typed error carrying the script prologue's marker line.
+        raise BrokerCredentialMissingError(
+            f"{CREDENTIAL_MISSING_MARKER} DEV_KAFKA_SASL_PASSWORD missing or empty in /x/.env"
         )
 
 
@@ -237,6 +239,9 @@ def test_seam_script_reads_the_credential_as_the_permission_tool_does() -> None:
     )
     prologue = build_remote_script(connection, [])
     assert script.startswith(prologue)
+    assert (
+        'F="$HOME"/.omnibase/.env' in script
+    )  # the cell unset gives the permission tool's default
     assert "docker inspect" not in script
     assert "DEV_KAFKA_SASL_PASSWORD" in script
     assert '-X user="$U" -X pass="$P"' in script
@@ -263,6 +268,7 @@ def test_seam_acl_declaration_names_the_same_containers() -> None:
                 "compose_project",
                 "broker_container",
                 "superuser_source_container",
+                "superuser_env_file",
             )
         },
     }
@@ -275,7 +281,31 @@ def test_seam_acl_declaration_names_the_same_containers() -> None:
         runner=runner,
     ).read_evidence(["fx-empty"])
     assert "docker inspect" not in runner.calls[0][1]
-    assert 'F="$HOME"/.omnibase/.env' in runner.calls[0][1]
+    # Tied to the declared cell, not to a literal: a dropped cell would give the default, which this
+    # test reads from the declaration, so change the declaration's value and this follows it.
+    declared_file = declaration["superuser_env_file"]
+    assert declared_file.startswith("~/")
+    assert f'F="$HOME"/{declared_file[2:]}' in runner.calls[0][1].splitlines()
+
+
+@pytest.mark.parametrize(
+    "env_file", ["/srv/custom/operator.env", "~/custom/operator.env"]
+)
+def test_superuser_env_file_declared_non_default_path_reaches_the_script(
+    env_file: str,
+) -> None:
+    """The overlay's superuser block carries the cell to the connection builder and into ``F=``."""
+    runner = FakeRunner()
+    admin(runner, superuser_env_file=env_file).read_evidence(["fx-empty"])
+    expected = (
+        f"F={env_file}" if env_file.startswith("/") else f'F="$HOME"/{env_file[2:]}'
+    )
+    lines = runner.calls[0][1].splitlines()
+    assert expected in lines
+    assert 'F="$HOME"/.omnibase/.env' not in lines
+    runner = FakeRunner()
+    admin(runner).read_evidence(["fx-empty"])
+    assert 'F="$HOME"/.omnibase/.env' in runner.calls[0][1].splitlines()
 
 
 def test_chain_handler_deletes_through_the_superuser() -> None:

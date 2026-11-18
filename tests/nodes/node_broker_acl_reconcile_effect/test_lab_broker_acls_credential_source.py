@@ -6,8 +6,10 @@ The prologue every broker ACL, topic-delete and principal-mint call shares used 
 superuser credential from the env of an exited one-shot container, which a prune removed. It now
 reads DEV_KAFKA_SASL_USERNAME and DEV_KAFKA_SASL_PASSWORD, by name, from the declared operator env
 file on the broker host. These tests run the generated prologue under ``sh`` with a stub ``docker``
-and a temp env file: no container exists, a missing name fails closed with a typed error naming
-the key, and no value reaches stdout, stderr or an error message.
+and a temp env file. The stub logs every call and answers ``inspect`` with a decoy credential pair, so a
+lookup that falls back to a container is seen: no inspect call is made and the decoy is never used. A
+missing name fails closed with exit 3 and a fixed marker line, ``run_remote`` raises the typed error only
+for exit 3 plus that marker, and no value reaches stdout, stderr or an error message.
 """
 
 from __future__ import annotations
@@ -18,24 +20,38 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.models.broker_acl_reconcile import ModelBrokerAclReconcileRequest
 from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers import (
     driver_broker_acl as driver,
+)
+from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers import (
+    handler_broker_acl_reconcile as reconcile,
+)
+from tests.nodes.node_broker_acl_reconcile_effect.test_aggregates_declared_grants import (
+    ENV,
+    FakeRemote,
 )
 
 SENTINEL_USER = "svc-sentinel-user"
 SENTINEL_PASS = "pw-sentinel-0123456789"  # synthetic test value, not a credential
+DECOY_USER = "decoy-user-from-container"
+DECOY_PASS = "decoy-pass-from-container"  # synthetic test value, not a credential
 ARGV = [["security", "acl", "list", "--allow-principal", "User:x"]]
 
+# Logs every call, ``inspect`` included, and answers ``inspect`` with a decoy pair: a lookup that
+# falls back to a container leaves an ``inspect`` line in the log and uses the decoy.
 STUB_DOCKER = """#!/bin/sh
-if [ "$1" = "inspect" ]; then
-  echo "docker inspect must not be called: no such container" >&2
-  exit 1
-fi
 printf '%s\\n' "$*" >> "$STUB_DOCKER_LOG"
+if [ "$1" = "inspect" ]; then
+  printf 'DEV_KAFKA_SASL_USERNAME=decoy-user-from-container\\n'
+  printf 'DEV_KAFKA_SASL_PASSWORD=decoy-pass-from-container\\n'
+  exit 0
+fi
+exit "${STUB_DOCKER_EXIT:-0}"
 """
 
 
-def _connection(env_file: Path | None = None) -> driver.AclConnection:
+def _connection(env_file: str | Path | None = None) -> driver.AclConnection:
     raw = {
         "lane": "dev",
         "host": "dev-lane-broker",
@@ -49,19 +65,35 @@ def _connection(env_file: Path | None = None) -> driver.AclConnection:
 
 
 def _run_prologue(
-    tmp_path: Path, env_text: str | None, argvs: list[list[str]]
+    tmp_path: Path,
+    env_text: str | None,
+    argvs: list[list[str]],
+    *,
+    env_file: str | Path | None = "operator.env",
+    docker_exit: int = 0,
+    script_override: str | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
-    """Run the generated script locally with no container and a stub docker."""
+    """Run the generated script locally with no container and a logging stub docker.
+
+    ``env_file`` is a name under ``tmp_path``, an absolute path, or None for the default connection
+    (``~/.omnibase/.env`` with ``HOME`` set to ``tmp_path``).
+    """
     bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
+    bin_dir.mkdir(exist_ok=True)
     docker = bin_dir / "docker"
     docker.write_text(STUB_DOCKER, encoding="utf-8")
     docker.chmod(docker.stat().st_mode | stat.S_IXUSR)
-    env_file = tmp_path / "operator.env"
+    if env_file is None:
+        declared: Path | None = None
+        target = tmp_path / ".omnibase" / ".env"
+    else:
+        declared = tmp_path / env_file
+        target = declared
     if env_text is not None:
-        env_file.write_text(env_text, encoding="utf-8")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(env_text, encoding="utf-8", newline="")
     log = tmp_path / "docker.log"
-    script = driver.build_remote_script(_connection(env_file), argvs)
+    script = script_override or driver.build_remote_script(_connection(declared), argvs)
     done = subprocess.run(
         ["sh", "-s"],
         input=script,
@@ -72,9 +104,67 @@ def _run_prologue(
             "PATH": f"{bin_dir}:/usr/bin:/bin",
             "HOME": str(tmp_path),
             "STUB_DOCKER_LOG": str(log),
+            "STUB_DOCKER_EXIT": str(docker_exit),
         },
     )
     return done, log
+
+
+def _calls(log: Path) -> list[str]:
+    return log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+
+
+def _assert_no_container_lookup(log: Path, *outputs: str) -> None:
+    """The AC3 falsifier: no ``inspect`` call was made and the decoy never reached an rpk call or output."""
+    calls = _calls(log)
+    assert not [c for c in calls if c.startswith("inspect")], calls
+    joined = "\n".join(calls) + "".join(outputs)
+    assert DECOY_USER not in joined
+    assert DECOY_PASS not in joined
+
+
+def _run_remote_locally(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    env_text: str | None,
+    argvs: list[list[str]],
+    *,
+    docker_exit: int = 0,
+) -> tuple[str, Path]:
+    """Send the generated script through the real ``run_remote``, with ssh replaced by a local ``sh -s``.
+
+    The returncode and stderr are the script's own, not text a test wrote.
+    """
+    real_run = subprocess.run
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    docker = bin_dir / "docker"
+    docker.write_text(STUB_DOCKER, encoding="utf-8")
+    docker.chmod(docker.stat().st_mode | stat.S_IXUSR)
+    env_file = tmp_path / "operator.env"
+    if env_text is not None:
+        env_file.write_text(env_text, encoding="utf-8")
+    log = tmp_path / "docker.log"
+
+    def local_ssh(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        assert argv[0] == "ssh"
+        assert argv[-2:] == ["sh", "-s"]
+        return real_run(  # type: ignore[call-overload,no-any-return]
+            ["sh", "-s"],
+            **kwargs,
+            env={
+                "PATH": f"{bin_dir}:/usr/bin:/bin",
+                "HOME": str(tmp_path),
+                "STUB_DOCKER_LOG": str(log),
+                "STUB_DOCKER_EXIT": str(docker_exit),
+            },
+        )
+
+    monkeypatch.setattr(driver.subprocess, "run", local_ssh)
+    script = driver.build_remote_script(_connection(env_file), argvs)
+    return script, log
 
 
 def test_credential_is_read_by_name_from_the_declared_source_with_no_container(
@@ -91,7 +181,25 @@ def test_credential_is_read_by_name_from_the_declared_source_with_no_container(
     assert f"user={SENTINEL_USER}" in call
     assert f"pass={SENTINEL_PASS}" in call
     assert call.startswith("exec omnibase-infra-redpanda rpk security acl list")
+    _assert_no_container_lookup(log, done.stdout, done.stderr)
     assert SENTINEL_PASS not in done.stdout + done.stderr
+    assert SENTINEL_USER not in done.stdout + done.stderr
+
+
+def test_the_stub_sees_a_container_fallback(tmp_path: Path) -> None:
+    """Positive control for the AC3 falsifier: a script that falls back to ``docker inspect`` is caught."""
+    fallback = (
+        "set -eu\n"
+        "U=\"$(docker inspect c --format x | sed -n 's/^DEV_KAFKA_SASL_USERNAME=//p')\"\n"
+        "P=\"$(docker inspect c --format x | sed -n 's/^DEV_KAFKA_SASL_PASSWORD=//p')\"\n"
+        'docker exec b rpk security acl list -X user="$U" -X pass="$P"\n'
+    )
+    done, log = _run_prologue(tmp_path, None, ARGV, script_override=fallback)
+    assert done.returncode == 0, done.stderr
+    assert any(call.startswith("inspect") for call in _calls(log))
+    assert f"pass={DECOY_PASS}" in "\n".join(_calls(log))
+    with pytest.raises(AssertionError):
+        _assert_no_container_lookup(log, done.stdout, done.stderr)
 
 
 def test_script_never_inspects_a_container() -> None:
@@ -100,16 +208,116 @@ def test_script_never_inspects_a_container() -> None:
     assert "omnibase-infra-redpanda-sasl-enable" not in script
 
 
-def test_export_prefix_and_quotes_in_the_env_file_are_read(tmp_path: Path) -> None:
-    env_text = (
-        f'export DEV_KAFKA_SASL_USERNAME="{SENTINEL_USER}"\n'
-        f"DEV_KAFKA_SASL_PASSWORD='{SENTINEL_PASS}'\n"
-    )
-    done, log = _run_prologue(tmp_path, env_text, ARGV)
+def test_lab_broker_acls_credential_source_default_connection_runs_the_production_home_form(
+    tmp_path: Path,
+) -> None:
+    """The default ``~/.omnibase/.env`` form is executed with HOME set, not only string-checked."""
+    env_text = f"DEV_KAFKA_SASL_USERNAME={SENTINEL_USER}\nDEV_KAFKA_SASL_PASSWORD={SENTINEL_PASS}\n"
+    done, log = _run_prologue(tmp_path, env_text, ARGV, env_file=None)
     assert done.returncode == 0, done.stderr
     call = log.read_text(encoding="utf-8")
     assert f"user={SENTINEL_USER}" in call
     assert f"pass={SENTINEL_PASS}" in call
+    _assert_no_container_lookup(log, done.stdout, done.stderr)
+
+
+@pytest.mark.parametrize(
+    "declared",
+    ["/srv/custom/operator.env", "~/custom-dir/operator.env"],
+)
+def test_superuser_env_file_declared_path_reaches_the_script(declared: str) -> None:
+    script = driver.build_remote_script(_connection(declared), ARGV)
+    expected = (
+        f"F={declared}" if declared.startswith("/") else f'F="$HOME"/{declared[2:]}'
+    )
+    assert expected in script.splitlines()
+    assert 'F="$HOME"/.omnibase/.env' not in script
+
+
+@pytest.mark.parametrize(
+    ("text", "user", "password"),
+    [
+        pytest.param(
+            "DEV_KAFKA_SASL_USERNAME=u1\r\nDEV_KAFKA_SASL_PASSWORD=p1\r\n",
+            "u1",
+            "p1",
+            id="crlf",
+        ),
+        pytest.param(
+            "DEV_KAFKA_SASL_USERNAME=u1   \nDEV_KAFKA_SASL_PASSWORD=p1\t\n",
+            "u1",
+            "p1",
+            id="trailing-whitespace",
+        ),
+        pytest.param(
+            "DEV_KAFKA_SASL_USERNAME=u1 # the user\nDEV_KAFKA_SASL_PASSWORD=p1\t# the pass\n",
+            "u1",
+            "p1",
+            id="inline-comment",
+        ),
+        pytest.param(
+            "DEV_KAFKA_SASL_USERNAME=\"u 1\" # c\nDEV_KAFKA_SASL_PASSWORD='p#1'  # c\n",
+            "u 1",
+            "p#1",
+            id="quoted-with-comment",
+        ),
+        pytest.param(
+            "export DEV_KAFKA_SASL_USERNAME=u1\n  export   DEV_KAFKA_SASL_PASSWORD=p1\n",
+            "u1",
+            "p1",
+            id="export-prefix",
+        ),
+        pytest.param(
+            "DEV_KAFKA_SASL_USERNAME=old\nDEV_KAFKA_SASL_USERNAME=u1\n"
+            "DEV_KAFKA_SASL_PASSWORD=p1\n",
+            "u1",
+            "p1",
+            id="last-assignment-wins",
+        ),
+        pytest.param(
+            "DEV_KAFKA_SASL_USERNAME=\"'u1'\"\nDEV_KAFKA_SASL_PASSWORD='\"p1\"'\n",
+            "'u1'",
+            '"p1"',
+            id="nested-quotes-stripped-once",
+        ),
+    ],
+)
+def test_env_file_formats_the_consumer_reads_give_the_value_the_shell_gives(
+    tmp_path: Path, text: str, user: str, password: str
+) -> None:
+    """Parity with the file's consumer, which sources it as shell (CR aside, which the reader strips)."""
+    done, log = _run_prologue(tmp_path, text, ARGV)
+    assert done.returncode == 0, done.stderr
+    call = log.read_text(encoding="utf-8")
+    assert call.rstrip().endswith(f"-X user={user} -X pass={password}"), call
+    sourced = subprocess.run(
+        [
+            "sh",
+            "-c",
+            '. "$1"; printf "%s\\n%s" "$DEV_KAFKA_SASL_USERNAME" "$DEV_KAFKA_SASL_PASSWORD"',
+            "sh",
+            str(tmp_path / "operator.env"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"PATH": "/usr/bin:/bin"},
+    )
+    if "\r" not in text:
+        assert sourced.stdout == f"{user}\n{password}"
+
+
+def test_assignment_with_spaces_around_equals_is_not_a_shell_assignment_and_fails_closed(
+    tmp_path: Path,
+) -> None:
+    done, log = _run_prologue(
+        tmp_path,
+        f"DEV_KAFKA_SASL_USERNAME = {SENTINEL_USER}\nDEV_KAFKA_SASL_PASSWORD={SENTINEL_PASS}\n",
+        ARGV,
+    )
+    assert done.returncode == driver.CREDENTIAL_MISSING_EXIT
+    assert f"{driver.CREDENTIAL_MISSING_MARKER} DEV_KAFKA_SASL_USERNAME" in done.stderr
+    assert not _calls(log)
 
 
 @pytest.mark.parametrize(
@@ -125,8 +333,10 @@ def test_missing_name_fails_closed_naming_the_key_and_no_value(
     del lines[missing]
     done, log = _run_prologue(tmp_path, "".join(lines.values()), ARGV)
     assert done.returncode == driver.CREDENTIAL_MISSING_EXIT
-    assert missing in done.stderr
-    assert not log.exists()  # rpk was never reached
+    assert f"{driver.CREDENTIAL_MISSING_MARKER} {missing}" in done.stderr
+    # rpk was never reached, and the container the decoy sits in was never asked.
+    assert not _calls(log)
+    _assert_no_container_lookup(log, done.stdout, done.stderr)
     combined = done.stdout + done.stderr
     assert SENTINEL_PASS not in combined
     assert SENTINEL_USER not in combined
@@ -140,7 +350,8 @@ def test_empty_value_counts_as_missing(tmp_path: Path) -> None:
     )
     assert done.returncode == driver.CREDENTIAL_MISSING_EXIT
     assert "DEV_KAFKA_SASL_PASSWORD" in done.stderr
-    assert not log.exists()
+    assert not _calls(log)
+    assert SENTINEL_USER not in done.stdout + done.stderr
 
 
 def test_absent_env_file_fails_closed_naming_the_file_not_a_container(
@@ -148,29 +359,98 @@ def test_absent_env_file_fails_closed_naming_the_file_not_a_container(
 ) -> None:
     done, log = _run_prologue(tmp_path, None, ARGV)
     assert done.returncode == driver.CREDENTIAL_MISSING_EXIT
+    assert driver.CREDENTIAL_MISSING_MARKER in done.stderr
     assert "operator.env" in done.stderr
     assert "container" not in done.stderr
-    assert not log.exists()
+    assert not _calls(log)
+    _assert_no_container_lookup(log, done.stdout, done.stderr)
 
 
-def test_run_remote_raises_the_typed_error_on_a_missing_credential(
-    monkeypatch: pytest.MonkeyPatch,
+def test_lab_broker_acls_exit_3_with_the_marker_raises_the_typed_error_through_run_remote(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    script, log = _run_remote_locally(
+        monkeypatch,
+        tmp_path,
+        f"DEV_KAFKA_SASL_USERNAME={SENTINEL_USER}\n",
+        ARGV,
+    )
+    with pytest.raises(driver.BrokerCredentialMissingError) as raised:
+        driver.run_remote("lab-target", script)
+    message = str(raised.value)
+    assert message.startswith(driver.CREDENTIAL_MISSING_MARKER)
+    assert "DEV_KAFKA_SASL_PASSWORD" in message
+    assert SENTINEL_USER not in message
+    assert SENTINEL_PASS not in message
+    assert not _calls(log)
+
+
+@pytest.mark.parametrize(
+    "stderr", ["", "rpk: boom\n", "no lane superuser credentials in x\n"]
+)
+def test_lab_broker_acls_exit_3_without_the_marker_is_not_a_missing_credential(
+    monkeypatch: pytest.MonkeyPatch, stderr: str
 ) -> None:
     def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(
-            args=[],
-            returncode=driver.CREDENTIAL_MISSING_EXIT,
-            stdout="",
-            stderr="DEV_KAFKA_SASL_PASSWORD missing in operator.env",
+            args=[], returncode=driver.CREDENTIAL_MISSING_EXIT, stdout="", stderr=stderr
         )
 
     monkeypatch.setattr(driver.subprocess, "run", fake_run)
-    with pytest.raises(driver.BrokerCredentialMissingError) as raised:
+    with pytest.raises(RuntimeError) as raised:
         driver.run_remote("lab-target", "true")
-    assert "DEV_KAFKA_SASL_PASSWORD" in str(raised.value)
+    assert not isinstance(raised.value, driver.BrokerCredentialMissingError)
+    assert "exit 3" in str(raised.value)
+
+
+def test_lab_broker_acls_exit_3_from_a_command_after_the_prologue_carries_no_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tail command that exits 3 with the credential present is a plain failure, by the script's own stderr."""
+    script, log = _run_remote_locally(
+        monkeypatch,
+        tmp_path,
+        f"DEV_KAFKA_SASL_USERNAME={SENTINEL_USER}\nDEV_KAFKA_SASL_PASSWORD={SENTINEL_PASS}\n",
+        ARGV,
+        docker_exit=driver.CREDENTIAL_MISSING_EXIT,
+    )
+    with pytest.raises(RuntimeError) as raised:
+        driver.run_remote("lab-target", script)
+    assert not isinstance(raised.value, driver.BrokerCredentialMissingError)
+    assert "exit 3" in str(raised.value)
+    assert driver.CREDENTIAL_MISSING_MARKER not in str(raised.value)
+    assert SENTINEL_PASS not in str(raised.value)
+    assert _calls(log)  # the credential was read and rpk was reached
 
 
 def test_declared_env_file_default_is_the_operator_env_file() -> None:
     assert _connection().superuser_env_file == "~/.omnibase/.env"
     script = driver.build_remote_script(_connection(), ARGV)
     assert '"$HOME"/.omnibase/.env' in script
+
+
+@pytest.mark.parametrize("mode", ["apply", "dry_run"])
+def test_superuser_env_file_declared_cell_reaches_every_reconcile_script(
+    monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    """The reconcile node's contract declaration carries the cell to every script it sends, per mode."""
+    real_contract = reconcile.contract
+    declared = real_contract()["broker_acl_declaration"]["superuser_env_file"]
+    assert declared == "~/.omnibase/.env"  # the shipped declaration
+
+    def with_custom_cell() -> dict[str, object]:
+        loaded = real_contract()
+        loaded["broker_acl_declaration"]["superuser_env_file"] = (
+            "/srv/custom/operator.env"
+        )
+        return loaded
+
+    remote = FakeRemote()
+    monkeypatch.setattr(reconcile, "contract", with_custom_cell)
+    reconcile.HandlerBrokerAclReconcile(environ=ENV, remote_runner=remote).handle(
+        ModelBrokerAclReconcileRequest(mode=mode)
+    )
+    assert remote.scripts
+    for script in remote.scripts:
+        assert "F=/srv/custom/operator.env" in script.splitlines()
+        assert 'F="$HOME"/.omnibase/.env' not in script

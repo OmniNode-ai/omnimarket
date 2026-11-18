@@ -45,7 +45,7 @@ pytestmark = pytest.mark.unit
 SENTINEL = SecretStr("SENTINEL-PASSWORD-VALUE")
 
 
-def _broker() -> ModelServicePrincipalBroker:
+def _broker(**cells: str) -> ModelServicePrincipalBroker:
     return ModelServicePrincipalBroker(
         lane="lane-a",
         host="broker.test",
@@ -54,6 +54,7 @@ def _broker() -> ModelServicePrincipalBroker:
         superuser_source_container="superuser",
         ssh_target="broker.test",
         mechanism="SCRAM-SHA-256",
+        **cells,
     )
 
 
@@ -84,6 +85,21 @@ def test_list_logins_parses_stdout() -> None:
     assert _broker().broker_container in script
     assert "docker inspect" not in script
     assert "DEV_KAFKA_SASL_PASSWORD" in script
+
+
+def test_superuser_env_file_declared_non_default_path_reaches_the_script() -> None:
+    """The broker declaration carries the cell to the connection builder and into ``F=``."""
+    import asyncio
+
+    runner, calls = _fake_runner("")
+    broker = _broker(superuser_env_file="/srv/custom/operator.env")
+    asyncio.run(RpkSshBrokerLoginAdmin(broker, runner=runner).list_logins())
+    assert "F=/srv/custom/operator.env" in calls[0][1].splitlines()
+    assert 'F="$HOME"/.omnibase/.env' not in calls[0][1]
+
+    runner, calls = _fake_runner("")
+    asyncio.run(RpkSshBrokerLoginAdmin(_broker(), runner=runner).list_logins())
+    assert 'F="$HOME"/.omnibase/.env' in calls[0][1].splitlines()
 
 
 def test_create_login_script_contains_mechanism() -> None:

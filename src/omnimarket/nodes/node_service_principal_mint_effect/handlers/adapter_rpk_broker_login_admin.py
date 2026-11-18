@@ -10,6 +10,7 @@ from functools import partial
 from pydantic import SecretStr
 
 from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.driver_broker_acl import (
+    DEFAULT_SUPERUSER_ENV_FILE,
     AclConnection,
     RemoteRunner,
     build_remote_script,
@@ -42,6 +43,7 @@ class RpkSshBrokerLoginAdmin:
             superuser_source_container=broker.superuser_source_container,
             ssh_target=broker.ssh_target,
             timeout_seconds=timeout_s,
+            superuser_env_file=broker.superuser_env_file or DEFAULT_SUPERUSER_ENV_FILE,
         )
 
     def _run(self, script: str) -> str:
