@@ -159,3 +159,21 @@ def test_error_empty_graph_is_never_an_empty_answer(query: Q) -> None:
 
 def test_error_no_graph_named() -> None:
     assert "no graph" in _error(_ask(Q.OPEN_PRS_NO_LIVE_OWNER))
+
+
+def test_contract_publishes_the_query_completed_terminal_event() -> None:
+    from pathlib import Path
+
+    import yaml
+
+    node_dir = (
+        Path(__file__).resolve().parents[4]
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_work_ledger_graph_query_effect"
+    )
+    contract = yaml.safe_load((node_dir / "contract.yaml").read_text(encoding="utf-8"))
+    topic = "onex.evt.omnimarket.work-ledger-graph-query-completed.v1"
+    assert contract["terminal_event"] == topic
+    assert contract["event_bus"]["publish_topics"] == [topic]

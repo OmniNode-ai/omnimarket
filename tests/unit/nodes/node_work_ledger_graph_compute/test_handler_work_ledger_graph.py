@@ -174,3 +174,12 @@ def test_the_no_model_check_is_red_on_a_planted_model_call() -> None:
         + "\n\nimport anthropic\n\ndef _extract(text: str) -> object:\n    return anthropic.Anthropic().messages.create(model='x', max_tokens=1, messages=[])\n"
     )
     assert _model_imports(planted) == {"anthropic"}
+
+
+def test_contract_publishes_the_graph_computed_terminal_event() -> None:
+    import yaml
+
+    contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
+    topic = "onex.evt.omnimarket.work-ledger-graph-computed.v1"
+    assert contract["terminal_event"] == topic
+    assert contract["event_bus"]["publish_topics"] == [topic]
