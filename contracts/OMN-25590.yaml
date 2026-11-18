@@ -1,0 +1,114 @@
+schema_version: 1.0.0
+ticket_id: OMN-25590
+title: A declared effect writes named secrets into a private host environment file
+summary: The secret store effect writes the floor-fill store DSN into the file declared by the consumer overlay and returns presence and SHA-256 readings.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn25590-private-env-file
+    statement: Materialize a declared secret store binding as a mode 0600 environment file for the floor-fill tick.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a test with a fake secret store makes the effect write a mode 0600 env file at the path read from the overlay key, holding the named secret, and its result and every log line carry only presence and the sha256, never the value; red at the merge base, green at head -- falsifier: uv run pytest <node tests dir> -q -k secret_env_file_write'
+      - id: AC2
+        statement: 'AC2: a test makes the effect refuse, writing no file and no partial file, when the secret is absent from the store, when the path is outside the declared overlay path, and when the file mode would not be 0600, and the value is never in caplog -- falsifier: uv run pytest <node tests dir> -q -k secret_env_file_refusal'
+      - id: AC3
+        statement: 'AC3: the overlays repository declares floor_fill_live.store_dsn_env_file and its own test passes with the key present and fails with it removed -- falsifier: uv run pytest tests -q -k floor_fill_live in the overlays clone'
+      - id: AC4
+        statement: "AC4: after the declared install on h051, one lab-run receipt reads grep -c '^OMNIBASE_INFRA_DB_URL=' on the env file as 1 and its mode as 600 with no value printed, and the next tick journal line no longer reads store-dsn-unset -- falsifier: onex lab-run receipt for the count and mode, plus journalctl --user for the tick unit showing exit 4 still present after the apply"
+      - id: AC5
+        statement: 'AC5: the lane report names the one command that applies the change on h051 once installed -- falsifier: the report under .claude_scratch/reports holds no command line for the apply'
+evidence_requirements:
+  - kind: tests
+    description: Secret-store env-file behavior, typed dispatch and CLI.
+    command: uv run --frozen pytest tests/unit/nodes/node_secret_store_effect/test_secret_env_file.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn25590-ac1-write
+    description: The fake store provides the named secret. The effect replaces the previous file through a same-directory temporary file created at mode 0600 and never emits a value fragment.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_secret_store_effect/test_secret_env_file.py -q -k secret_env_file_write --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn25590-ac2-refusal
+    description: Missing secrets, forbidden paths, links, wider files and a failed rename leave the destination untouched.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_secret_store_effect/test_secret_env_file.py -q -k secret_env_file_refusal --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn25590-ac3-hosted-consumer
+    description: The hosted proxy dispatches the typed operation against a fixture with the same floor_fill_live.store_dsn_env_file key.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_secret_store_effect/test_secret_env_file.py -q -k secret_env_file_contract_route --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn25590-ac3-overlays
+    description: The overlays checkout test exercises the deployed key and its missing-key control.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'cd "${OVERLAYS_HOME:?set to the overlays checkout at its PR head}" && uv run pytest tests -q -k floor_fill_live'
+        cwd: .
+  - id: dod-omn25590-ac4-hosted-fake-store
+    description: The hosted proxy runs the installed node entry point with a temporary store file and checks count, mode and digest.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_secret_store_effect/test_secret_env_file.py -q -k secret_env_file_write_cli_fake_store --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn25590-ac4-orchestrator-post-install
+    description: Pending the orchestrator's post-install read on h051. The lab-run receipt must report count 1 and mode 600, and the first tick after apply must no longer report store-dsn-unset.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          test "$(grep -c '^OMNIBASE_INFRA_DB_URL=' "${FLOOR_FILL_DSN_ENV_FILE:?set to the installed overlay path on h051}")" = 1
+          && test "$(stat -c %a "$FLOOR_FILL_DSN_ENV_FILE")" = 600
+          && journalctl --user -u onex-floor-fill-tick.service --since "${FLOOR_FILL_APPLIED_AT:?set to the h051 apply time}" -o cat
+          | python3 -c 'import sys; text = sys.stdin.read().strip(); sys.exit(not text or text == "-- No entries --" or "store-dsn-unset" in text)'
+        cwd: .
+  - id: dod-omn25590-integration-proof-h053
+    description: At the pushed revision, the h053 lab worker installs the package and exercises its CLI with a temporary store file. The test checks the key count, private mode, and digest with synthetic data.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --host h053 --lane dod-integration-proof-25590 --kind test --
+          uv run --frozen --python 3.12 --no-editable pytest tests/unit/nodes/node_secret_store_effect/test_secret_env_file.py
+          -q -s -k secret_env_file_write_cli_fake_store --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn25590-ac5-apply-entry
+    description: The apply command named in the lane report uses the same node module and options exercised with only a fake store.
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_secret_store_effect/test_secret_env_file.py -q -k secret_env_file_write_cli_fake_store --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn25590-deploy-private-file
+    description: A disposable container installs the checked-out package and runs the node entry point against an isolated store file. A missing apply route, wrong count or wider mode fails the command.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: >-
+          docker run --rm -v "${PWD}:/workspace:ro" -w /workspace
+          -e UV_PROJECT_ENVIRONMENT=/tmp/env-file-venv -e UV_CACHE_DIR=/tmp/uv-cache
+          ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
+          uv run --frozen --python 3.12 pytest tests/unit/nodes/node_secret_store_effect/test_secret_env_file.py
+          -q -k secret_env_file_write_cli_fake_store --no-cov -n 0 -p no:randomly -p no:cacheprovider
+        cwd: .
