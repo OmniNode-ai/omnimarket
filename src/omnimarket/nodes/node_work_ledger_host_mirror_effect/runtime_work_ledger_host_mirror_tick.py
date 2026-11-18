@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from omnimarket.nodes.node_work_ledger_host_mirror_effect.handlers.adapter_bus_read import (
-    AdapterBusRead,
+    BusLedgerRowsReader,
 )
 from omnimarket.nodes.node_work_ledger_host_mirror_effect.handlers.handler_work_ledger_host_mirror import (
     HandlerWorkLedgerHostMirror,
@@ -98,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     results = {}
     for stream in STREAMS:
         handler = HandlerWorkLedgerHostMirror(
-            AdapterBusRead(command, READ_TIMEOUT_SECONDS, stream.kinds)
+            BusLedgerRowsReader(command, READ_TIMEOUT_SECONDS, stream.kinds)
         )
         results[stream.name] = handler.handle(
             ModelHostMirrorRequest(

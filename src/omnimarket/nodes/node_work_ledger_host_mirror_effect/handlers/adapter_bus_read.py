@@ -21,7 +21,7 @@ from omnimarket.nodes.node_work_ledger_host_mirror_effect.protocols import (
 _STAMP = "%Y-%m-%dT%H:%M:%SZ"
 
 
-class AdapterBusRead:
+class BusLedgerRowsReader:
     """One typed rows query per call. A nonzero exit, an unreadable answer, an answer that is not
     ``ok`` or one that carries an error or a refusal is a LedgerReadError, never an empty page."""
 

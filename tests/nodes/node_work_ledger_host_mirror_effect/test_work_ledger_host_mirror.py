@@ -28,7 +28,7 @@ from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_regist
     load_units,
 )
 from omnimarket.nodes.node_work_ledger_host_mirror_effect.handlers.adapter_bus_read import (
-    AdapterBusRead,
+    BusLedgerRowsReader,
 )
 from omnimarket.nodes.node_work_ledger_host_mirror_effect.handlers.handler_work_ledger_host_mirror import (
     HandlerWorkLedgerHostMirror,
@@ -400,14 +400,14 @@ def test_golden_the_adapter_asks_for_the_declared_row_kinds(tmp_path: Path) -> N
         "assert request['kinds'] == ['RULING'] and request['page_size'] == 5\n"
         f"sys.stdout.write({_answer([ROW])!r})\n"
     )
-    page = AdapterBusRead([sys.executable, str(script)], 20, ("RULING",)).read_rows(
-        since=datetime(2026, 11, 18, tzinfo=UTC), cursor=None, page_size=5
-    )
+    page = BusLedgerRowsReader(
+        [sys.executable, str(script)], 20, ("RULING",)
+    ).read_rows(since=datetime(2026, 11, 18, tzinfo=UTC), cursor=None, page_size=5)
     assert [r.row_id for r in page.rows] == ["a"]
 
 
 def test_golden_the_adapter_reads_one_page_through_the_command(tmp_path: Path) -> None:
-    page = AdapterBusRead(_command(tmp_path, _answer([ROW])), 20).read_rows(
+    page = BusLedgerRowsReader(_command(tmp_path, _answer([ROW])), 20).read_rows(
         since=datetime(2026, 11, 18, tzinfo=UTC), cursor=None, page_size=5
     )
     assert [r.row_id for r in page.rows] == ["a"]
@@ -428,7 +428,7 @@ def test_error_the_adapter_never_turns_a_failed_read_into_an_empty_page(
     tmp_path: Path, body: str, exit_code: int, match: str
 ) -> None:
     with pytest.raises(LedgerReadError, match=match):
-        AdapterBusRead(_command(tmp_path, body, exit_code), 20).read_rows(
+        BusLedgerRowsReader(_command(tmp_path, body, exit_code), 20).read_rows(
             since=datetime(2026, 11, 18, tzinfo=UTC), cursor=None, page_size=5
         )
 
