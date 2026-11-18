@@ -1,0 +1,95 @@
+schema_version: 1.0.0
+ticket_id: OMN-24664
+title: 'omnimarket#6304 review round: duplicate-guard catalog patterns scoped to paths, one stated share rule and AC4 bound to evidence'
+summary: The review of omnimarket#6304 at head 96fb58622179 left six findings. Catalog patterns become a path glob plus a line pattern per repository in the deployment overlay, compiled in the digest config and refused at load; the share rule is stated one way everywhere; the split digest fields become one scored digest; the contracts of the pull request bind and declare what they now prove.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24664-review-round
+  statement: The duplicate guard excuses a shared catalog line only where the deployment declares it, and states one share rule.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a test built from the probe (two diffs deleting the same 20 sha256 lines of deploy/checksums.yaml, each adding one different line) fails on head 96fb58622179 and passes once catalog patterns are path-scoped -- falsifier: uv run pytest tests -k "duplicate_guard and catalog_path_scope" -q'
+  - id: AC2
+    statement: 'AC2: catalog patterns are a path glob plus a line pattern per repo in the overlay beside generated_paths, compiled in ModelDuplicateDigestConfig, and a bad expression is refused at load -- falsifier: uv run pytest tests -k "duplicate_guard and catalog_pattern_invalid" -q'
+  - id: AC3
+    statement: 'AC3: the share rule is stated once, the same way, in the compute contract, handler, model, OMN-19998 contract, OMN-24648 contract and the shared-base-line test, with the removed max() rule and the old a-fifth wording gone from the guard files -- falsifier: the share-rule wording test over those files'
+  - id: AC4
+    statement: 'AC4: a parse_diff control keeps one shared replaced non-catalog line among many distinct lines under one ticket clear below 0.1, and the edit() helper fills the fields production fills -- falsifier: uv run pytest tests -k "duplicate_guard and shared_line_among_distinct" -q'
+  - id: AC5
+    statement: 'AC5: one scored digest field replaces the split added and removed digest fields -- falsifier: the share-rule wording test finds neither split field name in the guard files, and the guard suite passes'
+  - id: AC6
+    statement: 'AC6: the OMN-24648 contract binds its AC4 to evidence that proves it, and the OMN-24632 and OMN-24648 contracts declare the additive interface change -- falsifier: the contract wording test'
+evidence_requirements:
+- kind: tests
+  description: The guard tests and the scm duplicate-guard suites pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/unit/handlers/scm/test_scm_duplicate_guard_replaces.py tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24664-ac1
+  description: 'The probe, two diffs deleting the same 20 sha256 lines of deploy/checksums.yaml and adding one different line each, is refused under either ticket when the overlay declares no catalog for that path; it fails on head 96fb58622179 (clear instead of adopt).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute -k "duplicate_guard and catalog_path_scope" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24664-ac2
+  description: 'A pattern that does not compile is refused by the model at load and by the overlay loader (unchecked), and a valid overlay declares path and line per repository.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute -k "duplicate_guard and catalog_pattern" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24664-ac3
+  description: 'Each guard file states the one share rule and none keeps the stale wording.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute -k "duplicate_guard and share_rule_stated_once" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24664-ac4
+  description: 'One shared replaced line among thirty distinct lines each, read through parse_diff, scores below 0.1 and clears under one ticket and under two.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute -k "duplicate_guard and shared_line_among_distinct" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24664-ac5
+  description: 'ModelFileTouch carries one scored digest; the guard suite passes on it.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm/test_scm_duplicate_guard.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24664-ac6
+  description: 'The OMN-24648 contract binds AC4 to the finding tests; both contracts declare interface_change true.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute -k "duplicate_guard and (additive_interface or share_rule_stated_once)" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24664-integration-proof
+  description: Run the guard tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24664 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm/test_scm_duplicate_guard_replaces.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
