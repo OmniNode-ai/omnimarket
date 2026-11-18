@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Work Ledger Host Mirror Effect (OMN-25537)
+#
+# WHO HOSTS THIS NODE. One systemd user timer tick per Linux lab host, installed by the host installer
+# (`onex-host-install-units ledger-host-mirror-systemd`). Shared runtimes never attach it: the mirror is a file
+# on a host. The handler is invoked locally by the tick; its empty bus topics and runtime profiles keep it
+# outside shared runtime dispatch.
+#
+# WHAT IT DOES. The ledger of record is on the operator host. A lab host's registry clone holds the ledger as
+# it stood when the file last went through git (the hourly clone fast-forward moves tracked files), plus rows
+# its own hooks appended, so a ruling written hours earlier read as absent (measured 2026-11-18: the newest
+# canonical row on h051, h053, h201 and h202 was 35 days old). One tick reads the rows the host has not seen
+# from the work ledger read node over the bus and appends them to the host's mirror file, and writes a receipt
+# naming the mirror's lag behind the record. The tick period plus the projection lag is the bound a ruling
+# reaches a host in; the contract's `delivery` block declares both and a test holds their sum under the limit.
+name: "node_work_ledger_host_mirror_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: []
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >
+  Appends the rows of the ledger of record that a lab host has not seen to the host's ledger mirror file, read
+  over the bus from the work ledger read node, resuming from a watermark and dropping a row by row id. A failed
+  read changes nothing; a tick that died between the append and the state write is cut back to the recorded
+  length. The receipt carries the mirror's lag behind the record.
+input_model:
+  name: "ModelHostMirrorRequest"
+  module: "omnimarket.nodes.node_work_ledger_host_mirror_effect.models.model_work_ledger_host_mirror"
+  description: "One tick: the mirror path, the state path and the read bounds."
+output_model:
+  name: "ModelHostMirrorResult"
+  module: "omnimarket.nodes.node_work_ledger_host_mirror_effect.models.model_work_ledger_host_mirror"
+  description: "The rows appended, the pages read and the mirror's lag behind the record."
+handler:
+  module: "omnimarket.nodes.node_work_ledger_host_mirror_effect.handlers.handler_work_ledger_host_mirror"
+  class: "HandlerWorkLedgerHostMirror"
+  input_model: "omnimarket.nodes.node_work_ledger_host_mirror_effect.models.model_work_ledger_host_mirror.ModelHostMirrorRequest"
+  output_model: "omnimarket.nodes.node_work_ledger_host_mirror_effect.models.model_work_ledger_host_mirror.ModelHostMirrorResult"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  runtime_profiles: []
+  timeout_ms: 100000
+dependency_ownership:
+  registry_root: "Owned by the host timer that invokes the tick; the registry root (OMNI_HOME) of the host."
+  env: "ONEX_LEDGER_BUS_READ_COMMAND, declared by the unit in the host installer's contract."
+runtime_dispatch:
+  external_trigger: One host timer tick invokes the typed handler with the host registry root and environment.
+metadata:
+  transport_type: local
+  description: "Hosted by one timer tick per lab host, never a shared runtime"
+  author: "OmniNode Team"
+  created: "2026-11-18"
+  tags: ["effect", "ledger", "lab-host", "OMN-25537"]
+  related_tickets: ["OMN-25537"]
+# The seconds a row written on the ledger of record needs to reach a host's mirror: the timer period, the
+# longest the tick runs, and the projection lag measured on 2026-11-18 (newest projected row 20 to 35 s behind
+# the write). Their sum is the bound; tests/nodes/node_work_ledger_host_mirror_effect holds it under max_seconds.
+delivery:
+  max_seconds: 300
+  tick_period_seconds: 120
+  tick_run_seconds: 100
+  projection_lag_seconds: 60
