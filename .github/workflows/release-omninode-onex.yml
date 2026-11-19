@@ -82,7 +82,7 @@ jobs:
       # anything is published, so a bad render stops the release.
       - name: Render the installer
         run: |
-          uv run --frozen python -m omnimarket.nodes.node_onex_installer_render_compute.runtime_onex_installer_render \
+          PYTHONPATH="$PWD/src" uv run --no-project --python 3.12 --with pydantic python -m omnimarket.nodes.node_onex_installer_render_compute.runtime_onex_installer_render \
             < packages/omninode-onex/installer.json > dist/install.sh
           grep -qx "ONEX_VERSION=\"$(python3 -c "import json;print(json.load(open('packages/omninode-onex/installer.json'))['version'])")\"" dist/install.sh
 
