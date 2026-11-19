@@ -561,6 +561,25 @@ def _adr_segmentation_bridge_key(
         segmentation._segmentation_model_key(config.name)
 
 
+def _probe_model_scope_local_tiers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from omnimarket.handlers.delegation_model_scope import (
+        MODEL_SCOPE_CONFIG_PATH_ENV_KEY,
+        local_scope_tiers,
+    )
+
+    monkeypatch.delenv(MODEL_SCOPE_CONFIG_PATH_ENV_KEY, raising=False)
+    assert local_scope_tiers() == frozenset({"local"})
+    pinned = tmp_path / "model_scope.yaml"
+    pinned.write_text(
+        "schema: delegation_model_scope.v1\nlocal_tiers:\n  - deployment_tier\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(MODEL_SCOPE_CONFIG_PATH_ENV_KEY, str(pinned))
+    assert local_scope_tiers() == frozenset({"deployment_tier"})
+
+
 PROBES: dict[str, Probe] = {
     "adr_segmentation_bridge_key": _adr_segmentation_bridge_key,
     "routing_tiers_ladder": _probe_routing_tiers_ladder,
@@ -570,6 +589,7 @@ PROBES: dict[str, Probe] = {
     "tenant_routing_overlay": _probe_tenant_routing_overlay,
     "build_loop_model_policy": _probe_build_loop_model_policy,
     "inference_bridge_endpoints": _probe_inference_bridge_endpoints,
+    "model_scope_local_tiers": _probe_model_scope_local_tiers,
 }
 
 

@@ -5,6 +5,14 @@ summary: The session phase evaluator request and evaluation carry session_id and
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn21049-ac3-accepted-20261116t0145z:
+    - label: AC3
+      criterion_hash: 9954a395101e2d07467330afa71a3a9ca2b89acfbdb7e9c6a670f9c8548a317f
+      proposed_by: lane=dod-closeout-bind-2026-11-16T0145Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-16T0145Z-c2
+      accepted_at: '2026-11-16T02:24:11Z'
 requirements:
   - id: req-session-phase-tick-wire
     statement: An evaluation published by the evaluator matches the orchestrator's input model and dispatches to its handler.
@@ -35,3 +43,12 @@ dod_evidence:
       - check_type: command
         check_value: |-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_session_phase_evaluator/handlers/handler_session_phase_evaluator.py?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | (contains("session_id") and contains("correlation_id"))' | grep -qx true
+  - id: dod-omn21049-ac3-accepted-20261116t0145z
+    description: AC3 binding (accepted 2026-11-16T0145Z, proposed by lane=dod-closeout-bind-2026-11-16T0145Z-c2, accepted by lane=dod-closeout-accept-2026-11-16T0145Z-c2). A no_action evaluation driven through the runtime payload matcher, dispatch callback and contract result applier of the evaluator and then the orchestrator publishes only session-orchestrator-tick-completed, with no session-phase-transition and no session-halt-required. Re-run at omnimarket origin/dev a3b077129b on h051 passed (1 passed).
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q -p no:cacheprovider tests/integration/nodes/node_session_phase_enforcement/test_omn21049_session_phase_tick_wire.py::test_no_action_tick_reaches_evaluated_then_one_tick_completed
+        cwd: ${OMNI_HOME}/omnimarket

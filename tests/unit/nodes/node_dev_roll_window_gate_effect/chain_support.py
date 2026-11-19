@@ -53,11 +53,10 @@ GROUP = "onex.core-runtime.dev-roll-window-gate"
 KEY = b"OmniNode-ai/omnimarket#dev-roll-window-gate"
 
 
-def build(
-    contract_paths: list[Path],
-    handlers: dict[str, Any],
-    clock: Clock,
-) -> tuple[RuntimeDispatch, InMemoryTransport, InMemoryBroker, frozenset[str]]:
+def routing_for(
+    contract_paths: list[Path], handlers: dict[str, Any]
+) -> tuple[dict[str, Any], frozenset[str]]:
+    """The runtime's own routing map over the contracts' subscribed topics, and those topics."""
     manifest = discover_contracts_from_paths(contract_paths)
     assert not manifest.errors, manifest.errors
     contracts = list(manifest.contracts)
@@ -79,6 +78,15 @@ def build(
         contracts, frozenset(topics), handler_resolver=handler_resolver
     )
     assert set(routing_map) == topics
+    return routing_map, frozenset(topics)
+
+
+def build(
+    contract_paths: list[Path],
+    handlers: dict[str, Any],
+    clock: Clock,
+) -> tuple[RuntimeDispatch, InMemoryTransport, InMemoryBroker, frozenset[str]]:
+    routing_map, topics = routing_for(contract_paths, handlers)
     broker = InMemoryBroker(num_partitions=1)
     transport = InMemoryTransport(broker=broker, group=GROUP, topics=sorted(topics))
     dispatch = RuntimeDispatch(

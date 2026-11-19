@@ -288,14 +288,13 @@ def test_history_and_detail_follow_the_overlay_bounds() -> None:
         fold(None, request(), wide)
 
 
-def test_handler_returns_the_record_as_the_reducer_projection() -> None:
+def test_handler_returns_the_folded_record() -> None:
     handler = HandlerHostInstallState(overlay())
-    output = asyncio.run(
+    record = asyncio.run(
         handler.handle(ModelHostInstallReduceCommand(prior=None, event=request()))
     )
-    (projection,) = output.projections
-    assert isinstance(projection, ModelHostInstallRecord)
-    assert projection.state is ST.REQUESTED
+    assert isinstance(record, ModelHostInstallRecord)
+    assert record.state is ST.REQUESTED
 
 
 def test_handler_without_an_overlay_refuses_naming_the_overlay(

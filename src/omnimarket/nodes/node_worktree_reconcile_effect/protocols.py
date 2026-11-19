@@ -14,6 +14,7 @@ from omnimarket.events.worktree_reconcile import (
 )
 from omnimarket.handlers.rules_ledger_claims import ModelLedgerRead
 from omnimarket.handlers.rules_unit_roots import UnitRoots
+from omnimarket.models.model_skipped_unit import ModelSkippedUnit
 
 
 class ProtocolWorktreeFactsProbe(Protocol):
@@ -23,6 +24,9 @@ class ProtocolWorktreeFactsProbe(Protocol):
     def revalidate(
         self, facts: ModelWorktreeFacts, now: datetime
     ) -> ModelWorktreeFacts: ...
+    def skipped_units(self) -> tuple[ModelSkippedUnit, ...]:
+        """The installed units the last discovery skipped, each with its reason."""
+        ...
 
 
 class ProtocolUnitRootReader(Protocol):
