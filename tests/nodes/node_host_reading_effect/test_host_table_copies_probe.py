@@ -14,6 +14,8 @@ import asyncio
 import copy
 import inspect
 import json
+from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -27,6 +29,12 @@ from omnimarket.models.model_host_reading import (
     EnumHostProbe,
     ModelHostReadingCommand,
     ModelProbeReading,
+)
+from omnimarket.models.model_host_table_copies_drift import (
+    ModelCopyValue,
+    ModelFieldDifference,
+    ModelHostTableDriftCommand,
+    ModelHostTableDriftResult,
 )
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
 from omnimarket.nodes.node_host_reading_effect.adapters.host_table_copies import (
@@ -48,12 +56,6 @@ from omnimarket.nodes.node_host_reading_effect.protocols import (
 from omnimarket.nodes.node_host_table_copies_drift_compute.handlers.handler_host_table_copies_drift import (
     HandlerHostTableCopiesDrift,
 )
-from omnimarket.nodes.node_host_table_copies_drift_compute.models import (
-    ModelCopyValue,
-    ModelFieldDifference,
-    ModelHostTableDriftCommand,
-    ModelHostTableDriftResult,
-)
 from omnimarket.nodes.node_host_table_copies_drift_compute.overlay import (
     ModelHostTableCopiesDriftOverlay,
 )
@@ -63,6 +65,9 @@ from omnimarket.nodes.node_host_table_copies_drift_compute.protocols import (
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     InMemoryLedger,
+)
+from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ProtocolReadingAppender,
 )
 from tests.nodes.node_host_reading_effect.host_reading_support import (
     EXAMPLE,
@@ -208,9 +213,23 @@ def test_the_probe_runs_the_drift_read_in_probe_mode_with_no_appender(
     seen: dict[str, object] = {}
 
     class Spy(HandlerHostTableCopiesDrift):
-        def __init__(self, **kwargs: object) -> None:
-            seen["appender"] = kwargs["appender"]
-            super().__init__(**kwargs)  # type: ignore[arg-type]
+        def __init__(
+            self,
+            *,
+            overlay: ModelHostTableCopiesDriftOverlay,
+            host: str,
+            source: ProtocolCopySource,
+            appender: ProtocolReadingAppender | None,
+            clock: Callable[[], datetime],
+        ) -> None:
+            seen["appender"] = appender
+            super().__init__(
+                overlay=overlay,
+                host=host,
+                source=source,
+                appender=appender,
+                clock=clock,
+            )
 
         def handle(
             self, request: ModelHostTableDriftCommand

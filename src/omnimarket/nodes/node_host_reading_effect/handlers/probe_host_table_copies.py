@@ -19,16 +19,16 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayNotFoundError,
 )
 from omnimarket.models.model_host_reading import EnumHostProbe, ModelProbeReading
+from omnimarket.models.model_host_table_copies_drift import (
+    ModelHostTableDriftCommand,
+    ModelHostTableDriftResult,
+)
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
 from omnimarket.nodes.node_host_reading_effect.protocols import (
     ProtocolHostTableCopies,
 )
 from omnimarket.nodes.node_host_table_copies_drift_compute.handlers.handler_host_table_copies_drift import (
     HandlerHostTableCopiesDrift,
-)
-from omnimarket.nodes.node_host_table_copies_drift_compute.models import (
-    ModelHostTableDriftCommand,
-    ModelHostTableDriftResult,
 )
 from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute import (
     reason_token,
