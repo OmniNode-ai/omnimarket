@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import NamedTuple
 
 from omnimarket.nodes.node_lab_alarm.handlers.alarm_route import (
-    AlarmSeverityRouter,
     GatedAlarmChannel,
+    HandlerAlarmSeverityRoute,
     load_alarm_severity_table,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_digest import (
@@ -113,7 +113,7 @@ def build_routed_delivery(
     alarm_overlay: ModelLabAlarmOverlay | None = None,
     table: ModelAlarmSeverityTable | None = None,
     clock: Callable[[], datetime] = _utc_now,
-) -> AlarmSeverityRouter:
+) -> HandlerAlarmSeverityRoute:
     """The delivery wrapped by the severity router; an undeclared source refuses the build."""
     table = table or load_alarm_severity_table()
     if alarm_overlay is not None:
@@ -127,7 +127,7 @@ def build_routed_delivery(
         state=parts.state,
         clock=clock,
     )
-    return AlarmSeverityRouter(
+    return HandlerAlarmSeverityRoute(
         table=table,
         gate=gate,
         channel=parts.channel,

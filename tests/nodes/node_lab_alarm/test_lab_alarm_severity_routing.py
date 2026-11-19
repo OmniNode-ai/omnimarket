@@ -27,8 +27,8 @@ from omnimarket.nodes.node_lab_alarm.adapters.routed_delivery_adapters import (
     require_declared,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.alarm_route import (
-    AlarmSeverityRouter,
     GatedAlarmChannel,
+    HandlerAlarmSeverityRoute,
     load_alarm_severity_table,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_digest import (
@@ -91,7 +91,7 @@ class _Rig:
         self.digest_state = InMemoryDeliveryState()
         overlay = _delivery_overlay()
         gate = GatedAlarmChannel(self.channel)
-        self.route = AlarmSeverityRouter(
+        self.route = HandlerAlarmSeverityRoute(
             table=self.table,
             gate=gate,
             channel=self.channel,

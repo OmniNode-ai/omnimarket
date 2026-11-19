@@ -71,7 +71,7 @@ description: >
   The stale-indeterminate condition (HandlerStaleIndeterminate, verb stale-indeterminate) reads the run records of the overlay's
   watched conditions. A condition whose last after_runs runs all read INDETERMINATE, with no OK and no ALARM between them, alarms.
 
-  Severity routing (AlarmSeverityRouter, OMN-24939): every alarm source carries one declared severity in alarm_sources below, and
+  Severity routing (HandlerAlarmSeverityRoute, OMN-24939): every alarm source carries one declared severity in alarm_sources below, and
   the delivery of every condition goes through the router, which reads it. PAGE and FIX-CAUSE post once per new condition through
   the delivery's own episode rule and once when the condition clears; DIGEST is held for the one daily digest message; DROP never
   posts. Every class still writes its ledger row through the delivery's own ledger step and window. The daily digest
