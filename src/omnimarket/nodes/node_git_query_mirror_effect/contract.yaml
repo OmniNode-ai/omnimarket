@@ -24,9 +24,11 @@ description: >
   operation per request: sync (fetch the mirror), status (watermark only),
   head_sha, changed_files (three-dot diff names), diff, conflicts (git
   merge-tree), on_base (the change is already on the base branch: the head is
-  an ancestor, or merging adds nothing) and log. Every answer carries its
-  source (mirror, mirror_refreshed, gh_fallback, unavailable) and the mirror
-  watermark age. A stale mirror refreshes the one PR ref by git fetch before
+  an ancestor, or merging adds nothing) and log, plus is_ancestor (whether one
+  sha is an ancestor of another in the named mirror; the answer is unread when
+  the mirror lacks either sha, and the operation never fetches). Every answer
+  carries its source (mirror, mirror_refreshed, gh_fallback, unavailable) and
+  the mirror watermark age. A stale mirror refreshes the one PR ref by git fetch before
   answering; only a failed fetch falls back to the GitHub API, for head_sha,
   changed_files and diff.
   Detecting syncs append each merge to the event emit node's duty-critical

@@ -22,6 +22,17 @@ from omnimarket.models.broker_acl.model_broker_acl_overlay import (
 _PLACEHOLDER_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
 
 
+def fill_value_refusal(value: str) -> str | None:
+    """A short reason a placeholder value is refused, or None when it is usable."""
+    if not value.strip():
+        return "an empty or blank value"
+    if any(char in value for char in "${}"):
+        return "an unexpanded placeholder"
+    if any(char.isspace() for char in value):
+        return "whitespace"
+    return None
+
+
 class EnumTopicDirection(StrEnum):
     PUBLISH = "publish"
     SUBSCRIBE = "subscribe"
@@ -89,6 +100,10 @@ class ModelNodeRole(BaseModel):
             raise ValueError(
                 f"role {self.name!r} names placeholders but holds {len(self.principals)} principals"
             )
+        if self.placeholders:
+            reason = fill_value_refusal(self.principals[0])
+            if reason:
+                raise ValueError(f"role {self.name!r} principal has {reason}")
         return self
 
 
@@ -101,6 +116,8 @@ class ModelBrokerAclPrincipalsOverlay(BaseModel):
     why: str = Field(min_length=1)
     principals: tuple[ModelNodePrincipal, ...] = ()
     roles: tuple[ModelNodeRole, ...] = ()
+    # Values for ${NAME} cells that no role holds (a consumer group package name, a login of another broker): names no role fills.
+    placeholder_values: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _names_something(self) -> ModelBrokerAclPrincipalsOverlay:
@@ -114,6 +131,18 @@ class ModelBrokerAclPrincipalsOverlay(BaseModel):
                         f"placeholder {placeholder!r} is named by both {seen[placeholder]!r} and {role.name!r}"
                     )
                 seen[placeholder] = role.name
+        for name, value in self.placeholder_values.items():
+            if not _PLACEHOLDER_NAME.fullmatch(name):
+                raise ValueError(
+                    f"placeholder {name!r} does not match ^[A-Z][A-Z0-9_]*$"
+                )
+            reason = fill_value_refusal(value)
+            if reason:
+                raise ValueError(f"placeholder {name!r} has {reason}")
+            if name in seen:
+                raise ValueError(
+                    f"placeholder {name!r} is named by both {seen[name]!r} and placeholder_values"
+                )
         return self
 
     def placeholder_logins(self) -> dict[str, str]:
@@ -123,6 +152,10 @@ class ModelBrokerAclPrincipalsOverlay(BaseModel):
             for role in self.roles
             for placeholder in role.placeholders
         }
+
+    def placeholder_fills(self) -> dict[str, str]:
+        """placeholder -> the name that fills it without the environment: role logins, then non-login values."""
+        return {**self.placeholder_logins(), **self.placeholder_values}
 
 
 class ModelBrokerAclDeriveRequest(BaseModel):

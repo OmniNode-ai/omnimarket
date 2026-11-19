@@ -4,17 +4,30 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 import yaml
 
-from omnimarket.models.model_merged_change_reading import ModelMcrRunner
+from omnimarket.models.model_merged_change_reading import (
+    ModelMcrBuildFact,
+    ModelMcrChange,
+    ModelMcrRunner,
+)
 from omnimarket.models.model_runtime_host_reads import ModelRuntimeHostReadOverlay
+from omnimarket.nodes.node_merged_change_reading_effect.handlers.handler_merged_change_reading_effect import (
+    HandlerMergedChangeReadingEffect,
+)
 from omnimarket.nodes.node_merged_change_reading_effect.models.model_merged_change_reading_run import (
+    ModelMcrRunRequest,
     ModelMcrUnitHost,
+)
+from omnimarket.nodes.node_merged_change_reading_effect.sources.source_in_memory import (
+    SourceInMemoryChangeReading,
 )
 from omnimarket.nodes.node_merged_change_reading_effect.sources.source_runtime_log import (
     SourceRuntimeFacts,
@@ -22,7 +35,7 @@ from omnimarket.nodes.node_merged_change_reading_effect.sources.source_runtime_l
     parse_unit_state,
 )
 
-from .support import LOG_TEXT, labels
+from .support import LOG_TEXT, config, labels
 
 OVERLAY = ModelRuntimeHostReadOverlay.model_validate(
     yaml.safe_load(
@@ -175,6 +188,29 @@ MANIFEST = (
     b'{"contracts": [{"name": "node_start_path_census_compute"}, '
     b'{"name": "other_effect", "entry_point_name": "node_other_effect"}], "errors": []}'
 )
+CENSUS_TOPIC = "onex.cmd.omnimarket.start-path-census-requested.v1"
+SUBSCRIPTION_STATE_LINE = (
+    "2026-11-17 05:49:43 [INFO] aiokafka.consumer.subscription_state: Updating subscribed topics to: "
+    "frozenset({'onex.evt.omnimarket.script-node-src-completed.v1', "
+    "'onex.cmd.omnimarket.start-path-census-requested.v1', "
+    "'tenant-local-a630ba907baa.onex.evt.omnibase-infra.delegation-completed.v1'})"
+)
+LOG_WITHOUT_JOINS = "\n".join(
+    line
+    for line in LOG_WITHOUT_DISCOVERY.splitlines()
+    if "Setting newly assigned partitions" not in line
+)
+SUBSCRIPTION_MANIFEST = json.dumps(
+    {
+        "contracts": [
+            {
+                "name": "start_path_census",
+                "entry_point_name": "node_start_path_census_compute",
+                "event_bus": {"subscribe_topics": [CENSUS_TOPIC]},
+            }
+        ]
+    }
+).encode()
 
 
 def _manifest_source(ssh: _Ssh, url: str) -> SourceRuntimeFacts:
@@ -301,4 +337,230 @@ def test_a_join_under_the_contract_name_counts_for_the_entry_point_name() -> Non
         "node_projection_work_ledger",
         "onex.evt.omnimarket.work-ledger-claim.v1",
     ) in joined
+    assert facts.unread == ()
+
+
+def test_parse_subscription_state_keeps_the_last_time_per_exact_topic() -> None:
+    text = "\n".join(
+        (
+            LOG_WITHOUT_JOINS,
+            SUBSCRIPTION_STATE_LINE,
+            SUBSCRIPTION_STATE_LINE.replace("05:49:43", "05:49:13"),
+            "2026-11-17 05:50:13 [INFO] aiokafka.consumer.subscription_state: Updating subscribed topics to: "
+            "frozenset({'onex.evt.omnimarket.script-node-src-completed.v1'})",
+        )
+    )
+    facts = parse_runtime_log(text, labels())
+    assert {t.topic: t.last_at for t in facts.topics_in_subscription} == {
+        "onex.evt.omnimarket.script-node-src-completed.v1": datetime(
+            2026, 11, 17, 5, 50, 13, tzinfo=UTC
+        ),
+        CENSUS_TOPIC: datetime(2026, 11, 17, 5, 49, 43, tzinfo=UTC),
+        "tenant-local-a630ba907baa.onex.evt.omnibase-infra.delegation-completed.v1": datetime(
+            2026, 11, 17, 5, 49, 43, tzinfo=UTC
+        ),
+    }
+    assert facts.subscriptions == ()
+    assert facts.unread == ()
+
+
+@pytest.mark.parametrize("with_alias", [False, True])
+def test_subscriptions_come_from_manifest_and_retained_subscription_state(
+    with_alias: bool,
+) -> None:
+    manifest = (
+        SUBSCRIPTION_MANIFEST
+        if with_alias
+        else SUBSCRIPTION_MANIFEST.replace(
+            b'"name": "start_path_census", "entry_point_name": ', b'"name": '
+        )
+    )
+    ssh = _Ssh(
+        {
+            "docker logs": (
+                LOG_WITHOUT_JOINS + "\n" + SUBSCRIPTION_STATE_LINE
+            ).encode(),
+            "docker inspect": b"2026-11-17T05:30:00Z\n",
+            "curl": manifest,
+        }
+    )
+    facts, _ = _manifest_source(ssh, "http://127.0.0.1:8085/m").read([])
+    expected = {("node_start_path_census_compute", CENSUS_TOPIC)}
+    if with_alias:
+        expected.add(("start_path_census", CENSUS_TOPIC))
+    assert {(s.node, s.topic) for s in facts.subscriptions} == expected
+    assert len(facts.subscriptions) == len(expected)
+    assert all(
+        s.joined_at == datetime(2026, 11, 17, 5, 49, 43, tzinfo=UTC)
+        for s in facts.subscriptions
+    )
+    assert len(facts.topics_in_subscription) == 3
+    assert facts.unread == ()
+    assert sum("curl" in script for script in ssh.scripts) == 1
+    assert any("Updating subscribed topics to: " in script for script in ssh.scripts)
+
+
+@pytest.mark.parametrize(
+    "state_line",
+    [
+        "",
+        SUBSCRIPTION_STATE_LINE.replace(CENSUS_TOPIC, "onex.cmd.other.requested.v1"),
+        SUBSCRIPTION_STATE_LINE.replace(
+            CENSUS_TOPIC, "tenant-local-a630ba907baa." + CENSUS_TOPIC
+        ),
+    ],
+    ids=["no-state-lines", "undeclared-topics", "tenant-prefix-is-not-an-exact-match"],
+)
+def test_failing_control_declared_topic_requires_exact_subscription_state_evidence(
+    state_line: str,
+) -> None:
+    ssh = _Ssh(
+        {
+            "docker logs": (LOG_WITHOUT_JOINS + "\n" + state_line).encode(),
+            "docker inspect": b"2026-11-17T05:30:00Z\n",
+            "curl": SUBSCRIPTION_MANIFEST,
+        }
+    )
+    facts, _ = _manifest_source(ssh, "http://127.0.0.1:8085/m").read([])
+    assert facts.subscriptions == ()
+    assert facts.unread == ()
+
+
+@pytest.mark.parametrize("url", ["", "http://127.0.0.1:8085/m"])
+def test_failing_control_subscription_state_without_readable_manifest_credits_nothing(
+    url: str,
+) -> None:
+    ssh = _Ssh(
+        {
+            "docker logs": (
+                LOG_WITHOUT_JOINS + "\n" + SUBSCRIPTION_STATE_LINE
+            ).encode(),
+            "docker inspect": b"2026-11-17T05:30:00Z\n",
+        },
+        fail_on="curl",
+    )
+    facts, _ = _manifest_source(ssh, url).read([])
+    assert facts.subscriptions == ()
+    assert len(facts.topics_in_subscription) == 3
+    assert facts.unread == ("loaded_nodes",)
+
+
+def test_manifest_subscriptions_include_contract_and_entry_point_names() -> None:
+    source = _manifest_source(
+        _Ssh({"curl": SUBSCRIPTION_MANIFEST}), "http://127.0.0.1:8085/m"
+    )
+    assert source.manifest_subscriptions() == {
+        "start_path_census": (CENSUS_TOPIC,),
+        "node_start_path_census_compute": (CENSUS_TOPIC,),
+    }
+
+
+def test_subscription_state_does_not_duplicate_or_replace_an_existing_join() -> None:
+    join = (
+        "2026-11-17 05:48:00 [INFO] aiokafka.consumer.group_coordinator: Setting newly assigned partitions "
+        "{TopicPartition(topic='onex.cmd.omnimarket.start-path-census-requested.v1', partition=0)} for group "
+        "local.omnimarket.start_path_census.consume.1.0.0"
+    )
+    ssh = _Ssh(
+        {
+            "docker logs": "\n".join(
+                (LOG_WITHOUT_JOINS, join, SUBSCRIPTION_STATE_LINE)
+            ).encode(),
+            "docker inspect": b"2026-11-17T05:30:00Z\n",
+            "curl": SUBSCRIPTION_MANIFEST,
+        }
+    )
+    facts, _ = _manifest_source(ssh, "http://127.0.0.1:8085/m").read([])
+    assert {(s.node, s.topic) for s in facts.subscriptions} == {
+        ("start_path_census", CENSUS_TOPIC),
+        ("node_start_path_census_compute", CENSUS_TOPIC),
+    }
+    assert len(facts.subscriptions) == 2
+    assert all(
+        s.joined_at == datetime(2026, 11, 17, 5, 48, tzinfo=UTC)
+        for s in facts.subscriptions
+    )
+
+
+def test_rotated_log_subscription_state_to_running_reading() -> None:
+    result_topic = "onex.evt.omnimarket.start-path-census-completed.v1"
+    published = (
+        "2026-11-17 05:50:00 [INFO] omnibase_infra.runtime.service_dispatch_result_applier: "
+        f"Published output event to {result_topic} (correlation_id=aa)"
+    )
+    ssh = _Ssh(
+        {
+            "docker logs": "\n".join(
+                (LOG_WITHOUT_JOINS, SUBSCRIPTION_STATE_LINE, published)
+            ).encode(),
+            "docker inspect": b"2026-11-17T05:30:00Z\n",
+            "curl": SUBSCRIPTION_MANIFEST,
+        }
+    )
+    runner = ModelMcrRunner(
+        repo="omnimarket",
+        number=6120,
+        kind="topic",
+        nodes=("node_start_path_census_compute",),
+        trigger_topics=(CENSUS_TOPIC,),
+        result_topics=(result_topic,),
+    )
+    facts, started = _manifest_source(ssh, "http://127.0.0.1:8085/m").read([runner])
+    sources = SourceInMemoryChangeReading(
+        runners=(runner,),
+        build_facts=(
+            ModelMcrBuildFact(
+                repo="omnimarket", number=6120, in_build=True, source="test"
+            ),
+        ),
+        build_started_at=started,
+        runtime=facts,
+    )
+
+    class Container:
+        def get_service(self, key: Any) -> SourceInMemoryChangeReading:
+            return sources
+
+    container: Any = Container()
+    result = HandlerMergedChangeReadingEffect(container, config()).handle(
+        ModelMcrRunRequest(
+            changes=(ModelMcrChange(repo="omnimarket", number=6120),),
+            now=datetime(2026, 11, 17, 6, tzinfo=UTC),
+        )
+    )
+    reading = result.reading.readings[0]
+    assert (reading.verdict, reading.missing_step) == ("SEEN_RUNNING", "")
+    assert reading.nodes[0].subscribed_topics == (CENSUS_TOPIC,)
+    assert reading.last_run_at == datetime(2026, 11, 17, 5, 50, tzinfo=UTC)
+
+
+def test_error_a_malformed_event_bus_block_declares_nothing_and_keeps_the_manifest() -> (
+    None
+):
+    manifest = json.dumps(
+        {
+            "contracts": [
+                {"name": "node_a", "event_bus": "not-an-object"},
+                {"name": "node_b", "event_bus": {"subscribe_topics": None}},
+                {
+                    "name": "node_c",
+                    "event_bus": {"subscribe_topics": [CENSUS_TOPIC, 7]},
+                },
+            ]
+        }
+    ).encode()
+    ssh = _Ssh(
+        {
+            "docker logs": (
+                LOG_WITHOUT_JOINS + "\n" + SUBSCRIPTION_STATE_LINE
+            ).encode(),
+            "docker inspect": b"2026-11-17T05:30:00Z\n",
+            "curl": manifest,
+        }
+    )
+    facts, _ = _manifest_source(ssh, "http://127.0.0.1:8085/m").read([])
+    assert {n.node for n in facts.loaded_nodes} == {"node_a", "node_b", "node_c"}
+    assert {(s.node, s.topic) for s in facts.subscriptions} == {
+        ("node_c", CENSUS_TOPIC)
+    }
     assert facts.unread == ()

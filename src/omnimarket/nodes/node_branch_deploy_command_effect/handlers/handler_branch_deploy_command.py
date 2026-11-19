@@ -176,7 +176,11 @@ class HandlerBranchDeployCommand:
             envelope["image_ref"] = request.image_ref
         if request.overlay_ref:
             envelope["overlay_ref"] = request.overlay_ref
-        if request.mode == "deploy":
+        # A tag-departure command carries the sibling repos' dev tags instead of a pull request number; the key
+        # stays out of every command that has no sibling_tags, so existing commands publish byte-identically.
+        if request.sibling_tags:
+            envelope["sibling_tags"] = dict(request.sibling_tags)
+        if request.form == "pr" and request.mode == "deploy":
             envelope["open_pr"] = (
                 f"{request.repo}#{request.pr_number}@{request.git_ref}"
             )
