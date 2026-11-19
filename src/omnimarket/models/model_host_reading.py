@@ -25,6 +25,8 @@ class EnumHostProbe(StrEnum):
     HOST_CANARY = "host-canary"
     #: Join J1: the code graph's verdict for the nodes host discovery and placement depend on.
     JOIN_J1 = "join-j1"
+    #: The declared copies of the lab host table agree on every field of every host (OMN-24558).
+    HOST_TABLE_COPIES = "host-table-copies"
 
 
 class EnumCanaryEnding(StrEnum):

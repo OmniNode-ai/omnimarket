@@ -35,6 +35,7 @@ _OPERATIONS = {
     "lane_drift",
     "container_unhealthy",
     "lab_pass_receipt",
+    "loaded_code_sha",
     "stale_indeterminate",
     "container_restarts",
 }
