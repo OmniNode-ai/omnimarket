@@ -45,6 +45,16 @@ handler_routing:
 event_bus:
   subscribe_topics: []
   publish_topics: []
+# A local node keeps event_bus empty (the runtime dogfood audit refuses a local invocation with bus topics), so the boot
+# provisioner reads the snapshot topic from published_events, the section the topic extractor also reads.
+published_events:
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  - topic: onex.snapshot.projection.floor-work-state.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.floor-work-state.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.floor-work-state.v1, operation: DESCRIBE}
 externally_consumed_topics:
   # The floor reads it through node_floor_projection_read_effect (OMN-23391).
   # onex-topic-allow: a projection snapshot topic has the projection's own name form.

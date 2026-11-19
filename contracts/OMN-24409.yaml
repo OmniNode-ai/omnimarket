@@ -1,0 +1,95 @@
+schema_version: 1.0.0
+ticket_id: OMN-24409
+title: Lab hosts announce themselves on the bus
+summary: 'A pure compute node builds one host announcement (identity, roles, capacity, graphics cards, models served, runtimes, installed software with versions and commits, lane accounts, availability) with a facts digest that moves when a version or commit moves and not when load moves; an effect node reads the host''s own facts, publishes the announcement with a start, change, heartbeat or stop reason, and publishes a typed failure instead when the facts cannot be read. The capacity inside the announcement is the old capacity advertisement for the same host.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24409-ac1
+  statement: the announcement carries every fact the registry reads and its facts digest ignores load
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the announcement carries identity, roles, capacity, graphics cards, models served, runtimes, installed software with versions and commits, lane accounts and availability, and its facts digest changes when a version or commit changes and not when load changes -- falsifier: pytest tests/nodes/node_host_introspection_compute -q, failing when the digest ignores the runtimes'
+- id: req-omn24409-ac2
+  statement: the capacity inside the announcement is the old capacity advertisement for the same host
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the capacity inside the announcement equals the old capacity advertisement for the same machine field for field, on the in-memory bus and on the real broker -- falsifier: pytest tests/nodes/node_host_introspection_announce_effect/test_seams_host_introspection_omn19998.py -q, failing when the capacity gains or loses a field'
+- id: req-omn24409-ac3
+  statement: an unreadable host publishes a typed failure and a failed publish does not spend the start announcement
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a host whose facts cannot be read publishes a typed failure and no announcement, and a failed publish does not spend the start announcement -- falsifier: pytest tests/nodes/node_host_introspection_announce_effect/test_host_announcer_chain_omn19998.py -q, failing when the announcer forgets it has started'
+- id: req-omn24409-ac4
+  statement: the integrated reading on a lab host is recorded in the pull request's Lab comment with the host, revision and what was read on the development bus
+  acceptance:
+  - id: AC4
+    statement: 'AC4: integrated: after install on a lab host from the branch, the host''s announcement is read on the development bus with start, heartbeat and stop reasons in order, and matches its capacity advertisement read in the same minute -- falsifier: onex lab-work hosts and a read of the announced topic on the development lane for that host name'
+- id: req-omn24409-ci-gate-budget
+  statement: the direct model call gate in the main CI workflow has timeout room over its seven repository scans, so a loaded push run on the base branch is not cancelled
+  acceptance:
+  - id: AC5
+    statement: 'AC5: the direct-model-call-gate job in ci.yml declares timeout-minutes of at least 30 -- falsifier: pytest tests/ci/test_direct_model_call_gate_timeout_omn24409.py -q, failing on the 15 minute limit that cancelled the dev push run 43720908237 and left CI Summary red'
+evidence_requirements:
+- kind: tests
+  description: The host introspection compute and announce effect tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_host_introspection_compute tests/nodes/node_host_introspection_announce_effect -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24409-ac1
+  description: 'AC1: the announcement carries every fact the registry reads and the facts digest moves with a version, commit or runtime and not with load; fails when the digest ignores the runtimes.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_introspection_compute -q -n 0 --no-cov
+    cwd: .
+- id: dod-omn24409-ac2
+  description: 'AC2: the nested capacity equals the old capacity advertisement field for field on the in-memory bus, with a control that breaks when the capacity gains a field; the real-broker reading is recorded in the pull request''s Lab comment.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_introspection_announce_effect/test_seams_host_introspection_omn19998.py -q -n 0 --no-cov
+    cwd: .
+- id: dod-omn24409-ac3
+  description: 'AC3: an unreadable host publishes a typed failure and no announcement, and a failed publish keeps the start reason for the retry; fails when the announcer always says start or forgets it has started.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_introspection_announce_effect/test_host_announcer_chain_omn19998.py -q -n 0 --no-cov
+    cwd: .
+- id: dod-omn24409-ac4
+  description: 'AC4: the announcer publishes start, then heartbeat, then stop in order, which is the order the live reading on a lab host quotes; the live reading itself is recorded in the pull request''s Lab comment with the host, revision and what was read.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_introspection_announce_effect/test_host_announcer_chain_omn19998.py -q -n 0 --no-cov -k "golden"
+    cwd: .
+- id: dod-omn24409-ac5
+  description: 'AC5: the direct-model-call-gate job keeps at least 30 minutes of timeout; fails against the 15 minute limit that cancelled the dev push run.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_direct_model_call_gate_timeout_omn24409.py -q -n 0 --no-cov
+    cwd: .
+- id: dod-omn24409-integration-proof
+  description: 'AC4 lab proxy: the compute and announce effect tests run on a lab host at the pushed head; the announcement read on the development bus after the install is recorded in the pull request''s Lab comment and is not claimed by this local check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24409 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_introspection_compute tests/nodes/node_host_introspection_announce_effect -q --no-cov -p no:randomly
+    cwd: .
