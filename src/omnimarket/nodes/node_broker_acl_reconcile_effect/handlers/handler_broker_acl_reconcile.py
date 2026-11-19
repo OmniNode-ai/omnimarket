@@ -16,7 +16,11 @@ from typing import Any
 
 import yaml
 
-from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
+from omnimarket.handlers.node_overlay_reader import (
+    OVERLAY_FILE_NAME,
+    OVERLAY_ROOTS_ENV,
+    NodeOverlayNotFoundError,
+)
 from omnimarket.models.broker_acl import (
     EnumAclResourceType,
     EnumBrokerAclFindingCode,
@@ -32,6 +36,7 @@ from omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_br
 )
 from omnimarket.nodes.node_broker_acl_overlay_render_compute.overlay import (
     load_principals_overlay,
+    load_scope_overlay,
 )
 from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers import driver_broker_acl
 from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.contract_topics import (
@@ -213,6 +218,70 @@ def role_logins(
     return overlay.placeholder_logins()
 
 
+def scope_overlay_rows(
+    settings: Mapping[str, Any], environ: Mapping[str, str]
+) -> list[dict[str, str]]:
+    """Every row the scoped overlays declare, so a reconcile removes no row any declaration holds.
+
+    Every root in ONEX_SKILL_OVERLAY_ROOTS contributes its scope directories named with the
+    contract's prefix (the first root holding a scope wins, so each scope is read once). A
+    scope that cannot be loaded fails the whole read -- fail closed: never guess what is
+    declared -- and with no overlay roots configured nothing may be removed at all.
+    """
+    prefix = settings["reconcile_scope"]["declared_overlay_scope_prefix"]
+    roots = [
+        root for root in environ.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep) if root
+    ]
+    if not roots:
+        raise ValueError("no overlay roots are configured")
+    scopes: set[str] = set()
+    for root in roots:
+        scopes.update(
+            path.name
+            for path in Path(root).iterdir()
+            if path.name.startswith(prefix) and (path / OVERLAY_FILE_NAME).is_file()
+        )
+    rows: list[dict[str, str]] = []
+    for scope in sorted(scopes):
+        try:
+            overlay = load_scope_overlay(scope, environ)
+        except ValueError as error:
+            raise ValueError(f"scope overlay {scope}: {error}") from None
+        for principal in overlay.principals:
+            rows.extend(
+                {
+                    "principal": principal.principal,
+                    "resource_type": grant.resource_type.value,
+                    "pattern": grant.pattern.value,
+                    "name": grant.name,
+                    "operation": grant.operation.value,
+                }
+                for grant in principal.grants
+            )
+    return rows
+
+
+def managed_logins(
+    settings: Mapping[str, Any], environ: Mapping[str, str]
+) -> frozenset[str]:
+    """Every login the principals overlay declares: the node's own logins, and only theirs.
+
+    Each single principal's login plus every login of every role. A missing overlay refuses,
+    exactly as derived_grants does with a node: without the logins named, nothing may be removed.
+    """
+    scope = settings.get("derive_principals_scope")
+    if not scope:
+        raise ValueError("no principals overlay scope is configured")
+    try:
+        overlay = load_principals_overlay(scope, environ)
+    except NodeOverlayNotFoundError:
+        raise ValueError(f"no principals overlay found for scope {scope}") from None
+    return frozenset(
+        {principal.principal for principal in overlay.principals}
+        | {login for role in overlay.roles for login in role.principals}
+    )
+
+
 def _run(argv: Sequence[str], timeout: float) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         list(argv), capture_output=True, text=True, timeout=timeout, check=False
@@ -253,7 +322,17 @@ class HandlerBrokerAclReconcile:
                     error="ready_check reads through the packaged driver only",
                 )
             return self._ready_check(request, loaded, target)
+        if request.mode == "reconcile" and command:
+            return ModelBrokerAclReconcileResult(
+                mode=request.mode,
+                exit_code=2,
+                error="reconcile runs through the packaged driver only",
+            )
         if not command:
+            # A dry run that names the topics it may remove plans a reconcile; a plain dry run reads no removal scope
+            # and, with no overlay configured, still derives and applies what it did before.
+            if request.mode == "reconcile" or request.remove_names:
+                return self._reconcile_driver(request, loaded, target)
             return self._apply_driver(request, loaded, target)
         try:
             rendered = render_declaration(
@@ -355,6 +434,52 @@ class HandlerBrokerAclReconcile:
                 mode=request.mode, exit_code=2, error=str(error)
             )
 
+    def _prepare(
+        self, loaded: Mapping[str, Any], target: str
+    ) -> tuple[
+        driver_broker_acl.AclConnection,
+        list[driver_broker_acl.AclGrant],
+        driver_broker_acl.RemoteRunner,
+        int,
+        int,
+    ]:
+        """The aggregated declared and derived rows as a validated connection, grants and runner."""
+        declaration = dict(loaded["broker_acl_declaration"])
+        declared = aggregate_declared_grants()
+        derived, uncovered = derived_grants(
+            loaded["broker_acl_reconcile"], declared, self._environ
+        )
+        keys = ("principal", "resource_type", "pattern", "name", "operation")
+        declaration["rows"] = [
+            dict(zip(keys, row, strict=True))
+            for row in sorted(
+                {tuple(row[key] for key in keys) for row in (*declared, *derived)}
+            )
+        ]
+        rendered = render_declaration(
+            declaration,
+            {
+                **self._environ,
+                **role_logins(loaded["broker_acl_reconcile"], self._environ),
+            },
+        )
+        timeout = float(loaded["broker_acl_reconcile"]["timeout_seconds"])
+        connection = driver_broker_acl.AclConnection.from_mapping(
+            rendered, target, timeout
+        )
+        grants = [driver_broker_acl.AclGrant(**row) for row in rendered["rows"]]
+
+        def run_remote(ssh_target: str, script: str) -> str:
+            return driver_broker_acl.run_remote(ssh_target, script, timeout=timeout)
+
+        return (
+            connection,
+            grants,
+            self._remote_runner or run_remote,
+            len(derived),
+            uncovered,
+        )
+
     def _apply_driver(
         self,
         request: ModelBrokerAclReconcileRequest,
@@ -362,46 +487,76 @@ class HandlerBrokerAclReconcile:
         target: str,
     ) -> ModelBrokerAclReconcileResult:
         try:
-            declaration = dict(loaded["broker_acl_declaration"])
-            declared = aggregate_declared_grants()
-            derived, uncovered = derived_grants(
-                loaded["broker_acl_reconcile"], declared, self._environ
+            connection, grants, runner, derived, uncovered = self._prepare(
+                loaded, target
             )
-            keys = ("principal", "resource_type", "pattern", "name", "operation")
-            declaration["rows"] = [
-                dict(zip(keys, row, strict=True))
-                for row in sorted(
-                    {tuple(row[key] for key in keys) for row in (*declared, *derived)}
-                )
-            ]
-            rendered = render_declaration(
-                declaration,
-                {
-                    **self._environ,
-                    **role_logins(loaded["broker_acl_reconcile"], self._environ),
-                },
-            )
-            timeout = float(loaded["broker_acl_reconcile"]["timeout_seconds"])
-            connection = driver_broker_acl.AclConnection.from_mapping(
-                rendered, target, timeout
-            )
-            grants = [driver_broker_acl.AclGrant(**row) for row in rendered["rows"]]
-
-            def run_remote(ssh_target: str, script: str) -> str:
-                return driver_broker_acl.run_remote(ssh_target, script, timeout=timeout)
-
             output = driver_broker_acl.apply(
                 grants,
                 connection,
                 "apply" if request.mode == "apply" else "dry_run",
-                self._remote_runner or run_remote,
+                runner,
             )
             reports = _REPORT.findall(output)
             code = int(bool(int(reports[-1][2])))
             return self._result(
                 request, subprocess.CompletedProcess([], code, output, "")
-            ).model_copy(
-                update={"derived": len(derived), "uncovered_topics": uncovered}
+            ).model_copy(update={"derived": derived, "uncovered_topics": uncovered})
+        except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            return ModelBrokerAclReconcileResult(
+                mode=request.mode, exit_code=2, error=str(error)
+            )
+
+    def _reconcile_driver(
+        self,
+        request: ModelBrokerAclReconcileRequest,
+        loaded: Mapping[str, Any],
+        target: str,
+    ) -> ModelBrokerAclReconcileResult:
+        """Plan the removals the contract's scope allows; reconcile mode also applies them."""
+        try:
+            connection, grants, runner, derived, uncovered = self._prepare(
+                loaded, target
+            )
+            # The scoped overlays hold legitimate rows, and the principals overlay names the
+            # logins this node may touch; either unreadable refuses the whole reconcile.
+            known = frozenset(
+                driver_broker_acl.AclGrant(**row)
+                for row in scope_overlay_rows(
+                    loaded["broker_acl_reconcile"], self._environ
+                )
+            )
+            managed = managed_logins(loaded["broker_acl_reconcile"], self._environ)
+            output = driver_broker_acl.reconcile(
+                grants,
+                connection,
+                "reconcile" if request.mode == "reconcile" else "dry_run",
+                runner,
+                scope=driver_broker_acl.RemovalScope.from_mapping(
+                    loaded["broker_acl_reconcile"].get("reconcile_scope")
+                ),
+                only_names=frozenset(request.remove_names),
+                expected_removals=request.expected_removals,
+                known=known,
+                managed_principals=managed,
+            )
+            result = self._result(
+                request, subprocess.CompletedProcess([], 0, output, "")
+            )
+            if result.missing is None:
+                raise ValueError("the broker listing could not be read")
+            if request.mode == "reconcile":
+                # Every removal the readback did not confirm still stands on the broker.
+                failed = bool(result.missing) or not (
+                    set(result.would_remove_rows) <= set(result.removed_rows)
+                )
+            else:
+                failed = bool(result.missing) or bool(result.would_remove_rows)
+            return result.model_copy(
+                update={
+                    "exit_code": int(failed),
+                    "derived": derived,
+                    "uncovered_topics": uncovered,
+                }
             )
         except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired) as error:
             return ModelBrokerAclReconcileResult(
@@ -414,13 +569,19 @@ class HandlerBrokerAclReconcile:
         completed: subprocess.CompletedProcess[str],
     ) -> ModelBrokerAclReconcileResult:
         reports = _REPORT.findall(completed.stdout)
-        # The last report line is the readback after the apply.
+        # The last report line is the readback after the apply or the reconcile.
         counts = [int(value) for value in reports[-1]] if reports else [None] * 4
-        missing_rows = tuple(
-            line.removeprefix("MISSING ")
-            for line in completed.stdout.splitlines()
-            if line.startswith("MISSING ")
-        )
+
+        def rows(prefix: str) -> tuple[str, ...]:
+            return tuple(
+                line.removeprefix(f"{prefix} ")
+                for line in completed.stdout.splitlines()
+                if line.startswith(f"{prefix} ")
+            )
+
+        missing_rows = rows("MISSING")
+        would_remove_rows = rows("REMOVE")
+        removed_rows = rows("REMOVED")
         return ModelBrokerAclReconcileResult(
             mode=request.mode,
             exit_code=completed.returncode,
@@ -429,6 +590,11 @@ class HandlerBrokerAclReconcile:
             missing=counts[2],
             undeclared=counts[3],
             missing_rows=missing_rows if counts[2] else (),
+            removed=len(removed_rows) if request.mode == "reconcile" else None,
+            would_remove_rows=would_remove_rows,
+            removed_rows=removed_rows,
+            out_of_scope_rows=rows("OUT_OF_SCOPE"),
+            held_rows=rows("HELD"),
             output=completed.stdout,
             error=completed.stderr.strip()[-400:],
         )

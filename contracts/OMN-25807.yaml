@@ -1,0 +1,83 @@
+schema_version: 1.0.0
+ticket_id: OMN-25807
+title: Unblock omnimarket PR 6283
+summary: Rebase the broker ACL reconcile change onto dev and represent its allowed removal scope as namespaces.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn25807-unblock-pr
+    statement: Resolve the PR conflict and the source of its architectural lint failure while preserving the ACL removal boundary and required checks.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: omnimarket PR 6283 has no merge conflict with its base at the new head, read through the declared scm read path -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6283` shows a merge conflict or a mergeable state of conflicting at the new head'
+      - id: AC2
+        statement: 'AC2: no check is widened, skipped or bypassed, so the diff removes no assertion and adds no skip, xfail or loosened threshold -- falsifier: `git diff <base> <new head> -- tests/ .github/` shows a removed assert, a new skip or xfail marker or a changed required-check list'
+      - id: AC3
+        statement: 'AC3: a comment on the pull request starts `Lab:` and carries `head=<full new head sha>` with the lab run output that proves the red then green at that head -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6283` shows no comment naming the new head with a line starting `Lab:`'
+      - id: AC4
+        statement: 'AC4: when the change alters a lab host unit or the plugin, the branch is installed through the declared path and the Lab line carries `installed=<host>:<revision>` and `observed=<what ran>`; otherwise the lane says in its TERMINAL that it changes nothing that runs -- falsifier: the Lab comment names an install but carries no installed= cell, or the TERMINAL carries neither'
+      - id: AC5
+        statement: 'AC5: if the cause is outside the pull request, a STATUS row on the lane carries `cause=<one line>` and `shared=yes` with the evidence and no push is made -- falsifier: the ledger holds no STATUS row from the lane carrying cause= and shared=yes while the pull request is unchanged at its old head'
+evidence_requirements:
+  - kind: tests
+    description: Exercise the preserved credential source and reconcile scope in the rebased tree.
+    command: uv run --frozen pytest tests/nodes/node_broker_acl_reconcile_effect/test_reconcile_seams.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn25807-ac1-rebased-driver
+    description: Hosted coverage exercises the credential source retained from dev. The SCM mergeability reading is taken on the published PR.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_broker_acl_reconcile_effect/test_lab_broker_acls_credential_source.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn25807-ac2-scope-boundary
+    description: The original incident topics remain covered and similarly named topics outside the configured namespace are refused. The staged diff records the workflow and assertion audit.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_broker_acl_reconcile_effect/test_reconcile_seams.py -q --no-cov -n 0 -p no:randomly -k scope
+        cwd: .
+  - id: dod-omn25807-ac3-lab-test
+    description: The hosted runner repeats the focused namespace regression test named in the lab proof. The SCM comment records the result and full published head.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_broker_acl_reconcile_effect/test_reconcile_seams.py -q --no-cov -n 0 -p no:randomly -k test_seam_scope_matches_only_the_configured_namespace
+        cwd: .
+  - id: dod-omn25807-ac4-runtime-contract
+    description: Exercise the reconcile command and terminal on the in-memory bus. The isolated container probe loads the driver and checks its removal scope against the packaged contract.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_broker_acl_reconcile_effect/test_reconcile_seams.py -q --no-cov -n 0 -p no:randomly -k in_memory_bus_reconcile
+        cwd: .
+      - check_type: command
+        check_value: >-
+          docker run --rm --mount "type=bind,source=$PWD,target=/checkout,readonly"
+          --workdir /checkout --env PYTHONPATH=/checkout/src --env PYTHONDONTWRITEBYTECODE=1
+          python:3.12-slim sh -ec
+          'python -m pip install --disable-pip-version-check --quiet pydantic==2.13.5 PyYAML==6.0.3 &&
+          python -c "from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.handler_broker_acl_reconcile import contract, driver_broker_acl as driver;
+          loaded = contract();
+          scope = driver.RemovalScope.from_mapping(loaded[\"broker_acl_reconcile\"][\"reconcile_scope\"]);
+          grant = driver.AclGrant;
+          assert scope.covers(grant(\"User:probe\", \"TOPIC\", \"LITERAL\", loaded[\"terminal_event\"], \"READ\"));
+          assert not scope.covers(grant(\"User:probe\", \"TOPIC\", \"LITERAL\", \"onex-extra.example\", \"READ\"))"'
+        cwd: .
+  - id: dod-omn25807-ac5-failure-evidence
+    description: CI Summary still fails closed when its replacement-run evidence is incomplete. If a shared CI cause is found, the lane ledger records the cause and the unchanged PR head.
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_ci_summary_replacement_in_flight_omn17427.py -q --no-cov -n 0 -p no:randomly -k fail_closed_without_a_url_a_run_or_a_payload
+        cwd: .
