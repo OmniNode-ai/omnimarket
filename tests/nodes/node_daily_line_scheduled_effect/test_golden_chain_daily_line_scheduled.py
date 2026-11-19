@@ -9,7 +9,7 @@ import os
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -481,10 +481,11 @@ def test_empty_environ_does_not_fall_through_to_the_process_environment(
     roots = environ(tmp_path)
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", roots["ONEX_SKILL_OVERLAY_ROOTS"])
     assert os.environ["ONEX_SKILL_OVERLAY_ROOTS"]
-    h = HandlerDailyLineScheduled(
-        environ={},
-        build_runner=lambda: pytest.fail("an empty environment has no overlay"),  # type: ignore[arg-type,return-value]
-    )
+
+    def no_runner() -> Any:
+        pytest.fail("an empty environment has no overlay")
+
+    h = HandlerDailyLineScheduled(environ={}, build_runner=no_runner)
     assert h.handle(tick(T0)) is None
 
 

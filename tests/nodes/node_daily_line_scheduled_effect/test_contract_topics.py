@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 import yaml
@@ -160,7 +160,7 @@ def test_control_a_selector_term_inside_the_module_name_is_found() -> None:
 def _event_json(
     *,
     job_id: str = "daily_line",
-    outcome: str = "completed",
+    outcome: Literal["completed", "failed"] = "completed",
     fired_at: datetime = datetime(2026, 11, 17, 12, 30, tzinfo=UTC),
 ) -> str:
     return ModelScheduleRunEvent(
@@ -169,7 +169,7 @@ def _event_json(
         tick_id="tick-1",
         scheduled_for=fired_at,
         fired_at=fired_at,
-        outcome=outcome,  # type: ignore[arg-type]
+        outcome=outcome,
         detail="Daily line published.",
     ).model_dump_json()
 
