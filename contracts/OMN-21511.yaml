@@ -43,7 +43,7 @@ dod_evidence:
     binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "env -u PYTHONPATH PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_wip_gate_reducer/test_admission_audit.py -q --no-cov -p no:cacheprovider"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_wip_gate_reducer/test_admission_audit.py -q --no-cov -p no:cacheprovider"
         cwd: "."
   - id: "dod-omn21511-ac2-accepted-20261118t1945z"
     description: "AC2 (accepted binding): T-W1's existing configuration cases (test_ac4_*, test_ac11_*) pass and the config fields are pinned unchanged."
@@ -51,7 +51,7 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "env -u PYTHONPATH PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py tests/nodes/node_wip_gate_reducer/test_admission_audit.py::test_the_config_fields_are_unchanged -q --no-cov -p no:cacheprovider -k 'test_ac11_ or test_ac4_ or test_the_config_fields_are_unchanged'"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py tests/nodes/node_wip_gate_reducer/test_admission_audit.py::test_the_config_fields_are_unchanged -q --no-cov -p no:cacheprovider -k 'test_ac11_ or test_ac4_ or test_the_config_fields_are_unchanged'"
         cwd: "."
   - id: "dod-omn21511-ac1"
     description: "AC1: the admission audit cases pass."
