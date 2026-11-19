@@ -48,7 +48,9 @@ interfaces_touched: []
 requirements:
 - id: req-omn24980-local-route
   statement: A summarise delegation on the dev runtime is answered by a local model, including a prompt above 8192 tokens.
-  acceptance: []
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the packaged ladder offers a local rung to a prompt above 8192 estimated tokens and keeps each local member inside its served window -- falsifier: uv run pytest on test_local_rung_context_ceiling_omn24980.py and test_contract_proof_omn24980.py fails at the base commit'
 evidence_requirements:
 - kind: tests
   description: Public routing, receipt-proof falsifiers and existing delegation-health compatibility.
@@ -71,6 +73,8 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py -q --no-cov
     cwd: .
+  binds_ac:
+  - AC4
 - id: dod-omn24980-receipt-proof-test
   description: The deployed proof accepts one attempt from a local rung of the changed ladder (the rung or its spread peer) with
     more than 8192 input tokens and refuses an in-process run, a failed top-level status or exit code, a failed terminal, a skipped
@@ -84,6 +88,8 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov
     cwd: .
+  binds_ac:
+  - AC4
 - id: dod-omn24980-ac1-live
   description: AC1, recorded in context.open_criteria and bound to nothing (the repository refuses a binds_ac on this scope).
     The check fails until a base-failing test of the cause is recorded (context.criterion_status.AC1.cause_fix_test names

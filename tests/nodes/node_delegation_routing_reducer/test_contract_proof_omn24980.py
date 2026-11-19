@@ -417,7 +417,7 @@ def test_open_criteria_are_recorded_and_no_local_done_gate_item_binds_one() -> N
         for statement in data["context"]["open_criteria"].values():
             assert "falsifier:" in statement
     data = contract()
-    assert data["requirements"][0]["acceptance"] == []
+    assert [a["id"] for a in data["requirements"][0]["acceptance"]] == ["AC4"]
     assert sorted(data["context"]["open_criteria"]) == list(CRITERIA)
     for label in CRITERIA:
         item = live_item(data, label)
