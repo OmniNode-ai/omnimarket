@@ -296,7 +296,7 @@ def test_valid_independent_c0_and_b2_never_claim_cross_binding() -> None:
             "routing_decision": alternate_c0.routing_decision.model_copy(
                 update={
                     "selected_backend_ref": "local-heavy-reasoning",
-                    "max_context_tokens": 8192,
+                    "max_context_tokens": 32000,
                 }
             ),
             "bifrost_overlay_yaml": (

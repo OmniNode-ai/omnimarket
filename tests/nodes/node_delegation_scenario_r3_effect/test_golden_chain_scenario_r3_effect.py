@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_usage_source import EnumUsageSource
@@ -129,6 +130,7 @@ class Breakable(ScriptedLegTransport):
                     update={
                         "actual_cost_usd": Decimal("0"),
                         "usage_source": EnumUsageSource.UNKNOWN,
+                        "cost_basis": EnumCostBasis.UNKNOWN,
                     }
                 )
             return result
@@ -219,6 +221,9 @@ class FakeOpenRouter:
             usage_source=EnumUsageSource.MEASURED
             if self.cost > 0
             else EnumUsageSource.UNKNOWN,
+            cost_basis=EnumCostBasis.CLOUD_API_COST
+            if self.cost > 0
+            else EnumCostBasis.UNKNOWN,
         )
 
 

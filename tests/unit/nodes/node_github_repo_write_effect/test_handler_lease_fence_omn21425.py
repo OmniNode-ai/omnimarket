@@ -208,6 +208,16 @@ _VERB_FIELDS: dict[EnumRepoWriteOperation, dict[str, object]] = {
         "head_sha": _HEAD,
         "status": "queued",
     },
+    EnumRepoWriteOperation.COMMIT_STATUS_CREATE: {
+        "commit_sha": _HEAD,
+        "status_context": "fable-review-gate",
+        "status_state": "success",
+        "status_target_url": "https://example.invalid/verdict",
+    },
+    EnumRepoWriteOperation.REQUIRED_CONTEXT_APPLY: {
+        "protected_branch": "dev",
+        "required_context": "fable-review-gate",
+    },
 }
 
 

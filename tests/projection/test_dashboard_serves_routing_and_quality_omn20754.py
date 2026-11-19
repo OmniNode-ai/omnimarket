@@ -128,6 +128,8 @@ def test_run_locally_and_tier_mix_have_their_served_fields(client: TestClient) -
                     "pct_of_tier_routed": 1.0,
                     "cost_usd": None,
                     "unmeasured_cost_count": 1,
+                    # OMN-24615 AC6: the backends it was reached through; none here.
+                    "backends": [],
                 }
             ],
         }

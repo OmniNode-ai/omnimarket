@@ -105,6 +105,21 @@ def _run(args: argparse.Namespace) -> int:
             f"page mark {worst.page_percent}%, {worst.free_bytes} bytes free\n"
         )
         return EXIT_PAGE
+    if reading.growth_paged:
+        overlay = load_overlay(args.overlay)
+        floor = host_row(overlay, args.host).admission_floor_gb
+        timed = [
+            (item.hours_to_floor, item)
+            for item in reading.growth
+            if item.hours_to_floor is not None
+        ]
+        volume = min(timed, key=lambda pair: pair[0])[1]
+        sys.stderr.write(
+            f"PAGE-GROWTH {reading.host_name}: {volume.path} loses "
+            f"{volume.free_gb_per_hour:.1f} GB an hour, {volume.hours_to_floor:.1f} "
+            f"hours to the {floor:g} GB floor\n"
+        )
+        return EXIT_PAGE
     if isinstance(reading.host_disk, ModelHostDiskReadFailed):
         failed = reading.host_disk
         sys.stderr.write(
