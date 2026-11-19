@@ -322,7 +322,7 @@ alarm_sources:
      raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/models/model_lab_alarm_lane_census.py:15}
   - {condition: container_unhealthy, severity: fix-cause, review_name: host-drift unit failed, basis: nearest, posts_via: router, operation: container_unhealthy,
      raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/models/model_lab_alarm_lane_census.py:16,
-     cause: "host-drift unit failed (review-gateway, throughput-tick, hourly-tick, lab-fill exit 70, canonical-clone-sync exit 3, mostly on h200)"}
+     cause: "host-drift unit failed (review-gateway, throughput-tick, hourly-tick, lab-fill exit 70, canonical-clone-sync exit 3, mostly on one host)"}
   - {condition: lab_pass_receipt, severity: page, review_name: no passing lab receipt on an aging dev head (lab-pass/dev-head), basis: named, posts_via: router, operation: lab_pass_receipt,
      raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_lab_pass_receipt.py:49}
   - {condition: stale_indeterminate, severity: digest, review_name: none (a watched condition read INDETERMINATE on its last runs), basis: default, posts_via: router, operation: stale_indeterminate,
@@ -336,7 +336,7 @@ alarm_sources:
   # --- delivered through node_lab_alarm_deliver_effect by another node: declared, not routed by this table ---
   - {condition: clone_local_work_refused, severity: fix-cause, review_name: host-drift clone drift, basis: nearest, posts_via: deliver-effect,
      raised_at: omnimarket/src/omnimarket/nodes/node_canonical_clone_dirty_converge_effect/contract.yaml:101,
-     cause: "host-drift clone drift (stray files on h201 in the infra clone, workspace/routing_tiers.yaml; untracked lock files on h202 in the registry root)"}
+     cause: "host-drift clone drift (stray files on one host in the infra clone, workspace/routing_tiers.yaml; untracked lock files on another host in the registry root)"}
   # --- post to the channel by their own path, not through this node: declared, not routed by this table ---
   - {condition: capture_source_stale, severity: page, review_name: hook capture feed dead (CAPTURE SOURCE STALE), basis: named, posts_via: direct,
      raised_at: omnimarket/src/omnimarket/nodes/node_capture_silence_watch_effect/handlers/build_slack_command.py:37}
@@ -376,10 +376,10 @@ alarm_sources:
   - {condition: hook_emit_blocked, severity: drop, review_name: hook emit BLOCKED and error-guard hook crashes, basis: named, posts_via: direct, raised_at: not found}
   - {condition: host_drift_clone_drift, severity: fix-cause, review_name: host-drift clone drift, basis: named, posts_via: direct,
      raised_at: omnimarket/src/omnimarket/nodes/node_host_drift_fleet/handlers/fold_host_drift_view.py:146,
-     cause: "stray files on h201 in the infra clone, workspace/routing_tiers.yaml; untracked lock files on h202 in the registry root"}
+     cause: "stray files on one host in the infra clone, workspace/routing_tiers.yaml; untracked lock files on another host in the registry root"}
   - {condition: host_drift_unit_failed, severity: fix-cause, review_name: host-drift unit failed, basis: named, posts_via: direct,
      raised_at: omnibase_infra/scripts/monitor_logs.py:2051,
-     cause: "review-gateway, throughput-tick, hourly-tick, lab-fill exit 70, canonical-clone-sync exit 3, mostly on h200"}
+     cause: "review-gateway, throughput-tick, hourly-tick, lab-fill exit 70, canonical-clone-sync exit 3, mostly on one host"}
   - {condition: hook_capture_not_delivering, severity: fix-cause, review_name: "hook capture not delivering: 9,699 queued", basis: named, posts_via: direct,
      raised_at: omniclaude/plugins/onex/hooks/scripts/session_start_bus_mirror.sh:237,
      cause: "hook capture not delivering: 9,699 queued"}
