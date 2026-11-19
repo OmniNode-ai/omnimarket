@@ -1641,7 +1641,11 @@ units:
       ONEX_LEDGER_PATH: ledger_path
       OMNIBASE_INTERNAL_HOME: appender_root
       ONEX_RUNTIME_SSH_HOST: runtime_ssh_host
-    required_environment_inputs: [ONEX_LEDGER_HOST_NAME, ONEX_LEDGER_PATH, OMNIBASE_INTERNAL_HOME]
+      # The write steps append through the bus append command, which resolves the lane declaration
+      # (config/lab/ci_bus_lanes.yaml) under this root; a worker installed without it fails every per-change write step
+      # (append-command-exit-69), so an install is refused when it is unset.
+      ONEX_WORKSPACE_CONFIG_ROOT: workspace_config_root
+    required_environment_inputs: [ONEX_LEDGER_HOST_NAME, ONEX_LEDGER_PATH, OMNIBASE_INTERNAL_HOME, ONEX_WORKSPACE_CONFIG_ROOT]
     environment_file: .config/onex/merged-change-runner-read.env
     evidence_file: .local/state/omni/temporal-worker/last-run.json
     state_directory: .onex_state/temporal-worker

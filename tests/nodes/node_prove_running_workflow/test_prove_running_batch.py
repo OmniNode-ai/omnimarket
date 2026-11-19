@@ -326,6 +326,7 @@ def test_groups_by_host_cli(
         payload=batch.model_dump_json(),
     )
     monkeypatch.setattr(sys, "stdin", io.StringIO(step.model_dump_json()))
+    monkeypatch.setattr(runtime, "batch_hosts", lambda *_args: ("h051", "h053"))
     assert runtime.main(["group-by-host"]) == 0
     groups = ModelProveRunningHostGroups.model_validate_json(capsys.readouterr().out)
     assert tuple(group.host for group in groups.groups) == HOSTS

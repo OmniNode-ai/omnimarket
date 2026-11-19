@@ -55,6 +55,14 @@ handler_routing:
       handler:
         name: HandlerProveRunningRows
         module: omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_rows
+    - operation: read_integration_batch
+      handler:
+        name: read_integration_batch
+        module: omnimarket.nodes.node_prove_running_workflow.handlers.handler_integration_projection_reader
+    - operation: group_by_host
+      handler:
+        name: group_by_host
+        module: omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_hosts
 event_bus:
   subscribe_topics: []
   publish_topics: []
@@ -113,7 +121,9 @@ prove_running:
       file_env: ONEX_FLOOR_PROJECTION_OVERLAY
       projection_id: integration
       group_prefix: node_prove_running_workflow
-    hosts: [h051, h053, h101, h200, h201, h202]
+    # The named hosts come from the deployment's overlay (hosts_overlay_id), never from this package.
+    hosts_overlay_id: node_prove_running_workflow
+    hosts_file_env: ONEX_PROVE_RUNNING_OVERLAY
     default_host: dev-runtime
     steps:
       read_not_running: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "read-not-running"]

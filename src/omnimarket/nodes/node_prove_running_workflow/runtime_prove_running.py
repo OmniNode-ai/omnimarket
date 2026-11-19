@@ -69,6 +69,7 @@ from omnimarket.nodes.node_prove_running_workflow.models.model_prove_running imp
     ModelProveRunningBatchSteps,
     ModelProveRunningChange,
     ModelProveRunningHostGroups,
+    ModelProveRunningHostsOverlay,
     ModelProveRunningPlan,
     ModelProveRunningRowRequest,
     ModelProveRunningStartBatch,
@@ -352,6 +353,17 @@ def projection_overlay(
     )
 
 
+def batch_hosts(cfg: dict[str, Any], env: Mapping[str, str]) -> tuple[str, ...]:
+    """The host names the deployment's overlay declares for the batch's group-by-host step."""
+    batch = cfg["batch"]
+    return load_structured_overlay(
+        batch["hosts_overlay_id"],
+        ModelProveRunningHostsOverlay,
+        env,
+        file_env=batch["hosts_file_env"],
+    ).hosts
+
+
 def snapshot_source(
     overlay: ModelFloorProjectionReadOverlay,
     env: Mapping[str, str],
@@ -418,10 +430,15 @@ def cmd_group_by_host(cfg: dict[str, Any]) -> int:
     batch = cfg["batch"]
     child_cfg = {**cfg, **batch["child"]}
     default_host = batch["default_host"]
+    try:
+        hosts = batch_hosts(cfg, os.environ)
+    except NodeOverlayError as exc:
+        sys.stderr.write(f"refused: the hosts overlay is unreadable: {exc}\n")
+        return EXIT_REFUSED
     grouped = group_by_host(
         selected.changes,
         lambda change: build_plan(change, child_cfg, batch_id=step.batch_id),
-        tuple(batch["hosts"]),
+        hosts,
         default_host,
     )
     # Keep the named hosts in order, then run the fallback group.
