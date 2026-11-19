@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-24762
+title: 'omnimarket#6315: the arch graph address contracts bind each criterion to a hosted test, not to a local done gate item, so the contract check passes'
+summary: The review of omnimarket#6315 at head e33225b5192c refused contracts/OMN-24687.yaml and contracts/OMN-24715.yaml because they bound criteria to local_done_gate items, which the hosted receipt gate runs at neither the head nor the merge base. This change removes binds_ac from those five local items, keeps them as unbound local evidence, leaves only criteria a hosted uv run pytest proves in acceptance, states the others in each contract's summary, reads the overlays sha from origin/main of the declared overlays clone, makes the bolt uri model refuse userinfo, an empty port, an empty query or fragment delimiter and a dotted host entry, and moves local_host_short_name to node_overlay_reader.py. AC4 (the lab suite run at the new head and a comment starting Lab with the head sha on omnimarket#6315) is not provable by a hosted test of this repository; it is carried by that pull request comment and by the lane report, and it is not listed below.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24762-contract-binding
+  statement: The two arch graph contracts pass the repository's contract checks, the three non-blocking review findings are fixed with tests that failed first, and the contract test asserts the new shape.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: no item of contracts/OMN-24687.yaml or contracts/OMN-24715.yaml with execution_scope local_done_gate carries binds_ac, and every criterion left in acceptance (AC2 in OMN-24687, AC3 and AC4 in OMN-24715) is bound to a hosted uv run pytest on an existing test file of omnimarket -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 in omnimarket, red at head e33225b5192c with 2 failed and green after the fix'
+  - id: AC2
+    statement: 'AC2: the summary of each contract states the criteria it no longer lists (AC1, AC3, AC4 and AC5 of OMN-24687, AC1 and AC2 of OMN-24715) with where each is carried, and tests/handlers/test_arch_graph_bolt_ticket_contract.py asserts that shape -- falsifier: uv run pytest tests/handlers/test_arch_graph_bolt_ticket_contract.py -q --no-cov, red against the old contracts and green after'
+  - id: AC3
+    statement: 'AC3: the three non-blocking findings are each fixed with a test red first or judged NON-BLOCKING with the reason in a pull request comment: the sha check reads origin/main of the declared overlays clone path, the bolt uri model refuses userinfo, an empty port, an empty query or fragment delimiter and a dotted host entry, and local_host_short_name lives in node_overlay_reader.py imported by both handlers with the re-export dropped -- falsifier: uv run pytest -q -k arch_graph_bolt in omnimarket, with the new refusal cases red before and green after'
+evidence_requirements:
+- kind: tests
+  description: The repo-wide contract check, the arch graph ticket contract test and the arch graph bolt tests.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py tests/handlers/test_arch_graph_bolt_ticket_contract.py tests/handlers/test_arch_graph_bolt_host_overlay.py tests/models/test_arch_graph_bolt_overlay_model.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24762-ac1-contract-check
+  description: The repo-wide contract checks refuse a criterion bound to a local_done_gate item and a criterion with no binding. They read 2 failed at head e33225b5192c and pass with the two contracts rebound.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24762-ac2-ticket-contract-shape
+  description: The ticket contract test asserts the listed criteria, the absence of binds_ac on local items, the hosted binding of each listed criterion and where each dropped criterion is carried in the summary.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/handlers/test_arch_graph_bolt_ticket_contract.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24762-ac3-non-blocking-findings
+  description: The bolt uri model refusals, the dotted host entry refusal, the one short host name helper in node_overlay_reader.py with no re-export, the lighter import of the host overlay handler and the overlays sha read from origin/main of the declared clone.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/models/test_arch_graph_bolt_overlay_model.py tests/handlers/test_arch_graph_bolt_host_overlay.py tests/handlers/test_arch_graph_bolt_ticket_contract.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
