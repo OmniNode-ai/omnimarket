@@ -179,10 +179,7 @@ def required_input_ceiling(
 
 
 class _BackendBudgetDeclaration(Protocol):
-    """The two backend fields that say whether a local backend carries a packaged budget."""
-
-    @property
-    def tier(self) -> str: ...
+    """The backend field that says whether a backend carries a packaged budget."""
 
     @property
     def max_grounded_input_tokens(self) -> int | None: ...
@@ -196,14 +193,10 @@ def grounded_input_budget(
     """The class budget for ``backend_id``, bounded by its measured correct ceiling (OMN-22220).
 
     ``None`` when no budget is declared and no ceiling is named. A ``backend``
-    that is local with no packaged budget (OMN-23631) is held to the overlay's
+    with no packaged budget (OMN-23631) is held to the overlay's
     ceiling for the class, required when the overlay names the backend.
     """
-    if (
-        backend is not None
-        and backend.tier == "local"
-        and backend.max_grounded_input_tokens is None
-    ):
+    if backend is not None and backend.max_grounded_input_tokens is None:
         required = required_input_ceiling(backend_id, task_type)
         if required is not None:
             return required
