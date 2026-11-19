@@ -10,6 +10,9 @@ from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pa
 from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator_runtime import (
     HandlerContextPackOrchestratorRuntime,
 )
+from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_lane_brief_context_pack import (
+    HandlerLaneBriefContextPack,
+)
 from omnimarket.nodes.node_context_pack_orchestrator.handlers.tier_source_binding import (
     load_tier_sources,
 )
@@ -18,6 +21,7 @@ __all__ = [
     "PROMOTABLE_ADDITIVE_PROFILES",
     "HandlerContextPackOrchestrator",
     "HandlerContextPackOrchestratorRuntime",
+    "HandlerLaneBriefContextPack",
     "load_enabled_additive_profiles",
     "load_tier_sources",
 ]
