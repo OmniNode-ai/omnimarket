@@ -9,7 +9,7 @@ entry_points:
     node_ci_red_kind_rule_compute: "omnimarket.nodes.node_ci_red_kind_rule_compute"
 capabilities:
   standalone: true
-  full_runtime: false
+  full_runtime: true
   requires_network: false
 dependencies:
   - "omnibase_core>=0.47.73"

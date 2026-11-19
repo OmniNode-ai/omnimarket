@@ -3,12 +3,10 @@
 
 """OMN-20073 AC3, ruleset half: no queued PR is admitted around its hold.
 
-The repo-evidence context is produced from ``pull_request_target`` and not for
-``merge_group``, so a merge queue on ``dev`` would wait on a context nothing
-reports for the queue. The queued-PR clause therefore holds because no queue is
-active, and this test turns red the day one is enabled before queue evidence
-support exists. The held-PR clause is the arming gate, bound separately to
-``test_auto_merge_hold_omn18179.py``.
+The repo-evidence caller runs on ``pull_request``. Queue commits have a
+separate ``merge_group`` producer that reads the verdict from the PR head.
+The queued-PR clause checks that no queue is active on ``dev``. The held-PR
+clause is the arming gate, bound separately to ``test_auto_merge_hold_omn18179.py``.
 
 The rules are read from GitHub through the same ``gh`` reader the verifier uses
 for required contexts. They only read; nothing here writes protection. The read

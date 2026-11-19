@@ -1,0 +1,86 @@
+schema_version: 1.0.0
+ticket_id: OMN-25901
+title: Verify Done evidence against the deployed product clone
+summary: "Resolve hosted checks against the governing product checkout and require its exact deployment pin on the read-only runtime."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn25901-deployed-dod-evidence
+    statement: The verifier uses the governing product checkout and the deployed runtime records its freshness target.
+    acceptance:
+      - id: AC1
+        statement: "AC1: in the runtime, a check with a relative cwd resolves to the product clone that the contract's own repository names, never to the process cwd /app, and a relative cwd that leaves that clone stays refused -- falsifier: `uv run pytest tests/nodes/node_dod_verify -q -k relative_cwd_product_clone` exits non-zero on omnimarket dev and exits 0 on the fix"
+      - id: AC2
+        statement: "AC2: the read-only product clone's freshness is read from a pin file that the runtime's compose or overlay declares through DOD_VERIFY_PRODUCT_CLONE_PIN_FILE and writes from the deployed revision, with no hand-set value, and a clone whose head differs from the pin or a missing pin file is still refused PRODUCT_CLONE_NOT_FRESH -- falsifier: `uv run pytest tests/nodes/node_dod_verify -q -k product_clone_pin_declared` exits non-zero on omnimarket dev and exits 0 on the fix, and a case that mutates the pinned revision still ends PRODUCT_CLONE_NOT_FRESH"
+      - id: AC3
+        statement: "AC3: a regression test built from the recorded done-0505 data (the [OMN-25709](https://linear.app/omninode/issue/OMN-25709) contract with its cwd \".\" test_passes check, and the refusal text; fixture path named in the pull request) fails on the unfixed verifier and passes on the fix -- falsifier: `uv run pytest tests/nodes/node_dod_verify -q -k done_0505_recorded` exits 0 on the fix and non-zero on dev"
+      - id: AC4
+        statement: "AC4: the branch is installed on dev through the declared path (the deploy agent or runtime_code_ref_pin), and a dry run of dod_verify for [OMN-25709](https://linear.app/omninode/issue/OMN-25709) in the runtime returns PASS, recorded as installed=<host>:<revision> -- falsifier: the dry-run receipt read in the runtime for [OMN-25709](https://linear.app/omninode/issue/OMN-25709) holds a verdict other than PASS, or the installed revision lacks the fix sha"
+      - id: AC5
+        statement: "AC5: if the dry run passes, Done is written for [OMN-25709](https://linear.app/omninode/issue/OMN-25709) through the ticket node over the bus and Linear's state is read back -- falsifier: `onex ticket read OMN-25709` shows a state other than Done, or the Done write ends with a refusal code"
+evidence_requirements:
+  - kind: tests
+    description: Run the repository evidence tests.
+    command: uv run --frozen pytest tests/nodes/node_dod_verify -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn25901-relative-cwd
+    description: "Checks exercise the governing product clone, traversal rejection, and symlink containment."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_dod_verify -q --no-cov -k relative_cwd_product_clone
+        cwd: .
+  - id: dod-omn25901-exact-pin
+    description: "Checks exercise the schema-1 deployment pins and confirm an older, missing, unreadable or unsupported pin refuses the check."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_dod_verify -q --no-cov -k product_clone_pin_declared
+        cwd: .
+  - id: dod-omn25901-recorded-refusal
+    description: "The recorded contract and refusal drive the three working directory checks through the verifier."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_dod_verify -q --no-cov -k done_0505_recorded
+        cwd: .
+  - id: dod-omn25901-hosted-runtime-proxy
+    description: "Hosted proxy for the dev dry run. The recorded checks succeed through the configured runner once the product repository supplies their cwd. The dev dry run is a separate live read."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_dod_verify -q --no-cov -k done_0505_recorded
+        cwd: .
+  - id: dod-omn25901-hosted-done-proxy
+    description: "Hosted proxy for Done preflight. A bad deployment pin prevents the verifier from approving a command. The ticket state is a separate live read."
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_dod_verify -q --no-cov -k product_clone_pin_declared
+        cwd: .
+  - id: dod-omn25901-integration-proof
+    description: Live dev verifier readback for AC4. The lane separately records the deployed revision and the bus and Linear readbacks for AC5.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'docker exec -u 1000 -e OMNI_HOME=/app omninode-runtime python -m omnimarket.nodes.node_dod_verify --ticket-id OMN-25709 --execution-audience hosted | python -c "import json, sys; assert json.load(sys.stdin)[\"status\"] == \"verified\""'
+  - id: dod-omn25901-done-readback
+    description: Live read-only ticket node check for AC5. This check reads the ticket state through the dev bus.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'onex ticket read OMN-25709 --bus-lane dev --lane dod-omn25901-readback | python -c "import json, sys; result = json.load(sys.stdin); assert result[\"payload\"][\"result\"][\"ticket_status\"] == \"Done\""'

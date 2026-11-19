@@ -1,0 +1,5 @@
+dod_verify for OMN-25709 is not a PASS: status='failed', total_checks=9, verified_count=5, failed_count=3, non_probative_count=0 (OMN-20368).
+FAILED exit_code=4; tests=<no test ids reported>; first_error=ERROR: usage: pytest [options] [file_or_dir] [file_or_dir] [...]
+pytest: error: unrecognized arguments: --no-cov
+  inifile: None
+  rootdir: /app

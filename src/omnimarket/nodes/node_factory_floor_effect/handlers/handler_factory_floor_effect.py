@@ -367,6 +367,8 @@ class HandlerFactoryFloorEffect:
             if request.ledger_rows_file
             else None,
             kinds=kinds,
+            default_read_workers=rt.ledger_archive_read_workers,
+            default_cache_ttl_seconds=rt.ledger_archive_cache_ttl_seconds,
         )
         try:
             # The four unresolved reads are the unresolved step's own (OMN-19998): this run reads the record it wrote.

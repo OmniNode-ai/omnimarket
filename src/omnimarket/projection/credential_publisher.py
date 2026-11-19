@@ -58,9 +58,6 @@ from pydantic import (
     ValidationError,
 )
 
-from omnimarket.enums.enum_credential_expiry_warning import (
-    EnumCredentialExpiryWarning,
-)
 from omnimarket.events.topics import (
     CREDENTIAL_REGISTERED_TOPIC_V1,
     CREDENTIAL_REVOKED_TOPIC_V1,
@@ -80,7 +77,9 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     byok_automatic_plans,
     byok_routable_plans,
     require_byok_plan_permitted,
-    resolve_byok_provider_backend,
+)
+from omnimarket.handlers.routing.registered_endpoint_backend import (
+    registered_endpoint_backend,
 )
 from omnimarket.models.model_inference_credential_create_request import (
     LAB_HOST_NAME_PATTERN as LAB_HOST_NAME_PATTERN,
@@ -90,6 +89,15 @@ from omnimarket.models.model_inference_credential_create_request import (
 )
 from omnimarket.models.model_inference_credential_create_request import (
     ProviderCatalogueUnavailableError as ProviderCatalogueUnavailableError,
+)
+from omnimarket.models.model_inference_credential_response import (
+    ModelInferenceCredentialResponse as ModelInferenceCredentialResponse,
+)
+from omnimarket.nodes.node_model_setup_effect.credential_output import (
+    credential_expiry_warning as credential_expiry_warning,
+)
+from omnimarket.nodes.node_model_setup_effect.credential_output import (
+    registration_metadata,
 )
 
 _SOURCE_TOOL = "omnimarket-tenant-credential-intake"
@@ -217,36 +225,6 @@ class CredentialKeyRefusedError(ValueError):
         self.provider = provider
         self.outcome = outcome
         super().__init__(message)
-
-
-class ModelInferenceCredentialResponse(BaseModel):
-    """Response body of the create route -- ref + metadata, NEVER the value."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    api_key_ref: str
-    name: str
-    provider: str
-    #: OMN-20157. The plan the credential was registered under: the one the
-    #: customer named or detection found. ``None`` for a provider with a single
-    #: plan, where there was nothing to choose.
-    plan: str | None = None
-    #: OMN-20157. The model the key resolved from the provider's own model list,
-    #: which the route runs. ``None`` when the list could not be read at
-    #: registration; the effect then resolves it at the first delegation.
-    model: str | None = None
-    models: list[str] = Field(default_factory=list)
-    expected_version: int | None = Field(default=None, strict=True, gt=0)
-    #: OMN-20991. The expiry recorded with the credential, if one was given.
-    expires_at: datetime | None = None
-    #: OMN-20991. Set when the expiry is absent or is not January 1. A warning,
-    #: never a refusal: the key is stored and routed either way.
-    expiry_warning: EnumCredentialExpiryWarning | None = None
-    #: OMN-21012. The lab host the key is bound to, if any.
-    bound_host: str | None = None
-    #: OMN-20967. The Anthropic workspace the key belongs to, if any.
-    workspace_id: str | None = None
-    created_at: datetime
 
 
 class ModelInferenceCredentialRevokeResponse(BaseModel):
@@ -559,7 +537,12 @@ async def _resolve_registration_model(
             or (OMN-20844) the list does not name the model the customer chose,
             or the customer chooses the model for this provider and chose none.
     """
-    backend = resolve_byok_provider_backend(request.provider, plan=plan)
+    backend = registered_endpoint_backend(
+        request.provider,
+        plan=plan,
+        base_url=request.base_url,
+        connection_id=request.connection_id,
+    )
     # OMN-20967: the workspace rides only when the key has one, so a discoverer
     # written before it is called exactly as before.
     workspace = (
@@ -593,29 +576,13 @@ async def _resolve_registration_model(
     return discovery.model
 
 
-def credential_expiry_warning(
-    expires_at: datetime | None,
-) -> EnumCredentialExpiryWarning | None:
-    """The warning a registration returns for ``expires_at``, or ``None``.
-
-    OMN-20991, operator ruling 2026-10-11T16:02:35Z: every company key expires
-    on January 1, so one date covers the pool. The date is read in UTC, the
-    zone every stored timestamp is compared in.
-    """
-    if expires_at is None:
-        return EnumCredentialExpiryWarning.EXPIRY_ABSENT
-    in_utc = expires_at.astimezone(UTC)
-    if (in_utc.month, in_utc.day) != (1, 1):
-        return EnumCredentialExpiryWarning.EXPIRY_NOT_JANUARY_1
-    return None
-
-
 async def register_inference_credential(
     request: ModelInferenceCredentialCreateRequest,
     *,
     tenant_id: str,
     secret_store: ProtocolSecretStore | None = None,
     event_bus: ProtocolCredentialEventBus | None = None,
+    allow_custom_endpoint: bool = False,
     plan_detector: Callable[..., Awaitable[ModelByokPlanDetection]] = detect_byok_plan,
     model_discoverer: Callable[
         ..., Awaitable[ModelByokModelDiscovery]
@@ -662,6 +629,10 @@ async def register_inference_credential(
         CredentialStoreUnavailableError: store configured but unauthenticated.
         CredentialStoreWriteRejectedError: the store declined the write.
     """
+    if request.base_url is not None and not allow_custom_endpoint:
+        raise ValueError(
+            "Custom URLs require explicit local endpoint registration; hosted intake cannot request private-network discovery"
+        )
     plan, detected_model = await _resolve_registration_plan(request, plan_detector)
     model: str | None
     if request.models:
@@ -707,11 +678,7 @@ async def register_inference_credential(
         api_key_ref=api_key_ref,
         models=request.models,
         expected_version=request.expected_version,
-        metadata={
-            key: value
-            for key, value in (("plan", plan), ("model", model))
-            if value is not None
-        },
+        metadata=registration_metadata(request, plan, model),
         expires_at=request.expires_at,
         bound_host=request.bound_host,
         workspace_id=request.workspace_id,
@@ -745,6 +712,8 @@ async def register_inference_credential(
         provider=request.provider,
         plan=plan,
         model=model,
+        base_url=request.base_url,
+        connection_id=request.connection_id,
         models=request.models or ([model] if model is not None else []),
         expected_version=request.expected_version,
         expires_at=request.expires_at,
