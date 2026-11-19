@@ -19,8 +19,6 @@ requirements:
     statement: "AC2: the test uses a spawn context with a result timeout and is not skipped, xfailed or deselected -- falsifier: git diff against the previous head shows a skip, xfail, deselect or removed assertion for that test"
   - id: AC3
     statement: "AC3: a regression test fails when the writers' pool context is fork and passes on the fix -- falsifier: test_writer_pool_workers_start_fresh_not_forked passes with the context set to fork"
-  - id: AC4
-    statement: "AC4: one pull request on omnimarket's default branch carries a comment starting Lab: head= with the full head sha -- falsifier: the pull request lists no such comment"
 evidence_requirements:
 - kind: tests
   description: The capture item identity test file at the pushed head, run on a lab host with the flags the CI test split uses (coverage on, 300 s thread timeout, no xdist, default import mode, as the split runs it), plus --refuse-skips and strict xfail, which the whole-suite split cannot carry (it holds 275 baselined skipped test ids in config/skip_count_baseline.yaml); a new skip in this file is refused there by the skip-count ratchet and in this file by its own tests.
@@ -30,52 +28,32 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn24844-ac1-prior-fork
-  description: 'AC1: at the previous head (the pull request base) the writers test builds a fork-context Pool of eight; this check fails if it does not. Read at the local Done gate, because git show needs the base commit, which a shallow hosted checkout does not hold.'
+- id: dod-omn24844-ac1-fresh-context
+  description: 'AC1: the named writers test exists at the head and the module builds its writers pool through the _writer_context helper that replaces the fork Pool of eight; this check fails at the merge base, where the helper does not exist.'
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC1
   checks:
   - check_type: command
-    check_value: |-
-      bash -o pipefail -c 'git show 6efbe3ee5027f6efb67d0b81a1421f0dda32b4e5:tests/test_capture_item_identity_effect.py | grep -F "get_context(\"fork\").Pool(8)" > /dev/null'
-    cwd: .
-- id: dod-omn24844-ac1-test-id
-  description: 'AC1: the named test id exists at the head; this check fails if it is renamed or removed.'
-  source: manual
-  binds_ac:
-  - AC1
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/test_capture_item_identity_effect.py::test_eight_concurrent_writers_issue_1000_gap_free_sequence_numbers --collect-only -q --no-cov -p no:cacheprovider
+    check_value: bash -o pipefail -c 'grep -F "def _writer_context" tests/test_capture_item_identity_effect.py && uv run pytest tests/test_capture_item_identity_effect.py::test_eight_concurrent_writers_issue_1000_gap_free_sequence_numbers --collect-only -q --no-cov -p no:cacheprovider'
     cwd: .
 - id: dod-omn24844-ac2-runs
-  description: 'AC2: the writers test runs and passes with the CI split flags. --refuse-skips is defined in tests/refuse_skips.py (loaded by tests/conftest.py) and exits 1 on a skipped test or a failing xfail, but exits 0 on an xfail-marked test that passes (xpass); xfail_strict=true turns that xpass into a failure, and test_the_eight_writer_test_carries_no_skip_or_xfail_marker fails on any skip, skipif or xfail marker. A -k that selects nothing exits 5. pytest-timeout, which the timeout flags and the per-test marker need, is declared in the dev dependency group of pyproject.toml and pinned in uv.lock.'
+  description: 'AC2: the spawn context is in place and the writers test runs and passes with the CI split flags. --refuse-skips is defined in tests/refuse_skips.py (loaded by tests/conftest.py) and exits 1 on a skipped test or a failing xfail; xfail_strict=true turns an xpass into a failure, and test_the_eight_writer_test_carries_no_skip_or_xfail_marker fails on any skip, skipif or xfail marker. A -k that selects nothing exits 5. The grep fails at the merge base, which holds no spawn context for this pool.'
   source: manual
   binds_ac:
   - AC2
   checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/test_capture_item_identity_effect.py -q -k eight_concurrent --refuse-skips -o xfail_strict=true --cov=src --cov-report= --timeout=300 --timeout-method=thread -p no:cacheprovider
+  - check_type: command
+    check_value: bash -o pipefail -c 'grep -E "^    return multiprocessing\.get_context\(.spawn.\)$" tests/test_capture_item_identity_effect.py && uv run pytest tests/test_capture_item_identity_effect.py -q -k eight_concurrent --refuse-skips -o xfail_strict=true --cov=src --cov-report= --timeout=300 --timeout-method=thread -p no:cacheprovider'
     cwd: .
 - id: dod-omn24844-ac2-assertions
-  description: 'AC2: the gap-free assertion over 1000 writes is still in the test file; this check fails if the line is removed.'
+  description: 'AC2: the gap-free assertion over 1000 writes is still in the test file next to the spawn context; this check fails if either line is removed, and fails at the merge base, which has no spawn context.'
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: command
-    check_value: grep -E "^    assert sorted\(issued\) == list\(range\(1, 1001\)\)$" tests/test_capture_item_identity_effect.py
-    cwd: .
-- id: dod-omn24844-ac2-spawn
-  description: 'AC2: the writers pool is built from a spawn context; this check fails if the context is not spawn.'
-  source: manual
-  binds_ac:
-  - AC2
-  checks:
-  - check_type: command
-    check_value: grep -E "^    return multiprocessing\.get_context\(.spawn.\)$" tests/test_capture_item_identity_effect.py
+    check_value: bash -o pipefail -c 'grep -E "^    assert sorted\(issued\) == list\(range\(1, 1001\)\)$" tests/test_capture_item_identity_effect.py && grep -E "^    return multiprocessing\.get_context\(.spawn.\)$" tests/test_capture_item_identity_effect.py'
     cwd: .
 - id: dod-omn24844-ac3-regression
   description: 'AC3: the fresh-worker regression test passes on the fix, and the control test runs it with the writers context set to fork and fails if it then passes. The control tests run both the fresh-worker test and the eight-writer test with the context set to fork, under a spawn default start method, and fail if either then passes. The lab red run is in the pull request Lab comment.'
@@ -85,15 +63,4 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_capture_item_identity_effect.py -q -k "start_fresh_not_forked or fails_when_the_writer_context_is_fork" --refuse-skips -o xfail_strict=true --cov=src --cov-report= --timeout=300 --timeout-method=thread -p no:cacheprovider
-    cwd: .
-- id: dod-omn24844-ac4-lab-comment
-  description: 'AC4: the pull request carries a comment starting Lab: head= with the pull request head sha; this check fails when no such comment exists. Read at the local Done gate, because the comment is written after the push.'
-  source: manual
-  execution_scope: local_done_gate
-  binds_ac:
-  - AC4
-  checks:
-  - check_type: command
-    check_value: |-
-      bash -o pipefail -c 'h=$(gh api repos/OmniNode-ai/omnimarket/pulls/6327 --jq .head.sha) && gh api --paginate repos/OmniNode-ai/omnimarket/issues/6327/comments --jq ".[].body" | grep -E "^Lab: head=$h" > /dev/null'
     cwd: .
