@@ -1,0 +1,28 @@
+{
+  "correlation_id": "4b6d2e8f-9a13-4c57-8e2b-6f0a3d5c7e94",
+  "requested_git_ref": "dev",
+  "git_sha": "f15ea42e1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+  "started_at": "2026-11-15T09:00:12.500000+00:00",
+  "completed_at": "2026-11-15T09:18:44.250000+00:00",
+  "duration_seconds": 1111.75,
+  "scope": "full",
+  "runtime_lane": "dev",
+  "image_ref": "omninode-runtime:dev",
+  "image_digest": "sha256:3a7f3a7f3a7f3a7f3a7f3a7f3a7f3a7f3a7f3a7f3a7f3a7f3a7f3a7f3a7f3a7f",
+  "services_restarted": ["omninode-runtime", "omninode-runtime-effects"],
+  "phase_results": {
+    "git": "success",
+    "core": "success",
+    "runtime": "success",
+    "verification": "success",
+    "publish": "success"
+  },
+  "status": "success",
+  "errors": [],
+  "health_checks": [],
+  "sibling_refs": {
+    "omnimarket": "origin/dev",
+    "omnibase_infra": "origin/dev"
+  },
+  "lane_mirror": null
+}

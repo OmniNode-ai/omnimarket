@@ -76,6 +76,13 @@ config:
     # Reverse-DNS label domains; a label is ours when it equals a domain or
     # continues it with a dot.
     launchd_label_domains: ["ai.omninode", "com.omninode", "com.onex"]
+    # A unit's own script can exit nonzero to report its verdict instead of
+    # crashing: throughput_tick.py declares "Exit: 0 OK; 1 a stall or an
+    # unknown; 64 usage" and queue_status.py exits 1 when the verdict is
+    # DEGRADED. Those declared exits are readings, not scheduled_job_failures.
+    launchd_reading_exits:
+      ai.omninode.throughput-tick: [1]
+      ai.omninode.queue-status-tick: [1]
     # The store sits at the root of the boot volume and, on a sealed system
     # volume, of the APFS data volume; the data volume's mount point is read
     # from `mount` at run time.
