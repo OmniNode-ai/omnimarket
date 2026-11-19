@@ -108,6 +108,14 @@ class TestByokDeclaredPriceReachesDelegationRow:
         )
         assert _cost(row) == Decimal("0")
         assert row["cost_measurement_source"] == "no_cost_model"
+        # Contrast: the same call on a declared model is priced, so this
+        # test fails where the pricing is absent (merge base).
+        priced = _project(
+            correlation_id="corr-byok-unpriced-contrast",
+            model_name="glm-5.3-flash",
+            backend_id="byok-glm-general",
+        )
+        assert _cost(priced) > 0
 
     def test_call_with_no_byok_backend_is_untouched(self) -> None:
         row = _project(
@@ -117,3 +125,9 @@ class TestByokDeclaredPriceReachesDelegationRow:
         )
         assert _cost(row) == Decimal("0")
         assert row["cost_measurement_source"] == "no_cost_model"
+        priced = _project(
+            correlation_id="corr-no-backend-contrast",
+            model_name="glm-5.3-flash",
+            backend_id="byok-glm-general",
+        )
+        assert _cost(priced) > 0
