@@ -20,7 +20,7 @@ A lane does GitHub work through this command and no ``gh`` verb:
   run-view, job-log, run-download, release-list) publish the gateway's typed request.
 - **PR authoring writes** (pr-create, pr-edit, pr-ready, pr-close, pr-comment,
   pr-thread-reply, pr-thread-resolve, pr-review-post, pr-label, workflow-run,
-  check-run-create, variable-set, variable-get, runner-list, runner-remove,
+  check-run-create, commit-status-create, required-context-apply, variable-set, variable-get, runner-list, runner-remove,
   runner-group-get)
   publish node_github_repo_write_effect's typed
   request. Its guards apply: quota floor, expected head, idempotency, and the claim pr-close
@@ -549,7 +549,7 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
     @click.option(
         "--head-sha",
         default=None,
-        help="run-list: runs of this head; pr-heads; commit-check-runs.",
+        help="run-list: runs of this head; pr-heads; commit-check-runs; commit-statuses.",
     )
     @click.option(
         "--check-name", default=None, help="commit-check-runs: runs of this name."
@@ -802,6 +802,14 @@ _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     "runner_group_get": ("runner_group",),
     "pr_review_post": ("body", "body_file"),
     "workflow_dispatch": ("workflow", "ref", "input"),
+    "commit_status_create": (
+        "commit_sha",
+        "status_context",
+        "status_state",
+        "status_target_url",
+        "status_description",
+    ),
+    "required_context_apply": ("protected_branch", "required_context"),
     "check_run_create": (
         "name",
         "status",
@@ -815,6 +823,8 @@ _REPO_SCOPED_WRITES: Final[frozenset[str]] = frozenset(
         "pr_create",
         "workflow_dispatch",
         "check_run_create",
+        "commit_status_create",
+        "required_context_apply",
         "repo_variable_set",
         "repo_variable_get",
         "runner_list",
@@ -849,6 +859,44 @@ _OPTION_DECORATORS: Final[
                 "timed_out",
             ]
         ),
+    ),
+    "commit_sha": click.option(
+        "--sha", "commit_sha", required=True, help="The full commit sha to post on."
+    ),
+    "status_context": click.option(
+        "--context",
+        "status_context",
+        default="fable-review-gate",
+        show_default=True,
+        type=click.Choice(["fable-review-gate"]),
+    ),
+    "status_state": click.option(
+        "--state",
+        "status_state",
+        required=True,
+        type=click.Choice(["success", "failure"]),
+    ),
+    "status_target_url": click.option(
+        "--target-url",
+        "status_target_url",
+        required=True,
+        help="The link to the verdict.",
+    ),
+    "status_description": click.option(
+        "--description", "status_description", default=None
+    ),
+    "protected_branch": click.option(
+        "--branch",
+        "protected_branch",
+        required=True,
+        help="The branch whose protection gains the context.",
+    ),
+    "required_context": click.option(
+        "--required-context",
+        "required_context",
+        required=True,
+        help="The status-check context to require; it must be in the write node's "
+        "overlay required_contexts allowlist for the repository and branch.",
     ),
     "output_title": click.option("--output-title", default=None),
     "output_summary": click.option("--output-summary", default=None),
