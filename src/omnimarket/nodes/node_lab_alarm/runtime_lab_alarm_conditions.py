@@ -11,6 +11,7 @@ EVENT / summary / ALARM / DELIVERY lines and returns an exit code.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
@@ -32,7 +33,22 @@ from omnimarket.nodes.node_lab_alarm.adapters.receipt_adapters import (
     GatewayLabPassReceiptSource,
     HttpDeliveredShaSource,
 )
+from omnimarket.nodes.node_lab_alarm.adapters.restart_adapters import (
+    InMemoryRestartBounds,
+    InMemoryRestartReader,
+    SshDockerRestartReader,
+    YamlLaneManifestBounds,
+)
 from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import FileRunRecords
+from omnimarket.nodes.node_lab_alarm.handlers.handler_container_restarts import (
+    HandlerContainerRestarts,
+)
+from omnimarket.nodes.node_lab_alarm.handlers.handler_container_restarts import (
+    events_for as container_restarts_events_for,
+)
+from omnimarket.nodes.node_lab_alarm.handlers.handler_container_restarts import (
+    load_topics as container_restarts_load_topics,
+)
 from omnimarket.nodes.node_lab_alarm.handlers.handler_lab_pass_receipt import (
     HandlerLabPassReceipt,
 )
@@ -60,6 +76,11 @@ from omnimarket.nodes.node_lab_alarm.handlers.handler_stale_indeterminate import
 from omnimarket.nodes.node_lab_alarm.handlers.handler_stale_indeterminate import (
     load_topics as stale_indeterminate_load_topics,
 )
+from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_container_restarts import (
+    EnumContainerRestartsFault,
+    EnumContainerRestartsOutcome,
+    ModelContainerRestartsCommand,
+)
 from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_lab_pass_receipt import (
     EnumLabPassReceiptFault,
     EnumLabPassReceiptOutcome,
@@ -77,12 +98,17 @@ from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_stale_indeterminate 
     ModelStaleIndeterminateCommand,
 )
 from omnimarket.nodes.node_lab_alarm.overlay import (
+    ModelContainerRestartsSettings,
     ModelLabAlarmOverlay,
     ModelLabPassReceiptSettings,
     ModelLaneCensusSettings,
     ModelStaleIndeterminateSettings,
 )
-from omnimarket.nodes.node_lab_alarm.protocols import RunRecordUnwritableError
+from omnimarket.nodes.node_lab_alarm.protocols import (
+    ProtocolContainerRestartReader,
+    ProtocolRestartBoundSource,
+    RunRecordUnwritableError,
+)
 from omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver import (
     HandlerLabAlarmDeliver,
 )
@@ -97,11 +123,13 @@ __all__ = [
     "CONDITION_VERBS",
     "JOURNALED_EXIT_VERBS",
     "add_condition_parsers",
+    "build_container_restarts_handler",
     "build_lab_pass_receipt_handler",
     "build_lane_census_handler",
     "build_stale_indeterminate_handler",
     "journal_exit",
     "run_condition_verb",
+    "run_container_restarts",
     "run_lab_pass_receipt",
     "run_lane_census",
     "run_stale_indeterminate",
@@ -333,6 +361,48 @@ def build_stale_indeterminate_handler(
     )
 
 
+def _inmemory_restart_sources(
+    settings: ModelContainerRestartsSettings,
+) -> tuple[ProtocolRestartBoundSource, ProtocolContainerRestartReader]:
+    return InMemoryRestartBounds(), InMemoryRestartReader()
+
+
+def _runtime_restart_sources(
+    settings: ModelContainerRestartsSettings,
+) -> tuple[ProtocolRestartBoundSource, ProtocolContainerRestartReader]:
+    return (
+        YamlLaneManifestBounds(
+            settings.lane_manifest, settings.census_lane, os.environ
+        ),
+        SshDockerRestartReader(settings.docker_command),
+    )
+
+
+_RESTART_SOURCES: dict[
+    str,
+    Callable[
+        [ModelContainerRestartsSettings],
+        tuple[ProtocolRestartBoundSource, ProtocolContainerRestartReader],
+    ],
+] = {
+    "inmemory": _inmemory_restart_sources,
+    "runtime": _runtime_restart_sources,
+}
+
+
+def build_container_restarts_handler(
+    overlay: ModelLabAlarmOverlay, settings: ModelContainerRestartsSettings
+) -> HandlerContainerRestarts:
+    """The restarts handler wired to the overlay's backend: the lane manifest and ssh docker on the runtime backend, fixtures in memory."""
+    bounds, reader = _RESTART_SOURCES[overlay.bus.backend](settings)
+    return HandlerContainerRestarts(
+        settings=settings,
+        bounds=bounds,
+        reader=reader,
+        delivery=_delivery_for(overlay),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Exit-code tables
 # ---------------------------------------------------------------------------
@@ -341,6 +411,12 @@ _LANE_CENSUS_EXIT: dict[EnumLaneCensusOutcome, int] = {
     EnumLaneCensusOutcome.OK: 0,
     EnumLaneCensusOutcome.ALARM: 2,
     EnumLaneCensusOutcome.INDETERMINATE: 3,
+}
+
+_CONTAINER_RESTARTS_EXIT: dict[EnumContainerRestartsOutcome, int] = {
+    EnumContainerRestartsOutcome.OK: 0,
+    EnumContainerRestartsOutcome.ALARM: 2,
+    EnumContainerRestartsOutcome.INDETERMINATE: 3,
 }
 
 _LAB_PASS_RECEIPT_EXIT: dict[EnumLabPassReceiptOutcome, int] = {
@@ -407,6 +483,52 @@ def run_lane_census(
     if "delivery-failed" in result.failure or "delivery-unavailable" in result.failure:
         return 2
     return _LANE_CENSUS_EXIT[result.outcome]
+
+
+def run_container_restarts(
+    verb: str,
+    fault: EnumContainerRestartsFault,
+    *,
+    overlay: ModelLabAlarmOverlay,
+    handler: HandlerContainerRestarts | None = None,
+    out: Callable[[str], object] = sys.stdout.write,
+) -> int:
+    """One container-restarts tick."""
+    settings = overlay.container_restarts
+    if settings is None:
+        sys.stderr.write(
+            "LAB-ALARM-REFUSED container_restarts: the overlay has no container_restarts block; "
+            "the other verbs do not need it\n"
+        )
+        return 1
+    if handler is None:
+        handler = build_container_restarts_handler(overlay, settings)
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    result = handler.handle(
+        ModelContainerRestartsCommand(
+            correlation_id=f"lab-alarm-container-restarts-{now}",
+            write=not verb.endswith("-probe"),
+            fault=fault,
+        )
+    )
+    for topic, body in container_restarts_events_for(
+        result, container_restarts_load_topics()
+    ):
+        out(f"EVENT topic={topic} correlation_id={body['correlation_id']}\n")
+    out(
+        f"CONTAINER-RESTARTS outcome={result.outcome.value} fault={result.fault.value} "
+        f"lane={result.census_lane} alarms={len(result.alarms)} "
+        f"reasons={','.join(result.reasons) or 'none'}\n"
+    )
+    for reading in result.readings:
+        out(f"CONTAINER {reading}\n")
+    for alarm in result.alarms:
+        out(f"ALARM {alarm}\n")
+    for entry in result.delivery:
+        out(f"DELIVERY {entry}\n")
+    if "delivery-failed" in result.failure or "delivery-unavailable" in result.failure:
+        return _CONTAINER_RESTARTS_EXIT[EnumContainerRestartsOutcome.ALARM]
+    return _CONTAINER_RESTARTS_EXIT[result.outcome]
 
 
 def run_lab_pass_receipt(
@@ -514,18 +636,22 @@ CONDITION_VERBS: tuple[str, ...] = (
     "lab-pass-receipt-probe",
     "stale-indeterminate",
     "stale-indeterminate-probe",
+    "container-restarts",
+    "container-restarts-probe",
 )
 
 _FAULT_ENUMS: dict[
     str,
     type[EnumLaneCensusFault]
     | type[EnumLabPassReceiptFault]
-    | type[EnumStaleIndeterminateFault],
+    | type[EnumStaleIndeterminateFault]
+    | type[EnumContainerRestartsFault],
 ] = {
     "lane-drift": EnumLaneCensusFault,
     "container-unhealthy": EnumLaneCensusFault,
     "lab-pass-receipt": EnumLabPassReceiptFault,
     "stale-indeterminate": EnumStaleIndeterminateFault,
+    "container-restarts": EnumContainerRestartsFault,
 }
 
 
@@ -538,6 +664,7 @@ def add_condition_parsers(
         "container-unhealthy",
         "lab-pass-receipt",
         "stale-indeterminate",
+        "container-restarts",
     ):
         fault_enum = _FAULT_ENUMS[base]
         choices = [f.value for f in fault_enum]
@@ -571,6 +698,10 @@ def run_condition_verb(
     if base == "stale-indeterminate":
         return run_stale_indeterminate(
             verb, EnumStaleIndeterminateFault(fault_value), overlay=overlay
+        )
+    if base == "container-restarts":
+        return run_container_restarts(
+            verb, EnumContainerRestartsFault(fault_value), overlay=overlay
         )
     sys.stderr.write(f"LAB-ALARM-REFUSED {verb}: unknown condition verb\n")
     return 1
