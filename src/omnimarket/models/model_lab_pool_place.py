@@ -52,6 +52,7 @@ class ModelPlacement(BaseModel):
     refusal: EnumRefusalReason | None = None
     verdicts: list[ModelHostVerdict]
     detail: str = ""
+    replaced_from: str = ""
 
     @property
     def placed(self) -> bool:
@@ -69,6 +70,8 @@ class ModelPlacement(BaseModel):
             f"age={v.age_seconds:.0f}s"
             for v in self.verdicts
         )
+        if self.replaced_from:
+            lines.append(f"  re-placed: {self.replaced_from} reads down")
         if self.detail:
             lines.append(self.detail)
         return "\n".join(lines)
@@ -91,6 +94,8 @@ class ModelLabPoolPlaceRequest(BaseModel):
     table: ModelLabHostsTable | None = None
     #: Hosts the drain verb (node_host_drain_effect, OMN-22905) has set draining: no new unit is placed on them.
     draining_hosts: tuple[str, ...] = ()
+    #: Hosts the host-down reading (node_host_down_reading_effect, OMN-23984) reads down: no unit is placed on them.
+    down_hosts: tuple[str, ...] = ()
 
 
 __all__ = [

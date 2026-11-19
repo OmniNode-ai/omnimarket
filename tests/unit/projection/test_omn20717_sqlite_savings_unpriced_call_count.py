@@ -43,7 +43,13 @@ def test_an_unpriced_call_is_counted_beside_unchanged_totals(tmp_path: Path) -> 
     path = _store(
         tmp_path,
         (
-            _delegation("priced", cost_usd=0.25, cost_savings_usd=0.5),
+            _delegation(
+                "priced",
+                model_name="gpt-4o-mini",
+                delegated_to="gpt-4o-mini",
+                cost_usd=0.25,
+                cost_savings_usd=0.5,
+            ),
             _delegation("unpriced", cost_usd=None, cost_savings_usd=0.0),
         ),
         (_call("priced", "measured"),),
@@ -60,7 +66,12 @@ def test_priced_and_measured_free_calls_count_none(tmp_path: Path) -> None:
     path = _store(
         tmp_path,
         (
-            _delegation("priced", cost_usd=0.1),
+            _delegation(
+                "priced",
+                model_name="gpt-4o-mini",
+                delegated_to="gpt-4o-mini",
+                cost_usd=0.1,
+            ),
             _delegation("free", cost_usd=0.0),
         ),
         (_call("priced", "measured"), _call("free", "measured")),
