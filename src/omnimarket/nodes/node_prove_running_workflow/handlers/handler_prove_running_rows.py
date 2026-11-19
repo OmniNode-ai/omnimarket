@@ -44,6 +44,8 @@ class HandlerProveRunningRows:
         workflow_cells = (
             f"workflow={_token(change.workflow_id)} | step={_token(request.step_key)}"
         )
+        if request.batch_id:
+            workflow_cells += f" | batch={_token(request.batch_id)}"
         if request.outcome is EnumProveRunningOutcome.PROVED:
             if reading is None or not reading.running:
                 raise ValueError("a STATUS row is written only from a running reading")

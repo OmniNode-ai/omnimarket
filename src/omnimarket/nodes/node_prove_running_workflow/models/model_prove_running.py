@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Typed inputs and outputs of workflow 1, prove-running.
+"""Typed inputs and outputs of the prove-running batch and child workflows.
 
 The workflow carries these models as JSON strings so its history holds exactly what the caller sent. Every step is a
 plain command (one of our nodes, through ``onex run-node`` or the node's declared CLI); the command reads one
@@ -65,6 +65,7 @@ class ModelProveRunningPlan(_Frozen):
     deadline_seconds: int = Field(gt=0)
     step_timeout_seconds: int = Field(default=600, gt=0)
     step_max_attempts: int = Field(default=3, gt=0, le=20)
+    batch_id: str = ""
 
     @model_validator(mode="after")
     def _deadline_covers_one_wait(self) -> ModelProveRunningPlan:
@@ -92,6 +93,7 @@ class ModelProveRunningStepInput(_Frozen):
     step_key: str = Field(min_length=1)
     change: ModelProveRunningChange
     last_reading: ModelProveRunningAnswer | None = None
+    batch_id: str = ""
 
 
 class ModelProveRunningResult(_Frozen):
@@ -114,6 +116,7 @@ class ModelProveRunningRowRequest(_Frozen):
     lane: str = Field(min_length=1, pattern=r"^[a-z0-9][a-z0-9-]*$")
     ticket: str = Field(pattern=r"^OMN-\d+$")
     written_at: str = Field(min_length=1)
+    batch_id: str = ""
 
 
 class ModelProveRunningRowResult(_Frozen):
@@ -134,3 +137,54 @@ class ModelProveRunningStartBatch(_Frozen):
 
     changes: tuple[ModelProveRunningChange, ...]
     skipped: tuple[str, ...] = ()
+
+
+class ModelProveRunningBatchSteps(_Frozen):
+    """The node commands that select changes and prepare child workflow plans."""
+
+    read_not_running: tuple[str, ...] = Field(min_length=1)
+    group_by_host: tuple[str, ...] = Field(min_length=1)
+
+
+class ModelProveRunningBatchPlan(_Frozen):
+    """The scheduled workflow input and its activity limits."""
+
+    steps: ModelProveRunningBatchSteps
+    limit: int = Field(ge=1, le=50)
+    step_timeout_seconds: int = Field(gt=0)
+    step_max_attempts: int = Field(gt=0, le=20)
+
+
+class ModelProveRunningBatchStepInput(_Frozen):
+    """One batch command's input, including the previous step's JSON answer."""
+
+    step: str = Field(min_length=1)
+    step_key: str = Field(min_length=1)
+    batch_id: str = Field(min_length=1)
+    limit: int = Field(ge=1, le=50)
+    payload: str = ""
+
+
+class ModelProveRunningHostGroup(_Frozen):
+    """The child workflow plans for a host."""
+
+    host: str
+    plans: tuple[ModelProveRunningPlan, ...]
+
+
+class ModelProveRunningHostGroups(_Frozen):
+    """Grouped child plans and reasons any ledger changes were skipped."""
+
+    groups: tuple[ModelProveRunningHostGroup, ...]
+    skipped: tuple[str, ...] = ()
+
+
+class ModelProveRunningBatchResult(_Frozen):
+    """Counts and outcomes from one scheduled workflow run."""
+
+    batch_id: str
+    read_changes: int
+    hosts: dict[str, int]
+    started: tuple[str, ...]
+    already_proven_or_running: tuple[str, ...]
+    outcomes: dict[str, str]

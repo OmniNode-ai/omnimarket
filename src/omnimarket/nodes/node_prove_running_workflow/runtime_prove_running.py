@@ -4,10 +4,13 @@
 
 Verbs:
 
-* ``worker``: run the Temporal worker for workflow 1 against a server (``--target-host``, ``--namespace``).
+* ``worker``: run the Temporal worker for both workflows against a server (``--target-host``, ``--namespace``).
 * ``start``: read one integration pass batch (``--batch``, a ``ModelIntegrationReadingBatch`` JSON file), and start
   one workflow per NOT RUNNING line, id ``<repo>#<n>@<sha>``; a second start of a running change joins it and a start
   of a finished one is refused.
+* ``schedule``: create or update the hourly batch schedule, with an optional immediate trigger.
+* ``read-not-running`` and ``group-by-host``: batch step commands that select changes from the integration ledger
+  and build child workflow plans for their hosts.
 * ``read``: a step command. Reads the step input on stdin, reads the change through
   ``node_merged_change_reading_effect`` (its declared CLI) and answers one ``ModelProveRunningAnswer`` line.
 * ``install``: a step command. The declared installer of the change's target, from the contract's ``installers``.
@@ -23,10 +26,11 @@ import json
 import os
 import subprocess
 import sys
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
@@ -36,16 +40,30 @@ from omnimarket.nodes.node_prove_running_workflow.handlers import (
     HandlerProveRunningRows,
     HandlerProveRunningStarter,
 )
+from omnimarket.nodes.node_prove_running_workflow.handlers.handler_integration_ledger_reader import (
+    read_not_running,
+)
+from omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_hosts import (
+    group_by_host,
+)
 from omnimarket.nodes.node_prove_running_workflow.models.model_prove_running import (
     EnumProveRunningOutcome,
     ModelProveRunningAnswer,
+    ModelProveRunningBatchPlan,
+    ModelProveRunningBatchStepInput,
+    ModelProveRunningBatchSteps,
     ModelProveRunningChange,
+    ModelProveRunningHostGroups,
     ModelProveRunningPlan,
     ModelProveRunningRowRequest,
+    ModelProveRunningStartBatch,
     ModelProveRunningStartRequest,
     ModelProveRunningStepInput,
     ModelProveRunningSteps,
 )
+
+if TYPE_CHECKING:
+    from temporalio.client import Client, Schedule
 
 NODE = "node_prove_running_workflow"
 EXIT_REFUSED = 65
@@ -70,7 +88,7 @@ def _argv(template: list[str]) -> tuple[str, ...]:
 
 
 def build_plan(
-    change: ModelProveRunningChange, cfg: dict[str, Any]
+    change: ModelProveRunningChange, cfg: dict[str, Any], *, batch_id: str = ""
 ) -> ModelProveRunningPlan:
     steps = {name: _argv(list(argv)) for name, argv in cfg["steps"].items()}
     return ModelProveRunningPlan(
@@ -81,6 +99,51 @@ def build_plan(
         deadline_seconds=int(cfg["deadline_seconds"]),
         step_timeout_seconds=int(cfg["step_timeout_seconds"]),
         step_max_attempts=int(cfg["step_max_attempts"]),
+        batch_id=batch_id,
+    )
+
+
+def build_batch_plan(cfg: dict[str, Any]) -> ModelProveRunningBatchPlan:
+    batch = cfg["batch"]
+    steps = {name: _argv(list(argv)) for name, argv in batch["steps"].items()}
+    return ModelProveRunningBatchPlan(
+        steps=ModelProveRunningBatchSteps(**steps),
+        limit=int(batch["limit"]),
+        step_timeout_seconds=int(batch["step_timeout_seconds"]),
+        step_max_attempts=int(batch["step_max_attempts"]),
+    )
+
+
+def build_schedule(cfg: dict[str, Any], task_queue: str) -> Schedule:
+    from temporalio.client import (
+        Schedule,
+        ScheduleActionStartWorkflow,
+        ScheduleIntervalSpec,
+        ScheduleOverlapPolicy,
+        SchedulePolicy,
+        ScheduleSpec,
+    )
+
+    from omnimarket.nodes.node_prove_running_workflow.handlers.temporal_prove_running_batch import (
+        BATCH_WORKFLOW_NAME,
+    )
+
+    batch = cfg["batch"]
+    return Schedule(
+        action=ScheduleActionStartWorkflow(
+            BATCH_WORKFLOW_NAME,
+            build_batch_plan(cfg).model_dump_json(),
+            id=batch["schedule_id"],
+            task_queue=task_queue,
+        ),
+        spec=ScheduleSpec(
+            intervals=[
+                ScheduleIntervalSpec(
+                    every=timedelta(seconds=int(batch["interval_seconds"]))
+                )
+            ]
+        ),
+        policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
     )
 
 
@@ -189,6 +252,7 @@ def cmd_write_row(cfg: dict[str, Any], outcome: str) -> int:
                 lane=os.environ.get("ONEX_PROVE_RUNNING_LANE", cfg["lane"]),
                 ticket=cfg["ticket"],
                 written_at=_now(),
+                batch_id=step.batch_id,
             )
         )
         .row
@@ -234,27 +298,110 @@ def parse_merge_sha(stdout: str) -> str | None:
 class CliMergeShaResolver:
     """The merge sha through ``onex scm pr-merge-commit`` (the PR watcher state and the clones, never GitHub)."""
 
-    def __init__(self, owner: str) -> None:
+    def __init__(self, owner: str, override_argv: tuple[str, ...] = ()) -> None:
         self._owner = owner
+        self._override_argv = override_argv
 
     def merge_sha(self, repository: str, number: int) -> str | None:
-        proc = subprocess.run(
-            ["onex", "scm", "pr-merge-commit", f"{self._owner}/{repository}#{number}"],
-            capture_output=True,
-            text=True,
-            check=False,
+        change_key = f"{repository}#{number}"
+        argv = (
+            [*self._override_argv, change_key]
+            if self._override_argv
+            else ["onex", "scm", "pr-merge-commit", f"{self._owner}/{change_key}"]
         )
+        proc = subprocess.run(argv, capture_output=True, text=True, check=False)
+        if self._override_argv:
+            lines = proc.stdout.strip().splitlines()
+            return lines[-1].strip() if proc.returncode == 0 and lines else None
         return parse_merge_sha(proc.stdout)
 
 
-async def _connect(target_host: str, namespace: str) -> Any:
+def _merge_sha_resolver(cfg: dict[str, Any], owner: str) -> CliMergeShaResolver:
+    raw = os.environ.get(cfg["merge_sha_argv_env"], "").strip()
+    return CliMergeShaResolver(owner, tuple(json.loads(raw)) if raw else ())
+
+
+def cmd_read_not_running(cfg: dict[str, Any]) -> int:
+    step = ModelProveRunningBatchStepInput.model_validate_json(sys.stdin.read())
+    env_var = cfg["batch"]["ledger_path_env"]
+    path = os.environ.get(env_var, "").strip()
+    if not path:
+        sys.stderr.write(f"refused: {env_var} names no integration ledger\n")
+        return EXIT_REFUSED
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        sys.stderr.write(
+            f"refused: unable to read the integration ledger from {env_var}: {exc}\n"
+        )
+        return EXIT_REFUSED
+    batch = read_not_running(text, as_of=datetime.now(UTC), origin=path)
+    resolver = _merge_sha_resolver(cfg, cfg["scm_owner"])
+    selected = HandlerProveRunningStarter(resolver).handle(
+        ModelProveRunningStartRequest(batch=batch, limit=step.limit)
+    )
+    sys.stdout.write(selected.model_dump_json() + "\n")
+    return 0
+
+
+def cmd_group_by_host(cfg: dict[str, Any]) -> int:
+    step = ModelProveRunningBatchStepInput.model_validate_json(sys.stdin.read())
+    selected = ModelProveRunningStartBatch.model_validate_json(step.payload)
+    batch = cfg["batch"]
+    child_cfg = {**cfg, **batch["child"]}
+    default_host = batch["default_host"]
+    grouped = group_by_host(
+        selected.changes,
+        lambda change: build_plan(change, child_cfg, batch_id=step.batch_id),
+        tuple(batch["hosts"]),
+        default_host,
+    )
+    # Keep the named hosts in order, then run the fallback group.
+    result = ModelProveRunningHostGroups(
+        groups=tuple(
+            sorted(grouped.groups, key=lambda group: group.host == default_host)
+        ),
+        skipped=selected.skipped,
+    )
+    sys.stdout.write(result.model_dump_json() + "\n")
+    return 0
+
+
+async def _connect(target_host: str, namespace: str) -> Client:
     from temporalio.client import Client
 
     return await Client.connect(target_host, namespace=namespace)
 
 
+async def upsert_schedule(
+    client: Client, cfg: dict[str, Any], task_queue: str, *, trigger: bool
+) -> str:
+    from temporalio.client import (
+        ScheduleAlreadyRunningError,
+        ScheduleUpdate,
+        ScheduleUpdateInput,
+    )
+
+    schedule_id: str = cfg["batch"]["schedule_id"]
+    schedule = build_schedule(cfg, task_queue)
+
+    def update(current: ScheduleUpdateInput) -> ScheduleUpdate:
+        return ScheduleUpdate(
+            schedule=replace(schedule, state=current.description.schedule.state)
+        )
+
+    try:
+        handle = await client.create_schedule(schedule_id, schedule)
+    except ScheduleAlreadyRunningError:
+        handle = client.get_schedule_handle(schedule_id)
+        await handle.update(update)
+    if trigger:
+        await handle.trigger()
+    return schedule_id
+
+
 async def start_changes(
-    client: Any,
+    client: Client,
     changes: tuple[ModelProveRunningChange, ...],
     cfg: dict[str, Any],
     task_queue: str,
@@ -304,13 +451,17 @@ async def run_worker(target_host: str, namespace: str, task_queue: str) -> None:
         ProveRunningWorkflow,
         prove_running_step,
     )
+    from omnimarket.nodes.node_prove_running_workflow.handlers.temporal_prove_running_batch import (
+        ProveRunningBatchWorkflow,
+        prove_running_batch_step,
+    )
 
     client = await _connect(target_host, namespace)
     await Worker(
         client,
         task_queue=task_queue,
-        workflows=[ProveRunningWorkflow],
-        activities=[prove_running_step],
+        workflows=[ProveRunningWorkflow, ProveRunningBatchWorkflow],
+        activities=[prove_running_step, prove_running_batch_step],
     ).run()
 
 
@@ -318,19 +469,27 @@ def main(argv: list[str] | None = None) -> int:
     cfg = contract_config()
     ap = argparse.ArgumentParser(prog=NODE)
     sub = ap.add_subparsers(dest="verb", required=True)
-    for verb in ("worker", "start"):
+    for verb in ("worker", "start", "schedule"):
         p = sub.add_parser(verb)
         p.add_argument("--target-host", required=True)
-        p.add_argument("--namespace", default="default")
+        p.add_argument("--namespace", default=cfg["namespace"])
         p.add_argument("--task-queue", default=cfg["task_queue"])
     sub.choices["start"].add_argument(
         "--batch", required=True, help="ModelIntegrationReadingBatch JSON file"
     )
     sub.choices["start"].add_argument("--limit", type=int, default=3)
-    sub.choices["start"].add_argument("--owner", default="OmniNode-ai")
+    sub.choices["start"].add_argument("--owner", default=cfg["scm_owner"])
     sub.choices["start"].add_argument(
         "--wait", action="store_true", help="wait for each result"
     )
+    sub.choices["schedule"].add_argument(
+        "--schedule-id", default=cfg["batch"]["schedule_id"]
+    )
+    sub.choices["schedule"].add_argument(
+        "--trigger", action="store_true", help="trigger one immediate batch run"
+    )
+    sub.add_parser("read-not-running")
+    sub.add_parser("group-by-host")
     sub.add_parser("read")
     sub.add_parser("install")
     w = sub.add_parser("write-row")
@@ -345,14 +504,29 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_install(cfg)
     if args.verb == "write-row":
         return cmd_write_row(cfg, args.outcome)
+    if args.verb == "read-not-running":
+        return cmd_read_not_running(cfg)
+    if args.verb == "group-by-host":
+        return cmd_group_by_host(cfg)
     if args.verb == "worker":
         asyncio.run(run_worker(args.target_host, args.namespace, args.task_queue))
+        return 0
+    if args.verb == "schedule":
+        cfg["batch"]["schedule_id"] = args.schedule_id
+
+        async def _schedule() -> str:
+            client = await _connect(args.target_host, args.namespace)
+            return await upsert_schedule(
+                client, cfg, args.task_queue, trigger=args.trigger
+            )
+
+        sys.stdout.write(json.dumps({"schedule_id": asyncio.run(_schedule())}) + "\n")
         return 0
 
     batch = ModelIntegrationReadingBatch.model_validate_json(
         Path(args.batch).read_text()
     )
-    selected = HandlerProveRunningStarter(CliMergeShaResolver(args.owner)).handle(
+    selected = HandlerProveRunningStarter(_merge_sha_resolver(cfg, args.owner)).handle(
         ModelProveRunningStartRequest(batch=batch, limit=args.limit)
     )
 

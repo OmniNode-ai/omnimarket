@@ -69,6 +69,7 @@ class ProveRunningWorkflow:
                 step_key=f"{wf_id}/{name}",
                 change=plan.change,
                 last_reading=last,
+                batch_id=plan.batch_id,
             )
             return str(
                 await workflow.execute_activity(

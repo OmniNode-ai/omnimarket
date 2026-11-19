@@ -15,6 +15,8 @@ description: >-
   pr=<repo>#<n> installed=<host>:<revision> observed=<what ran> read_at=<UTC> or an alarm row naming the change and
   the last reading, through the ledger CLI. The workflow body orders the steps and owns the timer, the limit and the
   deadline; it holds no other logic. The starter starts one workflow per NOT RUNNING line of an integration pass.
+  The hourly schedule starts a batch workflow whose read-not-running and group-by-host steps select changes from
+  the integration ledger and prepare child plans. Each child writes its own row with the batch workflow ID.
 input_model:
   name: ModelProveRunningStartRequest
   module: omnimarket.nodes.node_prove_running_workflow.models.model_prove_running
@@ -60,8 +62,9 @@ runtime_dispatch:
   external_trigger: >-
     python -m omnimarket.nodes.node_prove_running_workflow worker --target-host <host:port> runs the worker;
     python -m omnimarket.nodes.node_prove_running_workflow start --target-host <host:port> --batch <batch.json> starts
-    one workflow per NOT RUNNING line. The server is the Temporal server a host install brings up; this node never
-    starts it.
+    one workflow per NOT RUNNING line. The schedule --target-host <host:port> verb creates or updates the hourly
+    schedule, with --trigger for an immediate batch run. The worker runs read-not-running and group-by-host as batch
+    step commands. The server is the Temporal server a host install brings up; this node never starts it.
 descriptor:
   node_archetype: orchestrator
   purity: effectful
@@ -76,6 +79,9 @@ metadata:
 # The declared settings of workflow 1. Every step argv names a node command; {python} is the worker's interpreter.
 prove_running:
   task_queue: onex-prove-running
+  namespace: default
+  scm_owner: OmniNode-ai
+  merge_sha_argv_env: ONEX_PROVE_RUNNING_MERGE_SHA_ARGV
   lane: prove-running
   ticket: OMN-24901
   wait_seconds: 300
@@ -91,6 +97,19 @@ prove_running:
     read_running: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "read"]
     write_status: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "write-row", "--outcome", "proved"]
     write_alarm: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "write-row", "--outcome", "alarm"]
+  batch:
+    schedule_id: onex-prove-running-hourly
+    interval_seconds: 3600
+    limit: 3
+    ledger_path_env: ONEX_INTEGRATION_LEDGER_PATH
+    hosts: [h051, h053, h101, h200, h201, h202]
+    default_host: dev-runtime
+    steps:
+      read_not_running: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "read-not-running"]
+      group_by_host: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "group-by-host"]
+    step_timeout_seconds: 600
+    step_max_attempts: 3
+    child: {wait_seconds: 120, max_readings: 3, deadline_seconds: 900}
   # The declared installer per target. The dev runtime rebuilds itself from the merge (the deploy agent), so its
   # install step runs nothing and the readings that follow are the proof. A target with no entry uses default,
   # which installs nothing and says so; the alarm row then names the change and its last reading.

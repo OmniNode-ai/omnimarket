@@ -4,6 +4,8 @@
 
 ``read``: installed per FAKE_INSTALLED, running from reading number FAKE_RUNNING_AFTER on (0 = never).
 ``install``: answers installed. ``ledger-append <row>``: appends the row to FAKE_LEDGER (the ledger CLI's place).
+``merge-sha <repo>#<number>``: answers a fixed sha per number. ``batch-step <verb>``: runs the real batch verb
+with the child read and install steps set to this stand-in.
 Every run appends ``ONEX_RUN_STEP_KEY`` to FAKE_STEP_LOG, so a test counts how often each step ran.
 """
 
@@ -12,13 +14,38 @@ from __future__ import annotations
 import json
 import os
 import sys
+from unittest.mock import patch
+
+
+def batch_step(verb: str) -> int:
+    from omnimarket.nodes.node_prove_running_workflow import (
+        runtime_prove_running as runtime,
+    )
+
+    cfg = runtime.contract_config()
+    cfg["steps"].update(
+        read_status=["{python}", __file__, "read"],
+        install=["{python}", __file__, "install"],
+        read_running=["{python}", __file__, "read"],
+    )
+    with patch.object(runtime, "contract_config", return_value=cfg):
+        return runtime.main([verb])
 
 
 def main() -> int:
     verb = sys.argv[1]
+    if verb == "merge-sha":
+        repo, number = sys.argv[2].split("#")
+        assert repo == "omnimarket"
+        print(f"{int(number):040x}")
+        return 0
+    if verb == "batch-step":
+        verb = sys.argv[2]
     key = os.environ["ONEX_RUN_STEP_KEY"]
     with open(os.environ["FAKE_STEP_LOG"], "a", encoding="utf-8") as log:
         log.write(f"{verb} {key}\n")
+    if sys.argv[1] == "batch-step":
+        return batch_step(verb)
     if verb == "ledger-append":
         with open(os.environ["FAKE_LEDGER"], "a", encoding="utf-8") as ledger:
             ledger.write(sys.argv[2] + "\n")
