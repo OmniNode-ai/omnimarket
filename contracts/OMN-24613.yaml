@@ -55,11 +55,18 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_retention_effect tests/unit/nodes/node_host_hygiene_decision_compute tests/unit/nodes/node_host_hygiene_orchestrator tests/chains/host_hygiene tests/nodes/node_lab_disk_watermark_effect -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn24613-ac3-h053-journal
-  description: The unit on h053 logged a uv_cache pass naming git-v1/checkouts in the last two hours.
+- id: dod-omn24613-ac3-cap-pass-evicts-git-v1
+  description: The hosted half of AC3. The cap pass takes a git-v1 checkout with its marker file; the running reading on h053 is the local Done gate item below.
   source: manual
   binds_ac:
   - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_retention_effect/test_host_retention_uv_cap.py -q --no-cov -n 0 -p no:randomly -k "golden_chain_the_cap_pass_takes_a_git_v1_marker"
+    cwd: .
+- id: dod-omn24613-ac3-h053-journal
+  description: The unit on h053 logged a uv_cache pass naming git-v1/checkouts in the last two hours. Hosted CI cannot reach h053, so only the local Done gate runs this check, unbound from AC3 so the hosted control is not asked to run it.
+  source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
