@@ -3,13 +3,12 @@
 """Report and test the models delegation can use (OMN-20817).
 
 A developer can use any combination of Gemini, OpenRouter, OpenAI, Anthropic,
-GLM and Ollama; delegation chooses among the ones set up. This effect answers
+GLM and a Local Model; delegation chooses among the ones set up. This effect answers
 two questions for ``onex models`` and for onboarding, which calls it once per
 chosen model:
 
 * which providers are set up on this machine: a key stored for a keyed provider
-  (the same registration ``onex secret set`` makes), or, for Ollama, local
-  routes pointing at Ollama's port (the ``ollama`` block of the model config);
+  (the same registration ``onex secret set`` makes);
 * (OMN-21162) a local model server on an OpenAI-compatible URL, with no key:
   ``add_local`` checks the URL answers, then declares it as one backend in the
   local routes overlay beside whatever else the overlay holds;
@@ -43,6 +42,7 @@ from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 from omnimarket.handlers.delegation_first_choice import (
     clear_first_choice,
     read_first_choice,
+    read_first_choice_url,
     write_first_choice,
 )
 from omnimarket.handlers.delegation_model_scope import (
@@ -58,6 +58,7 @@ from omnimarket.handlers.node_overlay_reader import (
 from omnimarket.handlers.routing.byok_model_discovery import get_models_json
 from omnimarket.handlers.routing.byok_provider_backends import (
     byok_declared_price_per_1m,
+    key_provider_hint,
     resolve_byok_provider_backend,
 )
 from omnimarket.handlers.routing.local_byok_route import (
@@ -73,6 +74,7 @@ from omnimarket.inference.local_byok_credential_adapter import (
     resolve_local_byok_credential_models,
 )
 from omnimarket.models.delegation.llm_cost_routing import ModelLlmModelRegistryLoader
+from omnimarket.nodes.node_model_setup_effect import credential_read_adapter
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelModelSetupRequest,
     ModelProvider,
@@ -80,6 +82,7 @@ from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request i
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
     ModelCostClass,
     ModelModelLadderEntry,
+    ModelModelLocalModel,
     ModelModelSetupResult,
     ModelModelStatus,
     ModelModelTestResult,
@@ -88,12 +91,9 @@ from omnimarket.projection.sqlite_database import default_evidence_db_path
 
 PROVIDERS: tuple[ModelProvider, ...] = get_args(ModelProvider)
 
-#: The backend onboarding points at Ollama.
-OLLAMA_BACKEND = "local-coder"
-
 #: The keyless server named by URL (OMN-21162), and the backend ``onex models add
-#: local --url`` declares for it: its own id, so the Ollama routes and any other
-#: overlay entry are left as they are.
+#: local --url`` declares for it: its own id, so any other overlay entry is left
+#: as it is.
 LOCAL_URL_PROVIDER: ModelProvider = "local"
 
 #: The overlay entry for a local URL: every field an overlay-added backend must
@@ -107,15 +107,6 @@ _LOCAL_URL_DEFAULTS: dict[str, object] = {
 }
 _PROBE_TIMEOUT_S = 15
 _LOCAL_ADD_HOW = "Add one with: onex models add local --url <base url> --model <name>"
-
-#: Leading characters of each provider's keys, most specific first: an
-#: OpenRouter or Anthropic key also starts with ``sk-``.
-_KEY_PREFIXES: tuple[tuple[str, str], ...] = (
-    ("sk-or-", "openrouter"),
-    ("sk-ant-", "anthropic"),
-    ("AIza", "gemini"),
-    ("sk-", "openai"),
-)
 
 #: The node whose overlay (``<root>/node_model_setup_effect/overlay.yaml``) declares
 #: the model onboarding registers (OMN-20844). No model id is written in code: the
@@ -131,7 +122,6 @@ OVERLAY_DEFAULT_PROVIDERS: frozenset[str] = frozenset(_DEFAULT_MODEL_ENV)
 
 _TEST_PROMPT = "Reply with exactly one word: hello"
 _TEST_TIMEOUT_S = 300
-_MODEL_CONFIG = Path(__file__).resolve().parents[3] / "configs/bifrost_delegation.yaml"
 _CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 
@@ -195,6 +185,71 @@ def local_base_url(url: str) -> str:
     return base
 
 
+def _recorded_test(recorded: object) -> ModelModelTestResult | None:
+    """A recorded test as a result; ``None`` when absent or unreadable."""
+    if not isinstance(recorded, dict):
+        return None
+    try:
+        return ModelModelTestResult.model_validate(recorded)
+    except ValueError:
+        return None
+
+
+def _entry_base(entry: dict[str, Any]) -> str:
+    """The base URL of the server a local model entry runs on."""
+    return str(entry.get("endpoint_url") or "").removesuffix("/v1/chat/completions")
+
+
+def spelled_local_models(entries: Sequence[dict[str, Any]]) -> list[str]:
+    """Each local model as a command names it (OMN-23413): its name, or
+    ``MODEL@URL`` when another server runs a model of the same name."""
+    names = [str(entry["model_name"]) for entry in entries]
+    return [
+        name if names.count(name) == 1 else f"{name}@{_entry_base(entry)}"
+        for name, entry in zip(names, entries, strict=True)
+    ]
+
+
+def split_local_model(token: str) -> tuple[str, str | None]:
+    """``MODEL@URL`` as ``(MODEL, URL)``; a plain ``MODEL`` as ``(MODEL, None)``."""
+    for mark in ("@http://", "@https://"):
+        model, found, rest = token.rpartition(mark)
+        if found and model:
+            return model, mark[1:] + rest
+    return token, None
+
+
+def local_named(
+    entries: Sequence[dict[str, Any]], model: str, url: str | None
+) -> dict[str, Any]:
+    """The one local entry ``model`` names, on the server at ``url`` when given.
+
+    OMN-23413: two servers can run a model of the same name. A name alone is
+    enough only when one server runs it; otherwise the URL says which, and a
+    name that matches nothing, or more than one, is refused.
+    """
+    named = [entry for entry in entries if entry.get("model_name") == model]
+    known = ", ".join(spelled_local_models(entries)) or "none"
+    if url is not None:
+        base = local_base_url(url)
+        named = [entry for entry in named if _entry_base(entry) == base]
+        if not named:
+            raise ModelSetupRefusedError(
+                f"{model} is not one of your local models on {base}: {known}"
+            )
+    if not named:
+        raise ModelSetupRefusedError(
+            f"{model} is not one of your local models: {known}"
+        )
+    if len(named) > 1:
+        servers = ", ".join(_entry_base(entry) for entry in named)
+        raise ModelSetupRefusedError(
+            f"{model} runs on more than one local server ({servers}); "
+            "name one with --url"
+        )
+    return named[0]
+
+
 def probe_local_url(base: str) -> str | None:
     """``None`` when ``base`` answers an OpenAI-compatible model list, else why not.
 
@@ -220,13 +275,7 @@ def key_looks_like(value: str, for_provider: str | None = None) -> str | None:
     endpoint at registration: an endpoint the developer chose takes keys of any
     shape, so a key there is never refused for looking like another provider's.
     """
-    row = resolve_byok_provider_backend(for_provider) if for_provider else None
-    if row is not None and row.endpoint_from_registration:
-        return None
-    for prefix, provider in _KEY_PREFIXES:
-        if value.startswith(prefix):
-            return provider
-    return None
+    return key_provider_hint(value, for_provider)
 
 
 def _onex_executable() -> str:
@@ -339,7 +388,7 @@ def _text(value: object) -> str | None:
 
 
 #: The providers whose models the developer runs: no price, no key.
-_LOCAL_PROVIDERS: tuple[ModelProvider, ...] = ("local", "ollama")
+_LOCAL_PROVIDERS: tuple[ModelProvider, ...] = (LOCAL_URL_PROVIDER,)
 
 
 def _manifest_price_per_1k(model: str) -> tuple[Decimal, Decimal] | None:
@@ -396,14 +445,25 @@ class HandlerModelSetup:
         run_delegation: DelegateRunner | None = None,
         write_model_list: ModelListWriter | None = None,
         probe_url: LocalUrlProbe | None = None,
+        *,
+        read_only: bool = False,
     ) -> None:
         self._run_delegation = run_delegation or run_pinned_delegation
         self._write_model_list = write_model_list
         self._probe_url = probe_url or probe_local_url
+        self._read_only = read_only
 
     def handle(self, request: ModelModelSetupRequest) -> ModelModelSetupResult:
+        if self._read_only and request.operation != "status":
+            raise ModelSetupRefusedError(
+                "Read-only model observation accepts status only"
+            )
         if request.operation == "status":
-            statuses = [self._status(p) for p in PROVIDERS]
+            selected = (request.provider,) if request.provider else PROVIDERS
+            statuses = [
+                self._status(p, url=request.url, models=request.models)
+                for p in selected
+            ]
             # OMN-21346: the provider tried first is listed first.
             statuses.sort(key=lambda status: not status.tried_first)
             return ModelModelSetupResult(
@@ -440,7 +500,7 @@ class HandlerModelSetup:
         if request.operation == "add_local":
             return self._add_local(request)
         if request.operation == "remove_local":
-            self._remove_local(request.models)
+            self._remove_local(request.models, request.url)
             return ModelModelSetupResult(operation="remove_local")
         if request.operation == "forget":
             if request.provider is not None:
@@ -461,7 +521,7 @@ class HandlerModelSetup:
         """Every routable model in the order delegation tries it (OMN-23167).
 
         The model chosen with ``onex models first`` leads, then the local models
-        (a URL's, then Ollama's) in the order declared, then each key's models in
+        (each server's, by URL) in the order declared, then each key's models in
         its own order. A key whose last test failed is not routed, so it is not
         listed; the model the rule ``only`` would skip is still listed, with its
         cost class.
@@ -479,7 +539,7 @@ class HandlerModelSetup:
                 provider
             ):
                 continue
-            # Ollama declares its routes, not model names: its backend is the rung.
+            # A provider that names no model is routed by its backend alone.
             names = status.models or (self.backend_for(provider) or provider,)
             ordered.extend((provider, name) for name in names)
         first = next(
@@ -604,6 +664,10 @@ class HandlerModelSetup:
         provider = request.provider
         if provider is None:
             raise ModelSetupRefusedError("name the provider whose model is tried first")
+        if request.url is not None and provider != LOCAL_URL_PROVIDER:
+            raise ModelSetupRefusedError(
+                "--url names a local model's server; other providers take no URL"
+            )
         if not self.is_set_up(provider):
             how = (
                 _LOCAL_ADD_HOW
@@ -613,6 +677,8 @@ class HandlerModelSetup:
             raise ModelSetupRefusedError(f"{provider} is not set up. {how}")
         if len(request.models) > 1:
             raise ModelSetupRefusedError("name one model to try first")
+        if provider == LOCAL_URL_PROVIDER:
+            return self._set_first_local(request)
         stored = self._status(provider).models
         if not stored:
             raise ModelSetupRefusedError(
@@ -634,6 +700,34 @@ class HandlerModelSetup:
         write_first_choice(provider, model)
         return ModelModelSetupResult(
             operation="set_first", models=self._status(provider).models
+        )
+
+    def _set_first_local(
+        self, request: ModelModelSetupRequest
+    ) -> ModelModelSetupResult:
+        """Move one local server's model to the front and record it, with its URL.
+
+        OMN-23413: the entry is found by name and, when two servers run the
+        name, by URL; it moves as one entry, so the other server stays declared.
+        """
+        entries = self._local_url_entries()
+        if request.models:
+            chosen = local_named(entries, request.models[0], request.url)
+        elif request.url is not None:
+            raise ModelSetupRefusedError("name the model to try first on that server")
+        else:
+            chosen = entries[0]
+        ordered = [chosen, *(e for e in entries if e is not chosen)]
+        if ordered != entries:
+            text, before = self._overlay_text()
+            self._write_overlay(
+                before, _with_local_urls(_without_local_url(text), ordered), ordered
+            )
+        write_first_choice(
+            LOCAL_URL_PROVIDER, str(chosen["model_name"]), _entry_base(chosen)
+        )
+        return ModelModelSetupResult(
+            operation="set_first", models=self._status(LOCAL_URL_PROVIDER).models
         )
 
     # -- a local model server by URL (OMN-21162) ---------------------------
@@ -683,7 +777,7 @@ class HandlerModelSetup:
             named.append(entry)
         existed = self.overrides_path().exists()
         text, before = self._overlay_text()
-        earlier_test = self._read_results().get(LOCAL_URL_PROVIDER)
+        earlier_results = self._read_results()
         self._write_overlay(
             before, _with_local_urls(_without_local_url(text), entries), entries
         )
@@ -700,11 +794,7 @@ class HandlerModelSetup:
         failed = next((r for r in results if r.status != "passed"), None)
         if models_reason is not None and failed is not None:
             self._restore_overlay(text if existed else None)
-            stored = self._read_results()
-            stored.pop(LOCAL_URL_PROVIDER, None)
-            if earlier_test is not None:
-                stored[LOCAL_URL_PROVIDER] = earlier_test
-            self._write_results(stored)
+            self._write_results(earlier_results)
             raise LocalModelUrlRefusedError(
                 f"{base} does not answer an OpenAI-compatible models or chat "
                 f"request ({models_reason}; chat, by one delegation pinned to "
@@ -724,22 +814,30 @@ class HandlerModelSetup:
         tmp.write_text(text, encoding="utf-8")
         tmp.replace(path)
 
-    def _remove_local(self, models: tuple[str, ...] = ()) -> None:
-        """Take the local models out of the overlay, or only ``models``; keep every other entry."""
+    def _remove_local(
+        self, models: tuple[str, ...] = (), url: str | None = None
+    ) -> None:
+        """Take the local models out of the overlay, or only ``models``; keep every other entry.
+
+        OMN-23413: with ``url``, only that server's entries go (all of them when
+        no model is named); a model two servers run is refused without it.
+        """
         entries = self._local_url_entries()
         if not entries:
             raise ModelSetupRefusedError("no local model URL is set up")
         if models:
-            declared = [str(entry["model_name"]) for entry in entries]
-            missing = [model for model in models if model not in declared]
-            if missing:
+            gone = [local_named(entries, model, url) for model in models]
+        elif url is not None:
+            base = local_base_url(url)
+            gone = [entry for entry in entries if _entry_base(entry) == base]
+            if not gone:
                 raise ModelSetupRefusedError(
-                    f"{', '.join(missing)} is not one of your local models: "
-                    f"{', '.join(declared)}"
+                    f"no local model runs on {base}: "
+                    f"{', '.join(spelled_local_models(entries))}"
                 )
-        kept = [
-            entry for entry in entries if models and entry["model_name"] not in models
-        ]
+        else:
+            gone = entries
+        kept = [entry for entry in entries if all(entry is not g for g in gone)]
         text, before = self._overlay_text()
         self._write_overlay(
             before, _with_local_urls(_without_local_url(text), kept), kept
@@ -750,22 +848,29 @@ class HandlerModelSetup:
     def _edit_local(self, request: ModelModelSetupRequest) -> ModelModelSetupResult:
         """Reorder the local models, or remove some of them (OMN-21211)."""
         entries = self._local_url_entries()
-        declared = [str(entry["model_name"]) for entry in entries]
         asked = request.models
         if not entries:
             raise ModelSetupRefusedError(
                 f"no local model URL is set up. {_LOCAL_ADD_HOW}"
             )
         if request.operation == "remove_model":
-            self._remove_local(asked)
+            self._remove_local(asked, request.url)
         else:
-            if sorted(asked) != sorted(declared):
-                raise ModelSetupRefusedError(
-                    "reorder names exactly your local models "
-                    f"({', '.join(declared)}), each once; add or remove models "
-                    "with their own commands"
-                )
-            ordered = [next(e for e in entries if e["model_name"] == m) for m in asked]
+            # OMN-23413: each token names one entry, as MODEL or, for a model two
+            # servers run, MODEL@URL; together they name every entry once.
+            refused = ModelSetupRefusedError(
+                "reorder names exactly your local models "
+                f"({', '.join(spelled_local_models(entries))}), each once; add or "
+                "remove models with their own commands"
+            )
+            try:
+                ordered = [local_named(entries, *split_local_model(t)) for t in asked]
+            except ModelSetupRefusedError:
+                raise refused from None
+            if len(ordered) != len(entries) or any(
+                sum(o is e for o in ordered) != 1 for e in entries
+            ):
+                raise refused
             text, before = self._overlay_text()
             self._write_overlay(
                 before, _with_local_urls(_without_local_url(text), ordered), ordered
@@ -853,40 +958,20 @@ class HandlerModelSetup:
         return local_model_tests_path()
 
     def overrides_path(self) -> Path:
-        """The local routes file onboarding writes when it sets up Ollama."""
+        """The local routes overlay a Local Model is declared in."""
         return self._state_dir() / "bifrost_overrides.yaml"
 
     # -- set up? -----------------------------------------------------------
 
     def is_set_up(self, provider: ModelProvider) -> bool:
-        if provider == "ollama":
-            return self._ollama_routes_configured()
         if provider == LOCAL_URL_PROVIDER:
             return self._local_url_entry() is not None
+        if self._read_only:
+            return provider in credential_read_adapter.registered_providers()
         return provider in registered_local_byok_providers()
-
-    def _ollama_routes_configured(self) -> bool:
-        try:
-            config = yaml.safe_load(_MODEL_CONFIG.read_text(encoding="utf-8")) or {}
-            port = (config.get("ollama") or {}).get("port")
-            overrides = (
-                yaml.safe_load(self.overrides_path().read_text(encoding="utf-8")) or {}
-            )
-        except (OSError, yaml.YAMLError):
-            return False
-        if not port:
-            return False
-        return any(
-            isinstance(backend, dict)
-            and backend.get("backend_id") == OLLAMA_BACKEND
-            and f":{port}/" in str(backend.get("endpoint_url", ""))
-            for backend in overrides.get("backends") or []
-        )
 
     @staticmethod
     def backend_for(provider: ModelProvider) -> str | None:
-        if provider == "ollama":
-            return OLLAMA_BACKEND
         if provider == LOCAL_URL_PROVIDER:
             return LOCAL_URL_BACKEND
         backend = resolve_byok_provider_backend(provider)
@@ -908,37 +993,169 @@ class HandlerModelSetup:
         tmp.write_text(json.dumps(results, indent=2, sort_keys=True), encoding="utf-8")
         tmp.replace(path)
 
+    @staticmethod
+    def connection_tests(
+        connection_id: str, *, db_path: Path | None = None
+    ) -> tuple[ModelModelTestResult, ...]:
+        """Read named endpoint proofs through the existing model-test record."""
+        try:
+            data = json.loads(local_model_tests_path(db_path).read_text())
+            rows = data.get("connection:" + connection_id, [])
+            return tuple(ModelModelTestResult.model_validate(row) for row in rows)
+        except (OSError, ValueError, TypeError, AttributeError):
+            return ()
+
+    def test_backend(
+        self,
+        connection_id: str,
+        backend_id: str,
+        model: str,
+        endpoint: str,
+        *,
+        db_path: Path | None = None,
+    ) -> ModelModelTestResult:
+        """Run the same pinned delegation and verify its actual route and receipt."""
+        from omnimarket.nodes.node_model_setup_effect.connection_storage import (
+            read_named_connections,
+        )
+        from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_connection import (
+            ModelEndpointConnection,
+        )
+
+        configured = next(
+            (
+                row
+                for row in read_named_connections(db_path=db_path)
+                if row["connection_id"] == connection_id
+            ),
+            None,
+        )
+        if configured is None:
+            raise ValueError("The named connection is not configured")
+        connection = ModelEndpointConnection.model_validate(configured)
+        if (
+            model not in connection.models
+            or backend_id != connection.backend_id(model)
+            or endpoint != connection.url + "/v1/chat/completions"
+        ):
+            raise ValueError("The pinned test does not match the named connection")
+        code, stdout, stderr = self._run_delegation(backend_id)
+        receipt = _receipt(stderr)
+        passed = (
+            code == 0
+            and receipt.get("status") == "success"
+            and receipt.get("backend_id") == backend_id
+            and receipt.get("model") == model
+            and receipt.get("endpoint") == endpoint
+        )
+        result = ModelModelTestResult(
+            provider="openai_compatible" if connection.secret_ref else "local",
+            status="passed" if passed else "failed",
+            tested_at=datetime.now(UTC).isoformat(timespec="seconds"),
+            backend_id=backend_id,
+            model=model,
+            endpoint=endpoint,
+            reason=None
+            if passed
+            else (
+                "The receipt does not match the selected backend, model and endpoint"
+                if code == 0
+                else _failure_reason(stdout, stderr, code)
+            ),
+        )
+        path = local_model_tests_path(db_path)
+        try:
+            data = json.loads(path.read_text())
+            if not isinstance(data, dict):
+                raise ValueError("Invalid model proof record")
+        except FileNotFoundError:
+            data = {}
+        key = "connection:" + connection_id
+        rows = [
+            row
+            for row in data.get(key, [])
+            if isinstance(row, dict) and row.get("backend_id") != backend_id
+        ]
+        data[key] = [*rows, result.model_dump(mode="json")]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(data, indent=2, sort_keys=True))
+        temporary.replace(path)
+        return result
+
     def _forget(self, provider: ModelProvider) -> None:
         results = self._read_results()
         if results.pop(provider, None) is not None:
             self._write_results(results)
 
-    def _status(self, provider: ModelProvider) -> ModelModelStatus:
+    def _status(
+        self,
+        provider: ModelProvider,
+        *,
+        url: str | None = None,
+        models: tuple[str, ...] = (),
+    ) -> ModelModelStatus:
         set_up = self.is_set_up(provider)
-        recorded = self._read_results().get(provider) if set_up else None
+        result_key = str(provider)
+        local_entries = (
+            self._local_url_entries() if provider == LOCAL_URL_PROVIDER else []
+        )
+        if provider == LOCAL_URL_PROVIDER and url:
+            endpoint = f"{local_base_url(url)}/v1/chat/completions"
+            local_entries = [
+                entry
+                for entry in local_entries
+                if entry.get("endpoint_url") == endpoint
+            ]
+            set_up = bool(local_entries)
+            wanted = next(
+                (
+                    entry
+                    for entry in local_entries
+                    if not models or entry.get("model_name") == models[0]
+                ),
+                None,
+            )
+            if wanted:
+                result_key = f"local:{wanted['backend_id']}"
+        recorded = self._read_results().get(result_key) if set_up else None
         last = None
         if isinstance(recorded, dict):
             try:
                 last = ModelModelTestResult.model_validate(recorded)
             except ValueError:
                 last = None
-        models: tuple[str, ...]
         if provider == LOCAL_URL_PROVIDER:
-            models = tuple(str(e["model_name"]) for e in self._local_url_entries())
+            models = tuple(str(e["model_name"]) for e in local_entries)
         else:
-            models = resolve_local_byok_credential_models(provider) if set_up else ()
+            read_models = (
+                credential_read_adapter.credential_models
+                if self._read_only
+                else resolve_local_byok_credential_models
+            )
+            models = read_models(provider) if set_up else ()
         # OMN-21346: the choice counts only while it still routes: its model is
         # still in the list, and a key's last test did not fail.
         choice = read_first_choice()
+        # OMN-23413: a local choice names its server; it counts only while that
+        # server still runs the model.
+        first_url = read_first_choice_url() if provider == LOCAL_URL_PROVIDER else None
         tried_first = (
             choice is not None
             and choice[0] == provider
             and choice[1] in models
+            and (
+                first_url is None
+                or any(
+                    e.get("model_name") == choice[1] and _entry_base(e) == first_url
+                    for e in local_entries
+                )
+            )
             and not (
-                provider in registered_local_byok_providers()
-                and local_byok_key_test_failed(provider)
+                provider != LOCAL_URL_PROVIDER and local_byok_key_test_failed(provider)
             )
         )
+        results = self._read_results() if local_entries else {}
         return ModelModelStatus(
             provider=provider,
             set_up=set_up,
@@ -946,6 +1163,17 @@ class HandlerModelSetup:
             models=models,
             tried_first=tried_first,
             first_model=choice[1] if tried_first and choice is not None else None,
+            first_url=first_url if tried_first else None,
+            local_models=tuple(
+                ModelModelLocalModel(
+                    model=str(e["model_name"]),
+                    base_url=_entry_base(e),
+                    backend_id=str(e["backend_id"]),
+                    last_test=_recorded_test(results.get(f"local:{e['backend_id']}")),
+                )
+                for e in local_entries
+                if e.get("endpoint_url")
+            ),
         )
 
     # -- the test ----------------------------------------------------------
@@ -967,7 +1195,7 @@ class HandlerModelSetup:
 
     @staticmethod
     def _stored_model(provider: ModelProvider) -> str | None:
-        if provider in ("ollama", LOCAL_URL_PROVIDER):
+        if provider == LOCAL_URL_PROVIDER:
             return None
         return resolve_local_byok_credential_model(provider)
 
@@ -1006,7 +1234,7 @@ class HandlerModelSetup:
         every_throttled: tuple[str, ...] = ()
         if (
             first
-            and provider not in ("ollama", LOCAL_URL_PROVIDER)
+            and provider != LOCAL_URL_PROVIDER
             and exit_code != 0
             and _was_throttled(stdout, stderr)
         ):
@@ -1092,10 +1320,12 @@ class HandlerModelSetup:
         is_first_local = provider == LOCAL_URL_PROVIDER and (
             first or backend_id == self.backend_for_first_local()
         )
+        results = self._read_results()
+        if provider == LOCAL_URL_PROVIDER:
+            results[f"local:{backend_id}"] = result.model_dump(mode="json")
         if provider != LOCAL_URL_PROVIDER or is_first_local:
-            results = self._read_results()
             results[provider] = result.model_dump(mode="json")
-            self._write_results(results)
+        self._write_results(results)
         return result
 
     def backend_for_first_local(self) -> str | None:
@@ -1133,6 +1363,8 @@ def _without_local_url(text: str) -> str:
 
 def _with_local_url(text: str, entry: dict[str, object]) -> str:
     """``text`` with ``entry`` appended as the last item of its ``backends`` list."""
+    # An emptied list is written ``backends: []`` (OMN-23413); grow it in place.
+    text = _EMPTIED_BACKENDS.sub("backends:", text)
     lines = text.splitlines(keepends=True)
     if lines and not lines[-1].endswith("\n"):
         lines[-1] += "\n"
@@ -1155,10 +1387,21 @@ def _with_local_url(text: str, entry: dict[str, object]) -> str:
 
 
 def _with_local_urls(text: str, entries: Sequence[dict[str, object]]) -> str:
-    """``text`` with ``entries`` appended, in order, to its ``backends`` list."""
+    """``text`` with ``entries`` appended, in order, to its ``backends`` list.
+
+    A ``backends:`` line left with no items is written ``backends: []``: bare,
+    YAML reads it as null, which emptied routing (OMN-23413).
+    """
     for entry in entries:
         text = _with_local_url(text, entry)
+    data = yaml.safe_load(text) if text.strip() else None
+    if isinstance(data, dict) and "backends" in data and data["backends"] is None:
+        text = _BARE_BACKENDS.sub("backends: []", text)
     return text
+
+
+_BARE_BACKENDS = re.compile(r"^backends:[ \t]*$", re.MULTILINE)
+_EMPTIED_BACKENDS = re.compile(r"^backends:[ \t]*\[\][ \t]*$", re.MULTILINE)
 
 
 def _free_local_url_id(entries: Sequence[dict[str, object]]) -> str:
@@ -1199,7 +1442,6 @@ def _render_item(entry: dict[str, object], indent: str) -> str:
 __all__ = [
     "LOCAL_URL_BACKEND",
     "LOCAL_URL_PROVIDER",
-    "OLLAMA_BACKEND",
     "PROVIDERS",
     "DelegateRunner",
     "HandlerModelSetup",

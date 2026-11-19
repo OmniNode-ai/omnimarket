@@ -367,6 +367,10 @@ class ModelByokProviderBackend(BaseModel):
     default_models: tuple[str, ...] = ()
     #: OMN-21215. The key a new developer adds first. Exactly one row sets it.
     first_key: bool = False
+    #: Onboarding guidance only; never a credential destination.
+    key_page: str | None = Field(default=None, pattern=r"^https://[^\s\x00-\x1f\x7f]+$")
+    #: Recognizable prefixes are hints, not a requirement on accepted keys.
+    key_prefixes: tuple[str, ...] = ()
     #: OMN-21263. ``true`` declares the generic OpenAI-compatible row: the
     #: developer names the endpoint's base URL when they register the key, and
     #: ``endpoint_url`` and ``models_url`` here are placeholders that never route
@@ -886,6 +890,25 @@ def first_key_backend() -> ModelByokProviderBackend:
     )
 
 
+def key_provider_hint(value: str, for_provider: str | None = None) -> str | None:
+    """Longest declared prefix hint; unknown or ambiguous key shapes stay valid."""
+    catalog = load_byok_provider_catalog()
+    selected = catalog.get(for_provider) if for_provider is not None else None
+    if selected is not None and selected.endpoint_from_registration:
+        return None
+    matches = [
+        (len(prefix), row.provider)
+        for row in catalog.values()
+        for prefix in row.key_prefixes
+        if prefix and value.startswith(prefix)
+    ]
+    if not matches:
+        return None
+    longest = max(length for length, _ in matches)
+    providers = {provider for length, provider in matches if length == longest}
+    return next(iter(providers)) if len(providers) == 1 else None
+
+
 def customer_provider_catalogue() -> tuple[str, ...]:
     """The customer-facing provider catalogue: every provider id a customer
     may register a key for, sorted.
@@ -1140,13 +1163,19 @@ def byok_backend_provider(backend_id: str | None) -> str | None:
 
 
 def byok_model_price_per_1m(
-    backend_id: str | None, endpoint_url: str | None, model_name: str
+    backend_id: str | None,
+    endpoint_url: str | None,
+    model_name: str,
+    *,
+    supplemental: bool = True,
 ) -> tuple[Decimal, Decimal] | None:
     """The ``(input, output)`` USD per 1M tokens of a model on a customer's key.
 
     The catalogue's declared price for the endpoint and model first, then the
-    model registry's price for the same provider and model. ``None`` means the
-    model has no known price: the call is unpriced, never booked at a tier rate.
+    model registry's price for the same provider and model, then models.dev's
+    (OMN-23413 AC35). ``None`` means the model has no known price: the call is
+    unpriced, never booked at a tier rate. ``supplemental=False`` stops before
+    models.dev, for a caller that holds the provider's combined entry (AC34).
     """
     declared = byok_declared_price_per_1m(endpoint_url, model_name)
     if declared is not None:
@@ -1161,7 +1190,13 @@ def byok_model_price_per_1m(
     for profile in ModelLlmModelRegistryLoader().load().models.values():
         if profile.provider == provider and profile.model_name == model_name:
             return (profile.pricing_per_1m_input, profile.pricing_per_1m_output)
-    return None
+    if not supplemental:
+        return None
+    # OMN-23413 AC35: a model neither the catalogue nor the registry prices is
+    # priced from models.dev, read live; still None when models.dev states none.
+    from omnimarket.handlers.model_catalog import models_dev_price_per_1m
+
+    return models_dev_price_per_1m(provider, model_name)
 
 
 def byok_limit_counter_key(
@@ -1291,6 +1326,7 @@ __all__: list[str] = [
     "catalogue_prefers_model",
     "customer_provider_catalogue",
     "house_keyed_provider_slugs",
+    "key_provider_hint",
     "load_byok_not_offered_providers",
     "load_byok_plan_catalog",
     "load_byok_provider_catalog",

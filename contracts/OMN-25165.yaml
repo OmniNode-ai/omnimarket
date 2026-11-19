@@ -1,0 +1,45 @@
+schema_version: 1.0.0
+ticket_id: OMN-25165
+title: The merged change reading reads a change whose files moved to another repository through the change they moved to
+summary: The reader of merged changes (node_merged_change_reading_effect) read the private plugin repository's pull request 1798 as NOT_RUNNING no_declared_runner on the hourly pass although the node it changed (node_walk_lifecycle_controls_compute) handles a request on the dev runtime on h201 (the runtime published the graded event at 2026-11-17T05:55:22Z). The runner overlay declared no runner for it, and a runner for it would still read UNREAD, because the build provenance and the overlay store checkouts hold no entry for that repository, whose two overlay files moved to the overlays repository (overlays#173) and are loaded from the overlay store. A runner entry gains the optional key built_as (repo#number), and the build read asks the change it names about the overlay store and keys the fact back to the original change. Not in this change - the overlays repository's runner line and its pin, and any other reader behaviour.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25165-built-as
+  statement: A runner entry may name the change its files moved to, the build read answers for the original change from that change, and a moved change that cannot be read reads unread, never not in the build.
+  acceptance:
+  - id: AC1
+    statement: "AC1: one run of the change is read on the dev runtime on h201 by the lane itself as a log line, dispatch, health read or job record, at a named installed revision -- falsifier: the dev runtime log or job record on h201 shows no run of the change after the install"
+  - id: AC2
+    statement: "AC2: the cause is fixed with no hand edit of a host file, unit or plist, and the fix is a draft PR with a Lab: line -- falsifier: the diff of the branch against its base edits a host file, unit or plist, or the pull request body has no Lab: line"
+  - id: AC3
+    statement: "AC3: with the runner line declared, the reader reads the change SEEN_RUNNING on the dev runtime on h201 -- falsifier: python -m omnimarket.nodes.node_merged_change_reading_effect --change <repo>#1798 reads NOT_RUNNING or UNREAD with the runner line declared built_as overlays#173"
+evidence_requirements:
+- kind: tests
+  description: The merged change reading source and runner overlay document tests at the pushed head; the built_as tests fail against the source before this change.
+  command: uv run pytest tests/nodes/node_merged_change_reading_effect tests/nodes/node_merged_change_reading_compute -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25165-ac1
+  description: 'AC1 hosted proxy: the build read answers a change declared built_as from the change it moved to and reads it unread when that change cannot be read; the reading of the live runtime on h201 is in the pull request comment that names the head.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_merged_change_reading_effect/test_real_sources.py tests/nodes/node_merged_change_reading_effect/test_runner_overlay_document.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25165-integration-proof
+  description: 'The reader reads the change against the live dev runtime on h201 at the pushed head with the runner line declared; the live read is in the pull request comment that names the head.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25165 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_merged_change_reading_effect -q --no-cov -p no:randomly
+    cwd: .

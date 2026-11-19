@@ -207,28 +207,21 @@ def test_budget_resolves_per_task_class_grounded_input_budget(
         "local-heavy-reasoning", "research"
     )
 
-    assert default == 8000
-    assert other == default
+    # OMN-23631: no packaged budget; the values are the code budget overlay's.
+    assert default is None
+    assert other == 8192
     assert code is not None
     assert code >= 20000
 
 
-def test_code_class_budget_cites_a_measured_readback_grounded_input_budget() -> None:
-    """The comment above each code-class value names a token count and a run id."""
+def test_no_packaged_class_budget_remains_grounded_input_budget() -> None:
+    """OMN-23631: the packaged per-class budget file declares no value."""
     text = (
         importlib.resources.files("omnimarket")
         .joinpath("configs/grounding_budget_by_task_class.yaml")
         .read_text(encoding="utf-8")
     )
-    declared = yaml.safe_load(text)["backends"]
-    with_class = [b for b, classes in declared.items() if classes]
-    assert with_class
-    marker = "OMN-20486 measured readback:"
-    assert text.count(marker) == len(with_class)
-    for line in text.splitlines():
-        if marker in line:
-            assert "run_id" in line, line
-            assert "tokens" in line, line
+    assert yaml.safe_load(text)["backends"] == {}
 
 
 def test_bifrost_wire_contract_carries_no_class_budget_key_grounded_input_budget(

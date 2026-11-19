@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-25030
+title: node_emit_daemon declares the terminal event the declared demand path polls
+summary: onex run-node publishes a demand to a node's first subscribe topic and polls the node's top-level terminal_event. node_emit_daemon declared its terminal events only under runtime_dispatch.terminal_events, so run-node refused it with "does not declare a terminal_event" and no lane could send the daemon a lifecycle command. The contract gains the top-level terminal_event, equal to the success event it already declares and publishes. Not in this change - the daemon's handler, its topics, any broker permission and any other node.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25030-terminal-event
+  statement: The declared demand path resolves node_emit_daemon's command topic and terminal event.
+  acceptance:
+  - id: AC1
+    statement: "AC1: onex run-node's contract resolver returns the lifecycle command topic and the lifecycle-completed event for node_emit_daemon -- falsifier: the resolver raises does not declare a terminal_event on the contract"
+  - id: AC2
+    statement: "AC2: the top-level terminal_event equals runtime_dispatch.terminal_events.success and is a declared publish topic -- falsifier: the two contract tests fail when the keys differ or the event is not in publish_topics"
+evidence_requirements:
+- kind: tests
+  description: The node_emit_daemon terminal event tests at the pushed head; they fail on the contract before this change.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_emit_daemon/test_emit_daemon_run_node_terminal_event_omn25030.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25030-ac1-resolver
+  description: 'AC1: the run-node resolver accepts the contract; before this change it raised does not declare a terminal_event.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_emit_daemon/test_emit_daemon_run_node_terminal_event_omn25030.py -q --no-cov -n 0 -p no:randomly -k run_node_resolver
+    cwd: .
+- id: dod-omn25030-ac2-contract-keys
+  description: 'AC2: the top-level terminal_event equals the success event and is published.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_emit_daemon/test_emit_daemon_run_node_terminal_event_omn25030.py -q --no-cov -n 0 -p no:randomly -k 'terminal_event'
+    cwd: .
+- id: dod-omn25030-integration-proof
+  description: 'The change run on a live surface: with the branch installed on the dev lane, onex run-node sends node_emit_daemon one health command and reads its terminal event. Hosted CI reaches no lab host, so only the local Done gate runs this unbound check; the login the demand is sent under needs the write on the lifecycle command topic, which the overlays declare and the broker permission tool applies.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: "onex run-node node_emit_daemon --input '{\"action\": \"health\"}'"
+    cwd: .
