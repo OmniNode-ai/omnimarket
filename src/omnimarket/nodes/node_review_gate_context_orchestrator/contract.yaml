@@ -61,7 +61,11 @@ runtime_dispatch:
   terminal_events:
     success: onex.evt.omnimarket.review-gate-context-sweep-completed.v1
     failure: onex.evt.omnimarket.review-gate-context-sweep-failed.v1
-  external_trigger: true
+  external_trigger: The review-gate-context-probe registry unit runs the overlay's scheduled probe on the PR watcher host.
+
+schedule:
+  installer: node_host_installer_registry_units
+  unit: review-gate-context-probe
 
 topics:
   command: onex.cmd.omnimarket.review-gate-context-sweep-requested.v1
