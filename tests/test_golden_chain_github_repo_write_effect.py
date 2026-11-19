@@ -807,7 +807,7 @@ async def test_a_runner_group_get_is_published_as_completed() -> None:
         "id": 7,
         "name": "example-group",
         "allows_public_repositories": False,
-        "restricted_to_selected_workflows": True,
+        "restricted_to_workflows": True,
         "selected_workflows": [
             "example-org/example-repo/.github/workflows/build.yml@refs/heads/main"
         ],
