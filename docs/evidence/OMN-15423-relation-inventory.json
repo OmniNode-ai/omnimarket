@@ -3791,6 +3791,7 @@
       "partitioning": [],
       "producer": null,
       "readers": [
+        "node_branch_deploy_orchestrator",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "public",
@@ -7398,6 +7399,7 @@
       "producer": "node_projection_llm_cost",
       "readers": [
         "node_generation_consumer",
+        "node_metering_summary_compute",
         "node_plugin_walk_evidence_effect",
         "service:omnimarket_projection_migration_runner"
       ],

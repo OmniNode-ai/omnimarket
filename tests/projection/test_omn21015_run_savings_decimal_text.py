@@ -41,7 +41,7 @@ def test_run_saving_is_served_as_exact_fixed_point_text(
             "tokens_input": 1000,
             "tokens_output": 200,
             "cost_usd": spend,
-            "delegated_to": "fixture-serving-model",
+            "delegated_to": "gpt-4o-mini",
             "task_type": "document",
         }
     )

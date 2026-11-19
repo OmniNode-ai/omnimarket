@@ -485,11 +485,9 @@ async def test_error_chain_a_provider_outage_is_not_a_credential_refusal(
     assert response.attempts[0].failure_class == (
         EnumDelegationFailureClass.MODEL_UNAVAILABLE.value
     )
-    assert next_rung_provider.authorizations != [], (
-        "a retryable failure must climb; if it does not, the no-climb "
-        "assertions in the two credential chains prove nothing"
-    )
-    assert response.escalation_count >= 1
-    # Name the rung it climbed to, so the control reports WHICH successor
-    # answered rather than only that something did.
-    assert response.attempts[-1].backend_id in declared_successor_backend_ids()
+    # OMN-23413 AC22: the registered key is the only selected model, so the
+    # house successor rungs are never offered; an outage ends on the key.
+    # TODO(OMN-23413): restore a climb control within the selection (a second
+    # selected responder), so the no-climb assertions in the two credential
+    # chains are again shown to be more than "nothing was selected after".
+    assert next_rung_provider.authorizations == []

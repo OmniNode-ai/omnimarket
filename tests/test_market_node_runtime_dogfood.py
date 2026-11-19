@@ -427,6 +427,7 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
         "node_navigation_history_reducer",
         "node_projection_dep_health",
         "node_pr_merged_projection",  # OMN-13226 T2 stub; handler pending T3
+        "node_work_state_panel_reducer",  # OMN-24527 projector-keyed row reducer
         "node_view_seam_reading_reducer",  # OMN-22020 projection reducer
     }
     assert not {

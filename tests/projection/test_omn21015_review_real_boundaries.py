@@ -57,7 +57,7 @@ async def test_an_async_verdict_recomputes_the_stored_inputs_and_publishes_them(
         await conn.execute(
             "INSERT INTO delegation_events (correlation_id, tenant_id, timestamp,"
             " created_at, task_type, delegated_to, tokens_input, tokens_output, cost_usd)"
-            " VALUES ($1,$2,$3,$3,'document','fixture-serving-model',1000,200,0.004)",
+            " VALUES ($1,$2,$3,$3,'document','gpt-4o-mini',1000,200,0.004)",
             terminal["correlation_id"],
             UUID(TENANT),
             terminal["timestamp"],

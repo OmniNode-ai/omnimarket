@@ -20,7 +20,9 @@ from pydantic import ValidationError
 
 from omnimarket.models.model_topic_removal import EnumTopicClass
 from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.driver_broker_acl import (
+    CREDENTIAL_MISSING_MARKER,
     AclConnection,
+    BrokerCredentialMissingError,
     build_remote_script,
 )
 from omnimarket.nodes.node_broker_topic_delete_effect import runtime_broker_topic_delete
@@ -137,9 +139,9 @@ class FakeRunner:
 
 class CredentialFailingRunner:
     def __call__(self, target: str, script: str, *, timeout: float) -> str:
-        raise RuntimeError(
-            "remote ACL command failed (exit 3): no lane superuser credentials in "
-            "omnibase-infra-redpanda-sasl-enable"
+        # What the real driver raises: the typed error carrying the script prologue's marker line.
+        raise BrokerCredentialMissingError(
+            f"{CREDENTIAL_MISSING_MARKER} DEV_KAFKA_SASL_PASSWORD missing or empty in /x/.env"
         )
 
 
@@ -237,7 +239,11 @@ def test_seam_script_reads_the_credential_as_the_permission_tool_does() -> None:
     )
     prologue = build_remote_script(connection, [])
     assert script.startswith(prologue)
-    assert "docker inspect omnibase-infra-redpanda-sasl-enable" in script
+    assert (
+        'F="$HOME"/.omnibase/.env' in script
+    )  # the cell unset gives the permission tool's default
+    assert "docker inspect" not in script
+    assert "DEV_KAFKA_SASL_PASSWORD" in script
     assert '-X user="$U" -X pass="$P"' in script
     assert "-X brokers=redpanda:9092" in script
     assert "-X sasl.mechanism=SCRAM-SHA-256" in script
@@ -262,6 +268,7 @@ def test_seam_acl_declaration_names_the_same_containers() -> None:
                 "compose_project",
                 "broker_container",
                 "superuser_source_container",
+                "superuser_env_file",
             )
         },
     }
@@ -273,10 +280,33 @@ def test_seam_acl_declaration_names_the_same_containers() -> None:
         ENVIRON,
         runner=runner,
     ).read_evidence(["fx-empty"])
-    assert (
-        f"docker inspect {declaration['superuser_source_container']}"
-        in runner.calls[0][1]
+    assert "docker inspect" not in runner.calls[0][1]
+    # The shipped declaration's value is the default (``~/.omnibase/.env``), so this assertion cannot
+    # tell a dropped cell from a carried one: it pins that the declared value reaches the script. A
+    # dropped cell is caught by the non-default case in the test below.
+    declared_file = declaration["superuser_env_file"]
+    assert declared_file.startswith("~/")
+    assert f'F="$HOME"/{declared_file[2:]}' in runner.calls[0][1].splitlines()
+
+
+@pytest.mark.parametrize(
+    "env_file", ["/srv/custom/operator.env", "~/custom/operator.env"]
+)
+def test_superuser_env_file_declared_non_default_path_reaches_the_script(
+    env_file: str,
+) -> None:
+    """The overlay's superuser block carries the cell to the connection builder and into ``F=``."""
+    runner = FakeRunner()
+    admin(runner, superuser_env_file=env_file).read_evidence(["fx-empty"])
+    expected = (
+        f"F={env_file}" if env_file.startswith("/") else f'F="$HOME"/{env_file[2:]}'
     )
+    lines = runner.calls[0][1].splitlines()
+    assert expected in lines
+    assert 'F="$HOME"/.omnibase/.env' not in lines
+    runner = FakeRunner()
+    admin(runner).read_evidence(["fx-empty"])
+    assert 'F="$HOME"/.omnibase/.env' in runner.calls[0][1].splitlines()
 
 
 def test_chain_handler_deletes_through_the_superuser() -> None:
@@ -488,3 +518,25 @@ def test_control_golden_goes_red_on_a_named_break() -> None:
     outcome = admin(FakeRunner(delete_out="")).delete(["fx-empty"])
     assert outcome == {"fx-empty": "delete_unconfirmed"}
     assert outcome != {"fx-empty": ""}
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "relative/operator.env",
+        "/srv/../etc/operator.env",
+        "/srv/op erator.env",
+        "~",
+        "/srv/$HOME/x",
+    ],
+)
+def test_superuser_env_file_a_bad_path_is_refused_when_the_overlay_loads(
+    bad: str,
+) -> None:
+    """The overlay's superuser block refuses a path the script cannot take at load, not at the first call."""
+    with pytest.raises(ValueError, match="superuser_env_file"):
+        ModelSuperuserAccess.model_validate({**ACCESS, "superuser_env_file": bad})
+    good = ModelSuperuserAccess.model_validate(
+        {**ACCESS, "superuser_env_file": "/srv/custom/operator.env"}
+    )
+    assert good.superuser_env_file == "/srv/custom/operator.env"

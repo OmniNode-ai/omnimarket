@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_session_stall_alarm_effect
+version: 1.0.0
+description: Reads the orchestrating session's transcript on a timer, has the session stall judge decide, and delivers a stall once through the lab alarm delivery.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: effect
+display_name: Session Stall Alarm Effect
+entry_points:
+  onex.nodes:
+    node_session_stall_alarm_effect: omnimarket.nodes.node_session_stall_alarm_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: publish_event
+dependencies:
+- omnibase_core>=0.39.0
+- pyyaml>=6.0
+- pydantic>=2.0
+license: MIT
+tags:
+- effect
+- alarm
+- liveness

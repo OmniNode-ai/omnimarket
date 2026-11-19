@@ -129,7 +129,7 @@ def test_c0_validates_canonical_qwen_route_without_authorizing_it() -> None:
 def test_c0_uses_backend_ref_to_disambiguate_duplicate_qwen_served_ids() -> None:
     decision = _decision(
         backend_ref="local-heavy-reasoning",
-        max_context_tokens=8192,
+        max_context_tokens=32000,
     )
     result = validate_rsd_offline_c0(
         _request(

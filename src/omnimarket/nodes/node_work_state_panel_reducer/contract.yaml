@@ -89,6 +89,11 @@ descriptor:
   idempotent: true
   timeout_ms: 5000
 
+runtime_dispatch:
+  addressable: false
+  invocation_mode: projection_reducer
+  reason: "Reducer consumes work-state-projected events and folds them into the projector-keyed panel row; it is not command-addressable."
+
 event_bus:
   subscribe_topics:
     - onex.evt.omnimarket.work-state-projected.v1

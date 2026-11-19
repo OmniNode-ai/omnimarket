@@ -96,11 +96,18 @@ def _patch_backends_and_transport(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(transport, "post_chat_completion", fake_post)
 
 
+@pytest.mark.parametrize("unpriced", [False, True])
 def test_local_dispatch_materializes_llm_call_metrics_row(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unpriced: bool
 ) -> None:
     db_path = tmp_path / "delegation.sqlite"
     _patch_backends_and_transport(monkeypatch)
+    if unpriced:
+        # Same recorded response, but no source prices this customer model.
+        backends = [dict(_BACKENDS[0], backend_id="byok-reflection")]
+        monkeypatch.setattr(
+            delegation_backend_resolution, "load_bifrost_backends", lambda **_: backends
+        )
     port = LocalDelegationDispatchPort(
         named_test_runner=_passing_named_test_runner,
         evidence_db_path=db_path,
@@ -134,11 +141,13 @@ def test_local_dispatch_materializes_llm_call_metrics_row(
     try:
         conn.row_factory = sqlite3.Row
         delegation = conn.execute(
-            "SELECT tokens_input, tokens_output FROM delegation_events "
+            "SELECT tokens_input, tokens_output, cost_usd FROM delegation_events "
             "WHERE correlation_id = ?",
             (str(correlation_id),),
         ).fetchall()
         calls = conn.execute("SELECT * FROM llm_call_metrics").fetchall()
+        usage_calls = conn.execute("SELECT * FROM usage_by_model_day_calls").fetchall()
+        rollups = conn.execute("SELECT * FROM usage_by_model_day").fetchall()
     finally:
         conn.close()
 
@@ -151,6 +160,14 @@ def test_local_dispatch_materializes_llm_call_metrics_row(
     assert row["completion_tokens"] == delegation[0]["tokens_output"] == 22
     assert row["total_tokens"] == 33
     assert row["usage_source"] == "measured"
+    if unpriced:
+        assert delegation[0]["cost_usd"] is None
+        assert usage_calls[0]["usage_source"] == "unknown"
+        assert rollups[0]["unmeasured_call_count"] == 1
+    else:
+        assert delegation[0]["cost_usd"] is not None
+        assert usage_calls[0]["usage_source"] == "measured"
+        assert rollups[0]["unmeasured_call_count"] == 0
 
 
 def test_two_local_runs_with_equal_tokens_are_two_rows(

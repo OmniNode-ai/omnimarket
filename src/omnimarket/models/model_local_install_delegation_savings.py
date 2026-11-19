@@ -43,6 +43,11 @@ DELEGATION_SAVINGS_VIEW_STEPS = (
         "sqlite/delegation_savings_view_null_cost.sql",
         "served a run with no stored cost as a null session cost",
     ),
+    (
+        "omn24615_delegation_savings_one_definition_view",
+        "sqlite/delegation_savings_view_one_definition.sql",
+        "served each run's modelled saving, none for a failed run, with its baseline",
+    ),
 )
 
 
