@@ -102,6 +102,8 @@ config:
       reason: "OMN-20817: the model setup effect runs from `onex models`; it returns its status and test results to the CLI shim and subscribes to no topic, so it has no entry point."
     - node: "node_pr_lifecycle_triage_compute"
       reason: "OMN-24121: the PR lifecycle triage compute is called in process by the PR lifecycle orchestrator since its inventory subscription was removed, and the seam field diff compute and its check effect run from the merge check's own command line; none subscribes to a command topic with a terminal event, so none has an entry point."
+    - node: "node_principal_grant_audit_effect"
+      reason: "OMN-19998: the principal grant audit is run by a host timer with python -m (registry unit principal-grant-audit-systemd) against the issuer container on the host; it subscribes to no topic and publishes none, so it has no entry point."
     - node: "node_rsd_b1_projection_binding_validate_compute"
       reason: "B1 keeps its historical-map comparison private to offline evidence verification; the inventory surface has no live route or entry point."
     - node: "node_rsd_target_delivery_artifact_manifest_v2_validate_compute"

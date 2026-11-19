@@ -24,6 +24,7 @@ from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.handler_broker_a
 )
 from tests.nodes.node_broker_acl_reconcile_effect.test_aggregates_declared_grants import (
     ENV,
+    ENV_FILLS,
     FakeRemote,
 )
 
@@ -41,6 +42,7 @@ def _env(tmp_path: Path, principal: str = "User:derived-login") -> dict[str, str
         "scope": scope,
         "ticket": "OMN-19998",
         "why": "a test scope",
+        "placeholder_values": dict(ENV_FILLS),
         "principals": [{"principal": principal, "role": "a login", "nodes": [NODE]}],
     }
     (target / "overlay.yaml").write_text(yaml.safe_dump(document), encoding="utf-8")

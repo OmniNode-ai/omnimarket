@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import cast
 
 from omnimarket.handlers.tick_unit_arguments import (
     write_tick_heartbeat,
@@ -80,7 +81,7 @@ def main(argv: list[str], handler: HandlerPrincipalGrantAudit | None = None) -> 
     held_lines = [
         str(held)
         for key in ("principal_lines", "missing_lines", "extra_lines")
-        for held in line.pop(key, [])  # type: ignore[attr-defined]
+        for held in cast("list[object]", line.pop(key, []))
     ]
     for held in held_lines:
         sys.stdout.write(held + "\n")

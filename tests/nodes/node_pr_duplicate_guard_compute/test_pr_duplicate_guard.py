@@ -53,6 +53,7 @@ def touch(*files: ModelFileTouch) -> ModelPrTouch:
 def edit(
     path: str, *spans: tuple[int, int], digest: tuple[str, ...] = ()
 ) -> ModelFileTouch:
+    """A file touch with every field the snapshot fills: its path, the old-line spans and the one scored digest."""
     return ModelFileTouch(path=path, spans=spans, digest=digest)
 
 

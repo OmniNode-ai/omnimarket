@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MIT
 """The runtime facts of the merged-change reading, read from the runtime container's log and the units' state.
 
-``parse_runtime_log`` is pure: log text in, loaded nodes, joined consumers and published results out, by the patterns
-the effect's contract declares. ``SourceRuntimeFacts`` fetches the text and the unit state over ssh and names every
-fact group it could not read, so a reader outage is an unread verdict downstream and never a not-running one.
+``parse_runtime_log`` is pure: log text in, loaded nodes, joined consumers, subscribed topics and published results
+out, by the patterns the effect's contract declares. ``SourceRuntimeFacts`` fetches the text and unit state over ssh
+and names every fact group it could not read, so a reader outage is an unread verdict downstream and never a
+not-running one.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from omnimarket.models.model_merged_change_reading import (
     ModelMcrRunner,
     ModelMcrRuntimeFacts,
     ModelMcrSubscription,
+    ModelMcrTopicSeen,
     ModelMcrUnitRun,
 )
 from omnimarket.models.model_runtime_host_reads import ModelRuntimeHostReadOverlay
@@ -49,14 +51,16 @@ def _stamp(text: str, labels: ModelMcrLogLabels) -> datetime:
 
 
 def parse_runtime_log(text: str, labels: ModelMcrLogLabels) -> ModelMcrRuntimeFacts:
-    """Loaded nodes, consumers that joined, and the last output event per topic, from the runtime's log text."""
+    """Loaded nodes, joined consumers, held topics and the last output event per topic, from the runtime's log text."""
     loaded_re = re.compile(labels.loaded_pattern)
     joined_re = re.compile(labels.subscribed_pattern)
+    subscription_state_re = re.compile(labels.subscription_state_pattern)
     published_re = re.compile(labels.published_pattern)
     health_re = re.compile(labels.health_pattern)
     health = ""
     loaded: dict[str, datetime] = {}
     joined: dict[tuple[str, str], datetime] = {}
+    topics_in_subscription: dict[str, datetime] = {}
     published: dict[str, tuple[datetime, int]] = {}
     for line in text.splitlines():
         hit = loaded_re.search(line)
@@ -66,6 +70,14 @@ def parse_runtime_log(text: str, labels: ModelMcrLogLabels) -> ModelMcrRuntimeFa
         hit = joined_re.search(line)
         if hit:
             joined[(hit["node"], hit["topic"])] = _stamp(hit["ts"], labels)
+            continue
+        hit = subscription_state_re.search(line)
+        if hit:
+            at = _stamp(hit["ts"], labels)
+            for topic in re.findall(r"'([^']+)'", hit["topics"]):
+                topics_in_subscription[topic] = max(
+                    topics_in_subscription.get(topic, at), at
+                )
             continue
         hit = health_re.search(line)
         if hit:
@@ -87,6 +99,10 @@ def parse_runtime_log(text: str, labels: ModelMcrLogLabels) -> ModelMcrRuntimeFa
         subscriptions=tuple(
             ModelMcrSubscription(node=n, topic=t, joined_at=at)
             for (n, t), at in sorted(joined.items())
+        ),
+        topics_in_subscription=tuple(
+            ModelMcrTopicSeen(topic=t, last_at=at)
+            for t, at in sorted(topics_in_subscription.items())
         ),
         published=tuple(
             ModelMcrPublished(topic=t, last_at=at, count=count)
@@ -187,6 +203,14 @@ class SourceRuntimeFacts:
         Consumer groups and discovery lines carry the contract's own name; the node map carries the entry point name
         (the node's directory), so a join is credited to both.
         """
+        return self._manifest()[0]
+
+    def manifest_subscriptions(self) -> dict[str, tuple[str, ...]]:
+        """The declared subscribe topics under each contract and entry point name."""
+        return self._manifest()[1]
+
+    def _manifest(self) -> tuple[dict[str, str], dict[str, tuple[str, ...]]]:
+        """Fetch and parse names and declared subscriptions together, once per read."""
         labels = self._labels
         text = self._ssh(
             self._overlay.ssh_host_env,
@@ -195,6 +219,7 @@ class SourceRuntimeFacts:
         )
         document = json.loads(text)
         names: dict[str, str] = {}
+        subscriptions: dict[str, tuple[str, ...]] = {}
         for item in document[labels.manifest_contracts_key]:
             keys = [
                 item[k]
@@ -204,11 +229,25 @@ class SourceRuntimeFacts:
             if not keys:
                 continue
             entry = keys[-1]
+            # A contract whose event bus block is absent or not shaped as expected declares no subscription; it never
+            # makes the whole manifest unreadable, because the loaded-node fact rides on the same document.
+            event_bus = item.get(labels.manifest_event_bus_key)
+            declared = (
+                event_bus.get(labels.manifest_subscribe_topics_key)
+                if isinstance(event_bus, dict)
+                else None
+            )
+            topics = (
+                tuple(t for t in declared if isinstance(t, str))
+                if isinstance(declared, list)
+                else ()
+            )
             for key in keys:
                 names[key] = entry
+                subscriptions[key] = topics
         if not names:
             raise ValueError("the manifest lists no contracts")
-        return names
+        return names, subscriptions
 
     def manifest_nodes(self) -> tuple[str, ...]:
         """The names of the contracts the runtime serves in its introspection manifest."""
@@ -260,9 +299,30 @@ class SourceRuntimeFacts:
             unread.extend(("loaded_nodes", "subscriptions", "published"))
         if self._manifest_url:
             try:
-                aliases = self.manifest_names()
+                aliases, declared = self._manifest()
                 known = {item.node for item in facts.loaded_nodes}
                 joined = {(s.node, s.topic) for s in facts.subscriptions}
+                subscriptions = list(facts.subscriptions)
+                for s in facts.subscriptions:
+                    if s.node in aliases and (aliases[s.node], s.topic) not in joined:
+                        subscriptions.append(
+                            ModelMcrSubscription(
+                                node=aliases[s.node],
+                                topic=s.topic,
+                                joined_at=s.joined_at,
+                            )
+                        )
+                        joined.add((aliases[s.node], s.topic))
+                seen = {t.topic: t.last_at for t in facts.topics_in_subscription}
+                for node, topics in sorted(declared.items()):
+                    for topic in topics:
+                        if topic in seen and (node, topic) not in joined:
+                            subscriptions.append(
+                                ModelMcrSubscription(
+                                    node=node, topic=topic, joined_at=seen[topic]
+                                )
+                            )
+                            joined.add((node, topic))
                 facts = ModelMcrRuntimeFacts(
                     loaded_nodes=(
                         *facts.loaded_nodes,
@@ -272,20 +332,8 @@ class SourceRuntimeFacts:
                             if n not in known
                         ),
                     ),
-                    subscriptions=(
-                        *facts.subscriptions,
-                        *(
-                            ModelMcrSubscription(
-                                node=aliases[s.node],
-                                topic=s.topic,
-                                joined_at=s.joined_at,
-                            )
-                            for s in facts.subscriptions
-                            if s.node in aliases
-                            and aliases[s.node] != s.node
-                            and (aliases[s.node], s.topic) not in joined
-                        ),
-                    ),
+                    subscriptions=tuple(subscriptions),
+                    topics_in_subscription=facts.topics_in_subscription,
                     published=facts.published,
                 )
                 if "loaded_nodes" in unread:
@@ -322,6 +370,7 @@ class SourceRuntimeFacts:
             ModelMcrRuntimeFacts(
                 loaded_nodes=facts.loaded_nodes,
                 subscriptions=facts.subscriptions,
+                topics_in_subscription=facts.topics_in_subscription,
                 published=facts.published,
                 unit_runs=tuple(units),
                 unread=tuple(unread),

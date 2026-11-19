@@ -11,6 +11,13 @@ summary: The swarm dispatch orchestrator read the decomposer result at a top-lev
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn21040-ac3-accepted-20261116t0145z:
+    - label: AC3
+      criterion_hash: eeefd882ccf60f8f75ee6b400bf890f81ff7b8aac0404507c50bec9bde12c985
+      proposed_by: lane=dod-closeout-bind-2026-11-16T0145Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-16T0145Z-c1
 requirements:
 - id: req-swarm-chain-shapes
   statement: Each downstream swarm node's real result, published as an event payload, is parsed by the orchestrator,
@@ -22,10 +29,21 @@ requirements:
       endpoint ends with one swarm-dispatch-failed event and no decompose, select or fan-out command -- falsifier:
       uv run pytest tests/test_swarm_dispatch_chain.py -q fails at the merge base with 6 failures and passes at
       the head'
+- id: req-omn21040-criteria
+  statement: The ticket's labelled acceptance criteria.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a command whose endpoints are all unhealthy yields exactly one swarm-dispatch-failed.v1 and no
+      fan-out command, and a test pins it -- falsifier: uv run pytest src/omnimarket/nodes/node_swarm_dispatch_orchestrator/tests
+      -q -k unhealthy'
 evidence_requirements:
 - kind: tests
   description: The swarm dispatch chain on an in-memory bus, the orchestrator's own tests and the schema alignment.
   command: uv run pytest tests/test_swarm_dispatch_chain.py tests/test_swarm_schema_alignment.py src/omnimarket/nodes/node_swarm_dispatch_orchestrator/tests -q
+- kind: tests
+  description: 'AC3: an all-unhealthy dispatch publishes exactly one swarm-dispatch-failed event and no fan-out,
+    decompose or select command. Fails with the product change of omnimarket#4117 reverted.'
+  command: uv run pytest tests/test_swarm_dispatch_chain.py::test_all_endpoints_unhealthy_yields_one_failed_event_and_no_fanout -q
 emergency_bypass:
   enabled: false
   justification: ''
@@ -48,3 +66,14 @@ dod_evidence:
   - check_type: command
     check_value: >-
       bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_swarm_dispatch_orchestrator/handlers/handler_swarm_dispatch.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c "^import json$"'
+- id: dod-omn21040-ac3-accepted-20261116t0145z
+  description: 'AC3: with the real decomposer, registry, fan-out and aggregator handlers wired through the in-memory
+    bus, an all-unhealthy dispatch publishes exactly one swarm-dispatch-failed event and no fan-out, decompose or
+    select command. Fails with the product change of omnimarket#4117 reverted (0 failed events seen).'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_swarm_dispatch_chain.py::test_all_endpoints_unhealthy_yields_one_failed_event_and_no_fanout -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3

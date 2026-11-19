@@ -64,10 +64,11 @@ runtime:
   watcher_relpath: .claude_scratch/pr-watcher/state.json
   placement_read_relpath: .claude_scratch/lab-run/hosts.json
   # The lane-health projection the lab-pass receipt of the dev lane is read from (evidence kind deployed). The address
-  # and the lane id are the environment's, never committed; either unset reads as unread, never as no evidence.
+  # and the lane id are the overlay's (lab_pass_receipts), never committed; an overlay that is absent or invalid reads
+  # as unread, never as no evidence.
   lab_pass:
-    url_env: ONEX_LAB_PASS_RECEIPTS_URL
-    lane_env: ONEX_LAB_PASS_LANE
+    overlay_id: lab_pass_receipts
+    overlay_file_env: LAB_PASS_RECEIPTS_OVERLAY_PATH
     labels:
       repos: [omnibase_infra, omnimarket]
       kind: deployed
