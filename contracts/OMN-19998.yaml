@@ -260,16 +260,21 @@ requirements:
     statement: "Operator RULING 2026-11-15T17:59:49Z (ledger row, ticket OMN-19998): the retired sibling package is removed and nothing uses it. This
       repository no longer installs, checks out, imports, pins or lists it, in any file this change edits."
     acceptance:
-      - id: "AC133"
-        statement: "AC133: no file this change touches names the retired sibling package -- falsifier: git diff --name-only --diff-filter=d origin/dev...HEAD | xargs git grep -n -i -E 'omnibase[_-]compat' --
+      - id: "AC135"
+        statement: "AC135: no file this change touches names the retired sibling package -- falsifier: git diff --name-only --diff-filter=d origin/dev...HEAD | xargs git grep -n -i -E 'omnibase[_-]compat' --
           prints a line at the head"
   - id: "req-omn19998-compat-replays-retargeted"
     statement: "No CI job, benchmark scorer or vendoring helper installs the retired package for a replayed
       historical tree; the wire-gate and delegation-ladder replays point their trees at the symbol's home."
     acceptance:
-      - id: "AC134"
-        statement: "AC134: the running-reference guard finds no install, checkout or import of the retired package under .github/workflows, benchmarks, scripts, src or tests -- falsifier: the guard test
+      - id: "AC136"
+        statement: "AC136: the running-reference guard finds no install, checkout or import of the retired package under .github/workflows, benchmarks, scripts, src or tests -- falsifier: the guard test
           (tests/unit/test_no_retired_package_running_references.py) fails at the head, or still passes with a reference planted in a file outside the two it read before"
+  - id: req-omn19998-duplicate-guard-added-lines
+    statement: The pull request duplicate guard scores one share over all the changed lines of both diffs, less the removed lines a deployment declares shared catalog lines, so two pull requests that replace one declared catalog line with different content are not one fix.
+    acceptance:
+      - id: AC133
+        statement: 'AC133: the share rule is one share over all the changed lines of both diffs, added and removed together, less the removed lines the deployment overlay declares shared catalog lines for that path (a path glob and a line pattern per repository); two diffs that replace one declared catalog line with different fingerprints and add different rows pass with a note, identical added lines and two deletions of one line are still refused, and an overlap from a commit outside a replaced change still refuses -- falsifier: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_shared_base_line.py tests/unit/handlers/scm/test_scm_duplicate_guard_replaces.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: Recorded gate subject spellings and named causes run through the production ledger parser and contract handler.
@@ -286,6 +291,9 @@ evidence_requirements:
   - kind: tests
     description: The additive-wire suite exercises model serialization, queued requests, and the bus caller against the pre-field host model.
     command: uv run pytest tests/unit/work_ledger_bus/test_request_additive_wire.py -q --no-cov -n 0 -p no:randomly
+  - kind: tests
+    description: The guard folds recorded diffs of a declared shared catalog fingerprint line through parse_diff and the contract handler; the identical-change and pure-deletion controls still refuse, and a pin manifest the overlay does not declare keeps its removed lines.
+    command: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_shared_base_line.py tests/unit/handlers/scm/test_scm_duplicate_guard_replaces.py -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -1006,7 +1014,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run --frozen pytest tests/unit/test_no_retired_package_running_references.py -q --no-cov -n 0 -p no:randomly -k test_nothing_in_the_running_trees"
         cwd: "."
-    binds_ac: ["AC133"]
+    binds_ac: ["AC135"]
   - id: "dod-omn19998-compat-install-guard"
     description: "The install guard finds no CI job, scorer, script or helper installing the retired package."
     source: "manual"
@@ -1014,4 +1022,12 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run --frozen pytest tests/unit/test_no_retired_package_running_references.py -q --no-cov -n 0 -p no:randomly"
         cwd: "."
-    binds_ac: ["AC134"]
+    binds_ac: ["AC136"]
+  - id: dod-omn19998-duplicate-guard-added-lines
+    description: Recorded catalog diffs run through parse_diff and HandlerPrDuplicateGuard. Different added lines under one declared catalog line pass; identical added lines and two deletions of one line still refuse; the replaces suite keeps refusing an overlap from a commit outside the replaced change. This scoped proof binds the guard tests and does not assert the landing controller criteria of the ticket.
+    source: manual
+    binds_ac: [AC133]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_shared_base_line.py tests/unit/handlers/scm/test_scm_duplicate_guard_replaces.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
