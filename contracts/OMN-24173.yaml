@@ -1,0 +1,83 @@
+schema_version: 1.0.0
+ticket_id: OMN-24173
+title: 'Evals: the coding-trial driver stamps each try with model version and keeps its full output'
+summary: The code eval trial driver stamps each try with the model revision the serving endpoint reported for it (a response without one ends the try not scorable, a revision that changes mid-run ends the changed tries registration_mismatch and the run void), retries tries that were infrastructure-unscorable, closes a run void with its cause named, keeps each check's whole output in a trace published in numbered parts, and the formal model of the close covers a close that ends void.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- events
+requirements:
+- id: req-omn24173-stamps-trace-void
+  statement: Every code try is stamped with the model revision that produced it, keeps its full output in a trace, and a run whose tries could not all be scored on one revision closes void with its cause named.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every try row carries the model revision the endpoint reported for it, and a response without one ends the try as not scorable -- falsifier: a fixture endpoint that changes its reported revision mid-run ends the changed tries registration_mismatch and the run void, and one whose response carries none ends the try revision_unobserved'
+  - id: AC2
+    statement: 'AC2: a run closes void with its cause named when a try is still infrastructure-unscorable after its retries or more than 10 percent of first tries were -- falsifier: a fixture run with 11 percent infrastructure-unscorable first tries closes with the void reason set and the closed event read back'
+  - id: AC3
+    statement: 'AC3: every check''s whole output is in the trace -- falsifier: a 3 MB check output fixture round-trips through the trace''s parts, and the 400-character cut is gone from the scorer'
+  - id: AC4
+    statement: 'AC4: the close route''s model in the formal directory covers a close that ends void -- falsifier: the first commit reads the model and its verdict file; if the void outcome is uncovered the model is extended with a closes-exactly-once invariant and mutation configs that close twice must fail'
+  - id: AC5
+    statement: 'AC5: integrated: a two-task wiring run on a lab host shows each try''s revision and trace on the dev bus and the tries in the projection -- falsifier: the SQL read by run id after the projection runs on dev, and the receipt of the lab run'
+evidence_requirements:
+- kind: tests
+  description: The trial driver, scorer and formal model tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_code_eval_trial_orchestrator tests/nodes/node_code_contract_score_effect tests/formal/test_code_eval_trial_model.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24173-ac1
+  description: 'AC1: a try row carries the revision the endpoint reported; a changed revision ends the changed tries registration_mismatch and the run void; none ends the try revision_unobserved'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_trial_orchestrator/test_trial_revision_void_trace.py -q --no-cov -n 0 -p no:randomly -k 'revision'
+    cwd: .
+- id: dod-omn24173-ac2
+  description: 'AC2: a run closes void with its cause named, and a redelivered close changes nothing'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_trial_orchestrator/test_trial_revision_void_trace.py -q --no-cov -n 0 -p no:randomly -k 'void or retry'
+    cwd: .
+- id: dod-omn24173-ac3
+  description: 'AC3: a 3 MB check output round-trips through the trace parts and the scorer keeps each check output whole'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_trial_orchestrator/test_trial_revision_void_trace.py tests/nodes/node_code_contract_score_effect/test_check_output_whole.py -q --no-cov -n 0 -p no:randomly -k 'trace or whole'
+    cwd: .
+- id: dod-omn24173-ac4
+  description: 'AC4: the formal model covers a close that ends void: the design and liveness configs run clean, and the close-twice and void-rewrite mutants each end in their violation'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/formal/test_code_eval_trial_model.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24173-ac5
+  description: 'hosted proxy for AC5: the trial driver tests (a two-task run through the in-memory bus, each try''s revision and trace parts published) pass here; the lab reading (the wiring run on a lab host, each try''s revision and trace on the dev bus, the tries in the projection by run id) is not made by this change and is read after the projection runs on dev.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_trial_orchestrator/test_trial_revision_void_trace.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24173-integration-proof
+  description: the trial driver, scorer, loop and formal-model tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24173 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_code_eval_trial_orchestrator tests/nodes/node_code_contract_score_effect tests/nodes/node_delegated_code_edit_orchestrator/test_turn_revision.py tests/formal/test_code_eval_trial_model.py -q --no-cov -n 0 -p no:randomly

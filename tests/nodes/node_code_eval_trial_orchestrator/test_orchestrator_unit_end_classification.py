@@ -20,6 +20,7 @@ from omnimarket.nodes.node_code_eval_trial_orchestrator.orchestration.builders i
     trial_columns,
 )
 from tests.nodes.node_code_eval_trial_orchestrator.orchestrator_support import (
+    REVISION,
     RUN_ID,
     completed_host,
     make_bus,
@@ -31,7 +32,9 @@ pytestmark = pytest.mark.unit
 
 
 def result(status: str) -> ModelCodeEditResult:
-    return ModelCodeEditResult(loop_run_id="loop-1", status=status, turns=1)
+    return ModelCodeEditResult(
+        loop_run_id="loop-1", status=status, turns=1, model_revision=REVISION
+    )
 
 
 # name, receipt fields, first verdict label, sent to E2

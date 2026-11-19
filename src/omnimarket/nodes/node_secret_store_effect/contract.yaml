@@ -27,8 +27,9 @@ description: >
   folder and key, creates a secret create-only (an existing key is reported,
   never read or updated), and lists a folder's key names. The machine identity
   resolves at run time from the bootstrap secret store, the endpoint, project
-  and environment from the private overlay. Every failure is a typed outcome;
-  no value, digest or credential is logged, published or put in a detail.
+  and environment from the private overlay. A separate operation writes an
+  overlay-declared host environment file and returns presence and SHA-256
+  readings. No operation publishes or logs a secret value.
 
 input_model:
   name: ModelSecretStoreRequest
@@ -88,11 +89,34 @@ handler_routing:
         name: ModelHouseModelKeyRequest
         module: omnimarket.models.secret_store.model_house_model_key_request
 
+    - operation: write_env_file
+      handler:
+        name: HandlerSecretEnvFile
+        module: omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_env_file
+      event_model:
+        name: ModelSecretEnvFileRequest
+        module: omnimarket.nodes.node_secret_store_effect.models.model_secret_env_file
+      output_model: omnimarket.nodes.node_secret_store_effect.models.model_secret_env_file.ModelSecretEnvFileResult
+
+# Bind each allowed destination to its consumer's overlay and store folder.
+# The request chooses a binding. Only the overlay supplies its path and names.
+secret_env_files:
+  floor_fill_live.store_dsn_env_file:
+    overlay: node_floor_fill_orchestrator
+    names_from: [store_dsn_env]
+    folder: /shared/env
+
 # Keys the node generates itself (OMN-23695): the value is made inside the runtime from the system's random source, stored create-only
 # under `folder`/`key`, and never printed, serialized, logged or put on a command line. A request names only the id.
 generated_keys:
+  # (OMN-24237) the secret of the dev-only Keycloak service client node_dev_keycloak_client_effect ensures
+  dev_keycloak_client_secret: {folder: /shared/env, key: KEYCLOAK_DEV_CLIENT_SECRET, bytes: 32, prefix: ""}
   # The probe tenant key scenario R8 reads (settings overlay of node_delegation_scenario_r8_effect).
   r8_probe_tenant_key: {folder: /shared/env, key: R8_PROBE_TENANT_API_KEY, bytes: 32, prefix: ""}
+  # OMN-24278: the NUT monitor users' passwords (overlay nut_ups of the overlays repository reads them through node_host_installer_net_units).
+  # The primary user is upsmon's login on the host that owns the UPS cable; the secondary user is the login of every host that only watches it.
+  nut_primary_password: {folder: /shared/env, key: NUT_PRIMARY_PASSWORD, bytes: 24, prefix: ""}
+  nut_secondary_password: {folder: /shared/env, key: NUT_SECONDARY_PASSWORD, bytes: 24, prefix: ""}
   # (OMN-24115) the dev probe user's password, read by node_dev_identity_provision_effect
   dev_probe_user_password: {folder: /shared/env, key: DEV_PROBE_USER_PASSWORD, bytes: 24, prefix: "Dp1!"}
 

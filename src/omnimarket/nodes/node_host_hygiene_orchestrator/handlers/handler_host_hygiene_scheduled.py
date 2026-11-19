@@ -15,6 +15,7 @@ tick sends it again.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import uuid
 from collections.abc import Callable, Mapping
@@ -129,7 +130,7 @@ class HandlerHostHygieneScheduled:
             for row in overlay.hosts
         )
 
-    def handle(self, request: ModelRuntimeTick) -> ModelHandlerOutput[None]:
+    async def handle(self, request: ModelRuntimeTick) -> ModelHandlerOutput[None]:
         correlation_id = uuid.uuid5(
             uuid.NAMESPACE_URL, f"omnimarket:host-hygiene-tick:{request.tick_id}"
         )
@@ -165,7 +166,10 @@ class HandlerHostHygieneScheduled:
             )
         )
         sender = self._sender if self._sender is not None else build_sender(overlay)
-        units = DispatchHostHygieneUnits(overlay, sender).dispatch(decision.due_items())
+        # sender.send blocks until the host's receipt; the runtime calls handle on its loop, so run the dispatch off it.
+        units = await asyncio.to_thread(
+            DispatchHostHygieneUnits(overlay, sender).dispatch, decision.due_items()
+        )
         for unit in units:
             if unit.outcome in _RAN:
                 self._dispatched[(unit.host, unit.cleanup_id)] = now

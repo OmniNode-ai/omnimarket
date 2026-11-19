@@ -19,7 +19,9 @@ from omnimarket.nodes.node_github_repo_gateway_effect.read_operations import (
     read_artifacts,
     read_branch_protection,
     read_ci_checks,
+    read_code_scanning_alerts,
     read_commit_check_runs,
+    read_commit_statuses,
     read_job_log_fill,
     read_job_log_tail,
     read_merge_commit_sha,
@@ -72,10 +74,14 @@ def dispatch(
 
     if op is EnumGithubGatewayOperation.COMMIT_CHECK_RUNS:
         return read_commit_check_runs(transport, request)
+    if op is EnumGithubGatewayOperation.COMMIT_STATUSES:
+        return read_commit_statuses(transport, request)
     if op is EnumGithubGatewayOperation.MERGED_PR:
         return read_merged_pr(transport, request)
     if op is EnumGithubGatewayOperation.REPO_FILE:
         return read_repo_file(transport, request)
+    if op is EnumGithubGatewayOperation.CODE_SCANNING_ALERTS:
+        return read_code_scanning_alerts(transport, request)
     if op is EnumGithubGatewayOperation.PR_REVIEW_THREADS:
         return read_pr_review_threads(transport, request)
     if op is EnumGithubGatewayOperation.OPEN_PR_FACTS:

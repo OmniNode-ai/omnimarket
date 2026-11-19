@@ -43,6 +43,7 @@ from omnimarket.nodes.node_code_eval_trial_reducer.handlers import (
 
 T0 = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
 HOSTS = ("h1", "h2", "h3", "h4")
+REVISION = "sha256:rev-a"
 
 Scorer = Callable[
     [ModelScoreToSend], tuple[EnumCodeScoreVerdict, EnumCodeScoreSource | None]
@@ -124,6 +125,7 @@ def accepted_unit(
         "diff": f"diff for {unit.task_key} {unit.model} {unit.try_ordinal}",
         "loop_status": "accepted",
         "duration_s": 10.0,
+        "model_revision": REVISION,
     }
     fields.update(overrides)
     return ModelUnitAnsweredMessage.model_validate(fields)

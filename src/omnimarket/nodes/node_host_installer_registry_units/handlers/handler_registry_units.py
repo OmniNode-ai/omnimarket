@@ -53,6 +53,32 @@ MANIFEST = "manifest.json"
 KEPT_SUFFIX = ".previous"
 
 
+def fill_placeholders(node: Any, values: dict[str, str], unit: str) -> Any:
+    """``node`` with every ``{name}`` of ``values`` filled, in strings, lists and mappings; a placeholder left over is refused.
+
+    The one filler of a unit's declared configuration (``config_file``) and declared files (``declared_files``): a
+    document is never written with a hole in it.
+    """
+    if isinstance(node, str):
+        for key, value in values.items():
+            node = node.replace("{" + key + "}", value)
+        left = PLACEHOLDER.search(node)
+        if left is not None:
+            raise ValueError(
+                f"the {unit} configuration names {left.group(0)}, which this request does not set "
+                "(name it as a request input, export its environment variable, or reinstall once with it)"
+            )
+        return node
+    if isinstance(node, list):
+        return [fill_placeholders(item, values, unit) for item in node]
+    if isinstance(node, dict):
+        return {
+            str(key): fill_placeholders(item, values, unit)
+            for key, item in node.items()
+        }
+    return node
+
+
 class NoPreviousInstallError(ValueError):
     """A rollback was asked for a unit that has no kept previous install."""
 
@@ -119,6 +145,8 @@ def restore_previous(kept: Path, manifest: dict[str, dict[str, object]]) -> list
 
 
 STALE_INTERVALS = 3
+# The service types a systemd registry unit may declare: a timer-fired tick (the default) or a long-running service.
+SERVICE_TYPES = ("oneshot", "simple")
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 # The modes that change what the host runs. A dry-run, a status read and a kickstart change nothing, so they never take the lock.
@@ -226,6 +254,39 @@ class HandlerRegistryUnits:
         document = table.model_dump(mode="json")
         declared = declared_overlay_root(document, host, Path(request.registry_root))
         return os.path.normpath(str(declared))
+
+    def host_table_ledger_path(self, request: ModelRegistryUnitsRequest) -> str:
+        """The ledger the install reads when the request and the shell name no ledger path.
+
+        An install that names no ledger path, in the request or the shell, reads the ledger
+        the lab host table's row for the host declares (OMN-24406, ported from the frozen
+        internal installer change, OMN-23598). The host is the request's host_name, else
+        its ledger_host_name, else the shell's ONEX_LEDGER_HOST_NAME. A row that declares no
+        ledger path, or a host the table does not list, yields '' and the install refuses as
+        before; a declared path under $OMNI_HOME/ fills against the request's registry root,
+        and any other declared value is the path as declared.
+        """
+        host = (
+            request.host_name
+            or request.ledger_host_name
+            or os.environ.get("ONEX_LEDGER_HOST_NAME", "").strip()
+        )
+        if not host:
+            return ""
+        try:
+            table = self.hosts()
+        except NodeOverlayError as exc:
+            raise ValueError(f"the lab host table cannot be read: {exc}") from exc
+        declared = next(
+            (row.ledger_path for row in table.hosts if row.name == host), None
+        )
+        if not declared:
+            return ""
+        if declared.startswith("$OMNI_HOME/"):
+            return str(
+                Path(request.registry_root) / declared.removeprefix("$OMNI_HOME/")
+            )
+        return declared
 
     def handle(self, request: ModelRegistryUnitsRequest) -> ModelRegistryUnitsResult:
         unit = self.units.get(request.unit)
@@ -452,6 +513,8 @@ class HandlerRegistryUnits:
                 str(getattr(request, str(field))).strip()
                 or os.environ.get(str(name), "").strip()
             )
+            if not supplied and str(field) == "ledger_path":
+                supplied = self.host_table_ledger_path(request)
             if supplied:
                 filled[str(name)] = supplied
         for name in unit.get("environment_refuse_worktree_paths") or []:
@@ -582,21 +645,7 @@ class HandlerRegistryUnits:
         values.update(self.config_inputs(request, unit))
 
         def fill(node: Any) -> Any:
-            if isinstance(node, str):
-                for key, value in values.items():
-                    node = node.replace("{" + key + "}", value)
-                left = PLACEHOLDER.search(node)
-                if left is not None:
-                    raise ValueError(
-                        f"the {request.unit} configuration names {left.group(0)}, which this request does not set "
-                        "(name it as a request input, export its environment variable, or reinstall once with it)"
-                    )
-                return node
-            if isinstance(node, list):
-                return [fill(item) for item in node]
-            if isinstance(node, dict):
-                return {str(key): fill(item) for key, item in node.items()}
-            return node
+            return fill_placeholders(node, values, request.unit)
 
         document = dict(declared["document"])
         for key in declared.get("optional_keys") or []:
@@ -633,6 +682,46 @@ class HandlerRegistryUnits:
             if value:
                 found[str(name)] = value
         return found
+
+    def declared_file_writes(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> list[tuple[Path, str, int]]:
+        """The files a systemd unit declares under ``declared_files``: (path, text, mode) each, every placeholder filled.
+
+        ``path`` and every string of ``document`` may use {home}, {registry_root} and {marketplace_root} (the request's; the
+        last only when the request names one). A path that is not
+        absolute after filling, or that is not under the request's home, is refused, and a placeholder nothing fills is
+        refused naming it, so a declared file is never written with a hole in it or outside the home.
+        """
+        declared = unit.get("declared_files") or []
+        if declared and unit.get("platform") != "systemd":
+            raise ValueError(
+                f"{unit['label']} declares declared_files; only systemd units may declare them"
+            )
+        values = {"home": request.home, "registry_root": request.registry_root}
+        if request.marketplace_root:
+            values["marketplace_root"] = request.marketplace_root
+        home = Path(os.path.normpath(request.home))
+        writes: list[tuple[Path, str, int]] = []
+        for entry in declared:
+            path = Path(
+                os.path.normpath(
+                    fill_placeholders(str(entry["path"]), values, request.unit)
+                )
+            )
+            if not path.is_absolute() or home not in path.parents:
+                raise ValueError(
+                    f"{request.unit} declares the file {entry['path']!r}, which is not a path under the home {home}"
+                )
+            text = (
+                json.dumps(
+                    fill_placeholders(dict(entry["document"]), values, request.unit),
+                    indent=1,
+                )
+                + "\n"
+            )
+            writes.append((path, text, int(str(entry.get("mode", "0600")), 8)))
+        return writes
 
     @staticmethod
     def write_config(target: Path, text: str, mode: int) -> str:
@@ -690,6 +779,20 @@ class HandlerRegistryUnits:
             raise ValueError(
                 f"{unit['label']} declares environment_file {unit['environment_file']!r}; "
                 "launchd units do not support an environment file, declare the variables instead"
+            )
+        if unit.get("kill_mode"):
+            raise ValueError(
+                f"{unit['label']} declares kill_mode {unit['kill_mode']!r}; "
+                "launchd units do not support a kill mode, keep every process in the job's own care"
+            )
+        if unit.get("service_type"):
+            raise ValueError(
+                f"{unit['label']} declares service_type {unit['service_type']!r}; "
+                "launchd units do not support a service type, launchd keeps a job alive with its own keys"
+            )
+        if unit.get("declared_files"):
+            raise ValueError(
+                f"{unit['label']} declares declared_files; only systemd units may declare them"
             )
         text = (NODE_DIR / str(unit["template"])).read_text(encoding="utf-8")
         process_type = str(unit.get("process_type") or DEFAULT_PROCESS_TYPE)
@@ -949,6 +1052,49 @@ class HandlerRegistryUnits:
             )
         return f"EnvironmentFile=-{self.systemd_value(path)}"
 
+    def kill_mode(self, unit: dict[str, Any]) -> str:
+        """The KillMode line of a systemd unit that declares one, else nothing.
+
+        A oneshot service that starts processes meant to outlive it (the drift owner's dispatch starts lane
+        runners) declares ``process``: with systemd's default ``control-group`` the exit of the main process
+        SIGTERMs every process left in the unit's cgroup. ``mixed`` is the other mode a unit may name; anything
+        else is refused rather than written as a line systemd would reject or misread.
+        """
+        declared = str(unit.get("kill_mode") or "")
+        if not declared:
+            return ""
+        if declared not in ("mixed", "process"):
+            raise ValueError(
+                f"{unit['label']} declares kill_mode {declared!r}; it must be one of: mixed, process"
+            )
+        return f"\nKillMode={declared}"
+
+    @staticmethod
+    def service_type(unit: dict[str, Any]) -> str:
+        """The service type a systemd unit declares: ``oneshot`` (a timer-fired tick, the default) or ``simple``."""
+        declared = str(unit.get("service_type") or "oneshot")
+        if declared not in SERVICE_TYPES:
+            raise ValueError(
+                f"{unit['label']} declares service_type {declared!r}; it must be one of: {', '.join(SERVICE_TYPES)}"
+            )
+        return declared
+
+    def service_type_lines(self, unit: dict[str, Any]) -> str:
+        """The Type line of the service, and for a ``simple`` unit its restart policy.
+
+        A long-running unit (the Temporal server and worker) is Type=simple, so it reads ``active (running)`` once it
+        runs; Restart=on-failure starts it again after RestartSec, the start interval the node's other long-running
+        units use between a timer start and the next. The timer stays: it starts the unit at load and after a clean exit.
+        """
+        declared = self.service_type(unit)
+        if declared == "oneshot":
+            return "Type=oneshot"
+        delay = int(unit["schedule"]["start_interval"])
+        return (
+            "# A long-running service: Type=simple, started again on failure; the timer starts it at load.\n"
+            f"Type=simple\nRestart=on-failure\nRestartSec={delay}"
+        )
+
     def render_systemd(
         self,
         request: ModelRegistryUnitsRequest,
@@ -994,6 +1140,8 @@ class HandlerRegistryUnits:
         service = service.replace(
             "__ENVIRONMENT_FILE__", self.environment_file(request, unit)
         )
+        service = service.replace("__KILL_MODE__", self.kill_mode(unit))
+        service = service.replace("__SERVICE_TYPE__", self.service_type_lines(unit))
         service = service.replace(
             "__TICK_SYNC_ARGS__", '"--no-sync"' if unit.get("tick_no_sync") else ""
         )
@@ -1038,6 +1186,9 @@ class HandlerRegistryUnits:
             service_path.unlink(missing_ok=True)
             timer_path.unlink(missing_ok=True)
             self.run([*systemctl, "daemon-reload"])
+            # A unit that failed before its removal stays on `systemctl --user --failed` until its mark is reset;
+            # a refusal is ignored, the removal has already happened (OMN-23961).
+            self.run([*systemctl, "reset-failed", f"{label}.service", f"{label}.timer"])
             return self.result(
                 request,
                 0,
@@ -1076,11 +1227,16 @@ class HandlerRegistryUnits:
         python = self.interpreter_for(unit)
         service, timer = self.render_systemd(request, unit, project, uv, python)
         text = service + "\n" + timer
+        declared_files = self.declared_file_writes(request, unit)
         if request.mode == "dry-run":
             return self.result(
                 request,
                 0,
-                out=text,
+                out=text
+                + "".join(
+                    f"\ndeclared file {path}:\n{body}"
+                    for path, body, _mode in declared_files
+                ),
                 rendered=text,
                 project=project,
                 revision=revision,
@@ -1093,14 +1249,17 @@ class HandlerRegistryUnits:
             )
         state.mkdir(parents=True, exist_ok=True)
         unit_dir.mkdir(parents=True, exist_ok=True)
+        for path, body, mode in declared_files:
+            self.write_config(path, body, mode)
         previous = {
             path: (path.read_bytes() if path.exists() else None)
             for path in (service_path, timer_path)
         }
-        if (
+        changed = (
             previous[service_path] != service.encode()
             or previous[timer_path] != timer.encode()
-        ):
+        )
+        if changed:
             keep_previous(
                 state,
                 request.unit,
@@ -1111,11 +1270,18 @@ class HandlerRegistryUnits:
             staged.write_text(body, encoding="utf-8")
             staged.chmod(0o644)
             staged.replace(path)
-        steps = (
+        steps = [
             [*systemctl, "daemon-reload"],
             [*systemctl, "enable", f"{label}.timer"],
             [*systemctl, "restart", f"{label}.timer"],
-        )
+        ]
+        # A changed unit file does not reach a process that already runs, and a timer start does not touch an active
+        # service: a long-running unit is restarted here, when its text changed or it is not active.
+        if self.service_type(unit) == "simple" and (
+            changed
+            or self.run([*systemctl, "is-active", f"{label}.service"]).returncode
+        ):
+            steps.append([*systemctl, "restart", f"{label}.service"])
         for step in steps:
             done = self.run(step)
             if done.returncode:

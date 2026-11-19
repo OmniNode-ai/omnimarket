@@ -41,6 +41,7 @@ class EnumTickFailureReason(StrEnum):
     RECORDED_DECISION_MISSING = "recorded_decision_missing"
     DECISION_RAISED = "decision_raised"
     CONTROLLER_TICK_MISSING = "controller_tick_missing"
+    TICK_STAGE_RAISED = "tick_stage_raised"
 
 
 class EnumTickSkipReason(StrEnum):

@@ -4,9 +4,12 @@
 
 from __future__ import annotations
 
+import sys
 import textwrap
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import ModuleType
+from typing import cast
 
 import pytest
 
@@ -98,6 +101,20 @@ def test_this_repo_allowlist_has_no_task_delegated_row() -> None:
         if isinstance(entry, dict)
     ]
     assert TASK_DELEGATED_TOPIC_V1 not in topics
+
+
+def test_this_repo_allowlist_has_no_daemon_health_row() -> None:
+    """The expired daemon-health topic row is gone from the committed allowlist."""
+    import yaml
+
+    root = Path(__file__).resolve().parents[2]
+    data = yaml.safe_load((root / "src" / "dep_health_allowlist.yaml").read_text())
+    topics = [
+        entry.get("topic")
+        for entry in data.get("allowlist", []) or []
+        if isinstance(entry, dict)
+    ]
+    assert "onex.evt.diagnostic.daemon-health.v1" not in topics
 
 
 def test_matched_pub_sub_no_orphans(tmp_path: Path) -> None:
@@ -488,3 +505,54 @@ def test_topic_literal_in_production_file_still_undeclared(tmp_path: Path) -> No
     graph = parser.parse(search_roots=[tmp_path])
 
     assert "onex.cmd.omnimarket.prod-undeclared.v1" in graph.undeclared_topics
+
+
+# ---------------------------------------------------------------------------
+# OMN-23141 AC2: topic names come from the contract; no plugin enum is consulted
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_topic_names_from_contract_alone_with_a_plugin_topic_module_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The recorded case (matched pub/sub) reads the same whether or not the plugin's topic
+    module can be imported: a module that raises on any attribute read proves it is never read."""
+
+    class _Refuses:
+        def __getattr__(self, name: str) -> object:
+            raise AssertionError(f"the plugin topic module was read: {name}")
+
+    for name in ("omniclaude", "omniclaude.hooks", "omniclaude.hooks.topics"):
+        monkeypatch.setitem(sys.modules, name, cast(ModuleType, _Refuses()))
+
+    _write_contract(
+        tmp_path / "node_a" / "contract.yaml",
+        """
+        name: node_a
+        event_bus:
+          publish_topics:
+            - "onex.evt.omnimarket.topic-a.v1"
+          subscribe_topics: []
+        """,
+    )
+    _write_contract(
+        tmp_path / "node_b" / "contract.yaml",
+        """
+        name: node_b
+        event_bus:
+          publish_topics: []
+          subscribe_topics:
+            - "onex.evt.omnimarket.topic-a.v1"
+        """,
+    )
+
+    graph = ContractTopologyParser().parse(search_roots=[tmp_path])
+
+    assert "onex.evt.omnimarket.topic-a.v1" not in graph.orphan_topics
+    assert [(e[0], e[1]) for e in graph.pub_edges] == [
+        ("node_a", "onex.evt.omnimarket.topic-a.v1")
+    ]
+    assert [(e[0], e[1]) for e in graph.sub_edges] == [
+        ("node_b", "onex.evt.omnimarket.topic-a.v1")
+    ]

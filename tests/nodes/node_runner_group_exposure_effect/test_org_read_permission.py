@@ -13,6 +13,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -81,7 +82,7 @@ def _handler(
     scenario: Scenario | None = None,
     *,
     permission: str = PERMISSION,
-    mint: dict[str, str] | None = MINT,
+    mint: dict[str, Any] | None = MINT,
 ) -> HandlerExposureProbe:
     monkeypatch.setenv("no_proxy", "127.0.0.1")
     # the stored token, as the unit has it: present, so only a refusal can stop the read
@@ -93,6 +94,7 @@ def _handler(
         "org": "example-org",
         "group_id": 7,
         "group_labels": ["example-private-group"],
+        "group_read": None,
         "token_env": TOKEN_ENV,
         "token_mint": mint,
         "org_read_permission": permission,
@@ -162,6 +164,17 @@ def test_error_chain_a_refused_group_read_names_the_declared_permission(
     assert topic == load_topics()["probe_failed"]
 
 
+def test_error_chain_a_refused_token_names_no_permission(
+    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a 401 says the token itself is bad or expired, which is not a missing permission
+    result = _handler(
+        server, tmp_path, monkeypatch, _Minter(), Scenario(group_status=401)
+    ).handle(_request())
+    assert result.reading.read_failure is EnumExposureReadFailure.ORG_READ_DENIED
+    assert result.missing_permission is None
+
+
 def test_error_chain_a_missing_stored_token_names_no_permission_and_makes_no_call(
     server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -191,6 +204,7 @@ def _reading_overlay(
         "org": "example-org",
         "group_id": 7,
         "group_labels": ["example-private-group"],
+        "group_read": None,
         "token_env": TOKEN_ENV,
         "token_mint": None,
         "org_read_permission": permission,

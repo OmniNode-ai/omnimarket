@@ -1,0 +1,91 @@
+schema_version: 1.0.0
+ticket_id: OMN-24292
+title: Lane census checks where each compose project's file lives and which version runs
+summary: 'The lane census gains a per-project compose check: a pure compute node judges each compose project on a lab host against a policy overlay (the compose directory must be in a repo clone or under
+  a release root a declared installer writes, a project must run from one directory, a declared image must be the running one), and the census run reads the docker inventory once and calls it.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24292-ac1
+  statement: the compose project census compute returns findings for each defect and the same findings for the same inventory in any order
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the per-project compose check returns the same findings for the same inventory and names a compose directory under a worktree or scratch folder, a project run from two folders, a file
+      that differs from its declaration and an image that differs from its declaration -- falsifier: pytest tests/nodes/node_compose_project_census_compute -q'
+- id: req-omn24292-ac2
+  statement: the overlay is checked in the overlays repository by its own test and by its ci loading it through ModelComposeCensusPolicy at the pinned revision
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the settings file for the check loads through its model and every host it names is an available row of the lab host table -- falsifier: pytest tests/test_node_compose_project_census_overlay.py
+      -q in the overlays repository'
+- id: req-omn24292-ac3
+  statement: the census step reads the inventory once with a field format, and the census run exits 30 on a finding and 4 when docker cannot be read
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the census run reads the docker inventory once, calls the check, and exits 30 on a finding and 4 when the inventory cannot be read -- falsifier: pytest tests/test_lane_census_project_check_omn19998.py
+      -q'
+- id: req-omn24292-ac4
+  statement: the integrated reading on a lab host is recorded in the pull request's Lab comment with the host, revision and the printed line
+  acceptance:
+  - id: AC4
+    statement: 'AC4: integrated: the census unit on h051 run once from the installed branch prints a compose_project_check line naming the Phoenix project as outside a clone -- falsifier: run the unit with
+      systemctl --user start onex-lane-census.service and read journalctl --user -u onex-lane-census.service for the line'
+evidence_requirements:
+- kind: tests
+  description: The compose project census compute and the census step tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_compose_project_census_compute tests/test_lane_census_effect_omn21946.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24292-ac1
+  description: 'AC1: the compose project census compute returns findings for each defect and the same findings for the same inventory in any order; fails when the worktree rule, the whole-component path
+    rule or the mixed-directory pass is removed.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_compose_project_census_compute -q -n 0 --no-cov
+    cwd: .
+- id: dod-omn24292-ac2
+  description: 'AC2: the overlay is checked in the overlays repository by its own test and by its ci loading it through ModelComposeCensusPolicy at the pinned revision; the example overlay here validates
+    through the same model.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_compose_project_census_compute -q -n 0 --no-cov -k example_overlay
+    cwd: .
+- id: dod-omn24292-ac3
+  description: 'AC3: the census step reads the inventory once with a field format, and the census run exits 30 on a finding and 4 when docker cannot be read.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_lane_census_project_check_omn19998.py -q -n 0 --no-cov
+    cwd: .
+- id: dod-omn24292-ac4
+  description: 'AC4: the census run prints the compose_project_check line with the outcome the step returned, which is the line the live reading on a lab host quotes; the live reading itself is recorded in the pull request''s Lab comment with the host, revision and the printed line. Fails when the census run stops printing the line or stops carrying the outcome.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_lane_census_project_check_omn19998.py -q -n 0 --no-cov -k test_main_exit_codes
+    cwd: .
+- id: dod-omn24292-integration-proof
+  description: Run the census step tests and the compose project census node tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check;
+    it binds no criterion for the hosted check. The live reading (the census step run against a lab host's real docker inventory with the real overlay) is recorded in the pull request's Lab line and Lab
+    comment.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24292 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/test_lane_census_project_check_omn19998.py tests/nodes/node_compose_project_census_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .

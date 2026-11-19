@@ -1,0 +1,24 @@
+name: node_lane_gh_read_guard_effect
+version: "1.0.0"
+description: "Lane GitHub read guard effect: decides whether a lane's bare gh command is a read that the lane must make through the typed readers, and checks the runner placement snapshot policy (OMN-24086)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lane_gh_read_guard_effect: "omnimarket.nodes.node_lane_gh_read_guard_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["lane-guard", "github", "effect", "OMN-24086"]
+pack: "lane-guard"
+display_name: "Lane GitHub Read Guard Effect"
+node_role: "effect"

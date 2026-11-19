@@ -16,6 +16,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.enums.enum_eval_unscorable_reason import EnumEvalUnscorableReason
 from omnimarket.models.code_eval_trial.model_code_eval_run_request import (
     ModelCodeEvalRunRequest,
 )
@@ -44,6 +45,8 @@ class ModelCodeEvalSettings(BaseModel):
     receipt_slack_seconds: int = Field(ge=0)
     nudge_interval_seconds: int = Field(ge=1)
     completion_bound_seconds: int = Field(ge=1)
+    infra_retries: int = Field(default=0, ge=0)
+    void_infra_first_try_percent: int = Field(default=10, ge=0, le=100)
 
 
 class ModelCodeEvalVerdict(BaseModel):
@@ -53,9 +56,13 @@ class ModelCodeEvalVerdict(BaseModel):
 
     verdict: EnumCodeScoreVerdict
     source: EnumCodeScoreSource | None = None
+    #: The typed cause of an unscorable try the driver itself named (revision_unobserved, registration_mismatch).
+    reason: EnumEvalUnscorableReason | None = None
 
     @property
     def label(self) -> str:
+        if self.reason is not None:
+            return f"{self.verdict.value}({self.reason.value})"
         return (
             f"{self.verdict.value}({self.source.value})"
             if self.source
@@ -94,6 +101,12 @@ class ModelCodeEvalSequenceRow(BaseModel):
     timed_out_with_diff: bool = False
     loop_status: str = ""
     duration_s: float = 0.0
+    #: The revision the endpoint reported for the try now in flight or scoring (empty: none reported).
+    model_revision: str = ""
+    #: Infrastructure retries spent on the current ordinal.
+    retries_used: int = 0
+    #: The first attempt of ordinal 1 was infrastructure-unscorable (before any retry).
+    first_try_infra: bool = False
 
 
 class ModelCodeEvalRunRow(BaseModel):
@@ -112,6 +125,10 @@ class ModelCodeEvalRunRow(BaseModel):
     in_flight: bool = True
     state: str = "RUNNING"
     closed: bool = False
+    #: The revision each model arm's first observed try registered (model -> revision).
+    registered_revisions: dict[str, str] = Field(default_factory=dict)
+    #: A try reported a revision other than its arm's registered one.
+    revision_changed: bool = False
     updated_at: datetime
 
 

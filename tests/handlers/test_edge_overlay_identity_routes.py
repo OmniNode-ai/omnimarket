@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """The runtime edge binds each mount's caller resolver from its overlay document.
 
-The four mounts are built the way the runtime builds them -- ``create_app(...)``
+The five mounts are built the way the runtime builds them -- ``create_app(...)``
 with NO identity argument -- so the resolver can only come from the overlay
 document ``<root>/<node>/overlay.yaml`` under ``ONEX_SKILL_OVERLAY_ROOTS``.
 Tokens are signed with a throwaway RSA key; the key set is a fake provider
@@ -56,6 +56,12 @@ from omnimarket.nodes.node_usage_privileges.handlers.http_app import (
 from omnimarket.nodes.node_usage_privileges.handlers.identity_binding import (
     bind_tenant_identity_resolver as bind_usage_privileges_resolver,
 )
+from omnimarket.nodes.node_workflow_contract_catalog_effect.handlers.http_app import (
+    create_app as create_catalog_app,
+)
+from omnimarket.nodes.node_workflow_contract_catalog_effect.models.model_workflow_contract_catalog import (
+    ModelAdvertisedWorkflowContract,
+)
 from omnimarket.protocols.protocol_http_tenant_identity import (
     ProtocolHttpTenantIdentity,
 )
@@ -69,6 +75,9 @@ from tests.nodes.node_inference_credentials.fakes import (
     FakeReadModel,
 )
 from tests.nodes.node_usage_privileges.fakes import FakeUsagePrivilegeRepository
+from tests.nodes.node_workflow_contract_catalog_effect.catalog_fixtures import (
+    CountingCatalog,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -137,6 +146,15 @@ def _assert_int_counter(fake: Any) -> None:
 
 def _assert_reader_calls(fake: InMemoryTenantProjectionReader) -> None:
     assert fake.calls == []
+
+
+def _assert_catalog_served(body: Any, fake: CountingCatalog) -> None:
+    assert len(body["contracts"]) == 1
+    assert fake.reads == 1
+
+
+def _assert_catalog_no_read(fake: CountingCatalog) -> None:
+    assert fake.reads == 0
 
 
 @dataclass(frozen=True)
@@ -212,7 +230,42 @@ TENANT_DELEGATIONS = RouteCase(
     bind_local=None,
 )
 
-CASES = [USAGE_PRIVILEGES, INFERENCE_CREDENTIALS, TENANT_SAVINGS, TENANT_DELEGATIONS]
+CATALOG = RouteCase(
+    name="node_workflow_contract_catalog_effect",
+    path="/v1/workflows/contracts",
+    overlay_id="node_workflow_contract_catalog_effect",
+    app_factory=lambda fake: create_catalog_app(catalog=fake),
+    make_fake=lambda: CountingCatalog(
+        (
+            ModelAdvertisedWorkflowContract(
+                workflow_type="delegation-inference",
+                contract_id="node_delegation_orchestrator:0.6.0",
+                payload_schema={
+                    "type": "object",
+                    "required": ["prompt", "task_type"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "prompt": {"type": "string", "minLength": 1},
+                        "task_type": {"type": "string"},
+                    },
+                },
+            ),
+        )
+    ),
+    assert_served=_assert_catalog_served,
+    assert_no_read=_assert_catalog_no_read,
+    unauthorized_body=_credential_unauthorized,
+    key_down_detail=UNCONFIGURED_DETAIL,
+    bind_local=None,
+)
+
+CASES = [
+    USAGE_PRIVILEGES,
+    INFERENCE_CREDENTIALS,
+    TENANT_SAVINGS,
+    TENANT_DELEGATIONS,
+    CATALOG,
+]
 LOCAL_BINDING_CASES = [case for case in CASES if case.bind_local is not None]
 CASE_IDS = [case.name for case in CASES]
 

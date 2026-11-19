@@ -1,0 +1,42 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-24328"
+title: "Let the runtime read the Claude account pool status"
+summary: "ModelRotationOverlay, the model that reads the Claude token pool node's overlay file, gains an optional event_bus block of the shared bus-binding shape (ModelNodeEventBus). The overlay model refuses every key it does not know, and onex run-node reads the same file for its broker, so the overlays repository cannot declare the bus for the pool node until this model accepts the key and every pool host runs it. The tick never reads the block."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "topics"
+requirements:
+  - id: "req-omn24328-pool-overlay-event-bus"
+    statement: |-
+      The pool node's overlay model accepts the optional bus block that onex run-node reads from the same file.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the pool's overlay model accepts an optional bus setting and still refuses any other unknown key, and a bus setting of type kafka without a lane is refused -- falsifier: pytest tests/nodes/node_claude_token_pool_effect/test_overlay_event_bus.py -q fails at the base, where the overlay model refuses the key"
+      - id: "AC4"
+        statement: "AC4: integrated, read on h053 once the overlays file declares the bus and the branch revision is installed: onex run-node node_claude_token_pool_effect with the status operation no longer answers ModelNodeBrokerResolutionError, and returns the pool's state or names the exact missing consumer, and the rotation tick still exits 0 -- falsifier: the same run-node call on h053 before the change answers ModelNodeBrokerResolutionError, and the tick's last-run record shows a nonzero exit_code after the overlays file declares the bus without this model change"
+evidence_requirements:
+  - kind: "tests"
+    description: "The overlay event_bus tests, with the golden load through the overlay roots, the error load of a broken block and the seam against the shared bus-binding model."
+    command: "uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_overlay_event_bus.py -q --no-cov -n 0 -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn24328-overlay-event-bus"
+    description: "The overlay event_bus tests pass at the head; with the model file of origin/dev put back they fail (the failing control)."
+    source: "manual"
+    binds_ac: ["AC1", "AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_overlay_event_bus.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
+  - id: "dod-omn24328-integration-proof"
+    description: "Run the overlay event_bus tests and the pool node's tick tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion: the runtime reading (AC4) is read on h053 after the overlays file and this revision are installed."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-24328 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_claude_token_pool_effect/test_overlay_event_bus.py tests/nodes/node_claude_token_pool_effect/test_claude_token_rotation_tick.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "."

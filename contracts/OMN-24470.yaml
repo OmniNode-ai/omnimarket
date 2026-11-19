@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-24470
+title: The board's work-log read finishes inside its step limit
+summary: The factory floor step's ledger window read read each cache-missing split archive one after another (a subprocess of the ledger reader per archive, 1 to 2 s each) and stored each with the source read cache's 1800 s backstop, so all archive entries expired together every 30 minutes and the whole set was read again serially, past the 45 s step limit of the Mac publisher. The source read cache reader gains read_many, which looks every archive up in the calling thread, reads the misses at most read_workers at a time and stores each as it finishes (a step cut short keeps what it read), and a per-store time-to-live; the archive window overlay block gains read_workers and cache_ttl_seconds, both absent meaning the old behaviour. The overlays side (the two values and the pin) is a separate pull request of the same ticket. Not in this change - the projection replacement of the file ledger read, which the board-rev3 plan owns, and the installation on the Mac publisher (AC4).
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24470-window-read
+  statement: The ledger window read reads cache-missing archives in parallel with a bound from the overlay and keeps each archive for a time from the overlay, so the board step finishes inside its limit; the rows returned are unchanged.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a ledger window read of 29 archives with an empty cache finishes inside 2 seconds on a reader that takes 0.2 seconds per archive when the overlay names 8 workers, where the one-by-one read takes over 5 seconds, and the rows equal the one-by-one read -- falsifier: pytest tests/nodes/node_factory_floor_effect/test_ledger_window_by_archive.py -q"
+  - id: AC2
+    statement: "AC2: a cached archive is kept for the time the caller names and not for the cache's backstop, a batch cut short keeps what it read, and a failing fetch propagates -- falsifier: pytest tests/nodes/node_source_read_cache_effect/test_cached_source_reader.py -q"
+  - id: AC3
+    statement: "AC3: the overlay names the worker count and the archive time-to-live, the model reads both from it, an absent value reads as before and zero is refused -- falsifier: pytest tests/nodes/node_factory_floor_effect/test_ledger_window_by_archive.py -q -k overlay"
+  - id: AC4
+    statement: "AC4: integrated: after the change is installed on the Mac publisher, the factory floor step finishes inside its 45 second limit and a board publish succeeds -- falsifier: read the publisher's next cycle: a refused cycle naming factory_floor as over its limit fails this"
+evidence_requirements:
+- kind: tests
+  description: The cache reader tests and the ledger window tests at the pushed head; the 29-archive timing test fails (6.0 s against 2.0 s) and the ttl test fails when the window handler is the one before this change.
+  command: uv run pytest tests/nodes/node_source_read_cache_effect tests/nodes/node_factory_floor_effect/test_ledger_window_by_archive.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24470-ac1
+  description: 'AC1: the 29-archive window read tests pass with the change; against the window handler before it the timing test fails (6.0 s read serially).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_effect/test_ledger_window_by_archive.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24470-ac2
+  description: 'AC2: the read_many and ttl tests of the cache reader pass with the change.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_source_read_cache_effect/test_cached_source_reader.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24470-ac3
+  description: 'AC3: the overlay model tests for the two new values pass.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_effect/test_ledger_window_by_archive.py -q -n 0 --no-cov -p no:cacheprovider -k overlay
+    cwd: .
+- id: dod-omn24470-integration-proof
+  description: 'AC4 lab proxy: the cache reader and ledger window tests run on a lab host at the pushed head; the Mac publisher cycle (the factory_floor step under its 45 s limit after the install) is read by the orchestrator after the install and is not claimed by this local check'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24470 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_source_read_cache_effect tests/nodes/node_factory_floor_effect/test_ledger_window_by_archive.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24470-ac4-hosted-proxy
+  description: 'hosted proxy for AC4: the 29-archive window read through the real cache reader finishes inside its stated budget; the Mac publisher cycle itself is read by the unbound integration proof item above.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_effect/test_ledger_window_by_archive.py -q -n 0 --no-cov -p no:cacheprovider -k read_workers
+    cwd: .

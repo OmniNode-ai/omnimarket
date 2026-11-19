@@ -53,6 +53,8 @@ class EnumGithubGatewayOperation(StrEnum):
     PR_HEADS = "pr_heads"
     # OMN-21146
     COMMIT_CHECK_RUNS = "commit_check_runs"
+    # The statuses posted on a commit (the review gate's fable-review-gate is one).
+    COMMIT_STATUSES = "commit_statuses"
     MERGED_PR = "merged_pr"
     # The review threads of a PR, with the resolved state only GraphQL reports.
     PR_REVIEW_THREADS = "pr_review_threads"
@@ -61,6 +63,8 @@ class EnumGithubGatewayOperation(StrEnum):
     OPEN_PR_FACTS = "open_pr_facts"
     # OMN-24187: one file's text at one commit (the contents API); dod_verify's read of a contract at a PR head the clone does not hold.
     REPO_FILE = "repo_file"
+    # The open code-scanning alerts of one ref: a pull request's merge ref or a branch.
+    CODE_SCANNING_ALERTS = "code_scanning_alerts"
 
 
 # Operations that read one job's log and take its window fields.
@@ -117,7 +121,10 @@ class ModelGithubGatewayRequest(BaseModel):
     )
     pr_number: int | None = Field(
         default=None,
-        description="PR number; required for PR-scoped operations, ignored otherwise.",
+        description=(
+            "PR number; required for PR-scoped operations; code_scanning_alerts reads "
+            "that pull request's merge ref (give this or branch, not both); ignored otherwise."
+        ),
         gt=0,
     )
     run_id: int | None = Field(
@@ -146,14 +153,17 @@ class ModelGithubGatewayRequest(BaseModel):
     branch: str | None = Field(
         default=None,
         min_length=1,
-        description="workflow_runs: runs on this branch; pr_heads: PRs from this head branch.",
+        description=(
+            "workflow_runs: runs on this branch; pr_heads: PRs from this head branch; "
+            "code_scanning_alerts: alerts on this branch (give this or pr_number, not both)."
+        ),
     )
     head_sha: str | None = Field(
         default=None,
         pattern=r"^[0-9a-f]{40}$",
         description=(
             "workflow_runs: runs at this head commit; pr_heads: PRs whose head is this commit; "
-            "commit_check_runs: required commit to read."
+            "commit_check_runs and commit_statuses: required commit to read."
         ),
     )
     check_name: str | None = Field(
@@ -268,6 +278,18 @@ class ModelGithubGatewayRequest(BaseModel):
         ):
             raise ValueError(
                 "operation 'commit_check_runs' requires head_sha to be set."
+            )
+        if (
+            self.operation is EnumGithubGatewayOperation.COMMIT_STATUSES
+            and self.head_sha is None
+        ):
+            raise ValueError("operation 'commit_statuses' requires head_sha to be set.")
+        if self.operation is EnumGithubGatewayOperation.CODE_SCANNING_ALERTS and (
+            self.pr_number is None
+        ) == (self.branch is None):
+            raise ValueError(
+                "operation 'code_scanning_alerts' requires exactly one of "
+                "pr_number and branch to be set."
             )
         if (
             self.artifact_id is not None
@@ -784,6 +806,68 @@ class ModelCommitCheckRunsResult(_ModelBoundedList):
     check_runs: list[ModelCheckRun] = Field(default_factory=list)
 
 
+class ModelCommitStatus(BaseModel):
+    """One commit status posted on a commit."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: int
+    context: str
+    state: str
+    target_url: str | None = None
+    description: str | None = None
+    created_at: str | None = None
+
+
+class ModelCommitStatusesResult(_ModelBoundedList):
+    """The statuses posted on a commit, newest first (replaces ``gh api repos/<r>/commits/<sha>/statuses``)."""
+
+    operation: Literal["commit_statuses"] = "commit_statuses"
+    repo: str
+    head_sha: str
+    statuses: list[ModelCommitStatus] = Field(default_factory=list)
+
+
+class ModelCodeScanningAlert(BaseModel):
+    """One open code-scanning alert: its rule, severity and the place it was found."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    number: int = Field(..., gt=0)
+    rule_id: str
+    severity: str | None = None
+    security_severity: str | None = None
+    path: str | None = None
+    line: int | None = None
+    html_url: str | None = None
+
+
+class ModelCodeScanningAlertsResult(_ModelBoundedList):
+    """The open code-scanning alerts of one ref (replaces ``gh api .../code-scanning/alerts``).
+
+    A repository with no analysis for the ref, with scanning off, or whose token
+    cannot read alerts is an ``available=False`` answer that names the reason; it
+    is not an error and it carries no alerts.
+    """
+
+    operation: Literal["code_scanning_alerts"] = "code_scanning_alerts"
+    repo: str
+    ref: str
+    available: bool
+    unavailable_reason: Literal["no_analysis", "not_enabled", "forbidden"] | None = None
+    alerts: list[ModelCodeScanningAlert] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _reason_matches_availability(self) -> ModelCodeScanningAlertsResult:
+        if self.available and self.unavailable_reason is not None:
+            raise ValueError("an available answer carries no unavailable_reason.")
+        if not self.available and self.unavailable_reason is None:
+            raise ValueError("an unavailable answer names its unavailable_reason.")
+        if not self.available and self.alerts:
+            raise ValueError("an unavailable answer carries no alerts.")
+        return self
+
+
 class ModelRepoFileResult(BaseModel):
     """One file's text at one commit, read through the contents API."""
 
@@ -916,8 +1000,10 @@ GithubGatewayResult = Annotated[
     | ModelReleasesResult
     | ModelPrHeadsResult
     | ModelCommitCheckRunsResult
+    | ModelCommitStatusesResult
     | ModelMergedPrResult
     | ModelRepoFileResult
+    | ModelCodeScanningAlertsResult
     | ModelPrReviewThreadsResult
     | ModelOpenPrFactsResult,
     Field(discriminator="operation"),
@@ -955,7 +1041,11 @@ __all__: list[str] = [
     "ModelCheckContext",
     "ModelCheckRun",
     "ModelCiChecksResult",
+    "ModelCodeScanningAlert",
+    "ModelCodeScanningAlertsResult",
     "ModelCommitCheckRunsResult",
+    "ModelCommitStatus",
+    "ModelCommitStatusesResult",
     "ModelGithubGatewayRequest",
     "ModelGithubGatewayResponse",
     "ModelJobLogFillResult",

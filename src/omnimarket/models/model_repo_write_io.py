@@ -24,7 +24,20 @@ or one failed result. Each operation replaces one ``gh`` verb a lane ran:
   ``gh variable get`` with the /actions/variables calls. The variable's value is
   never on the request: it is read from the file the node's overlay declares for
   the allowed name, and repository variables are never secrets.
+- runner_list / runner_remove replace ``gh api /orgs/{o}/actions/runners`` /
+  ``gh api --method DELETE /orgs/{o}/actions/runners/{id}``. The organizations
+  and runner names a lane may act on are only the overlay's runner_removals
+  entries; no runner name is in code.
+- runner_group_get replaces ``gh api --method GET /orgs/{o}/actions/runner-groups/{id}``:
+  it reads one runner group's settings and repositories. The organization and
+  group id it may read are only the overlay's runner_group_reads entries.
 - check_run_create posts a check result to /check-runs.
+- commit_status_create posts one commit status to /statuses/{sha} for the single
+  declared review-gate context, with a state of success or failure and the
+  verdict link; a token can post a status where it cannot create a check run.
+- required_context_apply adds one required status-check context to a branch's
+  protection, only for a (repository, branch, context) the node's overlay
+  allowlists.
 - workflow_dispatch replaces ``gh workflow run`` with
   POST /actions/workflows/{w}/dispatches.
 """
@@ -67,10 +80,16 @@ MAX_DISPATCH_INPUTS = 10
 MAX_LABEL_CHARS = 50
 MAX_VARIABLE_CHARS = 48_000
 
+#: The one commit-status context a commit_status_create may post: the review gate's.
+COMMIT_STATUS_CONTEXT = "fable-review-gate"
+#: The states a commit_status_create may carry; GitHub's pending and error are refused.
+COMMIT_STATUS_STATES = ("success", "failure")
+
 _SHA = r"^[0-9a-f]{40}$"
 _REF = r"^[A-Za-z0-9._/-]+$"
 _LABEL = r"^[A-Za-z0-9][A-Za-z0-9 ._:/-]*$"
 _VARIABLE_NAME = r"^[A-Za-z_][A-Za-z0-9_]{0,99}$"
+_RUNNER_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
 
 
 class EnumRepoWriteOperation(StrEnum):
@@ -87,8 +106,13 @@ class EnumRepoWriteOperation(StrEnum):
     PR_LABEL = "pr_label"
     REPO_VARIABLE_SET = "repo_variable_set"
     REPO_VARIABLE_GET = "repo_variable_get"
+    RUNNER_LIST = "runner_list"
+    RUNNER_REMOVE = "runner_remove"
+    RUNNER_GROUP_GET = "runner_group_get"
     WORKFLOW_DISPATCH = "workflow_dispatch"
     CHECK_RUN_CREATE = "check_run_create"
+    COMMIT_STATUS_CREATE = "commit_status_create"
+    REQUIRED_CONTEXT_APPLY = "required_context_apply"
 
 
 #: Fields only one operation reads. Every other operation's serialized request
@@ -103,10 +127,23 @@ _OPERATION_ONLY_FIELDS: Final[dict[EnumRepoWriteOperation, tuple[str, ...]]] = {
         "conclusion",
         "output",
     ),
+    EnumRepoWriteOperation.COMMIT_STATUS_CREATE: (
+        "commit_sha",
+        "status_context",
+        "status_state",
+        "status_target_url",
+        "status_description",
+    ),
+    EnumRepoWriteOperation.REQUIRED_CONTEXT_APPLY: (
+        "protected_branch",
+        "required_context",
+    ),
     EnumRepoWriteOperation.PR_CREATE: ("replaces",),
     EnumRepoWriteOperation.PR_THREAD_REPLY: ("thread_comment_id",),
     EnumRepoWriteOperation.PR_THREAD_RESOLVE: ("review_thread_id",),
     EnumRepoWriteOperation.PR_LABEL: ("add_labels", "remove_labels"),
+    EnumRepoWriteOperation.RUNNER_REMOVE: ("runner_name",),
+    EnumRepoWriteOperation.RUNNER_GROUP_GET: ("runner_group_id",),
 }
 
 
@@ -130,8 +167,11 @@ class EnumRepoWriteRefusal(StrEnum):
     NOT_FOUND = "not_found"
     THREAD_NOT_REPLIED = "thread_not_replied"
     LABEL_NOT_ALLOWED = "label_not_allowed"
+    REQUIRED_CONTEXT_NOT_ALLOWED = "required_context_not_allowed"
     VARIABLE_NOT_ALLOWED = "variable_not_allowed"
     VARIABLE_SOURCE_UNREADABLE = "variable_source_unreadable"
+    RUNNER_NOT_ALLOWED = "runner_not_allowed"
+    RUNNER_ONLINE = "runner_online"
     SECRET_REFUSED = "secret_refused"
     GITHUB_REFUSED = "github_refused"
     CREDENTIAL_UNAVAILABLE = "credential_unavailable"
@@ -220,6 +260,24 @@ class ModelCheckRunOutput(BaseModel):
     summary: str = Field(max_length=MAX_BODY_CHARS)
 
 
+class ModelRepoWriteRunner(BaseModel):
+    """One self-hosted runner an organization has registered on GitHub.
+
+    ``runner_list`` answers with these; ``runner_remove`` finds the one it
+    removes among them. Names are not secret.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: int = Field(gt=0, description="The id the DELETE endpoint names.")
+    name: str = Field(min_length=1, description="The runner's registered name.")
+    status: str = Field(
+        min_length=1,
+        description="GitHub's registration status: online, offline, ...",
+    )
+    busy: bool = Field(description="True while the runner is running a job.")
+
+
 class ModelRepoWriteRequest(BaseModel):
     """One write operation against one repository."""
 
@@ -298,6 +356,45 @@ class ModelRepoWriteRequest(BaseModel):
         | None
     ) = None
     output: ModelCheckRunOutput | None = None
+    commit_sha: str | None = Field(
+        default=None,
+        pattern=_SHA,
+        description="commit_status_create: the full commit sha the status is on; "
+        "an empty or short sha is refused.",
+    )
+    status_context: Literal["fable-review-gate"] | None = Field(
+        default=None,
+        description="commit_status_create: the status context; only the review "
+        "gate's fable-review-gate is accepted.",
+    )
+    status_state: Literal["success", "failure"] | None = Field(
+        default=None,
+        description="commit_status_create: success or failure; any other state "
+        "is refused.",
+    )
+    status_target_url: str | None = Field(
+        default=None,
+        pattern=r"^https://\S+$",
+        max_length=2048,
+        description="commit_status_create: the link to the verdict.",
+    )
+    status_description: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=140,
+        description="commit_status_create: GitHub holds at most 140 characters.",
+    )
+    protected_branch: str | None = Field(
+        default=None,
+        pattern=_REF,
+        description="required_context_apply: the branch whose protection gains the context.",
+    )
+    required_context: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="required_context_apply: the status-check context to require.",
+    )
     thread_comment_id: int | None = Field(
         default=None,
         gt=0,
@@ -327,6 +424,21 @@ class ModelRepoWriteRequest(BaseModel):
         description="repo_variable_set / repo_variable_get: the repository "
         "variable's name; its value is never on the request, it comes from the "
         "overlay's declared source.",
+    )
+    runner_name: str | None = Field(
+        default=None,
+        pattern=_RUNNER_NAME,
+        description="runner_remove: the runner's registered name; the pair "
+        "(repository's organization, runner_name) must be an entry of the "
+        "overlay's runner_removals, and the runner must be offline and idle "
+        "before it is deleted.",
+    )
+    runner_group_id: int | None = Field(
+        default=None,
+        gt=0,
+        description="runner_group_get: the runner group's id; the pair "
+        "(repository's organization, runner_group_id) must be an entry of the "
+        "overlay's runner_group_reads.",
     )
     replaces: tuple[str, ...] | None = Field(
         default=None,
@@ -431,6 +543,18 @@ class ModelRepoWriteRequest(BaseModel):
             raise ValueError(
                 "variable_name is read only by repo_variable_set and repo_variable_get"
             )
+        if (
+            op is not EnumRepoWriteOperation.RUNNER_GROUP_GET
+            and self.runner_group_id is not None
+        ):
+            raise ValueError("runner_group_id is read only by runner_group_get")
+        if op is EnumRepoWriteOperation.RUNNER_REMOVE and self.runner_name is None:
+            missing.append("runner_name")
+        if (
+            op is EnumRepoWriteOperation.RUNNER_GROUP_GET
+            and self.runner_group_id is None
+        ):
+            missing.append("runner_group_id")
         if op is EnumRepoWriteOperation.WORKFLOW_DISPATCH:
             missing += [
                 n
@@ -453,6 +577,26 @@ class ModelRepoWriteRequest(BaseModel):
                 raise ValueError(
                     "check_run_create conclusion requires status completed"
                 )
+        if op is EnumRepoWriteOperation.COMMIT_STATUS_CREATE:
+            missing += [
+                n
+                for n, v in (
+                    ("commit_sha", self.commit_sha),
+                    ("status_context", self.status_context),
+                    ("status_state", self.status_state),
+                    ("status_target_url", self.status_target_url),
+                )
+                if v is None
+            ]
+        if op is EnumRepoWriteOperation.REQUIRED_CONTEXT_APPLY:
+            missing += [
+                n
+                for n, v in (
+                    ("protected_branch", self.protected_branch),
+                    ("required_context", self.required_context),
+                )
+                if v is None
+            ]
         for owner, names in _OPERATION_ONLY_FIELDS.items():
             if op is not owner and any(getattr(self, n) is not None for n in names):
                 raise ValueError(f"{', '.join(names)} are read only by {owner.value}")
@@ -515,6 +659,19 @@ class _ModelRepoWriteResultBase(BaseModel):
     quota: ModelGithubQuotaReading | None = None
 
 
+class ModelRepoWriteRunnerGroup(BaseModel):
+    """The runner group a runner_group_get read returned."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: int
+    name: str
+    allows_public_repositories: bool
+    restricted_to_selected_workflows: bool
+    selected_workflows: tuple[str, ...]
+    repositories: tuple[str, ...]
+
+
 class ModelRepoWriteCompleted(_ModelRepoWriteResultBase):
     """The write ran (or, in dry_run, the calls it would make)."""
 
@@ -530,6 +687,16 @@ class ModelRepoWriteCompleted(_ModelRepoWriteResultBase):
     comment_id: int | None = None
     review_id: int | None = Field(default=None, gt=0)
     check_run_id: int | None = Field(default=None, gt=0)
+    commit_status_id: int | None = Field(
+        default=None,
+        gt=0,
+        description="commit_status_create only: the id of the status GitHub created.",
+    )
+    required_context_applied: bool | None = Field(
+        default=None,
+        description="required_context_apply only: True after the context was added, "
+        "False (with replayed) when the branch already required it.",
+    )
     variable_name: str | None = None
     variable_value: str | None = Field(
         default=None, description="repo_variable_get only; variables are non-secret."
@@ -541,6 +708,25 @@ class ModelRepoWriteCompleted(_ModelRepoWriteResultBase):
         default=None,
         description="repo_variable_get: the value equals the declared source's; "
         "None when the source cannot be read.",
+    )
+    runners: tuple[ModelRepoWriteRunner, ...] | None = Field(
+        default=None,
+        description="runner_list only: every self-hosted runner the "
+        "organization has registered; names are not secret.",
+    )
+    runner_name: str | None = Field(
+        default=None,
+        description="runner_remove only: the name the command asked to remove.",
+    )
+    runner_removed: bool | None = Field(
+        default=None,
+        description="runner_remove only: False (with replayed) when no runner "
+        "of that name was registered, True after the DELETE.",
+    )
+    runner_group: ModelRepoWriteRunnerGroup | None = Field(
+        default=None,
+        description="runner_group_get only: the runner group, its settings and "
+        "its repositories, as the organization reports them.",
     )
 
 
@@ -586,5 +772,7 @@ __all__: list[str] = [
     "ModelRepoWriteCompleted",
     "ModelRepoWriteFailed",
     "ModelRepoWriteRequest",
+    "ModelRepoWriteRunner",
+    "ModelRepoWriteRunnerGroup",
     "parse_claim_stamp",
 ]

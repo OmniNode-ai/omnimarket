@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_hook_lane_trace_compute
+version: "0.1.0"
+description: "One lane's completed calls with their full stored output and a typed label, ending in an outcomes line"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_hook_lane_trace_compute: "omnimarket.nodes.node_hook_lane_trace_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "hooks", "tool-outcome", "lane-trace", "pure"]
+pack: "core"
+display_name: "Hook Lane Trace Compute"
+node_role: "compute"

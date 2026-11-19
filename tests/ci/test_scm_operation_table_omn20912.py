@@ -36,6 +36,8 @@ _WRITE_CONTRACT = (
     _ROOT / "src/omnimarket/nodes/node_github_repo_write_effect/contract.yaml"
 )
 _DISPATCH = _ROOT / "src/omnimarket/handlers/scm/handler_scm_dispatch.py"
+#: The verbs declared outside the dispatch module (a baselined file that only shrinks) are read as part of its table.
+_DECLARED_OUTSIDE = _ROOT / "src/omnimarket/handlers/scm/scm_status_write_verbs.py"
 _HOOK_ID = "scm-operation-table"
 _THIS_TEST = "tests/ci/test_scm_operation_table_omn20912.py"
 
@@ -48,12 +50,17 @@ LANE_WRITES: dict[str, str] = {
     "pr comment": "pr_comment",
     "workflow run": "workflow_dispatch",
     "api --method POST /repos/{o}/{r}/check-runs": "check_run_create",
+    "api --method POST /repos/{o}/{r}/statuses/{sha}": "commit_status_create",
+    "api --method POST /repos/{o}/{r}/branches/{b}/protection/required_status_checks/contexts": "required_context_apply",
     "api --method POST /repos/{o}/{r}/pulls/{n}/comments/{id}/replies": "pr_thread_reply",
     "api graphql resolveReviewThread": "pr_thread_resolve",
     "api --method POST /repos/{o}/{r}/pulls/{n}/reviews": "pr_review_post",
     "api --method POST /repos/{o}/{r}/issues/{n}/labels": "pr_label",
     "variable set": "repo_variable_set",
     "variable get": "repo_variable_get",
+    "api --method GET /orgs/{o}/actions/runners": "runner_list",
+    "api --method DELETE /orgs/{o}/actions/runners/{id}": "runner_remove",
+    "api --method GET /orgs/{o}/actions/runner-groups/{id}": "runner_group_get",
 }
 _REGISTRY_OWNER = "OmniNode-ai"
 
@@ -117,8 +124,12 @@ def table_violations(contract: Mapping[str, Any], dispatch_source: str) -> list[
 
 
 def _tree() -> tuple[dict[str, Any], str]:
-    return yaml.safe_load(_WRITE_CONTRACT.read_text("utf-8")), _DISPATCH.read_text(
-        "utf-8"
+    outside = _DECLARED_OUTSIDE.read_text("utf-8").replace(
+        "from __future__ import annotations\n", ""
+    )
+    return (
+        yaml.safe_load(_WRITE_CONTRACT.read_text("utf-8")),
+        _DISPATCH.read_text("utf-8") + "\n" + outside,
     )
 
 
