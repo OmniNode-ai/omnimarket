@@ -83,7 +83,7 @@ def _group_body(**over: object) -> dict[str, Any]:
         "id": _GROUP,
         "name": "example-group",
         "allows_public_repositories": False,
-        "restricted_to_selected_workflows": True,
+        "restricted_to_workflows": True,
         "selected_workflows": [_WORKFLOW],
         **over,
     }
@@ -171,7 +171,7 @@ async def test_a_named_group_is_read_with_its_repositories() -> None:
     assert group is not None
     assert (group.id, group.name) == (_GROUP, "example-group")
     assert group.allows_public_repositories is False
-    assert group.restricted_to_selected_workflows is True
+    assert group.restricted_to_workflows is True
     assert group.selected_workflows == (_WORKFLOW,)
     assert group.repositories == (f"{_ORG}/example-repo-0", f"{_ORG}/example-repo-1")
     assert fake.sent == [_GROUP_REQUEST, _PAGE_1]
@@ -243,6 +243,69 @@ async def test_a_body_without_the_exposure_fields_is_refused_not_defaulted() -> 
     ).handle(_request())
     assert isinstance(result, ModelRepoWriteFailed), result
     assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+
+
+# The retired flag name, built from two literals joined by an explicit plus so that a search of src/
+# and tests/ for the whole name stays empty: any other hit is a reader or a fixture the rename missed.
+_RETIRED_FLAG = "restricted_to_selected" + "_workflows"
+
+
+async def test_a_body_carrying_only_the_old_flag_name_is_refused() -> None:
+    """GitHub names the flag restricted_to_workflows; the old key is not a field."""
+    body = {
+        "id": _GROUP,
+        "name": "example-group",
+        "allows_public_repositories": False,
+        _RETIRED_FLAG: True,
+        "selected_workflows": [_WORKFLOW],
+    }
+    fake = _Fake([(_GROUP_REQUEST, _ok(body)), (_PAGE_1, _ok(_repos(0)))])
+    result = await _handler(
+        fake, _overlay(ModelRunnerGroupEntry(organization=_ORG, group_id=_GROUP))
+    ).handle(_request())
+    assert isinstance(result, ModelRepoWriteFailed), result
+    assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+    assert "restricted_to_workflows" in result.detail
+
+
+async def test_a_null_restriction_flag_is_refused_not_read_as_false() -> None:
+    fake = _Fake(
+        [
+            (_GROUP_REQUEST, _ok(_group_body(restricted_to_workflows=None))),
+            (_PAGE_1, _ok(_repos(0))),
+        ]
+    )
+    result = await _handler(
+        fake, _overlay(ModelRunnerGroupEntry(organization=_ORG, group_id=_GROUP))
+    ).handle(_request())
+    assert isinstance(result, ModelRepoWriteFailed), result
+    assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+    assert "restricted_to_workflows" in result.detail
+
+
+async def test_a_restricted_group_without_its_pinned_list_is_refused() -> None:
+    body = _group_body()
+    del body["selected_workflows"]
+    fake = _Fake([(_GROUP_REQUEST, _ok(body)), (_PAGE_1, _ok(_repos(0)))])
+    result = await _handler(
+        fake, _overlay(ModelRunnerGroupEntry(organization=_ORG, group_id=_GROUP))
+    ).handle(_request())
+    assert isinstance(result, ModelRepoWriteFailed), result
+    assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+    assert "selected_workflows" in result.detail
+
+
+async def test_an_unrestricted_group_may_omit_the_pinned_list() -> None:
+    body = _group_body(restricted_to_workflows=False)
+    del body["selected_workflows"]
+    fake = _Fake([(_GROUP_REQUEST, _ok(body)), (_PAGE_1, _ok(_repos(0)))])
+    result = await _handler(
+        fake, _overlay(ModelRunnerGroupEntry(organization=_ORG, group_id=_GROUP))
+    ).handle(_request())
+    assert isinstance(result, ModelRepoWriteCompleted), result
+    assert result.runner_group is not None
+    assert result.runner_group.restricted_to_workflows is False
+    assert result.runner_group.selected_workflows == ()
 
 
 async def test_dry_run_plans_only_the_group_read() -> None:

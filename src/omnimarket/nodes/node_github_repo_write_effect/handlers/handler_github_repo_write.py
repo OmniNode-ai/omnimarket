@@ -1558,7 +1558,7 @@ async def _runner_group_get(run: _Run) -> ModelRepoWriteCompleted:
         page += 1
     name = meta.get("name")
     allows_public = meta.get("allows_public_repositories")
-    restricted = meta.get("restricted_to_selected_workflows")
+    restricted = meta.get("restricted_to_workflows")
     selected = meta.get("selected_workflows")
     if (
         not isinstance(name, str)
@@ -1568,14 +1568,22 @@ async def _runner_group_get(run: _Run) -> ModelRepoWriteCompleted:
         raise run.refused(
             EnumRepoWriteRefusal.GITHUB_REFUSED,
             f"runner group {group_id} on {organization} answered a body without "
-            "name, allows_public_repositories and restricted_to_selected_workflows",
+            "name, allows_public_repositories and restricted_to_workflows",
+        )
+    if restricted and not isinstance(selected, list):
+        # A restricted group whose pinned list is absent is a half-read group: with no list
+        # the verdict would read it as pinning nothing, which can read as unexposed.
+        raise run.refused(
+            EnumRepoWriteRefusal.GITHUB_REFUSED,
+            f"runner group {group_id} on {organization} is restricted to workflows "
+            "but answered a body without a selected_workflows list",
         )
     return run.completed(
         runner_group=ModelRepoWriteRunnerGroup(
             id=group_id,
             name=name,
             allows_public_repositories=allows_public,
-            restricted_to_selected_workflows=restricted,
+            restricted_to_workflows=restricted,
             selected_workflows=tuple(
                 str(w) for w in (selected if isinstance(selected, list) else ())
             ),

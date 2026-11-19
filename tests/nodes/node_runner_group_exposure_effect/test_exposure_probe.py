@@ -6,10 +6,11 @@ both overlays (the in-memory source and the GitHub source against a local HTTP f
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import logging
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -32,6 +33,10 @@ from omnimarket.nodes.node_runner_group_exposure_compute.handlers.handler_runner
     SUBJECT_READ_AGE,
     SUBJECTS,
 )
+from omnimarket.nodes.node_runner_group_exposure_effect.adapters.github_group_source import (
+    GithubGroupSource,
+    _StopError,
+)
 from omnimarket.nodes.node_runner_group_exposure_effect.handlers.handler_exposure_probe import (
     HandlerExposureProbe,
     load_topics,
@@ -42,6 +47,7 @@ from omnimarket.nodes.node_runner_group_exposure_effect.models.model_exposure_pr
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.overlay import (
     NODE_NAME,
+    ModelGithubSource,
     load_overlay,
 )
 from tests.node_overlay_support import install_node_overlay
@@ -78,6 +84,8 @@ class Scenario:
     listing_status: int = 200
     read_age_seconds: int = 60
     read_failure: str | None = None
+    group_body: dict[str, object] | None = None
+    """When set, the organization endpoint serves this body verbatim for the group."""
 
 
 def _workflow_text(triggers: list[str]) -> str:
@@ -114,11 +122,13 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/orgs/example-org/actions/runner-groups/7":
             if s.group_status != 200:
                 return self._send(s.group_status, {"message": "refused"})
+            if s.group_body is not None:
+                return self._send(200, s.group_body)
             return self._send(
                 200,
                 {
                     "allows_public_repositories": s.allows_public,
-                    "restricted_to_selected_workflows": s.restricted,
+                    "restricted_to_workflows": s.restricted,
                     "selected_workflows": s.selected,
                 },
             )
@@ -152,16 +162,25 @@ class _Handler(BaseHTTPRequestHandler):
         return self._send(404, {"message": "not found"})
 
 
-@pytest.fixture
-def server() -> Iterator[_Server]:
+@contextlib.contextmanager
+def _own_server() -> Iterator[_Server]:
+    """One fixture server with its own scenario and auth log; stopped on exit."""
     httpd = _Server(("127.0.0.1", 0), _Handler)
     httpd.scenario = Scenario()
     httpd.seen_auth = []
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
-    yield httpd
-    httpd.shutdown()
-    httpd.server_close()
+    try:
+        yield httpd
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+@pytest.fixture
+def server() -> Iterator[_Server]:
+    with _own_server() as httpd:
+        yield httpd
 
 
 def _fixture(s: Scenario) -> dict[str, object]:
@@ -333,6 +352,223 @@ def test_error_chain_a_broken_workflow_listing_reads_unreadable(
     scenario = Scenario(listing_status=500)
     result = _run(_probe("github", scenario, server, tmp_path, monkeypatch))
     _assert_unknown(result, EnumExposureReadFailure.UNREADABLE)
+
+
+# The retired flag name, built from two literals joined by an explicit plus so that a search of src/
+# and tests/ for the whole name stays empty: any other hit is a reader or a fixture the rename missed.
+_RETIRED_FLAG = "restricted_to_selected" + "_workflows"
+
+
+def _group_body_with(**over: object) -> dict[str, object]:
+    body: dict[str, object] = {
+        "allows_public_repositories": False,
+        "restricted_to_workflows": True,
+        "selected_workflows": [IDENTITY],
+    }
+    body.update(over)
+    return body
+
+
+def _assert_group_body_path_reads_working(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The positive control: the group_body path itself reads a well-formed body as WORKING.
+
+    Without it a group_body path that read UNREADABLE for any other reason would let every
+    refusal test below pass vacuously. It runs on its own server and its own overlay root, so the
+    refusal probe that follows shares no server state and no overlay file with it.
+    """
+    with _own_server() as control_server:
+        clean = _run(
+            _probe(
+                "github",
+                Scenario(group_body=_group_body_with()),
+                control_server,
+                tmp_path / "control",
+                monkeypatch,
+            )
+        )
+    assert clean.reading.verdict is EnumReadingVerdict.WORKING
+
+
+def test_error_chain_a_body_with_only_the_old_flag_name_reads_unreadable(
+    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitHub names the flag restricted_to_workflows; the old key alone is refused (KeyError)."""
+    _assert_group_body_path_reads_working(tmp_path, monkeypatch)
+    body = _group_body_with()
+    del body["restricted_to_workflows"]
+    body[_RETIRED_FLAG] = True
+    scenario = Scenario(group_body=body)
+    result = _run(_probe("github", scenario, server, tmp_path / "refusal", monkeypatch))
+    _assert_unknown(result, EnumExposureReadFailure.UNREADABLE)
+
+
+@pytest.mark.parametrize(
+    "flag", ["restricted_to_workflows", "allows_public_repositories"]
+)
+def test_error_chain_a_null_flag_reads_unreadable_not_false(
+    flag: str, server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A flag that is not a real bool is refused (ValueError), never read as False."""
+    _assert_group_body_path_reads_working(tmp_path, monkeypatch)
+    scenario = Scenario(group_body=_group_body_with(**{flag: None}))
+    result = _run(_probe("github", scenario, server, tmp_path / "refusal", monkeypatch))
+    _assert_unknown(result, EnumExposureReadFailure.UNREADABLE)
+
+
+def test_error_chain_a_restricted_group_without_its_pinned_list_reads_unreadable(
+    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A restricted group with no selected_workflows list is half read, never an empty pin."""
+    _assert_group_body_path_reads_working(tmp_path, monkeypatch)
+    body = _group_body_with()
+    del body["selected_workflows"]
+    result = _run(
+        _probe(
+            "github",
+            Scenario(group_body=body),
+            server,
+            tmp_path / "refusal",
+            monkeypatch,
+        )
+    )
+    _assert_unknown(result, EnumExposureReadFailure.UNREADABLE)
+
+
+# -- the direct source's own refusals, asserted by message ---------------------------------------
+# The probe collapses every refusal into UNREADABLE, so the tests above cannot tell the source's
+# own check (a flag that is not a bool, a restricted group with no list) from an unrelated failure,
+# or from ModelRunnerGroupFacts rejecting the same body later. These read the group through the
+# source itself and assert which error it raised and what it said.
+
+
+class _GroupGet:
+    """The group endpoint answers ``meta``; the group's repository listing answers one repository."""
+
+    def __init__(self, meta: dict[str, object]) -> None:
+        self._meta = meta
+
+    def get(
+        self, url: str, headers: Mapping[str, str], timeout: float
+    ) -> tuple[int, bytes]:
+        if url.endswith("/repositories"):
+            return 200, json.dumps({"repositories": [{"full_name": REPO}]}).encode()
+        return 200, json.dumps(self._meta).encode()
+
+
+def _direct_source(meta: dict[str, object]) -> GithubGroupSource:
+    settings = ModelGithubSource(
+        backend="github",
+        api_base="http://127.0.0.1:1",
+        org="example-org",
+        group_id=7,
+        group_labels=("example-private-group",),
+        token_env=TOKEN_ENV,
+        token_mint=None,
+        org_read_permission="example_org_permission_read",
+        max_calls=60,
+        timeout_seconds=5,
+    )
+    return GithubGroupSource(settings, _GroupGet(meta), {TOKEN_ENV: TOKEN_VALUE})
+
+
+def test_the_direct_source_reads_a_well_formed_group_body() -> None:
+    """The positive control of the refusal tests below: the same helpers read a good body."""
+    facts, repositories = _direct_source(_group_body_with())._group()
+    assert facts.restricted_to_workflows is True
+    assert facts.allows_public_repositories is False
+    assert facts.selected_workflows == (IDENTITY,)
+    assert repositories == (REPO,)
+
+
+@pytest.mark.parametrize(
+    ("meta", "error_type", "message"),
+    [
+        pytest.param(
+            _group_body_with(restricted_to_workflows=None),
+            ValueError,
+            "a runner group flag is not a bool",
+            id="null-restricted-flag",
+        ),
+        pytest.param(
+            _group_body_with(allows_public_repositories=None),
+            ValueError,
+            "a runner group flag is not a bool",
+            id="null-allows-public-flag",
+        ),
+        pytest.param(
+            _group_body_with(restricted_to_workflows="false"),
+            ValueError,
+            "a runner group flag is not a bool",
+            id="string-flag-pydantic-would-coerce-to-false",
+        ),
+        pytest.param(
+            _group_body_with(allows_public_repositories=0),
+            ValueError,
+            "a runner group flag is not a bool",
+            id="integer-flag-pydantic-would-coerce-to-false",
+        ),
+        pytest.param(
+            _group_body_with(selected_workflows=None),
+            ValueError,
+            "a restricted runner group has no selected_workflows list",
+            id="restricted-with-null-list",
+        ),
+        pytest.param(
+            _group_body_with(selected_workflows=IDENTITY),
+            ValueError,
+            "a restricted runner group has no selected_workflows list",
+            id="restricted-with-a-string-not-a-list",
+        ),
+    ],
+)
+def test_the_direct_source_refuses_a_half_read_group_with_its_own_message(
+    meta: dict[str, object], error_type: type[Exception], message: str
+) -> None:
+    with pytest.raises(_StopError) as stop:
+        _direct_source(meta)._group()
+    assert stop.value.failure is EnumExposureReadFailure.UNREADABLE
+    cause = stop.value.__cause__
+    assert type(cause) is error_type
+    assert str(cause) == message
+
+
+@pytest.mark.parametrize(
+    "dropped", ["restricted_to_workflows", "allows_public_repositories"]
+)
+def test_the_direct_source_refuses_a_body_missing_a_flag_with_a_key_error(
+    dropped: str,
+) -> None:
+    meta = _group_body_with()
+    del meta[dropped]
+    with pytest.raises(_StopError) as stop:
+        _direct_source(meta)._group()
+    assert stop.value.failure is EnumExposureReadFailure.UNREADABLE
+    assert type(stop.value.__cause__) is KeyError
+    assert stop.value.__cause__.args == (dropped,)
+
+
+def test_the_direct_source_refuses_a_body_with_only_the_old_flag_name() -> None:
+    meta = _group_body_with()
+    del meta["restricted_to_workflows"]
+    meta[_RETIRED_FLAG] = True
+    with pytest.raises(_StopError) as stop:
+        _direct_source(meta)._group()
+    assert type(stop.value.__cause__) is KeyError
+    assert stop.value.__cause__.args == ("restricted_to_workflows",)
+
+
+def test_an_unrestricted_group_may_omit_the_pinned_list(
+    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitHub ignores the list for an unrestricted group, so its absence is not a refusal."""
+    body = _group_body_with(restricted_to_workflows=False)
+    del body["selected_workflows"]
+    result = _run(
+        _probe("github", Scenario(group_body=body), server, tmp_path, monkeypatch)
+    )
+    assert result.reading.verdict is EnumReadingVerdict.NOT_WORKING
 
 
 def test_error_chain_the_call_past_the_budget_is_not_made(

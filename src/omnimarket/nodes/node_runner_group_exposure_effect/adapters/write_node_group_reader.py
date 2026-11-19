@@ -170,7 +170,7 @@ class WriteNodeGroupReader:
         return ModelRunnerGroupFacts(
             group_id=group.id,
             allows_public_repositories=group.allows_public_repositories,
-            restricted_to_workflows=group.restricted_to_selected_workflows,
+            restricted_to_workflows=group.restricted_to_workflows,
             selected_workflows=group.selected_workflows,
             repositories=group.repositories,
         )
