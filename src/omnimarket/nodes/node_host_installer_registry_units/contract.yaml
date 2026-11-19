@@ -902,7 +902,8 @@ units:
     timer_template: templates/onex-registry-module-tick.timer.tmpl
     schedule:
       start_interval: 21600
-      run_timeout_s: 900
+      # Leave the original run budget after the readiness wait of up to 850 s.
+      run_timeout_s: 1800
       run_at_load: true
       description: every 21600 s and at load
     registry_project: omnimarket
@@ -944,7 +945,8 @@ units:
     timer_template: templates/onex-registry-module-tick.timer.tmpl
     schedule:
       start_interval: 3600
-      run_timeout_s: 900
+      # Leave the original run budget after the readiness wait of up to 850 s.
+      run_timeout_s: 1800
       run_at_load: true
       description: every 3600 s and at load
     registry_project: omnimarket

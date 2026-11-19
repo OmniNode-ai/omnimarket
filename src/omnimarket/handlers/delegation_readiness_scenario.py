@@ -3,8 +3,8 @@
 """The run skeleton the probe-ladder readiness scenario nodes share (OMN-23173).
 
 One run: build the scenario's legs, run them, compare typed fields (never a model's judgment), then write one ledger
-STATUS row (the row the green-days reading counts) and emit the same result on the bus. A missing setting, an unreadable
-input and an exception are failures, never a skip. The row is written before the bus emit, so an emit that fails
+STATUS row (the row the green-days reading counts) and emit the same result on the bus. A configured dev readiness
+wait can skip the run before any assertions. The row is written before the bus emit, so an emit that fails
 raises after the row exists.
 
 A scenario node subclasses ``ReadinessScenarioBase`` and implements ``_scenario``; everything it needs (contract
@@ -19,12 +19,15 @@ import os
 import shlex
 import socket
 import sys
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Protocol
 
+import httpx
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -38,6 +41,7 @@ from omnimarket.handlers.delegation_scenario_runtime import (
     LedgerAppender,
     ModelScenarioSchedule,
     ProtocolScenarioEventSink,
+    ScenarioLedgerQueuedError,
     build_event_sink,
     bus_appender,
     write_atomic,
@@ -46,6 +50,8 @@ from omnimarket.handlers.delegation_scenario_settings import (
     ProtocolSettingStore,
     fill_overlay_settings,
 )
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.models.model_delegation_scenario import (
     SCENARIO_ID_PATTERN,
     EnumScenarioCadence,
@@ -60,6 +66,17 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
 
 DETAIL_LIMIT = 240
 Clock = Callable[[], datetime]
+
+
+class ModelDevReadiness(BaseModel):
+    """The h201 dev readiness route and polling budget for a scheduled scenario."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str = Field(min_length=1)
+    port: int = Field(gt=0, le=65535)
+    wait_seconds: int = Field(gt=0)
+    poll_seconds: int = Field(gt=0)
 
 
 class ModelReadinessRuntime(BaseModel):
@@ -90,6 +107,7 @@ class ModelReadinessRuntime(BaseModel):
     inputs_relpath: str = Field(min_length=1)
     #: The settings overlay (OMN-23602), relative to the node directory: where each run variable is found by existing name.
     settings_overlay_relpath: str | None = None
+    dev_readiness: ModelDevReadiness | None = None
 
 
 def read_contract(path: Path) -> dict[str, object]:
@@ -117,6 +135,43 @@ def build_transport(backend: str, host: str) -> ProtocolLegTransport:
     return _TRANSPORT_BY_BACKEND[backend](host)
 
 
+def wait_for_dev_readiness(
+    settings: ModelDevReadiness, environment: Mapping[str, str]
+) -> bool:
+    """Poll the declared dev host until /ready answers 200 or the budget expires."""
+    try:
+        hosts = resolve_lab_hosts_table(environment).hosts
+    except NodeOverlayError as exc:
+        raise RuntimeError(f"cannot resolve dev readiness host: {exc}") from exc
+    host = next((row for row in hosts if row.name == settings.host), None)
+    if host is None:
+        raise RuntimeError(f"dev readiness host {settings.host} is undeclared")
+    urls = [
+        httpx.URL(scheme="http", host=target, port=settings.port, path="/ready")
+        for target in (host.target, *host.fallback_targets)
+    ]
+    deadline = time.monotonic() + settings.wait_seconds
+    with httpx.Client(trust_env=False) as client:
+        while (remaining := deadline - time.monotonic()) > 0:
+            next_poll = time.monotonic() + settings.poll_seconds
+            for url in urls:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                try:
+                    with client.stream(
+                        "GET", url, timeout=min(remaining, settings.poll_seconds)
+                    ) as response:
+                        if response.status_code == 200 and time.monotonic() <= deadline:
+                            return True
+                except httpx.RequestError:
+                    continue
+            delay = min(deadline, next_poll) - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+    return False
+
+
 class ReadinessScenarioBase(ABC):
     """Run one readiness scenario, write its STATUS row and emit its result on the bus."""
 
@@ -132,6 +187,7 @@ class ReadinessScenarioBase(ABC):
         transport_factory: Callable[[], ProtocolLegTransport],
         trigger: EnumScenarioTrigger = EnumScenarioTrigger.SCHEDULE,
         clock: Clock = lambda: datetime.now(UTC),
+        check_dev_ready: bool = False,
     ) -> None:
         self._runtime = runtime
         self._home = home
@@ -142,6 +198,7 @@ class ReadinessScenarioBase(ABC):
         self._transport_factory = transport_factory
         self._trigger = trigger
         self._clock = clock
+        self._check_dev_ready = check_dev_ready
 
     @property
     def work_dir(self) -> Path:
@@ -150,31 +207,47 @@ class ReadinessScenarioBase(ABC):
     def run(self) -> ModelScenarioResult:
         now = self._clock()
         assertions: list[str] = []
-        detail = ""
-        try:
-            detail = self._scenario(assertions)
-        except Exception as exc:
-            assertions.append("-unexpected_error")
-            detail = f"{type(exc).__name__}: {exc}"
-        held = all(item.startswith("+") for item in assertions) and bool(assertions)
+        readiness = self._runtime.dev_readiness
+        if self._check_dev_ready and readiness is None:
+            raise RuntimeError("dev readiness is missing from the scenario contract")
+        if (
+            self._check_dev_ready
+            and readiness is not None
+            and not wait_for_dev_readiness(readiness, self._environment)
+        ):
+            conclusion = EnumScenarioConclusion.SKIPPED
+            detail = "dev-not-ready"
+        else:
+            try:
+                detail = self._scenario(assertions)
+            except Exception as exc:
+                assertions.append("-unexpected_error")
+                detail = f"{type(exc).__name__}: {exc}"
+            conclusion = (
+                EnumScenarioConclusion.SUCCESS
+                if assertions and all(item.startswith("+") for item in assertions)
+                else EnumScenarioConclusion.FAILURE
+            )
         result = ModelScenarioResult(
             scenario_id=self._runtime.scenario_id,
             slot_start=floor_to_slot(now, self._runtime.cadence),
             trigger=self._trigger,
-            conclusion=EnumScenarioConclusion.SUCCESS
-            if held
-            else EnumScenarioConclusion.FAILURE,
+            conclusion=conclusion,
             recorded_at=now,
             assertions=tuple(assertions),
             detail=detail[:DETAIL_LIMIT],
         )
-        self._append(
-            result.to_status_row(
-                lane=self._runtime.lane,
-                ticket=self._runtime.ticket,
-                actor=self._runtime.actor,
+        try:
+            self._append(
+                result.to_status_row(
+                    lane=self._runtime.lane,
+                    ticket=self._runtime.ticket,
+                    actor=self._runtime.actor,
+                )
             )
-        )
+        except ScenarioLedgerQueuedError:
+            if conclusion is not EnumScenarioConclusion.SKIPPED:
+                raise
         self._sink.emit(self._topic, result.model_dump(mode="json"))
         return result
 
@@ -285,6 +358,33 @@ ScenarioTickBuild = Callable[
 ]
 
 
+def _write_last_run(path: Path, record: dict[str, object]) -> None:
+    """Preserve the last success time and count skips across separate invocations."""
+    previous: object = None
+    with suppress(OSError, ValueError):
+        previous = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(previous, dict) or previous.get("scenario") != record["scenario"]:
+        previous = {}
+    previous_conclusion = previous.get("conclusion")
+    last_success = previous.get("last_success_at")
+    if previous_conclusion == EnumScenarioConclusion.SUCCESS:
+        last_success = previous.get("ran_at")
+    if record["conclusion"] == EnumScenarioConclusion.SUCCESS:
+        last_success = record["ran_at"]
+    if isinstance(last_success, str):
+        record["last_success_at"] = last_success
+    if record["conclusion"] == EnumScenarioConclusion.SKIPPED:
+        prior_skips = previous.get("consecutive_skips", 1)
+        record["consecutive_skips"] = (
+            prior_skips + 1
+            if previous_conclusion == EnumScenarioConclusion.SKIPPED
+            and type(prior_skips) is int
+            and prior_skips > 0
+            else 1
+        )
+    write_atomic(path, json.dumps(record, sort_keys=True))
+
+
 def scenario_tick_main(
     argv: Sequence[str] | None,
     *,
@@ -314,11 +414,14 @@ def scenario_tick_main(
     except RuntimeError as exc:
         sys.stderr.write(f"{prog}: {exc}\n")
         record.update(conclusion="refused", refused=str(exc))
-        write_atomic(
-            args.state_dir / "last-run.json", json.dumps(record, sort_keys=True)
-        )
+        _write_last_run(args.state_dir / "last-run.json", record)
         return 65
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
     record["conclusion"] = result.conclusion.value
-    write_atomic(args.state_dir / "last-run.json", json.dumps(record, sort_keys=True))
-    return 0 if result.conclusion.value == "success" else 1
+    _write_last_run(args.state_dir / "last-run.json", record)
+    return (
+        0
+        if result.conclusion
+        in (EnumScenarioConclusion.SUCCESS, EnumScenarioConclusion.SKIPPED)
+        else 1
+    )

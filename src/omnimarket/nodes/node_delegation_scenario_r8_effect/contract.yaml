@@ -7,7 +7,7 @@
 # surface readiness_probe) and one organic control, waits until the tenant's Runs list holds both correlation ids and reads the
 # totals again. It holds only when the synthetic row is labelled synthetic and listed, and the run, token, spend and savings
 # totals rose by exactly the organic run's values. Every assertion compares typed fields; no model judges a pass, an unreadable
-# lane and a wait that runs out are failures and never a skip. The result is emitted on the bus and written as one ledger
+# lane and an expired product wait are failures. The scheduled tick records a skip when dev never becomes ready. The result is written as one ledger
 # STATUS row (the row node_delegation_scenario_days_effect reads for the scenario's green days).
 name: node_delegation_scenario_r8_effect
 contract_name: node_delegation_scenario_r8_effect
@@ -36,7 +36,7 @@ descriptor:
   purity: impure
   idempotent: false
   side_effects: [http-read, process-spawn, file-write, ledger-append, bus-publish]
-  timeout_ms: 900000
+  timeout_ms: 1800000
 
 input_model:
   name: ModelScenarioR8RunCommand
@@ -61,6 +61,11 @@ externally_consumed_topics:
   - onex.evt.omnimarket.delegation-scenario-result.v1
 
 runtime:
+  dev_readiness:
+    host: h201
+    port: 8085
+    wait_seconds: 850
+    poll_seconds: 5
   home_env: OMNI_HOME
   ledger_append_command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
   ledger_append_timeout_seconds: 60
