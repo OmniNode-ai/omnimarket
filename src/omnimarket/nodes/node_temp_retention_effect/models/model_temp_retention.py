@@ -31,6 +31,8 @@ class ModelRetentionWindows(_Frozen):
     retain_hours: float = Field(gt=0)
     pressure_percent: int = Field(gt=0, le=100)
     pressure_retain_hours: float = Field(gt=0)
+    # How old the process read may be at removal; 0 means read again before every removal.
+    holders_max_age_seconds: float = Field(default=0.0, ge=0)
 
     @model_validator(mode="after")
     def pressure_is_shorter(self) -> Self:
@@ -48,6 +50,7 @@ class ModelTempRoot(_Frozen):
 
     path: NonEmptyStr
     protected_name_patterns: tuple[NonEmptyStr, ...] = ()
+    lock_name_patterns: tuple[NonEmptyStr, ...] = ()
 
 
 class ModelStoreCeiling(_Frozen):

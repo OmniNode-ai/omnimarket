@@ -55,8 +55,9 @@ def test_temp_retention_golden_chain_removes_the_old_unheld_entry_and_keeps_the_
         )
     )
     node = NodeTempRetentionEffect()
+    # Copying an entry sets its ctime to the real time, so the pass runs 13 h later, past the 12 h window.
     node.handler = HandlerTempRetention(
-        now=lambda: now,
+        now=lambda: now + 13 * 3600,
         references=lambda: ProcessReferences(directories=[held], blobs=[]),
     )
     contract = yaml.safe_load(node.contract_path.read_text())

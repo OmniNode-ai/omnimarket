@@ -1,0 +1,90 @@
+schema_version: 1.0.0
+ticket_id: OMN-24587
+title: Temp retention keeps fresh copies, locks and held files, and reads file slots
+summary: 'Review findings of the h053 /tmp retention change (OMN-24523): age used only the modification time, a lock or a file a process opened after the first read could be removed, and the pressure mark
+  read bytes and not inodes. The pass now takes the newest of modification and change time, keeps lock-named and kernel-locked entries, reads the holders again just before each removal, and reads the larger
+  of byte and inode use.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24587-retention-safety
+  statement: The temp retention pass removes only entries that are old by every time that applies, unlocked and unheld at the moment of removal, and shortens its window on inode pressure.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: an entry whose last-edit time is old but whose change time is within the window is kept, and removed once the window has passed -- falsifier: pytest tests/nodes/node_temp_retention_effect/test_temp_retention.py
+      -k ctime fails when the scan reads only the last-edit time'
+  - id: AC2
+    statement: 'AC2: an entry holding a file whose name matches a declared lock pattern, or a file with a kernel lock held, is never removed -- falsifier: pytest tests/nodes/node_temp_retention_effect/test_temp_retention.py
+      -k lock fails when the lock patterns are removed from the row'
+  - id: AC3
+    statement: 'AC3: holders of an entry are read again just before its removal, and an entry a process opened after the first read is reported busy and kept -- falsifier: pytest tests/nodes/node_temp_retention_effect/test_temp_retention.py
+      -k opens_an_entry fails when the pass reads the holders once per directory'
+  - id: AC4
+    statement: 'AC4: the pressure mark reads the larger of used bytes and used file slots -- falsifier: pytest tests/nodes/node_temp_retention_effect/test_temp_retention.py -k inode_percent fails when only
+      bytes are read'
+  - id: AC5
+    statement: 'AC5: integrated: onex-temp-retention.service on h053, reinstalled from this change, logs a pass whose windows name /tmp and the used file slots of / read lower after the pass than before
+      -- falsifier: journalctl --user -u onex-temp-retention.service on h053 shows no such pass, or df -i / on h053 reads no lower after the pass than before'
+evidence_requirements:
+- kind: tests
+  description: The node tests with the failing controls for each rule.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_temp_retention_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24587-ac1-ctime
+  description: An entry with an old mtime and a fresh ctime is kept; moving now past ctime plus the window removes it.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_temp_retention_effect/test_temp_retention.py -q --no-cov -n 0 -p no:randomly -k ctime
+    cwd: .
+- id: dod-omn24587-ac2-lock
+  description: A lock-named file or a kernel-locked file keeps its entry; the control without the pattern removes it; the real process read lists a flock held file.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_temp_retention_effect/test_temp_retention.py -q --no-cov -n 0 -p no:randomly -k lock
+    cwd: .
+- id: dod-omn24587-ac3-recheck
+  description: A process that holds the entry only after the first read makes it busy at removal; a young read is not repeated.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_temp_retention_effect/test_temp_retention.py -q --no-cov -n 0 -p no:randomly -k "opens_an_entry or not_repeated"
+    cwd: .
+- id: dod-omn24587-ac4-inodes
+  description: used_percent returns the larger of the byte and the inode percent.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_temp_retention_effect/test_temp_retention.py -q --no-cov -n 0 -p no:randomly -k inode_percent
+    cwd: .
+- id: dod-omn24587-ac5-h053-journal
+  description: The h053 overlay row that the installed unit renders names /tmp and carries the lock patterns and the holder re-read age; the live journal reading on h053 is the unbound integration-proof item.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_temp_retention_effect/test_retention_schedule.py -q --no-cov -n 0 -p no:randomly -k "h053_never_removes_a_lock or h053_row_without_lock_patterns"
+    cwd: .
+- id: dod-omn24587-integration-proof
+  description: Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The pushed head runs the node tests on a lab host through the lab work runner. The running reading (the installed unit on h053 naming /tmp in a pass from this revision, and the root file slots before and after) is read from the lab receipt comment on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24587 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_temp_retention_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .

@@ -432,3 +432,222 @@ def test_a_store_whose_leaf_name_the_contract_does_not_allow_is_refused(
     with pytest.raises(RefusalError):
         go(h, percent=85.0)
     assert (other / "v11").exists()
+
+
+def test_entry_whose_mtime_is_old_but_ctime_is_fresh_is_kept(tmp_path: Path) -> None:
+    """os.utime sets mtime back 30 h but updates ctime to the real now; with now=time.time() the entry is kept."""
+    root = make_tmp(tmp_path)
+    entry = root / "fresh-ctime"
+    entry.mkdir()
+    (entry / "file.txt").write_text("x")
+    real_now = time.time()
+    old_stamp = real_now - 30 * HOUR
+    os.utime(entry, (old_stamp, old_stamp))
+    os.utime(entry / "file.txt", (old_stamp, old_stamp))
+    report = run_pass(
+        host(tmp_path),
+        bounds(),
+        now=real_now,
+        uid=UID,
+        dry_run=False,
+        references=nothing_held,
+        used_percent=used(10.0),
+    )
+    assert entry.exists()
+    assert report.kept_count >= 1
+
+
+def test_entry_removed_once_now_moves_past_its_ctime(tmp_path: Path) -> None:
+    """The same entry is removed once now is moved past ctime + window."""
+    root = make_tmp(tmp_path)
+    entry = root / "fresh-ctime"
+    entry.mkdir()
+    (entry / "file.txt").write_text("x")
+    real_now = time.time()
+    old_stamp = real_now - 30 * HOUR
+    os.utime(entry, (old_stamp, old_stamp))
+    os.utime(entry / "file.txt", (old_stamp, old_stamp))
+    later = real_now + 13 * HOUR
+    report = run_pass(
+        host(tmp_path),
+        bounds(),
+        now=later,
+        uid=UID,
+        dry_run=False,
+        references=nothing_held,
+        used_percent=used(10.0),
+    )
+    assert not entry.exists()
+    assert report.removed_count == 1
+
+
+def recheck_host(root: Path, max_age: float) -> ModelTempRetentionHost:
+    return ModelTempRetentionHost(
+        name="pool-a",
+        scheduler="systemd-user",
+        windows=ModelRetentionWindows(
+            retain_hours=12,
+            pressure_percent=80,
+            pressure_retain_hours=2,
+            holders_max_age_seconds=max_age,
+        ),
+        temp_roots=(ModelTempRoot(path=str(root)),),
+    )
+
+
+def test_a_process_that_opens_an_entry_during_the_scan_keeps_it(tmp_path: Path) -> None:
+    """The first read holds nothing; every later read names the entry: it is busy at removal and survives."""
+    root = make_tmp(tmp_path)
+    entry = root / "held-late"
+    entry.mkdir()
+    age(entry, 72)
+    reads = {"n": 0}
+
+    def refs() -> ProcessReferences:
+        reads["n"] += 1
+        if reads["n"] == 1:
+            return ProcessReferences(directories=[], blobs=[])
+        return ProcessReferences(directories=[entry], blobs=[])
+
+    report = run_pass(
+        recheck_host(root, 0.0),
+        bounds(),
+        now=NOW,
+        uid=UID,
+        references=refs,
+        used_percent=used(10.0),
+    )
+    assert entry.exists()
+    assert report.busy == (str(entry),)
+    assert report.removed_count == 0
+
+
+def test_a_read_newer_than_the_declared_age_is_not_repeated_at_removal(
+    tmp_path: Path,
+) -> None:
+    """With a young read and a clock that does not advance, nothing re-reads; with age 0 every removal re-reads."""
+    reads = {"n": 0}
+
+    def refs() -> ProcessReferences:
+        reads["n"] += 1
+        return ProcessReferences(directories=[], blobs=[])
+
+    for max_age, expected_reads in ((999999.0, 1), (0.0, 3)):
+        reads["n"] = 0
+        root = tmp_path / f"runs-{max_age}" / ".tmp"
+        root.mkdir(parents=True)
+        for name in ("one", "two"):
+            (root / name).mkdir()
+            age(root / name, 72)
+        report = run_pass(
+            recheck_host(root, max_age),
+            bounds(),
+            now=NOW,
+            uid=UID,
+            references=refs,
+            used_percent=used(10.0),
+            clock=lambda: 0.0,
+        )
+        assert report.removed_count == 2
+        assert reads["n"] == expected_reads
+
+
+def test_used_percent_returns_larger_of_bytes_and_inode_percent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """used_percent returns the larger of the bytes percent and the inode percent."""
+    from omnimarket.nodes.node_temp_retention_effect.handlers import (
+        handler_temp_retention as handler_module,
+    )
+
+    class FakeDiskUsage:
+        used = 100
+        total = 1000
+
+    class FakeStatvfs:
+        f_files = 100
+        f_ffree = 8
+
+    monkeypatch.setattr(
+        handler_module.shutil, "disk_usage", lambda _path: FakeDiskUsage()
+    )
+    monkeypatch.setattr(handler_module.os, "statvfs", lambda _path: FakeStatvfs())
+    result = handler_module.used_percent(Path("/tmp"))
+    assert result == 92.0
+
+
+def lock_host(root: Path, patterns: tuple[str, ...]) -> ModelTempRetentionHost:
+    return ModelTempRetentionHost(
+        name="pool-a",
+        scheduler="systemd-user",
+        windows=WINDOWS,
+        temp_roots=(ModelTempRoot(path=str(root), lock_name_patterns=patterns),),
+    )
+
+
+def test_an_entry_holding_a_lock_file_is_kept_and_without_the_pattern_it_is_not(
+    tmp_path: Path,
+) -> None:
+    root = make_tmp(tmp_path)
+    entry = root / "job"
+    (entry / "state").mkdir(parents=True)
+    (entry / "state" / "build.lock").write_text("")
+    age(entry, 72)
+    kept = run_pass(
+        lock_host(root, (r".*\.lock",)),
+        bounds(),
+        now=NOW,
+        uid=UID,
+        references=nothing_held,
+        used_percent=used(10.0),
+    )
+    assert entry.exists()
+    assert kept.removed_count == 0
+    assert kept.kept_count == 1
+    # The failing control: the same tree under a row with no lock pattern is removed.
+    control = run_pass(
+        lock_host(root, ()),
+        bounds(),
+        now=NOW,
+        uid=UID,
+        references=nothing_held,
+        used_percent=used(10.0),
+    )
+    assert not entry.exists()
+    assert control.removed_count == 1
+
+
+def test_a_file_with_a_kernel_lock_keeps_its_entry(tmp_path: Path) -> None:
+    root = make_tmp(tmp_path)
+    entry = root / "job"
+    entry.mkdir()
+    target = entry / "data"
+    target.write_text("x")
+    age(entry, 72)
+    info = target.lstat()
+
+    def locked() -> ProcessReferences:
+        return ProcessReferences(
+            directories=[], blobs=[], locks=frozenset({(info.st_dev, info.st_ino)})
+        )
+
+    kept = go(lock_host(root, ()), refs=locked)
+    assert entry.exists()
+    assert kept.kept_count == 1
+    assert go(lock_host(root, ())).removed_count == 1
+    assert not entry.exists()
+
+
+def test_the_real_process_read_lists_a_file_locked_with_flock(tmp_path: Path) -> None:
+    import fcntl
+
+    target = tmp_path / "held.lock"
+    with target.open("w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        info = target.lstat()
+        refs = read_process_references()
+        assert refs is not None
+        assert (info.st_dev, info.st_ino) in refs.locks
+    refs_after = read_process_references()
+    assert refs_after is not None
+    assert (info.st_dev, info.st_ino) not in refs_after.locks

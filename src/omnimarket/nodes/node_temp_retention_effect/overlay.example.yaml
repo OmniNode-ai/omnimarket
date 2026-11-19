@@ -6,10 +6,12 @@ hosts:
   - name: host-a
     scheduler: systemd-user
     # The windows the host applies to its run directories.
-    windows: {retain_hours: 12, pressure_percent: 80, pressure_retain_hours: 2}
+    windows: {retain_hours: 12, pressure_percent: 80, pressure_retain_hours: 2, holders_max_age_seconds: 5}
     temp_roots:
       - path: /srv/example/runs/.tmp
+        lock_name_patterns: ['.*\.lock', '.*\.lck', 'lock']  # kernel-locked files are never removed
       - path: /tmp
         protected_name_patterns: ['session-[0-9]+']
+        lock_name_patterns: ['.*\.lock', '.*\.lck', 'lock']  # kernel-locked files are never removed
     store_ceilings:
       - {path: /srv/example/runs/.pnpm-store, kind: pnpm, ceiling_mib: 2048}
