@@ -27,12 +27,12 @@ from omnimarket.models.model_metering_summary_refresh_requested import (
     ModelMeteringSummaryRefreshRequested,
 )
 from omnimarket.nodes.node_metering_summary_compute import metering_record_from_row
-from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_refresh_coalescer import (
-    MeteringRefreshCoalescer,
-)
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_writer import (
     MeteringSummaryProjectionWriter,
     store_refresh_command_topic,
+)
+from omnimarket.nodes.node_projection_metering_summary.metering_refresh_coalescer import (
+    MeteringRefreshCoalescer,
 )
 from omnimarket.projection.sqlite_metering_summary import (
     refresh_metering_summary_topic,

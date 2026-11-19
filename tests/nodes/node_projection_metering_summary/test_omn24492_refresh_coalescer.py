@@ -24,7 +24,7 @@ from omnimarket.models.model_metering_summary_refresh_requested import (
     EnumMeteringRefreshReason,
     ModelMeteringSummaryRefreshRequested,
 )
-from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_refresh_coalescer import (
+from omnimarket.nodes.node_projection_metering_summary.metering_refresh_coalescer import (
     MeteringRefreshCoalescer,
     coalesce_interval_from_overlay,
 )
