@@ -36,13 +36,13 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_broker_acl_overlay_render_compute/test_derive_callers.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24561-ac2
-  description: 'Seam: the comparison runs through one helper for the real sender and for the controls; a drifted sender topic and a sender refusal are each reported, and a sender failure is never skipped.'
+  description: 'Seam: the comparison runs through one helper for the real sender and for the controls; a drifted sender topic and a sender refusal are each reported, and a sender failure is never skipped, and a non-event terminal is refused by the derivation (this check fails at the merge base).'
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_broker_acl_overlay_render_compute/test_seam_run_node_topics.py -q --no-cov -n 0 -p no:randomly -k sender_refusal_is_seen
+    check_value: uv run --frozen pytest tests/nodes/node_broker_acl_overlay_render_compute/test_seam_run_node_topics.py -q --no-cov -n 0 -p no:randomly -k sender_terminal_that_is_not_an_event_topic
     cwd: .
 - id: dod-omn24561-ac3
   description: 'Golden and failing control: an undeclared use with no covering row is covered; the same use declared refuses.'

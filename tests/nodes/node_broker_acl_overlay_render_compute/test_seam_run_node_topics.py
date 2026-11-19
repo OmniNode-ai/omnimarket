@@ -258,3 +258,21 @@ def test_a_caller_of_a_node_without_a_terminal_event_is_refused_like_the_sender(
     messages = [message for message in refusals if message is not None]
     assert messages, "the sender refused no packaged node for a missing terminal_event"
     assert all("terminal_event" in message for message in messages)
+
+
+def test_a_sender_terminal_that_is_not_an_event_topic_is_refused_by_the_derivation(
+    tmp_path: Path,
+) -> None:
+    """Seam: the sender reads the terminal the derivation grants a read on, so a non-event terminal is refused there.
+
+    Failing control: the same node under an event terminal derives.
+    """
+    _contract(tmp_path, "node_beta_effect", terminal=CMD)
+    refused = _derive(tmp_path, ("node_beta_effect",))
+    assert refused.status == "refused"
+    assert _CODES.CALLED_NODE_TERMINAL_NOT_AN_EVENT_TOPIC in {
+        f.code for f in refused.findings
+    }
+    assert refused.rows == ()
+    _contract(tmp_path, "node_gamma_effect", terminal=EVT)
+    assert _derive(tmp_path, ("node_gamma_effect",)).status != "refused"
