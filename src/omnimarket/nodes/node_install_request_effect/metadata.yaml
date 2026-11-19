@@ -13,7 +13,8 @@ capabilities:
   requires_secrets: false
   requires_docker: false
   side_effect_class: write
-dependencies: []
+dependencies:
+  - "omnibase-infra>=0.38.68"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "install-request", "host-install"]

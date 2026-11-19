@@ -57,6 +57,10 @@ from omnimarket.models.install_request import (
     ModelInstallRequestReceived,
     ModelInstallRequestResult,
 )
+from omnimarket.models.unit_tree_install import (
+    ModelUnitTreeInstallRequest,
+    ModelUnitTreeInstallResult,
+)
 from omnimarket.nodes.node_install_request_decision_compute.handlers.handler_install_request_decision import (
     HandlerInstallRequestDecision,
 )
@@ -69,10 +73,6 @@ from omnimarket.nodes.node_install_request_effect.overlay import (
     ModelInstallRequestEffectOverlay,
     ModelInstallUnitRow,
     ModelInstallVerifyRow,
-)
-from omnimarket.nodes.node_unit_tree_install_effect.models.model_unit_tree_install import (
-    ModelUnitTreeInstallRequest,
-    ModelUnitTreeInstallResult,
 )
 
 #: A ref that is entirely 7 to 40 lowercase hex characters is a commit sha and
