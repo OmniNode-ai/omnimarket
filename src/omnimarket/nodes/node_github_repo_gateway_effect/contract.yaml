@@ -169,6 +169,12 @@ handler_routing:
 placement:
   mode: any
 
+# Independent, correlation-tagged reads share one consumer partition. Let a
+# slow GitHub fetch yield to other reads; same-job fills and the shared
+# miss-fill budget already serialize through their own file locks.
+consume_concurrency:
+  max_in_flight_records: 8
+
 descriptor:
   node_archetype: effect
   purity: impure
