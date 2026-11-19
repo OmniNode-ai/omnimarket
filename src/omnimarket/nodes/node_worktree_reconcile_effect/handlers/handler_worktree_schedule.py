@@ -16,10 +16,12 @@ from typing import Any
 
 import yaml
 
-from omnimarket.events.worktree_reconcile import ModelWorktreeReconcileRunResult
 from omnimarket.handlers.rules_unit_roots import (
     refuse_worktree_plists,
     refuse_worktree_roots,
+)
+from omnimarket.nodes.node_worktree_reconcile_effect.models.model_worktree_reconcile_report import (
+    ModelWorktreeReconcileRunReport,
 )
 from omnimarket.nodes.node_worktree_reconcile_effect.models.model_worktree_schedule import (
     ModelWorktreeSchedule,
@@ -338,7 +340,7 @@ class HandlerWorktreeSchedule:
         schedule: ModelWorktreeSchedule,
     ) -> str:
         """Why the tick and install receipts are stale, failed or another host's; empty when current."""
-        receipt = ModelWorktreeReconcileRunResult.model_validate_json(
+        receipt = ModelWorktreeReconcileRunReport.model_validate_json(
             (state / "latest.json").read_text()
         )
         completed = receipt.completed_event
