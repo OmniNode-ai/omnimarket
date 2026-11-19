@@ -36,7 +36,7 @@ dod_evidence:
     execution_scope: "local_done_gate"
     checks:
       - check_type: "command"
-        check_value: "sh -c \"grep -F 'pr=omnimarket#5761' \\\"$ONEX_LEDGER_PATH\\\" | grep -F 'installed=h053:' | grep -F 'install_record='\""
+        check_value: "sh -c \"onex ledger query --query rows --kind STATUS --limit 200 | grep -F 'pr=omnimarket#5761' | grep -F 'installed=h053:' | grep -F 'install_record='\""
         cwd: "."
   - id: "dod-omn24862-integration-proof"
     description: "Run the runner group read tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion: the runtime reading is read on h053 after the fix is deployed to the dev runtime's write node."
