@@ -30,6 +30,8 @@ NEW_HOME = "omnibase_core.models.event_bus.model_run_node_hosted"
 
 
 def _fresh_cli(monkeypatch: pytest.MonkeyPatch) -> types.ModuleType:
+    package = importlib.import_module(CLI.rsplit(".", 1)[0])
+    monkeypatch.setattr(package, "cli", getattr(package, "cli", None), raising=False)
     monkeypatch.delitem(sys.modules, CLI, raising=False)
     return importlib.import_module(CLI)
 
@@ -78,3 +80,22 @@ def test_loads_on_a_core_without_model_run_node_hosted(
 
     cli._run_hosted_node("node_y", Path("c.yaml"), {}, 7)
     assert calls == [("node_y", Path("c.yaml"), {}, 7)]
+
+
+@pytest.mark.unit
+def test_a_broken_import_inside_the_new_home_is_raised_not_hidden(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    broken = "omnibase_core.models.event_bus.model_runtime_bus_reading_missing"
+    real_import = importlib.import_module
+
+    def import_module(name: str, package: str | None = None) -> types.ModuleType:
+        if name == NEW_HOME:
+            raise ModuleNotFoundError(f"No module named {broken!r}", name=broken)
+        return real_import(name, package)
+
+    monkeypatch.setattr(importlib, "import_module", import_module)
+
+    with pytest.raises(ModuleNotFoundError) as raised:
+        _fresh_cli(monkeypatch)
+    assert raised.value.name == broken

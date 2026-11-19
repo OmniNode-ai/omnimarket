@@ -106,6 +106,7 @@ def _workflow_cli(ctx: click.Context, **kwargs: Any) -> None:
 
 
 _HostedRunner = Callable[[str, Path, dict[str, object], int], dict[str, object]]
+_NEW_HOME = "omnibase_core.models.event_bus.model_run_node_hosted"
 
 
 def _hosted_runner() -> _HostedRunner:
@@ -114,13 +115,15 @@ def _hosted_runner() -> _HostedRunner:
     omnibase_core#2335 moved it from ``cli_run_node.run_node_in_process`` to
     ``ModelRunNodeHosted.run`` (same arguments). A customer install resolves the
     newest core and this repository's lock an older one, so both are accepted:
-    the new home first, the old one when the new module is absent (OMN-25070).
+    the new home first, the old one only when the new module itself is absent
+    (OMN-25070). An import that fails inside the new module is a real defect and
+    is raised as is, never hidden behind the fallback.
     """
     try:
-        hosted = importlib.import_module(
-            "omnibase_core.models.event_bus.model_run_node_hosted"
-        )
-    except ImportError:
+        hosted = importlib.import_module(_NEW_HOME)
+    except ModuleNotFoundError as error:
+        if error.name != _NEW_HOME:
+            raise
         legacy = importlib.import_module("omnibase_core.cli.cli_run_node")
         return cast(_HostedRunner, legacy.run_node_in_process)
     return cast(_HostedRunner, hosted.ModelRunNodeHosted.run)
