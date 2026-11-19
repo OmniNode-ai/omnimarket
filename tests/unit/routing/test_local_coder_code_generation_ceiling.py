@@ -121,8 +121,8 @@ def test_ceiling_and_budget_are_declared_in_data() -> None:
     assert measured_correct_ceiling(_CODER, _TASK) == _CEILING
     assert grounded_input_budget(_CODER, _TASK) == _CEILING
     # Only the named backend and class carry the ceiling.
-    assert measured_correct_ceiling(_CODER, "research") is None
-    assert measured_correct_ceiling("local-heavy-reasoning", _TASK) is None
+    assert measured_correct_ceiling(_CODER, "no_such_class") is None
+    assert measured_correct_ceiling("local-heavy-reasoning", "no_such_class") is None
 
 
 def test_above_ceiling_not_local_for_a_24579_token_task() -> None:

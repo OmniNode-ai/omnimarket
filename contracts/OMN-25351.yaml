@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-25351
+title: The lane census unit carries the overlay roots its install read, so the compose project check finds its policy overlay
+summary: 'The installed census unit named no overlay root, so the per-project compose check of the run read no policy and returned skipped-no-policy. The census installer now writes the overlay roots it read into the unit.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25351-ac1
+  statement: the rendered census service carries the overlay roots the install read and carries none when the install read none
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the rendered census service holds an ONEX_SKILL_OVERLAY_ROOTS line with the roots the install read, and no such line when none were read -- falsifier: pytest tests/test_lane_census_effect_omn21946.py -k pins'
+- id: req-omn25351-ac2
+  statement: the install reads the roots from its own environment, so the unit finds the node overlays the install found
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the census install dry run prints the service with the overlay roots of its environment -- falsifier: pytest tests/test_lane_census_effect_omn21946.py -k install_pins'
+evidence_requirements:
+- kind: tests
+  description: The census schedule tests pass at the pushed head.
+  command: uv run --frozen pytest tests/test_lane_census_effect_omn21946.py -q -n 0 --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25351-ac1
+  description: 'AC1: the rendered census service holds an ONEX_SKILL_OVERLAY_ROOTS line with the roots the install read, and none when none were read; fails when the render stops carrying the roots.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_lane_census_effect_omn21946.py -q -n 0 --no-cov -k rendered_service_pins
+    cwd: .
+- id: dod-omn25351-ac2
+  description: 'AC2: the census install takes the roots from its own environment and writes them into the unit; fails when the install stops passing the roots to the render.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_lane_census_effect_omn21946.py -q -n 0 --no-cov -k install_pins
+    cwd: .
+- id: dod-omn25351-integration-proof
+  description: Run the census schedule tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check; it binds no criterion for the hosted check. The live reading (the install dry run on a lab host printing the overlay roots line) is recorded in the pull request's Lab line.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25351 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_lane_census_effect_omn21946.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
