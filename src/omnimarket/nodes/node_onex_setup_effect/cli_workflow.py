@@ -251,6 +251,7 @@ def run_workflow_cli(
                     )
         if all(item.status in ("success", "skipped") for item in journal.observations):
             click.echo("Setup complete.")
+            click.echo("Add another provider any time: onex models add <provider>")
     ctx.exit(
         0
         if all(item.status in ("success", "skipped") for item in journal.observations)
