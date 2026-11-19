@@ -78,3 +78,14 @@ class DeadlineTransport(httpx.BaseTransport):
             # Closing the loop does not wait for an OS DNS lookup that was
             # cancelled from the request's point of view.
             self._loop.close()
+
+
+def deadline_client(
+    transport: httpx.AsyncBaseTransport, request_timeout_seconds: float
+) -> httpx.Client:
+    """Build the sender's HTTPX client over a wall-clock deadline transport."""
+    return httpx.Client(
+        transport=DeadlineTransport(transport),
+        trust_env=False,
+        timeout=request_timeout_seconds,
+    )

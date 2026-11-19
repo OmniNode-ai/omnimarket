@@ -155,7 +155,7 @@ def _tls_contexts(tmp_path: Path) -> tuple[ssl.SSLContext, ssl.SSLContext]:
             serialization.NoEncryption(),
         )
     )
-    server = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    server = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     server.load_cert_chain(bundle)
     client = ssl.create_default_context(cadata=pem.decode("ascii"))
     return server, client

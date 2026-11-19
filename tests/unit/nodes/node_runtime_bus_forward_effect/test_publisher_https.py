@@ -16,8 +16,8 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_runtime_bus_forward_effect.adapter_core_forwarder import (
-    CoreRuntimeBusForwarder,
+from omnimarket.nodes.node_runtime_bus_forward_effect import (
+    adapter_core_forwarder as adapter,
 )
 from omnimarket.nodes.node_runtime_bus_forward_effect.handlers import (
     HandlerRuntimeBusForward,
@@ -147,8 +147,6 @@ def test_https_golden_forwarder_loads_overlay_and_batches_an_in_memory_recording
     def unexpected_kafka(*args: object) -> None:
         pytest.fail("HTTPS entered the Kafka broker factory")
 
-    import omnimarket.nodes.node_runtime_bus_forward_effect.adapter_core_forwarder as adapter
-
     door = RecordingDoor()
     monkeypatch.setattr(adapter, "broker_for_lane", unexpected_kafka)
     monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda **_kwargs: door.transport())
@@ -165,7 +163,7 @@ def test_https_golden_forwarder_loads_overlay_and_batches_an_in_memory_recording
         for index in range(5)
     )
 
-    result = CoreRuntimeBusForwarder(environ=configuration).forward(
+    result = adapter.CoreRuntimeBusForwarder(environ=configuration).forward(
         (*originals, event(b"outside", topic="outside.topic"))
     )
 

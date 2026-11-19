@@ -21,6 +21,10 @@ import httpx
 from pydantic import ValidationError
 from pydantic_core import PydanticCustomError
 
+from omnimarket.nodes.node_runtime_bus_forward_effect.handlers.https_deadline_transport import (
+    deadline_client,
+    run_sync,
+)
 from omnimarket.nodes.node_runtime_bus_forward_effect.models.model_https_event_bus import (
     BATCH_OVERHEAD_BYTES,
     BATCH_PREFIX,
@@ -35,8 +39,6 @@ from omnimarket.nodes.node_runtime_bus_forward_effect.protocols import (
     PublisherRefusedError,
 )
 
-from .https_deadline_transport import DeadlineTransport, run_sync
-
 _BEARER_TOKEN = re.compile(r"[A-Za-z0-9._~+/-]+=*")
 _NO_FULL_ATTEMPT = "flush deadline leaves no time for a full request attempt"
 
@@ -46,7 +48,8 @@ class _IngestContract(Protocol):
 
     CLIENT_HEADER_SET: Mapping[str, int | Literal["max_authorization_bytes"]]
 
-    def canonical_topic(self, topic: str, /) -> str: ...
+    def canonical_topic(self, topic: str, /) -> str:
+        """Return the topic spelling the door expects."""
 
     def compute_event_id(
         self,
@@ -55,7 +58,8 @@ class _IngestContract(Protocol):
         value: bytes,
         headers: Iterable[tuple[str, bytes]],
         /,
-    ) -> str: ...
+    ) -> str:
+        """Return the deterministic event id the door deduplicates on."""
 
 
 _INGEST_CONTRACT = cast(
@@ -350,11 +354,7 @@ class PublisherHttps:
         unconfirmed = 0
         first_reason = None
         may_have_published = False
-        with httpx.Client(
-            transport=DeadlineTransport(transport),
-            trust_env=False,
-            timeout=self._config.request_timeout_seconds,
-        ) as client:
+        with deadline_client(transport, self._config.request_timeout_seconds) as client:
             for index, batch in enumerate(batches):
                 later = len(batches) - index - 1
                 count, reason, uncertain = self._send_batch(
