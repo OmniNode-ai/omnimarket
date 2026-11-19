@@ -4,6 +4,7 @@
 
 import asyncio
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -177,7 +178,10 @@ async def test_red_main_alarm_uses_live_claim(
     (request,) = ports.requests.values()
     alarm, message = request.rows.splitlines()
     assert " | STATUS | " in alarm
-    assert " | alarm=red-main | " in alarm
+    assert " | src=alarm | alarm=main-red | " in alarm
+    assert " | actor=node:node_red_main_alarm_effect | model=none | " in alarm
+    assert " | host=h053 | " in alarm
+    assert " | drill=yes" not in alarm
     assert f" | repo={ports.target.repo} | " in alarm
     assert " | branch=main | " in alarm
     assert f" | head={ports.target.head_sha} | " in alarm
@@ -211,6 +215,41 @@ async def test_red_main_alarm_falls_back_to_named_owner(
     row, message = request.rows.splitlines()
     assert f" | owner={expected_owner} | owner_source={source} | " in row
     assert f" | to={expected_owner} | " in message
+
+
+async def test_red_main_alarm_row_matches_the_ledger_alarm_grep() -> None:
+    """The row an owner reads carries the src=alarm and alarm=main-red cells the ledger grep names."""
+    ports = LedgerAndScm()
+    handler = HandlerRedMainAlarm(ports=ports, settings=SETTINGS, clock=lambda: NOW)
+
+    await handler.handle(tick())
+
+    (request,) = ports.requests.values()
+    status = request.rows.splitlines()[0]
+    assert re.search(r"src=alarm.*alarm=main-red", status)
+    assert re.search(r" \| owner=[^ |]+ \| ", status)
+
+
+async def test_red_main_drill_scans_only_named_repositories_and_marks_rows() -> None:
+    ports = LedgerAndScm()
+    drill = SETTINGS.model_copy(update={"drill_repos": (ports.target.repo,)})
+    handler = HandlerRedMainAlarm(ports=ports, settings=drill, clock=lambda: NOW)
+
+    result = await handler.handle(tick())
+
+    assert len(result.alarms) == 1
+    (request,) = ports.requests.values()
+    status, message = request.rows.splitlines()
+    assert " | drill=yes | " in status
+    assert " | drill=yes | " in message
+
+    elsewhere = LedgerAndScm()
+    other = SETTINGS.model_copy(update={"drill_repos": ("example/elsewhere",)})
+    quiet = await HandlerRedMainAlarm(
+        ports=elsewhere, settings=other, clock=lambda: NOW
+    ).handle(tick())
+    assert not quiet.alarms
+    assert not elsewhere.requests
 
 
 async def test_red_main_alarm_deduplicates_across_handler_restarts() -> None:

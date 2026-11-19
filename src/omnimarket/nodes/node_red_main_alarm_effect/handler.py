@@ -39,6 +39,7 @@ from omnimarket.nodes.node_red_main_alarm_effect.models import (
 )
 
 _ACTOR = "red-main-alarm"
+_NODE = "node_red_main_alarm_effect"
 _WORKFLOW = "throughput-tick"
 _GREEN = frozenset({"success", "skipped", "neutral"})
 _RED = frozenset(
@@ -157,15 +158,18 @@ def _append_request(
     location = f"repo={alarm.repo} | branch={alarm.branch} | head={alarm.head_sha}"
     # Batch the STATUS and MSG under the same durable request ID. A consumed
     # request cannot deliver one owner without the other.
+    drill = " | drill=yes" if settings.drill_repos else ""
     status = (
-        f"{at} | STATUS | lane={_ACTOR} | alarm=red-main | {location}"
+        f"{at} | STATUS | lane={_ACTOR} | actor=node:{_NODE} | model=none"
+        f" | src=alarm | alarm=main-red | {location}"
         f" | check={alarm.check_name} | conclusion={alarm.conclusion} | first_red_at={at}"
-        f" | owner={alarm.owner} | owner_source={alarm.owner_source} | req={request_id}"
+        f" | owner={alarm.owner} | owner_source={alarm.owner_source}"
+        f" | host={settings.host}{drill} | req={request_id}"
         " | Required default-branch check is red"
     )
     message = (
         f"{at} | MSG | from={_ACTOR} | to={alarm.owner} | id={at}-{_ACTOR}-{request_id}"
-        f" | {location} | req={request_id}"
+        f" | {location}{drill} | req={request_id}"
         f" | {alarm.owner}: {alarm.check_name} on {alarm.repo} {alarm.branch} is {alarm.conclusion}"
     )
     return ModelWorkLedgerAppendRequest(
@@ -243,7 +247,12 @@ class HandlerRedMainAlarm:
             async with semaphore:
                 return await self._inspect(ports, settings, target)
 
-        results = await asyncio.gather(*(read(target) for target in inventory.targets))
+        targets = tuple(
+            target
+            for target in inventory.targets
+            if not settings.drill_repos or target.repo in settings.drill_repos
+        )
+        results = await asyncio.gather(*(read(target) for target in targets))
         return ModelRedMainAlarmResult(
             fire_id=request.fire_id,
             alarms=tuple(row for row in results if isinstance(row, ModelRedMainAlarm)),

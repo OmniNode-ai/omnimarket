@@ -36,6 +36,8 @@ class ModelAlarmSettings(_Frozen):
     host: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     bus_lane: Lane = "dev"
     scm_owner: str = Field(default="", pattern=r"^[A-Za-z0-9_.-]*$")
+    # A drill names the repositories to scan, and its rows carry drill=yes.
+    drill_repos: tuple[Repository, ...] = ()
 
 
 class ModelAlarmTarget(_Frozen):
