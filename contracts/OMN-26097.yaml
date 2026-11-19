@@ -47,8 +47,6 @@ dod_evidence:
   description: 'Live read of the unit that runs this node on h051: the newest onex-temp-retention run line reports no error and no refusal (read over ssh from the lane host).'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: >-
