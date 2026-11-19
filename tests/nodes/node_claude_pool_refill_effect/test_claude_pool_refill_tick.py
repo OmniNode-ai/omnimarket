@@ -132,8 +132,13 @@ def test_both_platform_units_are_declared_for_the_refill_tick(unit: str) -> None
 
 
 def test_the_systemd_unit_renders_the_module_with_the_overlay_roots(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # hosted CI has none of the declared host interpreters; the render does not depend on which host runs it
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units.interpreter_present",
+        lambda path: path == "/usr/bin/python3.12",
+    )
     branch = tmp_path / "branch"
     revision = make_checkout(branch, entry=ENTRY)
     result = HandlerRegistryUnits(real_run).handle(
