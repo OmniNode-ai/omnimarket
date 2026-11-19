@@ -1,11 +1,9 @@
--- SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
--- SPDX-License-Identifier: MIT
--- OMN-24615 AC6 (the 2026-11-19 re-review of #6442): the revision of delegation_summary_view_v3.sql. One change,
--- nothing else: each "byModel" row also serves "backends", the sorted aliases its runs were reached through --
--- delegated_to where it is set and differs from the model that ran, as the metering record defines its backend --
--- so a page can tell that a model was reached through a backend alias. The view's columns are unchanged.
+-- OMN-23413 AC51: the revision after delegation_summary_view_v3.sql (OMN-24615). One change, nothing else:
+-- the headline savings keep a run whose data_source is NULL. v3 compared with `<>`, and a NULL compared with
+-- `<>` is never true, so runs written before data_source was classified dropped out of the savings while v3
+-- already counts them everywhere else. `IS NOT 'fixture'` drops only runs typed fixture, as v2 intended.
 --
--- Applied as the store step omn24615_delegation_summary_backends after
+-- Applied as the store step omn23413_delegation_summary_counts_unclassified after
 -- omn24615_delegation_summary_evaluated_runs; a later revision is a new step.
 CREATE VIEW projection_delegation_summary AS
 WITH measured AS (
@@ -29,7 +27,7 @@ summary AS (
             AS avg_latency_ms,
         COALESCE(MAX((julianday(created_at) - 2440587.5) * 86400.0), 0.0)
             AS latest_event_at,
-        COALESCE(SUM(CASE WHEN data_source <> 'fixture' THEN cost_savings_usd END), 0.0)
+        COALESCE(SUM(CASE WHEN data_source IS NOT 'fixture' THEN cost_savings_usd END), 0.0)
             AS total_savings_usd,
         COALESCE(SUM(CASE WHEN data_source = 'fixture' THEN cost_savings_usd END), 0.0)
             AS fixture_savings_usd,
@@ -50,28 +48,13 @@ by_task_type AS (
     )
     GROUP BY tenant_id
 ),
-model_backends AS (
-    SELECT tenant_id, served_model AS served_model, json_group_array(backend) AS backends
-    FROM (
-        SELECT DISTINCT tenant_id, served_model AS served_model, delegated_to AS backend
-        FROM measured
-        WHERE COALESCE(delegated_to, '') <> ''
-            AND delegated_to IS NOT served_model
-        ORDER BY 1, 2, 3
-    )
-    GROUP BY tenant_id, served_model
-),
 by_model AS (
     SELECT tenant_id,
-        json_group_array(json_object('model', served_model, 'count', count, 'backends', json(backends))) AS rows
+        json_group_array(json_object('model', served_model, 'count', count)) AS rows
     FROM (
-        SELECT measured.tenant_id, measured.served_model, COUNT(*) AS count,
-            COALESCE(MAX(model_backends.backends), '[]') AS backends
+        SELECT tenant_id, served_model, COUNT(*) AS count
         FROM measured
-        LEFT JOIN model_backends
-            ON model_backends.tenant_id IS measured.tenant_id
-            AND model_backends.served_model IS measured.served_model
-        GROUP BY measured.tenant_id, measured.served_model
+        GROUP BY tenant_id, served_model
         ORDER BY count DESC
     )
     GROUP BY tenant_id
