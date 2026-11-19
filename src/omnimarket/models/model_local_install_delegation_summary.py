@@ -30,6 +30,11 @@ DELEGATION_SUMMARY_VIEW_STEPS = (
         "omn24615_delegation_summary_evaluated_runs",
         "sqlite/delegation_summary_view_v3.sql",
     ),
+    # OMN-24615 AC6: each byModel row serves the backends its runs were reached through.
+    (
+        "omn24615_delegation_summary_backends",
+        "sqlite/delegation_summary_view_v4.sql",
+    ),
 )
 
 
@@ -89,6 +94,14 @@ DELEGATION_VIEW_REPLACE_STEPS: tuple[tuple[str, tuple[str, str], str], ...] = (
             "projection_delegation_model_routing",
             "sqlite/delegation_model_routing_view_v4.sql",
         ),
-        "served each tier model's cost from a named price only",
+        "served each tier model's cost from a named price only, and each per-model row's backends",
+    ),
+    (
+        "omn24615_quality_gate_backends",
+        (
+            "projection_delegation_quality_gate",
+            "sqlite/delegation_quality_gate_view_v3.sql",
+        ),
+        "served the backends of each model's tokens-to-compliance row",
     ),
 )

@@ -6,6 +6,9 @@
 -- store's local_priced_models (the pricing manifest's keys): a run on a model the manifest does not name, or a
 -- positive cost on a model it lists as free (a routing tier's flat rate), adds no cost and counts in
 -- unmeasured_cost_count. Before, a flat rate on an unpriced model was served as that model's cost on this page.
+-- AC6 (the 2026-11-19 re-review): each per-model row (by_model, the model-by-task rows and a tier's models) serves
+-- `backends`, the sorted aliases its runs were reached through -- delegated_to where it is set and differs from the
+-- model that ran, as the metering record defines its backend. A tier's model row lists only that tier's aliases.
 --
 -- Applied once per local store by SqliteDatabaseAdapter as the store step omn24615_model_routing_priced_spend;
 -- a revision is a new step, never an edit here.
@@ -21,6 +24,31 @@ WITH events AS (
     LEFT JOIN local_priced_models AS pm_exact ON pm_exact.model_key = COALESCE(NULLIF(de.model_name, ''), NULLIF(de.delegated_to, ''), '')
     LEFT JOIN local_priced_models AS pm_lower ON pm_lower.model_key = lower(COALESCE(NULLIF(de.model_name, ''), NULLIF(de.delegated_to, ''), ''))
     WHERE de.data_source IS NOT 'experiment'
+),
+backend_runs AS (
+    SELECT DISTINCT
+        tenant_id,
+        CASE WHEN tier_name = '' THEN 'not_tier_routed' ELSE tier_name END AS cost_tier_name,
+        resolved_model AS model_alias,
+        delegated_to AS backend
+    FROM events
+    WHERE COALESCE(delegated_to, '') <> '' AND delegated_to IS NOT resolved_model
+),
+model_backends AS (
+    SELECT tenant_id, model_alias, json_group_array(backend) AS backends
+    FROM (
+        SELECT DISTINCT tenant_id, model_alias, backend FROM backend_runs
+        ORDER BY tenant_id, model_alias, backend
+    )
+    GROUP BY tenant_id, model_alias
+),
+tier_model_backends AS (
+    SELECT tenant_id, cost_tier_name, model_alias, json_group_array(backend) AS backends
+    FROM (
+        SELECT tenant_id, cost_tier_name, model_alias, backend FROM backend_runs
+        ORDER BY tenant_id, cost_tier_name, model_alias, backend
+    )
+    GROUP BY tenant_id, cost_tier_name, model_alias
 ),
 grouped AS (
     SELECT
@@ -102,7 +130,8 @@ by_model AS (
                 'qg_pass_rate', CASE WHEN model_totals.quality_checks > 0
                     THEN CAST(model_totals.quality_passed AS REAL) / model_totals.quality_checks
                     ELSE 0.0 END,
-                'task_types', json(model_task_types.task_types)
+                'task_types', json(model_task_types.task_types),
+                'backends', json(COALESCE(model_backends.backends, '[]'))
             ) AS entry
         FROM model_totals
         JOIN totals ON totals.tenant_id IS model_totals.tenant_id
@@ -112,6 +141,9 @@ by_model AS (
         JOIN model_top_task
             ON model_top_task.tenant_id IS model_totals.tenant_id
             AND model_top_task.model_alias IS model_totals.model_alias
+        LEFT JOIN model_backends
+            ON model_backends.tenant_id IS model_totals.tenant_id
+            AND model_backends.model_alias IS model_totals.model_alias
         ORDER BY model_totals.tenant_id, model_totals.total_count DESC
     )
     GROUP BY tenant_id
@@ -130,13 +162,17 @@ routing_rows AS (
                     ELSE 0.0 END,
                 'pct_of_total', CASE WHEN totals.total_delegations > 0
                     THEN CAST(grouped.event_count AS REAL) / totals.total_delegations
-                    ELSE 0.0 END
+                    ELSE 0.0 END,
+                'backends', json(COALESCE(model_backends.backends, '[]'))
             ) AS entry
         FROM grouped
         JOIN model_totals
             ON model_totals.tenant_id IS grouped.tenant_id
             AND model_totals.model_alias IS grouped.model_alias
         JOIN totals ON totals.tenant_id IS grouped.tenant_id
+        LEFT JOIN model_backends
+            ON model_backends.tenant_id IS grouped.tenant_id
+            AND model_backends.model_alias IS grouped.model_alias
         ORDER BY grouped.tenant_id, grouped.event_count DESC
     )
     GROUP BY tenant_id
@@ -222,10 +258,15 @@ tier_models AS (
                     ELSE 0.0
                 END,
                 'cost_usd', tier_model_rows.cost_usd,
-                'unmeasured_cost_count', tier_model_rows.unmeasured_cost_count
+                'unmeasured_cost_count', tier_model_rows.unmeasured_cost_count,
+                'backends', json(COALESCE(tier_model_backends.backends, '[]'))
             ) AS entry
         FROM tier_model_rows
         JOIN tier_totals ON tier_totals.tenant_id IS tier_model_rows.tenant_id
+        LEFT JOIN tier_model_backends
+            ON tier_model_backends.tenant_id IS tier_model_rows.tenant_id
+            AND tier_model_backends.cost_tier_name = tier_model_rows.cost_tier_name
+            AND tier_model_backends.model_alias IS tier_model_rows.model_alias
         ORDER BY tier_model_rows.tenant_id, tier_model_rows.cost_tier_name,
                  tier_model_rows.count DESC, tier_model_rows.model_alias
     )
