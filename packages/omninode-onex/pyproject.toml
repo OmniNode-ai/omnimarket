@@ -19,7 +19,7 @@ classifiers = [
 # Each distribution is pinned with == so a customer install resolves exactly the
 # reviewed set; a release bumps all three together.
 dependencies = [
-    "omnibase-core==0.47.72",
+    "omnibase-core==0.47.75",
     "omnibase-infra==0.38.77",
     "omnimarket==0.4.321",
 ]
