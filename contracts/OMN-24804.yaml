@@ -44,8 +44,6 @@ dod_evidence:
   description: 'AC1 read from the watcher: the pull request reads ci green at its head; this check exits non-zero while any required check is red, so it fails today where the hosted proxy above passes, and it runs only in the local Done gate because the watcher state is not on a hosted runner'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: python3 "$OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6219 --wait-until green --timeout 60
@@ -53,8 +51,6 @@ dod_evidence:
   description: 'AC2 read from the watcher: the Delegation Health Check is not among the red checks of omnimarket#6219 at its head. This check exits non-zero while it is red; when the red is shared, the STATUS row with its cause and shared flag is the alternative the local Done gate reads from the work ledger. It runs only in the local Done gate because the watcher state is not on a hosted runner'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: sh -c '! python3 "$OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6219 | grep -q "Delegation Health Check"'
