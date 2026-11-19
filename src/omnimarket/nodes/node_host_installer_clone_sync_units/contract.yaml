@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_installer_clone_sync_units
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Install, inspect and remove the canonical clone sync agent of a host: a launchd agent or a systemd user timer that
+  runs omnimarket's dirty-converge node from the registry's dispatch venv. One tick runs omniclaude's sync engine and
+  then converges each clone the engine reports refused past the age. A clone that holds local work is refused and
+  alarmed, never reset. The alarm goes through the lab alarm delivery overlay, which the tick finds through
+  ONEX_SKILL_OVERLAY_ROOTS and which names its alert-channel library and state file relative to the registry root,
+  so the unit runs from the registry root. The systemd unit writes to the journal, so
+  `journalctl --user -u onex-canonical-clone-sync.service` shows each REFUSED line with the outcome of its alarm.
+  Moved from the private host installer's canonical-clone-sync units, with the overlay root, the working directory and
+  the journal added. An engine that is absent or a module that does not import under the interpreter is refused with
+  a typed reason and nothing is written.
+input_model:
+  name: ModelCloneSyncUnitsRequest
+  module: omnimarket.nodes.node_host_installer_clone_sync_units.models.model_clone_sync_units
+output_model:
+  name: ModelCloneSyncUnitsResult
+  module: omnimarket.nodes.node_host_installer_clone_sync_units.models.model_clone_sync_units
+handler:
+  class: HandlerCloneSyncUnits
+  name: HandlerCloneSyncUnits
+  module: omnimarket.nodes.node_host_installer_clone_sync_units.handlers.handler_clone_sync_units
+entrypoint:
+  name: NodeHostInstallerCloneSyncUnits
+  module: omnimarket.nodes.node_host_installer_clone_sync_units.node
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - event_model:
+        name: ModelCloneSyncUnitsRequest
+        module: omnimarket.nodes.node_host_installer_clone_sync_units.models.model_clone_sync_units
+      handler:
+        name: HandlerCloneSyncUnits
+        module: omnimarket.nodes.node_host_installer_clone_sync_units.handlers.handler_clone_sync_units
+terminal_event: onex.evt.omnimarket.host-clone-sync-unit-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-clone-sync-unit-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.host-clone-sync-unit-requested.v1]
+  publish_topics: [onex.evt.omnimarket.host-clone-sync-unit-completed.v1]
+externally_consumed_topics: [onex.evt.omnimarket.host-clone-sync-unit-completed.v1]
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 600000
+  runtime_profiles: [effects]
+metadata:
+  transport_type: inmemory
+execution:
+  deterministic: false
+  side_effects: true
+# The unit declarations, moved from the private host installer contract. `environment` values have {home} and
+# {registry_root} filled at install; ONEX_SKILL_OVERLAY_ROOTS lets the tick find the lab alarm delivery overlay.
+units:
+  canonical-clone-sync:
+    platform: launchd
+    label: ai.omninode.canonical-clone-sync
+    interpreter: .onex-dispatch-venv/bin/python
+    schedule:
+      start_interval: 180
+      run_at_load: true
+      description: every 180 s and at load
+    module: omnimarket.nodes.node_canonical_clone_dirty_converge_effect.handlers.handler_canonical_clone_dirty_converge_effect
+    engine: omniclaude/plugins/onex/hooks/lib/canonical_clone_sync.py
+    state_directory: .onex_state/canonical-clone-sync
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+  canonical-clone-sync-systemd:
+    platform: systemd
+    unit_name: onex-canonical-clone-sync
+    schedule:
+      on_unit_active_seconds: 180
+      description: every 180 s after boot
+    interpreter: .onex-dispatch-venv/bin/python
+    module: omnimarket.nodes.node_canonical_clone_dirty_converge_effect.handlers.handler_canonical_clone_dirty_converge_effect
+    engine: omniclaude/plugins/onex/hooks/lib/canonical_clone_sync.py
+    state_directory: .onex_state/canonical-clone-sync
+    timeout_seconds: 900
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+# The broker grants the node's two topics need (coverage gate): the runtime login reads the command and writes the answer.
+broker_acl_grants:
+- principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+  grants:
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-clone-sync-unit-requested.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-clone-sync-unit-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-clone-sync-unit-completed.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-clone-sync-unit-completed.v1, operation: DESCRIBE}
