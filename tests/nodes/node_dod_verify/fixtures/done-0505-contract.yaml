@@ -1,0 +1,78 @@
+schema_version: "1.0.0"
+ticket_id: OMN-25709
+title: Dev runtime has no product repo clones, so every Done write fails CONTRACT_MISSING
+summary: >-
+  The dev runtime mounts each product repository's canonical clone read-only at /app/<name>, where the Done guard's dod_verify looks for them, in runtime-effects (docker-compose.dev-lane.yml) and in omninode-runtime (docker-compose.dev-tenant-fold.yml), taken from the registry-root layout the canonical-clone sync keeps current.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn25709-runtime-scope-clones
+    statement: The dev runtime carries the product repository clones its Done guard reads, from one declared mount, with no credential and no host file.
+    acceptance:
+      - id: AC1
+        statement: >-
+          AC1: a regression test built from the recorded refusal (the dod_verify verdict with product_clones=[] and CONTRACT_MISSING, fixture beside the test) fails on the code before the fix and passes after it, in the repository that owns the declaration -- falsifier: uv run pytest <the new test file under tests/> -q, red on the base commit and green on the branch
+      - id: AC2
+        statement: >-
+          AC2: the runtime's scope clones come from one existing declared source (a mount, a boot clone step or the canonical-clone sync), named with its file and line in the PR, and the change adds no credential to a host and edits no host file by hand -- falsifier: uv run pytest <the declaration test> -q -k scope_clones, which fails when the declaration is removed
+      - id: AC3
+        statement: >-
+          AC3: integrated: on the dev runtime on h201 at the branch install, one Done write through `onex ticket transition <id> --bus-lane dev` for a ticket whose PR merged and whose contract exists returns completed and `onex ticket read <id>` reads it Done, with the runtime reporting a non-empty product_clones -- falsifier: the same transition on the revision before the fix returns done_write_refused with CONTRACT_MISSING and product_clones=[]
+evidence_requirements:
+  - kind: tests
+    description: The scope-clones declaration test passes at the pushed head and fails at the merge base, where neither compose file mounts a product clone.
+    command: uv run --frozen pytest tests/ci/test_dev_runtime_scope_clones_omn25709.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn25709-ac1-regression
+    description: 'AC1: the regression test built from the recorded refusal passes at the head; at the merge base its mount checks fail because neither compose file mounts a clone'
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_dev_runtime_scope_clones_omn25709.py -q --no-cov
+        cwd: .
+  - id: dod-omn25709-ac2-declaration
+    description: 'AC2: the scope-clones declaration checks pass at the head: every product repository is mounted read-only at /app/<name> from a registry-root sibling, in the two services that host the Done guard and in no other'
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_dev_runtime_scope_clones_omn25709.py -q --no-cov -k scope_clones
+        cwd: .
+  - id: dod-omn25709-ac2-dev-lane-mount
+    description: 'AC2 deploy scope: the dev-lane overlay at the pushed head mounts the omnimarket clone read-only at /app/omnimarket, read from GitHub at that commit'
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: command
+        check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnibase_infra/contents/docker/docker-compose.dev-lane.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- "../../omnimarket:/app/omnimarket:ro" > /dev/null'
+        cwd: .
+  - id: dod-omn25709-ac2-fold-mount
+    description: 'AC2 deploy scope: the primary-dev fold overlay at the pushed head mounts the omnimarket clone read-only at /app/omnimarket in omninode-runtime, read from GitHub at that commit'
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: command
+        check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnibase_infra/contents/docker/docker-compose.dev-tenant-fold.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- "../../omnimarket:/app/omnimarket:ro" > /dev/null'
+        cwd: .
+  - id: dod-omn25709-ac3-declaration
+    description: 'AC3 declaration half: the recorded refusal fixture names product_clones=[] with CONTRACT_MISSING, and at the head each product repository is mounted read-only at /app/<name>; at the merge base the mount tests fail. The Done write itself is read on the lab by the next item, not by this one.'
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_dev_runtime_scope_clones_omn25709.py -q --no-cov -k "recorded_refusal or every_product_repository_is_mounted"
+        cwd: .
+  - id: dod-omn25709-ac3-runtime-clone
+    description: 'AC3 integrated reading: the running dev runtime holds a product clone at /app/omnimarket. It binds no criterion; the hosted gate cannot run it, so the local Done gate and the lane STATUS row carry it.'
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: docker exec omninode-runtime test -e /app/omnimarket/.git
+        cwd: .
