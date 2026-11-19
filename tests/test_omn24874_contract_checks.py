@@ -368,6 +368,41 @@ def test_omn24874_contract_ac5_check_needs_a_clean_row_at_the_head_of_each_pull_
         )
 
 
+@pytest.mark.unit
+def test_omn24874_contract_ac5_check_selects_on_lane_verdict_and_head_not_on_the_actor(
+    tmp_path: Path,
+) -> None:
+    # Real row shapes of the Fable review lane: the actor cell varies and a CLEAN row need not carry actor=fable-reviewer.
+    alarm = (
+        "2026-11-17T14:03:20Z | STATUS | lane=fable-omnimarket-6353-1345 | "
+        f"pr=omnimarket#6353 | verdict=CLEAN | head={_ALARM_HEAD}"
+    )
+    poster = (
+        "2026-11-18T04:15:42Z | STATUS | lane=fable-omnimarket-6335-0400 | "
+        "actor=claude:subagent:review-poster | verdict=CLEAN | "
+        f"head={_FIX_PR_HEAD[:12]} | pr=omnimarket#6335"
+    )
+    assert _run_ac5(tmp_path / "poster", [poster, alarm]) == 0
+    full_head = poster.replace(_FIX_PR_HEAD[:12], _FIX_PR_HEAD)
+    assert _run_ac5(tmp_path / "full-head", [full_head, alarm]) == 0
+    # A CLEAN row of another head fails.
+    other_head = poster.replace(_FIX_PR_HEAD[:12], _EARLIER_FIX_HEAD)
+    assert _run_ac5(tmp_path / "other-head", [other_head, alarm]) != 0
+    # A CHANGES-NEEDED row at the right head fails, in either spelling.
+    for verdict in ("CHANGES-NEEDED", "CHANGES_NEEDED"):
+        needs = poster.replace("verdict=CLEAN", f"verdict={verdict}")
+        assert _run_ac5(tmp_path / verdict, [needs, alarm]) != 0
+    # An actor=fable-reviewer row with the wrong lane prefix fails, at the right head.
+    reviewer = (
+        "2026-11-17T15:54:03Z | STATUS | lane=fix6335-1544 | actor=fable-reviewer | "
+        f"verdict=CLEAN | head={_FIX_PR_HEAD[:12]} | pr=omnimarket#6335"
+    )
+    assert _run_ac5(tmp_path / "wrong-lane", [reviewer, alarm]) != 0
+    # A CLEAN row that is not a STATUS row fails.
+    message = poster.replace("| STATUS |", "| MSG |")
+    assert _run_ac5(tmp_path / "not-status", [message, alarm]) != 0
+
+
 _RUNTIME_CONTAINER = "omninode-runtime"
 _RUNTIME_PROJECT = (
     "omnibase-infra"  # the compose project the dev runtime container carries as a label
