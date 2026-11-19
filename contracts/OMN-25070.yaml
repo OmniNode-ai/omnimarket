@@ -18,11 +18,14 @@ requirements:
     acceptance:
       - id: AC2
         statement: >-
-          AC2 (testing-phase form): uv tool install of omninode-onex puts exactly onex and omni-agent on
-          PATH and onex runs; the package declares exactly those two with omnibase_core's target, pins
-          omnibase-core, omnibase-infra and omnimarket with ==, and its built wheel holds only its
-          dist-info -- falsifier: uv run pytest tests/ci/test_omninode_onex_package_omn25070.py fails on
-          omnimarket dev, where packages/omninode-onex does not exist
+          AC2 (testing-phase form, package part): the package declares exactly onex and omni-agent with
+          omnibase_core's target, pins omnibase-core, omnibase-infra and omnimarket with ==, pins
+          omnimarket at this repository's own version, and its built wheel holds only its dist-info --
+          falsifier: uv run pytest tests/ci/test_omninode_onex_package_omn25070.py fails on omnimarket
+          dev, where packages/omninode-onex does not exist. The install part (uv tool install puts
+          exactly onex and omni-agent on PATH and onex runs) is the opt-in
+          tests/e2e/test_setup_packaged_journey.py -k customer_launchers_only, run with
+          ONEX_TEST_ONEX_WHEEL set.
 evidence_requirements:
   - kind: tests
     description: The package tests; the opt-in install check runs with ONEX_TEST_ONEX_WHEEL set.

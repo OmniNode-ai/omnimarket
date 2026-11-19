@@ -644,7 +644,13 @@ def test_customer_launchers_only(tmp_path: Path) -> None:
     launchers, bin_dir = install(f"omninode-onex=={version}", "customer")
     assert launchers == {"onex", "omni-agent"}, launchers
     ran = _run(
-        [str(bin_dir / "onex"), "--version"], {"PATH": "/usr/bin:/bin"}, tmp_path
+        [str(bin_dir / "onex"), "--version"],
+        {
+            "HOME": str(tmp_path / "customer" / "home"),
+            "PATH": "/usr/bin:/bin",
+            "LANG": "en_US.UTF-8",
+        },
+        tmp_path,
     )
     assert ran.returncode == 0, ran.stderr
     assert ran.stdout.startswith("onex version "), ran.stdout

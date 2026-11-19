@@ -85,6 +85,18 @@ def test_every_dependency_is_pinned_exactly() -> None:
 
 
 @pytest.mark.unit
+def test_omnimarket_pin_follows_this_repository_version() -> None:
+    with (REPO_ROOT / "pyproject.toml").open("rb") as stream:
+        own_version = tomllib.load(stream)["project"]["version"]
+    dependencies = _project()["dependencies"]
+    assert isinstance(dependencies, list)
+    pins = {
+        Requirement(str(item)).name: Requirement(str(item)) for item in dependencies
+    }
+    assert str(pins["omnimarket"].specifier) == f"=={own_version}"
+
+
+@pytest.mark.unit
 def test_built_wheel_carries_no_code_and_matches_pyproject(tmp_path: Path) -> None:
     uv = shutil.which("uv")
     if uv is None:
