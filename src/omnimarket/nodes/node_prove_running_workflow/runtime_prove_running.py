@@ -9,8 +9,8 @@ Verbs:
   one workflow per NOT RUNNING line, id ``<repo>#<n>@<sha>``; a second start of a running change joins it and a start
   of a finished one is refused.
 * ``schedule``: create or update the hourly batch schedule, with an optional immediate trigger.
-* ``read-not-running`` and ``group-by-host``: batch step commands that select changes from the integration ledger
-  and build child workflow plans for their hosts.
+* ``read-not-running`` and ``group-by-host``: batch step commands. The first reads the integration pass's typed batch from its snapshot topic (the
+  floor reader's overlay declares the topic and the bound; no ledger file); the second builds child plans per host.
 * ``read``: a step command. Reads the step input on stdin, reads the change through
   ``node_merged_change_reading_effect`` (its declared CLI) and answers one ``ModelProveRunningAnswer`` line.
 * ``install``: a step command. The declared installer of the change's target, from the contract's ``installers``.
@@ -27,6 +27,7 @@ import os
 import shlex
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from importlib import resources
@@ -36,14 +37,26 @@ from uuid import NAMESPACE_URL, uuid5
 
 import yaml
 
+from omnimarket.handlers.floor_projection import (
+    BusSnapshotSource,
+    InMemorySnapshotSource,
+    ProtocolSnapshotSource,
+)
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    load_structured_overlay,
+)
+from omnimarket.handlers.overlay_store.bus_opener import open_lane_bus, workspace_root
+from omnimarket.models.floor_projection import ModelFloorProjectionReadOverlay
 from omnimarket.models.integration_reading import ModelIntegrationReadingBatch
 from omnimarket.models.model_merged_change_reading import ModelMcrResult
 from omnimarket.nodes.node_prove_running_workflow.handlers import (
     HandlerProveRunningRows,
     HandlerProveRunningStarter,
 )
-from omnimarket.nodes.node_prove_running_workflow.handlers.handler_integration_ledger_reader import (
-    read_not_running,
+from omnimarket.nodes.node_prove_running_workflow.handlers.handler_integration_projection_reader import (
+    IntegrationBatchRefusedError,
+    read_integration_batch,
 )
 from omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_hosts import (
     group_by_host,
@@ -326,21 +339,71 @@ def _merge_sha_resolver(cfg: dict[str, Any], owner: str) -> CliMergeShaResolver:
     return CliMergeShaResolver(owner, tuple(json.loads(raw)) if raw else ())
 
 
+def projection_overlay(
+    cfg: dict[str, Any], env: Mapping[str, str]
+) -> ModelFloorProjectionReadOverlay:
+    """The overlay that declares the integration projection's topic, bound and broker (the floor reader's own)."""
+    declared = cfg["batch"]["input"]
+    return load_structured_overlay(
+        declared["overlay_id"],
+        ModelFloorProjectionReadOverlay,
+        env,
+        file_env=declared["file_env"],
+    )
+
+
+def snapshot_source(
+    overlay: ModelFloorProjectionReadOverlay,
+    env: Mapping[str, str],
+    group_prefix: str,
+) -> ProtocolSnapshotSource:
+    """The source the overlay selects: held in memory, or the broker."""
+    if overlay.bus == "inmemory":
+        return InMemorySnapshotSource()
+    bootstrap = overlay.kafka_bootstrap
+    return BusSnapshotSource(
+        open_bus=lambda: open_lane_bus(
+            bus="kafka",
+            lane=None if bootstrap else overlay.bus_lane,
+            kafka_bootstrap=bootstrap,
+            root=workspace_root(env),
+        ),
+        group_prefix=group_prefix,
+        window_s=overlay.read_window_s,
+    )
+
+
 def cmd_read_not_running(cfg: dict[str, Any]) -> int:
+    """Select the NOT RUNNING lines of the integration pass's newest typed batch, read from its snapshot topic."""
     step = ModelProveRunningBatchStepInput.model_validate_json(sys.stdin.read())
-    env_var = cfg["batch"]["ledger_path_env"]
-    path = os.environ.get(env_var, "").strip()
-    if not path:
-        sys.stderr.write(f"refused: {env_var} names no integration ledger\n")
-        return EXIT_REFUSED
+    declared = cfg["batch"]["input"]
+    env = os.environ
     try:
-        text = Path(path).read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as exc:
+        overlay = projection_overlay(cfg, env)
+    except NodeOverlayError as exc:
         sys.stderr.write(
-            f"refused: unable to read the integration ledger from {env_var}: {exc}\n"
+            f"refused: the integration projection overlay is unreadable: {exc}\n"
         )
         return EXIT_REFUSED
-    batch = read_not_running(text, as_of=datetime.now(UTC), origin=path)
+    spec = overlay.projections.get(declared["projection_id"])
+    if spec is None:
+        sys.stderr.write(
+            f"refused: the overlay {declared['overlay_id']} declares no {declared['projection_id']} projection\n"
+        )
+        return EXIT_REFUSED
+    try:
+        batch = asyncio.run(
+            read_integration_batch(
+                snapshot_source(overlay, env, declared["group_prefix"]),
+                topic=spec.topic,
+                projection_id=declared["projection_id"],
+                max_age_s=spec.max_age_s,
+                now=datetime.now(UTC),
+            )
+        )
+    except IntegrationBatchRefusedError as exc:
+        sys.stderr.write(f"refused: {exc}\n")
+        return EXIT_REFUSED
     resolver = _merge_sha_resolver(cfg, cfg["scm_owner"])
     selected = HandlerProveRunningStarter(resolver).handle(
         ModelProveRunningStartRequest(batch=batch, limit=step.limit)

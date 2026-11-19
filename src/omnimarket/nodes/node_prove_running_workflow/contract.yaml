@@ -16,7 +16,7 @@ description: >-
   the last reading, through the ledger CLI. The workflow body orders the steps and owns the timer, the limit and the
   deadline; it holds no other logic. The starter starts one workflow per NOT RUNNING line of an integration pass.
   The hourly schedule starts a batch workflow whose read-not-running and group-by-host steps select changes from
-  the integration ledger and prepare child plans. Each child writes its own row with the batch workflow ID.
+  the integration pass's typed batch on its snapshot topic and prepare child plans. Each child writes its own row with the batch workflow ID.
 input_model:
   name: ModelProveRunningStartRequest
   module: omnimarket.nodes.node_prove_running_workflow.models.model_prove_running
@@ -58,6 +58,11 @@ handler_routing:
 event_bus:
   subscribe_topics: []
   publish_topics: []
+# Read by a bus client for one window, never dispatched by a runtime, so no subscription of this node. The integration
+# pass's typed batch (ModelIntegrationProjection) is published by node_integration_reading_publish_effect.
+snapshot_reads:
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  - onex.snapshot.projection.floor-integration.v1
 runtime_dispatch:
   external_trigger: >-
     python -m omnimarket.nodes.node_prove_running_workflow worker --target-host <host:port> runs the worker;
@@ -101,7 +106,13 @@ prove_running:
     schedule_id: onex-prove-running-hourly
     interval_seconds: 3600
     limit: 3
-    ledger_path_env: ONEX_INTEGRATION_LEDGER_PATH
+    # The integration pass's typed batch comes from its snapshot topic (the floor reader's overlay declares the topic, the
+    # bound and the broker), never from a ledger file or a variable that names one.
+    input:
+      overlay_id: node_floor_projection_read_effect
+      file_env: ONEX_FLOOR_PROJECTION_OVERLAY
+      projection_id: integration
+      group_prefix: node_prove_running_workflow
     hosts: [h051, h053, h101, h200, h201, h202]
     default_host: dev-runtime
     steps:
