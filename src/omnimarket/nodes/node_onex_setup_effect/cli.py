@@ -9,6 +9,7 @@ input or stdin and are never included in a saved plan.
 
 from __future__ import annotations
 
+import importlib
 import sys
 from collections.abc import Callable
 from functools import wraps
@@ -16,12 +17,11 @@ from getpass import getpass
 from importlib import resources
 from pathlib import Path
 from shutil import get_terminal_size
-from typing import Any
+from typing import Any, cast
 
 import click
 import yaml
 from click.core import ParameterSource
-from omnibase_core.cli.cli_run_node import run_node_in_process
 from omnibase_core.cli.cli_user_config import user_config_path
 from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr
@@ -105,6 +105,29 @@ def _workflow_cli(ctx: click.Context, **kwargs: Any) -> None:
     )
 
 
+_HostedRunner = Callable[[str, Path, dict[str, object], int], dict[str, object]]
+
+
+def _hosted_runner() -> _HostedRunner:
+    """The core function that hosts a node in process and returns its result.
+
+    omnibase_core#2335 moved it from ``cli_run_node.run_node_in_process`` to
+    ``ModelRunNodeHosted.run`` (same arguments). A customer install resolves the
+    newest core and this repository's lock an older one, so both are accepted:
+    the new home first, the old one when the new module is absent (OMN-25070).
+    """
+    try:
+        hosted = importlib.import_module(
+            "omnibase_core.models.event_bus.model_run_node_hosted"
+        )
+    except ImportError:
+        legacy = importlib.import_module("omnibase_core.cli.cli_run_node")
+        return cast(_HostedRunner, legacy.run_node_in_process)
+    return cast(_HostedRunner, hosted.ModelRunNodeHosted.run)
+
+
+_run_hosted_node = _hosted_runner()
+
 NODE_PACKAGE = "omnimarket.nodes.node_onex_setup_effect"
 NODE_NAME = "node_onex_setup_effect"
 
@@ -121,7 +144,7 @@ def _run_through_runtime(request: ModelOnexSetupRequest) -> ModelOnexSetupResult
     payload = request.model_dump(mode="json", exclude={"key"})
     payload["key_handoff"] = token
     try:
-        produced = run_node_in_process(NODE_NAME, contract_path, payload, timeout_s)
+        produced = _run_hosted_node(NODE_NAME, contract_path, payload, timeout_s)
     except ModelOnexError as error:
         raise click.ClickException(error.message) from error
     finally:
