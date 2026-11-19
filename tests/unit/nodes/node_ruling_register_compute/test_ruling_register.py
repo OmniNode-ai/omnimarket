@@ -11,7 +11,7 @@ at validation. An ``exit_zero`` row names the nonzero exit code that reads FALSE
 is refused. The node judges the same request as its handler, and the overlay loader returns the
 typed register or refuses. A row the policy refused (a validation failure, a repeated row id, a
 command outside ``allowed_commands``) reads UNREAD with its refusal reason; the refused rows and
-the allowlist are test_refused_rows_and_allowlist.py's subject.
+the allowlist are test_refused_rows_and_allowed_commands.py's subject.
 """
 
 from __future__ import annotations

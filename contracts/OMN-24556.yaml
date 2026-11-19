@@ -11,7 +11,7 @@ requirements:
   statement: A register row that is bad, slow or outside the command list can never hide the other rows, and the hourly tick carries the register on every run.
   acceptance:
   - id: AC1
-    statement: "AC1: a register row that is invalid, or whose command is outside the policy's required command list, reads UNREAD and prints its own MISSING ruling-not-running line while the remaining rows still read -- falsifier: pytest tests/unit/nodes/node_ruling_register_compute/test_refused_rows_and_allowlist.py -q fails on the code before this change"
+    statement: "AC1: a register row that is invalid, or whose command is outside the policy's required command list, reads UNREAD and prints its own MISSING ruling-not-running line while the remaining rows still read -- falsifier: pytest tests/unit/nodes/node_ruling_register_compute/test_refused_rows_and_allowed_commands.py -q fails on the code before this change"
   - id: AC2
     statement: 'AC2: every register read and the whole register read are bounded, and rows the bound did not reach read UNREAD -- falsifier: pytest tests/unit/nodes/node_ruling_register_effect/test_read_budget.py -q fails on the code before this change'
   - id: AC3
