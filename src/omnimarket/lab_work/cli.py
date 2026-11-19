@@ -82,9 +82,7 @@ _bus_options = [
         show_default=True,
     ),
     click.option("--bus-lane", default=None, help="The declared bus lane to use."),
-    click.option(
-        "--kafka-bootstrap", default=None, help="The broker, stated directly."
-    ),
+    click.option("--kafka-bootstrap", default=None, help="The broker, by address."),
 ]
 
 

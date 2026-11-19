@@ -35,6 +35,8 @@ from omnimarket.nodes.node_host_drain_effect.overlay import (
 from omnimarket.nodes.node_lab_work_unit_effect import (
     HandlerHostCapacityAdvertiseEffect,
     HandlerLabWorkUnitEffect,
+    ModelLabWorkUnitReceipt,
+    ModelLabWorkUnitRequest,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.protocols import (
     HostReading,
@@ -55,7 +57,9 @@ class _Reader:
 
 
 class _Runner:
-    def run(self, request: object, host_name: str) -> object:
+    def run(
+        self, request: ModelLabWorkUnitRequest, host_name: str
+    ) -> ModelLabWorkUnitReceipt:
         raise AssertionError("no unit runs here")
 
 
@@ -90,7 +94,7 @@ def _fleet(lanes: list[str] | None) -> Iterator[tuple[SyncBus, EventBusInmemory]
         await bus.start()
         host = LabWorkHost(
             bus,
-            HandlerLabWorkUnitEffect(HOST, _Runner()),  # type: ignore[arg-type]
+            HandlerLabWorkUnitEffect(HOST, _Runner()),
             HandlerHostCapacityAdvertiseEffect(_Reader()),
             lane_reader=(lambda: lanes),
         )

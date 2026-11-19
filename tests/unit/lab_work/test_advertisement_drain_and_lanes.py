@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -97,12 +99,12 @@ def test_the_lane_reader_reads_the_running_lanes_from_the_host_scopes() -> None:
     def _raise(*args: object, **kwargs: object) -> None:
         raise OSError("no systemctl")
 
-    def _reader(run: object) -> LocalLaneReader:
+    def _reader(run: Callable[..., Any]) -> LocalLaneReader:
         return LocalLaneReader(
             ["systemctl", "--user", "list-units"],
             r"^onexlane-(?P<lane>.+)-[0-9a-f]{6}\.scope$",
             10,
-            run=run,  # type: ignore[arg-type]
+            run=run,
         )
 
     assert _reader(lambda *_a, **_k: _Ok()).read() == ["lane-x"]

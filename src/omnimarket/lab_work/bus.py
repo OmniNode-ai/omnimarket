@@ -33,6 +33,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from functools import partial
 from importlib import resources
 from typing import Any, Literal
 
@@ -46,10 +47,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
-from omnimarket.models.model_host_drain_command import (
-    ModelHostDrainCommand,
-    load_host_drain_topic,
-)
+from omnimarket.lab_work.host_drain_mark import HostDrainMark
 from omnimarket.models.model_lab_work_held_unit import ModelLabWorkHeldUnit
 from omnimarket.nodes.node_lab_placement_compute import handlers, models
 from omnimarket.nodes.node_lab_work_unit_effect.handlers import HostAdvertiser
@@ -193,7 +191,6 @@ class LabWorkHost:
         progress_seconds: float = DEFAULT_PROGRESS_SECONDS,
         check_seconds: float = _WATCH_SECONDS,
         clock: Callable[[], float] = time.monotonic,
-        drain_topic: str | None = None,
         lane_reader: Callable[[], list[str] | None] | None = None,
     ) -> None:
         self._bus = bus
@@ -215,16 +212,9 @@ class LabWorkHost:
         self._beat_task: asyncio.Task[None] | None = None
         self._held: dict[int, ModelLabWorkHeldUnit] = {}
         self._unsubscribe: Callable[[], Awaitable[None]] | None = None
-        self._drain_unsubscribe: Callable[[], Awaitable[None]] | None = None
-        self._drain: ModelHostDrainCommand | None = None
-        self._drain_topic = (
-            drain_topic if drain_topic is not None else load_host_drain_topic()
-        )
+        self.drain_mark = HostDrainMark(self._host)
         self._lane_reader = lane_reader
         self.running = 0
-        #: Set when the drain topic could not be subscribed at start; the host
-        #: keeps serving lab work but holds no drain mark until it can.
-        self.drain_unreadable = False
         self.processed = 0
         self.advertised = 0
         self.checks = 0
@@ -256,38 +246,16 @@ class LabWorkHost:
             host_group_id(self._host),
             "earliest",
         )
-        # Each start joins a drain group of its own and replays the topic from
-        # the earliest offset, so a serve that restarts rebuilds the mark. The
-        # group stays on the broker Empty until it expires -- one per start,
-        # never one per call -- and its name stays under the lab work consumer
-        # group prefix the host login's ACL rows cover.
-        drain_group = f"{host_group_id(self._host)}.drain-{uuid.uuid4().hex[:8]}"
-        try:
-            self._drain_unsubscribe = await _subscribe(
-                self._bus,
-                self._drain_topic,
-                self._on_drain,
-                drain_group,
-                "earliest",
-            )
-        except Exception as exc:  # fallback-ok: a login without the drain topic's ACL row must not stop the serve from starting
-            logger.error(
-                "lab-work drain: the drain topic %s could not be subscribed (%s); "
-                "this host holds no drain mark until it can",
-                self._drain_topic,
-                exc,
-            )
-            self._drain_unsubscribe = None
-            self.drain_unreadable = True
+        await self.drain_mark.start(
+            partial(_subscribe, self._bus), host_group_id(self._host)
+        )
         logger.info("lab-work host %s serving %s", self._host, self._topics.command)
 
     async def stop(self) -> None:
         if self._unsubscribe is not None:
             await self._unsubscribe()
             self._unsubscribe = None
-        if self._drain_unsubscribe is not None:
-            await self._drain_unsubscribe()
-            self._drain_unsubscribe = None
+        await self.drain_mark.stop()
         for task in self._tasks:
             task.cancel()
         for task in self._tasks:
@@ -311,7 +279,7 @@ class LabWorkHost:
             running_units=self.running,
             max_units=self._max_units,
             rank_penalty=self._rank_penalty,
-            draining_until=self.draining_until(),
+            draining_until=self.drain_mark.until(self._now()),
             running_lanes=running_lanes,
         )
         try:
@@ -382,32 +350,6 @@ class LabWorkHost:
         if self.advertiser.silent() and not self.stuck.is_set():
             self.stuck_unit = "<capacity advertiser>"
             self.stuck.set()  # serve leaves non-zero on it; the log line names the silence
-
-    async def _on_drain(self, message: ProtocolBusMessage) -> None:
-        try:
-            raw = json.loads(message.value)
-        except (json.JSONDecodeError, TypeError):
-            logger.warning(
-                "lab-work drain: unreadable command on %s", self._drain_topic
-            )
-            return
-        payload = raw.get("payload", raw) if isinstance(raw, dict) else raw
-        try:
-            command = ModelHostDrainCommand.model_validate(payload)
-        except ValidationError:
-            logger.warning("lab-work drain: invalid command on %s", self._drain_topic)
-            return
-        if command.host_name != self._host:
-            return
-        if self._drain is None or command.issued_at > self._drain.issued_at:
-            self._drain = command
-
-    def draining_until(self) -> datetime | None:
-        if self._drain is None:
-            return None
-        if self._drain.reads_draining(self._now()):
-            return self._drain.until
-        return None
 
     async def _enqueue(self, message: ProtocolBusMessage) -> None:
         self._queue.put_nowait(message)

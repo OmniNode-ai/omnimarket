@@ -13,7 +13,7 @@ import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
@@ -28,6 +28,8 @@ from omnimarket.nodes.node_lab_work_unit_effect import (
     HandlerHostCapacityAdvertiseEffect,
     HandlerLabWorkUnitEffect,
     ModelHostCapacityAdvertisement,
+    ModelLabWorkUnitReceipt,
+    ModelLabWorkUnitRequest,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.protocols import (
     HostReading,
@@ -49,7 +51,9 @@ class _Reader:
 
 
 class _Runner:
-    def run(self, request: object, host_name: str) -> object:
+    def run(
+        self, request: ModelLabWorkUnitRequest, host_name: str
+    ) -> ModelLabWorkUnitReceipt:
         raise AssertionError("no unit runs in this test")
 
 
@@ -90,15 +94,13 @@ async def _advertise(
 ) -> ModelHostCapacityAdvertisement:
     bus = EventBusInmemory(environment="local", group="drain-mark-test")
     await bus.start()
-    kwargs: dict[str, object] = {}
-    if lanes != "absent":
-        kwargs["lane_reader"] = lambda: lanes
+    read_lanes = cast("list[str] | None", lanes)
     host = LabWorkHost(
         bus,
-        HandlerLabWorkUnitEffect(HOST, _Runner()),  # type: ignore[arg-type]
+        HandlerLabWorkUnitEffect(HOST, _Runner()),
         HandlerHostCapacityAdvertiseEffect(_Reader()),
         now=lambda: now,
-        **kwargs,  # type: ignore[arg-type]
+        lane_reader=None if lanes == "absent" else (lambda: read_lanes),
     )
     await host.start(advertise=False)
     try:
@@ -291,13 +293,13 @@ def test_a_refused_drain_subscription_leaves_the_serve_running() -> None:
         await normal_bus.start()
         normal = LabWorkHost(
             normal_bus,
-            HandlerLabWorkUnitEffect(HOST, _Runner()),  # type: ignore[arg-type]
+            HandlerLabWorkUnitEffect(HOST, _Runner()),
             HandlerHostCapacityAdvertiseEffect(_Reader()),
             now=lambda: NOW,
         )
         await normal.start(advertise=False)
         try:
-            assert normal.drain_unreadable is False
+            assert normal.drain_mark.unreadable is False
         finally:
             await normal.stop()
             await normal_bus.close()
@@ -307,15 +309,15 @@ def test_a_refused_drain_subscription_leaves_the_serve_running() -> None:
         bus = _DrainRefusingBus(inner)
         host = LabWorkHost(
             bus,
-            HandlerLabWorkUnitEffect(HOST, _Runner()),  # type: ignore[arg-type]
+            HandlerLabWorkUnitEffect(HOST, _Runner()),
             HandlerHostCapacityAdvertiseEffect(_Reader()),
             now=lambda: NOW,
         )
-        assert host.drain_unreadable is False
+        assert host.drain_mark.unreadable is False
         await host.start(advertise=False)
         ad: ModelHostCapacityAdvertisement | None = None
         try:
-            assert host.drain_unreadable is True
+            assert host.drain_mark.unreadable is True
             ad = await host.advertise_once()
         finally:
             await host.stop()
@@ -341,7 +343,7 @@ def test_a_restarted_serve_rebuilds_the_mark_from_the_topic() -> None:
         def serve() -> LabWorkHost:
             return LabWorkHost(
                 bus,
-                HandlerLabWorkUnitEffect(HOST, _Runner()),  # type: ignore[arg-type]
+                HandlerLabWorkUnitEffect(HOST, _Runner()),
                 HandlerHostCapacityAdvertiseEffect(_Reader()),
                 now=lambda: NOW,
             )
