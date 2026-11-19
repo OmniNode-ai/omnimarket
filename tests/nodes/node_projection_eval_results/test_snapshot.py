@@ -43,7 +43,6 @@ pytestmark = pytest.mark.unit
 _TRACKED = "00000000-0000-0000-0000-0000000000a1"
 _VOID = "00000000-0000-0000-0000-0000000000b2"
 _OTHER = "00000000-0000-0000-0000-0000000000c3"
-_LONG = "x" * 200
 
 
 async def test_only_tracking_runs_reach_the_snapshot_and_a_void_run_shows_its_state_and_cause() -> (

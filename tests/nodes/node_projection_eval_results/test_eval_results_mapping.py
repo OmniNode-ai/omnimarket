@@ -86,10 +86,12 @@ def test_eval_results_mapping_a_mixed_event_keeps_only_its_mapped_row() -> None:
             code_event(RUN, try_row(RUN, "t1"), try_row(RUN, "t2", provider="gemini"))
         )
     )
-    (item,) = items
+    assert len(items) == 1
+    item = items[0]
     assert item.engine == EnumEvalEngine.LOCAL
     assert item.task_id == "t1"
-    (part,) = refused
+    assert len(refused) == 1
+    part = refused[0]
     assert part.reason is EnumEvalRefusal.UNMAPPED_PROVIDER
     assert part.subject.startswith(f"{RUN}:t2:")
     assert part.detail == "gemini"
