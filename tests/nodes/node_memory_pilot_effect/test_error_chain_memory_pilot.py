@@ -43,6 +43,7 @@ from omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot import 
 from omnimarket.nodes.node_memory_pilot_effect.protocols.protocol_memory_pilot import (
     BackendAnswer,
     LabModelUnavailableError,
+    ProtocolChatAnswerer,
 )
 
 from .conftest import (
@@ -383,12 +384,12 @@ def _graphiti_handler(
     lab_url: str,
     fake: FakeGraphiti,
     *,
-    answerer: object | None = None,
+    answerer: ProtocolChatAnswerer | None = None,
 ) -> HandlerMemoryPilot:
     overlay = make_graphiti_overlay(tmp_path, chat_url=lab_url)
     backend = BackendGraphiti(
         overlay,
-        answerer=answerer or _FixedAnswerer(),  # type: ignore[arg-type]
+        answerer=answerer or _FixedAnswerer(),
         system_prompt="p",
         graphiti=fake,
     )
