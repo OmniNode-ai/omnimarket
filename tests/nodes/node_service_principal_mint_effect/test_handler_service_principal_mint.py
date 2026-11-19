@@ -16,10 +16,17 @@ from collections.abc import Iterable
 import pytest
 from pydantic import SecretStr
 
+from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.driver_broker_acl import (
+    CREDENTIAL_MISSING_MARKER,
+    BrokerCredentialMissingError,
+)
 from omnimarket.nodes.node_service_principal_mint_effect.handlers.adapter_memory_service_principal import (
     MemoryBrokerLoginAdmin,
     MemoryCredentialDelivery,
     MemoryPrincipalVault,
+)
+from omnimarket.nodes.node_service_principal_mint_effect.handlers.adapter_rpk_broker_login_admin import (
+    RpkSshBrokerLoginAdmin,
 )
 from omnimarket.nodes.node_service_principal_mint_effect.handlers.handler_service_principal_mint import (
     HandlerServicePrincipalMint,
@@ -362,3 +369,55 @@ async def test_control_a_handler_that_skipped_the_existence_check_would_create()
     assert result.outcome == "created", (
         "the run would report a mint that must not happen"
     )
+
+
+@pytest.mark.parametrize("check_only", [True, False])
+async def test_a_missing_broker_credential_is_reported_as_the_credential_not_as_an_unreachable_broker(
+    check_only: bool,
+) -> None:
+    """The real rpk adapter turns the driver's typed error into a refusal that names the key and the file."""
+    line = f"{CREDENTIAL_MISSING_MARKER} DEV_KAFKA_SASL_PASSWORD missing or empty in /x/.env"
+
+    def runner(target: str, script: str) -> str:
+        raise BrokerCredentialMissingError(line)
+
+    handler = HandlerServicePrincipalMint(
+        overlay(),
+        RpkSshBrokerLoginAdmin(broker_row(), runner=runner),
+        MemoryPrincipalVault(),
+        MemoryCredentialDelivery(),
+        token_source=lambda _length: SENTINEL,
+    )
+    result = await handler.handle(request(check_only=check_only))
+    assert result.outcome == "refused"
+    assert result.refusal_kind == "broker_unreachable"
+    assert result.detail == f"broker credential unresolved: {line}"
+    assert SENTINEL not in result.detail
+
+
+async def test_a_missing_broker_credential_at_create_is_reported_as_the_credential() -> (
+    None
+):
+    """The list succeeds (an unauthenticated-looking runner), then create raises the typed error."""
+    line = f"{CREDENTIAL_MISSING_MARKER} DEV_KAFKA_SASL_USERNAME missing or empty in /x/.env"
+    calls: list[str] = []
+
+    def runner(target: str, script: str) -> str:
+        calls.append(script)
+        if "security user create" in script:
+            raise BrokerCredentialMissingError(line)
+        return "USERNAME MECHANISM\n"
+
+    handler = HandlerServicePrincipalMint(
+        overlay(),
+        RpkSshBrokerLoginAdmin(broker_row(), runner=runner),
+        MemoryPrincipalVault(),
+        MemoryCredentialDelivery(),
+        token_source=lambda _length: SENTINEL,
+    )
+    result = await handler.handle(request())
+    assert result.outcome == "failed"
+    assert result.broker_login == "failed"
+    assert result.detail == f"broker credential unresolved: {line}"
+    assert SENTINEL not in result.detail
+    assert len(calls) == 2

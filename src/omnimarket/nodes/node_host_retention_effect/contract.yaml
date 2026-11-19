@@ -7,7 +7,7 @@ name: node_host_retention_effect
 node_type: EFFECT_GENERIC
 version: 1.0.0
 lifecycle: experimental
-contract_version: {major: 1, minor: 2, patch: 0}
+contract_version: {major: 1, minor: 5, patch: 0}
 node_version: "1.0.0"
 runtime_profiles: []
 description: >-
@@ -15,7 +15,12 @@ description: >-
   a direct entry of a declared directory is removed when its owner is the user running the pass, no live process holds it (a
   working directory inside it, or its path in a command line, environment or open file), no live lane names it (a lane run
   directory whose run.pid names a running process, or a lane receipt whose final flag is false), nothing under it changed inside
-  keep_days, and it holds no socket, pipe or other filesystem. RUNNER WORK: a CI runner container's mounted work and cache folders
+  keep_days, and it holds no socket, pipe or other filesystem; a lane_results entry may also be held until the lane's
+  TERMINAL on the rolling work ledger is older than a declared number of days: the TERMINAL is read by running the contract's ledger rows
+  loader command (the node opens no ledger file), an entry whose name names no lane, a lane with no TERMINAL in the loader's window or with a
+  CLAIM newer than its TERMINAL is kept, and an unreadable ledger removes nothing of the class. A lane the loader's window does not hold (an old lane) is judged by its own receipt files, read from the
+  receipt evidence the class declares: every receipt final means finished, a receipt not final and untouched for dead_after_days means the lane died, and anything the receipts cannot say is kept and counted as unknown in the class totals. A lane_results class may
+  declare `archive: true`: the entry is then compressed into the archive tree of node_retention_cleanup's file_retention policy (its archive_root_env and synced marker, the same verified-copy code), read back and compared, and removed only after that; with no archive tree it removes nothing. A terminal guard must declare its receipt evidence (a lane the ledger window does not hold is otherwise kept forever); an entry that the archive cannot hold whole (a symlink or a .git inside) is kept as not_archivable and counted as unknown in the class totals. A lane_results class whose root is a folder that node_retention_cleanup's policy archives (an `action: archive` entry there, enabled or disabled: the operator's archive consent) must declare `archive: true`: a host row that would delete such a folder is refused before anything is read. RUNNER WORK: a CI runner container's mounted work and cache folders
   are evicted, largest declared entry first, down to keep_gib, only while `docker top` shows no Runner.Worker in the runner's
   container (re-read before every removal; an unreadable state refuses the runner) and only through `docker exec` in that
   container as the runner's own user. UV CACHE: `uv cache prune` once the cache holds min_gib, and, when a cap is declared, evict whole entries (unpacked wheels, git dependency checkouts) of the declared buckets oldest-first until the cache is at or under cap_gib, keeping entries that are hardlinked into a virtual environment, changed within keep_days, held by a live process, or not a plain folder.
@@ -108,6 +113,9 @@ retention_bounds:
     archive-v0: {depth: 1, keep_linked: true}
     git-v0/checkouts: {depth: 2, keep_linked: false, marker_suffix: ".ok"}
     git-v1/checkouts: {depth: 2, keep_linked: false, marker_suffix: ".ok"}
+  # The one sanctioned reader of the rolling work ledger (the bus-fed rows loader; it counts any file fallback itself). A terminal guard
+  # runs this module and no other, and opens no ledger file: 720 hours is the loader's own window cap.
+  terminal_loader: {module: omnimarket.nodes.node_ledger_rows_loader_effect, max_window_hours: 720}
 metadata:
   transport_type: inmemory
   execution_locus: host-local

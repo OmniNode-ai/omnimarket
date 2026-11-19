@@ -28,6 +28,7 @@ from ..models.model_service_principal_mint import (
     ModelServicePrincipalMintResult,
 )
 from ..protocols.protocol_service_principal_mint import (
+    BrokerCredentialUnresolvedError,
     BrokerLoginAdminError,
     PrincipalVaultError,
     ProtocolBrokerLoginAdmin,
@@ -127,7 +128,11 @@ class HandlerServicePrincipalMint:
                 request,
                 "refused",
                 refusal_kind="broker_unreachable",
-                detail=f"broker unreachable: {type(exc).__name__}",
+                detail=(
+                    f"broker credential unresolved: {exc}"
+                    if isinstance(exc, BrokerCredentialUnresolvedError)
+                    else f"broker unreachable: {type(exc).__name__}"
+                ),
             )
         try:
             stored = await self._vault.read(folder, key)
@@ -186,7 +191,11 @@ class HandlerServicePrincipalMint:
                         "failed",
                         broker_login="failed",
                         secret=secret_state,
-                        detail=f"broker login creation failed: {type(exc).__name__}",
+                        detail=(
+                            f"broker credential unresolved: {exc}"
+                            if isinstance(exc, BrokerCredentialUnresolvedError)
+                            else f"broker login creation failed: {type(exc).__name__}"
+                        ),
                     )
 
         content = SecretStr(

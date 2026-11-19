@@ -3,8 +3,8 @@
 """Golden and error chains of the lane container budget read (one-runtime plan, task T2).
 
 The node under test is a pure compute node: it takes a host's recorded container listing and the budgets declared for
-it and returns a verdict. It declares no topics of its own, so the chain is the request event and the verdict event,
-published by the test on in-memory topics that stand in for the contract's two: the request topic
+it and returns a verdict. Its contract declares the request topic as its command and the verdict topic as its terminal event, so the chain is the
+request event and the verdict event, published by the test on in-memory topics that stand in for the contract's two: the request topic
 ``onex.cmd.omnimarket.lane-container-budget-requested.v1`` and the verdict topic
 ``onex.evt.omnimarket.lane-container-budget-judged.v1``.
 
@@ -12,7 +12,7 @@ Golden: the request is published, the node judges the listing, and the verdict i
 FAIL and raises one alarm per failing lane; a host that was not read is UNKNOWN, which fails too. The verdict's bytes
 are the floor's input: the floor validates them with the verdict's own model, so a shape change on either side fails.
 
-The seam with the floor is a shared model, not a topic: the node publishes nothing to a broker, so no broker test
+The seam with the floor is a shared model, not a topic: the floor calls the handler in process, so no broker test
 belongs in this file.
 """
 

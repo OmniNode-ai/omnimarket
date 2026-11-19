@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from typing import Annotated, Literal, Self
 
 from pydantic import (
@@ -40,11 +41,75 @@ class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
+class ModelLedgerLoader(_Frozen):
+    """The command that reads the rows of the rolling work ledger for the terminal guard.
+
+    ``argv`` starts the one ledger rows loader the contract names, its module given with ``-m`` as the
+    last two elements (a ``~`` or ``$OMNI_HOME`` expands where it runs); the pass appends ``--reader``
+    and ``--window-hours``. The loader reads the bus-fed projection and prints the rows of the window,
+    so the node opens no ledger file itself. ``timeout_seconds`` is the most one call may take.
+    """
+
+    argv: Annotated[tuple[HostPath, ...], Field(min_length=1)]
+    reader: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
+    window_hours: int = Field(ge=1)
+    timeout_seconds: float = Field(gt=0)
+
+
+class ModelReceiptEvidence(_Frozen):
+    """Where the lane's own receipt files live, and when they say the lane died.
+
+    ``glob`` is a glob relative to ``root`` and may hold the placeholders ``{lane}`` and ``{run}``. A
+    receipt whose JSON ``final`` is true says the run finished; a receipt that is not final and
+    untouched for ``dead_after_days`` says the lane died.
+    """
+
+    root: HostPath
+    glob: NonEmptyStr
+    dead_after_days: float | None = Field(default=None, gt=0)
+
+
+class ModelTerminalGuard(_Frozen):
+    """Hold a lane_results entry until its lane is TERMINAL on the rolling work ledger.
+
+    ``loader`` reads the ledger rows of the last ``window_hours``. ``terminal_keep_days`` is how many days
+    old the lane's newest TERMINAL must be for the entry to go; a lane whose TERMINAL falls outside the
+    loader's window is kept. ``lane_pattern`` is a full-match regular expression of an entry name with a
+    named group ``lane``; an entry the pattern does not match names no lane and is kept. ``receipt`` is
+    required: a lane the ledger window does not hold is judged by its receipts.
+    """
+
+    loader: ModelLedgerLoader
+    terminal_keep_days: float = Field(gt=0)
+    lane_pattern: NonEmptyStr
+    receipt: ModelReceiptEvidence
+
+    @model_validator(mode="after")
+    def lane_pattern_names_lane(self) -> Self:
+        try:
+            pattern = re.compile(self.lane_pattern)
+        except re.error as exc:
+            raise ValueError(
+                f"lane_pattern {self.lane_pattern!r} is not a valid regex: {exc}"
+            ) from exc
+        if "lane" not in pattern.groupindex:
+            raise ValueError(
+                f"lane_pattern {self.lane_pattern!r} must have a group named 'lane'"
+            )
+        if "{run}" in self.receipt.glob and "run" not in pattern.groupindex:
+            raise ValueError(
+                f"lane_pattern {self.lane_pattern!r} must have a group named 'run' "
+                f"when the receipt glob {self.receipt.glob!r} holds {{run}}"
+            )
+        return self
+
+
 class ModelAgeClass(_Frozen):
     """One directory whose direct entries age out after ``keep_days``.
 
     ``protected_name_patterns`` are full-match regular expressions of entry names that are never
-    removed.
+    removed. ``archive`` holds only for ``lane_results``: an entry that ages out is archived before
+    it goes.
     """
 
     name: NonEmptyStr
@@ -53,6 +118,8 @@ class ModelAgeClass(_Frozen):
     keep_days: float = Field(gt=0)
     protected_name_patterns: tuple[NonEmptyStr, ...] = ()
     index_db: HostPath | None = None
+    terminal: ModelTerminalGuard | None = None
+    archive: bool = False
 
     @model_validator(mode="after")
     def patterns_compile(self) -> Self:
@@ -72,6 +139,23 @@ class ModelAgeClass(_Frozen):
                 raise ValueError("pre_commit_store requires index_db")
         elif self.index_db is not None:
             raise ValueError("index_db is only for pre_commit_store")
+        return self
+
+    @model_validator(mode="after")
+    def terminal_rule(self) -> Self:
+        if self.terminal is not None and self.kind != "lane_results":
+            raise ValueError("terminal is only for lane_results")
+        if self.archive and self.kind != "lane_results":
+            raise ValueError("archive is only for lane_results")
+        if (
+            self.terminal is not None
+            and self.terminal.receipt.dead_after_days is not None
+            and self.terminal.receipt.dead_after_days <= self.keep_days
+        ):
+            raise ValueError(
+                f"receipt dead_after_days {self.terminal.receipt.dead_after_days} must "
+                f"be greater than keep_days {self.keep_days}"
+            )
         return self
 
 
@@ -187,6 +271,23 @@ class ModelHostRetention(_Frozen):
         True  # keep any entry a running container bind-mounts (or holds a mount inside)
     )
 
+    def consent_refusals(self, consent_roots: Mapping[str, str]) -> list[str]:
+        """Refusal texts for a lane_results class rooted at a root the operator's archive consent names.
+
+        ``consent_roots`` maps an absolute real path to the label of the policy entry that names it. A class
+        whose real root is one of them and whose ``archive`` is false would delete what the consent says is
+        archived, so it is refused.
+        """
+        refusals: list[str] = []
+        for age in self.age_classes:
+            label = consent_roots.get(os.path.realpath(age.root))
+            if age.kind == "lane_results" and label is not None and not age.archive:
+                refusals.append(
+                    f"{age.name}: root {age.root} is archived under node_retention_cleanup's "
+                    f"policy entry {label}; set archive: true, a plain delete is refused"
+                )
+        return refusals
+
     @model_validator(mode="after")
     def at_least_one_class(self) -> Self:
         if not self.age_classes and not self.runner_groups and not self.uv_caches:
@@ -220,6 +321,13 @@ class ModelUvBucketBound(_Frozen):
     )
 
 
+class ModelTerminalLoaderBound(_Frozen):
+    """The ledger rows loader a terminal guard may run: its module, and the longest window it answers."""
+
+    module: NonEmptyStr
+    max_window_hours: int = Field(ge=1)
+
+
 class ModelRetentionBounds(_Frozen):
     """What an overlay may not exceed, owned by the contract."""
 
@@ -239,6 +347,9 @@ class ModelRetentionBounds(_Frozen):
     ]
     allowed_container_roots: Annotated[tuple[NonEmptyStr, ...], Field(min_length=1)]
     protected_leaf_names_always: tuple[NonEmptyStr, ...] = ()
+    terminal_loader: ModelTerminalLoaderBound | None = (
+        None  # the one ledger rows loader a terminal guard may run
+    )
     uv_evictable_buckets: dict[NonEmptyStr, ModelUvBucketBound] = Field(
         default_factory=dict
     )  # bucket path relative to a uv cache -> how its whole entries are found and guarded
@@ -268,13 +379,19 @@ class ModelHostRetentionRequest(_Frozen):
 
 
 class ModelRetentionItem(_Frozen):
-    """One entry the pass would remove or evict."""
+    """One entry the pass would remove or evict.
+
+    ``finished_by`` names the evidence that said the lane's run finished; ``archived_to`` is where a
+    removed entry's archive sits.
+    """
 
     class_name: NonEmptyStr
     path: NonEmptyStr
     bytes: int = Field(default=0, ge=0)
     action: Literal["remove", "evict", "uv_prune"]
     reason: str = ""
+    finished_by: Literal["", "ledger", "receipt_final", "receipt_dead"] = ""
+    archived_to: str = ""
 
 
 class ModelRetentionKept(_Frozen):
@@ -297,6 +414,14 @@ class ModelRetentionKept(_Frozen):
         "under_budget",
         "below_min",
         "store_locked",
+        "terminal_too_new",
+        "lane_unnamed",
+        "lane_open",
+        "finished_unknown",
+        "receipt_not_final",
+        "not_archivable",
+        "archive_unavailable",
+        "pending_sync",
     ]
 
 
@@ -318,6 +443,8 @@ class ModelClassTotals(_Frozen):
     removed_count: int = 0
     freed_bytes: int = 0
     kept_count: int = 0
+    unknown_count: int = 0
+    archived_count: int = 0
 
 
 class ModelHostRetentionResult(_Frozen):

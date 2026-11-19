@@ -930,10 +930,14 @@ def _deep_merge(default_value: Any, overlay_value: Any) -> Any:
     if isinstance(default_value, dict) and isinstance(overlay_value, dict):
         merged = copy.deepcopy(default_value)
         for key, value in overlay_value.items():
-            if key in merged:
-                merged[key] = _deep_merge(merged[key], value)
-            else:
-                merged[key] = copy.deepcopy(value)
+            # OMN-23413: a bare ``backends:`` line (YAML null) adds and changes no
+            # backend. Merged as a value it replaced the contract's list with
+            # nothing, so every delegation failed schema validation ("at least 1
+            # item, not 0") after a routes file lost its last local model. The
+            # schema needs at least one backend, so a null never means "none".
+            if not (key == "backends" and value is None):
+                # An absent key merges as None, which returns a copy of value.
+                merged[key] = _deep_merge(merged.get(key), value)
         return merged
 
     if isinstance(default_value, list) and isinstance(overlay_value, list):
