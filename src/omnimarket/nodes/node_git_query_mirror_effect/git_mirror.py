@@ -621,6 +621,8 @@ class GitQueryMirror:
         mirror = self.mirror_path(request.repo)
         if op is EnumGitQueryOperation.STATUS:
             return self._status(request.repo, mirror)
+        if op is EnumGitQueryOperation.IS_ANCESTOR:
+            return self._is_ancestor(request, mirror)
         if op not in PR_SCOPED_OPERATIONS or request.pr_number is None:
             raise ValueError(f"operation {op.value} needs pr_number")
         pr = request.pr_number
@@ -672,6 +674,53 @@ class GitQueryMirror:
             if not wm.get("ok") and wm.get("last_error")
             else None,
         )
+
+    def _is_ancestor(
+        self, request: ModelGitQueryRequest, mirror: Path
+    ) -> ModelGitQueryResult:
+        """Whether the request's ancestor sha is an ancestor of its descendant sha.
+
+        A pure read over the objects the mirror already holds: it never fetches
+        and has no GitHub fallback, so a mirror lacking either sha leaves
+        ``is_ancestor`` None instead of answering. A sha counts as an ancestor
+        of itself (git's rule).
+        """
+        op, repo = request.operation, request.repo
+        common: dict[str, object] = {
+            "operation": op,
+            "repo": repo,
+            "source": EnumGitQuerySource.MIRROR,
+            "watermark_age_s": self._age(mirror),
+            "mirror_path": str(mirror),
+            "ancestor_sha": request.ancestor_sha,
+            "descendant_sha": request.descendant_sha,
+        }
+        if not (mirror / "HEAD").exists():
+            return self._result_err(op, repo, None, mirror, "no mirror yet")
+        ancestor, descendant = request.ancestor_sha, request.descendant_sha
+        if ancestor is None or descendant is None:
+            # Unreachable through the typed request: the model validator needs
+            # both shas here and forbids them on every other operation.
+            return ModelGitQueryResult(
+                **common, ok=False, error="is_ancestor needs both shas"
+            )
+        missing = [
+            sha
+            for sha in (ancestor, descendant)
+            if _git(mirror, "cat-file", "-e", f"{sha}^{{commit}}")[0] != 0
+        ]
+        if missing:
+            named = " and ".join(missing)
+            return ModelGitQueryResult(
+                **common,
+                ok=False,
+                is_ancestor=None,
+                error=f"mirror lacks commit {named}",
+            )
+        code, _, err = _git(mirror, "merge-base", "--is-ancestor", ancestor, descendant)
+        if code not in (0, 1):
+            return ModelGitQueryResult(**common, ok=False, error=_tail(err))
+        return ModelGitQueryResult(**common, ok=True, is_ancestor=code == 0)
 
     def _answer(
         self,
