@@ -53,16 +53,30 @@ HANDLER_LOGGER = (
 )
 
 
-def test_ac4_is_bound_to_a_host_read_that_a_pytest_run_cannot_satisfy() -> None:
-    """AC4 reads the h201 schedule-run event for job stall_responder under the local Done gate, with its prerequisites named."""
+def _integration_proof() -> dict[str, object]:
+    """The h201 read item: a local_done_gate item, which the hosted receipt gate refuses to bind."""
     loaded = yaml.safe_load(OCC_CONTRACT.read_text(encoding="utf-8"))
-    bound = [e for e in loaded["dod_evidence"] if "AC4" in e.get("binds_ac", [])]
-    assert len(bound) == 1
-    entry = bound[0]
+    (entry,) = [
+        e for e in loaded["dod_evidence"] if e["id"] == "dod-omn25160-integration-proof"
+    ]
+    return entry
+
+
+def test_ac4_is_read_on_h201_by_a_local_done_gate_item_that_binds_no_criterion() -> (
+    None
+):
+    """AC4 reads the h201 schedule-run event for job stall_responder under the local Done gate, with its prerequisites named.
+
+    The hosted receipt gate runs a local_done_gate item neither at the head nor at the merge base and
+    refuses a bound one (scoped local_done_gate), so the item carries no binds_ac; the hosted proxy
+    item binds AC4 to the tests of the line the read counts.
+    """
+    entry = _integration_proof()
+    assert not entry.get("binds_ac")
     assert entry["execution_scope"] == "local_done_gate"
     assert "omnibase_infra#6039" in entry["description"]
     assert "overlay" in entry["description"]
-    for check in entry["checks"]:
+    for check in entry["checks"]:  # type: ignore[attr-defined]
         assert check["check_type"] == "command"
         assert "--host h201" in check["check_value"]
         assert "stall_responder" in check["check_value"]
@@ -74,13 +88,7 @@ def test_ac4_is_bound_to_a_host_read_that_a_pytest_run_cannot_satisfy() -> None:
 
 
 def _ac4_pattern() -> re.Pattern[str]:
-    loaded = yaml.safe_load(OCC_CONTRACT.read_text(encoding="utf-8"))
-    (check,) = [
-        c
-        for e in loaded["dod_evidence"]
-        if "AC4" in e.get("binds_ac", [])
-        for c in e["checks"]
-    ]
+    (check,) = _integration_proof()["checks"]  # type: ignore[misc]
     found = re.search(r'grep -cE "([^"]+)"', check["check_value"])
     assert found is not None, "the AC4 check counts one grep -cE pattern"
     return re.compile(found.group(1))

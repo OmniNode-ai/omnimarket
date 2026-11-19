@@ -60,9 +60,16 @@ dod_evidence:
   description: 'AC4 is read on the dev runtime on h201, not in a test: the check runs on h201 through the onex_lab_run ssh route (onex lab-work run is refused by the broker ACL) and reads the omninode-runtime container log for the one line this node logs per run, schedule-run job_id=stall_responder outcome=completed, from this node''s logger. The runtime''s own schedule-run lines (Published output event to onex.evt.omnimarket.schedule-run.v1 (correlation_id=...)) name neither the job nor the outcome, so they cannot bind AC4. The check fails until its prerequisites hold: omnibase_infra#6039 landed and deployed (without it the container ledger read refuses and the first run ends failed), this node merged and deployed to the dev runtime, and the overlay document for node_stall_responder_scheduled_effect pushed to the overlays repository and installed on h201. They did not hold at the h201 read of 2026-11-17T22:10Z (no stall_responder line in the runtime log), so the owner of OMN-25160 moves AC4 to a follow-up ticket or reads it after the dev deploy. It runs under the local Done gate only, never on the hosted runner.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: 'python3 "${OMNI_PLUGIN_ROOT:?}/scripts/onex_lab_run.py" --via ssh --lane "${ONEX_LAB_RUN_LANE:?}" --repo omnimarket --sha "$(git rev-parse HEAD)" --host h201 -- bash -o pipefail -c ''docker logs --since 30m omninode-runtime 2>&1 | grep -cE "\[INFO\] omnimarket\.nodes\.node_stall_responder_scheduled_effect\.handlers\.handler_stall_responder_scheduled: schedule-run job_id=stall_responder outcome=completed( |$)"'''
+    cwd: .
+- id: dod-omn25160-ac4-hosted-proxy
+  description: 'hosted proxy for AC4: the tests that the one line this node logs per run matches the pattern the h201 read counts, and does not match a failed run or another job; the h201 read itself is dod-omn25160-integration-proof, scoped to the local Done gate because the hosted receipt gate cannot run it. The proxy does not claim the node runs on h201.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_stall_responder_scheduled_effect/test_contract_topics.py -q --no-cov -k "ac4"
     cwd: .
