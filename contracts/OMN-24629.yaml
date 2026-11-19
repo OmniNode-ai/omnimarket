@@ -1,0 +1,20 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-24629"
+title: "Remove the retired shared-structure package install, vendor helper, repository lists and comments"
+summary: "Retires the install, vendoring helper and repository-list uses of the retired sibling package; the work is carried by the umbrella OMN-19998 contract."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn24629-retired-package-guard"
+    description: "The running-reference guard finds no install, checkout or import of the retired package in the workflow, scorer, scripts, src or tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/test_no_retired_package_running_references.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
