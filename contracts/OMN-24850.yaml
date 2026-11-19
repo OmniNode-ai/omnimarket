@@ -1,0 +1,104 @@
+schema_version: 1.0.0
+ticket_id: OMN-24850
+title: 'Review findings 1 to 5 on omnimarket PR 6324 are fixed or argued: the watchdog always ends the process, honors a disarm during its grace, and the contract check covers each tick file'
+summary: The overlay store tick's watchdog ends the process in a finally after its report, so a report that fails or cannot start a thread no longer leaves the process alive, and it re-checks the disarm after the 1 s grace so a tick that returned during the grace is not ended with 124. The watchdog test clears the whole overlay environment tuple and stubs the loader, asserts main's return, joins threads in place of fixed sleeps, and prints ready from inside the blocked handler. The contract check of OMN-24839 reads each of the four other tick files and the stale-readings producer row on the fixer lane's STATUS rows. The non-blocking review findings are fixed or argued in a PR comment.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24850-watchdog
+  statement: The watchdog always ends the process at the deadline unless the tick returned first, and its test does not depend on the host's overlay sources or on fixed sleeps.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a PR comment starting `Lab: head=<full new head sha>` names the sha, the command and exit 0, and every required check-run of omnimarket#6324 reads success at the new head, after the live head sha is confirmed against the one the review cites (08f369c2490a) -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6324` lists a required context that is not success at the new head, or the Lab comment lacks the full sha, the command or exit 0'
+  - id: AC2
+    statement: 'AC2: the watchdog ends the process even when its report fails: terminate runs in a finally after the report, with a test where the stuck-report call and the Thread start both raise, red at head 08f369c2490a and green at the new head -- falsifier: `uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q -p no:cacheprovider` passes with the finally removed'
+  - id: AC3
+    statement: 'AC3: the watchdog re-checks disarmed after the 1 s grace and returns without terminate, with a test that disarms during the grace while the reporter is blocked, red at the old head and green at the new head -- falsifier: `uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q -p no:cacheprovider` passes with the re-check removed'
+  - id: AC4
+    statement: 'AC4: the watchdog test reuses the whole overlay environment tuple that test_tick_entrypoints_disarm_deadline.py clears (or stubs the loader), asserts main''s return, joins the thread in place of a fixed sleep and sets a deadline that does not flake on a slow refusal path -- falsifier: `uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q -p no:cacheprovider` passes with only ONEX_SKILL_OVERLAY_ROOTS cleared and a second overlay source set'
+- id: req-omn24850-contract-check
+  statement: The contract check of the fixer lane covers each tick file and the producer, and the non-blocking findings are settled.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: contracts/OMN-24839.yaml dod-overlay-tick-ledger-rows-ac4 checks each of the four tick files and the stale-readings producer row on the lane''s STATUS rows, and grep -rn dump_traceback_later src/ shows no other tick arming it, or the argument is in a PR comment -- falsifier: `uv run pytest tests/nodes/node_host_installer_registry_units -q -p no:cacheprovider` passes with one tick file dropped from the ledger rows the check reads'
+  - id: AC6
+    statement: 'AC6: the non-blocking findings 6 to 11 are fixed or argued in a PR comment: the detector flags a fourth positional and starred args, the contract summary says a C call holding the GIL stops the watchdog, ready prints inside the blocked handler, the not-before assert needs 0.2 s elapsed, the error chain test keeps a safety net for a tick that arms faulthandler, and the PR notes the base is red through a blocking stderr write -- falsifier: `uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q -p no:cacheprovider` passes with a fourth-positional dump_traceback_later call in the tick'
+evidence_requirements:
+- kind: tests
+  description: The watchdog tests, the error chain tests of the overlay store and the tick disarm test at the pushed head.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py tests/unit/nodes/node_overlay_store tests/unit/workflows/test_tick_entrypoints_disarm_deadline.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24850-watchdog-always-ends-ac2
+  description: The watchdog ends the process when the report call raises, when the report thread cannot start and when both fail; at head 08f369c2490a the last two ended nothing (red).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k report_fails
+    cwd: .
+- id: dod-omn24850-disarm-during-grace-ac3
+  description: A tick that returns while the report is blocked disarms the watchdog and the watchdog does not end the process; at head 08f369c2490a it ended it with 124 (red).
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k report_grace
+    cwd: .
+- id: dod-omn24850-test-isolation-ac4
+  description: The in-process test clears the whole overlay environment tuple, stubs the loader, asserts main's return and joins the watchdog thread.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k leaves_no_watchdog
+    cwd: .
+- id: dod-omn24850-contract-check-ac5
+  description: The OMN-24839 ledger check has one command per tick file and one for the producer, each failing when its row is dropped, and no other file arms the timer.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn24850-non-blocking-ac6
+  description: The detector flags a fourth positional and starred arguments and the tick imports no faulthandler; the error chain test keeps a recorder for the terminator and fails on a watchdog left armed.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py tests/unit/nodes/node_overlay_store/test_error_chain_overlay_store.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn24850-deploy-conditions
+  description: 'Deploy probe the hosted runner can run: the tick at the checked-out commit re-checks the disarm before it ends the process; the line does not exist at the merge base''s parent head, so the probe fails there.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: grep -F 'if not disarmed.is_set():' src/omnimarket/nodes/node_overlay_store_read_effect/runtime_overlay_store_tick.py
+    cwd: .
+- id: dod-omn24850-integration-proof-ac1
+  description: The pushed head ran the suites on a lab host through the lab work runner and exited 0; host, sha and exit code are in the Lab comment of the pull request.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fix6324-1515 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py tests/unit/nodes/node_overlay_store tests/unit/workflows/test_tick_entrypoints_disarm_deadline.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24850-watchdog-suite-ac1
+  description: The watchdog test file and the overlay store error chain test pass at the checked-out head on the hosted runner.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py tests/unit/nodes/node_overlay_store/test_error_chain_overlay_store.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .

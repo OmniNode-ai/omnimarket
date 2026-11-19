@@ -11,13 +11,16 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import faulthandler
+import contextlib
 import json
 import os
 import sys
-from collections.abc import Mapping
+import threading
+import traceback
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from sys import _current_frames as current_frames
 from typing import Any
 
 from omnimarket.handlers.floor_projection import publish_envelope
@@ -37,10 +40,70 @@ from omnimarket.nodes.node_overlay_store_read_effect.runtime_overlay_store_read 
     fleet,
 )
 
+#: The exit status of a tick the watchdog ended, the one a run limit's wrapper uses for a run it ends (124).
+EXIT_DEADLINE = 124
+WATCHDOG_THREAD = "overlay-store-tick-watchdog"
+#: How long the watchdog lets its report of the stuck tick take before it ends the process without it.
+REPORT_GRACE_S = 1.0
+
 
 def tick_deadline_s() -> float:
     """The contract's bound on one tick; past it the process ends and the next tick starts clean."""
     return float(_contract()["descriptor"]["timeout_ms"]) / 1000
+
+
+def terminate_process(status: int) -> None:
+    """End this process now, running no handler and no finalizer: nothing a stuck tick holds can stop it."""
+    os._exit(status)
+
+
+def _report_stuck(deadline_s: float, stuck: int | None) -> None:
+    """Say on stderr where the tick's thread stood. A stderr that cannot take the text is why this runs apart."""
+    frames = current_frames()
+    where = "".join(traceback.format_stack(frames[stuck])) if stuck in frames else ""
+    sys.stderr.write(
+        f"{NODE}: tick passed its {deadline_s:g} s deadline; ending the process unless the tick returns first\n{where}"
+    )
+    sys.stderr.flush()
+
+
+def arm_watchdog(
+    deadline_s: float, terminate: Callable[[int], None] = terminate_process
+) -> Callable[[], None]:
+    """End the process at ``deadline_s`` unless the tick returns first; the returned call disarms it.
+
+    The watchdog is a thread, not the interpreter's own exit timer: that one dumps every thread's
+    traceback before it exits, and a dump that does not finish keeps the process alive (measured on a Mac: four hours
+    in the dump, no further launchd tick, overlay refresh frozen). Here the report is written by a second thread the
+    watchdog waits on for ``REPORT_GRACE_S`` at most, so a stderr that blocks cannot hold the exit, and a report that
+    cannot be started or fails does not stop the exit either. A tick that returns while the report is still running
+    disarms the watchdog, and the watchdog then leaves the process alone.
+
+    Two limits. A Python thread needs the GIL: a call into C code that holds the GIL for good stops this watchdog too,
+    and then only the unit's ``run_timeout_s`` ends the run. And ``main`` disarms in its ``finally``, so a hang after
+    ``main`` returns (interpreter teardown, an ``atexit`` handler, a non-daemon thread) is not this watchdog's to end:
+    it is bounded by ``run_timeout_s`` alone."""
+    disarmed = threading.Event()
+    stuck = threading.get_ident()
+
+    def watch() -> None:
+        if disarmed.wait(deadline_s):
+            return
+        try:
+            # The report is a courtesy: where it cannot be written, there is nowhere to say so.
+            with contextlib.suppress(Exception):
+                reporter = threading.Thread(
+                    target=_report_stuck, args=(deadline_s, stuck), daemon=True
+                )
+                reporter.start()
+                reporter.join(REPORT_GRACE_S)
+        finally:
+            # A tick that returned during the grace has disarmed: the process ends on its own, not with 124.
+            if not disarmed.is_set():
+                terminate(EXIT_DEADLINE)
+
+    threading.Thread(target=watch, name=WATCHDOG_THREAD, daemon=True).start()
+    return disarmed.set
 
 
 def _write_atomically(path: Path, text: str) -> None:
@@ -136,8 +199,9 @@ def main(argv: list[str] | None = None) -> int:
     env = os.environ
     # A consumer caught mid-join when its broker goes away can retry its coordinator forever, and a unit
     # manager starts no second tick while one runs: measured on a lab host, 18 minutes and counting.
-    faulthandler.dump_traceback_later(tick_deadline_s(), exit=True)
-    # A tick run in-process must not leave the process-ending timer armed.
+    disarm = arm_watchdog(tick_deadline_s(), terminate_process)
+    # A tick run in-process must not leave the process-ending watchdog armed. The disarm in the ``finally`` below also
+    # ends the watchdog's cover: a hang after ``main`` returns is bounded only by the unit's ``run_timeout_s``.
     try:
         try:
             overlay = load_structured_overlay(NODE, ModelOverlayStoreReadOverlay, env)
@@ -170,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return exit_for(readings)
     finally:
-        faulthandler.cancel_dump_traceback_later()
+        disarm()
 
 
 if __name__ == "__main__":
