@@ -19,6 +19,7 @@ from pathlib import Path
 import yaml
 
 from omnimarket.handlers.node_overlay_reader import (
+    OVERLAY_ROOTS_ENV,
     NodeOverlayError,
     find_node_overlay,
     load_structured_overlay,
@@ -86,6 +87,18 @@ def resolve_registry_path(environ: Mapping[str, str] | None = None) -> Path:
     return Path(os.path.abspath(found))
 
 
+def install_overlay_roots(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[Path, ...]:
+    """The absolute overlay roots the install reads, in order, for the unit to carry."""
+    env = os.environ if environ is None else environ
+    return tuple(
+        Path(os.path.abspath(root))
+        for root in env.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep)
+        if root
+    )
+
+
 def schedule_gaps(
     overlay: ModelLaneCensusScheduleOverlay,
     lab_table: ModelLabHostsTable | None = None,
@@ -150,8 +163,13 @@ def render_units(
     home: Path,
     registry_path: Path,
     config_root: Path | None = None,
+    overlay_roots: Sequence[Path] = (),
 ) -> tuple[str, str]:
-    """The systemd user service and timer text of the scheduled census."""
+    """The systemd user service and timer text of the scheduled census.
+
+    ``overlay_roots`` are the overlay roots the install read; the unit carries them so the run
+    finds the same node overlays (the compose project policy) the install did.
+    """
     root = _safe(omni_root, "registry root")
     python = _safe(venv / "bin" / "python", "dispatch venv interpreter")
     user_home = _safe(home, "home")
@@ -167,6 +185,10 @@ def render_units(
     }
     if config_root is not None:
         environment["ONEX_WORKSPACE_CONFIG_ROOT"] = _safe(config_root, "config root")
+    if overlay_roots:
+        environment[OVERLAY_ROOTS_ENV] = os.pathsep.join(
+            _safe(root, "overlay root") for root in overlay_roots
+        )
     service = (
         "# Rendered by the lane census node (schedule install); the node contract owns the\n"
         "# cadence, so change the contract and install again rather than editing this file.\n"
@@ -254,6 +276,7 @@ class LaneCensusScheduler:
                 home=self.home,
                 registry_path=resolve_registry_path(self.environ),
                 config_root=config_root,
+                overlay_roots=install_overlay_roots(self.environ),
             )
             refuse_worktree_roots({self.service_name: service, self.timer_name: timer})
         except NodeOverlayError as exc:
