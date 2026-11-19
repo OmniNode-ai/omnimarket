@@ -4,17 +4,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
+from omnimarket.handlers.scm.handler_gateway_read_client import (
+    HandlerGatewayReadClient,
+)
 from omnimarket.models.ticket_closer import ModelTicketCloserScheduleOverlay
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_contract_index import (
     GitCloneContractIndex,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_pr_sources import (
-    watcher_state_path,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_overlay import (
     load_scope_overlay,
@@ -31,6 +30,9 @@ from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.contract_cand
 from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.dod_verify_reading import (
     DodVerifyReader,
 )
+from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.gateway_open_prs import (
+    GatewayOpenPullRequests,
+)
 from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.ticket_bus_call import (
     bus_ticket_call,
 )
@@ -39,9 +41,6 @@ from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.ticket_done_w
 )
 from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.ticket_reader import (
     BusTicketReader,
-)
-from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.watcher_open_prs import (
-    WatcherOpenPullRequests,
 )
 
 
@@ -61,7 +60,6 @@ class CloserParts:
 def bound_closer_parts(
     schedule: ModelTicketCloserScheduleOverlay,
     environ: Mapping[str, str],
-    clock: Callable[[], datetime],
 ) -> CloserParts:
     """Build the real adapters from the schedule overlay, or refuse naming the missing thing."""
     if schedule.home_env is None:
@@ -93,11 +91,6 @@ def bound_closer_parts(
         raise BoundProfileRefusedError(
             f"no clone of any scope repository under {schedule.home_env}"
         )
-    state = watcher_state_path(root, environ)
-    if not state.is_file():
-        raise BoundProfileRefusedError(
-            "the PR watcher state file is absent at its declared path"
-        )
     call = bus_ticket_call(
         bus_lane=schedule.bus_lane,
         timeout_s=schedule.ticket_timeout_seconds,
@@ -106,9 +99,7 @@ def bound_closer_parts(
         contracts=GitCloneContractIndex(root, scope),
         merges=GitCloneMergeReader(root, scope),
         tickets=BusTicketReader(call, schedule.lane),
-        open_prs=WatcherOpenPullRequests(
-            watcher_state_path(root, environ), scope, clock
-        ),
+        open_prs=GatewayOpenPullRequests(HandlerGatewayReadClient(), scope),
         eligible_states=frozenset(scope.eligible_states),
         scan_limit=schedule.scan_limit,
     )
