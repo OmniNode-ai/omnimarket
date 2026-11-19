@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import ssl
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -78,3 +79,22 @@ class DeadlineTransport(httpx.BaseTransport):
             # Closing the loop does not wait for an OS DNS lookup that was
             # cancelled from the request's point of view.
             self._loop.close()
+
+
+def open_https_client(
+    timeout_seconds: float,
+    transport_factory: Callable[[], httpx.AsyncBaseTransport] | None,
+) -> httpx.Client:
+    """Open the forward effect's client with a cancellable, TLS-verified transport."""
+    transport = (
+        transport_factory()
+        if transport_factory is not None
+        else httpx.AsyncHTTPTransport(
+            verify=ssl.create_default_context(), trust_env=False
+        )
+    )
+    return httpx.Client(
+        transport=DeadlineTransport(transport),
+        trust_env=False,
+        timeout=timeout_seconds,
+    )

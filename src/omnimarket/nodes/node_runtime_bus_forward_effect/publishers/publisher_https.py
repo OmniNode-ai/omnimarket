@@ -9,7 +9,6 @@ import base64
 import json
 import os
 import re
-import ssl
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -35,7 +34,7 @@ from omnimarket.nodes.node_runtime_bus_forward_effect.protocols import (
     PublisherRefusedError,
 )
 
-from .https_deadline_transport import DeadlineTransport, run_sync
+from ..handlers.https_deadline_transport import open_https_client, run_sync
 
 _BEARER_TOKEN = re.compile(r"[A-Za-z0-9._~+/-]+=*")
 _NO_FULL_ATTEMPT = "flush deadline leaves no time for a full request attempt"
@@ -46,7 +45,8 @@ class _IngestContract(Protocol):
 
     CLIENT_HEADER_SET: Mapping[str, int | Literal["max_authorization_bytes"]]
 
-    def canonical_topic(self, topic: str, /) -> str: ...
+    def canonical_topic(self, topic: str, /) -> str:
+        raise NotImplementedError
 
     def compute_event_id(
         self,
@@ -55,7 +55,8 @@ class _IngestContract(Protocol):
         value: bytes,
         headers: Iterable[tuple[str, bytes]],
         /,
-    ) -> str: ...
+    ) -> str:
+        raise NotImplementedError
 
 
 _INGEST_CONTRACT = cast(
@@ -340,20 +341,11 @@ class PublisherHttps:
 
     def _flush_records(self, records: list[_Record], deadline: float) -> int:
         batches = list(self._split(records))
-        transport = (
-            self._transport_factory()
-            if self._transport_factory is not None
-            else httpx.AsyncHTTPTransport(
-                verify=ssl.create_default_context(), trust_env=False
-            )
-        )
         unconfirmed = 0
         first_reason = None
         may_have_published = False
-        with httpx.Client(
-            transport=DeadlineTransport(transport),
-            trust_env=False,
-            timeout=self._config.request_timeout_seconds,
+        with open_https_client(
+            self._config.request_timeout_seconds, self._transport_factory
         ) as client:
             for index, batch in enumerate(batches):
                 later = len(batches) - index - 1
