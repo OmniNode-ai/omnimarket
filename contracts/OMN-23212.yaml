@@ -2,29 +2,29 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-23212"
 title: "onex dashboard serves the new OmniDash release: omnimarket's dashboard bundle pin moves to the new tag with its sha256"
-summary: "Amendment 1 (2026-11-17): onex dashboard pins omnidash v1.1.13 with the sha256 of its published asset (9171c181...), verified through the bundle code and shipped in the package as two parts; the release carries omnidash #517, #518, #521 and #523 and still the decisions walk past the newest 500 runs. AC2 is read after an omnimarket release candidate carries this pin."
+summary: "Amendment 2 (2026-11-18): onex dashboard pins omnidash v1.1.14 with the sha256 of its published asset (f3718ee2...), verified through the bundle code and shipped in the package as two parts; the release (tag on omnidash#527's merge ac14f48d) carries the version bump #529 and #528, so a measured zero cost is written with its cents, and still the decisions walk past the newest 500 runs and v1.1.13's pages. AC2 is read after an omnimarket release candidate carries this pin."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-dashboard-bundle-pin-v1-1-13"
+  - id: "req-dashboard-bundle-pin-v1-1-14"
     statement: |-
-      onex dashboard serves omnidash v1.1.13, pinned by the digest of its published asset.
+      onex dashboard serves omnidash v1.1.14, pinned by the digest of its published asset.
     acceptance:
       - id: "AC1"
         statement: |-
           AC1: the pin's version and sha256 equal the new tag's asset computed from the downloaded bytes -- falsifier: the existing dashboard bundle pin test in omnimarket plus a lab `onex dashboard` start that serves the new version
 evidence_requirements:
   - kind: "tests"
-    description: "AC1: the pin is v1.1.13 with sha256 9171c181...; the pinned asset, verified through ensure_bundle, carries the next_cursor walk and v1.1.13's pages (Run steps is unavailable, per million tokens); the release's .sha256 sidecar names that digest and asset. At the v1.1.12 pin the pin, page and sidecar cases fail."
+    description: "AC1: the pin is v1.1.14 with sha256 f3718ee2...; the pinned asset, verified through ensure_bundle, carries the next_cursor walk and v1.1.13's pages (Run steps is unavailable, per million tokens) and no longer drops the cents from a zero amount; the release's .sha256 sidecar names that digest and asset. At the v1.1.13 pin the pin, zero-cents and sidecar cases fail."
     command: 'uv run pytest tests/projection/test_dashboard_bundle_pin_omn23212.py -q -p no:randomly'
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn23212-ac1-bundle-pin-1-1-13"
-    description: "AC1 (Amendment 1): onex dashboard pins omnidash v1.1.13 with the sha256 of its published asset, computed from the downloaded bytes; the pinned asset, verified through ensure_bundle (the path onex dashboard serves from), carries the next_cursor walk and v1.1.13's pages, and the release's .sha256 sidecar names the pinned digest and asset. At the v1.1.12 pin the pin, page and sidecar cases fail."
+  - id: "dod-omn23212-ac1-bundle-pin-1-1-14"
+    description: "AC1 (Amendment 2): onex dashboard pins omnidash v1.1.14 with the sha256 of its published asset, computed from the downloaded bytes; the pinned asset, verified through ensure_bundle (the path onex dashboard serves from), carries the next_cursor walk and v1.1.13's pages and writes a zero amount with its cents, and the release's .sha256 sidecar names the pinned digest and asset. At the v1.1.13 pin the pin, zero-cents and sidecar cases fail."
     source: "manual"
     checks:
       - check_type: "test_passes"
@@ -32,7 +32,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn23212-integration-proof"
-    description: "Run the v1.1.13 pin's integration cases on a lab host at the pushed head: the pinned asset verifies through ensure_bundle and carries the cursor walk and v1.1.13's pages, and the release sidecar names the pinned digest. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    description: "Run the v1.1.14 pin's integration cases on a lab host at the pushed head: the pinned asset verifies through ensure_bundle, carries the cursor walk and v1.1.13's pages and writes a zero amount with its cents, and the release sidecar names the pinned digest. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
     source: "manual"
     execution_scope: "local_done_gate"
     checks:
