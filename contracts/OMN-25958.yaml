@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-25958
+title: omnimarket release commits CHANGELOG.md to dev, which the removed-prose test refuses
+summary: 'The release PR for omnimarket 0.4.321 added CHANGELOG.md at the repository root, a file the removed-prose test lists in REMOVED_PROSE, so that test failed on dev and on every pull request based on it. This change deletes the file again. Whether the release writer stops committing it is a separate criterion (AC2), decided by the release-train owner.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25958-no-changelog-on-dev
+  statement: CHANGELOG.md is absent from dev, as the removed-prose test requires.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: CHANGELOG.md is absent from omnimarket dev and the removed-prose test passes there -- falsifier: uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q'
+evidence_requirements:
+- kind: tests
+  description: The removed-prose test passes at the pushed head.
+  command: uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25958-ac1
+  description: 'AC1: test_removed_prose_file_is_absent[CHANGELOG.md] passes with the file removed; it fails at dev 5bf30a3f, where the release PR added the file.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q -p no:randomly --no-cov
+    cwd: .
