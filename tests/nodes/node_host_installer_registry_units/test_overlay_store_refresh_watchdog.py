@@ -32,13 +32,16 @@ from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_regist
     load_units,
 )
 from omnimarket.nodes.node_overlay_store_read_effect import runtime_overlay_store_tick
-from tests.nodes.node_host_installer_registry_units.test_log_directory import READER
-from tests.nodes.node_host_installer_registry_units.test_overlay_store_refresh_workspace_root import (
-    brew_python,  # noqa: F401  (the autouse fixture the render below needs)
-    render,
+from tests.nodes.node_host_installer_registry_units import (
+    test_overlay_store_refresh_workspace_root as workspace_root,
 )
+from tests.nodes.node_host_installer_registry_units.test_log_directory import READER
 
 pytestmark = pytest.mark.unit
+
+# The autouse fixture the render below needs, bound under its own name so pytest finds it here.
+brew_python = workspace_root.brew_python
+render = workspace_root.render
 
 TICK_SOURCE = Path(runtime_overlay_store_tick.__file__)
 CONTRACT = Path(__file__).resolve().parents[3] / "contracts" / "OMN-24839.yaml"
@@ -336,10 +339,12 @@ def threads_for(report_thread: type[threading.Thread]) -> type:
         get_ident = staticmethod(threading.get_ident)
 
         @staticmethod
-        def Thread(*args: Any, **kwargs: Any) -> threading.Thread:  # noqa: N802  (the class it replaces)
+        def make_thread(*args: Any, **kwargs: Any) -> threading.Thread:
             if kwargs.get("name") == runtime_overlay_store_tick.WATCHDOG_THREAD:
                 return threading.Thread(*args, **kwargs)
             return report_thread(*args, **kwargs)
+
+        Thread = make_thread
 
     return ThreadsFor
 

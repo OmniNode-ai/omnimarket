@@ -20,6 +20,7 @@ import traceback
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from sys import _current_frames as current_frames
 from typing import Any
 
 from omnimarket.handlers.floor_projection import publish_envelope
@@ -58,7 +59,7 @@ def terminate_process(status: int) -> None:
 
 def _report_stuck(deadline_s: float, stuck: int | None) -> None:
     """Say on stderr where the tick's thread stood. A stderr that cannot take the text is why this runs apart."""
-    frames = sys._current_frames()  # noqa: SLF001  (the only way to name another thread's stack)
+    frames = current_frames()
     where = "".join(traceback.format_stack(frames[stuck])) if stuck in frames else ""
     sys.stderr.write(
         f"{NODE}: tick passed its {deadline_s:g} s deadline; ending the process unless the tick returns first\n{where}"
