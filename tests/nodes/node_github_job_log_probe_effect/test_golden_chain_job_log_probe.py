@@ -96,6 +96,11 @@ class Ledger:
 
     @property
     def rows(self) -> list[str]:
+        # The ledger writer refuses a row that lacks the whole pipe cell req=<request id>.
+        for request in self.requests:
+            for row in request.rows.splitlines():
+                assert f" | req={request.request_id} | " in row
+
         return [row for request in self.requests for row in request.rows.splitlines()]
 
 

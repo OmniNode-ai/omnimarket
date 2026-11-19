@@ -231,7 +231,7 @@ def _ledger_request(
         f"{stamp} | STATUS | {actor} | src=job-log-probe | ticket={_TICKET}"
         f" | consumer_host={settings.consumer_host} | owner={settings.owner_lane} | {target}"
         f" | correlation_id={request.correlation_id} | {reading_cells}{drill}"
-        " | Scheduled job-log read.\n"
+        f" | req={request.correlation_id} | Scheduled job-log read.\n"
     )
     if raise_alarm:
         rows += (
@@ -239,7 +239,7 @@ def _ledger_request(
             f" | ticket={_TICKET} | host={settings.consumer_host}"
             f" | owner={settings.owner_lane} | {target}"
             f" | correlation_id={request.correlation_id} | verdict={reading.verdict}"
-            f" | reason={reading.reason}{drill}"
+            f" | reason={reading.reason}{drill} | req={request.correlation_id}"
             " | Two consecutive scheduled job-log reads did not return a log body.\n"
         )
     return ModelWorkLedgerAppendRequest(
