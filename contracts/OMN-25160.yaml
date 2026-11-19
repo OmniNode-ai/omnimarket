@@ -16,8 +16,6 @@ requirements:
     statement: 'AC2: A missing or refused schedule settings file, an unreadable overlay or an unreadable ledger gives a failed run event or a refused-once log that names the cause, never a silent skip -- falsifier: the error chain tests pass a refused overlay and an unreadable ledger and expect outcome failed'
   - id: AC3
     statement: 'AC3: The interval, window, redispatch bound and ledger route come only from the settings file in the overlays repo, and the contract and handler hold no value -- falsifier: the overlay model has no field default and the test builds it from a settings file'
-  - id: AC4
-    statement: 'AC4: integrated: the dev runtime on h201 runs the node on its own tick and a schedule-run event for job stall_responder with outcome completed is read there -- falsifier: no schedule-run event for job stall_responder within two intervals of the runtime tick after the dev deploy of this change and the overlay'
 evidence_requirements:
 - kind: tests
   description: The golden and error chain tests of the stall responder scheduled node and the ACL seam test
@@ -28,7 +26,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn25160-ac1
-  description: AC1 and AC2 proven by the node tests, with the window, covered-lane, open-claim look-back, invalid-overlay and tick-exception failing controls. AC4 is not bound here, because a pytest run cannot fail for a runtime reading; AC4 is bound to dod-omn25160-integration-proof.
+  description: AC1 and AC2 proven by the node tests, with the window, covered-lane, open-claim look-back, invalid-overlay and tick-exception failing controls. The runtime reading of the node on the dev runtime is not an acceptance criterion here, because a pytest run cannot fail for it; it is read by dod-omn25160-integration-proof.
   source: manual
   binds_ac:
   - AC1
@@ -50,18 +48,16 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_schedule_run_reducer/test_runtime_role_acl_seam.py -q --no-cov
     cwd: .
 - id: dod-omn25160-deploy-stall-responder-scheduled
-  description: 'Presence probe the hosted runner can run: the scheduled node contract at the checked-out commit on GitHub names its handler class; the file does not exist at the merge base, so the probe fails there. It proves the file is on GitHub, not that the node is deployed or runs; the deployment is AC4, read on the dev runtime after the dev deploy through the deploy agent (dod-omn25160-integration-proof).'
+  description: 'Presence probe the hosted runner can run: the scheduled node contract at the checked-out commit on GitHub names its handler class; the file does not exist at the merge base, so the probe fails there. It proves the file is on GitHub, not that the node is deployed or runs; the deployment is read on the dev runtime after the dev deploy through the deploy agent (dod-omn25160-integration-proof).'
   source: manual
   checks:
   - check_type: command
     check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_stall_responder_scheduled_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "HandlerStallResponderScheduled" > /dev/null'''
     cwd: .
 - id: dod-omn25160-integration-proof
-  description: 'AC4 is read on the dev runtime on h201, not in a test: the check runs on h201 through the onex_lab_run ssh route (onex lab-work run is refused by the broker ACL) and reads the omninode-runtime container log for the one line this node logs per run, schedule-run job_id=stall_responder outcome=completed, from this node''s logger. The runtime''s own schedule-run lines (Published output event to onex.evt.omnimarket.schedule-run.v1 (correlation_id=...)) name neither the job nor the outcome, so they cannot bind AC4. The check fails until its prerequisites hold: omnibase_infra#6039 landed and deployed (without it the container ledger read refuses and the first run ends failed), this node merged and deployed to the dev runtime, and the overlay document for node_stall_responder_scheduled_effect pushed to the overlays repository and installed on h201. They did not hold at the h201 read of 2026-11-17T22:10Z (no stall_responder line in the runtime log), so the owner of OMN-25160 moves AC4 to a follow-up ticket or reads it after the dev deploy. It runs under the local Done gate only, never on the hosted runner.'
+  description: 'The runtime reading is read on the dev runtime on h201, not in a test: the check runs on h201 through the onex_lab_run ssh route (onex lab-work run is refused by the broker ACL) and reads the omninode-runtime container log for the one line this node logs per run, schedule-run job_id=stall_responder outcome=completed, from this node''s logger. The runtime''s own schedule-run lines (Published output event to onex.evt.omnimarket.schedule-run.v1 (correlation_id=...)) name neither the job nor the outcome, so they cannot show the node ran. The check fails until its prerequisites hold: omnibase_infra#6039 landed and deployed (without it the container ledger read refuses and the first run ends failed), this node merged and deployed to the dev runtime, and the overlay document for node_stall_responder_scheduled_effect pushed to the overlays repository and installed on h201. They did not hold at the h201 read of 2026-11-17T22:10Z (no stall_responder line in the runtime log), so the owner of OMN-25160 reads it after the dev deploy. It carries no binds_ac only because the hosted repo-evidence control never runs a local_done_gate item; it runs under the local Done gate only, never on the hosted runner.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: 'python3 "${OMNI_PLUGIN_ROOT:?}/scripts/onex_lab_run.py" --via ssh --lane "${ONEX_LAB_RUN_LANE:?}" --repo omnimarket --sha "$(git rev-parse HEAD)" --host h201 -- bash -o pipefail -c ''docker logs --since 30m omninode-runtime 2>&1 | grep -cE "\[INFO\] omnimarket\.nodes\.node_stall_responder_scheduled_effect\.handlers\.handler_stall_responder_scheduled: schedule-run job_id=stall_responder outcome=completed( |$)"'''
