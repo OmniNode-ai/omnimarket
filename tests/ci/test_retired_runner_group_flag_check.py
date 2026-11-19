@@ -31,7 +31,7 @@ def _check() -> str:
     (entry,) = [
         e for e in loaded["dod_evidence"] if e["id"] == "dod-omn24963-ac2-interface"
     ]
-    (check,) = entry["checks"]
+    (check,) = [c for c in entry["checks"] if c["check_type"] == "command"]
     value = check["check_value"]
     assert isinstance(value, str)
     return value
