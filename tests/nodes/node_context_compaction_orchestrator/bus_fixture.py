@@ -165,7 +165,11 @@ class BusHarness:
         (contract,) = manifest.contracts
         assert contract.handler_routing is not None
         assert contract.event_bus is not None
-        (route,) = contract.handler_routing.handlers
+        (route,) = (
+            entry
+            for entry in contract.handler_routing.handlers
+            if entry.handler.name == "HandlerContextPackOrchestratorRuntime"
+        )
         if self.pack is None and not self.silent:
             from .test_compaction_pack_build import _pack_orchestrator, _sources
 
