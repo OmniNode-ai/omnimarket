@@ -151,7 +151,8 @@ def test_the_breakdowns_are_lists_ordered_by_count(tmp_path: Path) -> None:
         {"taskType": "reasoning", "count": 2},
         {"taskType": "document", "count": 1},
     ]
-    assert row["byModel"][0] == {"model": "m-b", "count": 2}
+    # OMN-24615 AC6: each byModel row also serves its backends; m-b was reached directly.
+    assert row["byModel"][0] == {"model": "m-b", "count": 2, "backends": []}
     assert row["avgLatencyMs"] == pytest.approx(900.0)
 
 
