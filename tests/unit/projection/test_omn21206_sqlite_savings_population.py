@@ -35,6 +35,9 @@ def test_money_excludes_estimated_unknown_but_sessions_and_tokens_retain_them(
             *(
                 _delegation(
                     run,
+                    # OMN-24615 AC3: a positive cost is spend only on a model the manifest prices.
+                    model_name="gpt-4o-mini",
+                    delegated_to="gpt-4o-mini",
                     cost_usd=cost,
                     cost_savings_usd=cost * 2,
                     tokens_input=tokens,
@@ -75,7 +78,13 @@ def test_measured_zero_stays_zero_with_unmeasured_money_beside_it(
         tmp_path,
         (
             _delegation("free", cost_usd=0, cost_savings_usd=0),
-            _delegation("unknown", cost_usd=7, cost_savings_usd=14),
+            _delegation(
+                "unknown",
+                model_name="gpt-4o-mini",
+                delegated_to="gpt-4o-mini",
+                cost_usd=7,
+                cost_savings_usd=14,
+            ),
         ),
         (_call("free", "measured"),),
     )
