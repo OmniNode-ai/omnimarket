@@ -58,7 +58,7 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_host_down_reading_effect/test_down_reading_seam.py tests/unit/nodes/node_host_down_reading_effect/test_placement_skips_down_host.py -q -p no:randomly
-      --no-cov
+      --no-cov -m 'not kafka'
     cwd: .
 - id: dod-omn23984-ac4
   description: 'hosted proxy for AC4: the tests that stand in for the sweep and the placement pass here; the reading from a lab host under its unit and the placement decision for a pinned unreachable test
@@ -68,7 +68,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_host_down_reading_effect tests/unit/nodes/node_host_down_compute -q -p no:randomly --no-cov
+    check_value: uv run pytest tests/unit/nodes/node_host_down_reading_effect tests/unit/nodes/node_host_down_compute -q -p no:randomly --no-cov -m 'not kafka'
     cwd: .
 - id: dod-omn23984-integration-proof
   description: the host-down tests run on a lab host at the pushed head through the lab-work node, including the seam and placement tests that fail without the reading; hosted CI cannot reach the lab, so
