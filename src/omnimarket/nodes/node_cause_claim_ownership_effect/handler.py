@@ -32,6 +32,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.rules_cause_claim import canonical_check, cause_cells
 from omnimarket.handlers.rules_merge_sweep import leased_lanes
 
 from .models import (
@@ -56,28 +57,11 @@ def cause_family(context: str, inherited: list[Any] | None) -> list[str]:
 
 
 CHECK_NAME_CLASS = "cause-claim-check-name-unmatched"
-_SPELLING = re.compile(r"[\s_-]+")
 NEAR_MISS_RATIO = 0.85
-
-
-def canonical_check(name: str) -> str:
-    """A check name in the one spelling every reader compares: case folded, and each run of spaces, underscores and
-    hyphens one space. ``CI Summary``, ``CI_Summary`` and ``ci-summary`` are one check (OMN-17427)."""
-    return _SPELLING.sub(" ", str(name).casefold()).strip()
 
 
 def _canonical_repo(repo: str) -> str:
     return str(repo).strip().split("/")[-1].casefold()
-
-
-def cause_cells(text: str) -> list[tuple[str, str]]:
-    """The ``cause=<repo>:<check>`` cells on a row's first line, as (repo, check)."""
-    out = []
-    for cell in (c.strip() for c in text.split("\n", 1)[0].split("|")):
-        if cell.startswith("cause="):
-            cause_repo, _, check = cell[len("cause=") :].strip().partition(":")
-            out.append((cause_repo.strip(), check.strip()))
-    return out
 
 
 def claim_names_cause(text: str, repo: str, context: str) -> bool:
