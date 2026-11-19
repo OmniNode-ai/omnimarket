@@ -26,13 +26,13 @@ from omnimarket.nodes.node_lab_alarm.adapters.routed_delivery_adapters import (
     build_routed_delivery,
     require_declared,
 )
-from omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_digest import (
-    HandlerAlarmDigest,
-)
-from omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_route import (
+from omnimarket.nodes.node_lab_alarm.handlers.alarm_route import (
     GatedAlarmChannel,
     HandlerAlarmRoute,
     load_alarm_severity_table,
+)
+from omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_digest import (
+    HandlerAlarmDigest,
 )
 from omnimarket.nodes.node_lab_alarm.models.model_alarm_severity import (
     EnumAlarmDigestOutcome,

@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid5
 
-from omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_route import (
+from omnimarket.nodes.node_lab_alarm.handlers.alarm_route import (
     DIGEST_PENDING,
     DIGEST_SENT,
 )
