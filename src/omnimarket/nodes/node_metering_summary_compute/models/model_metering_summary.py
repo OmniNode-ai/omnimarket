@@ -138,7 +138,17 @@ class ModelMeteringRecord(BaseModel):
     )
     model: str = Field(
         default="",
-        description="Model the work was delegated to. Empty when unrecorded.",
+        description=(
+            "The model that ran (OMN-24615 AC6: model_name before the routing alias). "
+            "Empty when unrecorded."
+        ),
+    )
+    backend: str | None = Field(
+        default=None,
+        description=(
+            "The backend alias the run was routed through, when it differs from the "
+            "model that ran (for example byok-reflection for Beam); None when direct."
+        ),
     )
     task_type: str = Field(default="", description="Task class, when recorded.")
     tokens_in: int | None = Field(
@@ -239,6 +249,10 @@ class ModelMeteringModelRow(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     model: str
+    backends: tuple[str, ...] = Field(
+        default=(),
+        description="OMN-24615 AC6: the backend aliases this model was reached through, sorted.",
+    )
     runs: int = Field(..., ge=0)
     runs_measured: int = Field(..., ge=0)
     tokens_in: int = Field(..., ge=0)
