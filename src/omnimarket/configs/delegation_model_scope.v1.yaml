@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Which resolved routing tiers count as a model the developer runs, for the
+# "local" and "free" model-scope rules (onex models scope). A keyless backend
+# whose resolved tier is listed here is local; a backend with a key never is.
+# A deployment replaces this file by pinning DELEGATION_MODEL_SCOPE_CONFIG_PATH.
+schema: delegation_model_scope.v1
+local_tiers:
+  - local

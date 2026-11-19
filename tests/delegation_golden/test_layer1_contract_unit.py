@@ -143,10 +143,12 @@ class TestU2EveryTierResolvesCompleteBackend:
     overlay-named env vars — never a half-wired tier.
     """
 
-    @pytest.fixture(scope="class")
+    @pytest.fixture
     def tiers_and_backends(
         self,
     ) -> tuple[ModelDelegationConfig, dict[str, ModelDelegationBackendConfig]]:
+        # Function-scoped so the autouse code budget overlay root is in place: the
+        # local rungs are offered only when an overlay names the code budget.
         # The free tier's rung is declared by a bifrost placement (OMN-20376).
         delegation_config = placed_routing_config()
         raw = yaml.safe_load(_BIFROST_CONFIG.read_text())

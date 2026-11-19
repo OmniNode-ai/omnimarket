@@ -36,6 +36,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.nodes.node_metering_summary_compute.models.model_run_duration import (
+    ModelRunDuration,
+)
+
 
 class EnumMeteringMeasurement(StrEnum):
     """How completely one delegation run was measured.
@@ -134,7 +138,17 @@ class ModelMeteringRecord(BaseModel):
     )
     model: str = Field(
         default="",
-        description="Model the work was delegated to. Empty when unrecorded.",
+        description=(
+            "The model that ran (OMN-24615 AC6: model_name before the routing alias). "
+            "Empty when unrecorded."
+        ),
+    )
+    backend: str | None = Field(
+        default=None,
+        description=(
+            "The backend alias the run was routed through, when it differs from the "
+            "model that ran (for example byok-reflection for Beam); None when direct."
+        ),
     )
     task_type: str = Field(default="", description="Task class, when recorded.")
     tokens_in: int | None = Field(
@@ -163,6 +177,31 @@ class ModelMeteringRecord(BaseModel):
             "counts as measured with zero savings, never as unknown."
         ),
     )
+    failure_cause: str | None = Field(
+        default=None,
+        description=(
+            "OMN-24615 AC1: the run's terminal failure cause, or None when it ended "
+            "without one. A run that ended with any failure cause (a refused "
+            "answer, a timeout, a provider error, or returned_to_caller) saved "
+            "nothing: it counts as measured with zero savings, keeps its spend, and "
+            "is counted in runs_failed."
+        ),
+    )
+    usage_measured: bool = Field(
+        default=True,
+        description=(
+            "OMN-24615 AC1, AC5: whether every LLM call of the run was measured by "
+            "the provider. A run whose calls were recorded but estimated or of "
+            "unknown provenance keeps its tokens in the token totals, which then "
+            "match usage-by-model-day.v1, and is counted as unknown tokens with no "
+            "saving."
+        ),
+    )
+
+    @property
+    def failed(self) -> bool:
+        """Whether the run ended with a failure cause, so saved nothing (OMN-24615 AC1)."""
+        return self.returned_to_caller or bool(self.failure_cause)
 
     @property
     def has_tokens(self) -> bool:
@@ -175,10 +214,14 @@ class ModelMeteringRecord(BaseModel):
 
     @property
     def measurement(self) -> EnumMeteringMeasurement:
-        """This run's measurement class — the AC3 unknown/zero distinction."""
+        """This run's measurement class — the AC3 unknown/zero distinction.
+
+        OMN-24615 AC1: any other failed run is classed by what it recorded, like
+        a successful one; it saves nothing either way and counts in runs_failed.
+        """
         if self.returned_to_caller:
             return EnumMeteringMeasurement.MEASURED
-        if not self.has_tokens:
+        if not self.has_tokens or not self.usage_measured:
             return EnumMeteringMeasurement.UNKNOWN_TOKENS
         if self.spend_usd is None:
             return EnumMeteringMeasurement.UNKNOWN_SPEND
@@ -206,6 +249,10 @@ class ModelMeteringModelRow(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     model: str
+    backends: tuple[str, ...] = Field(
+        default=(),
+        description="OMN-24615 AC6: the backend aliases this model was reached through, sorted.",
+    )
     runs: int = Field(..., ge=0)
     runs_measured: int = Field(..., ge=0)
     tokens_in: int = Field(..., ge=0)
@@ -314,6 +361,14 @@ class ModelMeteringSummary(BaseModel):
     runs_measured: int = Field(..., ge=0)
     runs_unknown_tokens: int = Field(..., ge=0)
     runs_unknown_spend: int = Field(..., ge=0)
+    runs_failed: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "OMN-24615 AC1: runs that ended with a failure cause. Each counts as "
+            "measured with zero savings and keeps its spend; this names them."
+        ),
+    )
 
     tokens_in: int = Field(
         ..., ge=0, description="Summed over runs that recorded token counts."
@@ -343,6 +398,8 @@ class ModelMeteringSummary(BaseModel):
     baseline: ModelCounterfactualBaseline | None = Field(default=None)
 
     reconciliation: ModelMeteringReconciliation
+    # OMN-24615 AC8: the one run duration every page shows, with its definition.
+    run_duration: ModelRunDuration = Field(default_factory=ModelRunDuration)
     by_model: tuple[ModelMeteringModelRow, ...] = Field(default=())
     by_run: tuple[ModelMeteringRunRow, ...] = Field(default=())
 
