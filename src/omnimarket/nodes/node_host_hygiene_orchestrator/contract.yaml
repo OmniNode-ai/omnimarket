@@ -73,6 +73,9 @@ input_subscriptions:
   operation: host_hygiene.run_requested
 - topic: onex.intent.platform.runtime-tick.v1
   operation: host_hygiene.scheduled_run
+runtime_dispatch:
+  # `onex run-node` is this command's producer; declared so the topic graph sees a sender.
+  command_topic: onex.cmd.omnimarket.host-hygiene-run-requested.v1
 event_bus:
   subscribe_topics:
   # `onex run-node` publishes its command payload to subscribe_topics[0], so the on-demand run
