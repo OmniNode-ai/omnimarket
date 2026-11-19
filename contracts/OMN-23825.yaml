@@ -15,7 +15,7 @@ requirements:
   - id: "req-omn23825-help-names-add"
     statement: "`onex models --help` names `onex models add`."
     acceptance:
-      - id: "AC3-help"
+      - id: "AC3"
         statement: >-
           AC3 (help half): `onex models --help` contains "onex models add" -- falsifier: neither output contains "onex models add"
 evidence_requirements:
