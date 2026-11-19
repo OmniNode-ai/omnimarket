@@ -17,7 +17,14 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 _ID = r"^[a-z][a-z0-9-]{0,63}$"
 _STAMP = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
@@ -76,6 +83,17 @@ class ModelRulingRead(BaseModel):
     ok_exit_codes: tuple[int, ...] = (0,)
     expect: ModelRulingExpect
 
+    @model_validator(mode="after")
+    def _exit_zero_names_a_false_code(self) -> ModelRulingRead:
+        if self.expect.kind is EnumRulingExpect.EXIT_ZERO and not (
+            0 in self.ok_exit_codes and any(code != 0 for code in self.ok_exit_codes)
+        ):
+            raise ValueError(
+                "exit_zero names no nonzero exit code that reads FALSE; "
+                "list it in ok_exit_codes"
+            )
+        return self
+
 
 class ModelRulingRow(BaseModel):
     """One standing ruling: its stamp, what must be true, how to read it, who owns it and what to do when it is not."""
@@ -91,18 +109,32 @@ class ModelRulingRow(BaseModel):
 
 
 class ModelRulingRegisterPolicy(BaseModel):
-    """The ``node_ruling_register_compute`` overlay: the rows and how stale a reading may be."""
+    """The ``node_ruling_register_compute`` overlay: the rows, how stale a reading may be and the commands the rows may run."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     max_reading_age_seconds: int = Field(ge=1)
     rows: tuple[ModelRulingRow, ...] = Field(min_length=1)
+    max_detail_chars: int = Field(default=120, ge=1)
+    allowed_commands: tuple[str, ...] | None = None
 
     @model_validator(mode="after")
     def _row_ids_are_unique(self) -> ModelRulingRegisterPolicy:
         ids = [row.row_id for row in self.rows]
         if len(ids) != len(set(ids)):
             raise ValueError("the register lists a row more than once")
+        return self
+
+    @model_validator(mode="after")
+    def _rows_run_only_allowed_commands(self) -> ModelRulingRegisterPolicy:
+        if self.allowed_commands is None:
+            return self
+        for row in self.rows:
+            command = row.read.argv[0]
+            if command not in self.allowed_commands:
+                raise ValueError(
+                    f"row {row.row_id} runs {command}, which is not in allowed_commands"
+                )
         return self
 
 
@@ -120,7 +152,11 @@ class ModelRulingReading(BaseModel):
 
 
 class ModelRulingVerdict(BaseModel):
-    """One row's judgement; ``why`` and ``fix`` are the tick line's cells."""
+    """One row's judgement; ``why`` and ``fix`` are the tick line's cells.
+
+    A cell is one printable line: a verdict that carries a line break or a control
+    character is refused, so no read's output can forge a second tick line.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -131,6 +167,16 @@ class ModelRulingVerdict(BaseModel):
     detail: str
     why: str
     fix: str
+
+    @field_validator("detail", "why", "fix")
+    @classmethod
+    def _one_printable_line(cls, value: str) -> str:
+        if any(not char.isprintable() for char in value):
+            raise ValueError(
+                "a verdict cell is one printable line: no line break, "
+                "no control character"
+            )
+        return value
 
     @property
     def loop(self) -> str:
@@ -152,12 +198,13 @@ class ModelRulingReadRequest(BaseModel):
 
 
 class ModelRulingReadResult(BaseModel):
-    """What the effect returns: one reading per row, in row order."""
+    """What the effect returns: one reading per row, in row order, and the rows whose event did not reach the journal."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     correlation_id: str
     readings: tuple[ModelRulingReading, ...]
+    sink_errors: tuple[str, ...] = ()
 
 
 class ModelRulingRegisterRequest(BaseModel):

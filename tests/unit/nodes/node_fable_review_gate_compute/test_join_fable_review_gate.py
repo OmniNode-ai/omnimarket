@@ -75,7 +75,7 @@ class _CountingAdapter(ModelInferenceAdapter):
 class _SkipGateHandler(HandlerHostileReviewerOrchestrator):
     """Injected break: the orchestrator no longer asks the gate and admits every review."""
 
-    def _fable_gate_verdict(  # type: ignore[override]
+    def _fable_gate_verdict(
         self, command: ModelHostileReviewerStartCommand, decided_at: datetime
     ) -> ModelFableReviewGateVerdict | None:
         real = super()._fable_gate_verdict(command, decided_at)
@@ -86,7 +86,7 @@ class _SkipGateHandler(HandlerHostileReviewerOrchestrator):
 class _DropReceiptHandler(HandlerHostileReviewerOrchestrator):
     """Injected break: the completed event leaves the orchestrator without the gate's receipt."""
 
-    async def _run_review(  # type: ignore[override]
+    async def _run_review(
         self, command: ModelHostileReviewerStartCommand, started_at: datetime
     ) -> ModelHostileReviewerCompletedEvent:
         event = await super()._run_review(command, started_at)

@@ -26,6 +26,7 @@ handler:
   module: omnimarket.nodes.node_fable_review_gate_compute.handlers.handler_fable_review_gate
   class: HandlerFableReviewGate
   input_model: omnimarket.nodes.node_fable_review_gate_compute.models.model_fable_review_gate.ModelFableReviewGateRequest
+  output_model: omnimarket.nodes.node_fable_review_gate_compute.models.model_fable_review_gate.ModelFableReviewGateVerdict
 
 input_model:
   name: ModelFableReviewGateRequest
@@ -37,10 +38,23 @@ output_model:
   description: "The gate's answer: admitted or refused with the typed reason, and the receipt."
 
 # node_hostile_reviewer_orchestrator calls the handler in process, so this node has no event_bus
-# topics of its own; it is addressable through runtime_dispatch like the other directly-invoked
-# compute nodes (the landing decision compute says the same of its own contract).
+# topics of its own and is invoked locally with a typed request.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
 runtime_dispatch:
-  external_trigger: true
+  external_trigger: Direct Python invocation by node_hostile_reviewer_orchestrator with the review's route keys and origin host.
+
+# The handler is constructed with the overlay the orchestrator loads (overlay: below).
+dependencies:
+  - name: overlay
+    dependency_type: internal
+    description: The Fable review gate overlay naming the orchestrating hosts.
+    required: true
 
 overlay:
   node: node_fable_review_gate_compute
@@ -48,4 +62,4 @@ overlay:
 
 metadata:
   ticket: OMN-24533
-  transport_type: inmemory
+  transport_type: local
