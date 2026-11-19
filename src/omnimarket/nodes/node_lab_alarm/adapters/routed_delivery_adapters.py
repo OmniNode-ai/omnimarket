@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import NamedTuple
 
 from omnimarket.nodes.node_lab_alarm.handlers.alarm_route import (
+    AlarmSeverityRouter,
     GatedAlarmChannel,
-    HandlerAlarmRoute,
     load_alarm_severity_table,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_digest import (
@@ -60,14 +60,20 @@ class _Parts(NamedTuple):
     digest: ProtocolDeliveryStateStore
 
 
-def _parts(overlay: ModelDeliveryOverlay, table: ModelAlarmSeverityTable) -> _Parts:
-    if overlay.backend == "inmemory":
-        return _Parts(
-            InMemoryAlarmChannel(),
-            InMemoryAlarmLedger(),
-            InMemoryDeliveryState(),
-            InMemoryDeliveryState(),
-        )
+def _inmemory_parts(
+    _overlay: ModelDeliveryOverlay, _table: ModelAlarmSeverityTable
+) -> _Parts:
+    return _Parts(
+        InMemoryAlarmChannel(),
+        InMemoryAlarmLedger(),
+        InMemoryDeliveryState(),
+        InMemoryDeliveryState(),
+    )
+
+
+def _runtime_parts(
+    overlay: ModelDeliveryOverlay, table: ModelAlarmSeverityTable
+) -> _Parts:
     state_path = Path(overlay.state_path)
     return _Parts(
         ChannelFromLibrary(
@@ -85,6 +91,15 @@ def _parts(overlay: ModelDeliveryOverlay, table: ModelAlarmSeverityTable) -> _Pa
     )
 
 
+_PARTS_BUILDERS: dict[
+    str, Callable[[ModelDeliveryOverlay, ModelAlarmSeverityTable], _Parts]
+] = {"inmemory": _inmemory_parts, "runtime": _runtime_parts}
+
+
+def _parts(overlay: ModelDeliveryOverlay, table: ModelAlarmSeverityTable) -> _Parts:
+    return _PARTS_BUILDERS[overlay.backend](overlay, table)
+
+
 def require_declared(
     alarm_overlay: ModelLabAlarmOverlay, table: ModelAlarmSeverityTable
 ) -> None:
@@ -98,7 +113,7 @@ def build_routed_delivery(
     alarm_overlay: ModelLabAlarmOverlay | None = None,
     table: ModelAlarmSeverityTable | None = None,
     clock: Callable[[], datetime] = _utc_now,
-) -> HandlerAlarmRoute:
+) -> AlarmSeverityRouter:
     """The delivery wrapped by the severity router; an undeclared source refuses the build."""
     table = table or load_alarm_severity_table()
     if alarm_overlay is not None:
@@ -112,7 +127,7 @@ def build_routed_delivery(
         state=parts.state,
         clock=clock,
     )
-    return HandlerAlarmRoute(
+    return AlarmSeverityRouter(
         table=table,
         gate=gate,
         channel=parts.channel,

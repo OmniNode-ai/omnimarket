@@ -107,7 +107,7 @@ class GatedAlarmChannel:
         )
 
 
-class HandlerAlarmRoute:
+class AlarmSeverityRouter:
     """The delivery port with the declared severity applied; see the module docstring for each route."""
 
     def __init__(
@@ -236,7 +236,7 @@ __all__ = [
     "CONTRACT",
     "DIGEST_PENDING",
     "DIGEST_SENT",
+    "AlarmSeverityRouter",
     "GatedAlarmChannel",
-    "HandlerAlarmRoute",
     "load_alarm_severity_table",
 ]

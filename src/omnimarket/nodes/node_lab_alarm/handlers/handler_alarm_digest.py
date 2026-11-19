@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """The lab alarm's daily digest (OMN-24939): one message per held day, and the fix-cause STATUS row.
 
-The router (HandlerAlarmRoute) holds each new episode of a DIGEST source under its UTC day. This step, run once a
+The router (AlarmSeverityRouter) holds each new episode of a DIGEST source under its UTC day. This step, run once a
 day by the verb ``alarm-digest``, posts one summary message for every held day before today that has not been
 sent, marks the day sent and drops what it held; a day already sent is never sent again, and a post that fails
 keeps the day for the next run. It also appends one STATUS row per day listing the FIX-CAUSE sources with the

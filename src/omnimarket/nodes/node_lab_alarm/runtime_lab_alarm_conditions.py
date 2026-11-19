@@ -44,7 +44,7 @@ from omnimarket.nodes.node_lab_alarm.adapters.routed_delivery_adapters import (
 )
 from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import FileRunRecords
 from omnimarket.nodes.node_lab_alarm.handlers.alarm_route import (
-    HandlerAlarmRoute,
+    AlarmSeverityRouter,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.handler_container_restarts import (
     HandlerContainerRestarts,
@@ -155,7 +155,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 
-def _delivery_for(overlay: ModelLabAlarmOverlay) -> HandlerAlarmRoute | None:
+def _delivery_for(overlay: ModelLabAlarmOverlay) -> AlarmSeverityRouter | None:
     """Return the delivery handler when the overlay declares and enables it."""
     if overlay.alarm_delivery is None or not overlay.alarm_delivery.enabled:
         return None

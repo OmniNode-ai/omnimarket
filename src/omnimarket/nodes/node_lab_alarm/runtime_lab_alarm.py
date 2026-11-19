@@ -94,7 +94,7 @@ from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import (
     TcpApiVersionsProbe,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.alarm_route import (
-    HandlerAlarmRoute,
+    AlarmSeverityRouter,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag import (
     HandlerBrokerLag,
@@ -238,7 +238,7 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def _delivery_for(overlay: ModelLabAlarmOverlay) -> HandlerAlarmRoute | None:
+def _delivery_for(overlay: ModelLabAlarmOverlay) -> AlarmSeverityRouter | None:
     """The alarm delivery the overlay turns on; its own overlay must then load, or the run is refused."""
     if overlay.alarm_delivery is None or not overlay.alarm_delivery.enabled:
         return None
