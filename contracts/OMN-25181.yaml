@@ -53,11 +53,19 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_secret_store_effect -q -n 0 --no-cov -p no:cacheprovider -k cli
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn25181-ac4-binding
-  description: 'AC4 is bound to the pull request comments, not to a grep of another contract. The check passes only when a comment that starts `Lab: head=<40 hex>` names HEAD of this checkout (or, on a hosted merge checkout, its second parent, the pull request head) and states the merge order against overlays#571; with no Lab comment, or a Lab comment at an older head, it fails. It fails on every head until the Lab comment of that head is posted. The binding of AC4 and AC3 of the OMN-24611 contract to the per host readings is checked by the own checks of that contract.'
+- id: dod-omn25181-ac4-binding-test
+  description: The Lab comment check of the pull request is exercised by tests that run its text against a stand-in gh, so a missing comment, a comment at an older head and a comment without the merge order each fail. The live read of the pull request comments is the separate local_done_gate item dod-omn25181-ac4-binding.
   source: manual
   binds_ac:
   - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_secret_store_effect/test_contract_reading_checks_omn25196.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn25181-ac4-binding
+  description: 'AC4 is bound to the pull request comments, not to a grep of another contract. The check passes only when a comment that starts `Lab: head=<40 hex>` names HEAD of this checkout (or, on a hosted merge checkout, its second parent, the pull request head) and states the merge order against overlays#571; with no Lab comment, or a Lab comment at an older head, it fails. It fails on every head until the Lab comment of that head is posted. The binding of AC4 and AC3 of the OMN-24611 contract to the per host readings is checked by the own checks of that contract.'
+  source: manual
+  execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: |-

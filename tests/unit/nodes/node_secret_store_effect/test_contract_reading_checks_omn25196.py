@@ -49,14 +49,24 @@ else:
 """
 
 
+#: The unbound local_done_gate item that carries each reading check (OMN-24611).
+_READING_ITEMS = {
+    ("OMN-24611", "AC3"): "dod-omn24611-ac3-live-reading",
+    ("OMN-24611", "AC4"): "dod-omn24611-ac4-live-reading",
+    ("OMN-25181", "AC4"): "dod-omn25181-ac4-binding",
+    ("OMN-25196", "AC4"): "dod-omn25196-ac4-lab-comment",
+}
+
+
 def _check(contract: str, ac: str, marker: str) -> str:
     raw = yaml.safe_load(
         (_REPO_ROOT / "contracts" / f"{contract}.yaml").read_text(encoding="utf-8")
     )
+    item_id = _READING_ITEMS[(contract, ac)]
     found = [
         check["check_value"]
         for item in raw["dod_evidence"]
-        if ac in item.get("binds_ac", [])
+        if item["id"] == item_id
         for check in item["checks"]
         if marker in check["check_value"]
     ]

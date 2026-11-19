@@ -64,11 +64,19 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_secret_store_effect/test_contract_reading_checks_omn25196.py tests/unit/nodes/node_secret_store_effect/test_deliver_key_cli.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn25210-ac5-lab-comment
-  description: The comment of the Lab head is read from the pull request comments. The check passes only when a comment that starts Lab head= names HEAD of this checkout (or, on a hosted merge ref, its second parent, the pull request head) and states the merge order against overlays#571. It fails on every head until that comment is posted.
+- id: dod-omn25210-ac5-lab-comment-test
+  description: The Lab comment check of the pull request is exercised by tests that run its text against a stand-in gh, so a missing comment, a comment at an older head and a comment without the merge order each fail. The live read of the pull request comments is the separate local_done_gate item dod-omn25210-ac5-lab-comment.
   source: manual
   binds_ac:
   - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_secret_store_effect/test_contract_reading_checks_omn25196.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn25210-ac5-lab-comment
+  description: The comment of the Lab head is read from the pull request comments. The check passes only when a comment that starts Lab head= names HEAD of this checkout (or, on a hosted merge ref, its second parent, the pull request head) and states the merge order against overlays#571. It fails on every head until that comment is posted.
+  source: manual
+  execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: |-
