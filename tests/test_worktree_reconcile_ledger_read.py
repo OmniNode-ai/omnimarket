@@ -146,7 +146,7 @@ def test_frozen_ledger_is_not_fresh_but_recent_one_is(tmp_path: Path) -> None:
 
 def test_rolled_ledger_lookback_days_zero_vs_thirty(tmp_path: Path) -> None:
     """A rolled ledger: the live file holds only a recent STATUS row;
-    the CLAIM and TERMINAL sit in archive/ROLLING_WORK_LEDGER_x.md next to it.
+    the CLAIM and TERMINAL sit in archive/LEDGER_ARCHIVE_x.md next to it.
     With lookback_days 0 the claim is not seen;
     with lookback_days 30 it is in closed_claims."""
     # Live file: only a recent STATUS row
@@ -158,7 +158,7 @@ def test_rolled_ledger_lookback_days_zero_vs_thirty(tmp_path: Path) -> None:
     # Archive file next to it
     archive_dir = tmp_path / "archive"
     archive_dir.mkdir()
-    archive = archive_dir / "ROLLING_WORK_LEDGER_1.md"
+    archive = archive_dir / "LEDGER_ARCHIVE_1.md"
     archive.write_text(
         "\n".join(
             [
