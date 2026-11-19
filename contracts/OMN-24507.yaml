@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-24507
+title: 'The delegation step reads its engine order: the order handler answers when run as a command'
+summary: The delegation step (delegation_step.py, OMN-24044) asks omnimarket.handlers.delegation_step_order for its first engine by running it as a command and reading the last stdout line as JSON. The module had no entry point, so the command printed nothing and exited 0, the step read that as no answer ("the step order handler gave no answer (exit 0)" on every receipt) and kept its old default, GLM first for text and before the lab for code, whatever the routing overlay says. The module gains main(), which prints one JSON line with the choice and the receipt fields. Review findings of 2026-11-15 are applied. A refusing reader, an invalid overlay, a chain that places no engine and a host that no engine is left on are a typed refusal (one STEP-ORDER-REFUSED line on stderr, exit 3), never the old default; a bad kind exits 1 and a wrong argument count exits 2. The code order is an explicit overlay value (the delegation_step_order overlay, code_engine_order, lab first then GLM per RULING 2026-11-10T21:40:00Z) that the eval can change, no longer inferred from the routing chain, which names no GLM rung for code. An engine whose program the host does not have is skipped and named in engines_absent on the receipt. Measured on h051 and h053, ten text steps each way, every run succeeding either way - the median is 67.4 s and 67.1 s GLM first and 23.3 s and 16.1 s lab first. Not in this change - the overlay file itself (overlays repository, a separate pull request that pins this change's merge commit), the delegation_step.py handling of exit 3 (it keeps its own default on any non-answer), the GLM harness turn count (4 to 6 turns of 23 thousand input tokens for a two sentence answer) and the lab agent absent on h053.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24507-order-entry
+  statement: The step order handler answers when the step runs it as a command, with the same answer step_order() gives, refuses a bad kind with exit 1, and refuses with a typed line and exit 3 where it cannot place an engine.
+  acceptance:
+  - id: AC1
+    statement: "AC1: running the step order handler as a command prints one line of JSON carrying the choice and the receipt fields the step reads, exits 1 for a bad kind and exits 3 with a STEP-ORDER-REFUSED line when the reader or overlay refuses -- falsifier: pytest tests/unit/handlers/test_delegation_step_order_main.py -q"
+  - id: AC2
+    statement: "AC2: the code order is the overlay's code_engine_order and an engine the host lacks is named in engines_absent -- falsifier: pytest tests/unit/handlers/test_delegation_step_order_main.py -q -k 'code or absent'"
+  - id: AC3
+    statement: "AC3: a text step with no engine flag records order_source routing_order_node and drafts on the lab model first -- falsifier: delegation_step.py text on h051 shows engine lab and no order_fallback in its receipt"
+  - id: AC4
+    statement: "AC4: integrated: ten text steps with no flag on h051 and h053 all succeed with a median under 40 seconds -- falsifier: the median of the ten receipts' elapsed_sec on either host is 40 or more"
+evidence_requirements:
+- kind: tests
+  description: The step order tests at the pushed head; the new main tests fail against the handler before this change (it has no main).
+  command: uv run pytest tests/unit/handlers/test_delegation_step_order_main.py tests/unit/handlers/test_delegation_step_order.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24507-ac1
+  description: 'AC1: the command answers one JSON line, exits 1 for a bad kind and 3 for a refusal; against the handler before this change main does not exist and the file fails to run.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_delegation_step_order_main.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24507-ac2
+  description: 'AC2: the code order comes from the overlay and an absent engine is named on the answer.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_delegation_step_order_main.py tests/unit/handlers/test_delegation_step_order.py -q -n 0 --no-cov -p no:cacheprovider -k 'code or absent'
+    cwd: .
+- id: dod-omn24507-ac3-hosted-proxy
+  description: 'AC3 hosted proxy: the golden text answer is lab first for the chain that places the lab tier ahead of GLM.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_delegation_step_order_main.py -q -n 0 --no-cov -p no:cacheprovider -k golden_text
+    cwd: .
+- id: dod-omn24507-ac4-hosted-proxy
+  description: 'AC4 hosted proxy: the module run as a real command answers the code order from a real overlay and the text default with no routing overlay; the ten timed text steps on h051 and h053 are read from the lane report after the merge and are not claimed by this check.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_delegation_step_order_main.py -q -n 0 --no-cov -p no:cacheprovider -k the_command
+    cwd: .
+- id: dod-omn24507-integration-proof
+  description: 'AC3 and AC4 lab proof: the step order tests run on a lab host at the pushed head; the ten text steps on h051 and h053 after the merge are read from the lane report and are not claimed by this local check'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24507 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/handlers/test_delegation_step_order_main.py -q --no-cov -p no:randomly
+    cwd: .

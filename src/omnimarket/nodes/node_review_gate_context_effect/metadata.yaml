@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_review_gate_context_effect
+version: "1.0.0"
+description: "Posts a pull request head's review verdict commit status (fable-review-gate) on GitHub through the GitHub write node, idempotently, and reads it back."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: publish_event
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.32.0"
+  - "pyyaml>=6.0"
+tags: [effect, github, commit-status, review-gate]
+pack: "data"
+display_name: "Effect: Review Gate Context"
+node_role: "effect"
+ticket: OMN-24614

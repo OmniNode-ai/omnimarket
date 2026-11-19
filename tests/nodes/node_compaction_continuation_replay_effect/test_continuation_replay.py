@@ -35,7 +35,7 @@ ROW = "2026-11-02T10:00:00Z | STATUS | lane=x | ticket=OMN-1 | note"
 
 
 def _real_ledger(tmp_path: Path) -> Path:
-    real = tmp_path / "real" / "ROLLING_WORK_LEDGER.md"
+    real = tmp_path / "real" / "ledger_copy.md"
     real.parent.mkdir()
     real.write_text("2026-11-01T00:00:00Z | CLAIM | lane=a | ticket=OMN-1 | seed\n")
     return real
