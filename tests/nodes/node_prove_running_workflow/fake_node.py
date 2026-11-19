@@ -46,6 +46,13 @@ def main() -> int:
         log.write(f"{verb} {key}\n")
     if sys.argv[1] == "batch-step":
         return batch_step(verb)
+    if verb == "bus-append":
+        # The bus append command: rows on stdin (``--rows-file -``), one JSON receipt on stdout.
+        with open(os.environ["FAKE_LEDGER"], "a", encoding="utf-8") as ledger:
+            rows = sys.stdin.read()
+            ledger.write(rows if rows.endswith("\n") else rows + "\n")
+        print(json.dumps({"status": "accepted"}))
+        return 0
     if verb == "ledger-append":
         with open(os.environ["FAKE_LEDGER"], "a", encoding="utf-8") as ledger:
             ledger.write(sys.argv[2] + "\n")

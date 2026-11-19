@@ -303,3 +303,29 @@ async def test_refire_no_duplicate(
         assert steps[f"read {wf_id}/read_status"] == 1
         assert steps[f"install {wf_id}/install"] == 1
         assert steps[f"read {wf_id}/read_running/1"] == 1
+
+
+def test_append_row_through_bus_command(
+    batch_files: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no test override, a row goes through the bus append command the unit names, never a ledger file."""
+    monkeypatch.delenv("ONEX_PROVE_RUNNING_LEDGER_ARGV", raising=False)
+    monkeypatch.delenv("ONEX_LEDGER_PATH", raising=False)
+    monkeypatch.setenv("ONEX_RUN_STEP_KEY", "bus-append-step")
+    monkeypatch.setenv(
+        "ONEX_LEDGER_BUS_APPEND_COMMAND", f"{sys.executable} {FAKE} bus-append"
+    )
+    monkeypatch.setenv("ONEX_LEDGER_HOST_NAME", "h051")
+    row = "2026-11-19T00:00:00Z | STATUS | lane=prove-running | pr=omnimarket#1 | read_at=2026-11-19T00:00:00Z"
+    assert runtime._append_row(row, "wf/write_status", "prove-running") == (0, "")
+    assert runtime._append_row(row, "wf/write_status", "prove-running") == (0, "")
+    rows = batch_files["ledger"].read_text(encoding="utf-8").splitlines()
+    assert len(rows) == 2
+    assert (
+        rows[0] == rows[1]
+    )  # one step key, one request id: the ledger host answers it once
+    assert rows[0].startswith(row + " | req=")
+    monkeypatch.delenv("ONEX_LEDGER_BUS_APPEND_COMMAND")
+    code, error = runtime._append_row(row, "wf/write_status", "prove-running")
+    assert code == 2
+    assert "ONEX_LEDGER_BUS_APPEND_COMMAND" in error

@@ -24,6 +24,7 @@ import argparse
 import asyncio
 import json
 import os
+import shlex
 import subprocess
 import sys
 from dataclasses import replace
@@ -31,6 +32,7 @@ from datetime import UTC, datetime, timedelta
 from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from uuid import NAMESPACE_URL, uuid5
 
 import yaml
 
@@ -61,11 +63,17 @@ from omnimarket.nodes.node_prove_running_workflow.models.model_prove_running imp
     ModelProveRunningStepInput,
     ModelProveRunningSteps,
 )
+from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    CommandLedgerAppender,
+)
 
 if TYPE_CHECKING:
     from temporalio.client import Client, Schedule
 
 NODE = "node_prove_running_workflow"
+BUS_APPEND_COMMAND_ENV = "ONEX_LEDGER_BUS_APPEND_COMMAND"
+HOST_NAME_ENV = "ONEX_LEDGER_HOST_NAME"
+APPEND_TIMEOUT_SECONDS = 120
 EXIT_REFUSED = 65
 
 
@@ -216,27 +224,26 @@ def cmd_install(cfg: dict[str, Any]) -> int:
     return 0
 
 
-def _ledger_argv(row: str) -> list[str]:
+def _append_row(row: str, step_key: str, lane: str) -> tuple[int, str]:
+    """Append one row. A test names the append command in ``ONEX_PROVE_RUNNING_LEDGER_ARGV``; otherwise the row goes
+    through the bus append command the unit's environment names (the ledger file is never named). The request id is
+    derived from the step key, so a step delivered twice is one request the ledger host answers once."""
     raw = os.environ.get("ONEX_PROVE_RUNNING_LEDGER_ARGV", "").strip()
     if raw:
-        return [*json.loads(raw), row]
-    ledger = os.environ.get("ONEX_LEDGER_PATH", "").strip()
-    if not ledger:
-        raise SystemExit("refused: ONEX_LEDGER_PATH names no ledger")
-    home = os.environ.get("OMNIBASE_INTERNAL_HOME", "").strip()
-    if not home:
-        raise SystemExit("refused: OMNIBASE_INTERNAL_HOME names no ledger tool project")
-    return [
-        "uv",
-        "run",
-        "--frozen",
-        "--project",
-        home,
-        "onex-ledger",
-        ledger,
-        "--append",
-        row,
-    ]
+        proc = subprocess.run(
+            [*json.loads(raw), row], capture_output=True, text=True, check=False
+        )
+        return proc.returncode, proc.stderr[-300:]
+    command = os.environ.get(BUS_APPEND_COMMAND_ENV, "").strip()
+    host = os.environ.get(HOST_NAME_ENV, "").strip()
+    if not command or not host:
+        return 2, f"refused: {BUS_APPEND_COMMAND_ENV} or {HOST_NAME_ENV} is not set"
+    outcome = CommandLedgerAppender(
+        shlex.split(command), lane, host, APPEND_TIMEOUT_SECONDS
+    ).append(row, str(uuid5(NAMESPACE_URL, f"onex:prove-running:{step_key}")))
+    if outcome.status in ("accepted", "duplicate"):
+        return 0, ""
+    return 1, f"ledger bus append {outcome.status}: {outcome.message}"
 
 
 def cmd_write_row(cfg: dict[str, Any], outcome: str) -> int:
@@ -257,14 +264,12 @@ def cmd_write_row(cfg: dict[str, Any], outcome: str) -> int:
         )
         .row
     )
-    proc = subprocess.run(
-        _ledger_argv(row), capture_output=True, text=True, check=False
+    code, error = _append_row(
+        row, step.step_key, os.environ.get("ONEX_PROVE_RUNNING_LANE", cfg["lane"])
     )
-    if proc.returncode != 0:
-        sys.stderr.write(
-            f"ledger append exited {proc.returncode}: {proc.stderr[-300:]}\n"
-        )
-        return proc.returncode
+    if code != 0:
+        sys.stderr.write(f"ledger append exited {code}: {error}\n")
+        return code
     sys.stdout.write(json.dumps({"written": True, "row": row}) + "\n")
     return 0
 
