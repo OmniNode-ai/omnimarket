@@ -229,7 +229,9 @@ def test_the_key_is_never_taken_as_an_argument(
     )
 
     assert done.exit_code != 0
-    assert "No such option" in done.output
+    # --key is a flag (OMN-23413): the key comes from stdin or a hidden prompt,
+    # so a value written after it is refused as an extra argument.
+    assert "unexpected extra argument" in done.output
     assert _stored_key() is None
 
 
