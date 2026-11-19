@@ -1,0 +1,136 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Install request EFFECT (OMN-19998, root 5: the install request)
+#
+# The installer on one host reads typed install requests from the bus, decides with node_install_request_decision_compute,
+# installs through the declared installer (node_unit_tree_install_effect for a unit tree, the overlay's declared installer for
+# the launching host's plugin tree), runs the unit's declared verify and publishes one typed result. Exemplars:
+# node_join_refusal_effect (contract, overlay, entry point) and node_unit_tree_install_effect (injected installer and runner).
+name: node_install_request_effect
+contract_name: node_install_request_effect
+node_name: node_install_request_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Executes an install request on the host that serves it, after the checks the host's own overlay row sets. The host refuses
+  to act on any request unless its bus connection is authenticated (SASL, a named principal) as the login its overlay row
+  names as host_principal, and says so loudly at start: on an unauthenticated bus the per-login topic names no publisher.
+  It publishes each result on the result topic of that login (keyed by request id and the authenticated host) and once on the
+  shared terminal; the owed reading takes a result only from the host's own login topic. A request reaches
+  the host only inside a command envelope on the writer topic of the publishing login (the publisher is that topic's login,
+  attested by the broker's per-principal WRITE grant, never a cell the sender wrote), and a publisher the host row does not
+  name is refused (its refusal is answered but never journalled). A request for another host is ignored. A request already answered
+  (verified or failed) is not run again, whatever redelivers it. An expired request, or one older than the overlay's maximum
+  command age, is answered `expired` and never run. A host with a blocker holds the request and decides again after the
+  overlay's retry interval. A unit, a repository or a verify name the host's overlay row does not declare is refused with a
+  typed reason before anything is written. The commit comes from the host's own mirror (the request's ref is only a name to
+  look up there) and must be an ancestor of the repository's landing branch or of a review branch the row names; an unmerged
+  or unresolvable ref is refused. A commit already installed for the host and unit runs its verify only; an older commit is
+  refused unless the request says rollback. Otherwise the installer installs that commit (the unit tree installer rolls its
+  own tree back when its checks fail), then the unit's DECLARED verify runs (the request only names which); the request is
+  `verified` only when a line of the output holds the declared expected line. A failed verify, a failed plugin installer, or an installer that reports
+  another commit than the one checked, is rolled back to the revision the host itself reads as installed (the unit tree
+  installer's own recorded revision, or the plugin unit's declared current-revision read, before anything is written) and the
+  rollback is verified again with the same installer or verify; the result says rolled back only when that re-verify held. A result that is not `verified`
+  leaves the request owing its NOT RUNNING line.
+
+handler:
+  module: omnimarket.nodes.node_install_request_effect.handlers.handler_install_request
+  class: HandlerInstallRequest
+  input_model: omnimarket.models.install_request.ModelInstallRequest
+  output_model: omnimarket.nodes.node_install_request_effect.models.model_install_request_effect.ModelInstallRequestHandled
+
+# HandlerInstallRequest takes the overlay, the unit tree installer, the command runner, the result journal and the clock as
+# constructor parameters; the host process (runtime_install_request.py) serves it over the bus.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [host-install, verify-command, result-journal-append]
+  timeout_ms: 1800000
+
+input_model:
+  name: ModelInstallRequest
+  module: omnimarket.models.install_request
+  description: One request to install one unit or tree on one host at a merged commit, naming the declared verify to run.
+output_model:
+  name: ModelInstallRequestHandled
+  module: omnimarket.nodes.node_install_request_effect.models.model_install_request_effect
+  description: The decision, and the typed result when the host answered.
+
+# The host publishes the typed result alone on the success terminal; the handler's output model also carries the decision.
+published_events:
+  - event_type: ModelInstallRequestResult
+    topic: onex.evt.omnimarket.install-request-completed.v1
+    description: The typed result of one install request on one host, with the installed revision and the verify line.
+
+runtime_dispatch:
+  external_trigger: true
+  command_topic: onex.cmd.omnimarket.install-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.install-request-completed.v1
+    failure: onex.evt.omnimarket.install-request-failed.v1
+
+# One writer command topic per publishing login: onex.<kind>.<producer>.<name_prefix><principal>.v<version>. The host takes the
+# publisher from the topic a request arrived on, never from a cell the sender wrote: each login may WRITE only its own topic
+# (the per-principal topic WRITE grant of the deployment's broker ACL, as for node_work_ledger_append_effect), so the broker
+# attests who sent it. The parts are declared apart because a `{principal}` slot inside a full topic string fails the
+# architecture lint's topic-name rule. The shared command topic above stays the typed input of node_host_install_orchestrator,
+# which only remembers a request and ends it on the host's result; the host never reads it.
+writer_topics:
+  kind: "cmd"
+  producer: "omnimarket"
+  name_prefix: "install-requested-from-"
+  version: 1
+  principal_pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+
+# One result topic per serving host login, built the same way: the host publishes each typed result on the topic of the login
+# it authenticated as (and once on the shared success terminal for the orchestrator and external readers). The owed reading
+# takes a result as a host's own only from that host's result topic, because the broker lets only that login write there; the
+# shared terminal stays unauthenticated as far as the reading is concerned and clears nothing.
+result_topics:
+  kind: "evt"
+  producer: "omnimarket"
+  name_prefix: "install-request-completed-from-"
+  version: 1
+  principal_pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+
+topics:
+  install_requested: onex.cmd.omnimarket.install-requested.v1
+  install_request_completed: onex.evt.omnimarket.install-request-completed.v1
+  install_request_failed: onex.evt.omnimarket.install-request-failed.v1
+
+# The host process subscribes with a consumer group of its own per host (every host sees every request and answers its own);
+# it is not a runtime-dispatched subscriber, so the contract lists no subscribe topic.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.install-request-completed.v1
+  - onex.evt.omnimarket.install-request-failed.v1
+
+# The deployment derives the per-login grants with node_install_request_acl_compute.
+# Each host reads the exact writer topics of its allowed publishers and writes its own result topic.
+# The host reconciler's shared terminals have fixed names and are declared here.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-failed.v1, operation: DESCRIBE}
+
+overlay:
+  node: node_install_request_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-19998
+  transport_type: kafka

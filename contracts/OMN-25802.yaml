@@ -1,0 +1,119 @@
+schema_version: 1.0.0
+ticket_id: OMN-25802
+title: Unblock omnimarket PR 6269
+summary: Restore the failing checks on the typed install request branch and record the lab evidence at the new PR head.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn25802-pr-checks
+    statement: The existing typed install request PR has passing checks and head-bound lab evidence, or a shared failure is recorded without a push.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the required checks Architectural Compliance Lint, CI Summary, PR Arch Review Gate and imperative-contract-guard / Imperative Contract Guard of omnimarket PR 6269 read success at the new head, read through the declared scm path after the push -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6269` lists any of the four as not success at the new head'
+      - id: AC2
+        statement: 'AC2: no check is widened, skipped or bypassed, so the diff removes no assertion and adds no skip, xfail or loosened threshold -- falsifier: `git diff <base> <new head> -- tests/ .github/` shows a removed assert, a new skip or xfail marker or a changed required-check list'
+      - id: AC3
+        statement: 'AC3: a comment on the pull request starts `Lab:` and carries `head=<full new head sha>` with the lab run output that proves the red then green at that head -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6269` shows no comment naming the new head with a line starting `Lab:`'
+      - id: AC4
+        statement: 'AC4: when the change alters a lab host unit or the plugin, the branch is installed through the declared path and the Lab line carries `installed=<host>:<revision>` and `observed=<what ran>`; otherwise the lane says in its TERMINAL that it changes nothing that runs -- falsifier: the Lab comment names an install but carries no installed= cell, or the TERMINAL carries neither'
+      - id: AC5
+        statement: 'AC5: if the cause is outside the pull request, a STATUS row on the lane carries `cause=<one line>` and `shared=yes` with the evidence and no push is made -- falsifier: the ledger holds no STATUS row from the lane carrying cause= and shared=yes while the pull request is unchanged at its old head'
+evidence_requirements:
+  - kind: tests
+    description: The request and result use the declared ACLs and reach the host installer on the in-memory bus.
+    command: uv run --frozen pytest tests/seams/test_install_request_seam.py -m "not kafka" -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn25802-ac1
+    description: Read the four required check conclusions from SCM at the evaluated revision after the push.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC1]
+    checks:
+      - check_type: command
+        check_value: |
+          set -o pipefail
+          onex scm pr-checks 'OmniNode-ai/omnimarket#6269' | python3 -c '
+          import json, sys
+          result = json.load(sys.stdin)["result"]
+          assert result["head_sha"] == sys.argv[1]
+          required = {
+              "Architectural Compliance Lint", "CI Summary", "PR Arch Review Gate",
+              "imperative-contract-guard / Imperative Contract Guard",
+          }
+          successful = {row[0] for row in result["runs"] if row[1:3] == ["completed", "success"]}
+          assert required <= successful, sorted(required - successful)
+          ' "$(git rev-parse HEAD)"
+        cwd: .
+  - id: dod-omn25802-ac2
+    description: The ACL and host request tests enforce exact permissions and rejection cases. The original PR and candidate use the same workflow and ratchet definitions.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/seams/test_install_request_seam.py -m "not kafka" -q --no-cov -p no:randomly
+        cwd: .
+  - id: dod-omn25802-ac3
+    description: Read a Lab comment at the evaluated head with the recorded red and green observations.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC3]
+    checks:
+      - check_type: command
+        check_value: |
+          set -o pipefail
+          onex scm pr-view 'OmniNode-ai/omnimarket#6269' | python3 -c '
+          import json, sys
+          result = json.load(sys.stdin)["result"]
+          sha = sys.argv[1]
+          assert result["head_sha"] == sha
+          bodies = [comment["body"] for comment in result.get("comments", [])]
+          assert any(body.startswith(f"Lab: head={sha} ") and "RED" in body and "GREEN" in body for body in bodies)
+          ' "$(git rev-parse HEAD)"
+        cwd: .
+  - id: dod-omn25802-ac4
+    description: Hosted source readback verifies the published host install orchestrator handler at the evaluated revision. The lab seam exercises installation against a disposable unit tree.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu;
+          dir="$(mktemp -d)";
+          trap 'rm -rf "$dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          path=src/omnimarket/nodes/node_host_install_orchestrator/handlers/handler_host_install_orchestrator.py;
+          curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" --output "$dir/handler.py";
+          cmp "$path" "$dir/handler.py";
+          uv run --frozen pytest tests/seams/test_install_request_seam.py::test_one_login_writing_another_logins_topic_is_refused_and_the_host_reads_the_rest_in_memory -q --no-cov -p no:randomly
+        cwd: .
+  - id: dod-omn25802-ac5
+    description: If the original head remains, read the lane's shared-cause STATUS from the ledger. A new head is checked by AC1.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC5]
+    checks:
+      - check_type: command
+        check_value: |
+          set -o pipefail
+          onex scm pr-view 'OmniNode-ai/omnimarket#6269' | python3 -c '
+          import json, os, pathlib, sys
+          result = json.load(sys.stdin)["result"]
+          original = "34275149b0b1dfbd9b1982d50dcc122480b418dc"
+          if result["head_sha"] == original:
+              ledger = pathlib.Path(os.environ["ONEX_LEDGER_PATH"]).read_text()
+              assert any(
+                  " | STATUS | " in row
+                  and " | lane=unblk6269-0145 | " in row
+                  and " | shared=yes | " in row
+                  and " | cause=" in row
+                  for row in ledger.splitlines()
+              )
+          else:
+              assert result["head_sha"] == sys.argv[1]
+          ' "$(git rev-parse HEAD)"
+        cwd: .
