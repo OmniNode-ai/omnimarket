@@ -171,6 +171,10 @@ class ModelFactoryFloorRuntime(BaseModel):
     ledger_window_days: int = Field(gt=0)
     ledger_cut_chars: int = Field(gt=0)
     ledger_timeout_seconds: int = Field(gt=0)
+    # What the window read uses for the archive block's two tuning values when the deployment overlay names none: how many split archives
+    # it reads at once, and how long a cached archive's rows are kept.
+    ledger_archive_read_workers: int = Field(ge=1)
+    ledger_archive_cache_ttl_seconds: int = Field(ge=1)
     # The row kinds the effect keeps from the window.
     ledger_kinds: tuple[str, ...] = Field(min_length=1)
     # Hours after which the unresolved step's record reads unread (its own margin past the window's edge is the other bound).

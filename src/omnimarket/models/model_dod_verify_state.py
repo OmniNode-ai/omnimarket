@@ -293,11 +293,10 @@ class ModelProductClonePin(BaseModel):
     and the collector measures HEAD against that recorded commit instead of
     re-fetching.
 
-    ``pinned_sha`` is the upstream TIP observed at materialisation, never the
-    clone's own HEAD. Pinning to HEAD would make the comparison vacuous — HEAD
-    always equals itself — and would silently launder a clone that was already
-    behind when the run picked it up, which is the OMN-16846 AC5 refusal this
-    must not weaken.
+    The sweep pins the upstream tip it materialised against so a clone
+    already behind at materialisation still fails. A read-only runtime
+    deploy instead records the mounted checkout's boot-time revision and
+    requires exact equality throughout that deployment.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -311,8 +310,8 @@ class ModelProductClonePin(BaseModel):
         ...,
         pattern=r"^[0-9a-f]{40}$",
         description=(
-            "The upstream tip commit observed when this run materialised the "
-            "clone. Full 40-char lowercase hex; an abbreviation would be "
+            "The upstream tip at materialisation or the runtime checkout at "
+            "boot. Full 40-char lowercase hex; an abbreviation would be "
             "ambiguous in a shallow clone."
         ),
     )
@@ -329,9 +328,9 @@ class ModelProductClonePin(BaseModel):
 class ModelProductClonePinSet(BaseModel):
     """The whole pin file a run's materialisation step writes.
 
-    ``version`` is checked rather than assumed: a file this collector cannot
-    interpret must fall back to the live comparison, which is the pre-existing
-    fail-closed behaviour, not be read optimistically.
+    An unsupported version provides no pins. A deployment requiring exact
+    pins refuses the checkout, while the sweep and local callers use their
+    live upstream comparison.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
