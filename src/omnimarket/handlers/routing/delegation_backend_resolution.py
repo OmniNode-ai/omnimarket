@@ -91,6 +91,25 @@ _OVERLAY_PATH = Path.home() / ".omninode" / "delegation" / "bifrost_overrides.ya
 BIFROST_OVERLAY_STORE_KEY: Final[str] = "delegation.bifrost.overlay"
 
 
+def backends_of(document: object) -> list[dict[str, object]]:
+    """The ``backends`` list of a parsed bifrost YAML document.
+
+    A missing key, a null value (a bare ``backends:`` line) and a non-mapping
+    document all mean no backends; a list is returned as a new list. OMN-23413:
+    ``list(doc.get("backends", []))`` raised "'NoneType' object is not
+    iterable" on a null, so every ``onex delegate`` failed once a routes file
+    lost its last local model. Drafted by onex delegate run dfaf2236.
+    """
+    if not isinstance(document, dict):
+        return []
+    value = document.get("backends")
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"backends must be a list, not {type(value).__name__}")
+    return list(value)
+
+
 def _resolve_effective_bifrost_paths(
     config_path: Path | None,
     overlay_path: Path | None,
@@ -267,7 +286,7 @@ async def _load_store_overlay_async(
     if not raw or not raw.strip():
         return None
     parsed = yaml.safe_load(raw) or {}
-    return list(parsed.get("backends", []))
+    return backends_of(parsed)
 
 
 def _load_store_overlay(store: ProtocolSecretStore) -> list[dict[str, Any]] | None:
@@ -469,7 +488,7 @@ def load_bifrost_backends(
     committed_backends: list[dict[str, Any]] = []
     if config_path.is_file():
         base = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-        backends = list(base.get("backends", []))
+        backends = backends_of(base)
         # OMN-18670: keep the PRE-merge committed rows. After the field-by-field
         # merge below the two authorities are one dict and nothing can tell them
         # apart, which is exactly why the 2026-09-18 refusal could name the
@@ -529,7 +548,7 @@ def load_bifrost_backends(
     # --- Dev-only file fallback (deprecated) ------------------------------------
     if overlay_path is not None and overlay_path.is_file():
         overlay = yaml.safe_load(overlay_path.read_text(encoding="utf-8")) or {}
-        file_overlay_backends = list(overlay.get("backends", []))
+        file_overlay_backends = backends_of(overlay)
         backends = _merge_overlay(
             backends,
             file_overlay_backends,

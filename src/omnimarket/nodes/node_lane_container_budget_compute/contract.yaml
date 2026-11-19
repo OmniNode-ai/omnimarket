@@ -3,7 +3,7 @@
 name: node_lane_container_budget_compute
 lifecycle: experimental
 node_type: COMPUTE_GENERIC
-runtime_profiles: []
+runtime_profiles: [main]
 contract_version:
   major: 1
   minor: 0
@@ -33,14 +33,28 @@ handler_routing:
       name: HandlerLaneContainerBudget
       module: omnimarket.nodes.node_lane_container_budget_compute.handlers.handler_lane_container_budget
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+  - onex.cmd.omnimarket.lane-container-budget-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.lane-container-budget-judged.v1
 runtime_dispatch:
-  external_trigger: Direct Python invocation with a recorded container listing and the declared budgets.
+  command_topic: onex.cmd.omnimarket.lane-container-budget-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.lane-container-budget-judged.v1
+  external_trigger: A request on the command topic carrying a recorded container listing and the declared budgets, or
+    direct Python invocation with the same request.
+terminal_event: onex.evt.omnimarket.lane-container-budget-judged.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-container-budget-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-container-budget-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lane-container-budget-judged.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lane-container-budget-judged.v1, operation: DESCRIBE}
 descriptor:
   node_archetype: compute
   purity: pure
-  runtime_profiles: []
+  runtime_profiles: [main]
   idempotent: true
   timeout_ms: 5000
 replay:
@@ -48,7 +62,7 @@ replay:
   timestamp_authority: ingest_sequence
   deterministic: true
 metadata:
-  transport_type: local
+  transport_type: kafka
   description: Judge a host's recorded container listing against the application container budget declared for each
     of its lanes; over budget reads FAIL, an unreadable host reads UNKNOWN and fails, and each failing lane raises one
     alarm keyed lane-budget:<host>:<lane>.

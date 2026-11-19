@@ -219,7 +219,11 @@ class HandlerWorkLedgerReader:
                         and request.window_hours is not None
                         else None
                     ),
-                    page_size=self._overlay.page_size,
+                    kinds=request.kinds,
+                    term=request.term,
+                    page_size=self._overlay.page_size_by_query.get(
+                        request.query, self._overlay.page_size
+                    ),
                     cursor=cursor,
                     lines_only=self._overlay.rows_lines_only
                     and request.query is EnumReaderQuery.ROWS,

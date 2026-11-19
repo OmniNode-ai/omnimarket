@@ -4,7 +4,8 @@
 
 handle takes the runtime tick. A tick inside the overlay's interval returns nothing and does not move the last-run
 time; the tick that is due loads the alarm overlay, reads the lab verdicts and runs the alarm, returning the run
-event. A refused overlay, a missing alarm overlay or an unbound verdict source is a failed run event that names it,
+event. The runtime binds RuntimeLabVerdictSource, which reads the sources the runtime can reach and names the others in the
+run event. A refused overlay, a missing alarm overlay or an unbound verdict source is a failed run event that names it,
 never a silent skip.
 """
 
@@ -34,6 +35,9 @@ from omnimarket.models.schedule_trigger.model_schedule_trigger import (
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.handler_lab_state_alarm import (
     HandlerLabStateAlarm,
 )
+from omnimarket.nodes.node_lab_state_alarm_scheduled_effect.handlers.source_runtime_lab_verdicts import (
+    RuntimeLabVerdictSource,
+)
 from omnimarket.nodes.node_lab_state_alarm_scheduled_effect.models import (
     ModelLabStateAlarmScheduleOverlay,
 )
@@ -45,7 +49,7 @@ NODE_NAME = "node_lab_state_alarm_scheduled_effect"
 
 
 class UnboundLabVerdictSource:
-    """The default verdict source: the lab sources are not bound in the runtime."""
+    """A verdict source that reads nothing: a run with it fails by name (kept for a profile that binds none)."""
 
     def read(self, now: datetime) -> tuple[ModelLabSourceVerdict, ...] | None:
         return None
@@ -66,7 +70,9 @@ class HandlerLabStateAlarmScheduled:
         self._gate = gate or ScheduleGate(
             NODE_NAME, model=ModelLabStateAlarmScheduleOverlay, environ=environ
         )
-        self._source = source if source is not None else UnboundLabVerdictSource()
+        self._source: ProtocolLabVerdictSource = (
+            source if source is not None else RuntimeLabVerdictSource(environ=environ)
+        )
         self._alarm = alarm
         self._environ = environ
         self._clock = clock
@@ -111,7 +117,12 @@ class HandlerLabStateAlarmScheduled:
                 "failed",
                 f"the alarm overlay {overlay.alarm_overlay_id} could not be read",
             )
-        verdicts = self._source.read(now)
+        try:
+            verdicts = self._source.read(now)
+        except NodeOverlayNotFoundError as exc:
+            return self._event(
+                request, "failed", f"the lab verdict source could not be bound: {exc}"
+            )
         if verdicts is None:
             return self._event(
                 request, "failed", "no lab verdict source is bound in the runtime"
@@ -129,6 +140,9 @@ class HandlerLabStateAlarmScheduled:
             f"raised={len(result.raised)} escalated={len(result.escalated)} "
             f"cleared={len(result.cleared)} undelivered={len(result.undelivered)}"
         )
+        unbound = getattr(self._source, "unbound_kinds", ())
+        if unbound:
+            detail += f" read={len(verdicts)} unbound={','.join(unbound)}"
         return self._event(request, "completed", detail)
 
 
