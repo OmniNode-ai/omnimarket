@@ -37,6 +37,8 @@ dod_evidence:
 - id: dod-omn24523-ac2-removal-test
   description: The node removes entries past the window under a declared root and reports them.
   source: manual
+  binds_ac:
+  - AC2
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_temp_retention_effect/test_temp_retention.py -q --no-cov -n 0 -p no:randomly -k "not read_only_directory"
@@ -44,6 +46,8 @@ dod_evidence:
 - id: dod-omn24523-ac3-install-test
   description: The installed unit renders the overlay row for the host, so its pass names the row's windows.
   source: manual
+  binds_ac:
+  - AC3
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_temp_retention_effect/test_retention_schedule.py -q --no-cov -n 0 -p no:randomly -k units_carry
@@ -51,8 +55,6 @@ dod_evidence:
 - id: dod-omn24523-ac2-h053-dry-run-reading
   description: The node run on h053 from the packaged overlay names /tmp among its windows; it fails when the h053 row has no /tmp (the pass then reports only the other root).
   source: manual
-  binds_ac:
-  - AC2
   execution_scope: local_done_gate
   checks:
   - check_type: command
@@ -61,8 +63,6 @@ dod_evidence:
 - id: dod-omn24523-ac3-h053-journal-reading
   description: The installed unit on h053 logged a pass whose windows name /tmp in the last two hours; it fails when the unit's pass names only the other root.
   source: manual
-  binds_ac:
-  - AC3
   execution_scope: local_done_gate
   checks:
   - check_type: command
@@ -71,8 +71,6 @@ dod_evidence:
 - id: dod-omn24523-ac2-run-on-h053
   description: The node run on h053 from the branch overlay removed /tmp entries; the receipt names removed paths under /tmp and a count above zero, read from the receipt and not only checked for existence.
   source: manual
-  binds_ac:
-  - AC2
   execution_scope: local_done_gate
   checks:
   - check_type: command
