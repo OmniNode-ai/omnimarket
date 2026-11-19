@@ -10,7 +10,7 @@ that stops it failing is caught on the hosted runner.
 
 from __future__ import annotations
 
-import re
+import json
 import subprocess
 from pathlib import Path
 
@@ -64,18 +64,23 @@ def _reading(
 def _run(tmp_path: Path, rows: list[str], merged: str = MERGED) -> int:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
+    answer = tmp_path / "answer.json"
+    answer.write_text(
+        json.dumps(
+            {"rows": [{"row_id": str(n), "text": r} for n, r in enumerate(rows)]}
+        ),
+        encoding="utf-8",
+    )
+    # a stand-in onex: the merge commit for scm, the written rows for ledger query
     stub = bin_dir / "onex"
     stub.write_text(
-        f'#!/bin/sh\necho \'{{"result":{{"merge_commit_sha":"{merged}"}}}}\'\n',
+        "#!/bin/sh\n"
+        'if [ "$1" = ledger ]; then cat "$ANSWER"; exit 0; fi\n'
+        f'echo \'{{"result":{{"merge_commit_sha":"{merged}"}}}}\'\n',
         encoding="utf-8",
     )
     stub.chmod(0o755)
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text("\n".join(rows) + "\n", encoding="utf-8")
-    # the variable that points the check at the ledger is read from the check itself, so the test
-    # follows the check and names no ledger variable of its own
-    (ledger_variable,) = set(re.findall(r'"\$(\w*LEDGER\w*)"', _check()))
-    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", ledger_variable: str(ledger)}
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "ANSWER": str(answer)}
     # the Done gate runs a check through the system shell
     done = subprocess.run(
         ["/bin/sh", "-c", _check()],
