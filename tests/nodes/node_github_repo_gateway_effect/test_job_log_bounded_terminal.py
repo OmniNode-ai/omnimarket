@@ -102,7 +102,7 @@ class _OneShotTransport:
             keep="window",
         )
 
-    def send_sync(self, request):  # pragma: no cover - the fill reads no job metadata
+    def send_sync(self, request):
         raise AssertionError("not used")
 
 
