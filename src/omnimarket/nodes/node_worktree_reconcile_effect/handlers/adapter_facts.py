@@ -20,7 +20,7 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeFacts,
     ModelWorktreeReconcileCommand,
 )
-from omnimarket.handlers.handler_ledger_claims import (
+from omnimarket.handlers.rules_ledger_claims import (
     ModelLedgerRead,
     claimed,
     owner_finished,

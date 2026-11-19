@@ -91,3 +91,38 @@ def dead_decision(
     if age < policy.stale_hours:
         return Decision.KEEP, "not_stale"
     return Decision.NEEDS_HUMAN, "gitdir_unreadable"
+
+
+def unpushed_decision(facts: ModelWorktreeFacts) -> tuple[Decision, str]:
+    """Stale work with commits off the remote: a pin keeps HEAD, but a locked tree is kept.
+
+    Only a stale lock gets here: a locked tree is removed only when its branch is
+    pushed, so unpushed work is never pinned and removed.
+    """
+    if facts.worktree_locked:
+        return Decision.KEEP, "locked_unpushed_work"
+    return Decision.PIN_AND_REMOVE, "unpushed_work_stale"
+
+
+def proven_decision(
+    facts: ModelWorktreeFacts, decision: Decision, reason: str
+) -> tuple[Decision, str]:
+    """The decision, held at keep unless a fresh ledger read proves the removal.
+
+    No tree leaves the disk on the judgement alone: every removal answer rests
+    on ledger evidence (owner_finished), so an unread ledger keeps the tree with
+    the reason it is unread.
+    """
+    unproven = removal_unproven(facts)
+    if decision in (Decision.REMOVE, Decision.PIN_AND_REMOVE) and unproven:
+        return Decision.KEEP, unproven
+    return decision, reason
+
+
+def decision_reasons(
+    facts: ModelWorktreeFacts, decision: Decision, reason: str
+) -> tuple[str, ...]:
+    """The reasons a record carries; removing a locked tree unlocks it first, and says so."""
+    if facts.worktree_locked and decision in (Decision.REMOVE, Decision.PIN_AND_REMOVE):
+        return (reason, "stale_lock_unlocked")
+    return (reason,)

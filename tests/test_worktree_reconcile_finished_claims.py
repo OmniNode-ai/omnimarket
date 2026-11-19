@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.handlers.handler_ledger_claims import (
+from omnimarket.handlers.rules_ledger_claims import (
     ModelLedgerRead,
     ends_work,
     fold_ledger_lines,

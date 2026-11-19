@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from omnimarket.models.work_ledger_query import (
+    EnumWorkLedgerParityStatus,
     ModelWorkLedgerParity,
     ModelWorkLedgerParityDay,
     ModelWorkLedgerRowRecord,
@@ -162,14 +163,14 @@ def _day(
 def test_unmeasured_day_before_a_measured_day_is_a_hole() -> None:
     complete = {"CLAIM": True, "RELEASE": True, "TERMINAL": True}
     hole = ModelWorkLedgerParity(
-        status="unmeasured",  # type: ignore[arg-type]
+        status=EnumWorkLedgerParityStatus.UNMEASURED,
         days=(
             _day("2026-11-13", exact=None, kinds={}),
             _day("2026-11-14", exact=True, kinds=complete),
         ),
     )
     trailing = ModelWorkLedgerParity(
-        status="unmeasured",  # type: ignore[arg-type]
+        status=EnumWorkLedgerParityStatus.UNMEASURED,
         days=(
             _day("2026-11-13", exact=True, kinds=complete),
             _day("2026-11-14", exact=None, kinds={}),

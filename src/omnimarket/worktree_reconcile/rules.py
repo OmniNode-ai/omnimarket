@@ -15,12 +15,8 @@ from omnimarket.events.worktree_reconcile import (
 from omnimarket.events.worktree_reconcile import (
     EnumWorktreeReconcileDecision as Decision,
 )
+from omnimarket.handlers import rules_worktree_lock as lock
 from omnimarket.handlers import rules_worktree_removal as removal
-from omnimarket.handlers.rules_worktree_lock import (
-    dead_decision,
-    live_reason,
-    removal_unproven,
-)
 from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy,
 )
@@ -31,13 +27,13 @@ def _classify(
 ) -> tuple[Decision, str]:
     if not facts.facts_complete:
         return Decision.KEEP, "facts_unreadable"
-    live = live_reason(facts, policy)
+    live = lock.live_reason(facts, policy)
     if live:
         return Decision.KEEP, live
     age = facts.last_activity_age_hours
     assert age is not None
     if facts.gitdir_missing:
-        return dead_decision(facts, policy, age)
+        return lock.dead_decision(facts, policy, age)
     if facts.dirty:
         return (
             Decision.NEEDS_HUMAN if age >= policy.stale_hours else Decision.KEEP
@@ -73,11 +69,7 @@ def _classify(
         # A pin preserves HEAD only; a clone may hold other unpushed branches.
         if facts.kind == Kind.STANDALONE_CLONE:
             return Decision.NEEDS_HUMAN, "clone_unpushed_work"
-        if facts.worktree_locked:
-            # Only a stale lock gets here: a locked tree is removed only when its
-            # branch is pushed, so unpushed work is never pinned and removed.
-            return Decision.KEEP, "locked_unpushed_work"
-        return Decision.PIN_AND_REMOVE, "unpushed_work_stale"
+        return lock.unpushed_decision(facts)
     if facts.kind == Kind.STANDALONE_CLONE and not facts.has_remote:
         return Decision.NEEDS_HUMAN, "ambiguous"
     return Decision.KEEP, "not_stale"
@@ -86,17 +78,7 @@ def _classify(
 def classify(
     facts: ModelWorktreeFacts, policy: ModelWorktreeReconcilePolicy
 ) -> tuple[Decision, str]:
-    """The decision, held at keep unless a fresh ledger read proves the removal.
-
-    No tree leaves the disk on the judgement alone: every removal answer rests
-    on ledger evidence (owner_finished), so an unread ledger keeps the tree with
-    the reason it is unread.
-    """
-    decision, reason = _classify(facts, policy)
-    unproven = removal_unproven(facts)
-    if decision in removal.REMOVING and unproven is not None:
-        return Decision.KEEP, unproven
-    return decision, reason
+    return lock.proven_decision(facts, *_classify(facts, policy))
 
 
 def reconcile(
@@ -107,15 +89,11 @@ def reconcile(
         decision, reason = removal.hold_unmerged(
             *classify(facts, request.policy), request.policy
         )
-        reasons: tuple[str, ...] = (reason,)
-        if decision in (Decision.REMOVE, Decision.PIN_AND_REMOVE) and (
-            facts.worktree_locked
-        ):
-            # The removal unlocks the tree first; the record says so.
-            reasons = (*reasons, "stale_lock_unlocked")
         rows.append(
             ModelWorktreeDecisionRecord(
-                path=facts.path, decision=decision, reasons=reasons
+                path=facts.path,
+                decision=decision,
+                reasons=lock.decision_reasons(facts, decision, reason),
             )
         )
     return removal.cap_removals(
@@ -147,10 +125,10 @@ def apply_model_verdicts(
                     not fact.facts_complete
                     or fact.dirty
                     or fact.kind == Kind.ORPHAN_DIR
-                    or live_reason(fact, decisions.policy) is not None
+                    or lock.live_reason(fact, decisions.policy) is not None
                     # A pin preserves HEAD only, never a clone's other branches.
                     or fact.kind == Kind.STANDALONE_CLONE
-                    or removal_unproven(fact) is not None
+                    or lock.removal_unproven(fact) is not None
                     or fact.gitdir_missing
                 )
             )

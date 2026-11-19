@@ -19,7 +19,7 @@ import pytest
 from pydantic import BaseModel
 
 from omnimarket.events.worktree_reconcile import ModelWorktreeReconcileCommand
-from omnimarket.handlers.handler_ledger_claims import owner_finished
+from omnimarket.handlers.rules_ledger_claims import owner_finished
 from omnimarket.models.model_worktree_ledger_projection import (
     ModelLedgerProjectionSettings,
 )

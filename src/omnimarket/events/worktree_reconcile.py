@@ -4,15 +4,13 @@
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal, Self
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models import model_worktree_ledger_projection as ledger
 from omnimarket.models import model_worktree_removal as removal
-from omnimarket.models.model_worktree_ledger_projection import (
-    ModelLedgerProjectionSettings,
-)
 from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy as Policy,
 )
@@ -115,7 +113,7 @@ class ModelWorktreeReconcileDecisions(ModelWorktreeReconcileBase):
     policy: Policy = Field(default_factory=Policy)
 
 
-class ModelWorktreeReconcileCommand(ModelWorktreeReconcileBase):
+class ModelWorktreeReconcileCommand(ledger.ModelLedgerSourceChoice):
     host: str = Field(min_length=1)
     roots: tuple[str, ...]
     extra_clone_roots: tuple[str, ...] = ()
@@ -123,11 +121,6 @@ class ModelWorktreeReconcileCommand(ModelWorktreeReconcileBase):
     # workspaces, the scheduler's own install directory.
     exclude_paths: tuple[str, ...] = ()
     ledger_path: str | None = None
-    # file: read ledger_path; projection: read the work_ledger_rows projection
-    # through the work-ledger query node, used only when its parity verdict
-    # shows the required kinds complete.
-    ledger_source: Literal["file", "projection"] = "file"
-    ledger_projection: ModelLedgerProjectionSettings | None = None
     execute: bool = False
     policy: Policy = Field(default_factory=Policy)
     decider_command: list[str] | None = Field(default=None, min_length=1)
@@ -137,18 +130,6 @@ class ModelWorktreeReconcileCommand(ModelWorktreeReconcileBase):
     # evidence is read and merged_pr_head stays False.
     merged_pr_command: list[str] | None = Field(default=None, min_length=1)
     correlation_id: UUID
-
-    @model_validator(mode="after")
-    def _ledger_source_pairs_with_settings(self) -> Self:
-        if self.ledger_source == "projection" and self.ledger_projection is None:
-            raise ValueError(
-                "ledger_source projection requires ledger_projection settings"
-            )
-        if self.ledger_source == "file" and self.ledger_projection is not None:
-            raise ValueError(
-                "ledger_projection settings are only used by ledger_source projection"
-            )
-        return self
 
 
 class ModelWorktreeReconcileDecidedEvent(ModelWorktreeReconcileBase):

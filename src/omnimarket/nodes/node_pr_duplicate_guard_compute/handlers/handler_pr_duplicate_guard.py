@@ -43,7 +43,7 @@ from typing import Any, Final
 
 import yaml
 
-from omnimarket.handlers.handler_ledger_claims import claim_lane, live_claims
+from omnimarket.handlers.rules_ledger_claims import claim_lane, live_claims
 from omnimarket.models.model_pr_duplicate_guard import (
     EnumDuplicateEvidence,
     EnumReplacesRefusal,

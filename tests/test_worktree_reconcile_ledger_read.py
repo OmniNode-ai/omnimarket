@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from omnimarket.handlers.handler_ledger_claims import (
+from omnimarket.handlers.rules_ledger_claims import (
     ModelLedgerRead,
     claim_maps_to_tree,
     claim_names_tree,

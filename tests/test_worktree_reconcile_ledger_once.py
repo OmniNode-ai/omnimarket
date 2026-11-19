@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from omnimarket.events.worktree_reconcile import ModelWorktreeReconcileCommand
-from omnimarket.handlers.handler_ledger_claims import ModelLedgerRead
+from omnimarket.handlers.rules_ledger_claims import ModelLedgerRead
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers import adapter_facts
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts import (
     GitWorktreeFactsProbe,

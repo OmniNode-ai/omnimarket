@@ -26,7 +26,7 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileCommand,
     ModelWorktreeReconcileRunResult,
 )
-from omnimarket.handlers.handler_ledger_claims import live_claims
+from omnimarket.handlers.rules_ledger_claims import live_claims
 from omnimarket.handlers.rules_unit_roots import UnitRoots
 from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy,
@@ -810,7 +810,7 @@ def test_a_standalone_clone_counts_its_own_unpushed_stash(
 def test_ledger_churn_and_legacy_rows_never_block_a_run() -> None:
     from datetime import UTC, datetime
 
-    from omnimarket.handlers.handler_ledger_claims import claimed, live_claims
+    from omnimarket.handlers.rules_ledger_claims import claimed, live_claims
 
     now = datetime(2026, 1, 2, tzinfo=UTC)
     ledger = "\n".join(

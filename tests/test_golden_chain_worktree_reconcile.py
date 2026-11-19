@@ -70,7 +70,7 @@ def test_golden_chain_worktree_reconcile() -> None:
     )
     writer = WorktreeReconcileProjectionWriter()
     db = RecordingDB()
-    writer._db = db  # type: ignore[assignment]
+    _inject_db(writer, db)
     topic, completed = fake.events[-1]
     written = writer.handle(completed.model_dump(mode="json") | {"_topic": topic})
     assert written["rows_upserted"] == 1
@@ -201,7 +201,7 @@ def test_golden_chain_a_read_ledger_names_no_unread_reason() -> None:
     assert result.errors == ()
     writer = WorktreeReconcileProjectionWriter()
     db = RecordingDB()
-    writer._db = db  # type: ignore[assignment]
+    _inject_db(writer, db)
     topic, completed = fake.events[-1]
     written = writer.handle(completed.model_dump(mode="json") | {"_topic": topic})
     assert written["rows_upserted"] == 1
@@ -268,6 +268,10 @@ OTHER_LANE_CLAIM = (
 )
 
 
+def _inject_db(writer: WorktreeReconcileProjectionWriter, db: RecordingDB) -> None:
+    writer._db = db  # type: ignore[assignment]
+
+
 def _run_on_the_projection(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, terminal_complete: bool
 ) -> tuple[ModelWorktreeReconcileRunResult, Fakes, Path]:
@@ -329,7 +333,7 @@ def test_golden_chain_a_complete_projection_vouches_and_the_merged_tree_leaves(
     assert result.completed_event.removed_paths == (str(path),)
     topic, completed = fake.events[-1]
     writer = WorktreeReconcileProjectionWriter()
-    writer._db = RecordingDB()  # type: ignore[assignment]
+    _inject_db(writer, RecordingDB())
     written = writer.handle(completed.model_dump(mode="json") | {"_topic": topic})
     assert written["rows_upserted"] == 1
 
@@ -351,6 +355,6 @@ def test_error_chain_an_incomplete_projection_keeps_every_tree_and_names_why(
     assert result.completed_event.removed_paths == ()
     topic, completed = fake.events[-1]
     writer = WorktreeReconcileProjectionWriter()
-    writer._db = RecordingDB()  # type: ignore[assignment]
+    _inject_db(writer, RecordingDB())
     written = writer.handle(completed.model_dump(mode="json") | {"_topic": topic})
     assert written["rows_upserted"] == 1

@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from pydantic import BaseModel, JsonValue
 
 from omnimarket.events.worktree_reconcile import ModelWorktreeReconcileCommand
-from omnimarket.handlers.handler_ledger_claims import (
+from omnimarket.handlers.rules_ledger_claims import (
     ModelLedgerRead,
     fold_ledger_lines,
 )
