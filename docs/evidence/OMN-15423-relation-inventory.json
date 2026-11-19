@@ -3791,6 +3791,7 @@
       "partitioning": [],
       "producer": null,
       "readers": [
+        "node_branch_deploy_orchestrator",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "public",
@@ -8619,6 +8620,7 @@
         "node_floor_projection_read_effect",
         "node_floor_simple_effect",
         "node_gpu_power_caps_effect",
+        "node_host_down_reading_effect",
         "node_host_introspection_announce_effect",
         "node_host_table_keys_ingest_effect",
         "node_lab_disk_watermark_effect",
