@@ -241,3 +241,14 @@ def test_condition_schedule_seam_every_scheduled_verb_is_a_verb_and_an_operation
     operations = {entry["operation"] for entry in contract["cli_handlers"]}
     assert verb.replace("-", "_") in operations
     assert verb in SCHEDULABLE_VERBS
+
+
+def test_condition_schedule_container_restarts_is_schedulable_and_declared() -> None:
+    """The container-restarts verb has its own unit, so a declared tick can run it (an overlay naming it loads)."""
+    assert "container-restarts" in SCHEDULABLE_VERBS
+    schedules = _overlay().condition_schedules or {}
+    assert "container-restarts" in schedules
+    assert (
+        schedules["container-restarts"].unit_name
+        == "example-lab-alarm-container-restarts"
+    )
