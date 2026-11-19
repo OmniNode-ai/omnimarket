@@ -49,19 +49,13 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:randomly --no-cov -k discovery_that_finds_no_contract
     cwd: .
 - id: dod-omn25012-ac3
-  description: 'hosted: the AC3 check of contracts/OMN-24612.yaml names both hosts of the repo-state query; the three readings in the pull request comment are read at the local Done gate.'
+  description: 'hosted: a test reads the Done-gate AC3 check of contracts/OMN-24612.yaml and asserts it names both hosts of the repo-state query; the three readings in the pull request comment are read at the local Done gate.'
   source: manual
   binds_ac:
   - AC3
   checks:
-  - check_type: command
-    check_value: grep -q -e '--host h053' -e '--host h201' contracts/OMN-24612.yaml
-    cwd: .
-  - check_type: command
-    check_value: grep -c 'repo-state query --host h053' contracts/OMN-24612.yaml
-    cwd: .
-  - check_type: command
-    check_value: grep -c 'repo-state query --host h201' contracts/OMN-24612.yaml
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:randomly --no-cov -k queries_both_hosts
     cwd: .
 - id: dod-omn25012-ac4
   description: 'hosted: the gate accepts nothing narrower than WRITE and DESCRIBE for a publish entry (the test removes each in turn and the gate refuses), which is the argument for the WRITE row.'

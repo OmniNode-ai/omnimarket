@@ -208,3 +208,20 @@ def test_the_gate_accepts_nothing_narrower_than_write_and_describe_for_a_publish
 
     assert result.status == "refused"
     assert result.uncovered_new_uses == 2
+
+
+def test_the_done_gate_check_of_ac3_queries_both_hosts() -> None:
+    """OMN-24612 AC3 stays open until repo-state query answers on h053 and h201."""
+    contract = yaml.safe_load(
+        (Path(__file__).parents[3] / "contracts" / "OMN-24612.yaml").read_text()
+    )
+    commands = [
+        check["check_value"]
+        for item in contract["dod_evidence"]
+        for check in item["checks"]
+        if "AC3" in item.get("binds_ac", [])
+        and item.get("execution_scope") == "local_done_gate"
+    ]
+    assert len(commands) == 1
+    assert "--host h053" in commands[0]
+    assert "--host h201" in commands[0]
