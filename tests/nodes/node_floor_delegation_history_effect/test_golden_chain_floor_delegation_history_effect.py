@@ -133,6 +133,20 @@ def test_golden_the_projection_read_is_one_read_only_transaction_with_no_prompt_
     assert "lab-db" in script.split("--")[1] or "lab-db" in " ".join(runner.calls[0])
 
 
+def test_error_the_projection_read_never_turns_a_missing_cost_into_zero(
+    tmp_path: Path,
+) -> None:
+    runner = FakeRunner(reports=_hosts())
+    _run(_handler(runner), tmp_path)
+    script = next(
+        " ".join(call) for call in runner.calls if "BEGIN READ ONLY" in " ".join(call)
+    )
+    assert "coalesce((a->>'cost_usd')::numeric, 0)" not in script
+    assert "coalesce(sum(cost), 0)" not in script
+    assert "r.terminal_failure_cause, 0 " not in script
+    assert "NULL::numeric" in script
+
+
 def test_golden_a_report_on_two_hosts_is_one_experiment(tmp_path: Path) -> None:
     hosts = {
         "/registry/hosta-reports": (0, listing((REPORT, 1, _report_text())), ""),

@@ -5,14 +5,15 @@
 #
 # The PR authoring writes lanes ran with gh: pr_create, pr_edit, pr_ready,
 # pr_close, pr_comment, pr_thread_reply, pr_thread_resolve, pr_review_post,
-# workflow_dispatch and check_run_create. A separate node from
+# workflow_dispatch, check_run_create, commit_status_create and
+# required_context_apply. A separate node from
 # node_github_repo_gateway_effect because that node declares itself read-only
 # (metadata side_effect_class read_only, descriptor idempotent true); a write
 # needs a mode, a quota floor and guards a read never does.
 name: node_github_repo_write_effect
-contract_version: {major: 1, minor: 11, patch: 0}
+contract_version: {major: 1, minor: 12, patch: 0}
 node_type: EFFECT_GENERIC
-node_version: {major: 1, minor: 10, patch: 0}
+node_version: {major: 1, minor: 11, patch: 0}
 
 description: >
   EFFECT: the PR authoring writes a lane makes. One ModelRepoWriteRequest on
@@ -40,6 +41,25 @@ description: >
   conclusion and typed output (title and summary) through the same transport.
   completed requires conclusion; queued and in_progress omit it. Its replay
   record is in-process only, so a retry after restart can create another run.
+  commit_status_create posts one commit status through POST
+  /repos/{o}/{r}/statuses/{sha}, which the node's token may do where it cannot
+  create a check run. The context is the review gate's fable-review-gate and no
+  other, the state is success or failure and no other, commit_sha is the full
+  40-character sha (an empty or short sha is refused) and status_target_url is
+  the link to the verdict. The request model refuses anything else before any
+  call. Its replay record is in-process only; GitHub keeps every status posted.
+  required_context_apply adds one required status-check context to a branch's
+  protection (GET of /repos/{o}/{r}/branches/{b}/protection/
+  required_status_checks to see whether it is already required, then an add-only
+  POST of the one context to its /contexts endpoint, so every check already
+  required stays as it is). It is served
+  only for a (repository, branch, context) triple the overlay's
+  required_contexts entries name; any other repository, branch or context, an
+  absent overlay or an absent required_contexts is refused
+  required_context_not_allowed before any GitHub call, in either mode. A branch
+  that already requires the context answers completed replayed. The credential
+  must be allowed to administer branch protection; this contract does not apply
+  it to any repository by itself.
   pr_thread_reply posts one reply on the review-comment thread that
   thread_comment_id starts, under the node's own write identity. It checks the
   PR's head when given an expected one, and a review comment carrying the
@@ -154,6 +174,12 @@ operations:
     transport: rest
   - name: check_run_create
     description: "Request ModelRepoWriteRequest with name, head_sha, status (queued, in_progress, completed), optional conclusion and output (title, summary); replaces gh api --method POST /repos/{o}/{r}/check-runs. Result ModelRepoWriteCompleted with check_run_id, html_url and head_sha or ModelRepoWriteFailed. POST /repos/{o}/{r}/check-runs via the existing GitHub transport and auth. Requires checks write permission; replay protection is in-process only."
+    transport: rest
+  - name: commit_status_create
+    description: "Request ModelRepoWriteRequest with commit_sha, status_context (fable-review-gate only), status_state (success or failure only), status_target_url and optional status_description; replaces gh api --method POST /repos/{o}/{r}/statuses/{sha}. POST /repos/{o}/{r}/statuses/{sha} via the existing GitHub transport and the node's token. Result ModelRepoWriteCompleted with commit_status_id and head_sha or ModelRepoWriteFailed. Any other context or state, and an empty or short sha, is refused by the request model before any call."
+    transport: rest
+  - name: required_context_apply
+    description: "Request ModelRepoWriteRequest with protected_branch and required_context; replaces gh api --method POST /repos/{o}/{r}/branches/{b}/protection/required_status_checks/contexts. GET /repos/{o}/{r}/branches/{b}/protection/required_status_checks to see whether the context is already required, then an add-only POST /repos/{o}/{r}/branches/{b}/protection/required_status_checks/contexts with the one context (the checks already required are never sent back), only for a (repository, branch, context) the overlay's required_contexts allowlist names, else refused required_context_not_allowed before any call. Result ModelRepoWriteCompleted with required_context_applied (False and replayed when already required) or ModelRepoWriteFailed."
     transport: rest
   - name: pr_label
     description: "Request ModelRepoWriteRequest with pr_number, expected_head_sha, add_labels and remove_labels, result ModelRepoWriteCompleted (html_url, head_sha) or ModelRepoWriteFailed (label_not_allowed when a label is not in the overlay's allowed set); replaces gh api --method POST /repos/{o}/{r}/issues/{n}/labels. GET the PR (expected head), POST /repos/{o}/{r}/issues/{n}/labels for labels to add, DELETE /repos/{o}/{r}/issues/{n}/labels/{label} for each label to remove."

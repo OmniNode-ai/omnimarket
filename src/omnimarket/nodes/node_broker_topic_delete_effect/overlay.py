@@ -12,9 +12,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.broker_acl_reconcile import validate_superuser_env_file
 from omnimarket.nodes.node_broker_topic_removal_effect.overlay import (
     ModelContractSource,
 )
@@ -38,12 +39,19 @@ class ModelSuperuserAccess(BaseModel):
     compose_project: str = Field(min_length=1)
     broker_container: str = Field(min_length=1)
     superuser_source_container: str = Field(min_length=1)
+    #: Env file on the broker host the credential is read from; unset means the permission tool's default.
+    superuser_env_file: str | None = Field(default=None, min_length=1)
     #: Name of the environment variable that holds the ssh target of the broker host.
     ssh_target_env: str = Field(min_length=1)
     #: ``-X brokers=`` value the rpk client uses inside the broker container.
     rpk_brokers: str = Field(min_length=1)
     sasl_mechanism: str = Field(min_length=1)
     script_timeout_seconds: float = Field(gt=0)
+
+    @field_validator("superuser_env_file")
+    @classmethod
+    def _superuser_env_file_is_a_declarable_path(cls, value: str | None) -> str | None:
+        return None if value is None else validate_superuser_env_file(value)
 
 
 class ModelTopicDeleteOverlay(BaseModel):
