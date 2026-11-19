@@ -56,10 +56,10 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane exgraph-req-0320 --kind test -- uv run --frozen pytest tests/nodes/node_remote_lane_close_compute -q --no-cov -n 0"
         cwd: "."
-  - id: dod-omn24686-deploy-handler-surface
+  - id: dod-omn24686-deploy-probe-handler-surface
     description: "Deploy check: the close node's committed handler wires the exemplar graph cell and the module carries the partial problem text. Fails when either is absent. Runs on a hosted runner with no container daemon."
     source: manual
-    binds_ac: ["AC2"]
+    execution_scope: hosted_and_local
     checks:
       - check_type: command
         check_value: "grep -q exemplar_graph_cell src/omnimarket/nodes/node_remote_lane_close_compute/handlers/handler_remote_lane_result.py && grep -q 'no exemplar or graph cell' src/omnimarket/nodes/node_remote_lane_close_compute/handlers/exemplar_graph_cell.py"
