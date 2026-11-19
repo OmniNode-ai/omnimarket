@@ -14,6 +14,7 @@ missing or the watcher state is not an object (INDETERMINATE).
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from collections.abc import Mapping, Sequence
@@ -24,10 +25,14 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
+from omnimarket.handlers.delegation_scenario_runtime import write_atomic
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,
     build_row_source,
+)
+from omnimarket.nodes.node_reading_writer_effect.overlay import (
+    ModelCommandLedgerReadRoute,
 )
 from omnimarket.nodes.node_review_gate_context_compute.handlers.handler_review_gate_context import (
     HandlerReviewGateContext,
@@ -116,6 +121,15 @@ def _watcher_state_path(environ: Mapping[str, str], env_name: str) -> Path:
 def _run(args: argparse.Namespace) -> int:
     environ = dict(os.environ)
     overlay = load_overlay(environ)
+    verb = args.verb
+    if verb is None:
+        if overlay.schedule is None:
+            raise ValueError("review-gate context overlay has no schedule")
+        if not isinstance(overlay.ledger_read, ModelCommandLedgerReadRoute):
+            raise ValueError(
+                "scheduled review-gate probe requires a ledger read command"
+            )
+        verb = overlay.schedule.mode
     policy = load_policy_overlay(environ).policy
     settings = overlay.settings
     state = load_watcher_state(
@@ -132,10 +146,17 @@ def _run(args: argparse.Namespace) -> int:
         clock=lambda: datetime.now(UTC),
     )
     result = handler.handle(
-        ModelReviewGateSweepCommand(
-            correlation_id=uuid4().hex, post=args.verb == "sweep"
-        )
+        ModelReviewGateSweepCommand(correlation_id=uuid4().hex, post=verb == "sweep")
     )
+    if args.state_dir is not None:
+        reading = {
+            "ran_at": datetime.now(UTC).isoformat(),
+            "ok": result.ok,
+            "unread": result.unread,
+            "heads": len(result.entries),
+            "posted": result.posted,
+        }
+        write_atomic(args.state_dir / "last-run.json", json.dumps(reading) + "\n")
     for entry in result.entries:
         sys.stdout.write(
             f"{entry.repository}#{entry.pr_number} {entry.state.value} "
@@ -153,9 +174,25 @@ def _run(args: argparse.Namespace) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog=NODE_NAME, description=__doc__)
-    parser.add_argument("verb", choices=("sweep", "probe"))
+    parser.add_argument("verb", nargs="?", choices=("sweep", "probe"))
+    parser.add_argument(
+        "--omni-home",
+        dest="registry_root",
+        type=Path,
+        help="Registry root supplied by the installer",
+    )
+    parser.add_argument(
+        "--state-dir", type=Path, help="Directory for the scheduled run receipt"
+    )
+    args = parser.parse_args(argv)
+    if (args.registry_root is None) != (args.state_dir is None) or (
+        args.verb is None and args.state_dir is None
+    ):
+        parser.error("supply a verb or both registry unit arguments")
+    if args.verb is not None and args.state_dir is not None:
+        parser.error("the registry unit takes its mode from the overlay schedule")
     try:
-        return _run(parser.parse_args(list(sys.argv[1:] if argv is None else argv)))
+        return _run(args)
     except (
         NodeOverlayError,
         LedgerRouteError,
