@@ -66,12 +66,19 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator -q --no-cov -n 0 -p no:randomly -k exemplar_budget
     cwd: .
+- id: dod-omn24732-ac5-tests
+  description: The node and pack suites pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator tests/pack -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn24732-ac5
   description: The node, pack and resolver suites pass on a lab host at the pushed head.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC5
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24732 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_context_pack_orchestrator tests/pack -q --no-cov -n 0 -p no:randomly
