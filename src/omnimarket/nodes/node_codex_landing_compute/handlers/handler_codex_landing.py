@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Render Codex landing commands and reuse the generated-bytecode cleanup operation."""
+"""Prepare Codex landing commands and decide hook failures and handoff readiness."""
 
 from __future__ import annotations
 
@@ -18,9 +18,187 @@ from typing import Any
 from omnimarket.config.service_endpoints import service_endpoint_url
 
 from ..models.model_codex_landing import (
+    HookClass,
+    HookDisposition,
+    ModelCodexHandoffDecision,
+    ModelCodexHandoffRequest,
+    ModelCodexHookComparison,
+    ModelCodexHookDecision,
+    ModelCodexHookFailure,
+    ModelCodexHookPlan,
+    ModelCodexHookRun,
     ModelCodexLandingRequest,
     ModelCodexLandingResult,
+    ModelCodexProofNotice,
 )
+
+_GIT_DISCOVERY_RE = re.compile(
+    r"(?im)^fatal: not a git repository|^fatal: .*unable to read tree|"
+    r"^fatal: .*GIT_DIR|^fatal: not in a git directory"
+)
+_HOOK_USAGE_ERROR_RE = re.compile(
+    r"(?im)^(?:usage: |.*: error: unrecogni[sz]ed arguments|"
+    r".*unrecogni[sz]ed option|.*unknown option)"
+)
+_LAB_FIELD_RE = re.compile(r"(?<!\S)(host|lane|command|observed|head|installed)=")
+_INSTALLED_CELL_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*:[0-9a-f]{7,40}")
+
+
+def hook_argv(plan: ModelCodexHookPlan) -> tuple[tuple[str, ...], ...]:
+    """Build one pre-commit invocation per hook with the explicit changed paths."""
+    if not plan.files:
+        return ()
+    # Keep paths that start with a dash from becoming pre-commit options.
+    files = tuple(f"./{file}" if file.startswith("-") else file for file in plan.files)
+    stage_args = () if plan.stage == "pre-commit" else ("--hook-stage", plan.stage)
+    return tuple(
+        ("pre-commit", "run", hook, *stage_args, "--files", *files)
+        for hook in plan.hooks
+    )
+
+
+def hook_failure_class(output: str) -> HookClass:
+    """Classify Git discovery errors reported by pre-commit as environment failures."""
+    if re.search(r"(?m)^- exit code: 128\s*$", output) and _GIT_DISCOVERY_RE.search(
+        output
+    ):
+        return "ENV"
+    return "CODE"
+
+
+def _hook_about_change(output: str, files: Sequence[str]) -> bool:
+    """Match changed files or distinctive directory names in a diagnostic."""
+    paths = [Path(file) for file in files]
+    generic = {
+        "src",
+        "tests",
+        "test",
+        "nodes",
+        "handlers",
+        "models",
+        "scripts",
+        "protocols",
+        "contracts",
+        "enums",
+        "docs",
+        "plugins",
+        "packages",
+    }
+    packages = {
+        path.parts[1]
+        for path in paths
+        if len(path.parts) > 2 and path.parts[0] == "src"
+    }
+    return any(file in output or Path(file).name in output for file in files) or any(
+        len(part) >= 4
+        and part not in generic | packages
+        and re.search(r"(?<![\w-])" + re.escape(part) + r"(?![\w-])", output)
+        for path in paths
+        for part in path.parts[:-1]
+    )
+
+
+def _hook_usage_error(output: str) -> bool:
+    return bool(re.search(r"(?m)^- exit code: 2\s*$", output)) and bool(
+        _HOOK_USAGE_ERROR_RE.search(output)
+    )
+
+
+def _failure_lines(run: ModelCodexHookRun) -> tuple[str, ...]:
+    """Compare diagnostics in repo-relative coordinates across the two checkouts."""
+    lines = tuple(line.rstrip() for line in run.output.splitlines() if line.strip())
+    if not run.worktree:
+        return lines
+    prefix = run.worktree.rstrip("/") + "/"
+    return tuple(line.replace(prefix, "") for line in lines)
+
+
+def _reproduced(lane: ModelCodexHookRun, base: ModelCodexHookRun | None) -> bool:
+    if base is None or base.returncode != 1 or base.rewrote_files:
+        return False
+    # A second violation from the same hook must still block the commit.
+    diagnostics = _failure_lines(lane)
+    return f"- hook id: {lane.hook}" in diagnostics and diagnostics == _failure_lines(
+        base
+    )
+
+
+def classify_hook_failures(
+    comparison: ModelCodexHookComparison,
+) -> ModelCodexHookDecision:
+    """Read results only. Clear a failure when the same hook reproduced it at base."""
+    base = {(run.stage, run.hook): run for run in comparison.base}
+    failures = []
+    for run in comparison.lane:
+        if run.returncode == 0 and not run.rewrote_files:
+            continue
+        hook_class = hook_failure_class(run.output)
+        classification: HookDisposition = "fixable"
+        if (
+            run.returncode not in (0, 1)
+            or hook_class == "ENV"
+            or _hook_usage_error(run.output)
+        ):
+            classification = "blocked"
+        elif not run.rewrote_files and _reproduced(
+            run, base.get((run.stage, run.hook))
+        ):
+            classification = "base-inherited"
+        failures.append(
+            ModelCodexHookFailure(
+                hook=run.hook,
+                stage=run.stage,
+                first_line=next(iter(run.output.splitlines()), ""),
+                classification=classification,
+                hook_class=hook_class,
+                about_change=run.rewrote_files
+                or _hook_about_change(run.output, comparison.files),
+            )
+        )
+    return ModelCodexHookDecision(
+        may_commit=all(
+            failure.classification == "base-inherited" for failure in failures
+        ),
+        failures=tuple(failures),
+    )
+
+
+def decide_handoff(request: ModelCodexHandoffRequest) -> ModelCodexHandoffDecision:
+    """Admit proof in the lane's final report or return one notice for its parent."""
+    required: tuple[str, ...]
+    if request.install_verdict == "NA":
+        required = ("host", "lane", "command", "observed")
+        missing = "Lab: host=<host> lane=<lane> command=<command> observed=<result>"
+    else:
+        required = ("installed", "observed")
+        missing = (
+            "Lab: installed=<host>:<revision> observed=<what ran> for the pushed head"
+        )
+
+    if request.install_verdict in {"NA", "OK"}:
+        for line in request.report.splitlines():
+            if not line.startswith("Lab:"):
+                continue
+            parts = _LAB_FIELD_RE.split(line.removeprefix("Lab:"))
+            cells = dict(zip(parts[1::2], parts[2::2], strict=True))
+            if any(not cells.get(field, "").strip() for field in required):
+                continue
+            if request.install_verdict == "OK" and not _INSTALLED_CELL_RE.fullmatch(
+                cells["installed"].strip()
+            ):
+                continue
+            return ModelCodexHandoffDecision(handoff=True)
+
+    detail = " ".join(request.install_detail.split())
+    if detail and request.install_verdict in {"NO", "REFUSED"}:
+        missing += f" ({detail})"
+    return ModelCodexHandoffDecision(
+        handoff=False,
+        notice=ModelCodexProofNotice(
+            pr=request.pr, head=request.head, missing_proof=missing
+        ),
+    )
+
 
 BYTECODE_CLEAN_ARGV = (
     "clean",
@@ -335,5 +513,13 @@ class HandlerCodexLanding:
         )
         command = f'python3 -B -c {shlex.quote("exec(" + repr(program) + ")")} "{request.worktree}"'
         return ModelCodexLandingResult(
-            clean_command=command, json_reader=TARGET_JSON_READER
+            clean_command=command,
+            json_reader=TARGET_JSON_READER,
+            hook_argv=hook_argv(request.hook_plan) if request.hook_plan else None,
+            hook_decision=classify_hook_failures(request.hook_comparison)
+            if request.hook_comparison
+            else None,
+            handoff_decision=decide_handoff(request.handoff)
+            if request.handoff
+            else None,
         )

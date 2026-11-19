@@ -1,0 +1,13 @@
+{
+  "recorded_on": "2026-11-18",
+  "A": {
+    "run_id": "rlane-prtinfra-1720-134fb6",
+    "codex_landing": [["COMMIT", "none: no staged change or no codex-commit.msg"]],
+    "final_message": "BLOCKER: Full pre-commit reported violations in unchanged base files and timed out with exit 124. The automatic publisher also adds a ticket-closing reference and attempts handoff before watcher verification.\nLANE_RESULT outcome=blocked"
+  },
+  "B": {
+    "lane": "fix6353-1915",
+    "blocker": "The launcher attempts handoff immediately after pushing. Its read-only gate accepted the current red, DIRTY head, so I withheld the publish manifest.",
+    "closeout": "kept:<worktree>:uncommitted-changes"
+  }
+}
