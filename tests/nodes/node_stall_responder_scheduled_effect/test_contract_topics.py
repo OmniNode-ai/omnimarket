@@ -56,7 +56,9 @@ HANDLER_LOGGER = (
 def test_ac4_is_bound_to_a_host_read_that_a_pytest_run_cannot_satisfy() -> None:
     """AC4 reads the h201 schedule-run event for job stall_responder under the local Done gate, with its prerequisites named."""
     loaded = yaml.safe_load(OCC_CONTRACT.read_text(encoding="utf-8"))
-    bound = [e for e in loaded["dod_evidence"] if "AC4" in e.get("binds_ac", [])]
+    bound = [
+        e for e in loaded["dod_evidence"] if e["id"] == "dod-omn25160-integration-proof"
+    ]
     assert len(bound) == 1
     entry = bound[0]
     assert entry["execution_scope"] == "local_done_gate"
@@ -78,7 +80,7 @@ def _ac4_pattern() -> re.Pattern[str]:
     (check,) = [
         c
         for e in loaded["dod_evidence"]
-        if "AC4" in e.get("binds_ac", [])
+        if e["id"] == "dod-omn25160-integration-proof"
         for c in e["checks"]
     ]
     found = re.search(r'grep -cE "([^"]+)"', check["check_value"])
