@@ -57,13 +57,20 @@ dod_evidence:
 - id: dod-omn24984-ac2-evidence-comments
   description: 'Criterion AC2 (the comments at the new head) has no hosted check: no hosted or local command lists the comments of a pull request. This local Done gate check reads what the watcher shows of the pull request: that the head of the pull request is the head of the checkout, which fails when the Lab comment names an older head than the one pushed. The comments and the check-runs themselves are read in the pull request.'
   source: manual
-  binds_ac:
-  - AC2
   execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: |-
       H=$(git rev-parse HEAD) && onex scm pr-view OmniNode-ai/omnimarket#6332 | python3 -c 'import json, sys; sys.exit(0 if json.load(sys.stdin)["result"]["head_sha"] == sys.argv[1] else 1)' "$H"
+    cwd: .
+- id: dod-omn24984-ac2-hosted-proxy
+  description: 'AC2 hosted proxy: no hosted command lists pull request comments, so the comments and the head match are read by the local Done gate item above. The hosted check is the contract binding test, which fails when a contract leaves a criterion unbound or binds a local Done gate item.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k "binds"
     cwd: .
 - id: dod-omn24984-ac3-refusal-messages
   description: 'AC3: the probe test file passes at the head; its source-level tests assert the error type and the message of the check at github_group_source.py:296 (with that check deleted four of them fail while every probe-level test still passes, read in the Lab comment), and the control and the refusal probe run on separate servers and overlay roots.'
@@ -91,7 +98,7 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: |-
-      python3 -c 'import sys, yaml; d = yaml.safe_load(open("contracts/OMN-24963.yaml")); bad = [e["id"] for e in d["dod_evidence"] for c in e["checks"] if c["check_type"] == "command" and ("test -f" in c["check_value"] or "contracts/OMN-24963.yaml" in c["check_value"] or "outcome" in c["check_value"] and "grep" in c["check_value"] and "contracts/OMN-24871.yaml" in c["check_value"])]; ac4 = [c["check_type"] for e in d["dod_evidence"] if e["id"] == "dod-omn24963-ac4-duplicate" for c in e["checks"]]; sys.exit(1 if bad or ac4 != ["disposition"] else 0)'
+      python3 -c 'import sys, yaml; d = yaml.safe_load(open("contracts/OMN-24963.yaml")); bad = [e["id"] for e in d["dod_evidence"] for c in e["checks"] if c["check_type"] == "command" and ("test -f" in c["check_value"] or "contracts/OMN-24963.yaml" in c["check_value"] or "outcome" in c["check_value"] and "grep" in c["check_value"] and "contracts/OMN-24871.yaml" in c["check_value"])]; ac4 = [c["check_type"] for e in d["dod_evidence"] if e["id"] == "dod-omn24963-ac4-duplicate" for c in e["checks"]]; sys.exit(1 if bad or ac4 != ["command"] else 0)'
     cwd: .
   - check_type: test_passes
     check_value: env -u PYTHONPATH uv run --frozen pytest tests/ci/test_runner_group_running_reading_check.py tests/unit/handlers/scm/test_onex_scm_command.py::test_runner_group_get_prints_the_compact_outcome_line_the_done_gate_greps -q --no-cov -n 0 -p no:randomly -p no:cacheprovider

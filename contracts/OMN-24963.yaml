@@ -56,6 +56,9 @@ dod_evidence:
     check_value: |-
       grep -q '^interface_change: true' contracts/OMN-24871.yaml && grep -q 'Deploy order' contracts/OMN-24871.yaml && grep -q 'ModelRepoWriteRunnerGroup' contracts/OMN-24871.yaml && test -z "$(grep -rnI 'restricted_to_selected''_workflows' src/ tests/)"
     cwd: .
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/ci/test_retired_runner_group_flag_check.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
 - id: dod-omn24963-ac3-except-clause
   description: 'AC3: the refusal tests of the direct source (KeyError and ValueError) and of the write node (result.detail) pass at the head; with the except clause narrowed to TypeError 13 of them fail (4 probe-level and 9 of the source-level tests that assert the refusal message), read in the Lab comment.'
   source: manual
@@ -68,13 +71,20 @@ dod_evidence:
 - id: dod-omn24963-ac4-duplicate
   description: 'Criterion AC4 (the duplicate decision for the other draft) has no check of the comment itself: no hosted or local command reads a pull request comment. This unbound local Done gate check reads the result of the decision instead, that the other draft is closed, which fails until the orchestrator has acted on the decision. The earlier check here was a file test on a file this pull request adds, which cannot fail on it, and is removed.'
   source: manual
-  binds_ac:
-  - AC4
   execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: |-
       onex scm pr-view OmniNode-ai/omnimarket#6329 | python3 -c 'import json, sys; sys.exit(0 if json.load(sys.stdin)["result"]["state"] == "CLOSED" else 1)'
+    cwd: .
+- id: dod-omn24963-ac4-hosted-proxy
+  description: 'AC4 hosted proxy: no hosted command reads a pull request comment, so the duplicate decision itself is read by the local Done gate item above. The hosted check is the contract binding test, which fails when a contract leaves a criterion unbound or binds a local Done gate item.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k "binds"
     cwd: .
 - id: dod-omn24963-ac5-control
   description: 'AC5: the direct-source tests pass with the group_body positive control in each refusal test; with the group_body path forced to UNREADABLE the five tests that use group_body fail (the figure of eleven earlier written here was not reproduced: forcing the whole group endpoint to answer 500 fails 12), read in the Lab comment. The tests of the direct source''s own refusals assert the error type and message, so deleting the bool check of the flags fails four of them.'
