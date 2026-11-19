@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shlex
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -99,7 +100,8 @@ def produce_argv(
 ) -> tuple[str, ...]:
     """The argv that publishes one message on the stack's broker."""
     roundtrip = stack.event_roundtrip
-    shell = f"printf %s '{message}' | rpk topic produce {roundtrip.topic}"
+    produce = shlex.join(("rpk", "topic", "produce", roundtrip.topic))
+    shell = f"printf %s '{message}' | {produce}"
     return (
         overlay.docker_binary,
         "exec",
