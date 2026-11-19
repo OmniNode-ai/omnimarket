@@ -233,7 +233,7 @@ def test_the_done_gate_check_of_ac3_queries_both_hosts() -> None:
         check["check_value"]
         for item in contract["dod_evidence"]
         for check in item["checks"]
-        if "AC3" in item.get("binds_ac", [])
+        if item["id"] == "dod-omn24612-ac3-dev-bus"
         and item.get("execution_scope") == "local_done_gate"
     ]
     assert len(commands) == 1
