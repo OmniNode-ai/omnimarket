@@ -41,6 +41,12 @@ retirement:
   generated_directory_markers: [pyvenv.cfg]
   # Compose-only YAML tags are read as their plain value; any other tag is malformed.
   compose_yaml_tags: [override, reset]
+# The canonical clone sync keeps this flock file by design (taken with fcntl.flock
+# and never removed), so a stale-lock line naming it is judged by its lock state,
+# not by its age. Deployment-specific names extend this policy through the node
+# overlay's clone_locks.additional_persistent_flock_files.
+clone_locks:
+  persistent_flock_files: [onex-canonical-clone-sync.lock]
 input_model: omnimarket.models.model_host_reconcile.ModelHostReconcileCommand
 output_model: omnimarket.models.model_host_reconcile.ModelHostReconcileRunResult
 handler:

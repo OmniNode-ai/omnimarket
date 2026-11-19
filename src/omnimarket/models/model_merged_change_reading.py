@@ -103,6 +103,21 @@ class ModelMcrRunner(BaseModel):
     no_caller: bool = False
     # The lab host that runs the unit (a name the overlay's unit hosts table resolves); empty for a node.
     host: str = ""
+    # ``repo#number`` of the change whose merge the running system holds in place of this one: set when this change's
+    # files moved to another repository (so this repository's merge is in no running build), and the build read asks the
+    # moved change. Empty when this change is read as itself.
+    built_as: str = ""
+
+    @model_validator(mode="after")
+    def _built_as_is_another_change(self) -> ModelMcrRunner:
+        if not self.built_as:
+            return self
+        repo, sep, number = self.built_as.partition("#")
+        if not repo or sep != "#" or not number.isdecimal() or int(number) < 1:
+            raise ValueError("built_as is not <repo>#<number>")
+        if (repo, int(number)) == (self.repo, self.number):
+            raise ValueError("built_as names the runner's own change")
+        return self
 
 
 class ModelMcrBuildFact(BaseModel):

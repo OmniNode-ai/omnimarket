@@ -16,7 +16,7 @@ lifecycle: experimental
 runtime_profiles: [effects]
 
 description: >
-  Runs the lab state alarm on the runtime's tick in place of the Mac floor cycle's alarm step, and returns a typed run event. It fails by name until a lab verdict source is bound.
+  Runs the lab state alarm on the runtime's tick in place of the Mac floor cycle's alarm step, and returns a typed run event. It reads the lab sources the runtime can reach (the dev deploy agent) and names the sources it cannot read in the run event; it fails by name when the lab-state overlay cannot be read.
 
 handler:
   module: omnimarket.nodes.node_lab_state_alarm_scheduled_effect.handlers.handler_lab_state_alarm_scheduled

@@ -108,6 +108,14 @@ work_ledger_projection_stale:
   persistence:
     persist_runs: 3
     streak_path: .onex_state/lab-alarm/work-ledger-projection-streaks.json
+# The container-restarts condition (OMN-23934). Needed by the container-restarts verbs only; the other verbs run without it.
+# Each service of census_lane that declares a restart_bound in lane_manifest is read, and a restart count above its own bound
+# is an ALARM. docker_command reaches docker where the lane runs (ssh to the lab host).
+container_restarts:
+  lane_manifest: ${ONEX_WORKSPACE_CONFIG_ROOT}/config/lab/lane-census/lane-manifest.yaml
+  census_lane: dev
+  docker_command: [ssh, -o, BatchMode=yes, -o, ConnectTimeout=10, example-user@example-host, docker]
+  timeout_seconds: 30
 # The lane census conditions (OMN-24425): lane-drift and container-unhealthy read one census snapshot. Needed by those verbs only.
 # The old script's 120 minute age bound and 15 second command bound are held here as data. Declaring snapshot_command replaces the file read:
 # snapshot_command: [example-census-snapshot]
