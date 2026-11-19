@@ -1,0 +1,73 @@
+schema_version: 1.0.0
+ticket_id: OMN-24085
+title: The branch deploy workflow keeps its state in a stored record and reads the runtime over HTTP
+summary: node_branch_deploy_orchestrator stops keeping each deploy's context in process memory and keeps it as a stored record keyed by the deploy's correlation id, so a dev rebuild that recreates the runtime hosting it resumes the deploy from the record. node_branch_deploy_probe_effect stops reading over ssh and docker exec (the runtime image holds neither) and reads the runtime's own health and ready answers and the deploy agent's build record over HTTP, every address from the overlay.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- public_api
+requirements:
+- id: req-omn24085-stored-state-http-probe
+  statement: The branch deploy orchestrator resumes a deploy from a stored record after a restart, and the probe reads the runtime over HTTP with every address from the overlay.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the orchestrator holds no deploy context in process memory: a second orchestrator instance created after the first one ended mid-deploy finishes the deploy from the stored record, and a message for a deploy with no stored record is ignored with nothing published -- falsifier: uv run pytest tests/nodes/node_branch_deploy_orchestrator/test_resume.py -q fails when the context is kept only in the instance"
+  - id: AC2
+    statement: "AC2: the probe reads the runtime's health answer, its ready answer and the deploy agent's build record over HTTP, from addresses in the overlay, with no process spawn, and reports an unreadable answer as unreadable -- falsifier: uv run pytest tests/nodes/node_branch_deploy_probe_effect/test_probe_effect.py -q fails when the probe stops reading a route, ignores the ready answer, or spawns a process"
+  - id: AC3
+    statement: "AC3: the stored record shape and the topics the orchestrator reads and writes match the other steps of the workflow -- falsifier: uv run pytest tests/nodes/node_branch_deploy_orchestrator -q fails when a field of the stored record or a topic changes on one side only"
+  - id: AC4
+    statement: "AC4: integrated: after the merge and the overlay change, one deploy of an open change on the development runtime ends with the workflow's record naming that change as the running build, read as the stored record and the deploy service's job record for the request's correlation id, and a following restore is recorded the same way -- falsifier: the stored record is missing after the rebuild, or the running build it names is not the requested change"
+evidence_requirements:
+- kind: tests
+  description: The orchestrator and probe suites pass at the pushed head.
+  command: uv run pytest tests/nodes/node_branch_deploy_orchestrator tests/nodes/node_branch_deploy_probe_effect -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24085-ac1
+  description: 'AC1: the resume tests pass at the head: a second orchestrator instance finishes a deploy the first one started, from the stored record; a result for a deploy with no record publishes nothing; keeping the context in the instance turns them red.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_branch_deploy_orchestrator/test_resume.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24085-ac2
+  description: 'AC2: the probe tests pass at the head against a real local HTTP server and the recorded answers of the runtime and the deploy agent; putting a process spawn back turns the control red.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_branch_deploy_probe_effect/test_probe_effect.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24085-ac3
+  description: 'AC3: the orchestrator suite passes at the head, including the seam test over the stored record and the topics.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_branch_deploy_orchestrator -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24085-ac4
+  description: 'hosted proxy for AC4: the two suites pass here; the reading on the development runtime after the overlay change is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_branch_deploy_orchestrator tests/nodes/node_branch_deploy_probe_effect -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24085-integration-proof
+  description: the two suites run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24085 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_branch_deploy_orchestrator tests/nodes/node_branch_deploy_probe_effect -q --no-cov -p no:randomly

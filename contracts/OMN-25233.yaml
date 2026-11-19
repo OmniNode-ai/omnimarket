@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-25233
+title: The landing decision node declares the top-level terminal_event that onex run-node polls
+summary: onex run-node resolves the terminal topic it polls from a top-level terminal_event key only. node_pr_landing_decision_compute declared its terminals only under runtime_dispatch.terminal_events, so run-node refused the node before sending any demand. The contract now also names the success terminal at the top level.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25233-terminal-event
+  statement: onex run-node can send one demand to node_pr_landing_decision_compute and read its terminal event.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the decision contract declares a top-level terminal_event equal to its runtime_dispatch success terminal and listed in its publish topics -- falsifier: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py -k top_level_terminal_event -q'
+evidence_requirements:
+- kind: tests
+  description: The decision contract tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25233-ac1
+  description: The contract carries the top-level terminal_event and the route loader resolves it.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py -k top_level_terminal_event -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25233-integration-proof
+  description: One decision demand sent with onex run-node reaches the dev runtime and its terminal event comes back. Hosted CI cannot reach the dev bus, so only the local Done gate runs this unbound check; it binds no criterion for the hosted check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex run-node node_pr_landing_decision_compute --input '{"tick":3,"observed_at":"2026-11-18T06:50:00Z"}' --timeout 90
+    cwd: .

@@ -1,0 +1,32 @@
+# Overlay of node_lab_state_alarm_effect (OMN-22478, 17a; plan figure W23): the alarm channels, their bounds, and where
+# the canary status is published. Loaded into ModelAlarmOverlay. A send counts as delivered only when a read-back proves
+# it, inside readback_s.
+#
+# The primary channel is the alert channel the existing alert nodes post to (#omninode-notifications), never a person's
+# direct message. token_ref and channel_ref name the secrets that hold the bot token and the channel id; the values are
+# resolved at the effect boundary and are in no file here. env_file_env names the environment variable that holds the
+# path of the operator's bootstrap env file, from which the two named keys are read when the unit's environment lacks them.
+#
+# The second channel is the floor page itself. The operator's second channel is an email address, whose existing route is
+# an AWS notification topic owned by the cloud owner; no email sender that needs no AWS change exists yet, so none is
+# declared here. When one is named, it replaces this second channel's kind.
+readback_s: 300
+renotify_s: 3600
+heartbeat_max_age_s: 900
+channels:
+  - {id: slack_alerts, kind: slack, role: primary, token_ref: SLACK_BOT_TOKEN, channel_ref: SLACK_CHANNEL_ID, env_file_env: ONEX_ALERT_CHANNEL_ENV_FILE, timeout_s: 10}
+  - {id: floor_banner, kind: floor_banner, role: second}
+
+# What the cycle publishes for the hosted canary, which runs outside the lab and cannot reach the tailnet: the age of the
+# served floor page, the alarm heartbeat and the time of publication, with the bounds below. One replaced commit on one
+# branch of a private repository, three times and two bounds and nothing else. The canary fails when any is older than its
+# bound, and a canary that reads nothing has failed.
+canary:
+  remote: git@github.com:OmniNode-ai/floor-canary.git
+  branch: canary-status
+  file_name: status.json
+  floor_max_age_s: 900
+  heartbeat_max_age_s: 900
+  committer_name: floor-canary
+  committer_email: floor-canary@users.noreply.github.com
+  timeout_s: 60

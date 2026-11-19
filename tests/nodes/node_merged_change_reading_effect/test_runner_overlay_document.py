@@ -25,6 +25,7 @@ runners:
   - {repo: omnimarket, number: 1, kind: host_unit, unit: u.service, host: h051}
   - {repo: omnimarket, number: 2, kind: schedule, nodes: [node_a], trigger_topics: [t.tick], shared_result_topics: [t.shared]}
   - {repo: omnimarket, number: 3, kind: route, nodes: [node_b], no_caller: true}
+  - {repo: elsewhere, number: 4, kind: route, nodes: [node_c], built_as: overlays#173}
 """
 
 
@@ -33,8 +34,10 @@ def test_the_document_loads_with_every_section() -> None:
     assert overlay.manifest_url.endswith("/v1/introspection/manifest")
     assert overlay.store_checkouts[0].repo == "overlays"
     assert overlay.unit_hosts[0].ssh_host_env == "ONEX_MCR_SSH_H051"
-    assert [r.number for r in overlay.runners] == [1, 2, 3]
+    assert [r.number for r in overlay.runners] == [1, 2, 3, 4]
     assert overlay.runners[2].no_caller is True
+    assert overlay.runners[3].built_as == "overlays#173"
+    assert overlay.runners[0].built_as == ""
 
 
 @pytest.mark.parametrize(
@@ -46,6 +49,9 @@ def test_the_document_loads_with_every_section() -> None:
         lambda d: d["store_checkouts"][0].update(path="relative/path"),
         lambda d: d["unit_hosts"][0].update(ssh_host_env="bad name"),
         lambda d: d["runners"][0].update(number=0),
+        lambda d: d["runners"][3].update(built_as="overlays-173"),
+        lambda d: d["runners"][3].update(built_as="overlays#0"),
+        lambda d: d["runners"][3].update(built_as="elsewhere#4"),
     ],
 )
 def test_failing_control_a_malformed_document_is_refused(

@@ -115,6 +115,55 @@ class SourceMergedChangeReading:
     def read_build(
         self, changes: Sequence[ModelMcrChange]
     ) -> tuple[tuple[ModelMcrBuildFact, ...], tuple[str, ...], datetime | None]:
+        """Build facts per change; a runner's ``built_as`` reads the change its files moved to, keyed back to the original."""
+        moved = {
+            (r.repo, r.number): r.built_as for r in self._runners.runners if r.built_as
+        }
+        direct = [c for c in changes if (c.repo, c.number) not in moved]
+        facts, unread, started = self._read_build(direct)
+        stand_ins: dict[tuple[str, int], list[ModelMcrChange]] = {}
+        for change in changes:
+            built_as = moved.get((change.repo, change.number))
+            if built_as is not None and change.merge_sha:
+                repo, _, number = built_as.partition("#")
+                stand_ins.setdefault((repo, int(number)), []).append(change)
+        unread_set = set(unread)
+        unread_set.update(
+            f"{c.repo}#{c.number}"
+            for c in changes
+            if (c.repo, c.number) in moved and not c.merge_sha
+        )
+        if stand_ins:
+            targets = self.resolve_changes(
+                [ModelMcrChange(repo=r, number=n) for r, n in stand_ins]
+            )
+            moved_facts, moved_unread, _ = self._read_build(targets)
+            by_target = {(f.repo, f.number): f for f in moved_facts}
+            extra: list[ModelMcrBuildFact] = []
+            for target in targets:
+                fact = by_target.get((target.repo, target.number))
+                for original in stand_ins[(target.repo, target.number)]:
+                    if (
+                        fact is None
+                        or target.repo in moved_unread
+                        or (f"{target.repo}#{target.number}" in moved_unread)
+                    ):
+                        unread_set.add(f"{original.repo}#{original.number}")
+                    else:
+                        extra.append(
+                            fact.model_copy(
+                                update={
+                                    "repo": original.repo,
+                                    "number": original.number,
+                                }
+                            )
+                        )
+            facts = (*facts, *extra)
+        return facts, tuple(sorted(unread_set)), started
+
+    def _read_build(
+        self, changes: Sequence[ModelMcrChange]
+    ) -> tuple[tuple[ModelMcrBuildFact, ...], tuple[str, ...], datetime | None]:
         started = self._runtime_read()[1]
         store = self._store_repos()
         recorded = set(self._provenance_repos) - store
