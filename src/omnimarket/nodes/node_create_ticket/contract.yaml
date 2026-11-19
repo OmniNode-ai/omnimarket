@@ -126,6 +126,18 @@ inputs:
     description: "Bypass architecture dependency validation"
     required: false
     default: false
+  draft:
+    type: object
+    description: "Typed ticket draft (create); the node creates the issue, fills in id and repository, stamps the fingerprint and writes the rendered contract"
+    required: false
+  draft_id:
+    type: str
+    description: "Stable draft identity (UUID), reused across deliveries so a rerun finds the same issue; required with a draft"
+    required: false
+  correlation_id:
+    type: str
+    description: "Transport correlation (UUID) for this run"
+    required: false
 
 outputs:
   status:
