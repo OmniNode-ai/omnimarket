@@ -1781,7 +1781,12 @@ def _canonical_result_to_task_delegated_payload(
         # explicit requested_model identifies the requested model on this wire.
         "requested_model": _blank_to_none(payload.get("requested_model")),
         "queue_wait_ms": _nonnegative_int_or_none(payload.get("queue_wait_ms")),
-        "execution_ms": _nonnegative_int_or_none(payload.get("execution_duration_ms")),
+        # OMN-24615 AC8: execution_ms is the run duration every page shows; a run that ended on a failure
+        # cause and timed nothing (0 ms) has no measured duration, never a measured 0 ms.
+        "execution_ms": _failed_zero_to_none(
+            _nonnegative_int_or_none(payload.get("execution_duration_ms")),
+            payload.get("terminal_failure_cause"),
+        ),
         "quality_gates_failed": [failure_reason]
         if failure_reason and not quality_passed
         else [],
@@ -2362,6 +2367,13 @@ def _nonnegative_int_or_none(value: object) -> int | None:
     return None
 
 
+def _failed_zero_to_none(duration_ms: int | None, failure_cause: object) -> int | None:
+    """OMN-24615 AC8: a run that ended on a failure cause and timed nothing has no measured duration."""
+    if duration_ms == 0 and failure_cause not in (None, ""):
+        return None
+    return duration_ms
+
+
 def _stamp_terminal_timing_and_requested_model(
     row: dict[str, object],
     requested_model: str | None,
@@ -2371,6 +2383,8 @@ def _stamp_terminal_timing_and_requested_model(
     """Name only the terminal's requested model and measured timings (0058)."""
     if not _is_blank(requested_model):
         row["requested_model"] = requested_model
+    # OMN-24615 AC8: the same rule as the canonical converter, on the skill-terminal path.
+    execution_ms = _failed_zero_to_none(execution_ms, row.get("terminal_failure_cause"))
     for key, value in (
         ("queue_wait_ms", queue_wait_ms),
         ("execution_ms", execution_ms),
@@ -2551,6 +2565,11 @@ def _preserve_terminal_failure(
         ):
             row["attempt_history"] = existing_history
     apply_terminal_precedence(existing, row)
+    # OMN-24615 AC8: both writers' merges end here, so a failed run inherits no stored 0 ms as measured.
+    duration = row.get("execution_ms")
+    if isinstance(duration, int):
+        cause = row.get("terminal_failure_cause")
+        row["execution_ms"] = _failed_zero_to_none(duration, cause)
 
 
 def _is_blank(value: object) -> bool:
