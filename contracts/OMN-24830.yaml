@@ -1,0 +1,158 @@
+schema_version: 1.0.0
+ticket_id: OMN-24830
+title: Resolve the merge conflict on omnimarket PR 6253
+summary: Rebase the PR on dev while preserving its tests and record the published head's CI and lab evidence.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn24830-unblock
+    statement: Resolve the PR conflict and record the evidence for the resulting head or a shared blocker.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: every required check-run of omnimarket#6253 reads success at the new head, read through the declared scm path after the fix push -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6253` lists a required context that is not success at the new head'
+      - id: AC2
+        statement: 'AC2: the fix weakens no check or test, so the diff from head dcfc6b6d2691 to the new head removes no assertion and adds no skip, xfail, loosened threshold or widened check -- falsifier: `git diff dcfc6b6d2691 <new head> -- tests/ .github/` shows a removed assert, a new skip or xfail marker or a changed required-check list'
+      - id: AC3
+        statement: 'AC3: the new head is on the PR as a comment starting `Lab: head=<new head>` and the lane''s TERMINAL names it -- falsifier: the PR carries no comment starting `Lab: head=` with the new head sha'
+      - id: AC4
+        statement: 'AC4: when the cause is outside the PR the lane writes one STATUS row with cause=<one line> shared=yes and the evidence, and pushes nothing -- falsifier: the ledger holds neither a pushed new head nor a STATUS row with shared=yes naming omnimarket#6253 after the lane''s TERMINAL'
+dod_evidence:
+  - id: dod-omn24830-required-checks
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC1]
+    description: Read every protected and ruleset-required check at the published head through SCM and the watcher.
+    checks:
+      - check_type: command
+        cwd: .
+        check_value: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          read = json.loads(subprocess.check_output(
+              ["onex", "scm", "pr-checks", "OmniNode-ai/omnimarket#6253", "--source", "local"],
+              text=True,
+          ))
+          assert read["outcome"] == "completed" and read["source"] == "watcher", read
+          checks = read["result"]
+          assert checks["head_sha"] == head and not head.startswith("d27ec8505752"), checks["head_sha"]
+          watcher = json.loads(Path(os.environ["ONEX_PR_WATCHER_STATE"]).read_text())
+          policy = watcher["settings"]["omnimarket"]["branches"]["dev"]
+          required = set(policy["contexts"]) | set(policy["rule_contexts"])
+          assert policy["protection"] == "protected" and policy["rules_read"] and required
+          latest = {}
+          for name, status, conclusion, stamp, *_ in checks["runs"]:
+              if name not in latest or (stamp or "") > latest[name][0]:
+                  latest[name] = (stamp or "", status, conclusion)
+          missing = sorted(name for name in required if latest.get(name, ("",))[1:] != ("completed", "success"))
+          assert not missing, missing
+          PY
+  - id: dod-omn24830-preserve-checks-and-tests
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC2]
+    description: Check the ticket's historical comparison and verify the PR-owned test and CI changes against each head's base.
+    checks:
+      - check_type: command
+        cwd: .
+        check_value: |
+          python3 - <<'PY'
+          import re
+          import subprocess
+
+          diff = subprocess.check_output(
+              ["git", "diff", "--unified=0", "dcfc6b6d2691", "HEAD", "--", "tests/", ".github/"],
+              text=True,
+          ).splitlines()
+          removed = sum(bool(re.match(r"^-\s*assert\b", line)) for line in diff)
+          added = sum(
+              bool(line.startswith("+") and re.search(r"pytest\.(?:mark\.)?(?:skip(?:if)?|xfail)\b", line))
+              for line in diff
+          )
+          assert not (removed or added), f"Historical diff: {removed} removed assertions, {added} added skip/xfail lines"
+          PY
+      - check_type: command
+        cwd: .
+        check_value: |
+          python3 - <<'PY'
+          import subprocess
+
+          old_head = "d27ec8505752babd13e5eccca3e6647f5be7ec05"
+          base = "6f54eb64053793273ad0ce8f83350803331811aa"
+          old_base = subprocess.check_output(["git", "merge-base", old_head, base], text=True).strip()
+          subprocess.run(["git", "merge-base", "--is-ancestor", base, "HEAD"], check=True)
+          args = ["git", "diff", "--binary", "--full-index", "--no-ext-diff", "--no-renames"]
+          paths = ["--", "tests/", ".github/"]
+          original = subprocess.check_output([*args, old_base, old_head, *paths])
+          rebased = subprocess.check_output([*args, base, "HEAD", *paths])
+          assert original and rebased == original, "The PR-owned changes to tests or CI differ."
+          PY
+  - id: dod-omn24830-lab-comment
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC3]
+    description: Read the Lab comment and the lane's terminal ledger row at the published head.
+    checks:
+      - check_type: command
+        cwd: .
+        check_value: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          read = json.loads(subprocess.check_output(
+              ["onex", "scm", "pr-view", "OmniNode-ai/omnimarket#6253", "--source", "bus", "--limit", "100"],
+              text=True,
+          ))
+          assert read["outcome"] == "completed" and read["result"]["head_sha"] == head
+          prefix = f"Lab: head={head}"
+          for comment in read["result"]["comments"]:
+              first_line, _, _ = comment["body"].partition("\n")
+              if first_line == prefix or first_line.startswith(f"{prefix} "):
+                  break
+          else:
+              raise AssertionError("The published head has no Lab comment.")
+          rows = Path(os.environ["ONEX_LEDGER_PATH"]).read_text().splitlines()
+          assert any(" | TERMINAL | " in row and " | lane=unblk6253-0745 | " in row and head in row for row in rows)
+          PY
+  - id: dod-omn24830-shared-cause
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC4]
+    description: For an unchanged PR head, require the shared cause and its evidence in this lane's STATUS row.
+    checks:
+      - check_type: command
+        cwd: .
+        check_value: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          read = json.loads(subprocess.check_output(
+              ["onex", "scm", "pr-view", "OmniNode-ai/omnimarket#6253", "--source", "local"],
+              text=True,
+          ))
+          assert read["outcome"] == "completed"
+          pr_head = read["result"]["head_sha"]
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          if pr_head.startswith("d27ec8505752"):
+              rows = Path(os.environ["ONEX_LEDGER_PATH"]).read_text().splitlines()
+              assert any(
+                  " | STATUS | " in row and " | lane=unblk6253-0745 | " in row
+                  and " | pr=omnimarket#6253 | " in row and " | shared=yes | " in row
+                  and " | cause=" in row
+                  for row in rows
+              )
+          else:
+              assert pr_head == head, pr_head
+          PY
