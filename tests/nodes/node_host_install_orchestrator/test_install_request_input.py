@@ -11,6 +11,7 @@ ignored.
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -354,9 +355,8 @@ class _OverwritingOrchestrator(HandlerHostInstallOrchestrator):
     """The failing control: remembers a request by its id alone, so a repeat replaces the real one."""
 
     def _remember_tree_request(self, request: ModelInstallRequest) -> None:
-        self._tree_requests = {  # type: ignore[assignment]
-            (request.request_id, HOST): request
-        }
+        replaced: Any = {(request.request_id, HOST): request}
+        self._tree_requests = replaced
 
 
 def test_failing_control_a_replacing_memory_drops_the_real_result() -> None:

@@ -441,7 +441,7 @@ async def test_a_host_with_no_servable_writer_topic_refuses_to_start(
         async def refuse(*args: Any, **kwargs: Any) -> Any:
             raise RuntimeError("topic not found")
 
-        bus.subscribe = refuse  # type: ignore[method-assign]
+        bus.subscribe = refuse
         host = InstallRequestHost(
             bus,
             _handler(overlay, InMemoryResultJournal()),

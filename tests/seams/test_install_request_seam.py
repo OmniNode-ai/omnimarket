@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -826,7 +826,7 @@ async def _login_topic_host(open_bus: Callable[[], Any], tmp_path: Path) -> None
         host_bus = _BrokerRows(bus, declaration, HOST_LOGIN)
         journal = InMemoryResultJournal()
         host = InstallRequestHost(
-            host_bus,  # type: ignore[arg-type]
+            cast(Any, host_bus),
             _handler(scene.root, journal),
             _two_login_overlay(scene.root),
             HOST,
@@ -846,7 +846,7 @@ async def _login_topic_host(open_bus: Callable[[], Any], tmp_path: Path) -> None
         # a login publishes through the real publisher: every topic it writes is a topic its rows grant
         lane_bus = _BrokerRows(bus, declaration, PUBLISHER)
         request = await publish_request(
-            lane_bus,  # type: ignore[arg-type]
+            cast(Any, lane_bus),
             _draft(scene.second),
             _overlay(scene.root),
             lambda: datetime.now(UTC),
@@ -877,7 +877,7 @@ async def _login_topic_host(open_bus: Callable[[], Any], tmp_path: Path) -> None
 
         reader = _BrokerRows(bus, declaration, PUBLISHER)
         reading = await read_owed(
-            reader,  # type: ignore[arg-type]
+            cast(Any, reader),
             _two_login_overlay(scene.root),
             lambda: datetime.now(UTC),
         )
