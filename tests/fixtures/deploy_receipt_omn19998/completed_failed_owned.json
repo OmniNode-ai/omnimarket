@@ -1,0 +1,31 @@
+{
+  "correlation_id": "7c2e5a90-1d48-4f3b-b6a9-8e04c1d27f56",
+  "requested_git_ref": "dev",
+  "git_sha": "0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b",
+  "started_at": "2026-11-15T10:02:03.750000+00:00",
+  "completed_at": "2026-11-15T10:07:45.000000+00:00",
+  "duration_seconds": 341.25,
+  "scope": "runtime",
+  "runtime_lane": "dev",
+  "image_ref": "omninode-runtime:dev",
+  "image_digest": "sha256:5c9e5c9e5c9e5c9e5c9e5c9e5c9e5c9e5c9e5c9e5c9e5c9e5c9e5c9e5c9e5c9e",
+  "services_restarted": [],
+  "phase_results": {
+    "git": "success",
+    "core": "skipped",
+    "runtime": "failed",
+    "verification": "skipped",
+    "publish": "failed"
+  },
+  "status": "failed",
+  "errors": [
+    "publish phase failed: route to the running instance could not be confirmed"
+  ],
+  "health_checks": [],
+  "instance": "deploy-instance-a.example",
+  "host": "lab-host-01.example",
+  "sibling_refs": {
+    "omnimarket": "origin/dev",
+    "omnibase_infra": "origin/dev"
+  }
+}

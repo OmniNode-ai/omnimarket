@@ -28,6 +28,7 @@ from omnimarket.events.worktree_reconcile import (
 )
 from omnimarket.handlers.handler_ledger_claims import live_claims
 from omnimarket.handlers.rules_unit_roots import UnitRoots
+from omnimarket.models.model_skipped_unit import ModelSkippedUnit
 from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy,
 )
@@ -91,6 +92,9 @@ class Fakes:
 
     def revalidate(self, fact: ModelWorktreeFacts, now: datetime) -> ModelWorktreeFacts:
         return self.fresh or fact
+
+    def skipped_units(self) -> tuple[ModelSkippedUnit, ...]:
+        return ()
 
     def pin(self, argv: list[str], fact: ModelWorktreeFacts) -> bool:
         self.pinned.append(fact.path)

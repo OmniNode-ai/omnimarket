@@ -1,0 +1,85 @@
+schema_version: 1.0.0
+ticket_id: OMN-24768
+title: Pull request 6318 keeps pack/model_context_profile.py at 192 code lines or fewer, and the six findings of the head review are fixed or argued with a test each
+summary: The head review of the lane_brief_context change is answered on the same branch - the tier_specs check and the window check move out of the baselined profile file, a rung that raises a transport error falls back with a recorded reason, duplicate candidate paths and a blank excerpt are refused, lane history counts repository-prefixed paths and contract-file ticket names, and each lane-brief payload validates against exactly one route event model.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+- events
+requirements:
+- id: req-omn24768-head-review-findings
+  statement: Each finding of the head review of pull request 6318 at head b507acb0779a is fixed with a test that fails before and passes after, or argued with evidence in a pull request comment.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: pack/model_context_profile.py has 192 code lines or fewer at the new head with the baseline file untouched, by moving the tier_specs check into models/context_pack/model_context_tier_spec.py behind one call -- falsifier: the Canonical File Shape check run with --base "$(git merge-base origin/dev HEAD)" --head HEAD exits 0, red at head b507acb0779a with baselined-file-growth 192 -> 210'
+  - id: AC2
+    statement: 'AC2: a rung that raises TimeoutError makes the pack fall back with a recorded reason and is not an untyped abort, with a test red then green -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator -q -k rung_timeout'
+  - id: AC3
+    statement: 'AC3: the request model refuses two candidates with one path and the choice model refuses a blank excerpt, with a test each -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator -q -k duplicate_candidate_path or blank_excerpt'
+  - id: AC4
+    statement: 'AC4: lane history counts rows that name omnimarket/src/a.py, ./src/a.py or contracts/OMN-1.yaml for src/a.py and OMN-1 as decided and tested, and a test asserts each lane-brief payload validates against exactly one route event model -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_lane_brief_context_profile.py -q -k lane_history_boundary or route_exclusion'
+  - id: AC5
+    statement: 'AC5: the binding ticket is named in contracts/OMN-24688.yaml and contracts/OMN-24732.yaml, the topic line is corrected and the reply topic is declared, and every finding has a pull request comment stating fixed or argued with the new head named last -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator tests/pack -q on the lab at the new head, in parts if the whole run times out with the parts named, and onex scm pr-view OmniNode-ai/omnimarket#6318 to read the comments'
+evidence_requirements:
+- kind: tests
+  description: The node, pack and resolver suites pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator tests/pack tests/nodes/node_context_profile_resolver_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24768-ac1
+  description: The profile file holds 192 code lines or fewer, the tier_specs check and the window check live under models/context_pack, and the profile still validates and refuses as before.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator tests/pack -q --no-cov -n 0 -p no:randomly -k "tier_specs or window or lane_brief_context_tiers"
+    cwd: .
+- id: dod-omn24768-ac2
+  description: A rung that raises TimeoutError or another transport error falls back with a recorded reason and the pack is refused typed when every rung does.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator -q --no-cov -n 0 -p no:randomly -k rung_timeout
+    cwd: .
+- id: dod-omn24768-ac3
+  description: Two candidates with one path and a blank excerpt are refused by their models.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator -q --no-cov -n 0 -p no:randomly -k "duplicate_candidate_path or blank_excerpt"
+    cwd: .
+- id: dod-omn24768-ac4
+  description: Lane history counts repository-prefixed, dot-slash and contract-file names, and each lane-brief payload validates against exactly one route event model.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator/test_lane_brief_context_profile.py -q --no-cov -n 0 -p no:randomly -k "lane_history_boundary or route_exclusion"
+    cwd: .
+- id: dod-omn24768-ac5-tests
+  description: The node and pack suites pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator tests/pack -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24768-integration-proof
+  description: The node, pack and resolver suites pass on a lab host at the pushed head.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24768 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_context_pack_orchestrator tests/pack -q --no-cov -n 0 -p no:randomly
+    cwd: .

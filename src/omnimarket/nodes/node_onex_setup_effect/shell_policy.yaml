@@ -1,0 +1,23 @@
+schema_version: 1
+profiles:
+  .zshrc: /bin/zsh
+  .zprofile: /bin/zsh
+  .zshenv: /bin/zsh
+  .zlogin: /bin/zsh
+  .bash_profile: /bin/bash
+  .bashrc: /bin/bash
+  .profile: /bin/bash
+  .aliases: /bin/bash
+  .zsh_aliases: /bin/zsh
+  .bash_aliases: /bin/bash
+legacy_variables:
+  - '^OMNI_HOME$'
+  - '^OMNIBASE_[A-Z_]+$'
+  - '^ONEX_(CONTRACTS_DIR|CONFIG_DIR|WORKSPACE_CONFIG_ROOT|TENANT_ID|TENANT_SLUG)$'
+  - '^BIFROST_[A-Z_]+$'
+  - '^KAFKA_[A-Z_]+$'
+  - '^DELEGATION_ROUTING_(OVERLAY_PATH|TIERS_PATH)$'
+  - '^(POSTGRES_PASSWORD|VALKEY_PASSWORD)$'
+workspace_variables: [OMNI_HOME, OMNIBASE_PATH]
+legacy_source_fragment: .omnibase/.env
+set_aside_marker: ': # ONEX set aside; recovery '

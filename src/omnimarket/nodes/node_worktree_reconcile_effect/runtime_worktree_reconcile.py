@@ -12,7 +12,6 @@ from uuid import uuid4
 
 from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileCommand,
-    ModelWorktreeReconcileRunResult,
 )
 from omnimarket.nodes.node_worktree_reconcile_effect.container.container_worktree_reconcile_effect import (
     create_handler_worktree_reconcile,
@@ -39,6 +38,9 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_remover im
 )
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_units import (
     SystemdUnitRootReader,
+)
+from omnimarket.nodes.node_worktree_reconcile_effect.models.model_worktree_reconcile_report import (
+    ModelWorktreeReconcileRunReport,
 )
 
 
@@ -71,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def run_command(
     command: ModelWorktreeReconcileCommand,
-) -> ModelWorktreeReconcileRunResult:
+) -> ModelWorktreeReconcileRunReport:
     decided, completed = publish_topics()
     handler = create_handler_worktree_reconcile(
         probe=GitWorktreeFactsProbe(
