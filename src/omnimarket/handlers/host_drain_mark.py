@@ -16,23 +16,21 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Any
 
 from aiokafka.errors import KafkaError
 from pydantic import ValidationError
 
-from omnimarket.delegated_test_loop.lab_run_bus import ProtocolBusMessage
+from omnimarket.delegated_test_loop.lab_run_bus import (
+    ProtocolBusMessage,
+    ProtocolLabRunBus,
+)
+from omnimarket.handlers.lab_bus_subscribe import subscribe_with_offset
 from omnimarket.models.model_host_drain_command import (
     ModelHostDrainCommand,
     load_host_drain_topic,
 )
 
 logger = logging.getLogger(__name__)
-
-Subscribe = Callable[
-    [str, Callable[[Any], Awaitable[None]], str, str],
-    Awaitable[Callable[[], Awaitable[None]]],
-]
 
 
 class HostDrainMark:
@@ -47,11 +45,11 @@ class HostDrainMark:
         #: serving lab work but holds no drain mark until it can.
         self.unreadable = False
 
-    async def start(self, subscribe: Subscribe, group_prefix: str) -> None:
+    async def start(self, bus: ProtocolLabRunBus, group_prefix: str) -> None:
         group = f"{group_prefix}.drain-{uuid.uuid4().hex[:8]}"
         try:
-            self._unsubscribe = await subscribe(
-                self._topic, self._on_message, group, "earliest"
+            self._unsubscribe = await subscribe_with_offset(
+                bus, self._topic, self._on_message, group, "earliest"
             )
         except (KafkaError, OSError, RuntimeError) as exc:
             logger.error(

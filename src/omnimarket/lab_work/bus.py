@@ -26,16 +26,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import inspect
 import json
 import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from functools import partial
 from importlib import resources
-from typing import Any, Literal
+from typing import Literal
 
 import yaml
 from omnibase_core.event_bus.util_consumer_group import derive_service_group_id
@@ -47,7 +45,8 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
-from omnimarket.lab_work.host_drain_mark import HostDrainMark
+from omnimarket.handlers.host_drain_mark import HostDrainMark
+from omnimarket.handlers.lab_bus_subscribe import subscribe_with_offset
 from omnimarket.models.model_lab_work_held_unit import ModelLabWorkHeldUnit
 from omnimarket.nodes.node_lab_placement_compute import handlers, models
 from omnimarket.nodes.node_lab_work_unit_effect.handlers import HostAdvertiser
@@ -149,21 +148,7 @@ def _uuid_or_none(value: object) -> uuid.UUID | None:
         return None
 
 
-async def _subscribe(
-    bus: ProtocolLabRunBus,
-    topic: str,
-    on_message: Callable[[Any], Awaitable[None]],
-    group_id: str,
-    offset_reset: str,
-) -> Callable[[], Awaitable[None]]:
-    """Subscribe; state where a fresh group starts when the bus can say so."""
-    subscribe: Callable[..., Awaitable[Callable[[], Awaitable[None]]]] = bus.subscribe
-    extra = (
-        {"auto_offset_reset": offset_reset}
-        if "auto_offset_reset" in inspect.signature(bus.subscribe).parameters
-        else {}
-    )
-    return await subscribe(topic, on_message=on_message, group_id=group_id, **extra)
+_subscribe = subscribe_with_offset
 
 
 def host_group_id(host_name: str) -> str:
@@ -246,9 +231,7 @@ class LabWorkHost:
             host_group_id(self._host),
             "earliest",
         )
-        await self.drain_mark.start(
-            partial(_subscribe, self._bus), host_group_id(self._host)
-        )
+        await self.drain_mark.start(self._bus, host_group_id(self._host))
         logger.info("lab-work host %s serving %s", self._host, self._topics.command)
 
     async def stop(self) -> None:
