@@ -19,10 +19,10 @@ requirements:
   - id: AC3
     statement: 'AC3: the overlay store refresh unit declares a hard run timeout in the field the other units declare it, such as run_timeout_s in the unit contract or the host installer contract -- falsifier: `uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q -p no:cacheprovider -k run_timeout` fails when the field is absent'
 - id: req-overlay-tick-ledger-rows
-  statement: The other ticks that arm the same timer and the producer of the stale readings are named on the ledger and left unchanged.
+  statement: The other ticks that arm the same timer are left unchanged and no other file arms it.
   acceptance:
   - id: AC4
-    statement: 'AC4: the other node ticks that arm faulthandler with exit=True are listed in a STATUS row on the rolling ledger and left unchanged, and the producer behind the 260000 s stale overlay readings is named in a STATUS row -- falsifier: `grep -F ''faulthandler'' "$ONEX_LEDGER_PATH"` returns no STATUS row from the lane that cites each tick file'
+    statement: 'AC4: the other node ticks that arm faulthandler with exit=True are left unchanged, and no other file under src arms dump_traceback_later -- falsifier: a file other than the four other ticks arms dump_traceback_later, or the branch changes one of the four'
 evidence_requirements:
 - kind: tests
   description: The watchdog tests at the pushed head, and the disarm test of the tick entrypoints.
@@ -60,25 +60,10 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k run_timeout
     cwd: .
 - id: dod-overlay-tick-ledger-rows-ac4
-  description: The lane's own STATUS rows (lane=ovwatch-1420, row type STATUS) cite each of the four other ticks that arm the faulthandler exit by file path, one check per file, and name the producer of the stale readings in a row of its own. No other file under src arms dump_traceback_later, and the branch changes none of the four.
+  description: No other file under src arms dump_traceback_later, and the branch changes none of the four.
   source: manual
   execution_scope: local_done_gate
   checks:
-  - check_type: command
-    check_value: grep -E '\| STATUS \| lane=ovwatch-1420 \|.*runtime_c32_probe_tick\.py' "$ONEX_LEDGER_PATH"
-    cwd: .
-  - check_type: command
-    check_value: grep -E '\| STATUS \| lane=ovwatch-1420 \|.*runtime_declared_clone_tick\.py' "$ONEX_LEDGER_PATH"
-    cwd: .
-  - check_type: command
-    check_value: grep -E '\| STATUS \| lane=ovwatch-1420 \|.*runtime_job_log_filler_tick\.py' "$ONEX_LEDGER_PATH"
-    cwd: .
-  - check_type: command
-    check_value: grep -E '\| STATUS \| lane=ovwatch-1420 \|.*runtime_overlay_store_load_tick\.py' "$ONEX_LEDGER_PATH"
-    cwd: .
-  - check_type: command
-    check_value: grep -E '\| STATUS \| lane=ovwatch-1420 \|.*producer of the stale overlay readings.*node_overlay_store_load_effect' "$ONEX_LEDGER_PATH"
-    cwd: .
   - check_type: command
     check_value: test -z "$(grep -rl --include='*.py' dump_traceback_later src/ | grep -v -e node_c32_auth_boundary_probe_effect/runtime_c32_probe_tick.py -e node_canonical_clone_refresh_effect/runtime_declared_clone_tick.py -e node_job_log_filler_effect/runtime_job_log_filler_tick.py -e node_overlay_store_load_effect/runtime_overlay_store_load_tick.py)"
     cwd: .

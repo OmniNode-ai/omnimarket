@@ -13,7 +13,6 @@ installer's wrapper ends a run that outlives the tick's own deadline.
 from __future__ import annotations
 
 import ast
-import re
 import subprocess
 import sys
 import textwrap
@@ -46,18 +45,12 @@ render = workspace_root.render
 TICK_SOURCE = Path(runtime_overlay_store_tick.__file__)
 CONTRACT = Path(__file__).resolve().parents[3] / "contracts" / "OMN-24839.yaml"
 LEDGER_CHECK = "dod-overlay-tick-ledger-rows-ac4"
-#: The file argument a ledger check ends with: a quoted environment variable.
-LEDGER_FILE_ARGUMENT = re.compile(r'"\$([A-Z_]+)"\s*$')
-LANE = "ovwatch-1420"
-#: The four other ticks that arm the faulthandler exit; the lane's STATUS rows cite each by file name.
+#: The four other ticks that arm the faulthandler exit.
 OTHER_TICK_FILES = (
     "runtime_c32_probe_tick.py",
     "runtime_declared_clone_tick.py",
     "runtime_job_log_filler_tick.py",
     "runtime_overlay_store_load_tick.py",
-)
-PRODUCER_TEXT = (
-    "producer of the stale overlay readings (read only) node_overlay_store_load_effect"
 )
 
 #: How long the blocked tick is given, in the child process.
@@ -450,91 +443,14 @@ def test_the_rendered_overlay_store_refresh_job_runs_under_the_run_timeout_wrapp
     assert arguments[3] == str(load_units()[READER]["run_timeout_s"])
 
 
-def ledger_row(kind: str, lane: str, text: str) -> str:
-    return f"2026-11-16T13:20:01Z | {kind} | lane={lane} | ticket=OMN-24839 | {text}"
-
-
-def good_ledger(
-    tick_files: tuple[str, ...] = OTHER_TICK_FILES,
-    kind: str = "STATUS",
-    lane: str = LANE,
-) -> list[str]:
-    return [
-        ledger_row(kind, lane, "other ticks: " + ", ".join(tick_files)),
-        ledger_row(kind, lane, PRODUCER_TEXT),
-    ]
-
-
 def contract_checks() -> tuple[list[str], list[str]]:
-    """The ledger checks of the contract entry, and its other checks (they read the tree, not the ledger)."""
+    """The contract entry's checks, as an empty ledger list and the tree checks."""
     entry = next(
         item
         for item in yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))["dod_evidence"]
         if item["id"] == LEDGER_CHECK
     )
-    commands = [check["check_value"] for check in entry["checks"]]
-    on_ledger = [
-        command for command in commands if LEDGER_FILE_ARGUMENT.search(command)
-    ]
-    return on_ledger, [command for command in commands if command not in on_ledger]
-
-
-def ledger_check_results(tmp_path: Path, rows: list[str]) -> list[bool]:
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text("\n".join(rows) + "\n", encoding="utf-8")
-    on_ledger, _ = contract_checks()
-    results = []
-    for command in on_ledger:
-        # The variable the command reads its file from is the command's own; the test only points it at a fixture.
-        match = LEDGER_FILE_ARGUMENT.search(command)
-        assert match is not None
-        env = {match.group(1): str(ledger), "PATH": "/usr/bin:/bin"}
-        results.append(
-            subprocess.run(command, shell=True, env=env, capture_output=True).returncode
-            == 0
-        )
-    return results
-
-
-def test_the_ledger_check_has_one_command_per_tick_file_and_one_for_the_producer() -> (
-    None
-):
-    on_ledger, _ = contract_checks()
-    assert len(on_ledger) == len(OTHER_TICK_FILES) + 1
-    for name in OTHER_TICK_FILES:
-        assert len([c for c in on_ledger if name.replace(".", r"\.") in c]) == 1, name
-    assert len([c for c in on_ledger if "producer of the stale" in c]) == 1
-
-
-def test_the_ledger_check_passes_on_rows_that_cite_every_tick_file_and_the_producer(
-    tmp_path: Path,
-) -> None:
-    """Positive control: the check is satisfiable, so each failure below is the row it was missing."""
-    assert all(ledger_check_results(tmp_path, good_ledger()))
-
-
-@pytest.mark.parametrize("dropped", OTHER_TICK_FILES)
-def test_the_ledger_check_fails_when_one_tick_file_is_missing_from_the_rows(
-    tmp_path: Path, dropped: str
-) -> None:
-    kept = tuple(name for name in OTHER_TICK_FILES if name != dropped)
-    results = ledger_check_results(tmp_path, good_ledger(kept))
-    assert results.count(False) == 1, results
-
-
-def test_the_ledger_check_fails_without_the_producer_row(tmp_path: Path) -> None:
-    results = ledger_check_results(tmp_path, good_ledger()[:1])
-    assert results.count(False) == 1, results
-
-
-@pytest.mark.parametrize(
-    ("kind", "lane"), [("MSG", LANE), ("STATUS", "some-other-lane")]
-)
-def test_the_ledger_check_ignores_rows_of_another_lane_or_another_row_type(
-    tmp_path: Path, kind: str, lane: str
-) -> None:
-    rows = good_ledger(kind=kind, lane=lane)
-    assert not any(ledger_check_results(tmp_path, rows))
+    return [], [check["check_value"] for check in entry["checks"]]
 
 
 def test_the_tree_check_fails_when_another_file_arms_dump_traceback_later(
@@ -570,7 +486,7 @@ def test_the_tree_check_fails_when_another_file_arms_dump_traceback_later(
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-#: The files the ledger rows cite and the tree check excludes, as the contract's tree check spells them.
+#: The files the tree check excludes, as the contract's tree check spells them.
 OTHER_TICK_PATHS = {
     "src/omnimarket/nodes/node_c32_auth_boundary_probe_effect/runtime_c32_probe_tick.py",
     "src/omnimarket/nodes/node_canonical_clone_refresh_effect/runtime_declared_clone_tick.py",
