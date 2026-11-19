@@ -1,0 +1,29 @@
+{
+  "recorded_from": "h053 scenario R8 STATUS details in .onex_state/delegation-scenario-r8/events.jsonl, ticks of 2026-11-19, and the delegate answer of one run of the unit's own send command (run 405f7b93-6394-4d1e-b792-8a0513509efb, 2026-11-19T09:39:00Z)",
+  "recorded_details": [
+    "send: the delegate command (exit 1) ended failed: no reason given",
+    "send: the delegate command (exit 1) ended failed: no model you chose finished the task; do the task in this session (reason: quality_veto; last error: score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar ba",
+    "send: the delegate command (exit 1) ended failed: no model you chose finished the task; do the task in this session (reason: quality_veto; last error: pre_filter_rejected: actual_score=1.000 required_bar=0.800 score_vs_bar=at_or_above_bar b"
+  ],
+  "answer_shape": {
+    "status": "failed",
+    "correlation_id": "e77e5876-a934-41b4-89fd-312065803c81",
+    "result": {
+      "workflow_result": "failed",
+      "terminal_payload": {
+        "payload": {
+          "status": "failed",
+          "task_type": "summarization",
+          "error_message": "",
+          "terminal_failure_reason": "quality_veto",
+          "quality_gate_passed": false,
+          "quality_score": 0.0,
+          "required_quality_bar": 0.8,
+          "attempts": [
+            {"tier": "tenant_overlay", "backend_id": "byok-glm-general", "model_id": "glm-5.3-flash"}
+          ]
+        }
+      }
+    }
+  }
+}
