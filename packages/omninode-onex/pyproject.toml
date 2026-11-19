@@ -21,7 +21,7 @@ classifiers = [
 dependencies = [
     "omnibase-core==0.47.75",
     "omnibase-infra==0.38.77",
-    "omnimarket==0.4.321",
+    "omnimarket==0.4.322",
 ]
 
 # The customer launchers. `uv tool install omninode-onex` links only these two.

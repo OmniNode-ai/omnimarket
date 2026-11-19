@@ -157,10 +157,10 @@ detect_target() {
                     if [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = "1" ]; then
                         echo "aarch64-apple-darwin"
                     else
-                        echo "x86_64-apple-darwin"
+                        fail "Intel Macs are not supported yet." "Supported: macOS on Apple Silicon, and Linux on x86_64 or arm64 (glibc)."
                     fi
                     ;;
-                *) fail "unsupported Mac CPU '$arch'." "Supported: Apple Silicon (arm64) and Intel (x86_64)." ;;
+                *) fail "unsupported Mac CPU '$arch'." "Supported: macOS on Apple Silicon, and Linux on x86_64 or arm64 (glibc)." ;;
             esac
             ;;
         Linux)
@@ -171,7 +171,7 @@ detect_target() {
             fi
             case "$libc_info" in
                 *[Mm]usl*)
-                    fail "musl-based Linux (for example Alpine) is not supported." \
+                    fail "musl-based Linux (for example Alpine) is not supported yet." \
                         "Use a glibc-based distribution such as Ubuntu, Debian or Fedora."
                     ;;
             esac
@@ -182,11 +182,10 @@ detect_target() {
             esac
             ;;
         MINGW* | MSYS* | CYGWIN* | Windows_NT)
-            fail "Windows is not supported directly." \
-                "Install WSL (https://learn.microsoft.com/windows/wsl/install) and run this command inside it."
+            fail "Windows is not supported yet (WSL support is planned)." "Supported: macOS on Apple Silicon, and Linux on x86_64 or arm64 (glibc)."
             ;;
         *)
-            fail "unsupported operating system '$os'." "Supported: macOS and Linux (and Windows through WSL)."
+            fail "unsupported operating system '$os'." "Supported: macOS on Apple Silicon, and Linux on x86_64 or arm64 (glibc)."
             ;;
     esac
 }
@@ -314,33 +313,13 @@ EOF
             "Install coreutils (Linux) or perl (macOS ships shasum) and run the installer again."
     fi
 
-    local build_args="--no-build" openssl_dir=""
-    if [ "$target" = "x86_64-apple-darwin" ]; then
-        # The cryptography release the platform requires publishes no Intel
-        # Mac wheel, so that one package is built from source with Homebrew's
-        # OpenSSL and Rust; every other package still comes from a wheel.
-        if ! command -v brew >/dev/null 2>&1 || ! brew --prefix openssl@3 >/dev/null 2>&1; then
-            fail "on Intel Macs one dependency (cryptography) has no prebuilt package and must be built." \
-                "Install the build tools first:" \
-                "    brew install openssl@3 rust" \
-                "then run this installer again. (Homebrew: https://brew.sh)"
-        fi
-        if ! cargo --version >/dev/null 2>&1; then
-            fail "on Intel Macs the build needs a working Rust toolchain, and 'cargo --version' failed." \
-                "Install it with 'brew install rust', or if you use rustup run 'rustup default stable'," \
-                "then run this installer again."
-        fi
-        openssl_dir="$(brew --prefix openssl@3)"
-        build_args=""
-    fi
-
     say "Platform: $target"
     say "Installing $ONEX_PACKAGE $ONEX_VERSION (Python $ONEX_PYTHON) with uv"
     if [ "${ONEX_INSTALL_DRY_RUN:-0}" = "1" ]; then
         say "Dry run: stopping before any download."
         echo "target=$target"
         echo "package=$ONEX_PACKAGE==$ONEX_VERSION"
-        echo "build=${build_args:-source-build-allowed}"
+        echo "build=--no-build"
         return 0
     fi
 
@@ -353,19 +332,12 @@ EOF
     bin_dir="$("$uv" tool dir --bin)"
     check_conflicts "$uv" "$bin_dir"
 
-    set -- tool install --python "$ONEX_PYTHON"
-    if [ -n "$build_args" ]; then
-        set -- "$@" "$build_args"
-    fi
+    set -- tool install --python "$ONEX_PYTHON" --no-build
     if [ -n "${ONEX_INSTALL_FIND_LINKS:-}" ]; then
         set -- "$@" --find-links "$ONEX_INSTALL_FIND_LINKS"
     fi
     set -- "$@" "$ONEX_PACKAGE==$ONEX_VERSION"
-    if [ -n "$openssl_dir" ]; then
-        OPENSSL_DIR="$openssl_dir" "$uv" "$@" ||
-            fail "uv could not install $ONEX_PACKAGE $ONEX_VERSION." \
-                "Check the messages above; a network error can be retried by running the installer again."
-    elif ! "$uv" "$@"; then
+    if ! "$uv" "$@"; then
         fail "uv could not install $ONEX_PACKAGE $ONEX_VERSION." \
             "Check the messages above; a network error can be retried by running the installer again."
     fi

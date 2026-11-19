@@ -6,15 +6,15 @@ name: onex installer
 # from packages/omninode-onex/installer.json) for real on each launch platform:
 # a clean install with no uv on PATH (the script downloads and verifies its
 # pinned uv), a reinstall, and an upgrade, plus the platform, checksum and
-# conflict cases. The omninode-onex wheel is built from this commit and found
-# through ONEX_INSTALL_FIND_LINKS; every other package comes from PyPI.
+# conflict cases. The omninode-onex and omnimarket wheels are built from this
+# commit and found through ONEX_INSTALL_FIND_LINKS, so the pinned omnimarket need
+# not be released yet; every other package comes from PyPI.
 #
 #   ubuntu-latest     Linux x86_64
 #   ubuntu-24.04-arm  Linux arm64
 #   macos-latest      Apple Silicon macOS
-#   macos-15-intel    Intel macOS, with the documented recipe
-#                     (brew install openssl@3 rust): cryptography has no
-#                     macOS x86_64 wheel, so that one package is built.
+#   macos-15-intel    Intel macOS, which is not supported yet: the rendered
+#                     installer must refuse it before installing anything.
 
 on:
   pull_request:
@@ -42,9 +42,11 @@ jobs:
         with:
           python-version: '3.12'
           enable-cache: false
-      - name: Build the omninode-onex wheel
+      - name: Build the omninode-onex and omnimarket wheels
         shell: bash
-        run: uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" packages/omninode-onex
+        run: |
+          uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" packages/omninode-onex
+          uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" .
       - name: Run the installer tests
         shell: bash
         run: |
@@ -66,9 +68,11 @@ jobs:
         with:
           python-version: '3.12'
           enable-cache: false
-      - name: Build the omninode-onex wheel
+      - name: Build the omninode-onex and omnimarket wheels
         shell: bash
-        run: uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" packages/omninode-onex
+        run: |
+          uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" packages/omninode-onex
+          uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" .
       - name: Run the installer tests
         shell: bash
         run: |
@@ -90,9 +94,11 @@ jobs:
         with:
           python-version: '3.12'
           enable-cache: false
-      - name: Build the omninode-onex wheel
+      - name: Build the omninode-onex and omnimarket wheels
         shell: bash
-        run: uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" packages/omninode-onex
+        run: |
+          uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" packages/omninode-onex
+          uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" .
       - name: Run the installer tests
         shell: bash
         run: |
@@ -114,20 +120,20 @@ jobs:
         with:
           python-version: '3.12'
           enable-cache: false
-      - name: Intel macOS from-source prerequisites (documented recipe)
+      - name: The rendered installer refuses an Intel Mac
         shell: bash
         run: |
-          brew install openssl@3 rust
-          # The runner's rustup shim has no default toolchain; a user following
-          # the recipe has Homebrew's Rust only, so put it first.
-          echo "$(brew --prefix rust)/bin" >> "$GITHUB_PATH"
-      - name: Build the omninode-onex wheel
-        shell: bash
-        run: uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" packages/omninode-onex
-      - name: Run the installer tests
-        shell: bash
-        run: |
-          wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
-          PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
-            uvx --python 3.12 --with pytest --with pydantic pytest -o addopts="" --noconftest \
-            -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py
+          PYTHONPATH="$PWD/src" uv run --no-project --python 3.12 --with pydantic python -m \
+            omnimarket.nodes.node_onex_installer_render_compute.runtime_onex_installer_render \
+            < packages/omninode-onex/installer.json > "$RUNNER_TEMP/install.sh"
+          set +e
+          bash "$RUNNER_TEMP/install.sh" > "$RUNNER_TEMP/install.out" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/install.out"
+          test "$code" -ne 0
+          grep -q "Intel Macs are not supported yet" "$RUNNER_TEMP/install.out"
+          if [ -e "$HOME/.local/bin/onex" ]; then
+            echo "::error::the installer refused but left an onex behind"
+            exit 1
+          fi

@@ -151,12 +151,13 @@ def test_pins_match_the_package_and_every_target_has_a_checksum() -> None:
     [
         ("Darwin", "arm64", "0", "target=aarch64-apple-darwin"),
         ("Darwin", "x86_64", "1", "target=aarch64-apple-darwin"),
+        ("Darwin", "x86_64", "0", "Intel Macs are not supported yet"),
         ("Linux", "x86_64", "0", "target=x86_64-unknown-linux-gnu"),
         ("Linux", "aarch64", "0", "target=aarch64-unknown-linux-gnu"),
         ("Linux", "arm64", "0", "target=aarch64-unknown-linux-gnu"),
         ("Linux", "riscv64", "0", "unsupported Linux CPU 'riscv64'"),
         ("FreeBSD", "amd64", "0", "unsupported operating system 'FreeBSD'"),
-        ("MINGW64_NT-10.0", "x86_64", "0", "WSL"),
+        ("MINGW64_NT-10.0", "x86_64", "0", "Windows is not supported yet"),
     ],
 )
 def test_platform_detection(
@@ -194,29 +195,36 @@ def test_musl_linux_is_refused(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("tools_state", ["none", "broken-cargo", "ready"])
-def test_intel_mac_needs_the_build_tools(tmp_path: Path, tools_state: str) -> None:
+@pytest.mark.parametrize("build_tools", [False, True])
+def test_intel_mac_is_refused_even_with_build_tools(
+    tmp_path: Path, build_tools: bool
+) -> None:
+    """Intel Macs are not supported yet, so the installer never compiles anything."""
     stubs = tmp_path / "stubs"
     _stub(stubs, "uname", 'case "$1" in -s) echo Darwin;; -m) echo x86_64;; esac')
     _stub(stubs, "sysctl", "echo 0")
-    if tools_state != "none":
+    if build_tools:
         _stub(stubs, "brew", f'echo "{tmp_path}/openssl@3"')
-        # rustup with no default toolchain: cargo exists but fails.
-        _stub(stubs, "cargo", "exit 0" if tools_state == "ready" else "exit 1")
+        _stub(stubs, "cargo", "exit 0")
     tools = _toolbox(tmp_path / "tools", exclude=("uname", "sysctl"))
     result = _run(
         {"HOME": str(tmp_path), "PATH": f"{stubs}:{tools}", "ONEX_INSTALL_DRY_RUN": "1"}
     )
-    if tools_state == "ready":
-        assert result.returncode == 0, result.stderr
-        assert "target=x86_64-apple-darwin" in result.stdout
-        assert "build=source-build-allowed" in result.stdout
-    elif tools_state == "broken-cargo":
-        assert result.returncode == 1
-        assert "'cargo --version' failed" in result.stderr
-    else:
-        assert result.returncode == 1
-        assert "brew install openssl@3 rust" in result.stderr
+    assert result.returncode == 1, result.stdout
+    assert "Intel Macs are not supported yet" in result.stderr
+    assert "target=" not in result.stdout
+
+
+@pytest.mark.unit
+def test_dry_run_installs_without_building(tmp_path: Path) -> None:
+    stubs = tmp_path / "stubs"
+    _stub(stubs, "uname", 'case "$1" in -s) echo Darwin;; -m) echo arm64;; esac')
+    tools = _toolbox(tmp_path / "tools", exclude=("uname",))
+    result = _run(
+        {"HOME": str(tmp_path), "PATH": f"{stubs}:{tools}", "ONEX_INSTALL_DRY_RUN": "1"}
+    )
+    assert result.returncode == 0, result.stderr
+    assert "build=--no-build" in result.stdout
 
 
 @pytest.mark.unit
@@ -255,7 +263,9 @@ def _native_target() -> str:
 def test_uv_with_a_wrong_checksum_is_never_installed(tmp_path: Path) -> None:
     target = _native_target()
     if target == "x86_64-apple-darwin":
-        pytest.skip("Intel Mac stops earlier without the build tools")
+        pytest.skip(
+            "Intel Macs are not supported yet; the installer refuses before this step"
+        )
     release = tmp_path / "release" / _script_value("UV_VERSION")
     payload = tmp_path / "payload" / f"uv-{target}"
     payload.mkdir(parents=True)
@@ -287,7 +297,9 @@ def test_a_launcher_another_tool_owns_is_left_alone(tmp_path: Path) -> None:
     if uv is None:
         pytest.skip("uv is not on PATH")
     if _native_target() == "x86_64-apple-darwin":
-        pytest.skip("Intel Mac stops earlier without the build tools")
+        pytest.skip(
+            "Intel Macs are not supported yet; the installer refuses before this step"
+        )
     tools = _toolbox(tmp_path / "tools")
     (tools / "uv").symlink_to(uv)
     home, bin_dir = tmp_path / "home", tmp_path / "bin"
@@ -330,8 +342,7 @@ def test_install_reinstall_and_upgrade_for_real(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()
     # A uv that cannot report a version comes first on the caller's PATH, so the
-    # installer must fetch and verify its own, while compilers and Homebrew stay
-    # visible for the Intel Mac source build.
+    # installer must fetch and verify its own.
     shadow = tmp_path / "shadow"
     _stub(shadow, "uv", "exit 127")
     env = {
@@ -376,6 +387,11 @@ def test_install_reinstall_and_upgrade_for_real(tmp_path: Path) -> None:
         timeout=600,
     )
     assert built.returncode == 0, built.stderr
+    # Dependency wheels built beside the customer wheel (an unreleased omnimarket)
+    # are needed for the upgrade as well.
+    for sibling in wheel.parent.glob("*.whl"):
+        if not sibling.name.startswith("omninode_onex-"):
+            shutil.copy2(sibling, wheels / sibling.name)
     newer_script = SCRIPT_TEXT.replace(
         f'ONEX_VERSION="{current}"', f'ONEX_VERSION="{newer}"'
     )
