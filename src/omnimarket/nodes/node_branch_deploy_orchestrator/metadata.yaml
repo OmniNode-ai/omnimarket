@@ -18,6 +18,7 @@ capabilities:
 dependencies:
   - "click>=8.1.0"
   - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.68"
   - "pydantic>=2.0"
   - "pyyaml>=6.0"
 authors: ["OmniNode Platform Team"]
