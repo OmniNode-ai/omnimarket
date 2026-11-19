@@ -12,7 +12,7 @@ requirements:
   - id: AC1
     statement: 'AC1: omnimarket PR 6204 reads ci=GREEN with no red check at a new head -- falsifier: `python3 $OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py --pr OmniNode-ai/omnimarket#6204` prints a head other than 37c58362e4fd and no red= list'
   - id: AC2
-    statement: 'AC2: the cause of each red check is named from its failure text at the head, or a STATUS row names a shared cause with its evidence -- falsifier: `grep -F ''omnimarket#6204'' "$ONEX_LEDGER_PATH"` shows no STATUS row with cause= and shared=yes and no PR comment starting `Lab: head=`'
+    statement: 'AC2: the cause of each red check is named from its failure text at the head, or a STATUS row names a shared cause with its evidence -- falsifier: a search of the ledger for ''omnimarket#6204'' shows no STATUS row with cause= and shared=yes and no PR comment starting `Lab: head=`'
 evidence_requirements:
 - kind: tests
   description: The eval-results projection tests, with the snapshot topic assertion, pass at the pushed head.
