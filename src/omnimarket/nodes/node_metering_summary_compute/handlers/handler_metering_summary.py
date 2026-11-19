@@ -74,9 +74,18 @@ def counterfactual_cost_usd(
 class _ModelAccumulator:
     """Mutable per-model tally, collapsed into a frozen row at the end."""
 
-    __slots__ = ("runs", "runs_measured", "savings", "spend", "tokens_in", "tokens_out")
+    __slots__ = (
+        "backends",
+        "runs",
+        "runs_measured",
+        "savings",
+        "spend",
+        "tokens_in",
+        "tokens_out",
+    )
 
     def __init__(self) -> None:
+        self.backends: set[str] = set()
         self.runs = 0
         self.runs_measured = 0
         self.tokens_in = 0
@@ -109,6 +118,8 @@ class HandlerMeteringSummary:
         for index, record in enumerate(payload.records):
             bucket = per_model[record.model or "(unrecorded)"]
             bucket.runs += 1
+            if record.backend:
+                bucket.backends.add(record.backend)
 
             if record.recorded_savings_usd is not None:
                 recorded_savings_total += record.recorded_savings_usd
@@ -232,6 +243,7 @@ class HandlerMeteringSummary:
             rows.append(
                 ModelMeteringModelRow(
                     model=model,
+                    backends=tuple(sorted(acc.backends)),
                     runs=acc.runs,
                     runs_measured=acc.runs_measured,
                     tokens_in=acc.tokens_in,
