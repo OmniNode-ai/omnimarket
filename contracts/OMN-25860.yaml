@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-25860
+title: "A required check red on a repository main or dev raises one alarm row with a named owner within one hour, from a node on the throughput tick"
+summary: The throughput schedule reads default-branch required checks and records an owner alarm and inbox message for each newly observed red head.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: [topics]
+requirements:
+  - id: req-omn25860-red-main-alarm
+    statement: A red required check on a registry default branch produces a durable alarm and an owner message.
+    acceptance:
+      - id: AC1
+        statement: "AC1: a node in omnimarket, with its contract, handler and tests, reads the required check of each registry repository's default branch and, within one hour of a required check turning red, writes one alarm row to the ledger and one message naming an owner, once per red head and never twice -- falsifier: `uv run pytest tests/ -q --no-cov -k red_main_alarm` exits non-zero at the new head"
+      - id: AC2
+        statement: "AC2: the tests go red first and then green: the alarm cases are written and run red against the base before the handler exists, and a control proves the node stays quiet on a green main and on a red head it has already alarmed -- falsifier: the same command exits 0 at the base head, or exits non-zero on the green-main control"
+      - id: AC3
+        statement: "AC3: the owner named in the row and the message is read from a live owner source (the open CLAIM naming the cause, else the repository's declared owner), never a fixed name, and a red with no owner source names the parent lane orchestrator-31d9-swarm -- falsifier: a test that plants a red with no open CLAIM and no declared owner reads an alarm row with an empty owner cell"
+      - id: AC4
+        statement: "AC4: the node runs on the existing throughput tick or Temporal schedule and no script is added, so the diff adds no file under scripts/ and no launchd or cron unit -- falsifier: `git diff --name-only <base> <head>` lists a path under scripts/ or a new launchd or cron unit"
+      - id: AC5
+        statement: "AC5: the node is installed from the branch on the host the tick runs on through the declared installer and read running there, with one alarm row read for a currently red main, recorded as `installed=<host>:<revision>` and `observed=<the row>` -- falsifier: the ledger shows no alarm row naming a currently red main with an owner cell, or the installed revision on that host is not the branch head"
+      - id: AC6
+        statement: "AC6: the pull request is open and ready with a comment starting `Lab: head=<full head sha>`, its required checks read success at that head, and the lane hands it to the landing lane by one ledger MSG -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#<n>` lists a required check not success at the head, or `grep -F 'landing-controller' \"$ONEX_LEDGER_PATH\"` shows no MSG naming the pull request"
+evidence_requirements:
+  - kind: tests
+    description: Recorded check-run tests for the alarm node and its throughput subscription.
+    command: uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov -k red_main_alarm
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn25860-ac1
+    description: "Recorded SCM answers exercise the required-check read, red transitions, and typed failure."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov -k 'uses_live_claim or red_green_red_new_head or check_read_failure'
+  - id: dod-omn25860-ac2
+    description: "Green and replayed red heads produce no additional alarm or message."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov -k 'stays_quiet_on_green or deduplicates_across_handler_restarts'
+  - id: dod-omn25860-ac3
+    description: "Related live claims, registry ownership, and the declared parent select the same owner for both ledger rows."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov -k 'uses_live_claim or falls_back_to_named_owner'
+  - id: dod-omn25860-ac4
+    description: "The existing throughput schedule reaches the alarm effect through the declared runtime subscription."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov -k 'contract_routes_existing_throughput_fire or bus_carries'
+  - id: dod-omn25860-ac5
+    description: "The fixture proves that a recorded red head yields the expected rows through the node. Branch installation and live ledger readback are separate operational evidence."
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov -k 'uses_live_claim or inventory_uses_declared_default'
+  - id: dod-omn25860-ac6
+    description: "The fixture proves the alarm and its message reach the ledger writer together. Ready PR checks, the head-specific Lab comment, and the handoff MSG are separate operational evidence."
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov -k 'bus_carries or writer_accepts_the_pair'
+  - id: dod-omn25860-deploy-contract
+    description: Hosted deploy check exercises the scheduled route and ledger receipt without a live writer.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov -k 'bus_carries or writer_accepts_the_pair'
+
+  - id: dod-omn25860-lab-integration-proof
+    description: Exercise the throughput bus route and typed ledger append on a lab host at the pushed revision.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-25860 --kind test --
+          env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py
+          -q -n 0 --no-cov -k 'bus_carries or writer_accepts_the_pair'
+        cwd: .
