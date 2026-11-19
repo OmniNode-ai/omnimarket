@@ -77,6 +77,15 @@ description: >
   posts. Every class still writes its ledger row through the delivery's own ledger step and window. The daily digest
   (HandlerAlarmDigest, verb alarm-digest) posts one message per held day and appends one STATUS row listing the FIX-CAUSE sources
   with their causes. A source with no severity, or an operation of this node no source covers, refuses the load.
+  The loaded-code-sha read (HandlerLoadedCodeSha, verb loaded-code-sha) reads the sha the lane's deploy agent has loaded,
+  over the same agent and ready surfaces the lab-pass receipt reads first. READ carries the sha and the surface that
+  answered; UNREAD carries the reason no surface delivered one. It is never an alarm and never delivered.
+
+  The container-restarts condition (HandlerContainerRestarts, verb container-restarts, OMN-23934) reads the restart count of
+  every container the lane manifest gives a restart_bound for the overlay's census lane (docker inspect through the overlay's
+  docker command). It is ALARM for each container whose count is above its own bound, OK when none is, and INDETERMINATE when a
+  container or the manifest cannot be read or the lane declares no bound: an unreadable source never reads as healthy, and it
+  dominates an alarm found on the containers that could be read.
 
 handler:
   module: omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag
@@ -128,6 +137,14 @@ cli_handlers:
     handler:
       name: HandlerAlarmDigest
       module: omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_digest
+  - operation: loaded_code_sha
+    handler:
+      name: HandlerLoadedCodeSha
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_loaded_code_sha
+  - operation: container_restarts
+    handler:
+      name: HandlerContainerRestarts
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_container_restarts
 
 # HandlerEffectsHeld (omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held, input
 # ModelEffectsHeldCommand) takes its overlay settings, group reader, state store, lane dispatcher and clock
@@ -205,6 +222,14 @@ topics:
   alarm_digest_requested: onex.cmd.omnimarket.lab-alarm-digest-requested.v1
   alarm_digest_run_completed: onex.evt.omnimarket.lab-alarm-digest-completed.v1
   alarm_digest_run_failed: onex.evt.omnimarket.lab-alarm-digest-failed.v1
+  loaded_code_sha_requested: onex.cmd.omnimarket.lab-alarm-loaded-code-sha-requested.v1
+  loaded_code_sha_run_started: onex.evt.omnimarket.lab-alarm-loaded-code-sha-started.v1
+  loaded_code_sha_run_completed: onex.evt.omnimarket.lab-alarm-loaded-code-sha-completed.v1
+  loaded_code_sha_run_failed: onex.evt.omnimarket.lab-alarm-loaded-code-sha-failed.v1
+  container_restarts_requested: onex.cmd.omnimarket.lab-alarm-container-restarts-requested.v1
+  container_restarts_run_started: onex.evt.omnimarket.lab-alarm-container-restarts-started.v1
+  container_restarts_run_completed: onex.evt.omnimarket.lab-alarm-container-restarts-completed.v1
+  container_restarts_run_failed: onex.evt.omnimarket.lab-alarm-container-restarts-failed.v1
 
 event_bus:
   subscribe_topics: []
@@ -220,6 +245,9 @@ externally_consumed_topics:
   - onex.evt.omnimarket.lab-alarm-effects-held-lane-dispatched.v1
   - onex.evt.omnimarket.lab-alarm-effects-held-completed.v1
   - onex.evt.omnimarket.lab-alarm-effects-held-failed.v1
+  - onex.evt.omnimarket.lab-alarm-container-restarts-started.v1
+  - onex.evt.omnimarket.lab-alarm-container-restarts-completed.v1
+  - onex.evt.omnimarket.lab-alarm-container-restarts-failed.v1
   - onex.evt.omnimarket.lab-alarm-broker-listener-started.v1
   - onex.evt.omnimarket.lab-alarm-broker-listener-completed.v1
   - onex.evt.omnimarket.lab-alarm-broker-listener-failed.v1
@@ -246,6 +274,9 @@ externally_consumed_topics:
   - onex.evt.omnimarket.lab-alarm-stale-indeterminate-failed.v1
   - onex.evt.omnimarket.lab-alarm-digest-completed.v1
   - onex.evt.omnimarket.lab-alarm-digest-failed.v1
+  - onex.evt.omnimarket.lab-alarm-loaded-code-sha-started.v1
+  - onex.evt.omnimarket.lab-alarm-loaded-code-sha-completed.v1
+  - onex.evt.omnimarket.lab-alarm-loaded-code-sha-failed.v1
 
 overlay:
   node: node_lab_alarm
@@ -296,6 +327,10 @@ alarm_sources:
      raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_lab_pass_receipt.py:49}
   - {condition: stale_indeterminate, severity: digest, review_name: none (a watched condition read INDETERMINATE on its last runs), basis: default, posts_via: router, operation: stale_indeterminate,
      raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_stale_indeterminate.py:42}
+  - {condition: container_restarts, severity: digest, review_name: none (a lane container restarted above its bound), basis: default, posts_via: router, operation: container_restarts,
+     raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_container_restarts.py:206}
+  - {condition: loaded_code_sha, severity: drop, review_name: "none (a read; never an alarm and never delivered)", basis: default, posts_via: direct, operation: loaded_code_sha,
+     raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_loaded_code_sha.py:1}
   - {condition: lab_alarm_daily_digest, severity: digest, review_name: none (this node's own daily digest), basis: default, posts_via: direct, operation: alarm_digest,
      raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_alarm_digest.py:1}
   # --- delivered through node_lab_alarm_deliver_effect by another node: declared, not routed by this table ---

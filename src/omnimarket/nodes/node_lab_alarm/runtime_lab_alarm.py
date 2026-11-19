@@ -32,6 +32,10 @@
 Each of these has a ``-probe`` form that keeps nothing and delivers nothing (OMN-24425). The verbs that predate them append each run to the
 overlay's ``verdict_record`` through ``journal_exit`` so the stale-indeterminate verb can read them.
 
+``loaded-code-sha``         read the sha the lane's deploy agent has loaded, with the surface that answered; READ carries the sha and the
+                            surface, UNREAD the reason no surface delivered one. It has no ``-probe`` form and no ``--fault``: it only
+                            reads, so it never alarms and never delivers.
+
 ``schedule ... --condition <verb>``  the same verbs for a condition's own schedule (the overlay's ``condition_schedules``).
 
 ``--fault`` injects a drill fault (planted-lag, unknown-node, manifest-down); a drill never keeps its sample.

@@ -124,3 +124,44 @@ def test_the_overlay_claims_window_reaches_the_point_read(
     [query] = read.requests
     assert query.query == "open-claims"
     assert query.claims_since == NOW - timedelta(hours=24)
+
+
+def test_a_missing_reader_overlay_exits_2_unknown_naming_the_roots(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """No overlay under the roots is no read: one UNKNOWN line, never a traceback (OMN-24646)."""
+    root = tmp_path / "onex-overlays-only"
+    root.mkdir()
+    code = main(
+        [],
+        environ={"ONEX_SKILL_OVERLAY_ROOTS": str(root)},
+        point_read=StampedQueryNodePointRead(FakeStateReader(())),
+        clock=lambda: NOW,
+    )
+    out = capsys.readouterr()
+    assert code == 2
+    [line] = out.out.splitlines()
+    assert line.startswith("UNKNOWN plan-owner | node_work_ledger_reader_effect:")
+    assert str(root) in line
+    assert "FIX: name the overlays clone's overlays directory" in line
+    assert "verdict=UNKNOWN reason=overlay-unreadable" in out.err
+
+
+def test_a_missing_owner_overlay_is_reported_under_the_named_finding(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "reader.yaml").write_text(READER_OVERLAY)
+    code = main(
+        ["--finding", "cutover-plan-owner"],
+        environ={
+            "ONEX_LEDGER_READER_OVERLAY": str(tmp_path / "reader.yaml"),
+            "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path),
+        },
+        point_read=StampedQueryNodePointRead(FakeStateReader(())),
+        clock=lambda: NOW,
+    )
+    out = capsys.readouterr()
+    assert code == 2
+    assert out.out.startswith(
+        "UNKNOWN cutover-plan-owner | node_plan_owner_check_effect:"
+    )
