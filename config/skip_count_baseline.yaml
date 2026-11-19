@@ -27,7 +27,7 @@ suites:
     repo: omnimarket
     job: Tests (Split n/m)
     mode: nodeids
-    max_skips: 275
+    max_skips: 277
     baseline_collected: 22836
     provenance:
       measured_at: '2026-09-18'
@@ -48,6 +48,11 @@ suites:
       - tests.ci.test_occ_gate_caller_pins_omn20161::test_floor_rejects_a_pin_without_the_exemption[receipt-gate.yml]
       - tests.ci.test_occ_gate_caller_pins_omn20161::test_pinned_workflow_carries_writer_app_pin_only_exemption[occ-preflight.yml]
       - tests.ci.test_occ_gate_caller_pins_omn20161::test_pinned_workflow_carries_writer_app_pin_only_exemption[receipt-gate.yml]
+      # OMN-25070 (275 -> 277): the next id is an opt-in real install of the customer package
+      # omninode-onex; it skips unless ONEX_TEST_ONEX_WHEEL names a built wheel, which the Tests job
+      # never builds. .github/workflows/onex-installer.yml builds the wheel and runs it unskipped on
+      # every pull request that changes the installer. Sole delta on run 44517529492 (+2).
+      - tests.ci.test_omninode_onex_install_sh_omn25070::test_install_reinstall_and_upgrade_for_real
       - tests.ci.test_receipt_gate_caller_pin_omn20132::test_floor_rejects_the_pre_tree_sha_inner_ref
       - tests.ci.test_receipt_gate_caller_pin_omn20132::test_pinned_workflow_inner_validator_accepts_tree_sha
       - tests.delegation_golden.test_layer2_live_runner.TestDelegationGoldenTasksLive::test_case_behaves_as_expected[I1]
@@ -60,6 +65,11 @@ suites:
       - tests.delegation_golden.test_layer2_live_runner.TestDelegationGoldenTasksLive::test_case_behaves_as_expected[I8]
       - tests.delegation_golden.test_layer2_live_runner.TestDelegationGoldenTasksLive::test_case_behaves_as_expected[I9]
       - tests.delegation_golden.test_layer2_live_runner.TestDelegationGoldenTasksLive::test_case_behaves_as_expected[I10]
+      # OMN-25070 (275 -> 277): the next id is an opt-in real install of the customer package
+      # omninode-onex; it skips unless ONEX_TEST_ONEX_WHEEL names a built wheel, which the Tests job
+      # never builds. .github/workflows/onex-installer.yml builds the wheel and runs it unskipped on
+      # every pull request that changes the installer. Sole delta on run 44517529492 (+2).
+      - tests.e2e.test_setup_packaged_journey::test_customer_launchers_only
       - tests.integration.e2e_probe.test_delegation_e2e_probe.TestE2E4AThinPublish::test_thin_publish_correct_topic
       - tests.integration.e2e_probe.test_delegation_e2e_probe.TestE2E4AThinPublish::test_thin_publish_envelope_schema_valid
       - tests.integration.e2e_probe.test_delegation_e2e_probe.TestE2E4AThinPublish::test_thin_publish_returns_broker_ack
