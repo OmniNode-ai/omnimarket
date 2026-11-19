@@ -80,6 +80,12 @@ externally_consumed_topics:
   - onex.evt.omnimarket.host-down-reading.v1
   - onex.evt.omnimarket.host-down-sweep-completed.v1
 
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-down-sweep-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-down-sweep-completed.v1, operation: DESCRIBE}
+
 overlay:
   node: node_host_down_reading_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS

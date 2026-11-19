@@ -22,7 +22,7 @@ Every bound arrives in the request. No clock, no I/O, no literal bound.
 
 from datetime import datetime, timedelta
 
-from ..models.model_host_down import (
+from omnimarket.events.host_down import (
     EnumHostState,
     ModelHostDownReading,
     ModelHostDownRequest,

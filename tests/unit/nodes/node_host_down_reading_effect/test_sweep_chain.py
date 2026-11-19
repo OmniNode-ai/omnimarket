@@ -15,7 +15,7 @@ from typing import cast
 
 import pytest
 
-from omnimarket.nodes.node_host_down_compute.models.model_host_down import (
+from omnimarket.events.host_down import (
     ModelHostReading,
 )
 from omnimarket.nodes.node_host_down_reading_effect.adapters.fakes import (

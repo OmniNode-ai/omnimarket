@@ -14,15 +14,15 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_host_down_compute.handlers.handler_host_down import (
-    HandlerHostDown,
-)
-from omnimarket.nodes.node_host_down_compute.models.model_host_down import (
+from omnimarket.events.host_down import (
     EnumHostState,
     ModelHostDownReading,
     ModelHostDownRequest,
     ModelHostDownRules,
     ModelHostObservation,
+)
+from omnimarket.nodes.node_host_down_compute.handlers.handler_host_down import (
+    HandlerHostDown,
 )
 
 pytestmark = [pytest.mark.unit]

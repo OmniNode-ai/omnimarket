@@ -9,7 +9,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_host_down_compute.models.model_host_down import (
+from omnimarket.events.host_down import (
     EnumHostState,
     ModelHostReading,
 )

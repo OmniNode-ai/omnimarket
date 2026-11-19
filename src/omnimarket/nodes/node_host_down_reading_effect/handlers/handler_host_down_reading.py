@@ -9,14 +9,14 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import uuid4
 
+from omnimarket.events.host_down import (
+    ModelHostDownRequest,
+    ModelHostObservation,
+)
 from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
 from omnimarket.models.overlay_keys import ModelLabHostsTable
 from omnimarket.nodes.node_host_down_compute.handlers.handler_host_down import (
     HandlerHostDown,
-)
-from omnimarket.nodes.node_host_down_compute.models.model_host_down import (
-    ModelHostDownRequest,
-    ModelHostObservation,
 )
 from omnimarket.nodes.node_host_down_reading_effect.models.model_host_down_reading import (
     EnumSweepOutcome,

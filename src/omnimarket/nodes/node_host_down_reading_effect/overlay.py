@@ -17,10 +17,10 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_host_down_compute.models.model_host_down import (
+from omnimarket.events.host_down import (
     ModelHostDownRules,
 )
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 
 NODE_NAME = "node_host_down_reading_effect"
 EXAMPLE_OVERLAY = Path(__file__).with_name("overlay.example.yaml")
