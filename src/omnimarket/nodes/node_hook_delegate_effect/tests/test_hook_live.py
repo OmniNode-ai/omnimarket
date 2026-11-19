@@ -11,13 +11,16 @@ loads tests.refuse_skips explicitly, so an unexecuted proof fails closed.
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import socket
 import subprocess
 import sys
+import tarfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypedDict
 from urllib.parse import urlsplit
 
 import pytest
@@ -33,6 +36,94 @@ from omnimarket.nodes.node_hook_delegate_effect.models import (
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.live_model]
+
+
+class InstalledProvenance(TypedDict):
+    launcher: str
+    python: str
+    package_root: str
+    revision: str
+    files_checked: int
+    source_manifest_sha256: str
+
+
+def installed_provenance(
+    launcher: Path,
+    revision: str,
+    repository: Path,
+) -> InstalledProvenance:
+    """Bind the launcher's real installed source to committed package bytes.
+
+    Pytest adds checkout src/ to sys.path. A separate isolated interpreter must
+    inspect the CLI installation, or a stale installed CLI can pass this proof.
+    This verifies tracked package source; the complete wheel journey remains
+    the separate packaged-journey check.
+    """
+    shebang = launcher.read_text().splitlines()[0]
+    assert shebang.startswith("#!"), "installed CLI needs an interpreter shebang"
+    python = Path(shebang[2:].strip())
+    assert python.is_absolute(), "installed CLI needs an absolute interpreter shebang"
+    assert python.is_file(), "installed CLI interpreter does not exist"
+    archive = subprocess.check_output(
+        ["git", "-C", str(repository), "archive", revision, "src/omnimarket"],
+    )
+    with tarfile.open(fileobj=io.BytesIO(archive)) as tree:
+        expected = {}
+        for member in tree.getmembers():
+            if not member.isfile():
+                continue
+            content = tree.extractfile(member)
+            assert content is not None
+            relative = member.name.removeprefix("src/omnimarket/")
+            expected[relative] = hashlib.sha256(content.read()).hexdigest()
+    assert expected, "committed package source manifest is empty"
+    inspect = """
+import hashlib, json, pathlib, sys
+from importlib.machinery import all_suffixes
+import omnimarket
+root = pathlib.Path(omnimarket.__file__).resolve().parent
+expected = json.load(sys.stdin)
+actual = {
+    path.relative_to(root).as_posix()
+    for path in root.rglob("*")
+    if path.is_file()
+    and (
+        path.relative_to(root).as_posix() in expected
+        or any(path.name.endswith(suffix) for suffix in all_suffixes())
+    )
+    and not (path.suffix == ".pyc" and path.parent.name == "__pycache__")
+}
+assert actual == set(expected), (
+    "package file set mismatch: extra=" + ", ".join(sorted(actual - set(expected))[:5])
+    + "; missing=" + ", ".join(sorted(set(expected) - actual)[:5])
+)
+mismatches = [name for name, digest in expected.items()
+              if not (root / name).is_file()
+              or hashlib.sha256((root / name).read_bytes()).hexdigest() != digest]
+assert not mismatches, "package byte mismatch: " + ", ".join(mismatches[:5])
+print(json.dumps({"python": sys.executable, "package_root": str(root)}))
+"""
+    manifest = json.dumps(expected, sort_keys=True)
+    observed = subprocess.run(
+        [str(python), "-I", "-c", inspect],
+        input=manifest,
+        text=True,
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+    assert observed.returncode == 0, (
+        "installed package differs from revision: " + observed.stderr
+    )
+    result = json.loads(observed.stdout)
+    return {
+        "launcher": str(launcher),
+        "python": str(result["python"]),
+        "package_root": str(result["package_root"]),
+        "revision": revision,
+        "files_checked": len(expected),
+        "source_manifest_sha256": hashlib.sha256(manifest.encode()).hexdigest(),
+    }
 
 
 def test_installed_hook_answers_with_a_local_model_and_missing_cli_passes_through(
@@ -62,6 +153,7 @@ def test_installed_hook_answers_with_a_local_model_and_missing_cli_passes_throug
     onex = installed_onex()
     assert onex == Path(sys.executable).parent / "onex"
     assert onex.is_file(), "the branch installation must include its own CLI"
+    installed = installed_provenance(onex, expected_sha, Path.cwd())
 
     # No workspace overlay, provider key, user config or cached answer can leak
     # into this run. Local-only is set BEFORE onboarding's own pinned probe.
@@ -115,6 +207,7 @@ def test_installed_hook_answers_with_a_local_model_and_missing_cli_passes_throug
         "observed_at": datetime.now(UTC).isoformat(),
         "host": socket.gethostname(),
         "revision": revision,
+        "installed": installed,
         "model": result.model,
         "run_id": result.run_id,
         "outcome": result.outcome.value,
