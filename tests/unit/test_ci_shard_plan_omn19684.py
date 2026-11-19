@@ -294,7 +294,9 @@ def test_typecheck_job_proves_the_plan_partitions_the_collected_tree() -> None:
         i for i, run in enumerate(runs) if "merge_test_durations.py verify" in run
     )
     assert collect < verify
-    assert 'tests/ --collect-only -q -m "not kafka"' in runs[collect]
+    assert (
+        'tests/ --collect-only -q -m "not kafka and not release_proof"' in runs[collect]
+    )
     assert "--collected collected.txt" in runs[verify]
     # An empty verify would pass a plan against nothing: it reads the collect output.
     assert "> collected.txt" in runs[collect]
