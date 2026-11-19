@@ -28,7 +28,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_hook_delegate import (
-    TASK_CLASS_BY_INTENT,
     HandlerHookDelegate,
     read_switches,
 )
@@ -61,11 +60,30 @@ _CONTROL = re.compile(
 # consume them even when it can produce a plausible answer (2026-11-16).
 _WORK_REQUEST = re.compile(
     r"(?:(?:please|now|and)\s+)*"
-    r"(?:(?:can|could|would|will)\s+you\s+|help\s+me\s+"
+    r"(?:(?:can|could|would|will)\s+(?:you|we)\s+"
+    r"|you\s+(?:can|could|should|may)\s+|help\s+me\s+"
     r"|i\s+(?:want|need)\s+you\s+to\s+)?(?:please\s+)?"
     r"(?:fix|check|inspect|update|edit|change|remove|delete|close|reopen|merge"
     r"|push|commit|deploy|install|uninstall|enable|disable|run|implement|build"
-    r"|test|verify|read|open|move|revert|restore)\b",
+    r"|test|verify|read|open|move|revert|restore|coordinate|message|send"
+    r"|approve|authorize|grant|allow)\b",
+    re.IGNORECASE,
+)
+# Permission requests steer the operator's session. A delegate cannot approve
+# an action for the person; conceptual permission questions remain eligible.
+_PERMISSION_REQUEST = re.compile(
+    r"(?:(?:one|a|single)\s+command\s+for\s+(?:all\s+)?(?:permissions?|approvals?)\b"
+    r"|(?:can|may)\s+(?:i|we)\b"
+    r"|(?:i|we)\s+(?:need|want|request|require)\s+(?:permission|approval|authorization)\b"
+    r"|(?:generate|give|write|send)\b.*\b(?:permission|approval|authorization|YES)\b)",
+    re.IGNORECASE,
+)
+# These questions need the working session's installation evidence.
+_LOCAL_STATE_QUESTION = re.compile(
+    r"(?:why|what|how|where|which)\b.*\b(?:my|our|this|current)\b.*"
+    r"\b(?:installation|hook|dashboard|onex|claude|terminal|answer|text)\b"
+    r"|why\b.*(?:\byellow\b.*\b(?:text|answer)\b"
+    r"|\b(?:text|answer)\b.*\byellow\b)",
     re.IGNORECASE,
 )
 _CORRECTION = re.compile(
@@ -96,17 +114,8 @@ HISTORY_KEEP = 8
 #: Transcript lines read from the end for the recent conversation.
 TRANSCRIPT_TAIL = 400
 
-#: The prompt's own definition of done, replacing the task class's rubric. Graded
-#: by research's rubric a short decline was vetoed and retried down the ladder
-#: (run a165bc2e: 4 attempts, 48 s) and a one-sentence answer took 63 s and about
-#: 6000 output tokens (run 18cdbca6); with this bar both answered on the first
-#: attempt in 22 s and 17 s (runs 6ec07c1f, 251f59de). final_artifact_only is the
-#: criterion that can accept; the other two can only reject.
-PROMPT_CRITERIA = ("final_artifact_only", "concise", "response_non_empty")
-PROMPT_CRITERIA_MODE = "replace-task-class"
-PROMPT_MAX_TOKENS = 2048
-#: The user waits for a prompt, so it gets less time than a subagent task (240 s).
-PROMPT_TIMEOUT_S = 90.0
+#: Match the ordinary delegate process budget; explicit shorter hook limits win.
+PROMPT_TIMEOUT_S = 240.0
 
 RULES = f"""You answer a user's message on behalf of a coding assistant (Claude Code).
 - If answering needs the user's machine or accounts (reading or editing their files, running commands, checking Slack, Linear, GitHub, email, calendars or live system state), or needs earlier conversation you cannot see, or you are not confident the answer is correct, reply with exactly one line: {DECLINE_TOKEN}: followed by a reason of at most five words, such as "needs the user's files". That line is your whole reply: no explanation before or after it, no apology, never "I cannot".
@@ -141,7 +150,11 @@ def skip_reason(prompt: str) -> EnumPromptDelegateOutcome | None:
         return EnumPromptDelegateOutcome.HAS_IMAGE
     if _CONTROL.match(text) or len(text.split()) <= _SHORT_WORDS:
         return EnumPromptDelegateOutcome.CONTROL
-    if _WORK_REQUEST.match(text):
+    if (
+        _WORK_REQUEST.match(text)
+        or _LOCAL_STATE_QUESTION.match(text)
+        or _PERMISSION_REQUEST.match(text)
+    ):
         return EnumPromptDelegateOutcome.CONTROL
     if not _INFORMATION.match(text) and "?" not in text and _CORRECTION.search(text):
         return EnumPromptDelegateOutcome.CONTROL
@@ -204,12 +217,19 @@ def transcript_excerpt(path: str, limit: int = CONTEXT_CHARS) -> str:
     return cut_turns(transcript_turns(path), limit)[0]
 
 
-def block_output(answer: str, model: str, run_id: str) -> str:
+def block_output(answer: str, model: str, run_id: str, correlation_id: str = "") -> str:
     """decision "block" stops Claude Code before any model call (verified
     2026-11-13: num_turns 0, total_cost_usd 0) and shows the reason to the user."""
     reason = (
         answer.rstrip("\n") + f"\n\n[Answered by {model} through ONEX delegation, "
-        f"run {run_id}. Start a prompt with {SKIP_PREFIX} to ask Claude instead.]"
+        f"run {run_id}"
+        + (
+            f", correlation {correlation_id}. Dashboard: /workflow?correlation_id={correlation_id}"
+            f" (onex dashboard open --correlation-id {correlation_id})"
+            if correlation_id
+            else ""
+        )
+        + f". Start a prompt with {SKIP_PREFIX} to ask Claude instead.]"
     )
     return json.dumps({"decision": "block", "reason": reason})
 
@@ -279,8 +299,11 @@ class HandlerPromptDelegate:
             outcome=EnumPromptDelegateOutcome.ANSWERED,
             model=result.model,
             run_id=result.run_id,
+            correlation_id=result.correlation_id,
             excerpt=excerpt,
-            hook_output=block_output(result.answer, result.model, result.run_id),
+            hook_output=block_output(
+                result.answer, result.model, result.run_id, result.correlation_id
+            ),
         )
 
     def _excerpt(self, transcript_path: str) -> tuple[str, EnumPromptExcerpt]:
@@ -306,21 +329,35 @@ class HandlerPromptDelegate:
         limit = PROMPT_TIMEOUT_S
         if request.timeout_seconds is not None:
             limit = min(limit, request.timeout_seconds)
-        # An intent with no public task class (debug, unknown, ...) is asked as research.
-        intent = (
-            request.intent if request.intent in TASK_CLASS_BY_INTENT else "research"
-        )
         return ModelHookDelegateRequest(
             task=_TASK.format(context=context or "(none)", prompt=request.prompt),
-            intent=intent,
             timeout_seconds=limit,
             session_id=request.session_id,
             decline_token=DECLINE_TOKEN,
             system_prompt=RULES,
-            criteria=PROMPT_CRITERIA,
-            criteria_mode=PROMPT_CRITERIA_MODE,
-            max_tokens=PROMPT_MAX_TOKENS,
         ), fate
+
+    @classmethod
+    def drain_history(cls, session_id: str) -> str:
+        """Deliver accepted exchanges without classifying or delegating a prompt."""
+        return context_output(cls._take_pending(session_id))
+
+    @classmethod
+    def history_hook(cls) -> str:
+        """The context-only installed adapter: no classifier or model call."""
+        import sys
+
+        from omnimarket.handlers.delegation_hook_switch import delegation_switch_enabled
+        from omnimarket.nodes.node_hook_delegate_effect import container
+
+        if delegation_switch_enabled():
+            return ""
+        payload = json.load(sys.stdin)
+        session_id = payload.get("session_id") if isinstance(payload, dict) else None
+        if not isinstance(session_id, str) or not session_id:
+            return ""
+        container.build_handler().begin_turn(session_id)
+        return cls.drain_history(session_id)
 
     def _pass(
         self,

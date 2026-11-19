@@ -100,6 +100,7 @@ class ModelPromptDelegateResult(BaseModel):
     detail: str = Field(default="", description="The hook outcome when not answered.")
     model: str = ""
     run_id: str = ""
+    correlation_id: str = ""
     excerpt: EnumPromptExcerpt | None = Field(
         default=None,
         description="The recent conversation's fate; None when nothing was delegated.",

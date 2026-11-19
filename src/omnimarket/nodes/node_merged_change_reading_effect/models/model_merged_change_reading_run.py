@@ -93,6 +93,7 @@ class ModelMcrLogLabels(BaseModel):
     time_format: str = Field(min_length=1)
     loaded_pattern: str = Field(min_length=1)
     subscribed_pattern: str = Field(min_length=1)
+    subscription_state_pattern: str = Field(min_length=1)
     published_pattern: str = Field(min_length=1)
     health_pattern: str = Field(min_length=1)
     healthy_status: str = Field(min_length=1)
@@ -103,6 +104,8 @@ class ModelMcrLogLabels(BaseModel):
     # A contract is listed under its own name and under the name of the entry point that loads it; the node map names
     # the entry point (the node's directory), so both are loaded names.
     manifest_name_keys: tuple[str, ...] = Field(min_length=1)
+    manifest_event_bus_key: str = Field(min_length=1)
+    manifest_subscribe_topics_key: str = Field(min_length=1)
     manifest_fetch_options: str = Field(min_length=1)
     unit_show_options: str = Field(min_length=1)
     unit_show_properties: str = Field(min_length=1)

@@ -363,10 +363,20 @@ def read_answer(stdout: str) -> ModelHookDelegateResult:
             or not run_id
         ):
             break
+        correlation_id = result.get("correlation_id")
+        try:
+            correlation_id = (
+                str(uuid.UUID(correlation_id))
+                if isinstance(correlation_id, str)
+                else ""
+            )
+        except ValueError:
+            correlation_id = ""
         return ModelHookDelegateResult(
             outcome=EnumHookDelegateOutcome.ANSWERED,
             answer=answer,
             model=model,
             run_id=run_id,
+            correlation_id=correlation_id,
         )
     return ModelHookDelegateResult(outcome=EnumHookDelegateOutcome.NO_ANSWER)

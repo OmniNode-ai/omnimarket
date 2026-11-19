@@ -13,6 +13,12 @@ from omnimarket.models.model_running_vs_merged_alarm import (
     ModelRunningVsMergedRequest,
     ModelRunningVsMergedResult,
 )
+from omnimarket.models.silent_failure_alarm.model_install_failure_alarm import (
+    ModelInstallFailureAlarmRequest,
+    ModelInstallFailureAlarmResult,
+    ModelInstallFailureRow,
+    ModelInstallFailureState,
+)
 
 from .model_drainer_alarm import (
     ModelDrainerObservation,
@@ -25,6 +31,7 @@ from .model_job_exit_alarm import (
     ModelJobExitAlarmResult,
     ModelJobExitEpisode,
     ModelJobExitReading,
+    ModelJobExitReraise,
     ModelJobExitStreak,
 )
 from .model_placement_share_alarm import (
@@ -53,10 +60,15 @@ __all__ = [
     "ModelFleetFoldAbsence",
     "ModelHostActivity",
     "ModelHostOmniHome",
+    "ModelInstallFailureAlarmRequest",
+    "ModelInstallFailureAlarmResult",
+    "ModelInstallFailureRow",
+    "ModelInstallFailureState",
     "ModelJobExitAlarmRequest",
     "ModelJobExitAlarmResult",
     "ModelJobExitEpisode",
     "ModelJobExitReading",
+    "ModelJobExitReraise",
     "ModelJobExitStreak",
     "ModelLaneRefusal",
     "ModelPlacementRun",

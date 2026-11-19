@@ -33,8 +33,6 @@ import pytest
 from omnimarket.nodes.node_hook_delegate_effect.container import build_prompt_handler
 from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_prompt_delegate import (
     HISTORY_CHARS,
-    PROMPT_CRITERIA,
-    PROMPT_TIMEOUT_S,
 )
 from omnimarket.nodes.node_hook_delegate_effect.models import (
     DECLINE_TOKEN,
@@ -115,6 +113,78 @@ def _task(argv: list[str]) -> str:
 # --- delegating ---------------------------------------------------------------
 
 
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_receipt_and_correlation_identity_are_not_interchanged(wrapped: bool) -> None:
+    correlation = "c079f9fe-51a2-425c-b39d-5f55ba29469b"
+    doc = _doc(_ANSWER, "receipt-run")
+    receipt_result = doc["result"]
+    assert isinstance(receipt_result, dict)
+    receipt_result["correlation_id"] = correlation
+    if wrapped:
+        doc = {"receipt": doc}
+    result = _ask(_Cli(doc), "Explain how a mutex differs from a semaphore")
+    assert result.run_id == "receipt-run"
+    assert result.correlation_id == correlation
+    reason = json.loads(result.hook_output)["reason"]
+    assert "run receipt-run" in reason
+    assert f"correlation {correlation}" in reason
+    assert f"/workflow?correlation_id={correlation}" in reason
+    assert f"onex dashboard open --correlation-id {correlation}" in reason
+
+
+@pytest.mark.parametrize(
+    "correlation", [None, "", "not-an-id", "../workflow?tenant=foreign"]
+)
+def test_absent_or_invalid_correlation_is_not_invented(correlation: object) -> None:
+    doc = _doc(_ANSWER, "receipt-only")
+    receipt_result = doc["result"]
+    assert isinstance(receipt_result, dict)
+    receipt_result["correlation_id"] = correlation
+    result = _ask(_Cli(doc), "Explain how a mutex differs from a semaphore")
+    assert result.outcome is EnumPromptDelegateOutcome.ANSWERED
+    assert result.correlation_id == ""
+    assert "correlation_id=" not in result.hook_output
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "you can fix it",
+        "can we fix end to end all issues",
+        "coordinate with codex and both together fix the issues",
+        "why is my answer text yellow",
+        "why yellow answer text",
+        "one command for all permission and do it in the best way",
+        "can you approve the pending deployment",
+        "give me permission to push this branch",
+        "generate a YES approval id for the pending change",
+    ],
+)
+def test_action_requests_and_local_installation_questions_are_not_intercepted(
+    prompt: str,
+) -> None:
+    cli = _Cli(_doc("This must never replace the working assistant", "r-action"))
+    result = _ask(cli, prompt)
+    assert result.outcome is EnumPromptDelegateOutcome.CONTROL
+    assert result.hook_output == ""
+    assert cli.calls == []
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Explain how permission inheritance works in Unix",
+        "What is an approval workflow?",
+        "Describe Unix file permissions in plain language",
+    ],
+)
+def test_conceptual_permission_questions_still_delegate(prompt: str) -> None:
+    cli = _Cli(_doc(_ANSWER, "r-concept"))
+    result = _ask(cli, prompt)
+    assert result.outcome is EnumPromptDelegateOutcome.ANSWERED
+    assert len(cli.calls) == 1
+
+
 def test_sensitive_conversation_is_never_sent_with_the_prompt(tmp_path: Path) -> None:
     """P7 (OMN-23413): a secret said earlier in the session never reaches the
     delegated model; the prompt is still delegated, without that conversation."""
@@ -151,7 +221,7 @@ def test_any_prompt_is_delegated_and_its_answer_blocks_claude() -> None:
     assert "run r-hi" in out["reason"]
     assert "@claude" in out["reason"]
     ((argv, _),) = cli.calls
-    assert _arg(argv, "--task-type") == "research"
+    assert "--task-type" not in argv
 
 
 @pytest.mark.parametrize(
@@ -230,18 +300,17 @@ def test_the_model_gets_the_rules_the_prompt_and_recent_conversation(
     assert DECLINE_TOKEN not in _task(argv)
 
 
-def test_a_prompt_brings_its_own_bar_token_cap_and_time_limit() -> None:
-    """L1, L2: the prompt's own bar answered both cases on the first attempt in
-    22 s and 17 s (runs 6ec07c1f, 251f59de)."""
+@pytest.mark.parametrize("intent", ["", "implement", "research", "unknown"])
+def test_prompt_uses_plain_delegate_defaults(intent: str) -> None:
+    """AC50: hook-only flags previously changed routing, gates and output budget."""
     cli = _Cli(_doc(_ANSWER, "r-bar"))
-    _ask(cli, "How do TCP and UDP differ?", intent="implement", timeout_seconds=240)
+    _ask(cli, "How do TCP and UDP differ?", intent=intent)
     ((argv, limit),) = cli.calls
-    criteria = [argv[i + 1] for i, a in enumerate(argv) if a == "--criteria"]
-    assert tuple(criteria) == PROMPT_CRITERIA
-    assert _arg(argv, "--criteria-mode") == "replace-task-class"
-    assert int(_arg(argv, "--max-tokens")) <= 2048
-    assert _arg(argv, "--task-type") == "code_generation"
-    assert limit == PROMPT_TIMEOUT_S
+    for flag in ("--criteria", "--criteria-mode", "--max-tokens", "--task-type"):
+        assert flag not in argv
+    assert "User message:\nHow do TCP and UDP differ?\n" in _task(argv)
+    assert DECLINE_TOKEN in _arg(argv, "--system-prompt")
+    assert limit == 240
 
 
 def test_a_shorter_hook_limit_wins() -> None:
