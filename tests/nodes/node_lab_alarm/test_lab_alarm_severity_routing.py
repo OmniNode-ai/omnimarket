@@ -9,6 +9,7 @@ the ledger row and its dedupe window under test are the delivery's own, not a co
 from __future__ import annotations
 
 import ast
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -23,14 +24,13 @@ from omnimarket.models.lab_alarm_delivery import (
     ModelLabAlarmDeliveryRequest,
 )
 from omnimarket.nodes.node_lab_alarm.adapters.routed_delivery_adapters import (
+    build_alarm_digest,
     build_routed_delivery,
     require_declared,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_digest import (
-    HandlerAlarmDigest,
-)
-from omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_route import (
     GatedAlarmChannel,
+    HandlerAlarmDigest,
     HandlerAlarmRoute,
     load_alarm_severity_table,
 )
@@ -347,6 +347,28 @@ def test_alarm_digest_probe_sends_nothing_and_keeps_nothing() -> None:
     assert [d.day for d in probe.days] == ["2026-11-16"]
     assert rig.channel.posts == []
     assert len(rig.ledger.rows) == rows
+
+
+def test_alarm_digest_probe_reads_the_runtime_digest_file(tmp_path: Path) -> None:
+    table = load_alarm_severity_table()
+    state_path = tmp_path / "episodes.json"
+    overlay = _delivery_overlay().model_copy(
+        update={"backend": "runtime", "state_path": str(state_path)}
+    )
+    state_path.write_text("{}", encoding="utf-8")
+    digest_path = tmp_path / table.routing.digest_state_file
+    held = {"pending": {"2026-11-15": {"key": {"condition": "broker_listener"}}}}
+    digest_path.write_text(json.dumps(held), encoding="utf-8")
+
+    digest = build_alarm_digest(overlay, table=table, clock=_Clock())
+    probe = digest.handle(ModelAlarmDigestCommand(correlation_id="probe", write=False))
+
+    assert probe.outcome is EnumAlarmDigestOutcome.SKIPPED
+    assert [(day.day, day.episodes, day.sources) for day in probe.days] == [
+        ("2026-11-15", 1, 1)
+    ]
+    assert json.loads(digest_path.read_text(encoding="utf-8")) == held
+    assert state_path.read_text(encoding="utf-8") == "{}"
 
 
 # --- AC4: drop ---------------------------------------------------------------------------------------------------

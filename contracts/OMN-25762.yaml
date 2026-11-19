@@ -1,0 +1,99 @@
+schema_version: 1.0.0
+ticket_id: OMN-25762
+title: Unblock the alarm routing Deployment Fact Gate
+summary: Use the delivery overlay's existing backend selection for severity routing and the daily digest.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25762-gate
+  statement: The alarm routing PR passes its existing gates and carries lab evidence for the revision.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the required check Deployment Fact Gate of omnimarket PR 6339 reads success at the new head, read through the declared scm path after the push -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6339` lists Deployment Fact Gate as not success at the new head'
+  - id: AC2
+    statement: 'AC2: no check is widened, skipped or bypassed, so the diff removes no assertion and adds no skip, xfail or loosened threshold -- falsifier: `git diff <base> <new head> -- tests/ .github/` shows a removed assert, a new skip or xfail marker or a changed required-check list'
+  - id: AC3
+    statement: 'AC3: a comment on the pull request starts `Lab:` and carries `head=<full new head sha>` with the lab run output that proves the red then green at that head -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6339` shows no comment naming the new head with a line starting `Lab:`'
+  - id: AC4
+    statement: 'AC4: when the change alters a lab host unit or the plugin, the branch is installed through the declared path and the Lab line carries `installed=<host>:<revision>` and `observed=<what ran>`; otherwise the lane says in its TERMINAL that it changes nothing that runs -- falsifier: the Lab comment names an install but carries no installed= cell, or the TERMINAL carries neither'
+  - id: AC5
+    statement: 'AC5: if the cause is outside the pull request, a STATUS row on the lane carries `cause=<one line>` and `shared=yes` with the evidence and no push is made -- falsifier: the ledger holds no STATUS row from the lane carrying cause= and shared=yes while the pull request is unchanged at its old head'
+evidence_requirements:
+- kind: tests
+  description: Alarm severity routing and digest probes exercise the delivery backends.
+  command: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_severity_routing.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25762-ac1-gate
+  description: Run the deployment fact gate against the dev parent of the refused tree. The PR watcher supplies the hosted verdict for the published revision.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac: [AC1]
+  checks:
+  - check_type: command
+    check_value: uv run --frozen python -m omnimarket.nodes.node_deployment_fact_gate_effect --base 8bb5b8be7316cb272b91883f82ad892a0fff22ab
+    cwd: .
+- id: dod-omn25762-ac2-checks
+  description: The workflows are unchanged from the refused head and the severity routing assertions pass.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac: [AC2]
+  checks:
+  - check_type: command
+    check_value: git diff --exit-code 0a3ebf4b327f9d874724fd7634b552a61191ca19 HEAD -- .github/
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_severity_routing.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25762-ac3-lab-comment
+  description: The SCM conversation carries a Lab comment keyed to the full revision being checked.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac: [AC3]
+  checks:
+  - check_type: command
+    check_value: >-
+      onex scm pr-view --source bus --bus-lane dev OmniNode-ai/omnimarket#6339 |
+      python3 -c 'import json, sys; prefix = "Lab: head=" + sys.argv[1] + " "; result = json.load(sys.stdin)["result"]; sys.exit(not any(line.startswith(prefix) for comment in result["comments"] for line in comment["body"].splitlines()))' "$(git rev-parse HEAD)"
+    cwd: .
+- id: dod-omn25762-ac4-host-surface
+  description: The fix changes no host service unit, installer or plugin.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac: [AC4]
+  checks:
+  - check_type: command
+    check_value: >-
+      git diff --exit-code 8bb5b8be7316cb272b91883f82ad892a0fff22ab HEAD --
+      launchd/ systemd/ scripts/ hooks/ plugins/ .claude-plugin/ bin/
+      ':(glob)**/*.service' ':(glob)**/*.timer' ':(glob)**/*.plist'
+    cwd: .
+- id: dod-omn25762-ac5-pr-local
+  description: The rejected backend comparison is in the PR delta from dev, so the conditional shared-cause branch does not apply.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac: [AC5]
+  checks:
+  - check_type: command
+    check_value: >-
+      git diff 8bb5b8be7316cb272b91883f82ad892a0fff22ab 0a3ebf4b327f9d874724fd7634b552a61191ca19 --
+      src/omnimarket/nodes/node_lab_alarm/adapters/routed_delivery_adapters.py |
+      grep -F '+    if overlay.backend == "inmemory":'
+    cwd: .
+- id: dod-omn25762-container-probe
+  description: In a fresh Python 3.12 container, the runtime-backed digest probe reads its own store and leaves the episode state untouched.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: >-
+      docker run --rm --mount type=bind,source="$PWD",target=/checkout,readonly
+      --workdir /checkout --env UV_PROJECT_ENVIRONMENT=/tmp/alarm-probe-venv
+      --env PYTHONDONTWRITEBYTECODE=1 python:3.12-bookworm
+      sh -ec 'python -m pip install uv==0.8.3 && uv run --frozen pytest
+      tests/nodes/node_lab_alarm/test_lab_alarm_severity_routing.py -q --no-cov -n 0
+      -p no:randomly -p no:cacheprovider -k test_alarm_digest_probe_reads_the_runtime_digest_file'
+    cwd: .

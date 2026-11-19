@@ -36,7 +36,7 @@ from omnimarket.nodes.node_lab_alarm.adapters.routed_delivery_adapters import (
     build_routed_delivery,
 )
 from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import FileRunRecords
-from omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_route import (
+from omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_digest import (
     HandlerAlarmRoute,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.handler_lab_pass_receipt import (

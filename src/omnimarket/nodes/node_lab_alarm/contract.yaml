@@ -255,7 +255,7 @@ metadata:
   ticket: OMN-23024
   transport_type: inmemory
 
-# Severity routing (OMN-24939). Read by omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_route.load_alarm_severity_table;
+# Severity routing (OMN-24939). Read by omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_digest.load_alarm_severity_table;
 # the load refuses a source with no severity, a fix-cause source with no cause, a condition listed twice and a CLI operation of
 # this node that no router source covers. Classes come from the 2026-11-09..16 alarm review (a 12 percent sample); basis says
 # whether the review names the source, the nearest named source gave its class, or none did (digest).

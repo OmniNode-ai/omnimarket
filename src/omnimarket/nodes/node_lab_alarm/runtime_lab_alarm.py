@@ -89,7 +89,7 @@ from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import (
     KafkaLag,
     TcpApiVersionsProbe,
 )
-from omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_route import (
+from omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_digest import (
     HandlerAlarmRoute,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag import (
