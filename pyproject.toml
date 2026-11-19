@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.321"
+version = "0.4.322"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -155,7 +155,12 @@ dependencies = [
     # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
     # Raised in BOTH places.
     "omnibase-core>=0.47.60,<0.48.0",
-    "omnibase-spi>=0.23.3,<0.24.0",
+    # OMN-23518: floor raised 0.23.3 -> 0.23.15, the release whose notes list the lane process
+    # wire models (omnibase_spi CHANGELOG v0.23.15, "Included Since v0.23.14": ProtocolLaneProcessRunner
+    # and lane process wire models) the floor fill orchestrator imports from
+    # omnibase_spi.contracts.services (ModelLaneProcessRunResult, ModelLaneProcessStartResult,
+    # ModelLaneStartSpec); v0.23.14 carries none of the three. Raised in BOTH places.
+    "omnibase-spi>=0.23.15,<0.24.0",
     # OMN-17549: floor raised 0.38.15 -> 0.38.16. 0.38.16 carries the OMN-17379
     # fail-closed projection guard -- a projection handler that consumes an
     # event and writes no row raises ProjectionNotMaterializedError instead of
@@ -840,6 +845,7 @@ node_host_table_compute = "omnimarket.nodes.node_host_table_compute"
 node_host_table_copies_drift_compute = "omnimarket.nodes.node_host_table_copies_drift_compute"
 node_host_table_keys_ingest_effect = "omnimarket.nodes.node_host_table_keys_ingest_effect"
 node_host_table_keys_read_effect = "omnimarket.nodes.node_host_table_keys_read_effect"
+node_host_thermal_hold_report_effect = "omnimarket.nodes.node_host_thermal_hold_report_effect"
 node_host_thermal_observe_effect = "omnimarket.nodes.node_host_thermal_observe_effect"
 node_host_tree_install_effect = "omnimarket.nodes.node_host_tree_install_effect"
 node_hostile_reviewer_orchestrator = "omnimarket.nodes.node_hostile_reviewer_orchestrator"
@@ -1281,6 +1287,7 @@ node_receipt_gate_pin_advance_compute = "omnimarket.nodes.node_receipt_gate_pin_
 node_receipt_gate_pin_advance_effect = "omnimarket.nodes.node_receipt_gate_pin_advance_effect"
 node_receipt_gate_pin_friction_ledger_effect = "omnimarket.nodes.node_receipt_gate_pin_friction_ledger_effect"
 node_receipt_gate_pin_friction_report_compute = "omnimarket.nodes.node_receipt_gate_pin_friction_report_compute"
+node_red_main_alarm_effect = "omnimarket.nodes.node_red_main_alarm_effect"
 node_redeploy_deploy_effect = "omnimarket.nodes.node_redeploy_deploy_effect"
 node_redeploy_fsm_reducer = "omnimarket.nodes.node_redeploy_fsm_reducer"
 node_redeploy_orchestrator = "omnimarket.nodes.node_redeploy_orchestrator"
@@ -1416,6 +1423,8 @@ node_skill_tree_read_effect = "omnimarket.nodes.node_skill_tree_read_effect"
 node_slack_publish_effect = "omnimarket.nodes.node_slack_publish_effect"
 node_source_read_cache_effect = "omnimarket.nodes.node_source_read_cache_effect"
 node_stability_lane_refresh_effect = "omnimarket.nodes.node_stability_lane_refresh_effect"
+node_stability_stack_compose_effect = "omnimarket.nodes.node_stability_stack_compose_effect"
+node_stability_stack_plan_compute = "omnimarket.nodes.node_stability_stack_plan_compute"
 node_staging_readiness_compute = "omnimarket.nodes.node_staging_readiness_compute"
 node_stall_responder_compute = "omnimarket.nodes.node_stall_responder_compute"
 node_standalone_service_redeploy_effect = "omnimarket.nodes.node_standalone_service_redeploy_effect"
@@ -1927,7 +1936,12 @@ override-dependencies = [
     # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
     # Raised in BOTH places.
     "omnibase-core>=0.47.60,<0.48.0",
-    "omnibase-spi>=0.23.3,<0.24.0",
+    # OMN-23518: floor raised 0.23.3 -> 0.23.15, the release whose notes list the lane process
+    # wire models (omnibase_spi CHANGELOG v0.23.15, "Included Since v0.23.14": ProtocolLaneProcessRunner
+    # and lane process wire models) the floor fill orchestrator imports from
+    # omnibase_spi.contracts.services (ModelLaneProcessRunResult, ModelLaneProcessStartResult,
+    # ModelLaneStartSpec); v0.23.14 carries none of the three. Raised in BOTH places.
+    "omnibase-spi>=0.23.15,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the
     # runtime wire the delegation projection binding at all. An override
