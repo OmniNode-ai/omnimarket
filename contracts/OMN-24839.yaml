@@ -63,8 +63,6 @@ dod_evidence:
   description: The lane's own STATUS rows (lane=ovwatch-1420, row type STATUS) cite each of the four other ticks that arm the faulthandler exit by file path, one check per file, and name the producer of the stale readings in a row of its own. No other file under src arms dump_traceback_later, and the branch changes none of the four.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: grep -E '\| STATUS \| lane=ovwatch-1420 \|.*runtime_c32_probe_tick\.py' "$ONEX_LEDGER_PATH"
