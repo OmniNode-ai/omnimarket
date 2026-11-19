@@ -4,13 +4,28 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from omnimarket.pack.model_context_profile import ModelContextProfile
+from typing import Protocol
 
 
-def check_context_window(profile: ModelContextProfile) -> None:
+class _ProfileWindow(Protocol):
+    """The window fields the check reads; the profile model satisfies it without being imported here."""
+
+    @property
+    def token_budget(self) -> int: ...
+
+    @property
+    def context_window_tokens(self) -> int | None: ...
+
+    @property
+    def reserved_output_tokens(self) -> int | None: ...
+
+    @property
+    def reserved_system_tokens(self) -> int | None: ...
+
+    def effective_window_tokens(self) -> int | None: ...
+
+
+def check_context_window(profile: _ProfileWindow) -> None:
     """Refuse a window that is declared in part, or whose effective size is below the profile's token budget."""
     window = (
         profile.context_window_tokens,

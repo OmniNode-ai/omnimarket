@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from typing import Protocol
 
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -15,9 +15,6 @@ from omnimarket.enums.enum_lane_brief_tier import (
     EnumLaneBriefTier,
     EnumLaneBriefTierMode,
 )
-
-if TYPE_CHECKING:
-    from omnimarket.pack.model_context_profile import ModelContextProfile
 
 #: The factor each lane-brief tier is carried as: the factor enum belongs to the core package, so a tier
 #: with no factor of its own rides the nearest existing one.
@@ -74,7 +71,20 @@ def check_tier_specs_in_order(specs: Sequence[ModelContextTierSpec]) -> None:
         )
 
 
-def check_profile_tier_specs(profile: ModelContextProfile) -> None:
+class _ProfileTierSpecs(Protocol):
+    """The profile fields the check reads; the profile model satisfies it without being imported here."""
+
+    @property
+    def tier_specs(self) -> Sequence[ModelContextTierSpec]: ...
+
+    @property
+    def required_factors(self) -> Sequence[EnumContextFactor]: ...
+
+    @property
+    def token_budget(self) -> int: ...
+
+
+def check_profile_tier_specs(profile: _ProfileTierSpecs) -> None:
     """Refuse a profile whose ``tier_specs`` are out of order, outside its required factors or above its budget."""
     specs = profile.tier_specs
     if not specs:
