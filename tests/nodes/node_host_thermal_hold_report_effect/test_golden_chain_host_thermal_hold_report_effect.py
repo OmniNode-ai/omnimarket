@@ -51,8 +51,10 @@ def test_the_contract_declares_one_report_operation_and_its_terminal_event() -> 
         == "onex.evt.omnimarket.host-thermal-hold-reported.v1"
     )
     assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
-    # The handler takes its ports at construction, so the runtime cannot boot-resolve it: no handler_routing entry.
-    assert "handler_routing" not in contract
+    # The contract binds the handler class so the runtime can resolve it.
+    assert contract["handler_routing"]["default_handler"].endswith(
+        ":HandlerHostThermalHoldReport"
+    )
 
 
 def test_golden_run_over_the_in_memory_ports(
