@@ -83,7 +83,7 @@ def _group_body(**over: object) -> dict[str, Any]:
         "id": _GROUP,
         "name": "example-group",
         "allows_public_repositories": False,
-        "restricted_to_selected_workflows": True,
+        "restricted_to_workflows": True,
         "selected_workflows": [_WORKFLOW],
         **over,
     }
@@ -237,6 +237,33 @@ async def test_runner_removals_alone_do_not_allow_a_group_read() -> None:
 
 async def test_a_body_without_the_exposure_fields_is_refused_not_defaulted() -> None:
     body = {"id": _GROUP, "name": "example-group"}
+    fake = _Fake([(_GROUP_REQUEST, _ok(body)), (_PAGE_1, _ok(_repos(0)))])
+    result = await _handler(
+        fake, _overlay(ModelRunnerGroupEntry(organization=_ORG, group_id=_GROUP))
+    ).handle(_request())
+    assert isinstance(result, ModelRepoWriteFailed), result
+    assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+    assert "allows_public_repositories" in result.detail
+    assert "restricted_to_workflows" in result.detail
+
+
+async def test_the_refusal_names_only_the_fields_the_body_lacks() -> None:
+    body = _group_body()
+    del body["restricted_to_workflows"]
+    fake = _Fake([(_GROUP_REQUEST, _ok(body)), (_PAGE_1, _ok(_repos(0)))])
+    result = await _handler(
+        fake, _overlay(ModelRunnerGroupEntry(organization=_ORG, group_id=_GROUP))
+    ).handle(_request())
+    assert isinstance(result, ModelRepoWriteFailed), result
+    assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+    assert "restricted_to_workflows" in result.detail
+    assert "allows_public_repositories" not in result.detail
+
+
+async def test_a_body_naming_only_the_unknown_selected_field_is_refused() -> None:
+    """GitHub's field is ``restricted_to_workflows``; a body that spells it otherwise is not read."""
+    body = _group_body()
+    body["restricted_to_selected_workflows"] = body.pop("restricted_to_workflows")
     fake = _Fake([(_GROUP_REQUEST, _ok(body)), (_PAGE_1, _ok(_repos(0)))])
     result = await _handler(
         fake, _overlay(ModelRunnerGroupEntry(organization=_ORG, group_id=_GROUP))

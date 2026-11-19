@@ -118,7 +118,7 @@ class _Handler(BaseHTTPRequestHandler):
                 200,
                 {
                     "allows_public_repositories": s.allows_public,
-                    "restricted_to_selected_workflows": s.restricted,
+                    "restricted_to_workflows": s.restricted,
                     "selected_workflows": s.selected,
                 },
             )
