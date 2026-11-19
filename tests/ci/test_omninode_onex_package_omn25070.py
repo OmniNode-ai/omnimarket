@@ -159,5 +159,6 @@ def test_release_workflow_has_its_own_tag_and_checks_the_installer_pin() -> None
         str(step.get("run", "")) for step in onex["jobs"]["release"]["steps"]
     )
     assert "packages/omninode-onex/pyproject.toml" in steps
-    assert "packages/omninode-onex/install.sh" in steps
+    assert "packages/omninode-onex/installer.json" in steps
+    assert "node_onex_installer_render_compute.runtime_onex_installer_render" in steps
     assert "verify_pypi_pin_resolvability.py dist/" in steps

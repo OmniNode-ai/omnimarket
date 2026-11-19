@@ -1,6 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The customer installer packages/omninode-onex/install.sh (OMN-25070, AC4).
+"""The customer installer, rendered by node_onex_installer_render_compute (OMN-25070, AC4).
+
+The script is the node's output for packages/omninode-onex/installer.json, or the
+file named by ONEX_TEST_INSTALL_SCRIPT when a workflow rendered it already.
 
 Every case pipes the script into bash, as `curl -fsSL .../install.sh | bash`
 does, so nothing may depend on the script having a file path.
@@ -28,7 +31,27 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_DIR = REPO_ROOT / "packages" / "omninode-onex"
-SCRIPT = PACKAGE_DIR / "install.sh"
+INSTALLER_REQUEST = PACKAGE_DIR / "installer.json"
+
+
+def _render() -> str:
+    supplied = os.environ.get("ONEX_TEST_INSTALL_SCRIPT")
+    if supplied:
+        return Path(supplied).read_text(encoding="utf-8")
+    from omnimarket.nodes.node_onex_installer_render_compute.handlers.handler_onex_installer_render import (
+        HandlerOnexInstallerRender,
+    )
+    from omnimarket.nodes.node_onex_installer_render_compute.models.model_onex_installer import (
+        ModelOnexInstallerRequest,
+    )
+
+    request = ModelOnexInstallerRequest.model_validate_json(
+        INSTALLER_REQUEST.read_text(encoding="utf-8")
+    )
+    return HandlerOnexInstallerRender().handle(request).script
+
+
+SCRIPT_TEXT = _render()
 TARGETS = (
     "aarch64-apple-darwin",
     "x86_64-apple-darwin",
@@ -66,7 +89,7 @@ def _run(
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["/bin/bash"],
-        input=script if script is not None else SCRIPT.read_text(),
+        input=script if script is not None else SCRIPT_TEXT,
         env=env,
         capture_output=True,
         text=True,
@@ -76,16 +99,20 @@ def _run(
 
 
 def _script_value(name: str) -> str:
-    match = re.search(rf'^{name}="([^"]*)"$', SCRIPT.read_text(), re.MULTILINE)
+    match = re.search(rf'^{name}="([^"]*)"$', SCRIPT_TEXT, re.MULTILINE)
     assert match, name
     return match.group(1)
 
 
 @pytest.mark.unit
 def test_script_parses_under_the_system_bash() -> None:
-    assert SCRIPT.read_text().startswith("#!/usr/bin/env bash\n")
+    assert SCRIPT_TEXT.startswith("#!/usr/bin/env bash\n")
     parsed = subprocess.run(
-        ["/bin/bash", "-n", str(SCRIPT)], capture_output=True, text=True, check=False
+        ["/bin/bash", "-n"],
+        input=SCRIPT_TEXT,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert parsed.returncode == 0, parsed.stderr
 
@@ -96,7 +123,8 @@ def test_shellcheck_is_clean() -> None:
     if shellcheck is None:
         pytest.skip("shellcheck is not installed")
     checked = subprocess.run(
-        [shellcheck, "-s", "bash", str(SCRIPT)],
+        [shellcheck, "-s", "bash", "-"],
+        input=SCRIPT_TEXT,
         capture_output=True,
         text=True,
         check=False,
@@ -110,7 +138,7 @@ def test_pins_match_the_package_and_every_target_has_a_checksum() -> None:
         version = tomllib.load(stream)["project"]["version"]
     assert _script_value("ONEX_VERSION") == version
     assert _script_value("ONEX_PACKAGE") == "omninode-onex"
-    text = SCRIPT.read_text()
+    text = SCRIPT_TEXT
     for target in TARGETS:
         match = re.search(rf'{re.escape(target)}\) echo "([0-9a-f]*)"', text)
         assert match, target
@@ -195,7 +223,7 @@ def test_intel_mac_needs_the_build_tools(tmp_path: Path, tools_state: str) -> No
 def test_help_works_when_piped(tmp_path: Path) -> None:
     result = subprocess.run(
         ["/bin/bash", "-s", "--", "--help"],
-        input=SCRIPT.read_text(),
+        input=SCRIPT_TEXT,
         env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"},
         capture_output=True,
         text=True,
@@ -348,7 +376,7 @@ def test_install_reinstall_and_upgrade_for_real(tmp_path: Path) -> None:
         timeout=600,
     )
     assert built.returncode == 0, built.stderr
-    newer_script = SCRIPT.read_text().replace(
+    newer_script = SCRIPT_TEXT.replace(
         f'ONEX_VERSION="{current}"', f'ONEX_VERSION="{newer}"'
     )
     upgraded = _run({**env, "ONEX_INSTALL_FIND_LINKS": str(wheels)}, newer_script, 1800)

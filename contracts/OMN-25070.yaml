@@ -32,13 +32,14 @@ requirements:
     acceptance:
       - id: AC4
         statement: >-
-          AC4 (testing-phase form): packages/omninode-onex/install.sh, piped into bash, maps macOS arm64
+          AC4 (testing-phase form): the installer node_onex_installer_render_compute renders from
+          packages/omninode-onex/installer.json, piped into bash, maps macOS arm64
           and x86_64 and Linux x86_64 and arm64 to the right uv build and refuses anything else (Windows
           names WSL); never runs a uv archive whose sha256 differs from the value in the script; refuses,
           naming the file and leaving it unchanged, when a launcher it did not install is in uv's bin
           directory; and installs, reinstalls and upgrades leaving exactly onex and omni-agent on PATH --
           falsifier: uv run pytest tests/ci/test_omninode_onex_install_sh_omn25070.py fails on omnimarket
-          dev, where the script does not exist; the real install cases run with ONEX_TEST_ONEX_WHEEL set,
+          dev, where neither the node nor its request exists; the real install cases run with ONEX_TEST_ONEX_WHEEL set,
           on each platform in .github/workflows/onex-installer.yml.
 evidence_requirements:
   - kind: tests

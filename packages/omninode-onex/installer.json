@@ -1,0 +1,14 @@
+{
+  "package": "omninode-onex",
+  "version": "0.0.1.post1",
+  "python": "3.12",
+  "launchers": ["onex", "omni-agent"],
+  "uv_version": "0.13.8",
+  "uv_min_version": "0.8.0",
+  "uv_sha256": {
+    "aarch64-apple-darwin": "6b71028a6b904f2ae3340ef52e595512de807d06c0a20eaef2f692581b246558",
+    "x86_64-apple-darwin": "a04c2ffeac28b2003a2c13caf538ab425fcd7def3e4a41571f4a8fb370a66af3",
+    "x86_64-unknown-linux-gnu": "5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91",
+    "aarch64-unknown-linux-gnu": "74f2f5c6024d397481db228db8fc25eed420db192243f88438c118e7e013e585"
+  }
+}

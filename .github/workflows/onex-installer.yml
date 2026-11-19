@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 name: onex installer
 
-# Runs packages/omninode-onex/install.sh for real on each launch platform:
+# Runs the customer installer (rendered by node_onex_installer_render_compute
+# from packages/omninode-onex/installer.json) for real on each launch platform:
 # a clean install with no uv on PATH (the script downloads and verifies its
 # pinned uv), a reinstall, and an upgrade, plus the platform, checksum and
 # conflict cases. The omninode-onex wheel is built from this commit and found
@@ -19,6 +20,7 @@ on:
   pull_request:
     paths:
       - packages/omninode-onex/**
+      - src/omnimarket/nodes/node_onex_installer_render_compute/**
       - tests/ci/test_omninode_onex_install_sh_omn25070.py
       - .github/workflows/onex-installer.yml
   workflow_dispatch:
@@ -47,8 +49,8 @@ jobs:
         shell: bash
         run: |
           wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
-          ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
-            uvx --python 3.12 --with pytest pytest -o addopts="" --noconftest \
+          PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest --with pydantic pytest -o addopts="" --noconftest \
             -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py
 
   linux-arm64:
@@ -71,8 +73,8 @@ jobs:
         shell: bash
         run: |
           wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
-          ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
-            uvx --python 3.12 --with pytest pytest -o addopts="" --noconftest \
+          PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest --with pydantic pytest -o addopts="" --noconftest \
             -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py
 
   macos-arm64:
@@ -95,8 +97,8 @@ jobs:
         shell: bash
         run: |
           wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
-          ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
-            uvx --python 3.12 --with pytest pytest -o addopts="" --noconftest \
+          PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest --with pydantic pytest -o addopts="" --noconftest \
             -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py
 
   macos-intel:
@@ -126,6 +128,6 @@ jobs:
         shell: bash
         run: |
           wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
-          ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
-            uvx --python 3.12 --with pytest pytest -o addopts="" --noconftest \
+          PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest --with pydantic pytest -o addopts="" --noconftest \
             -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py

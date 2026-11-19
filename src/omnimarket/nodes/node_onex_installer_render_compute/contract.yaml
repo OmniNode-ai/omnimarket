@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - onex Installer Render Compute (OMN-25070)
+#
+# Renders the customer installer behind `curl -fsSL https://omninode.ai/install.sh | bash` from one release's pinned
+# values. The handler is pure; the release workflow feeds packages/omninode-onex/installer.json on stdin through the
+# runtime module and attaches the output to the GitHub Release.
+name: node_onex_installer_render_compute
+contract_name: node_onex_installer_render_compute
+node_name: node_onex_installer_render_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Renders the Bash installer for the customer package omninode-onex from the package name and version, the Python
+  minor version, the launchers the install leaves on PATH, and the pinned uv release with the sha256 of each platform
+  archive. Every value is validated before any script text exists; a placeholder that is not unique in the template is
+  refused. No clock, no state, no I/O in the handler.
+
+handler:
+  module: omnimarket.nodes.node_onex_installer_render_compute.handlers.handler_onex_installer_render
+  class: HandlerOnexInstallerRender
+  input_model: omnimarket.nodes.node_onex_installer_render_compute.models.model_onex_installer.ModelOnexInstallerRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: render_onex_installer
+      handler:
+        name: HandlerOnexInstallerRender
+        module: omnimarket.nodes.node_onex_installer_render_compute.handlers.handler_onex_installer_render
+      input_model: omnimarket.nodes.node_onex_installer_render_compute.models.model_onex_installer.ModelOnexInstallerRequest
+      output_model: omnimarket.nodes.node_onex_installer_render_compute.models.model_onex_installer.ModelOnexInstallerResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+
+input_model:
+  name: ModelOnexInstallerRequest
+  module: omnimarket.nodes.node_onex_installer_render_compute.models.model_onex_installer
+  description: The release's pinned values - package, version, Python, launchers, uv version and archive checksums.
+output_model:
+  name: ModelOnexInstallerResult
+  module: omnimarket.nodes.node_onex_installer_render_compute.models.model_onex_installer
+  description: The installer script and its sha256.

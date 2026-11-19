@@ -3,7 +3,7 @@
 name: Release omninode-onex
 
 # Publishes the customer package packages/omninode-onex to PyPI and attaches
-# its installer. Its own tag, omninode-onex-v<version>, so it never fires with
+# its installer, rendered by node_onex_installer_render_compute. Its own tag, omninode-onex-v<version>, so it never fires with
 # omnimarket's v<version> release tags (release.yml). The steps follow
 # release.yml: clean tree, tag equals the package version, wheel and sdist,
 # the PyPI pin-resolvability gate before anything is published, an idempotent
@@ -67,15 +67,24 @@ jobs:
             echo "::error::tag $TAG does not match omninode-onex-v$VERSION"
             exit 1
           fi
-          PINNED="$(sed -n 's/^ONEX_VERSION="\(.*\)"$/\1/p' packages/omninode-onex/install.sh)"
+          PINNED="$(python3 -c "import json;print(json.load(open('packages/omninode-onex/installer.json'))['version'])")"
           if [ "$PINNED" != "$VERSION" ]; then
-            echo "::error::install.sh pins $PINNED, the package is $VERSION"
+            echo "::error::installer.json pins $PINNED, the package is $VERSION"
             exit 1
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Build wheel + sdist
         run: uv build --out-dir dist packages/omninode-onex
+
+      # The installer is rendered by node_onex_installer_render_compute from the
+      # release's pinned values (the repository holds no shell script), before
+      # anything is published, so a bad render stops the release.
+      - name: Render the installer
+        run: |
+          uv run --frozen python -m omnimarket.nodes.node_onex_installer_render_compute.runtime_onex_installer_render \
+            < packages/omninode-onex/installer.json > dist/install.sh
+          grep -qx "ONEX_VERSION=\"$(python3 -c "import json;print(json.load(open('packages/omninode-onex/installer.json'))['version'])")\"" dist/install.sh
 
       - name: Verify PyPI dependency-pin resolvability
         env:
@@ -93,9 +102,7 @@ jobs:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
 
       - name: Generate checksums
-        run: |
-          cp packages/omninode-onex/install.sh dist/install.sh
-          sha256sum dist/*.whl dist/*.tar.gz dist/install.sh > dist/SHA256SUMS.txt
+        run: sha256sum dist/*.whl dist/*.tar.gz dist/install.sh > dist/SHA256SUMS.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2
