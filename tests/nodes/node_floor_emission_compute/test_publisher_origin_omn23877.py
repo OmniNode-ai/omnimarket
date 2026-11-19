@@ -36,6 +36,7 @@ REAL = {
         "real"
     },
     "node_host_drain_effect/handlers/handler_host_drain.py": {"real"},
+    "node_host_down_reading_effect/handlers/handler_host_down_reading.py": {"real"},
     "node_host_drain_effect/handlers/handler_idle_runner_stop.py": {"real"},
 }
 

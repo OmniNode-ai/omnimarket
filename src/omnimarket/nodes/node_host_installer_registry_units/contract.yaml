@@ -784,6 +784,43 @@ units:
     required_environment_inputs: [ONEX_LEDGER_HOST_NAME]
     evidence_file: .local/state/omni/pilot-measurement/last-run.json
     state_directory: .onex_state/pilot-measurement
+  # The node's daily read of the copies of the lab host table; its copies, row lane and ledger route are in the node's
+  # overlay (found under ONEX_SKILL_OVERLAY_ROOTS); the unit holds only where the appender and host name are on this host (OMN-25159).
+  host-table-copies-drift-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-host-table-copies-drift
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 86400
+      run_timeout_s: 120
+      run_at_load: false
+      description: every 86400 s
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_host_table_copies_drift_compute.runtime_host_table_copies_drift_tick
+    entry_file: src/omnimarket/nodes/node_host_table_copies_drift_compute/runtime_host_table_copies_drift_tick.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    environment_inputs:
+      ONEX_LEDGER_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_LEDGER_HOST_NAME]
+    evidence_file: .local/state/omni/host-table-copies-drift/last-run.json
+    state_directory: .onex_state/host-table-copies-drift
   # The R2 delegation scenario's tick: the scenario's settings are not in the unit (the tick reads them from the
   # secret store through the host's machine identity), and the optional environment file may hold overrides.
   scenario-r2-systemd:

@@ -135,10 +135,14 @@ def metering_record_from_row(row: Mapping[str, Any]) -> ModelMeteringRecord | No
     usage = row.get(METERING_USAGE_COLUMN, "measured")
     unrecorded_tokens = (tokens_in == 0 and tokens_out == 0) or usage is None
 
+    # OMN-24615 AC6: group by the model that ran; the routing alias is its own field.
+    model = str(row["model_name"] or row["delegated_to"] or "")
+    alias = str(row["delegated_to"] or "")
     return ModelMeteringRecord(
         correlation_id=str(row["correlation_id"]),
         occurred_at=occurred_at,
-        model=str(row["delegated_to"] or row["model_name"] or ""),
+        model=model,
+        backend=alias if alias and alias != model else None,
         task_type=str(row["task_type"] or ""),
         tokens_in=None if unrecorded_tokens else tokens_in,
         tokens_out=None if unrecorded_tokens else tokens_out,
