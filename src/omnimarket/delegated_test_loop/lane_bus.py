@@ -25,7 +25,7 @@ from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Literal
 
-from omnibase_infra.errors import InfraConnectionError
+from omnibase_infra.errors import InfraConnectionError, InfraTimeoutError
 
 from omnimarket.delegated_test_loop.lab_run_bus import (
     FocusedRunBusCaller,
@@ -73,7 +73,12 @@ async def open_lab_run_bus(
     kafka_bootstrap: str | None,
     omni_home: Path | None,
 ) -> AsyncIterator[ProtocolLabRunBus]:
-    """Open and start the bus; close it on exit."""
+    """Open and start the bus; close it on exit.
+
+    A lane whose declaration carries ``broker_fallbacks`` opens through its declared ``broker`` first and
+    then each fallback in order, each bounded by ``broker_fallback.CONNECT_TIMEOUT_S`` (OMN-20540). The address that carried
+    the bus is logged; when none answers the open fails with every address named.
+    """
     if bus == "inmemory":
         if lane is not None or kafka_bootstrap is not None:
             raise LabRunBusError(
@@ -101,6 +106,9 @@ async def open_lab_run_bus(
         bind_lane_client_transport,
     )
 
+    from omnimarket.handlers.bus_binding import broker_fallback
+    from omnimarket.models.bus_binding import ModelBrokerFallback
+
     try:
         target = resolve_lane_target(
             bus="kafka", lane=lane, kafka_bootstrap=kafka_bootstrap, omni_home=omni_home
@@ -113,23 +121,67 @@ async def open_lab_run_bus(
     bootstrap = target.bootstrap_servers if target is not None else kafka_bootstrap
     if not bootstrap:
         raise LabRunBusError("no broker address was resolved")
-    binding = (
-        bind_lane_client_transport(transport)
-        if transport is not None
-        else contextlib.nullcontext()
-    )
-    with binding:
-        kafka = EventBusKafka.from_bootstrap(bootstrap)
+    candidates = [ModelBrokerFallback(bootstrap=bootstrap)]
+    if target is not None:
         try:
-            await kafka.start()
-        except InfraConnectionError as exc:
-            # OMN-20275: a refused or unreachable broker is the bus being unavailable (exit 69 at every
-            # caller), never an uncaught traceback that a ledger writer cannot tell from a crash.
-            raise LabRunBusError(f"{type(exc).__name__}: {exc}") from exc
+            candidates.extend(
+                broker_fallback.load_broker_fallbacks(
+                    target.declared_in, target.lane, bootstrap
+                )
+            )
+        except ValueError as exc:
+            raise LabRunBusError(str(exc)) from exc
+
+    @contextlib.asynccontextmanager
+    async def open_one(
+        candidate: ModelBrokerFallback,
+    ) -> AsyncIterator[ProtocolLabRunBus]:
+        # The lane's login is resolved for the lane; the address chosen only says where it is spoken.
         try:
-            yield kafka
-        finally:
-            await kafka.close()
+            candidate_transport = (
+                transport
+                if target is None or candidate.bootstrap == bootstrap
+                else resolve_lane_client_transport_for(
+                    lane_target=target.model_copy(
+                        update={"bootstrap_servers": candidate.bootstrap}
+                    ),
+                    onex_home=Path.home() / ".onex",
+                    environ=os.environ,
+                )
+            )
+        except DelegateLaneCredentialError as exc:
+            raise LabRunBusError(str(exc)) from exc
+        binding = (
+            bind_lane_client_transport(candidate_transport)
+            if candidate_transport is not None
+            else contextlib.nullcontext()
+        )
+        with binding:
+            kafka = EventBusKafka.from_bootstrap(candidate.bootstrap)
+            try:
+                await kafka.start()
+            except (InfraConnectionError, InfraTimeoutError) as exc:
+                # OMN-20275: a refused or unreachable broker is the bus being unavailable (exit 69 at every
+                # caller), never an uncaught traceback that a ledger writer cannot tell from a crash.
+                with contextlib.suppress(Exception):
+                    await kafka.close()
+                raise LabRunBusError(f"{type(exc).__name__}: {exc}") from exc
+            except BaseException:
+                # cancelled by the bounded wait for this address: release the client before the next
+                with contextlib.suppress(Exception):
+                    await kafka.close()
+                raise
+            try:
+                yield kafka
+            finally:
+                await kafka.close()
+
+    async with broker_fallback.open_in_order(
+        lane=lane or "",
+        candidates=candidates,
+        open_one=open_one,
+    ) as opened:
+        yield opened
 
 
 class LabRunBridge:

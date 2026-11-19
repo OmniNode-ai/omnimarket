@@ -1,0 +1,68 @@
+schema_version: 1.0.0
+ticket_id: OMN-20540
+title: The ledger serve reaches the dev broker by its LAN address when the tailnet name does not answer, and says which address it used
+summary: "Interim for the ledger file writer: a lane declares a second address of the same broker listener, the bus opens through it after a bounded wait on the first, and the address used is logged. No spool, no change to the file path."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn20540-broker-address-fallback
+    statement: A lane that declares broker_fallbacks opens its bus through the next declared address when the first does not answer, names the address it used, and fails closed naming every address when none answers.
+    acceptance:
+      - id: AC1
+        statement: "AC1: with the first declared address failing, the bus opens through the declared second address under the lane's own login, the switch is a warning that carries a count, and the advertised broker name is dialled at the declared address only while that connection is open -- falsifier: `uv run pytest tests/unit/bus_binding/test_broker_fallback_address.py -q -k second_carries_the_bus` exits non-zero on omnimarket dev and exits 0 on the fix"
+      - id: AC2
+        statement: "AC2: with both addresses unreachable, the open fails with a non-zero exit (serve exits 69) and the message names both addresses -- falsifier: `uv run pytest tests/unit/bus_binding/test_broker_fallback_address.py -q -k 'both_addresses_down or serve_exits_69'` exits non-zero on omnimarket dev and exits 0 on the fix"
+      - id: AC3
+        statement: "AC3: a malformed broker_fallbacks declaration is refused with a message that names broker_fallbacks, and a lane that declares none opens exactly as before -- falsifier: `uv run pytest tests/unit/bus_binding/test_broker_fallback_address.py -q -k 'malformed_declaration or no_declared_fallback or explicit_kafka_bootstrap'` exits non-zero on omnimarket dev and exits 0 on the fix"
+evidence_requirements:
+  - kind: tests
+    description: Run the repository evidence tests.
+    command: uv run --frozen pytest tests/unit/bus_binding/test_broker_fallback_address.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn20540-second-address
+    description: "The fake broker client answers only at the second address; the bus opens there, the first client is closed, and the switch is counted."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/bus_binding/test_broker_fallback_address.py -q --no-cov -k second_carries_the_bus
+        cwd: .
+  - id: dod-omn20540-fail-closed
+    description: "Neither address answers; the open raises naming both and the serve command exits 69."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/bus_binding/test_broker_fallback_address.py -q --no-cov -k 'both_addresses_down or serve_exits_69'
+        cwd: .
+  - id: dod-omn20540-declaration-shape
+    description: "Malformed declarations are refused, a lane with no fallback and an explicit bootstrap behave as before."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/bus_binding/test_broker_fallback_address.py -q --no-cov -k 'malformed_declaration or no_declared_fallback or explicit_kafka_bootstrap'
+        cwd: .
+  - id: dod-omn20540-integration-proof
+    description: "Live read on the dev lane: the bus opens through the lane declaration as production wires it (the same opener the ledger serve and append use). Read-only; it publishes nothing."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'env -u PYTHONPATH uv run --frozen python - <<PY
+          import asyncio, os
+          from pathlib import Path
+          from omnimarket.delegated_test_loop.lane_bus import open_lab_run_bus
+          from omnimarket.handlers.bus_binding.select import positional_opener
+          async def main():
+              async with positional_opener(open_lab_run_bus)("kafka", "dev", None, Path(os.environ["ONEX_WORKSPACE_CONFIG_ROOT"])) as bus:
+                  assert bus is not None
+                  print("dev lane bus opened")
+          asyncio.run(main())
+          PY'

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Bus binding models (OMN-20275)."""
 
+from omnimarket.models.bus_binding.model_broker_fallback import ModelBrokerFallback
 from omnimarket.models.bus_binding.model_bus_binding import (
     EnumBusBinding,
     EnumBusBindingState,
@@ -15,6 +16,7 @@ from omnimarket.models.bus_binding.model_bus_binding import (
 __all__ = [
     "EnumBusBinding",
     "EnumBusBindingState",
+    "ModelBrokerFallback",
     "ModelBusBindingDecision",
     "ModelBusBindingOrder",
     "ModelBusBindingResolution",
