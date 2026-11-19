@@ -62,9 +62,9 @@ async def _connect_or_skip() -> asyncpg.Connection:
         OSError,
         asyncpg.PostgresError,
     ) as exc:
-        pytest.skip(
+        raise pytest.skip.Exception(
             f"no reachable Postgres for floor integration write-path proof: {exc}"
-        )
+        ) from exc
 
 
 async def _prepare() -> None:

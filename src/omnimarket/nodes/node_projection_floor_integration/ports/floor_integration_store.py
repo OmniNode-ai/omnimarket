@@ -13,11 +13,14 @@ StoreValue = str | int | float | bool | datetime | None
 
 
 class ProtocolFloorIntegrationStore(Protocol):
-    async def connect(self) -> None: ...
+    async def connect(self) -> None:
+        """Open the store's connection."""
 
-    async def close(self) -> None: ...
+    async def close(self) -> None:
+        """Close the store's connection."""
 
-    async def execute(self, query: str, *params: object) -> list[dict[str, object]]: ...
+    async def execute(self, query: str, *params: object) -> list[dict[str, object]]:
+        """Run one statement and return its rows."""
 
 
 class SqliteFloorIntegrationStore:
