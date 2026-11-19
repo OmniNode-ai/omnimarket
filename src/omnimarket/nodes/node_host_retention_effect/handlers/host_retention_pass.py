@@ -21,6 +21,7 @@ class _Pass:
     errors: list[str] = field(default_factory=list)
     removed: dict[str, int] = field(default_factory=dict)
     freed: dict[str, int] = field(default_factory=dict)
+    archived: dict[str, int] = field(default_factory=dict)
     ran: list[str] = field(default_factory=list)
 
     def keep(self, class_name: str, path: str, reason: str) -> None:
@@ -34,6 +35,9 @@ class _Pass:
     def done(self, class_name: str, freed: int) -> None:
         self.removed[class_name] = self.removed.get(class_name, 0) + 1
         self.freed[class_name] = self.freed.get(class_name, 0) + freed
+
+    def archived_one(self, class_name: str) -> None:
+        self.archived[class_name] = self.archived.get(class_name, 0) + 1
 
     def begin(self, class_name: str) -> None:
         if class_name not in self.ran:
