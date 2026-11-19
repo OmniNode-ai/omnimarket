@@ -32,6 +32,9 @@ from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdi
 from omnimarket.nodes.node_host_reading_effect.handlers.probe_host_canary import (
     read_canary,
 )
+from omnimarket.nodes.node_host_reading_effect.handlers.probe_host_table_copies import (
+    read_host_table_copies,
+)
 from omnimarket.nodes.node_host_reading_effect.handlers.probe_join_j1 import (
     read_join_j1,
 )
@@ -51,6 +54,7 @@ from omnimarket.nodes.node_host_reading_effect.protocols import (
     ProtocolGraphVerdictSource,
     ProtocolHostFiles,
     ProtocolHostInventory,
+    ProtocolHostTableCopies,
 )
 from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute import (
     reason_token,
@@ -101,6 +105,7 @@ class HandlerHostReading:
         adverts: ProtocolAdvertisementSource | None = None,
         graph_source: ProtocolGraphVerdictSource | None = None,
         sink: ProtocolEmissionSink | None = None,
+        table_copies: ProtocolHostTableCopies | None = None,
     ) -> None:
         self._overlay = overlay
         self._host = host
@@ -117,6 +122,7 @@ class HandlerHostReading:
         self._adverts = adverts
         self._graph_source = graph_source
         self._sink = sink
+        self._table_copies = table_copies
         self._nonce_for = nonce_for or (lambda _host: uuid.uuid4().hex[:16])
 
     def handle(self, command: ModelHostReadingCommand) -> ModelHostReadingResult:
@@ -195,6 +201,17 @@ class HandlerHostReading:
                     clock=self._clock,
                     control_correlation_id=f"graph-run-control-{self._nonce_for(self._host)}",
                 )[1]
+            if probe is EnumHostProbe.HOST_TABLE_COPIES:
+                if self._table_copies is None:
+                    return ModelProbeReading(
+                        probe=probe,
+                        verdict=EnumReadingVerdict.UNKNOWN,
+                        outcome=EnumReadingOutcome.SOURCE_UNREADABLE,
+                        reasons=("host-table-copies-ports-not-wired",),
+                    )
+                return read_host_table_copies(
+                    self._table_copies, self._host, self._clock
+                )
             assert self._overlay.old_names is not None
             return read_old_names(self._overlay.old_names, self._files, self._environ)
         except OSError as exc:
@@ -237,6 +254,9 @@ class HandlerHostReading:
         if probe is EnumHostProbe.JOIN_J1:
             assert self._overlay.join_j1 is not None
             return self._overlay.join_j1.injected_fault
+        if probe is EnumHostProbe.HOST_TABLE_COPIES:
+            assert self._overlay.host_table_copies is not None
+            return self._overlay.host_table_copies.injected_fault
         assert self._overlay.old_names is not None
         return self._overlay.old_names.injected_fault
 

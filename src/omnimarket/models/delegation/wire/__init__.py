@@ -152,11 +152,28 @@ def parse_delegation_config_yaml(yaml_text: str) -> ModelDelegationConfig:
                     "routing_tiers.yaml model 'use_for' must be a string or list"
                 )
 
+            # OMN-23631: a rung the file gives no window (the local rungs) takes the
+            # largest input the code budget overlay declares for its backend; an
+            # backend the overlay does not name is a typed refusal naming the key.
+            max_context_tokens = model_data.get("max_context_tokens")
+            if max_context_tokens is None:
+                from omnimarket.handlers.routing.measured_correct_ceiling import (
+                    CodeBudgetOverlayAbsentError,
+                    local_input_window,
+                )
+
+                try:
+                    max_context_tokens = local_input_window(model_data["backend_id"])
+                except CodeBudgetOverlayAbsentError:
+                    # An install no overlay root names declares no local window,
+                    # so the packaged local rung is not offered (a customer's own
+                    # local backend carries its own declaration).
+                    continue
             models.append(
                 ModelTierModel(
                     id=model_data["id"],
                     backend_ref=model_data["backend_id"],
-                    max_context_tokens=model_data["max_context_tokens"],
+                    max_context_tokens=max_context_tokens,
                     use_for=use_for,
                     fast_path_threshold_tokens=model_data.get(
                         "fast_path_threshold_tokens"
