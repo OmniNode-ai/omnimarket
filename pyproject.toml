@@ -803,6 +803,8 @@ node_host_capability_compute = "omnimarket.nodes.node_host_capability_compute"
 node_host_capacity_compute = "omnimarket.nodes.node_host_capacity_compute"
 node_host_disk_decision_compute = "omnimarket.nodes.node_host_disk_decision_compute"
 node_host_disk_orchestrator = "omnimarket.nodes.node_host_disk_orchestrator"
+node_host_down_compute = "omnimarket.nodes.node_host_down_compute"
+node_host_down_reading_effect = "omnimarket.nodes.node_host_down_reading_effect"
 node_host_drain_effect = "omnimarket.nodes.node_host_drain_effect"
 node_host_drift_check_effect = "omnimarket.nodes.node_host_drift_check_effect"
 node_host_drift_fleet = "omnimarket.nodes.node_host_drift_fleet"
@@ -2056,9 +2058,9 @@ force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.y
 # the pin means replacing those parts too: delete the old ones, then run
 # `split -b 720000 -d <asset> <asset>.part-` in that directory. A test names the
 # pin and the parts that disagree.
-version = "v1.1.13"
-sha256 = "9171c1815d8145e6b93a395105d07e4d14b5ef80241bf647ed09b86688978cd6"
-asset = "omnidash-bundle-v1.1.13.tar.gz"
+version = "v1.1.14"
+sha256 = "f3718ee217f739ab7a0a00c01d07d887fba1ff01ad3b6663ceb6773e4c2441c5"
+asset = "omnidash-bundle-v1.1.14.tar.gz"
 repository = "OmniNode-ai/omnidash"
 
 [tool.hatch.build]
