@@ -24,8 +24,8 @@ pytestmark = pytest.mark.unit
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LOCK_PATH = REPO_ROOT / "uv.lock"
 INFRA_LOCK_URL = (
-    "omnibase_infra.git?tag=dev-20261113053642-6cea249fb8cf"
-    "#6cea249fb8cf7723c845db9fcb51680e6400cdf3"
+    "omnibase_infra.git?tag=dev-20261119084520-fe82074c1a23"
+    "#fe82074c1a23731ae8a2631c2baa15d2694676e4"
 )
 CONTRACTS_GLOB = "src/omnimarket/configs/work_contracts/contracts/*.yaml"
 LOCK_PIN_MARKER = "path: uv.lock"
