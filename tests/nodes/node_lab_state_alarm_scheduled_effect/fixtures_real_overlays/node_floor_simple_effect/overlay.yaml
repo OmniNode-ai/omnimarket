@@ -1,0 +1,41 @@
+# Overlay of node_floor_simple_effect (OMN-22478, 17a): the lab sources the floor reads and the line each must stay inside.
+# Loaded into ModelLabStateOverlay. Every source has a reading with a 15-minute maximum age (plan 3.5, W23): a source that
+# is unread, failing or older than max_age_s draws NOT WORKING, never blank.
+#
+# The limits below are proposals of the 17a lane, not rulings: disk 10 GB is the admission floor the pool read already
+# applies; queue age 60 minutes is the plan's "no eligible head older than an hour"; deploy lag 1440 minutes is a day.
+sources:
+  - {id: hosts, title: Lab hosts, kind: hosts, max_age_s: 900}
+  - {id: runner_groups, title: CI runner groups, kind: runner_groups, max_age_s: 900, limit: 0, unit: offline runners}
+  - {id: disk, title: Host disk, kind: disk, max_age_s: 900, limit: 10, unit: GB free}
+  - {id: queue_age, title: Merge queue age, kind: queue_age, max_age_s: 900, limit: 60, unit: minutes}
+  - {id: deploy_lag, title: Deploy lag, kind: deploy_lag, max_age_s: 900, limit: 1440, unit: minutes}
+  - {id: broker_lag, title: Broker lag, kind: broker_lag, max_age_s: 900}
+  - {id: overlay_store, title: Overlay store, kind: overlay_store, max_age_s: 900}
+  - {id: deploy_agent, title: Dev deploy agent, kind: deploy_agent, max_age_s: 900, limit: 2, unit: failed deploys in a row}
+
+# Which disk figures of the pool read count (the lowest free figure of these decides).
+disk_keys: [disk_workdir, disk_lanetmp]
+# Which conditions of the lab alarm's last run make up the broker reading.
+broker_conditions: [consumer_group_lag, broker_listener]
+# Which watcher classes count as green and waiting for the queue age.
+queue_age_classes: [green-unarmed, queue-stuck]
+deploy_lag_lookback_days: 2
+# The longest one dev merge may wait from merge to running; past it the deploy_lag row reads NOT WORKING by itself, whatever the
+# source's own limit says. 150 minutes is ruling 2026-11-12T15:51:18Z (D12). The key is read by omnimarket 5921 (the lab-state overlay model).
+deploy_lag_ceiling_minutes: 150
+# The runner fleet producer does not report a runner version yet; when it does, set this true and a missing version fails.
+require_runner_version: false
+# A host the operator declared out or in repair is not a failing host.
+declared_host_states: [out, repair]
+# A green pull request whose merge state is one of these has a conflicting branch and cannot be armed; it is not waiting.
+conflict_merge_states: [DIRTY]
+# The host table and plan rules that split the offline runners into parked on purpose and real problems (plan section 8).
+# The longest name prefix decides; host is a machine of the floor record, and a family on a machine the host table declares out or
+# in repair is parked as one line for that machine. A family that is meant to run and is offline on a machine in no such state stays
+# red and says what restores it; an offline runner that no row names stays red.
+# The dev deploy agent the deploy_agent source reads (its /health and /job answers), how many finished jobs the floor keeps
+# of what it saw, and how long one read may wait. The source reads red when the last `limit` finished jobs all failed.
+deploy_agent_url: http://deploy-agent.invalid:8098
+deploy_agent_history: 50
+deploy_agent_timeout_s: 10
