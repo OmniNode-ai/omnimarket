@@ -144,6 +144,8 @@ not_routing_resolution_sites:
     reason: finds the overlay document that names the secret env file destination and the environment variable names to write; it chooses no backend, model, tier or provider
   - site: "src/omnimarket/handlers/goal_scope_overlay.py:find_node_overlay(overlay_id)"
     reason: finds the goal scope ticket rule and ticket scope overlay documents, store first and then the plugin path, to read the goal's root tickets, depth and listed projects for the goal-scope admission; it chooses no backend, model, tier or provider
+  - site: "src/omnimarket/nodes/node_host_reconcile_effect/handlers/clone_lock_state.py:find_node_overlay('node_host_reconcile_effect')"
+    reason: finds the host reconcile overlay to read the extra persistent flock file names of the clone lock policy; it judges which lock files a clone keeps and chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_host_tree_install_effect/handlers/handler_tree_install.py:resolve_overlay_file(NODE_DIR.name)"
     reason: maps caller-owned source and installation roots to relative tree directories; it chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_overlay_drift_effect/runtime_overlay_drift.py:find_node_overlay(NODE_NAME)"
