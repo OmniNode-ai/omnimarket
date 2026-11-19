@@ -56,6 +56,9 @@ from omnimarket.nodes.node_host_reading_effect.adapters.graph_verdict_source imp
     GraphBuildingVerdictSource,
 )
 from omnimarket.nodes.node_host_reading_effect.adapters.host_files import LocalHostFiles
+from omnimarket.nodes.node_host_reading_effect.adapters.host_table_copies import (
+    DriftNodeCopies,
+)
 from omnimarket.nodes.node_host_reading_effect.handlers.handler_host_reading import (
     HandlerHostReading,
 )
@@ -182,6 +185,7 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         adverts=_adverts(overlay),
         graph_source=graph_source,
         sink=sink,
+        table_copies=DriftNodeCopies(os.environ),
     )
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = handler.handle(
