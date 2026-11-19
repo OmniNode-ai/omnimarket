@@ -44,17 +44,7 @@ from omnimarket.nodes.node_git_query_mirror_effect.models.model_git_query_mirror
 )
 
 _DEFAULT_OWNER = "OmniNode-ai"
-_COMMANDS: dict[str, EnumGitQueryOperation] = {
-    "sync": EnumGitQueryOperation.SYNC,
-    "status": EnumGitQueryOperation.STATUS,
-    "head-sha": EnumGitQueryOperation.HEAD_SHA,
-    "changed-files": EnumGitQueryOperation.CHANGED_FILES,
-    "diff": EnumGitQueryOperation.DIFF,
-    "conflicts": EnumGitQueryOperation.CONFLICTS,
-    "on-base": EnumGitQueryOperation.ON_BASE,
-    "log": EnumGitQueryOperation.LOG,
-    "is-ancestor": EnumGitQueryOperation.IS_ANCESTOR,
-}
+_COMMANDS = {op.value.replace("_", "-"): op for op in EnumGitQueryOperation}
 
 
 def _slug(repo: str) -> str:
@@ -90,35 +80,17 @@ def main(argv: list[str] | None = None) -> int:
         help="owner/name or bare name (owner defaults to OmniNode-ai); repeat for sync/status.",
     )
     parser.add_argument("--pr", type=int, default=None, help="PR number.")
-    parser.add_argument(
-        "--base", default=None, help="Base branch (default: the repo default branch)."
-    )
-    parser.add_argument(
-        "--ancestor",
-        default=None,
-        help="is-ancestor only: the candidate ancestor commit sha (40 hex).",
-    )
-    parser.add_argument(
-        "--descendant",
-        default=None,
-        help="is-ancestor only: the candidate descendant commit sha (40 hex).",
-    )
+    parser.add_argument("--base", help="Base branch (default: the repo default).")
+    parser.add_argument("--ancestor", help="is-ancestor only: ancestor sha.")
+    parser.add_argument("--descendant", help="is-ancestor only: descendant sha.")
     parser.add_argument(
         "--max-age",
         type=int,
         default=DEFAULT_MAX_AGE_S,
         help="Seconds; an older mirror refreshes the PR ref by git fetch first (0 = always).",
     )
-    parser.add_argument(
-        "--no-gh-fallback",
-        action="store_true",
-        help="Never call the GitHub API; report unavailable instead.",
-    )
-    parser.add_argument(
-        "--text",
-        action="store_true",
-        help="Print the raw diff (diff) or one path per line (changed-files) instead of JSON.",
-    )
+    parser.add_argument("--no-gh-fallback", action="store_true", help="No GitHub API.")
+    parser.add_argument("--text", action="store_true", help="Raw diff/paths, not JSON.")
     args = parser.parse_args(argv)
     op = _COMMANDS[args.command]
     if op is not EnumGitQueryOperation.IS_ANCESTOR and (
