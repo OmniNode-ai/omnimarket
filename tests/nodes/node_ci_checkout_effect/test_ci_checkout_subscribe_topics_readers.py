@@ -51,9 +51,9 @@ def contract_path() -> Path:
 
 @pytest.fixture
 def contract(contract_path: Path) -> dict[str, Any]:
-    loaded = yaml.safe_load(contract_path.read_text())
+    loaded: dict[str, Any] = dict(yaml.safe_load(contract_path.read_text()))
     assert loaded["event_bus"]["subscribe_topics"] == []
-    return loaded  # type: ignore[no-any-return]
+    return loaded
 
 
 def test_subscribe_topics_readers_contract_topics_helper_reads_an_empty_list(

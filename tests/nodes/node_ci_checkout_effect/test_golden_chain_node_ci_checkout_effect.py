@@ -481,4 +481,5 @@ async def test_ci_checkout_golden_consumer_read_works_on_the_kafka_bus() -> None
 
     bus = EventBusKafka.from_bootstrap("127.0.0.1:1")
     assert not hasattr(bus, "get_subscriber_count")
-    assert await _consumers_on(bus, load_topics().command) == 0  # type: ignore[arg-type]
+    kafka_bus: Any = bus
+    assert await _consumers_on(kafka_bus, load_topics().command) == 0
