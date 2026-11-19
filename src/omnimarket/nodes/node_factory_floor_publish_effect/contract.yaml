@@ -152,6 +152,9 @@ runtime:
   delegation_tracker_data_relpath: .claude_scratch/factory-floor/delegation-tracker.json
   # The delegation history (models, success series, experiments) the Delegation tab draws, written by node_floor_delegation_history_effect.
   delegation_history_data_relpath: .claude_scratch/factory-floor/delegation-history.json
+  # The age past which the Delegation tab says the history is too old and draws no number from it (seconds). The publisher writes it into
+  # the page in place of the token __HISTORY_MAX_AGE_S__; a page published with the token left in is a script error, never a silent default.
+  delegation_history_max_age_seconds: 10800
   floor_page_relpath: page/floor/index.html
   # The vendored OmniUI compiled theme CSS the page links (pinned by sha256 in page/vendor/omniui/PIN.sha256); each
   # file is published under its own name beside the page, ahead of it, so a reader that gets the page finds its theme.

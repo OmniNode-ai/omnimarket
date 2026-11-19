@@ -96,7 +96,7 @@ def attempts(
     backend: str = "local-a",
     host: str = LOCAL_HOST,
     task: str = "document",
-    cost: float = 0.0,
+    cost: float | None = 0.0,
 ) -> ModelAttemptCounts:
     return ModelAttemptCounts(
         bucket=bucket,
