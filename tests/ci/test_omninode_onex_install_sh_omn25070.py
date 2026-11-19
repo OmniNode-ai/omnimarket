@@ -328,7 +328,10 @@ def test_install_reinstall_and_upgrade_for_real(tmp_path: Path) -> None:
     if uv_bin is None:
         pytest.skip("building the upgrade wheel needs uv on PATH")
     current = _script_value("ONEX_VERSION")
-    newer = current.rsplit(".", 1)[0] + "." + str(int(current.rsplit(".", 1)[1]) + 1)
+    # Bump the trailing number: 0.0.2 -> 0.0.3, 0.0.1.post1 -> 0.0.1.post2.
+    trailing = re.search(r"(\d+)$", current)
+    assert trailing, current
+    newer = current[: trailing.start()] + str(int(trailing.group(1)) + 1)
     package = tmp_path / "newer-package"
     package.mkdir()
     (package / "pyproject.toml").write_text(

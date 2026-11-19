@@ -37,7 +37,7 @@
 set -euo pipefail
 
 ONEX_PACKAGE="omninode-onex"
-ONEX_VERSION="0.0.2"
+ONEX_VERSION="0.0.1.post1"
 ONEX_PYTHON="3.12"
 ONEX_LAUNCHERS="onex omni-agent"
 UV_VERSION="0.13.8"
