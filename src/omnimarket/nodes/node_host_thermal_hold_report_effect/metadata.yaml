@@ -3,7 +3,7 @@
 name: node_host_thermal_hold_report_effect
 version: 0.1.0
 description: >
-  Delivers the queued status rows of the h202 thermal guard's outbox to the rolling ledger and posts one alarm MSG row per thermal hold episode (trip and release) to the overlay's to_lane.
+  Delivers the queued status rows of a host thermal guard's outbox to the rolling ledger and posts one alarm MSG row per thermal hold episode (trip and release) to the overlay's to_lane.
 omnibase_core_compat: '>=0.47.31,<0.48.0'
 entry_points:
   onex.nodes:

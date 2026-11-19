@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import importlib
 import json
 from importlib.resources import files
 from pathlib import Path
@@ -28,15 +27,19 @@ def _contract() -> dict:
 
 
 def _types():
-    contract = _contract()
-    entry = contract["handler_routing"]["handlers"][0]
-    handler_type = getattr(
-        importlib.import_module(entry["handler"]["module"]), entry["handler"]["name"]
+    from omnimarket.nodes.node_host_thermal_hold_report_effect.handlers import (
+        HandlerHostThermalHoldReport,
     )
-    module, _, name = entry["input_model"].rpartition(".")
-    request_type = getattr(importlib.import_module(module), name)
-    module, _, name = entry["output_model"].rpartition(".")
-    return handler_type, request_type, getattr(importlib.import_module(module), name)
+    from omnimarket.nodes.node_host_thermal_hold_report_effect.models import (
+        ModelHostThermalHoldReportRequest,
+        ModelHostThermalHoldReportResult,
+    )
+
+    return (
+        HandlerHostThermalHoldReport,
+        ModelHostThermalHoldReportRequest,
+        ModelHostThermalHoldReportResult,
+    )
 
 
 def test_the_contract_declares_one_report_operation_and_its_terminal_event() -> None:
@@ -48,9 +51,8 @@ def test_the_contract_declares_one_report_operation_and_its_terminal_event() -> 
         == "onex.evt.omnimarket.host-thermal-hold-reported.v1"
     )
     assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
-    routing = contract["handler_routing"]
-    assert routing["routing_strategy"] == "operation_match"
-    assert [entry["operation"] for entry in routing["handlers"]] == ["report"]
+    # The handler takes its ports at construction, so the runtime cannot boot-resolve it: no handler_routing entry.
+    assert "handler_routing" not in contract
 
 
 def test_golden_run_over_the_in_memory_ports(

@@ -16,16 +16,6 @@ description: >
   temperature and what an operator does next; the hourly tick prints such a MSG as a MISSING inbox line. A latch that
   cannot be read, or whose shape changed, is a typed error and never reads as a release. Every setting is the overlay's.
 
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: report
-      handler:
-        name: HandlerHostThermalHoldReport
-        module: omnimarket.nodes.node_host_thermal_hold_report_effect.handlers.handler_host_thermal_hold_report
-      input_model: omnimarket.nodes.node_host_thermal_hold_report_effect.models.model_host_thermal_hold_report.ModelHostThermalHoldReportRequest
-      output_model: omnimarket.nodes.node_host_thermal_hold_report_effect.models.model_host_thermal_hold_report.ModelHostThermalHoldReportResult
-
 descriptor:
   node_archetype: effect
   purity: effectful
