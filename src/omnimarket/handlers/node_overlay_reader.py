@@ -57,7 +57,12 @@ def resolved_overlay_roots(
         registry_root=registry_root,
         home=env.get("HOME") or None,
     )
-    result = HandlerOverlayRootsResolve().handle(request)
+    try:
+        result = HandlerOverlayRootsResolve().handle(request)
+    except OSError:
+        # The resolver reads its packaged contract; when that read fails (for
+        # example descriptor exhaustion) the roots the caller declared still hold.
+        return tuple(declared)
     return tuple(result.paths())
 
 
