@@ -14,7 +14,7 @@ Each test names the failure it exists to catch:
 * a failed test delegation exits 0, or hides the provider's reason;
 * ``list`` shows a provider as set up when it is not, or drops its last result;
 * ``remove`` leaves the key stored;
-* Ollama is reported set up without its local routes.
+* Ollama is offered as a provider of its own, not as a Local Model (OMN-23413).
 
 The test delegation is replaced by a fake that writes a receipt like the one
 ``onex delegate`` writes; the store is a SQLite file under ``tmp_path``.
@@ -30,6 +30,7 @@ import pytest
 from click.testing import CliRunner
 
 from omnimarket.cli.cli_secret import models_group
+from omnimarket.handlers.model_provider_labels import LABEL_WIDTH, MODEL_LABELS
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     registered_local_byok_providers,
@@ -101,6 +102,11 @@ class _FakeDelegate:
         )
 
 
+def _label(provider: str) -> str:
+    """A provider's name as ``onex models`` text output pads it."""
+    return f"{MODEL_LABELS[provider]:<{LABEL_WIDTH}}"
+
+
 def _run(args: list[str], stdin: str | None = None) -> object:
     return CliRunner().invoke(models_group, args, input=stdin)
 
@@ -134,7 +140,7 @@ class TestAdd:
         result = _run(["add", "openai"], stdin=f"{_OPENAI_KEY}\n")
 
         assert fake.pins == ["byok-openai"]
-        assert "OpenAI      ✓ answered (gpt-5-mini)" in result.output
+        assert f"{_label('openai')} ✓ answered (gpt-5-mini)" in result.output
 
     def test_never_echoes_the_key(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -149,7 +155,7 @@ class TestAdd:
         [
             ("gemini", _OPENAI_KEY, "OpenAI"),
             ("openai", "sk-or-v1-abc", "OpenRouter"),
-            ("openrouter", _GEMINI_KEY, "Gemini"),
+            ("openrouter", _GEMINI_KEY, "Google Gemini"),
             ("openai", "sk-ant-abc", "Anthropic"),
         ],
     )
@@ -177,7 +183,7 @@ class TestAdd:
 
         assert result.exit_code == 1
         assert (
-            "OpenAI      ✗ provider_error: insufficient_quota: add credits"
+            f"{_label('openai')} ✗ provider_error: insufficient_quota: add credits"
             in result.output
         )
 
@@ -201,46 +207,42 @@ class TestAdd:
         assert last["status"] == "passed"
         assert last["backend_id"] == "byok-openai"
 
-    def test_ollama_without_its_routes_says_how_to_set_it_up(
+    def test_ollama_is_not_a_provider_of_its_own(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         fake = _fake(monkeypatch, tmp_path)
         result = _run(["add", "ollama"])
 
         assert result.exit_code != 0
-        assert "--provider ollama" in result.output
+        assert "'ollama' is not one of" in result.output
+        assert "ollama" not in _run(["add", "--help"]).output.lower()
         assert fake.pins == []
 
+    def test_a_local_model_without_its_url_says_how_to_add_any_server(self) -> None:
+        result = _run(["add", "local"])
 
-def _write_ollama_routes(db_path: Path, port: int = 11434) -> None:
-    (db_path.parent / "bifrost_overrides.yaml").write_text(
-        "backends:\n"
-        "  - backend_id: local-coder\n"
-        f'    endpoint_url: "http://127.0.0.1:{port}/v1/chat/completions"\n'
-        '    model_name: "qwen3:8b"\n',
-        encoding="utf-8",
-    )
+        assert result.exit_code != 0
+        assert "onex models add local --url <endpoint url>" in result.output
+        assert "ollama" not in result.output.lower()
 
 
-class TestOllama:
-    def test_routes_to_ollama_are_tested_pinned_to_the_local_backend(
+class TestNoOllamaProvider:
+    def test_routes_written_for_an_ollama_port_are_not_a_provider(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, local_store_at_tmp: Path
     ) -> None:
-        _write_ollama_routes(local_store_at_tmp)
-        fake = _fake(monkeypatch, tmp_path)
-        result = _run(["test", "ollama"])
-
-        assert result.exit_code == 0, result.output
-        assert fake.pins == ["local-coder"]
-
-    def test_a_local_route_to_another_server_is_not_ollama(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, local_store_at_tmp: Path
-    ) -> None:
-        _write_ollama_routes(local_store_at_tmp, port=8000)
+        """OMN-23413: Ollama is no provider of its own; only a Local Model by URL is."""
+        (local_store_at_tmp.parent / "bifrost_overrides.yaml").write_text(
+            "backends:\n"
+            "  - backend_id: local-coder\n"
+            '    endpoint_url: "http://127.0.0.1:11434/v1/chat/completions"\n'
+            '    model_name: "qwen3:8b"\n',
+            encoding="utf-8",
+        )
         _fake(monkeypatch, tmp_path)
-        result = _run(["list"])
+        lines = _run(["list"]).output.splitlines()
 
-        assert "Ollama      not set up" in result.output
+        assert f"{_label('local')} not set up" in lines
+        assert not any("ollama" in line.lower() for line in lines)
 
 
 class TestListTestRemove:
@@ -252,12 +254,19 @@ class TestListTestRemove:
         result = _run(["list"])
 
         lines = result.output.splitlines()
-        assert lines[0] == "Gemini      not set up"
-        assert lines[1] == "OpenRouter  not set up"
-        assert lines[2].startswith("OpenAI      set up, last test passed ")
-        assert lines[3] == "Anthropic   not set up"
-        assert lines[4] == "GLM         not set up"
-        assert lines[5] == "Ollama      not set up"
+        # OMN-23413: the TUI's /config order, then the CLI-only providers; one
+        # Local Model row and no Ollama row of its own.
+        assert lines == [
+            f"{_label('gemini')} not set up",
+            lines[1],
+            f"{_label('openrouter')} not set up",
+            f"{_label('reflection')} not set up",
+            f"{_label('local')} not set up",
+            f"{_label('anthropic')} not set up",
+            f"{_label('glm')} not set up",
+            f"{_label('openai_compatible')} not set up",
+        ]
+        assert lines[1].startswith(f"{_label('openai')} set up, last test passed ")
 
     def test_test_with_no_provider_tests_every_set_up_one(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -293,7 +302,7 @@ class TestListTestRemove:
             is None
         )
         assert "openai" not in registered_local_byok_providers()
-        assert "OpenAI      not set up" in _run(["list"]).output
+        assert f"{_label('openai')} not set up" in _run(["list"]).output
 
 
 @pytest.mark.parametrize(
@@ -311,17 +320,6 @@ def test_key_looks_like(key: str, provider: str | None) -> None:
     assert key_looks_like(key) == provider
 
 
-def test_add_ollama_with_its_routes_tests_them(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, local_store_at_tmp: Path
-) -> None:
-    _write_ollama_routes(local_store_at_tmp)
-    fake = _fake(monkeypatch, tmp_path)
-    result = _run(["add", "ollama"])
-
-    assert result.exit_code == 0, result.output
-    assert fake.pins == ["local-coder"]
-
-
 def test_list_json_is_one_object_per_provider(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -333,9 +331,9 @@ def test_list_json_is_one_object_per_provider(
         "gemini",
         "openrouter",
         "openai",
+        "reflection",
         "anthropic",
         "glm",
-        "ollama",
         "local",
         "openai_compatible",
     ]
