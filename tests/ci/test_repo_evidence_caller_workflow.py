@@ -86,10 +86,15 @@ def test_caller_workflow_shape() -> None:
 
 
 _ENV_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*")
+# The one `env` option the binding check reads: it drops a variable and runs the
+# same test. Any other option stays unread, so the command binds nothing.
+_ENV_UNSET_OPTIONS = frozenset({"-u", "--unset"})
 
 
 def _pytest_argv(check_value: str) -> list[str]:
-    """The argv of a `uv run pytest` check, after any leading `env VAR=value` prefix.
+    """The argv of a `uv run pytest` check, after any leading `env` prefix.
+
+    The prefix is `VAR=value` assignments and `-u NAME` / `--unset NAME`.
 
     `env PYTHONDONTWRITEBYTECODE=1 uv run pytest ...` runs the same test as
     `uv run pytest ...`; the verifier accepts both (omnimarket#4317), so the
@@ -98,8 +103,17 @@ def _pytest_argv(check_value: str) -> list[str]:
     tokens = shlex.split(check_value)
     if tokens[:1] == ["env"]:
         tokens = tokens[1:]
-        while tokens and _ENV_ASSIGNMENT.fullmatch(tokens[0]):
-            tokens = tokens[1:]
+        while tokens:
+            if tokens[0] in _ENV_UNSET_OPTIONS:
+                # `-u NAME` / `--unset NAME` consumes the next token (the fleet
+                # runs governed tests as `env -u PYTHONPATH ...`).
+                tokens = tokens[2:]
+            elif tokens[0].startswith("--unset=") or _ENV_ASSIGNMENT.fullmatch(
+                tokens[0]
+            ):
+                tokens = tokens[1:]
+            else:
+                break
     if tokens[:2] != ["uv", "run"]:
         return []
     # `uv run --frozen pytest ...` runs the same test: skip uv's own flags.
@@ -409,6 +423,34 @@ def test_contract_binds_accepts_an_unbound_command_only_deploy_probe() -> None:
         ),
         (
             "uv run --frozen python -m pytest tests/ci/test_repo_evidence_caller_workflow.py",
+            False,
+        ),
+        # env's own `-u NAME` / `--unset NAME` consumes the next token; the fleet
+        # runs every governed test as `env -u PYTHONPATH ...`.
+        (
+            "env -u PYTHONPATH PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -p no:cacheprovider",
+            True,
+        ),
+        (
+            "env -u PYTHONPATH uv run pytest tests/ci/test_repo_evidence_caller_workflow.py",
+            True,
+        ),
+        (
+            "env --unset PYTHONPATH -u VIRTUAL_ENV uv run pytest tests/ci/test_repo_evidence_caller_workflow.py",
+            True,
+        ),
+        (
+            "env --unset=PYTHONPATH uv run pytest tests/ci/test_repo_evidence_caller_workflow.py",
+            True,
+        ),
+        (
+            "env -u PYTHONPATH python -m pytest tests/ci/test_repo_evidence_caller_workflow.py",
+            False,
+        ),
+        ("env -u PYTHONPATH uv run pytest tests/ci/no_such_test_file.py", False),
+        # An env option the grammar does not name is not skipped: it binds nothing.
+        (
+            "env -S PYTHONPATH uv run pytest tests/ci/test_repo_evidence_caller_workflow.py",
             False,
         ),
     ],
