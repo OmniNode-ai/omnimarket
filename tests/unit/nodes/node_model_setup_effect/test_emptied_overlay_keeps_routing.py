@@ -16,6 +16,7 @@ Failure modes:
   E3  delegate's own backend resolution fails on that file ("'NoneType' object
       is not iterable").
   E4  the incident replayed through the installed onex (add one local model, remove it, delegate, isolated HOME) crashes on null backends instead of refusing the removed backend (OMN-25069).
+  E5  removing the last local model changes other keys of the routes file (OMN-25069 AC1).
 """
 
 from __future__ import annotations
@@ -34,6 +35,12 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
 )
 from omnimarket.nodes.node_model_setup_effect.handlers import handler_model_setup
+from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
+    HandlerModelSetup,
+)
+from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
+    ModelModelSetupRequest,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -81,6 +88,47 @@ def test_delegate_routing_reads_a_bare_backends_line(tmp_path: Path) -> None:
     overlay = tmp_path / "bifrost_overrides.yaml"
     overlay.write_text("backends:\n")
     assert len(load_bifrost_backends(overlay_path=overlay)) > 0
+
+
+@pytest.fixture
+def overlay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(
+        handler_model_setup,
+        "default_evidence_db_path",
+        lambda: tmp_path / "delegation.sqlite",
+    )
+    return tmp_path / "bifrost_overrides.yaml"
+
+
+@pytest.mark.parametrize("keep_other", [False, True])
+def test_remove_last_local_model_preserves_other_overlay_keys(
+    overlay: Path, keep_other: bool
+) -> None:
+    """E5: the other keys and backends survive removing the last local model."""
+    other = [{"backend_id": "byok-openai", "max_tokens": 1024}] if keep_other else []
+    overlay.write_text(
+        yaml.safe_dump(
+            {
+                "backends": [
+                    *other,
+                    {
+                        "backend_id": "local-url",
+                        "endpoint_url": "http://127.0.0.1:9999/v1/chat/completions",
+                        "model_name": "incident-model",
+                    },
+                ],
+                "shadow_mode": {"enabled": False},
+                "operator_note": "keep this",
+            },
+            sort_keys=False,
+        )
+    )
+    HandlerModelSetup().handle(ModelModelSetupRequest(operation="remove_local"))
+    written = yaml.safe_load(overlay.read_text())
+    assert written.get("backends", []) == other
+    assert written["shadow_mode"] == {"enabled": False}
+    assert written["operator_note"] == "keep this"
 
 
 class _LocalModel(BaseHTTPRequestHandler):
