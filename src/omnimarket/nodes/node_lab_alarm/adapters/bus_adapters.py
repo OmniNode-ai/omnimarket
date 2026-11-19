@@ -17,11 +17,9 @@ import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
-from importlib import resources
 from pathlib import Path
 from typing import Protocol, cast
 
-import yaml
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from omnimarket.handlers.scm.handler_gateway_read_client import (
@@ -31,13 +29,14 @@ from omnimarket.handlers.scm.handler_gateway_read_client import (
     read_in_process,
     read_over_bus,
 )
+from omnimarket.handlers.work_ledger_query_topics import work_ledger_query_topics
 from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
     GithubGatewayResult,
     ModelGithubGatewayRequest,
     ModelWorkflowRunsResult,
 )
-from omnimarket.models.scm import ModelScmTerminal, ModelScmTopics
+from omnimarket.models.scm import ModelScmTerminal
 from omnimarket.models.work_ledger_query.model_work_ledger_query import (
     EnumWorkLedgerQueryKind,
     ModelWorkLedgerQueryRequest,
@@ -51,8 +50,6 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     CanaryRunsUnreadableError,
     ProjectionUnreadableError,
 )
-
-_WORK_LEDGER_QUERY_NODE = "omnimarket.nodes.node_work_ledger_query_effect"
 
 
 class ProtocolGatewayReader(Protocol):
@@ -119,17 +116,6 @@ class GatewayCanaryRunSource:
                     )
                 )
         return tuple(runs)
-
-
-def work_ledger_query_topics() -> ModelScmTopics:
-    """The work-ledger query node's command and terminal topics, as its contract declares them."""
-    package = resources.files(_WORK_LEDGER_QUERY_NODE)
-    contract = yaml.safe_load((package / "contract.yaml").read_text(encoding="utf-8"))
-    dispatch = contract["runtime_dispatch"]
-    return ModelScmTopics(
-        command=str(dispatch["command_topic"]),
-        success=str(dispatch["terminal_events"]["success"]),
-    )
 
 
 def _result_body(payload: dict[str, JsonValue]) -> dict[str, JsonValue]:

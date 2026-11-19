@@ -1,0 +1,48 @@
+# Context profile for a code lane's dispatch pack: the background an earlier lane needed (the worked
+# example, who calls the code, the review findings in full, the files and tests, the lane's own
+# history, the known refusals). Inline: the lane-brief context handler of the pack orchestrator builds
+# it, and the orchestrator approves the built pack (its final_pack_hash) before the lane starts.
+# tier_specs names the seven tiers with a budget each, inside token_budget. Only the exemplar tier is
+# model-selected (the closest example and its shape excerpt, through the delegation chain local first,
+# then GLM, then Sonnet); the other six are read by code and never call a model. A profile that names
+# fewer than the seven tiers is refused. Each tier is carried as the nearest existing factor, because the
+# factor enum belongs to the core package. The budgets are first values, not measurements.
+model_id: claude-code-subagent
+profile_version: 1.0.0
+binding_kind: inline
+required_factors:
+  - exemplar
+  - architecture_patterns
+  - local_failures
+  - repo_state
+  - golden_chain
+  - orchestration_state
+  - invariants
+factor_precedence:
+  - invariants
+  - exemplar
+  - architecture_patterns
+  - local_failures
+  - repo_state
+  - golden_chain
+  - orchestration_state
+stable_factors:
+  - invariants
+  - exemplar
+  - architecture_patterns
+scopes:
+  - architecture
+  - process
+token_budget: 24000
+context_window_tokens: 200000
+reserved_output_tokens: 32000
+reserved_system_tokens: 76738
+selection_task_class: context_selection
+tier_specs:
+  - {tier: exemplar, factor: exemplar, mode: model_selected, token_budget: 3000}
+  - {tier: graph_answers, factor: architecture_patterns, mode: deterministic, token_budget: 4000}
+  - {tier: review_findings, factor: local_failures, mode: deterministic, token_budget: 8000}
+  - {tier: files_to_touch, factor: repo_state, mode: deterministic, token_budget: 1500}
+  - {tier: tests_and_ci, factor: golden_chain, mode: deterministic, token_budget: 2500}
+  - {tier: lane_history, factor: orchestration_state, mode: deterministic, token_budget: 3500}
+  - {tier: risks, factor: invariants, mode: deterministic, token_budget: 1500}
