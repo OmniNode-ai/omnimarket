@@ -261,6 +261,15 @@ def test_the_command_reader_refuses_a_checkout_at_another_head(
         _reader(registry, internal, _script(FINDINGS)).read(REPO, HEAD)
 
 
+def test_the_command_reader_refuses_dirty_files_at_the_expected_head(
+    checkout: tuple[Path, Path, str],
+) -> None:
+    registry, internal, head = checkout
+    (registry / "omnimarket" / TIMER).unlink()
+    with pytest.raises(LivenessReadError, match="uncommitted changes"):
+        _reader(registry, internal, _script(FINDINGS)).read(REPO, head)
+
+
 def test_the_command_reader_says_the_read_was_not_made_when_the_reader_times_out(
     checkout: tuple[Path, Path, str],
 ) -> None:
