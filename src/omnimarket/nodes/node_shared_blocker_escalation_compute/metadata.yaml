@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_shared_blocker_escalation_compute
+version: "1.0.0"
+description: Judges shared causes (one operator question per pull request set) and refuses an andon-start row on a shared check without its measured environment and a fresh gated reading
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_shared_blocker_escalation_compute: omnimarket.nodes.node_shared_blocker_escalation_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: pure
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, throughput, shared-cause, andon, escalation]
+node_role: compute
+pack: "routing"
+display_name: "Shared Blocker Escalation Compute"

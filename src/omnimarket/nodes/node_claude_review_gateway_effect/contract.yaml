@@ -89,6 +89,16 @@ config:
     system_ttl: "1h"
     diff_ttl: "5m"
     max_breakpoints: 4
+  # OMN-24658: the key-state events a refused or unreachable topic defers are held one per key
+  # (the newest state wins, older ones are counted as dropped). A request waits at most
+  # wait_seconds for the bus, in all (one deadline per request, however many events it
+  # emits); after a wait that ran out, no request waits on the bus again for
+  # backoff_seconds. The queue depth and drop count are on the gateway's key-events route.
+  # Limit: held events publish only on the next review request (there is no timed flush), so
+  # after a refused topic recovers they wait for the next review request to be served.
+  key_event_publish:
+    wait_seconds: 2.0
+    backoff_seconds: 30.0
 
 configuration:
   overlay_id: claude_review_gateway
@@ -116,3 +126,10 @@ handler:
   module: omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway
   class: HandlerClaudeReviewGateway
   input_model: omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway.ModelClaudeReviewGatewayRequest
+
+# OMN-24577: the reader of a lab host's declared bus lane. `onex models review-gateway` opens the
+# bus on that lane when the environment names no broker; descriptive binding, handler above serves.
+host_bus_lane:
+  handler:
+    name: lab_host_bus_lane
+    module: omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_lab_host_bus_lane

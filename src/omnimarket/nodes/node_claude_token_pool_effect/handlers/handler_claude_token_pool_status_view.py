@@ -30,6 +30,7 @@ from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_po
     ModelClaudeTokenPoolResult,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool_status_view import (
+    ModelPoolLabelState,
     ModelPoolStatusViewRequest,
     ModelPoolStatusViewResult,
 )
@@ -38,6 +39,7 @@ from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_ro
     ModelRotationOverlay,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.protocols.protocol_rotation_ports import (
+    ProtocolLoginBoard,
     ProtocolMarksSource,
 )
 
@@ -57,6 +59,7 @@ class HandlerClaudeTokenPoolStatusView:
         marks_source: ProtocolMarksSource | None = None,
         local_copy_written_at: Callable[[], datetime | None] = lambda: None,
         now: Callable[[], datetime] = _utc_now,
+        login_board: ProtocolLoginBoard | None = None,
     ) -> None:
         # The runtime boot builds this handler with no arguments (the contract binds it to the node): an
         # instance with no overlay answers unsynced, never a guess at a marks source.
@@ -67,6 +70,8 @@ class HandlerClaudeTokenPoolStatusView:
         self._source = marks_source
         self._copy_written_at = local_copy_written_at
         self._now = now
+        #: Where each host's tick says which label its login is; ``None`` places no host on any label.
+        self._board = login_board
 
     def handle(self, request: ModelPoolStatusViewRequest) -> ModelPoolStatusViewResult:
         overlay = self._overlay
@@ -132,6 +137,7 @@ class HandlerClaudeTokenPoolStatusView:
             revoked=status.revoked,
             challenged=status.challenged,
             status_line=status.status_line,
+            **self._labels(request, status, f"basis=local_pool host={request.host}"),
         )
 
     def _from_source_marks(
@@ -166,7 +172,68 @@ class HandlerClaudeTokenPoolStatusView:
                 f"{pooled.status_line} marks=source:{source_host} "
                 f"marks_age_s={age_seconds}"
             ),
+            **self._labels(
+                request,
+                pooled,
+                f"basis=source_marks source={source_host} marks_age_s={age_seconds}",
+            ),
         )
+
+    def _labels(
+        self,
+        request: ModelPoolStatusViewRequest,
+        pooled: ModelClaudeTokenPoolResult,
+        basis: str,
+    ) -> dict[str, object]:
+        """Per label: its limit state, the reset it reads and the hosts whose fresh login record names it."""
+        overlay = self._overlay
+        logins = self._board.read() if self._board is not None else None
+        declared = tuple(h.name for h in overlay.hosts) if overlay is not None else ()
+        bound = (
+            3 * overlay.schedule.interval_seconds if overlay is not None else 0
+        )  # three ticks: one missed tick is not yet a stale record
+        now = self._now()
+        placed: dict[str, list[str]] = {}
+        seen: set[str] = set()
+        for login in logins or ():
+            if (now - login.at).total_seconds() > bound or login.host in seen:
+                continue
+            seen.add(login.host)
+            if login.label is not None:
+                placed.setdefault(login.label, []).append(login.host)
+        unread = tuple(h for h in declared if h not in seen)
+        states: list[ModelPoolLabelState] = []
+        for entry in pooled.tokens:
+            state = (
+                (entry.revoke_cause or "revoked")
+                if entry.revoked
+                else "limited"
+                if entry.limited
+                else "usable"
+            )
+            states.append(
+                ModelPoolLabelState(
+                    label=entry.label,
+                    state=state,
+                    reset=entry.until if state == "limited" else None,
+                    hosts=tuple(sorted(placed.get(entry.label, ()))),
+                )
+            )
+        rows = " ".join(
+            f"{s.label}:{s.state}:reset={s.reset or 'none'}:hosts={','.join(s.hosts) or 'none'}"
+            for s in states
+        )
+        board = "unreadable" if logins is None else f"{len(seen)}/{len(declared)}"
+        line = (
+            f"claude-pool-labels {basis} labels={len(states)} logins_read={board}"
+            + (f" hosts_unread={','.join(unread)}" if unread else "")
+            + (f" | {rows}" if rows else "")
+        )
+        return {
+            "label_states": tuple(states),
+            "labels_line": line,
+            "hosts_unread": unread,
+        }
 
     def _age_seconds(self, read: ModelRotationMarksRead) -> int | None:
         """The read's age in seconds, ``None`` when the read gave no instant to age against."""
@@ -202,5 +269,9 @@ class HandlerClaudeTokenPoolStatusView:
                 f"claude-pool host={request.host} tokens={tokens} UNSYNCED "
                 f"local copy age_s={copy_age if copy_age is not None else 'unknown'} marks not read ({why}); "
                 "limited and revoked labels are not named from it"
+            ),
+            labels_line=(
+                f"claude-pool-labels basis=unsynced_local_copy labels={tokens} "
+                f"marks not read ({why}); no label's limit state, reset or hosts is named from the local copy"
             ),
         )

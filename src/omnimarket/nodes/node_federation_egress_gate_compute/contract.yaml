@@ -1,0 +1,130 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeFederationEgressGateCompute
+#
+# The egress gate of the federation forwarder, as a pure compute:
+#
+#   handle(ModelEgressGateRequest) -> ModelEgressGateResult
+#
+# A record leaving one bus for another is checked for SHAPE and the key is
+# BOUND to the value it names; nothing is transformed. The gate answers pass
+# or refuse with one named reason and carries the key only as a sha256 hex
+# digest of the key bytes and the value only as its size — it never returns
+# or logs either. The checks, in order, first failure wins: base64 decode
+# (shape-violation), the value size against the topic's max_value_bytes
+# (oversize), the parse with duplicate members reported before any shape
+# report (duplicate-member, then shape-violation for a non-object or
+# unparseable value), the closed value shape named by the topic policy
+# (shape-violation), the key's presence, ASCII/control-character shape and
+# key_pattern match (key-absent, key-shape-violation), the key's equality
+# with the bound field's value (key-binding-mismatch), then the headers: no
+# name twice (duplicate-header), no stamp header named (stamp-present), the
+# count, the allow-list rule and the value pattern per name
+# (header-not-allowed), and the message-id header present (no-message-id).
+#
+# The topic policy arrives inside the request (fields, key_pattern,
+# key_binding, header_allow_list, max_headers, max_value_bytes,
+# max_value_depth, stamp_header_names, message_id_header), so this node has
+# no overlay of its own and reads no settings: every limit, name and pattern
+# is the topic's. Every pattern a policy may declare is bounded and anchored,
+# checked at the model boundary.
+name: "node_federation_egress_gate_compute"
+contract_name: "node_federation_egress_gate_compute"
+node_name: "node_federation_egress_gate_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure shape check and key binding for one record leaving one bus for
+  another. Decodes the record's base64 value and optional key, sizes the
+  value against the topic policy carried in the request, parses the value
+  refusing duplicate members before any closed-model check, validates the
+  parsed object against the policy's closed field set, binds the key to the
+  value of the policy's bound field, and checks the headers against the
+  policy's allow list, stamp names and message-id rule. Returns pass or
+  refuse with one named reason, the sha256 hex digest of the key bytes (when
+  a key was carried) and the value size. Deterministic for the same request;
+  no clock, no I/O, no model, and neither the key nor the value in the
+  result or any log.
+input_model:
+  name: "ModelEgressGateRequest"
+  module: "omnimarket.models.federation_egress.model_egress_gate"
+  description: "One record as base64 with its wire headers, and the topic's egress policy."
+output_model:
+  name: "ModelEgressGateResult"
+  module: "omnimarket.models.federation_egress.model_egress_gate"
+  description: "Pass or refuse with one named reason, the key's sha256 digest and the value size."
+handler:
+  module: "omnimarket.nodes.node_federation_egress_gate_compute.handlers.handler_federation_egress_gate"
+  class: "HandlerFederationEgressGate"
+  input_model: "omnimarket.models.federation_egress.model_egress_gate.ModelEgressGateRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_federation_egress_gate_compute.handlers.handler_federation_egress_gate:HandlerFederationEgressGate"
+  handlers:
+    - operation: "gate_egress"
+      handler:
+        name: "HandlerFederationEgressGate"
+        module: "omnimarket.nodes.node_federation_egress_gate_compute.handlers.handler_federation_egress_gate"
+# The gate command, sent by the federation forwarder before it publishes the
+# record onto the other bus; the two terminals are
+# runtime_dispatch.terminal_events.
+terminal_event: "onex.evt.omnimarket.federation-egress-gate-completed.v1"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.federation-egress-gate-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.federation-egress-gate-completed.v1"
+    failure: "onex.evt.omnimarket.federation-egress-gate-failed.v1"
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnimarket.federation-egress-gate-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.federation-egress-gate-completed.v1"
+    - "onex.evt.omnimarket.federation-egress-gate-failed.v1"
+# main, beside the federation forwarder: the runtime-profile validator
+# requires a profile on a contract that consumes a command.
+runtime_profiles:
+  - main
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+replay:
+  deterministic: true
+metadata:
+  description: "Pure egress gate of the federation forwarder: shape and key binding, pass or one named refusal."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-14"
+  ticket: OMN-24488
+  tags:
+    - compute
+    - federation
+    - egress
+    - pure
+
+# The broker grants the node's three topics need (OMN-24005 coverage gate): the runtime login reads the request and
+# writes the two terminals. The gate holds no wire topic of the edge itself.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.federation-egress-gate-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.federation-egress-gate-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.federation-egress-gate-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.federation-egress-gate-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.federation-egress-gate-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.federation-egress-gate-failed.v1, operation: DESCRIBE}
