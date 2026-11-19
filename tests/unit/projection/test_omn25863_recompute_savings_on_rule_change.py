@@ -48,28 +48,36 @@ def _saving_and_cost(path: Path) -> tuple[Any, Any]:
     return row[0], row[1]
 
 
+# The run is reached through an alias the pricing manifest does not list, while the model that ran is listed (free).
+# Priced by the alias, as the earlier build did, priced_spend gives it no spend and the run no saving (NULL); priced
+# by the model that ran, its $0 is a measured zero and it has a saving. The two rules diverge, so a store re-priced
+# by the alias, or a writer reverted to alias-first, fails R1 (review of the first version of this test, 2026-11-19).
+_MODEL = "qwen2.5-7b"
+_ALIAS = "byok-unlisted-alias"
+
+
 def _expected(path: Path) -> Any:
-    """The saving the current rule gives this run, from the writer's own function."""
+    """The saving this run gets when priced by the model that ran: the same row with the alias taken away."""
     columns = ["correlation_id", *handler_run_savings.RUN_SAVINGS_INPUT_COLUMNS]
     with sqlite3.connect(path) as conn:
         values = conn.execute(
             f"SELECT {', '.join(columns)} FROM delegation_events WHERE correlation_id = 'aliased'"
         ).fetchone()
-    return handler_run_savings.modelled_run_savings_columns(
-        dict(zip(columns, values, strict=True))
-    )["modelled_savings_usd"]
+    row = dict(zip(columns, values, strict=True))
+    row["delegated_to"] = row["model_name"]
+    return handler_run_savings.modelled_run_savings_columns(row)["modelled_savings_usd"]
 
 
 def _earlier_store(tmp_path: Path) -> Path:
-    """A store an earlier build wrote: the run priced by its alias, and no rule-digest step recorded."""
+    """A store an earlier build wrote: the run priced by its alias (no saving), and no rule-digest step recorded."""
     path = _store(
         tmp_path,
         (
             _delegation(
                 "aliased",
-                model_name="gpt-4o-mini",
-                delegated_to="gpt-4o",
-                cost_usd=0.0001,
+                model_name=_MODEL,
+                delegated_to=_ALIAS,
+                cost_usd=0.0,
                 tokens_input=2000,
                 tokens_output=500,
             ),
@@ -77,8 +85,7 @@ def _earlier_store(tmp_path: Path) -> Path:
     )
     with sqlite3.connect(path) as conn:
         conn.execute(
-            "UPDATE delegation_events SET modelled_savings_usd = ? WHERE correlation_id = 'aliased'",
-            (_STALE,),
+            "UPDATE delegation_events SET modelled_savings_usd = NULL WHERE correlation_id = 'aliased'"
         )
         conn.execute(
             "DELETE FROM omnimarket_sqlite_store_steps WHERE step LIKE 'omn25863_%'"
@@ -89,12 +96,14 @@ def _earlier_store(tmp_path: Path) -> Path:
 def test_recompute_savings_a_store_with_the_earlier_recompute_reprices(
     tmp_path: Path,
 ) -> None:
-    """R1: the ticket's falsifier."""
+    """R1: the ticket's falsifier. The alias-priced store held no saving; re-priced by the model, the run has one."""
     path = _earlier_store(tmp_path)
+    expected = _expected(path)
+    assert expected is not None  # the model-priced saving exists
+    assert float(expected) > 0
     _open(path)
     saving, _cost = _saving_and_cost(path)
-    assert saving != _STALE
-    assert saving == _expected(path)
+    assert saving == expected
 
 
 def test_recompute_savings_a_price_manifest_change_recomputes(
@@ -133,4 +142,4 @@ def test_recompute_savings_leaves_recorded_cost_alone(tmp_path: Path) -> None:
     """R4: decision D1 of OMN-24615, recorded cost columns are never rewritten."""
     path = _earlier_store(tmp_path)
     _open(path)
-    assert _saving_and_cost(path)[1] == pytest.approx(0.0001)
+    assert _saving_and_cost(path)[1] == pytest.approx(0.0)
