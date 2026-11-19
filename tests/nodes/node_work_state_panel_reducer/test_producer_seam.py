@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import typing
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError, create_model
@@ -127,7 +127,7 @@ def problems_old_consumer_new_producer(
     except ValidationError:
         pass
     else:
-        run_event(store, handler, decoded)  # type: ignore[arg-type]
+        run_event(store, handler, cast(Any, decoded))
         return ["an event carrying an unmapped field was accepted"]
     if store.rows != before or MARKER in caplog.text:
         return ["the row changed or the marker was logged"]

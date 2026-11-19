@@ -175,19 +175,19 @@ def problems_file_reads(run: Any) -> list[str]:
         opened.append(str(file))
         return real_open(file, *a, **k)
 
-    builtins.open = recording  # type: ignore[assignment]
+    builtins.open = recording
     original_read_text = Path.read_text
 
     def read_text(self: Path, *a: Any, **k: Any) -> str:
         opened.append(str(self))
         return original_read_text(self, *a, **k)
 
-    Path.read_text = read_text  # type: ignore[method-assign]
+    Path.read_text = read_text
     try:
         run()
     finally:
-        builtins.open = real_open  # type: ignore[assignment]
-        Path.read_text = original_read_text  # type: ignore[method-assign]
+        builtins.open = real_open
+        Path.read_text = original_read_text
     outside = [p for p in opened if Path(p).name != "contract.yaml"]
     return [f"opened {p}" for p in outside]
 

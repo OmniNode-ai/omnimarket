@@ -453,7 +453,7 @@ async def test_control_answer_reads_runtime_written_row_renames_a_field() -> Non
     assert await problems_answer_reads_runtime_written_row(rename="generation") != []
 
 
-def _renamed_model(model: type[BaseModel], old: str, new: str) -> type[BaseModel]:
+def _renamed_model(model: type[BaseModel], old: str, new: str) -> type[Any]:
     """A copy of ``model`` with field ``old`` renamed to ``new``; nothing else changes."""
     fields: dict[str, tuple[Any, Any]] = {}
     for name, field in model.model_fields.items():
@@ -517,9 +517,7 @@ async def test_panel_command_roundtrip() -> None:
 async def test_control_panel_command_roundtrip_renames_a_field() -> None:
     assert (
         await problems_panel_command_roundtrip(
-            answer_model=_renamed_model(  # type: ignore[arg-type]
-                ModelFloorPanelAnswer, "panel", "panel_id"
-            )
+            answer_model=_renamed_model(ModelFloorPanelAnswer, "panel", "panel_id")
         )
         != []
     )

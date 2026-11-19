@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -77,9 +78,9 @@ async def old_route_beside(
             await asyncio.gather(side, return_exceptions=True)
 
 
-async def problems_isolation(reader: object, *, coupled: bool) -> list[str]:
+async def problems_isolation(reader: Any, *, coupled: bool) -> list[str]:
     baseline = old_route()
-    panel_handler = handler(reader, T0)  # type: ignore[arg-type]
+    panel_handler = handler(reader, T0)
 
     async def panel() -> object:
         return await panel_handler.handle(command(ADDRESS))
