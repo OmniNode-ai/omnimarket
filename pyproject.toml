@@ -1279,6 +1279,7 @@ node_receipt_gate_pin_advance_compute = "omnimarket.nodes.node_receipt_gate_pin_
 node_receipt_gate_pin_advance_effect = "omnimarket.nodes.node_receipt_gate_pin_advance_effect"
 node_receipt_gate_pin_friction_ledger_effect = "omnimarket.nodes.node_receipt_gate_pin_friction_ledger_effect"
 node_receipt_gate_pin_friction_report_compute = "omnimarket.nodes.node_receipt_gate_pin_friction_report_compute"
+node_red_main_alarm_effect = "omnimarket.nodes.node_red_main_alarm_effect"
 node_redeploy_deploy_effect = "omnimarket.nodes.node_redeploy_deploy_effect"
 node_redeploy_fsm_reducer = "omnimarket.nodes.node_redeploy_fsm_reducer"
 node_redeploy_orchestrator = "omnimarket.nodes.node_redeploy_orchestrator"
