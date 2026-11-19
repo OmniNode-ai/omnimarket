@@ -40,6 +40,7 @@ from omnibase_core.models.runtime_deployment.wire import EnumRuntimeLane
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.evidence_pipeline.wire.types import ReadinessState
+from omnimarket.models.model_deploy_stamp import ModelDeployStamp, ModelHealthCheck
 from omnimarket.models.model_dev_deploy_route import (
     ModelDevDeployRoute,
 )
@@ -1462,17 +1463,6 @@ class EnumRedeployStatus(StrEnum):
     FAILED = "failed"
 
 
-class ModelHealthCheck(BaseModel):
-    """Single service health check result."""
-
-    model_config = ConfigDict(frozen=True, extra="ignore", from_attributes=True)
-
-    service: str = Field(..., description="Service name.")
-    endpoint: str = Field(..., description="Endpoint checked.")
-    status: Literal["pass", "fail"] = Field(..., description="Check result.")
-    latency_ms: int = Field(default=0, description="Latency in milliseconds.")
-
-
 class ModelDeployRebuildCommand(BaseModel):
     """Command to trigger a deploy agent rebuild.
 
@@ -1557,7 +1547,7 @@ class ModelDeployPhaseResults(BaseModel):
     publish: EnumPhaseResult = Field(default=EnumPhaseResult.PENDING)
 
 
-class ModelDeployRebuildCompleted(BaseModel):
+class ModelDeployRebuildCompleted(ModelDeployStamp):
     """Completion event from the deploy agent.
 
     Received from: onex.evt.deploy.rebuild-completed.v1
@@ -1637,9 +1627,10 @@ class EnumDeployRejectionReason(StrEnum):
     SUPERSEDED = "superseded"
     SUPERSEDED_BY_RUNNING_BUILD = "superseded_by_running_build"
     DIVERGENT_REF = "divergent_ref"
+    ROUTE_UNCONFIRMED = "route_unconfirmed"
 
 
-class ModelDeployRebuildRejected(BaseModel):
+class ModelDeployRebuildRejected(ModelDeployStamp):
     """Rejection event from the deploy agent (OMN-18816).
 
     Received from: onex.evt.deploy.rebuild-rejected.v1
