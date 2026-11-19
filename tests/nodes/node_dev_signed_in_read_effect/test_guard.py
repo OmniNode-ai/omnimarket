@@ -329,5 +329,5 @@ def test_dev_signed_in_read_guard_the_lock_test_fails_without_the_lock(
     """The control: with the lock removed the same race builds more than once, so the test above can fail."""
     overlay = ModelDevSignedInReadOverlay.model_validate(overlay_document())
     handler = HandlerDevSignedInRead(overlay=overlay)
-    handler._lock = contextlib.nullcontext()  # type: ignore[assignment]
+    monkeypatch.setattr(handler, "_lock", contextlib.nullcontext())
     assert _count_builds_under_a_race(handler, monkeypatch) > 1
