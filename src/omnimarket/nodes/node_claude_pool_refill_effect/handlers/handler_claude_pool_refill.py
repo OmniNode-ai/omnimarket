@@ -596,8 +596,9 @@ def probe(ov: Overlay, host: Host) -> tuple[str | None, str, str]:
         'cd "$HOME"; K=$(mktemp); O=$(mktemp); unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN\n'
         f"cat > \"$O\" <<'LANE_OVERLAY_EOF'\n{_lane_overlay_yaml()}LANE_OVERLAY_EOF\n"
         f'CP=$("$P" -m {POOL_MODULE} resolve 2>"$K"); rc=$?\n'
-        'L=$(sed -n "s/.* label=\\([a-z0-9-]*\\).*/\\1/p" "$K" | tail -1); rm -f "$K"\n'
-        'if [ $rc -ne 0 ] || [ -z "$CP" ]; then echo "LABEL=none"; echo "RESOLVE rc=$rc"; exit 0; fi\n'
+        'L=$(sed -n "s/.* label=\\([a-z0-9-]*\\).*/\\1/p" "$K" | tail -1)\n'
+        'E=$(grep -v "^[[:space:]]*$" "$K" | tail -n 1 | cut -c1-110); rm -f "$K"\n'
+        'if [ $rc -ne 0 ] || [ -z "$CP" ]; then echo "LABEL=none"; echo "RESOLVE rc=$rc $E"; exit 0; fi\n'
         'echo "LABEL=$L"\n'
         f"printf '%s\\n' {shlex.quote(request.model_dump_json())} | "
         f'CLAUDE_CODE_OAUTH_TOKEN="$CP" "$P" -m {PROBE_MODULE} --overlay "$O" 2>&1 | head -c 4000; unset CP; rm -f "$O"\n'
