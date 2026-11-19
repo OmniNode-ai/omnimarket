@@ -212,3 +212,8 @@ async def test_failed_terminal_over_a_measured_duration_keeps_it() -> None:
         row = await admin_conn.fetchrow(_SELECT, cid)
         assert row is not None
         assert row["execution_ms"] == 567
+        # The second terminal was taken as the failure it is, so the kept duration is not a success's.
+        assert await admin_conn.fetchval(
+            "SELECT terminal_failure_cause FROM delegation_events WHERE correlation_id = $1",
+            cid,
+        )
