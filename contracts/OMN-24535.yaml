@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-24535
+title: Done requires a reading of the running path
+summary: A TERMINAL ledger row with outcome done or handed-off now has to carry the entry point that runs the change and one line from its latest run (running_path and running_line), or running_path=none-ci-only with a reason. The shared row grammar judges it (default off, switched on from a cutover stamp in ONEX_LEDGER_REQUIRE_RUNNING_PATH), the work-ledger append effect refuses it before anything is appended in file mode and in bus mode, the ledger row grammar node counts the share of confirming rows that carry it, and an integration reading in state running is refused at construction unless it names the same two cells. Machine identities (actor script or launchd, model none) are exempt as for the delegation cell. The check judges shape only; whether the quoted line is true stays with the reading node and review.
+is_seam_ticket: true
+interface_change: true
+requirements:
+- id: req-omn24535-running-path-cell
+  statement: A TERMINAL ledger row that confirms work (outcome done or handed-off) names the running path or says none-ci-only with a reason, and a seen-running integration reading names the same two cells.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a TERMINAL row with outcome done or handed-off and no running-path cell is refused by the ledger row grammar, and the same row carrying the cell or none-ci-only with a reason is admitted -- falsifier: pytest tests/handlers/test_ledger_row_grammar_running_path.py -q"
+  - id: AC2
+    statement: "AC2: an integration reading in state running with no running path and no latest-run line is refused at construction -- falsifier: pytest tests/nodes/node_integration_projection_compute/test_running_path_cell.py -q"
+  - id: AC3
+    statement: "AC3: the real 2026-11-14 done row with no reading is refused by the work-ledger judge on the in-memory bus and the real broker, and its corrected twin is accepted -- falsifier: pytest tests/nodes/node_work_ledger_append_effect/test_running_path_seam.py -q"
+  - id: AC4
+    statement: "AC4: integrated: the ledger writer running on the lab bus refuses a done TERMINAL with no running-path cell and admits the corrected row, read from its receipts -- falsifier: onex ledger append of the uncorrected row on the lab bus returns refused and the corrected row returns appended"
+evidence_requirements:
+- kind: tests
+  description: The grammar tests with the bypass controls, the integration reading tests, the writer seam tests in file and bus mode with the real 2026-11-14 row as the failing control, and the share measure tests of the ledger row grammar node.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/handlers/test_ledger_row_grammar_running_path.py tests/handlers/ledger_row_grammar tests/nodes/node_integration_projection_compute tests/nodes/node_work_ledger_append_effect tests/nodes/node_ledger_row_grammar_compute -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24535-ac1-grammar
+  description: The grammar refuses the real 2026-11-14 done row with no cell and admits its corrected twin; the failing control is that row itself.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/handlers/test_ledger_row_grammar_running_path.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24535-ac2-integration-reading
+  description: A running reading with no entry point or no latest-run line is refused; the failing control is the reading omnimarket#6084 was stamped from (an image revision and one ready answer).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_integration_projection_compute/test_running_path_cell.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24535-ac3-writer-seam
+  description: The seam test between the grammar rule and the append effect, in file mode and in bus mode on the in-memory ledger store, refuses the real row and admits its twin; the refusal text is the grammar's own.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_ledger_append_effect/test_running_path_seam.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24535-ac4-hosted-writer
+  description: The hosted half of AC4. The append effect, built as the serve builds it, refuses the real 2026-11-14 done row with no running-path cell and admits its corrected twin in file mode and in bus mode; the running reading on the lab bus is the unbound check below.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_ledger_append_effect/test_running_path_seam.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24535-ac4-integration-proof
+  description: Hosted CI cannot reach the lab bus, so only the local Done gate runs this unbound check. The pushed head ran the writer seam tests on a lab host through the lab work runner. The running reading (the ledger serve on the dev bus refusing the uncorrected row and accepting the corrected one) is read from the lab receipt comment on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-omn24535 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_work_ledger_append_effect/test_running_path_seam.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
