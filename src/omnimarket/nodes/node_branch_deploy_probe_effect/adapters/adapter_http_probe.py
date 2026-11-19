@@ -24,7 +24,11 @@ Fetch = Callable[[str, int], tuple[int, bytes]]
 def fetch_http(url: str, timeout: int) -> tuple[int, bytes]:
     """The one network boundary of this probe; tests replace it."""
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        with (
+            urllib.request.urlopen(  # no-contract-check: the effect node's one declared network boundary; the runtime health probe
+                url, timeout=timeout
+            ) as response
+        ):
             return int(response.status), response.read()
     except urllib.error.HTTPError as exc:
         return int(exc.code), exc.read()
