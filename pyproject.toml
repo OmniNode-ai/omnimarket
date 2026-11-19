@@ -155,7 +155,12 @@ dependencies = [
     # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
     # Raised in BOTH places.
     "omnibase-core>=0.47.60,<0.48.0",
-    "omnibase-spi>=0.23.3,<0.24.0",
+    # OMN-23518: floor raised 0.23.3 -> 0.23.15, the release whose notes list the lane process
+    # wire models (omnibase_spi CHANGELOG v0.23.15, "Included Since v0.23.14": ProtocolLaneProcessRunner
+    # and lane process wire models) the floor fill orchestrator imports from
+    # omnibase_spi.contracts.services (ModelLaneProcessRunResult, ModelLaneProcessStartResult,
+    # ModelLaneStartSpec); v0.23.14 carries none of the three. Raised in BOTH places.
+    "omnibase-spi>=0.23.15,<0.24.0",
     # OMN-17549: floor raised 0.38.15 -> 0.38.16. 0.38.16 carries the OMN-17379
     # fail-closed projection guard -- a projection handler that consumes an
     # event and writes no row raises ProjectionNotMaterializedError instead of
@@ -1928,7 +1933,12 @@ override-dependencies = [
     # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
     # Raised in BOTH places.
     "omnibase-core>=0.47.60,<0.48.0",
-    "omnibase-spi>=0.23.3,<0.24.0",
+    # OMN-23518: floor raised 0.23.3 -> 0.23.15, the release whose notes list the lane process
+    # wire models (omnibase_spi CHANGELOG v0.23.15, "Included Since v0.23.14": ProtocolLaneProcessRunner
+    # and lane process wire models) the floor fill orchestrator imports from
+    # omnibase_spi.contracts.services (ModelLaneProcessRunResult, ModelLaneProcessStartResult,
+    # ModelLaneStartSpec); v0.23.14 carries none of the three. Raised in BOTH places.
+    "omnibase-spi>=0.23.15,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the
     # runtime wire the delegation projection binding at all. An override
