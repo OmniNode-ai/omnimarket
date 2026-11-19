@@ -75,6 +75,20 @@ def test_each_answer_topic_is_boot_provisioned(role: str) -> None:
     assert terminal[role] in _installer_boot_provision_topics()
 
 
+@pytest.mark.parametrize(
+    "topic",
+    [
+        "onex.evt.omnimarket.repo-state-query-completed.v1",
+        "onex.evt.omnimarket.repo-state-query-failed.v1",
+    ],
+)
+def test_installer_contract_publishes_each_named_answer_topic(topic: str) -> None:
+    installer = _contract(HOST_INSTALLER_DIR)
+
+    assert topic in installer["event_bus"]["publish_topics"]
+    assert topic in _installer_boot_provision_topics()
+
+
 def test_answer_topics_equal_the_published_events() -> None:
     contract = _contract(REPO_STATE_DIR)
     terminal = set(contract["runtime_dispatch"]["terminal_events"].values())
