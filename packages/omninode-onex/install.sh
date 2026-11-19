@@ -142,10 +142,17 @@ detect_target() {
             esac
             ;;
         Linux)
-            if command -v ldd >/dev/null 2>&1 && ldd --version 2>&1 | grep -qi musl; then
-                fail "musl-based Linux (for example Alpine) is not supported." \
-                    "Use a glibc-based distribution such as Ubuntu, Debian or Fedora."
+            # musl's `ldd --version` exits 1, so capture its text before matching.
+            local libc_info=""
+            if command -v ldd >/dev/null 2>&1; then
+                libc_info="$(ldd --version 2>&1 || true)"
             fi
+            case "$libc_info" in
+                *[Mm]usl*)
+                    fail "musl-based Linux (for example Alpine) is not supported." \
+                        "Use a glibc-based distribution such as Ubuntu, Debian or Fedora."
+                    ;;
+            esac
             case "$arch" in
                 x86_64 | amd64) echo "x86_64-unknown-linux-gnu" ;;
                 aarch64 | arm64) echo "aarch64-unknown-linux-gnu" ;;
@@ -261,7 +268,16 @@ path_guidance() {
 
 main() {
     if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
-        sed -n '5,25p' "$0" 2>/dev/null || echo "Usage: curl -fsSL https://omninode.ai/install.sh | bash"
+        # Piped into bash, $0 is the shell, not this script, so the help is inline.
+        cat <<EOF
+Install the OmniNode onex command line on macOS or Linux:
+
+    curl -fsSL https://omninode.ai/install.sh | bash
+
+Installs $ONEX_PACKAGE $ONEX_VERSION with uv into your home directory (no sudo,
+no git) and puts onex and omni-agent in uv's bin directory. Running it again is
+safe; a newer installer upgrades in place.
+EOF
         return 0
     fi
     [ -n "${HOME:-}" ] || fail "HOME is not set."
@@ -307,7 +323,8 @@ main() {
         return 0
     fi
 
-    TMP_DIR="$(mktemp -d 2>/dev/null || mktemp -d -t omninode-onex)"
+    TMP_DIR="$(mktemp -d 2>/dev/null || mktemp -d -t omninode-onex)" ||
+        fail "could not create a temporary directory." "Check that TMPDIR (or /tmp) is writable."
     trap cleanup EXIT
 
     local uv bin_dir

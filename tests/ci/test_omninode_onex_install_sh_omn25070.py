@@ -155,7 +155,8 @@ def test_platform_detection(
 def test_musl_linux_is_refused(tmp_path: Path) -> None:
     stubs = tmp_path / "stubs"
     _stub(stubs, "uname", 'case "$1" in -s) echo Linux;; -m) echo x86_64;; esac')
-    _stub(stubs, "ldd", 'echo "musl libc (x86_64)"')
+    # Real musl `ldd --version` prints to stderr and exits 1.
+    _stub(stubs, "ldd", 'echo "musl libc (x86_64)" >&2; exit 1')
     tools = _toolbox(tmp_path / "tools", exclude=("uname", "ldd"))
     result = _run(
         {"HOME": str(tmp_path), "PATH": f"{stubs}:{tools}", "ONEX_INSTALL_DRY_RUN": "1"}
@@ -165,25 +166,45 @@ def test_musl_linux_is_refused(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("has_build_tools", [False, True])
-def test_intel_mac_needs_the_build_tools(tmp_path: Path, has_build_tools: bool) -> None:
+@pytest.mark.parametrize("tools_state", ["none", "broken-cargo", "ready"])
+def test_intel_mac_needs_the_build_tools(tmp_path: Path, tools_state: str) -> None:
     stubs = tmp_path / "stubs"
     _stub(stubs, "uname", 'case "$1" in -s) echo Darwin;; -m) echo x86_64;; esac')
     _stub(stubs, "sysctl", "echo 0")
-    if has_build_tools:
+    if tools_state != "none":
         _stub(stubs, "brew", f'echo "{tmp_path}/openssl@3"')
-        _stub(stubs, "cargo", "exit 0")
+        # rustup with no default toolchain: cargo exists but fails.
+        _stub(stubs, "cargo", "exit 0" if tools_state == "ready" else "exit 1")
     tools = _toolbox(tmp_path / "tools", exclude=("uname", "sysctl"))
     result = _run(
         {"HOME": str(tmp_path), "PATH": f"{stubs}:{tools}", "ONEX_INSTALL_DRY_RUN": "1"}
     )
-    if has_build_tools:
+    if tools_state == "ready":
         assert result.returncode == 0, result.stderr
         assert "target=x86_64-apple-darwin" in result.stdout
         assert "build=source-build-allowed" in result.stdout
+    elif tools_state == "broken-cargo":
+        assert result.returncode == 1
+        assert "'cargo --version' failed" in result.stderr
     else:
         assert result.returncode == 1
         assert "brew install openssl@3 rust" in result.stderr
+
+
+@pytest.mark.unit
+def test_help_works_when_piped(tmp_path: Path) -> None:
+    result = subprocess.run(
+        ["/bin/bash", "-s", "--", "--help"],
+        input=SCRIPT.read_text(),
+        env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "curl -fsSL https://omninode.ai/install.sh | bash" in result.stdout
+    assert f"omninode-onex {_script_value('ONEX_VERSION')}" in result.stdout
 
 
 @pytest.mark.unit
@@ -280,17 +301,14 @@ def test_install_reinstall_and_upgrade_for_real(tmp_path: Path) -> None:
     wheel = Path(supplied).resolve()
     home = tmp_path / "home"
     home.mkdir()
-    # The caller's PATH without any directory holding a uv, so the installer
-    # must fetch and verify its own, while compilers and Homebrew stay visible
-    # for the Intel Mac source build.
-    no_uv_path = os.pathsep.join(
-        entry
-        for entry in os.environ.get("PATH", "/usr/bin:/bin").split(os.pathsep)
-        if entry and not (Path(entry) / "uv").exists()
-    )
+    # A uv that cannot report a version comes first on the caller's PATH, so the
+    # installer must fetch and verify its own, while compilers and Homebrew stay
+    # visible for the Intel Mac source build.
+    shadow = tmp_path / "shadow"
+    _stub(shadow, "uv", "exit 127")
     env = {
         "HOME": str(home),
-        "PATH": no_uv_path,
+        "PATH": f"{shadow}{os.pathsep}{os.environ.get('PATH', '/usr/bin:/bin')}",
         "SHELL": "/bin/bash",
         "ONEX_INSTALL_FIND_LINKS": str(wheel.parent),
     }
