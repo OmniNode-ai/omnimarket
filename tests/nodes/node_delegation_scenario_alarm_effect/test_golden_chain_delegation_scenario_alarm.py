@@ -51,6 +51,7 @@ from omnimarket.models.work_ledger_append.model_work_ledger_append import (
 )
 from omnimarket.nodes.node_delegation_scenario_alarm_effect.handlers.handler_delegation_scenario_alarm import (
     CONTRACT_PATH,
+    EnumScenarioAlarm,
     HandlerDelegationScenarioAlarm,
     ModelScenarioAlarmRequest,
     load_alarm_settings,
@@ -1334,3 +1335,49 @@ def test_the_rendered_unit_environment_leaves_the_state_dir_and_the_lane_login_t
     assert default_state_dir() == unit_home / ".onex" / "state"
     with pytest.raises(LabRunBusError):
         bound_lane_principal()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("scenario", ["R8", "R9"])
+@pytest.mark.parametrize("skips", [1, 2, 3])
+def test_consecutive_dev_skips_raise_only_the_not_ready_alarm(
+    tmp_path: Path, scenario: str, skips: int
+) -> None:
+    settings = load_alarm_settings()
+    for watch in settings.scenarios:
+        path = tmp_path / watch.evidence_file
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "scenario": watch.scenario,
+                    "ran_at": _NOW.isoformat(),
+                    "conclusion": "skipped"
+                    if watch.scenario == scenario
+                    else "success",
+                    "consecutive_skips": skips if watch.scenario == scenario else 0,
+                    "last_success_at": (_NOW - timedelta(hours=7)).isoformat(),
+                }
+            ),
+            encoding="utf-8",
+        )
+    appender = _Appender()
+    handler = _handler(appender)
+    request = ModelScenarioAlarmRequest(home=tmp_path, host="h053")
+    result = handler.handle(request)
+    reading = next(record for record in result.readings if record.scenario == scenario)
+    assert reading.last_success_at == (_NOW - timedelta(hours=7)).isoformat()
+    if skips < 3:
+        assert result.alarms == ()
+        assert appender.calls == []
+    else:
+        assert len(result.alarms) == 1
+        assert result.alarms[0].conclusion == "skipped"
+        assert result.alarms[0].alarm_kind is EnumScenarioAlarm.DEV_NOT_READY
+        row, request_id = appender.calls[0]
+        assert (
+            f"alarm=delegation-scenario-{scenario.lower()}-dev-not-ready"
+            in row.split(" | ")
+        )
+        handler.handle(request)
+        assert appender.calls[-1] == (row, request_id)

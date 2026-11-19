@@ -25,7 +25,7 @@ lifecycle: experimental
 runtime_profiles: [effects]
 description: >
   Read the last-run record of each watched delegation scenario (R8, R9) on this host and write one ledger alarm row for a
-  run that failed or left no readable record. The node's systemd user timer (scenario-alarm-systemd in
+  run that failed or left no readable record. Three consecutive dev readiness skips raise a separate alarm. The node's systemd user timer (scenario-alarm-systemd in
   node_host_installer_registry_units) runs it every 900 seconds.
 
 handler:
@@ -52,7 +52,7 @@ input_model:
 output_model:
   name: ModelScenarioAlarmResult
   module: omnimarket.nodes.node_delegation_scenario_alarm_effect.handlers.handler_delegation_scenario_alarm
-  description: The alarm row each failed scenario wrote, and the scenarios read as passing.
+  description: Each watched scenario's conclusion and any failure or dev readiness alarm.
 
 alarm:
   lane: delegation-scenario-alarm
@@ -72,11 +72,13 @@ alarm:
   scenarios:
     - scenario: R8
       alarm: delegation-scenario-r8-failed
+      not_ready_alarm: delegation-scenario-r8-dev-not-ready
       unit: onex-delegation-scenario-r8
       evidence_file: .local/state/omni/delegation-scenario-r8/last-run.json
       max_age_seconds: 27000
     - scenario: R9
       alarm: delegation-scenario-r9-failed
+      not_ready_alarm: delegation-scenario-r9-dev-not-ready
       unit: onex-delegation-scenario-r9
       evidence_file: .local/state/omni/delegation-scenario-r9/last-run.json
       max_age_seconds: 4500

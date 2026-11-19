@@ -3,9 +3,9 @@
 """A failed delegation scenario run writes one ledger alarm row (OMN-24874).
 
 Each watched scenario's unit writes a last-run record (``{"conclusion", "ran_at", "scenario"}``) under the home directory.
-One tick reads every record the contract's ``alarm`` block names. A record whose conclusion is not the success conclusion,
-and a record that is missing or unreadable, yields one STATUS row with ``src=alarm`` and ``alarm=<the scenario's alarm
-name>``, the unit, the run's time and an owner line. A passing record yields no row unless it is older than the scenario's declared
+One tick reads every record the contract's ``alarm`` block names. A failed, missing or unreadable record yields one STATUS row with ``src=alarm`` and ``alarm=<the scenario's alarm
+name>``, the unit, the run's time and an owner line. Fresh skips leave the last success time
+intact. Starting at the third consecutive skip, a separate dev readiness alarm identifies the run. A passing record yields no row unless it is older than the scenario's declared
 ``max_age_seconds`` (or a passing record's time is unreadable): a unit killed before it wrote its record, or a stopped timer, leaves the last
 run's record in place, and that reads ``stale``, whether the last run succeeded, failed or was refused. The request id is the
 scenario, the host, the run's own time, the conclusion and the alarm time bucket only for missing, unreadable or stale records.
@@ -22,13 +22,16 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.model_delegation_scenario import EnumScenarioConclusion
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ProtocolReadingAppender,
 )
@@ -48,6 +51,7 @@ class ModelScenarioWatch(_Frozen):
 
     scenario: str = Field(min_length=1)
     alarm: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    not_ready_alarm: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
     unit: str = Field(min_length=1)
     evidence_file: str = Field(min_length=1)
     max_age_seconds: int = Field(gt=0)
@@ -76,12 +80,19 @@ class ModelScenarioAlarmRequest(_Frozen):
     host: str = Field(min_length=1)
 
 
+class EnumScenarioAlarm(StrEnum):
+    FAILURE = "failure"
+    DEV_NOT_READY = "dev-not-ready"
+
+
 class ModelScenarioReading(_Frozen):
     """What one tick read for one scenario, and the alarm row it appended, if any."""
 
     scenario: str
     conclusion: str
     ran_at: str
+    last_success_at: str | None = None
+    alarm_kind: EnumScenarioAlarm | None = None
     alarm_row: str | None = None
     append_status: str | None = None
 
@@ -114,19 +125,43 @@ def _clean(value: object) -> str:
     return text or "unknown"
 
 
-def read_last_run(path: Path) -> tuple[str, str]:
-    """The record's ``(conclusion, ran_at)``; a missing or unreadable record reads ``("no-record", "unknown")``."""
+@dataclass(frozen=True)
+class _LastRun:
+    conclusion: str = "no-record"
+    ran_at: str = "unknown"
+    last_success_at: str | None = None
+    consecutive_skips: int = 0
+
+
+def _read_last_run(path: Path) -> _LastRun:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return ("no-record", "unknown")
+        return _LastRun()
     if not isinstance(document, dict):
-        return ("no-record", "unknown")
+        return _LastRun()
     conclusion = document.get("conclusion")
     ran_at = document.get("ran_at")
-    if not isinstance(conclusion, str) or not conclusion:
-        return ("no-record", _clean(ran_at) if ran_at else "unknown")
-    return (conclusion, _clean(ran_at) if ran_at else "unknown")
+    last_success_at = document.get("last_success_at")
+    if conclusion == EnumScenarioConclusion.SUCCESS and not last_success_at:
+        last_success_at = ran_at
+    skip_count = document.get("consecutive_skips")
+    return _LastRun(
+        conclusion=conclusion
+        if isinstance(conclusion, str) and conclusion
+        else "no-record",
+        ran_at=_clean(ran_at) if ran_at else "unknown",
+        last_success_at=last_success_at if isinstance(last_success_at, str) else None,
+        consecutive_skips=skip_count
+        if type(skip_count) is int and skip_count > 0
+        else 0,
+    )
+
+
+def read_last_run(path: Path) -> tuple[str, str]:
+    """The last recorded conclusion and run time."""
+    record = _read_last_run(path)
+    return record.conclusion, record.ran_at
 
 
 def alarm_bucket(settings: ModelScenarioAlarmSettings, now: datetime) -> int:
@@ -140,13 +175,19 @@ def alarm_request_id(
     ran_at: str,
     bucket: int | None,
     conclusion: str,
+    kind: EnumScenarioAlarm = EnumScenarioAlarm.FAILURE,
 ) -> str:
     """One UUID per readable run; missing, unreadable and stale readings also name their conclusion and bucket.
 
     A bucketed row differs in its bytes by conclusion, and the ledger answers a repeated request id duplicate only for
     identical bytes, so two readings of one bucket that differ in conclusion must not share an id.
     """
-    key = f"onex-scenario-alarm:{watch.alarm}|{host}|{ran_at}"
+    alarm = (
+        watch.not_ready_alarm
+        if kind is EnumScenarioAlarm.DEV_NOT_READY
+        else watch.alarm
+    )
+    key = f"onex-scenario-alarm:{alarm}|{host}|{ran_at}"
     if bucket is not None:
         key += f"|{conclusion}|{bucket}"
     return str(uuid5(NAMESPACE_URL, key))
@@ -176,6 +217,7 @@ def build_alarm_row(
     ran_at: str,
     bucket: int | None,
     last_conclusion: str | None = None,
+    kind: EnumScenarioAlarm = EnumScenarioAlarm.FAILURE,
 ) -> str:
     """Stamp a failed run at its own time, or a recurring outage at its bucket start.
 
@@ -206,7 +248,9 @@ def build_alarm_row(
     if moment.microsecond:
         moment = moment.replace(microsecond=0) + timedelta(seconds=1)
     stamp = moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    if conclusion == "no-record":
+    if kind is EnumScenarioAlarm.DEV_NOT_READY:
+        reason = "dev readiness was unavailable for at least three consecutive runs"
+    elif conclusion == "no-record":
         reason = "no readable last-run record"
     elif conclusion == "stale":
         reason = f"the last run is older than {watch.max_age_seconds} s or has no readable time"
@@ -222,7 +266,7 @@ def build_alarm_row(
         f"actor={settings.actor}",
         "model=none",
         "src=alarm",
-        f"alarm={watch.alarm}",
+        f"alarm={watch.not_ready_alarm if kind is EnumScenarioAlarm.DEV_NOT_READY else watch.alarm}",
         f"scenario={_clean(watch.scenario)}",
         f"conclusion={_clean(conclusion)}",
         f"ran_at={_clean(ran_at)}",
@@ -256,7 +300,8 @@ class HandlerDelegationScenarioAlarm:
         now = self._clock()
         bucket = alarm_bucket(self._settings, now)
         for watch in self._settings.scenarios:
-            conclusion, ran_at = read_last_run(request.home / watch.evidence_file)
+            record = _read_last_run(request.home / watch.evidence_file)
+            conclusion, ran_at = record.conclusion, record.ran_at
             last_conclusion: str | None = None
             # A record older than the declared age reads stale whatever it concluded: a failed or refused run whose
             # unit then stops would otherwise stay keyed on its ran_at, one row and then duplicates, never an alarm.
@@ -267,10 +312,16 @@ class HandlerDelegationScenarioAlarm:
             ) and is_stale(ran_at, watch.max_age_seconds, now):
                 last_conclusion = conclusion
                 conclusion = "stale"
-            if conclusion == self._settings.success_conclusion:
+            skipped = conclusion == EnumScenarioConclusion.SKIPPED
+            if conclusion == self._settings.success_conclusion or (
+                skipped and record.consecutive_skips < 3
+            ):
                 readings.append(
                     ModelScenarioReading(
-                        scenario=watch.scenario, conclusion=conclusion, ran_at=ran_at
+                        scenario=watch.scenario,
+                        conclusion=conclusion,
+                        ran_at=ran_at,
+                        last_success_at=record.last_success_at,
                     )
                 )
                 continue
@@ -286,6 +337,11 @@ class HandlerDelegationScenarioAlarm:
                 or run_time > now
                 else None
             )
+            kind = (
+                EnumScenarioAlarm.DEV_NOT_READY
+                if skipped
+                else EnumScenarioAlarm.FAILURE
+            )
             row = build_alarm_row(
                 self._settings,
                 watch,
@@ -294,16 +350,21 @@ class HandlerDelegationScenarioAlarm:
                 ran_at=ran_at,
                 bucket=row_bucket,
                 last_conclusion=last_conclusion,
+                kind=kind,
             )
             outcome = self._appender.append(
                 row,
-                alarm_request_id(watch, request.host, ran_at, row_bucket, conclusion),
+                alarm_request_id(
+                    watch, request.host, ran_at, row_bucket, conclusion, kind
+                ),
             )
             readings.append(
                 ModelScenarioReading(
                     scenario=watch.scenario,
                     conclusion=conclusion,
                     ran_at=ran_at,
+                    last_success_at=record.last_success_at,
+                    alarm_kind=kind,
                     alarm_row=row,
                     append_status=outcome.status,
                 )
@@ -312,6 +373,7 @@ class HandlerDelegationScenarioAlarm:
 
 
 __all__ = [
+    "EnumScenarioAlarm",
     "HandlerDelegationScenarioAlarm",
     "ModelScenarioAlarmRequest",
     "ModelScenarioAlarmResult",
