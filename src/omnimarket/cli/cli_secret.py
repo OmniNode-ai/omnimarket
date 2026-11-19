@@ -883,16 +883,34 @@ def _read_model_key(provider: str) -> str:
     return value
 
 
+class _ModelsGroup(click.Group):
+    """``onex models`` group with bare-provider hints (OMN-23825)."""
+
+    def resolve_command(
+        self, ctx: click.Context, args: list[str]
+    ) -> tuple[str | None, click.Command | None, list[str]]:
+        if args:
+            name = args[0].lower()
+            if name in provider_labels.LISTED_PROVIDERS and name not in self.commands:
+                raise click.UsageError(
+                    f"No such command '{args[0]}'. "
+                    f"Did you mean 'onex models add {name}'?",
+                    ctx=ctx,
+                )
+        return super().resolve_command(ctx, args)
+
+
 _model_choice = provider_labels.ModelProviderChoice()
 
 
-models_group = click.Group(
+models_group = _ModelsGroup(
     "models",
     help=(
         "Set up the models delegation can use: Google Gemini, OpenRouter, OpenAI, "
         "Reflection AI, Anthropic, GLM (z.ai), or a Local Model: any model server "
         "you run, by its endpoint URL.\n\nSet up any "
-        "combination; delegation chooses among them for each task."
+        "combination; delegation chooses among them for each task.\n\n"
+        "Add a provider after setup with: onex models add <provider>."
     ),
     commands=[*MODEL_COMMANDS, *LIST_EDIT_COMMANDS],  # first, only, add-model, reorder
 )
