@@ -98,3 +98,122 @@ async def test_unmeasured_terminal_and_pre_migration_row_read_nulls() -> None:
         )
         await admin_conn.execute(_MIGRATION.read_text())
         assert await admin_conn.fetchrow(_SELECT, cid) == row
+
+
+@pytest.mark.integration
+async def test_failed_terminal_timed_at_zero_stores_no_measured_duration() -> None:
+    """OMN-24615 AC8: execution_ms is the served run duration; a failed run that timed nothing stores NULL."""
+    payload = {**_wire(_quota_terminal()), "execution_duration_ms": 0}
+    assert payload.get("terminal_failure_cause")  # the fixture is a failed terminal
+    cid = str(payload["correlation_id"])
+    async with _provisioned_runner() as (runner, admin_conn, _schema):
+        assert await runner.project_event(
+            runner._topic_delegation_failed,
+            payload,
+            MessageMeta(partition=0, offset=0, fallback_id=cid),
+        )
+        row = await admin_conn.fetchrow(_SELECT, cid)
+        assert row is not None
+        assert row["execution_ms"] is None
+
+
+@pytest.mark.integration
+async def test_failed_skill_terminal_timed_at_zero_stores_no_measured_duration() -> (
+    None
+):
+    """OMN-24615 AC8, the skill-terminal path: a failed run that timed nothing stores no execution_ms."""
+    payload = _timed_skill_terminal()
+    payload.update(
+        tenant_id=_TENANT,
+        quality_gate_passed=False,
+        terminal_failure_cause="provider_error",
+        execution_duration_ms=0,
+    )
+    cid = str(payload["correlation_id"])
+    async with _provisioned_runner() as (runner, admin_conn, _schema):
+        assert await runner.project_event(
+            runner._topic_delegate_skill_completed,
+            payload,
+            MessageMeta(partition=0, offset=0, fallback_id=cid),
+        )
+        row = await admin_conn.fetchrow(_SELECT, cid)
+        assert row is not None
+        assert row["execution_ms"] is None
+
+
+@pytest.mark.integration
+async def test_failed_terminal_over_a_stored_zero_stores_no_measured_duration() -> None:
+    """OMN-24615 AC8, the async merge: a failed terminal that times nothing inherits no stored 0 ms."""
+    first = _timed_skill_terminal()
+    first.update(tenant_id=_TENANT, execution_duration_ms=0)
+    failed = _timed_skill_terminal()
+    failed.update(
+        tenant_id=_TENANT,
+        correlation_id=first["correlation_id"],
+        quality_gate_passed=False,
+        terminal_failure_cause="provider_error",
+    )
+    del failed["execution_duration_ms"]
+    cid = str(first["correlation_id"])
+    async with _provisioned_runner() as (runner, admin_conn, _schema):
+        for offset, payload in enumerate((first, failed)):
+            assert await runner.project_event(
+                runner._topic_delegate_skill_completed,
+                payload,
+                MessageMeta(partition=0, offset=offset, fallback_id=cid),
+            )
+        row = await admin_conn.fetchrow(_SELECT, cid)
+        assert row is not None
+        assert row["execution_ms"] is None
+
+
+@pytest.mark.integration
+async def test_completed_terminal_over_a_stored_zero_keeps_the_measured_zero() -> None:
+    """OMN-24615 AC8, the control for the async merge: only a failed run loses a stored 0 ms."""
+    first = _timed_skill_terminal()
+    first.update(tenant_id=_TENANT, execution_duration_ms=0)
+    again = _timed_skill_terminal()
+    again.update(tenant_id=_TENANT, correlation_id=first["correlation_id"])
+    del again["execution_duration_ms"]
+    cid = str(first["correlation_id"])
+    async with _provisioned_runner() as (runner, admin_conn, _schema):
+        for offset, payload in enumerate((first, again)):
+            assert await runner.project_event(
+                runner._topic_delegate_skill_completed,
+                payload,
+                MessageMeta(partition=0, offset=offset, fallback_id=cid),
+            )
+        row = await admin_conn.fetchrow(_SELECT, cid)
+        assert row is not None
+        assert row["execution_ms"] == 0
+
+
+@pytest.mark.integration
+async def test_failed_terminal_over_a_measured_duration_keeps_it() -> None:
+    """OMN-24615 AC8, the async merge: a failed terminal clears only a stored 0 ms, never a measured duration."""
+    first = _timed_skill_terminal()
+    first.update(tenant_id=_TENANT)  # execution_duration_ms 567
+    failed = _timed_skill_terminal()
+    failed.update(
+        tenant_id=_TENANT,
+        correlation_id=first["correlation_id"],
+        quality_gate_passed=False,
+        terminal_failure_cause="provider_error",
+    )
+    del failed["execution_duration_ms"]
+    cid = str(first["correlation_id"])
+    async with _provisioned_runner() as (runner, admin_conn, _schema):
+        for offset, payload in enumerate((first, failed)):
+            assert await runner.project_event(
+                runner._topic_delegate_skill_completed,
+                payload,
+                MessageMeta(partition=0, offset=offset, fallback_id=cid),
+            )
+        row = await admin_conn.fetchrow(_SELECT, cid)
+        assert row is not None
+        assert row["execution_ms"] == 567
+        # The second terminal was taken as the failure it is, so the kept duration is not a success's.
+        assert await admin_conn.fetchval(
+            "SELECT terminal_failure_cause FROM delegation_events WHERE correlation_id = $1",
+            cid,
+        )
