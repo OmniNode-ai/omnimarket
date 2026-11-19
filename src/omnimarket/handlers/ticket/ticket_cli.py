@@ -14,10 +14,12 @@ import json
 import sys
 from importlib import resources
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 import click
 import yaml
+from omnibase_core.models.ticket.model_ticket_draft import ModelTicketDraft
+from omnibase_core.utils.util_safe_yaml_loader import load_yaml_mapping_no_duplicates
 from omnibase_infra.errors import InfraConnectionError
 from pydantic import ValidationError
 
@@ -95,6 +97,26 @@ def _command(operation: str) -> click.Command:
                 if fields.get(name):
                     raise click.UsageError(f"give --{name} or --{name}-file, not both")
                 fields[name] = Path(str(path)).read_bytes().decode("utf-8")
+        draft_path = fields.pop("draft_file", None)
+        draft_id = fields.pop("draft_id", None)
+        if draft_path is not None:
+            path = Path(str(draft_path))
+            try:
+                draft = ModelTicketDraft.model_validate(
+                    load_yaml_mapping_no_duplicates(
+                        path.read_text(encoding="utf-8"), source=str(path)
+                    )
+                )
+            except (OSError, ValueError, yaml.YAMLError) as exc:
+                raise click.UsageError(f"invalid --draft file: {exc}") from exc
+            fields["draft"] = draft.model_dump(mode="json")
+            if draft_id is None:
+                # Identical typed files retry the same draft across CLI invocations.
+                # An explicit UUID can name an independently submitted copy.
+                canonical = json.dumps(fields["draft"], sort_keys=True)
+                draft_id = uuid5(NAMESPACE_URL, f"onex:ticket-draft:{canonical}")
+        if draft_id is not None:
+            fields["draft_id"] = str(draft_id)
         fields = {name: value for name, value in fields.items() if value is not None}
         identity = {
             "operation": operation,
@@ -157,7 +179,18 @@ def _command(operation: str) -> click.Command:
         decorated = option(decorated)
     if operation == "create":
         for option in (
-            click.option("--title", required=True),
+            click.option("--title", help="Title for a free-text create."),
+            click.option(
+                "--draft",
+                "draft_file",
+                type=click.Path(exists=True, dir_okay=False),
+                help="YAML file containing a typed ticket draft.",
+            ),
+            click.option(
+                "--draft-id",
+                type=click.UUID,
+                help="Stable UUID to reuse on retry. Defaults to a UUID derived from the draft file.",
+            ),
             click.option("--description", default=""),
             click.option(
                 "--description-file", type=click.Path(exists=True, dir_okay=False)

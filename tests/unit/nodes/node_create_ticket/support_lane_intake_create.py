@@ -95,6 +95,7 @@ class InMemoryTicketBus:
         if not self.answer:
             raise TimeoutError
         result = await self._effect.handle(command)
+        assert not isinstance(result, tuple), "lane intake uses the free-text route"
         failed = result.outcome == "failed"
         topic = topics.failure if failed and topics.failure else topics.success
         self.terminal_topics.append(topic)

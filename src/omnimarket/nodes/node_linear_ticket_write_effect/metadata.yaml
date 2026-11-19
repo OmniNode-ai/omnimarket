@@ -1,6 +1,6 @@
 name: node_linear_ticket_write_effect
 version: "1.0.0"
-description: "Guarded Linear create, read, comment and state changes over the bus"
+description: "Guarded Linear operations and checked draft contract write events over the bus"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:

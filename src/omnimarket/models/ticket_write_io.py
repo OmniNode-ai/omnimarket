@@ -29,9 +29,8 @@ class ModelTicketWriteRequest(ModelCreateTicketRequest):
     def ticket_request(self) -> ModelCreateTicketRequest:
         return ModelCreateTicketRequest.model_validate(
             {
-                key: value
-                for key, value in self.model_dump().items()
-                if key in ModelCreateTicketRequest.model_fields
+                field: getattr(self, field)
+                for field in ModelCreateTicketRequest.model_fields
             }
         )
 
@@ -57,3 +56,19 @@ class ModelTicketWriteFailed(_TicketTerminal):
     reason: str
     terminal_failure_cause: str
     finding_codes: list[str] = Field(default_factory=list)
+
+
+class ModelTicketContractWritten(BaseModel):
+    """Checked Linear readback. Consumers deduplicate on the payload's event_id."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    event_id: UUID
+    draft_id: UUID
+    ticket_id: str = Field(min_length=1)
+    fingerprint: str = Field(pattern=r"^[0-9a-f]{16}$")
+    content_sha256: str = Field(
+        pattern=r"^[0-9a-f]{64}$",
+        description="SHA256 of the UTF-8 compact JSON array [title, description].",
+    )
+    updated_at: str = Field(min_length=1, description="Linear's unmodified updatedAt.")
