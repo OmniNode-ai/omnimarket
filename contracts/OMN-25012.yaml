@@ -79,10 +79,10 @@ dod_evidence:
   - AC5
   checks:
   - check_type: command
-    check_value: 'sh -c ''! grep -nE "OMN-19998: the (two|permission)" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml'''
+    check_value: "sh -c 'grep -q OMN-24612 src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml && ! grep -qE \"OMN-19998: the (two|permission)\" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml'"
     cwd: .
   - check_type: command
-    check_value: sh -c '! grep -n OMN-19998 tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py'
+    check_value: "sh -c 'grep -q OMN-24612 tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py && ! grep -q OMN-19998 tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py'"
     cwd: .
   - check_type: command
     check_value: 'grep -n ''follow-up: remove the two answer rows'' tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py'
