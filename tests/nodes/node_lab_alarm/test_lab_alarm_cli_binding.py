@@ -37,6 +37,7 @@ _OPERATIONS = {
     "lab_pass_receipt",
     "loaded_code_sha",
     "stale_indeterminate",
+    "container_restarts",
 }
 _BOOT_INJECTABLE = {"event_bus", "container", "ownership_query"}
 

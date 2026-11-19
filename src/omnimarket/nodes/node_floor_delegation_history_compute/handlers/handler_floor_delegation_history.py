@@ -175,7 +175,7 @@ class _Cell:
         self.attempts = 0
         self.accepted = 0
         self.timeouts = 0
-        self.cost = 0.0
+        self.cost: float | None = None
         self.latencies: list[int] = []
 
     def point(self, bucket: str) -> ModelSeriesPoint:
@@ -189,7 +189,7 @@ class _Cell:
             latency_runs=len(ordered),
             p50_latency_ms=_nearest_rank(ordered, 0.5) if ordered else None,
             p95_latency_ms=_nearest_rank(ordered, 0.95) if ordered else None,
-            cost_usd=round(self.cost, 6),
+            cost_usd=None if self.cost is None else round(self.cost, 6),
             success=_success(self.accepted, self.attempts),
         )
 
@@ -197,7 +197,8 @@ class _Cell:
         self.attempts += other.attempts
         self.accepted += other.accepted
         self.timeouts += other.timeouts
-        self.cost += other.cost
+        if other.cost is not None:
+            self.cost = (self.cost or 0.0) + other.cost
         self.latencies.extend(other.latencies)
 
 
@@ -354,7 +355,8 @@ class HandlerFloorDelegationHistory:
             cell.attempts += a.attempts
             cell.accepted += a.accepted
             cell.timeouts += a.timeouts
-            cell.cost += a.cost_usd
+            if a.cost_usd is not None:
+                cell.cost = (cell.cost or 0.0) + a.cost_usd
         for x in latencies:
             cell = hours[
                 (
