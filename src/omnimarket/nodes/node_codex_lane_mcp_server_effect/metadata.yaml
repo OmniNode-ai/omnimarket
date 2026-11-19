@@ -17,3 +17,4 @@ capabilities:
   requires_docker: false
   side_effect_class: write
 dependencies:
+- mcp
