@@ -10,9 +10,9 @@ local metering refresh; its identity accompanies every persisted figure.
 
 from collections.abc import Mapping
 from datetime import datetime
-from decimal import Decimal
 from typing import Final
 
+from omnimarket.models.priced_spend import priced_spend
 from omnimarket.nodes.node_metering_summary_compute import (
     HandlerMeteringSummary,
     ModelMeteringRecord,
@@ -62,17 +62,18 @@ def modelled_run_savings_columns(row: Mapping[str, object]) -> dict[str, object]
     # Same interpretation as the local metering reader: both zero is the
     # legacy storage default, rather than a recorded token measurement.
     unrecorded_tokens = tokens_in == 0 and tokens_out == 0
-    raw_spend = row.get("cost_usd")
     record = ModelMeteringRecord(
         correlation_id=str(row["correlation_id"]),
         occurred_at=occurred_at,
-        model=str(row.get("delegated_to") or row.get("model_name") or ""),
+        # OMN-24615 AC6: the model that ran, the same order as the metering reader.
+        model=str(row.get("model_name") or row.get("delegated_to") or ""),
         task_type=str(row.get("task_type") or ""),
         tokens_in=None if unrecorded_tokens else tokens_in,
         tokens_out=None if unrecorded_tokens else tokens_out,
-        spend_usd=None if raw_spend is None else Decimal(str(raw_spend)),
-        # OMN-21264: a run handed back to its caller saved nothing.
-        returned_to_caller=row.get("terminal_failure_cause") == "returned_to_caller",
+        spend_usd=priced_spend(row),  # OMN-24615 AC3: a named price only
+        # OMN-21264, OMN-24615 AC1: any stored failure cause, returned_to_caller
+        # included, means the run saved nothing (ModelMeteringRecord.failed).
+        failure_cause=str(row.get("terminal_failure_cause") or "") or None,
     )
     selection = sqlite_metering_summary.resolve_metering_baseline_model()
     baseline = baseline_pricing.resolve_baseline(selection.model)
