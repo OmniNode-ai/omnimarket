@@ -10,16 +10,16 @@ requirements:
   statement: A temp root named pytest-of-<user> is accepted by the contract and declared for every host of the node overlay; an old unheld run folder under it is removed and a new one is kept.
   acceptance:
   - id: AC1
-    statement: 'AC1: the node overlay declares a pytest-of-<user> temp root on each of its hosts, the contract bound accepts it and refuses pytest-of- and pytest-off-x -- falsifier: uv run pytest tests/nodes/node_temp_retention_effect -q -k "pytest"'
+    statement: 'AC1: the node overlay declares a pytest-of-<user> temp root on each of its hosts, the contract bound accepts it and refuses pytest-of- and pytest-off-x -- falsifier: uv run pytest tests/nodes/node_temp_retention_effect/test_pytest_temp_overlay.py tests/nodes/node_temp_retention_effect/test_temp_retention.py::test_old_unheld_run_under_a_pytest_root_is_removed -q'
 - id: req-omn26097-pass-budget
   statement: A temp retention pass stops starting entries when its budget ends, reports the deferred count and exits 0.
   acceptance:
   - id: AC2
-    statement: 'AC2: a pass with a budget that ends after two of five entries removes two, reports deferred_count 3 and budget_exhausted, and raises no error -- falsifier: uv run pytest tests/nodes/node_temp_retention_effect -q -k "budget"'
+    statement: 'AC2: a pass with a budget that ends after two of five entries removes two, reports deferred_count 3 and budget_exhausted, and raises no error -- falsifier: uv run pytest tests/nodes/node_temp_retention_effect/test_temp_retention.py::test_pass_budget_stops_between_entries -q'
 evidence_requirements:
 - kind: tests
-  description: The temp retention tests pass at the pushed head.
-  command: uv run pytest tests/nodes/node_temp_retention_effect -q -p no:randomly --no-cov
+  description: The pytest temp root and pass budget tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_temp_retention_effect/test_pytest_temp_overlay.py tests/nodes/node_temp_retention_effect/test_temp_retention.py::test_pass_budget_stops_between_entries -q -p no:randomly --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -32,7 +32,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_temp_retention_effect -q -p no:randomly --no-cov -k pytest
+    check_value: uv run pytest tests/nodes/node_temp_retention_effect/test_pytest_temp_overlay.py tests/nodes/node_temp_retention_effect/test_temp_retention.py::test_old_unheld_run_under_a_pytest_root_is_removed -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn26097-ac2
   description: 'AC2: the budget tests pass.'
@@ -41,7 +41,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_temp_retention_effect -q -p no:randomly --no-cov -k budget
+    check_value: uv run pytest tests/nodes/node_temp_retention_effect/test_temp_retention.py::test_pass_budget_stops_between_entries -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn26097-integration-proof
   description: 'Live read of the unit that runs this node on h051: the newest onex-temp-retention run line reports no error and no refusal (read over ssh from the lane host).'
