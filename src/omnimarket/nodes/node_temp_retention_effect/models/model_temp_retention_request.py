@@ -20,3 +20,4 @@ class ModelTempRetentionRequest(BaseModel):
     host_name: str
     overlay_file: str = ""
     dry_run: bool = False
+    budget_seconds: float | None = None

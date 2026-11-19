@@ -1,0 +1,55 @@
+schema_version: 1.0.0
+ticket_id: OMN-26097
+title: node_temp_retention_effect ages out pytest run folders and ends a slow pass inside its start timeout
+summary: 'The temp-directory retention node removed entries directly under /tmp, but pytest keeps its run folders under /tmp/pytest-of-<user>, a folder that changes whenever a run starts, so an old pytest-N folder inside it was never reached (h051 read 2026-11-19T21:33Z: 25 of 34 folders older than 12 hours, 3.9 GiB, root disk 87 percent used). The contract now lets an overlay declare a root named pytest-of-<user>, the node overlay declares it on h051, h053, h201 and h202, and a pass takes a time budget so a host whose disk cannot finish a scan inside the unit start timeout (h053: every run since 2026-11-19T19:47Z ended by the 900 s timeout) ends with a partial pass and exit 0.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26097-pytest-root
+  statement: A temp root named pytest-of-<user> is accepted by the contract and declared for every host of the node overlay; an old unheld run folder under it is removed and a new one is kept.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the node overlay declares a pytest-of-<user> temp root on each of its hosts, the contract bound accepts it and refuses pytest-of- and pytest-off-x -- falsifier: uv run pytest tests/nodes/node_temp_retention_effect -q -k "pytest"'
+- id: req-omn26097-pass-budget
+  statement: A temp retention pass stops starting entries when its budget ends, reports the deferred count and exits 0.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a pass with a budget that ends after two of five entries removes two, reports deferred_count 3 and budget_exhausted, and raises no error -- falsifier: uv run pytest tests/nodes/node_temp_retention_effect -q -k "budget"'
+evidence_requirements:
+- kind: tests
+  description: The temp retention tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_temp_retention_effect -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26097-ac1
+  description: 'AC1: the pytest-root tests and the packaged-overlay tests pass.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_temp_retention_effect -q -p no:randomly --no-cov -k pytest
+    cwd: .
+- id: dod-omn26097-ac2
+  description: 'AC2: the budget tests pass.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_temp_retention_effect -q -p no:randomly --no-cov -k budget
+    cwd: .
+- id: dod-omn26097-integration-proof
+  description: 'Live read of the unit that runs this node on h051: the newest onex-temp-retention run line reports no error and no refusal (read over ssh from the lane host).'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: >-
+      bash -o pipefail -c 'ssh h051 "journalctl --user -u onex-temp-retention.service -n 60 -o cat | grep removed_count | tail -1" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); assert d[\"errors\"] == [] and d[\"refused\"] == []"'

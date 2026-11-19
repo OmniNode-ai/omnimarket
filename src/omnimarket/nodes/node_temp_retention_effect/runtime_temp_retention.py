@@ -54,6 +54,11 @@ def _parser() -> argparse.ArgumentParser:
         "--overlay", default="", help="the overlay file (default: the environment pin)"
     )
     run.add_argument("--dry-run", action="store_true")
+    run.add_argument(
+        "--budget-seconds",
+        type=float,
+        help="pass budget in seconds (default: 80%% of the unit start timeout, 0 disables it)",
+    )
     schedule = commands.add_parser("schedule")
     verbs = schedule.add_subparsers(dest="verb", required=True, parser_class=_Parser)
     verbs.add_parser("check").add_argument("--overlay", default="")
@@ -112,9 +117,15 @@ def main(argv: Sequence[str]) -> int:
 
 
 def _run(args: argparse.Namespace) -> int:
+    budget_seconds: float | None = args.budget_seconds
+    if budget_seconds is None:
+        budget_seconds = 0.8 * load_schedule().cadence.timeout_start_seconds
     result = HandlerTempRetention().handle(
         ModelTempRetentionRequest(
-            host_name=args.host, overlay_file=args.overlay, dry_run=args.dry_run
+            host_name=args.host,
+            overlay_file=args.overlay,
+            dry_run=args.dry_run,
+            budget_seconds=budget_seconds or None,
         )
     )
     sys.stdout.write(result.model_dump_json() + "\n")
