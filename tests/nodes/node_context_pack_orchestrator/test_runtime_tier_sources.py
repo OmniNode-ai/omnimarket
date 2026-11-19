@@ -70,7 +70,8 @@ def test_contract_names_the_runtime_handler() -> None:
     assert handler["module"] == _RUNTIME_MODULE
     assert handler["class"] == "HandlerContextPackOrchestratorRuntime"
     routes = _CONTRACT["handler_routing"]["handlers"]
-    assert len(routes) == 1
+    # the generic pack route first; the lane-brief route is the second (test_lane_brief_context_profile)
+    assert [r["operation"] for r in routes[1:]] == ["context.pack.lane_brief"]
     assert routes[0]["handler"] == {
         "module": _RUNTIME_MODULE,
         "name": "HandlerContextPackOrchestratorRuntime",

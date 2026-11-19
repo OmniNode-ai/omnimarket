@@ -48,6 +48,11 @@ DELEGATION_SAVINGS_VIEW_STEPS = (
         "sqlite/delegation_savings_view_one_definition.sql",
         "served each run's modelled saving, none for a failed run, with its baseline",
     ),
+    (
+        "omn24615_delegation_savings_priced_spend_view",
+        "sqlite/delegation_savings_view_priced_spend.sql",
+        "served spend from a named price only and read a store with no call record as measured",
+    ),
 )
 
 
