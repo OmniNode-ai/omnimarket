@@ -157,7 +157,8 @@ def test_exemplar_graph_cell_error_a_cell_quoted_in_a_fence_is_not_a_cell() -> N
 def test_exemplar_graph_cell_error_both_finishing_outcomes_are_held_back(
     declared: str,
 ) -> None:
-    assert close(message(f"LANE_RESULT outcome={declared}")).outcome == "partial"
+    result = close(message(f"LANE_RESULT outcome={declared}"))
+    assert result.outcome == "partial"
 
 
 @pytest.mark.parametrize("declared", ["blocked", "partial", "skipped-owned", "unknown"])

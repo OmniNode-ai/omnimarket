@@ -26,6 +26,9 @@ evidence_requirements:
   - kind: tests
     description: "the exemplar and graph tests at the pushed head"
     command: "uv run pytest tests/nodes/node_remote_lane_close_compute/test_exemplar_graph_cell_omn24686.py -q -k exemplar_graph_cell"
+  - kind: manual
+    description: "Deploy validation for the deploy gate: the committed exemplar graph cell module read at the checkout commit, starting nothing."
+    command: "deploy: grep exemplar_graph_cell handler in node_remote_lane_close_compute at HEAD"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -52,4 +55,12 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane exgraph-req-0320 --kind test -- uv run --frozen pytest tests/nodes/node_remote_lane_close_compute -q --no-cov -n 0"
+        cwd: "."
+  - id: dod-omn24686-deploy-handler-surface
+    description: "Deploy check: the close node's committed handler wires the exemplar graph cell and the module carries the partial problem text. Fails when either is absent. Runs on a hosted runner with no container daemon."
+    source: manual
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: command
+        check_value: "grep -q exemplar_graph_cell src/omnimarket/nodes/node_remote_lane_close_compute/handlers/handler_remote_lane_result.py && grep -q 'no exemplar or graph cell' src/omnimarket/nodes/node_remote_lane_close_compute/handlers/exemplar_graph_cell.py"
         cwd: "."
