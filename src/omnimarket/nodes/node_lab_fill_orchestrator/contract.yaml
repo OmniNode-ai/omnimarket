@@ -73,3 +73,10 @@ lifecycle: experimental
 # launching Mac's lab fill tick consumes it from outside the ONEX node graph.
 externally_consumed_topics:
   - onex.cmd.omnimarket.lab-fill-fire-plan-requested.v1
+
+# The node that published the decided terminal (node_lab_fill_plan_compute) is
+# removed from this repository; the fire is now published by the launching Mac's
+# lab fill tick, outside the ONEX node graph.
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.lab-fill-plan-decided.v1
+    producer: "the launching Mac's lab fill tick, run outside this repository, not a node contract"
