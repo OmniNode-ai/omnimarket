@@ -71,6 +71,16 @@ description: >
   The stale-indeterminate condition (HandlerStaleIndeterminate, verb stale-indeterminate) reads the run records of the overlay's
   watched conditions. A condition whose last after_runs runs all read INDETERMINATE, with no OK and no ALARM between them, alarms.
 
+  The loaded-code-sha read (HandlerLoadedCodeSha, verb loaded-code-sha) reads the sha the lane's deploy agent has loaded,
+  over the same agent and ready surfaces the lab-pass receipt reads first. READ carries the sha and the surface that
+  answered; UNREAD carries the reason no surface delivered one. It is never an alarm and never delivered.
+
+  The container-restarts condition (HandlerContainerRestarts, verb container-restarts, OMN-23934) reads the restart count of
+  every container the lane manifest gives a restart_bound for the overlay's census lane (docker inspect through the overlay's
+  docker command). It is ALARM for each container whose count is above its own bound, OK when none is, and INDETERMINATE when a
+  container or the manifest cannot be read or the lane declares no bound: an unreadable source never reads as healthy, and it
+  dominates an alarm found on the containers that could be read.
+
 handler:
   module: omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag
   class: HandlerBrokerLag
@@ -117,6 +127,14 @@ cli_handlers:
     handler:
       name: HandlerStaleIndeterminate
       module: omnimarket.nodes.node_lab_alarm.handlers.handler_stale_indeterminate
+  - operation: loaded_code_sha
+    handler:
+      name: HandlerLoadedCodeSha
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_loaded_code_sha
+  - operation: container_restarts
+    handler:
+      name: HandlerContainerRestarts
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_container_restarts
 
 # HandlerEffectsHeld (omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held, input
 # ModelEffectsHeldCommand) takes its overlay settings, group reader, state store, lane dispatcher and clock
@@ -191,6 +209,14 @@ topics:
   stale_indeterminate_run_started: onex.evt.omnimarket.lab-alarm-stale-indeterminate-started.v1
   stale_indeterminate_run_completed: onex.evt.omnimarket.lab-alarm-stale-indeterminate-completed.v1
   stale_indeterminate_run_failed: onex.evt.omnimarket.lab-alarm-stale-indeterminate-failed.v1
+  loaded_code_sha_requested: onex.cmd.omnimarket.lab-alarm-loaded-code-sha-requested.v1
+  loaded_code_sha_run_started: onex.evt.omnimarket.lab-alarm-loaded-code-sha-started.v1
+  loaded_code_sha_run_completed: onex.evt.omnimarket.lab-alarm-loaded-code-sha-completed.v1
+  loaded_code_sha_run_failed: onex.evt.omnimarket.lab-alarm-loaded-code-sha-failed.v1
+  container_restarts_requested: onex.cmd.omnimarket.lab-alarm-container-restarts-requested.v1
+  container_restarts_run_started: onex.evt.omnimarket.lab-alarm-container-restarts-started.v1
+  container_restarts_run_completed: onex.evt.omnimarket.lab-alarm-container-restarts-completed.v1
+  container_restarts_run_failed: onex.evt.omnimarket.lab-alarm-container-restarts-failed.v1
 
 event_bus:
   subscribe_topics: []
@@ -206,6 +232,9 @@ externally_consumed_topics:
   - onex.evt.omnimarket.lab-alarm-effects-held-lane-dispatched.v1
   - onex.evt.omnimarket.lab-alarm-effects-held-completed.v1
   - onex.evt.omnimarket.lab-alarm-effects-held-failed.v1
+  - onex.evt.omnimarket.lab-alarm-container-restarts-started.v1
+  - onex.evt.omnimarket.lab-alarm-container-restarts-completed.v1
+  - onex.evt.omnimarket.lab-alarm-container-restarts-failed.v1
   - onex.evt.omnimarket.lab-alarm-broker-listener-started.v1
   - onex.evt.omnimarket.lab-alarm-broker-listener-completed.v1
   - onex.evt.omnimarket.lab-alarm-broker-listener-failed.v1
@@ -230,6 +259,9 @@ externally_consumed_topics:
   - onex.evt.omnimarket.lab-alarm-stale-indeterminate-started.v1
   - onex.evt.omnimarket.lab-alarm-stale-indeterminate-completed.v1
   - onex.evt.omnimarket.lab-alarm-stale-indeterminate-failed.v1
+  - onex.evt.omnimarket.lab-alarm-loaded-code-sha-started.v1
+  - onex.evt.omnimarket.lab-alarm-loaded-code-sha-completed.v1
+  - onex.evt.omnimarket.lab-alarm-loaded-code-sha-failed.v1
 
 overlay:
   node: node_lab_alarm

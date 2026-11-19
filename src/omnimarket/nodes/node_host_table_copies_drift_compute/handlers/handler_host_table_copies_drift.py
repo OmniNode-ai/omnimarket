@@ -25,13 +25,13 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
-from omnimarket.nodes.node_host_table_copies_drift_compute.models import (
+from omnimarket.models.model_host_table_copies_drift import (
     ModelCopyValue,
     ModelFieldDifference,
     ModelHostTableDriftCommand,
     ModelHostTableDriftResult,
 )
+from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
 from omnimarket.nodes.node_host_table_copies_drift_compute.overlay import (
     ModelHostTableCopiesDriftOverlay,
     ModelIntentionalDifference,

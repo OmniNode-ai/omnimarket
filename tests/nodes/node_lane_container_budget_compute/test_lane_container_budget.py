@@ -214,7 +214,18 @@ def test_contract_names_the_shared_models_and_handler() -> None:
     assert (
         raw["input_model"]["module"] == "omnimarket.models.model_lane_container_budget"
     )
-    assert raw["event_bus"]["publish_topics"] == []
+    assert raw["event_bus"]["subscribe_topics"] == [
+        "onex.cmd.omnimarket.lane-container-budget-requested.v1"
+    ]
+    assert raw["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.lane-container-budget-judged.v1"
+    ]
+    assert raw["runtime_dispatch"]["command_topic"] == (
+        "onex.cmd.omnimarket.lane-container-budget-requested.v1"
+    )
+    assert raw["terminal_event"] == (
+        "onex.evt.omnimarket.lane-container-budget-judged.v1"
+    )
 
 
 def test_the_declared_target_rides_with_the_lane_reading_and_the_budget_still_judges() -> (

@@ -16,6 +16,9 @@ from omnimarket.enums.enum_delegation_disposition import (
     EnumDelegationDispositionReason,
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_delegation_step_order_refusal import (
+    EnumDelegationStepOrderRefusal,
+)
 from omnimarket.enums.enum_deployment_fact_kind import EnumDeploymentFactKind
 from omnimarket.enums.enum_dispatch_queue_phase import (
     IN_FLIGHT_PHASES,
@@ -60,6 +63,7 @@ __all__ = [
     "EnumDelegationDisposition",
     "EnumDelegationDispositionReason",
     "EnumDelegationFailureClass",
+    "EnumDelegationStepOrderRefusal",
     "EnumDeploymentFactKind",
     "EnumDispatchQueuePhase",
     "EnumDispatchTerminalDisposition",

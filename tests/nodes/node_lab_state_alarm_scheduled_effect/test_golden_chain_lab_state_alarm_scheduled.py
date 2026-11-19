@@ -17,6 +17,7 @@ from omnimarket.handlers.schedule_run_store import InMemoryScheduleRunStore
 from omnimarket.models.floor_17a import ModelLabSourceVerdict
 from omnimarket.nodes.node_lab_state_alarm_scheduled_effect.handlers.handler_lab_state_alarm_scheduled import (
     HandlerLabStateAlarmScheduled,
+    UnboundLabVerdictSource,
 )
 from omnimarket.nodes.node_schedule_run_reducer.handlers.handler_schedule_run_reducer import (
     HandlerScheduleRunReducer,
@@ -136,7 +137,9 @@ def test_golden_a_tick_inside_the_interval_returns_none(tmp_path: Path) -> None:
 
 
 def test_error_the_unbound_source_is_a_failed_run_by_name(tmp_path: Path) -> None:
-    event = HandlerLabStateAlarmScheduled(environ=environ(tmp_path)).handle(tick(T0))
+    event = HandlerLabStateAlarmScheduled(
+        environ=environ(tmp_path), source=UnboundLabVerdictSource()
+    ).handle(tick(T0))
     assert event is not None
     assert event.outcome == "failed"
     assert event.detail == "no lab verdict source is bound in the runtime"

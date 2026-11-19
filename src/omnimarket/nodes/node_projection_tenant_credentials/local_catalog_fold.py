@@ -44,7 +44,12 @@ def fold_registered_tenant_key(
         "api_key_ref": response.api_key_ref,
         "metadata": {
             key: value
-            for key, value in (("plan", response.plan), ("model", response.model))
+            for key, value in (
+                ("plan", response.plan),
+                ("model", response.model),
+                ("base_url", getattr(response, "base_url", None)),
+                ("connection_id", getattr(response, "connection_id", None)),
+            )
             if value is not None
         },
         "models": response.models,
