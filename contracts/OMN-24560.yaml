@@ -37,7 +37,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The node's focused tests at the pushed head; the new test file fails on the code before this change (it imports stale_lock, which did not exist).
-  command: uv run pytest tests/test_worktree_reconcile_dead_and_stale_lock.py -q
+  command: uv run --frozen pytest tests/test_worktree_reconcile_dead_and_stale_lock.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -50,7 +50,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_worktree_reconcile_dead_and_stale_lock.py tests/test_worktree_reconcile_safety_rules.py tests/test_worktree_reconcile_safety_probe.py -q
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_dead_and_stale_lock.py tests/test_worktree_reconcile_safety_rules.py tests/test_worktree_reconcile_safety_probe.py -q --no-cov
     cwd: .
 - id: dod-omn24560-ac2
   description: 'AC2: a stale lock is unlocked and removed only when the lock is a lane lock, the ledger read is fresh and shows the owner finished, and the tree is clean, pushed and merged; a person lock, a successor, a lagging ledger, uncommitted work, an unpushed branch and a dry run keep the tree.'
@@ -59,7 +59,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_worktree_reconcile_ledger_read.py tests/test_worktree_reconcile_safety_rules.py tests/test_worktree_reconcile_safety_probe.py tests/test_worktree_reconcile_dead_and_stale_lock.py -q
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_ledger_read.py tests/test_worktree_reconcile_safety_rules.py tests/test_worktree_reconcile_safety_probe.py tests/test_worktree_reconcile_dead_and_stale_lock.py -q --no-cov
     cwd: .
 - id: dod-omn24560-ac3
   description: 'AC3: the completed event names every removal; golden and error chain tests and the projection tests pass.'
@@ -68,7 +68,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_golden_chain_worktree_reconcile.py tests/test_worktree_reconcile_projection.py -q
+    check_value: uv run --frozen pytest tests/test_golden_chain_worktree_reconcile.py tests/test_worktree_reconcile_projection.py -q --no-cov
     cwd: .
 - id: dod-omn24560-ac4
   description: 'AC4: the launchd and path-override schedule tests pass and the systemd render tests are unchanged.'
@@ -77,7 +77,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_worktree_reconcile_schedule.py tests/test_worktree_reconcile_schedule_launchd.py tests/test_worktree_reconcile_schedule_paths.py -q
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_schedule.py tests/test_worktree_reconcile_schedule_launchd.py tests/test_worktree_reconcile_schedule_paths.py -q --no-cov
     cwd: .
 - id: dod-omn24560-ac6
   description: 'AC6: an unlocked tree needs the same fresh ledger proof; unread keeps it, an owner not shown finished keeps unmerged work, the model cannot pin it and the revalidation refuses it; each has a failing control.'
@@ -86,7 +86,7 @@ dod_evidence:
   - AC6
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_worktree_reconcile_unlocked_proof.py -q
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_unlocked_proof.py -q --no-cov
     cwd: .
 - id: dod-omn24560-ac7
   description: 'AC7: an unread ledger is named in the run-completed event, the lookback is always read and never 0, a failed relock is named, and the golden and error chain event tests pass.'
@@ -95,7 +95,7 @@ dod_evidence:
   - AC7
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_worktree_reconcile_unlocked_proof.py tests/test_golden_chain_worktree_reconcile.py tests/test_worktree_reconcile_safety_probe.py tests/test_worktree_reconcile_ledger_read.py -q
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_unlocked_proof.py tests/test_golden_chain_worktree_reconcile.py tests/test_worktree_reconcile_safety_probe.py tests/test_worktree_reconcile_ledger_read.py -q --no-cov
     cwd: .
 - id: dod-omn24560-integration-proof
   description: 'AC5 lab proxy: the node tests run on a lab host at the pushed head; the h202 unit read and the Mac run after the orchestrator install are read by the orchestrator and are not claimed here.'
@@ -112,7 +112,7 @@ dod_evidence:
   - AC5
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_worktree_reconcile_schedule_launchd.py -q -k "unit_root"
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_schedule_launchd.py -q --no-cov -k "unit_root"
     cwd: .
 - id: dod-omn24560-ac8
   description: 'AC8: a TERMINAL that keeps the worktree, a partial outcome and a RELEASE of a surface lease do not finish an owner; the recheck reads the ledger once per run; each rule has a failing control.'
@@ -121,7 +121,7 @@ dod_evidence:
   - AC8
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_worktree_reconcile_finished_claims.py tests/test_worktree_reconcile_ledger_once.py tests/test_worktree_reconcile_effect.py -q
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_finished_claims.py tests/test_worktree_reconcile_ledger_once.py tests/test_worktree_reconcile_effect.py -q --no-cov
     cwd: .
 - id: dod-omn24560-ac9
   description: 'AC9: the projection ledger source is used only while the parity verdict shows CLAIM, TERMINAL and RELEASE complete; the seam test runs the real query node; golden and error chain event tests pass.'
@@ -130,5 +130,5 @@ dod_evidence:
   - AC9
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_worktree_reconcile_ledger_projection.py tests/test_join_worktree_ledger_source.py tests/test_work_ledger_parity_exact_kinds.py tests/test_golden_chain_worktree_reconcile.py -q
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_ledger_projection.py tests/test_join_worktree_ledger_source.py tests/test_work_ledger_parity_exact_kinds.py tests/test_golden_chain_worktree_reconcile.py -q --no-cov
     cwd: .
