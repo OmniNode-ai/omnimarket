@@ -38,6 +38,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.handlers.routing import delegation_backend_resolution
@@ -282,6 +283,11 @@ class _MeteredTierEffect:
             tokens_out=tokens_out,
             latency_ms=5,
             actual_cost_usd=_TIER_COST[tier],
+            cost_basis=(
+                EnumCostBasis.UNKNOWN
+                if tier in self._unmeasured_tiers
+                else EnumCostBasis.CLOUD_API_COST
+            ),
             usage_source=(
                 EnumUsageSource.UNKNOWN
                 if tier in self._unmeasured_tiers

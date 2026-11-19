@@ -80,7 +80,9 @@ class ModelSeriesPoint(_Frozen):
     )
     p50_latency_ms: float | None
     p95_latency_ms: float | None
-    cost_usd: float = Field(ge=0)
+    cost_usd: float | None = Field(
+        ge=0, description="None when no attempt of the point recorded a cost"
+    )
     success: ModelSuccess
 
     @model_validator(mode="after")
