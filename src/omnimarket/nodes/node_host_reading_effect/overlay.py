@@ -121,6 +121,18 @@ class ModelHostCanaryProbeSettings(BaseModel):
     injected_fault: str = Field(min_length=1)
 
 
+class ModelHostTableCopiesProbeSettings(BaseModel):
+    """The host-table-copies probe: it reads the copies the drift node's own overlay declares.
+
+    The copies, their paths and the layout of the table are that overlay's; this holds only what
+    the reading row says about the fault that would turn it red.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    injected_fault: str = Field(min_length=1)
+
+
 class ModelDurabilityProbeSettings(BaseModel):
     """One probe row appended through the bus and read back from the durable store by a deadline.
 
@@ -245,6 +257,8 @@ class ModelHostReadingOverlay(BaseModel):
     join_j1: ModelJoinJ1Settings | None = None
     #: Absent means the join-j2 verb refuses to run on this deployment.
     join_j2: ModelJoinJ2Overlay | None = None
+    #: Absent means no host declares the host-table-copies probe.
+    host_table_copies: ModelHostTableCopiesProbeSettings | None = None
     hosts: tuple[ModelHostReadingHost, ...]
 
     @model_validator(mode="after")
@@ -270,6 +284,13 @@ class ModelHostReadingOverlay(BaseModel):
             if EnumHostProbe.JOIN_J1 in host.probes and not self.join_j1:
                 raise ValueError(
                     f"host {host.name} declares join-j1 with no join_j1 settings"
+                )
+            if (
+                EnumHostProbe.HOST_TABLE_COPIES in host.probes
+                and not self.host_table_copies
+            ):
+                raise ValueError(
+                    f"host {host.name} declares host-table-copies with no host_table_copies settings"
                 )
         return self
 
@@ -297,6 +318,15 @@ class ModelHostReadingOverlay(BaseModel):
                 **(
                     {"join_j1": self.join_j1.model_dump(mode="json")}
                     if self.join_j1
+                    else {}
+                ),
+                **(
+                    {
+                        "host_table_copies": self.host_table_copies.model_dump(
+                            mode="json"
+                        )
+                    }
+                    if self.host_table_copies
                     else {}
                 ),
             },
