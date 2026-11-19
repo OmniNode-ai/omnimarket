@@ -10,12 +10,14 @@ requirements:
     statement: "A listed provider name invoked bare under `onex models` exits non-zero and its output names `onex models add <provider>`."
     acceptance:
       - id: "AC1"
-        statement: "AC1: `onex models <provider>` for every provider in LISTED_PROVIDERS exits non-zero with a one-line hint naming `onex models add <provider>` -- falsifier: `onex models gemini` on dev prints "No such command" with no hint"
+        statement: >-
+          AC1: `onex models <provider>` for every provider in LISTED_PROVIDERS exits non-zero with a one-line hint naming `onex models add <provider>` -- falsifier: `onex models gemini` on dev prints No such command with no hint
   - id: "req-omn23825-help-names-add"
     statement: "`onex models --help` names `onex models add`."
     acceptance:
       - id: "AC3-help"
-        statement: "AC3 (help half): `onex models --help` contains "onex models add" -- falsifier: neither output contains "onex models add""
+        statement: >-
+          AC3 (help half): `onex models --help` contains "onex models add" -- falsifier: neither output contains "onex models add"
 evidence_requirements:
   - kind: tests
     description: "The new test file proves AC1 and the help half of AC3 on the branch and fails at dev."
@@ -35,7 +37,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/cli/test_models_bare_provider_omn23825.py -q -p no:randomly"
         cwd: .
   - id: "dod-omn23825-ac3-help"
-    description: "AC3 (help half): `onex models --help` contains "onex models add"."
+    description: "AC3 (help half): `onex models --help` contains onex models add."
     source: manual
     binds_ac:
       - "AC3-help"
