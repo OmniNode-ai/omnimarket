@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-24563
+title: The metering summary refresh runs at most once per interval per tenant so it stops holding the dev runtime's lock
+summary: "The metering summary refresh makes the projection writer read and refold every stored run of a tenant (47,751 runs on the dev lane) once per delegation terminal, 38 times in 10 minutes on the dev runtime on h201 on 2026-11-15 (read-only py-spy at 50 Hz, 00:08Z to 00:18Z), holding the interpreter lock in 41 percent of samples while 6 of 99 readiness samples took over 3 seconds. The writer now asks a clock-injected coalescer before each store refresh: at most one day refresh per tenant per overlay interval runs, the days of held-back refreshes join a pending set the next run carries, a whole scheduled refresh always runs and settles every pending day, a failed run rolls its admission back so the retry runs at once, and every held-back refresh is counted in the result and the log. The interval is the node overlay field min_interval_seconds; a deployment with no overlay runs at the contract default of 0, which is every refresh as before."
+is_seam_ticket: true
+interface_change: false
+requirements:
+- id: req-omn24563-refresh-coalesced
+  statement: The metering summary store refresh runs at most once per overlay interval per tenant, carries the held-back days into the next run and counts every held-back refresh, so a burst of delegation terminals no longer refolds the tenant's runs once per terminal.
+  acceptance:
+  - id: AC1
+    statement: "AC1: ten delegation-terminal refreshes for one tenant, one second apart, read the tenant's stored runs once when the interval is 300 seconds, and ten times with no interval -- falsifier: pytest tests/nodes/node_projection_metering_summary/test_omn24492_writer_coalescing.py -k \"burst or without_an_interval\" -q"
+  - id: AC2
+    statement: "AC2: a day held back inside the interval is carried by the next run that executes, and a whole scheduled refresh settles every held-back day -- falsifier: pytest tests/nodes/node_projection_metering_summary/test_omn24492_writer_coalescing.py -k \"carried or schedule_refresh\" -q"
+  - id: AC3
+    statement: "AC3: a failed run is retried at once without losing a held-back day, and a broken overlay refuses the refresh -- falsifier: pytest tests/nodes/node_projection_metering_summary/test_omn24492_writer_coalescing.py -k \"failed_run or broken_overlay\" -q"
+  - id: AC4
+    statement: "AC4: integrated: on the dev runtime on h201 a 30-minute reading shows no readiness sample over 3 seconds, the metering refresh's share of interpreter-lock samples under 5 percent, and refresh_coalesced_total in the runtime log -- falsifier: any readiness sample over 3 seconds or a non-200 answer in the sampler file, a py-spy lock share of 5 percent or more, or no coalesced-count line in the runtime log in the window"
+evidence_requirements:
+- kind: tests
+  description: The writer seam tests and the coalescer unit tests with their failing controls, plus the node's neighbouring golden and error chain tests.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_projection_metering_summary -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24563-ac1-burst
+  description: Ten terminals one second apart read the tenant's runs once with a 300 second interval; the failing control (no interval, today's behaviour) reads ten times.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_metering_summary/test_omn24492_writer_coalescing.py -k "burst or without_an_interval" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24563-ac2-held-back-days
+  description: A held-back day is carried by the next run and a whole scheduled refresh settles every pending day.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_metering_summary/test_omn24492_writer_coalescing.py tests/nodes/node_projection_metering_summary/test_omn24492_refresh_coalescer.py -k "carried or schedule_refresh or held_back" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24563-ac3-error-chain
+  description: A failed run rolls its admission back so the retry runs at once with no day lost, and a broken overlay refuses the refresh without reading the store.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_metering_summary/test_omn24492_writer_coalescing.py tests/nodes/node_projection_metering_summary/test_omn24492_refresh_coalescer.py -k "failed_run or broken_overlay or rollback or overlay" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24563-ac4-hosted-node
+  description: The hosted half of AC4. The node's full test directory passes with the coalescer wired into the writer, the same code path the running reading on the rolled dev runtime exercises.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_metering_summary -q --no-cov -n 0 -p no:randomly
+    cwd: .
+
+- id: dod-omn24563-ac4-integration-proof
+  description: Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The pushed head ran the metering node tests on a lab host through the lab work runner and exited 0. The running reading (the rolled dev runtime on h201, a 30 minute readiness sampler file, py-spy lock share and the coalesced count in the runtime log) is read from the lab receipt comment on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-omn24563 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_projection_metering_summary -q --no-cov -n 0 -p no:randomly
+    cwd: .

@@ -137,6 +137,8 @@ def test_command_exposes_no_secret_value_or_lane_parameter() -> None:
         "host",
         "workspace_id",
         "store_choice",
+        "base_url",
+        "connection_id",
     }
     assert all(not getattr(parameter, "envvar", None) for parameter in command.params)
 
