@@ -32,7 +32,9 @@ from typing import Any, Protocol, cast
 
 from omnimarket.handlers.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
-    resolve_byok_provider_backend,
+)
+from omnimarket.handlers.routing.registered_endpoint_backend import (
+    registered_endpoint_backend,
 )
 from omnimarket.handlers.tenant_identity_forms import sync_tenant_identity_forms
 from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_credential_route_write import (
@@ -139,6 +141,12 @@ def apply_credential_registered(
                 f"credential-registered payload carries a secret-shaped field "
                 f"{leak_key!r} -- refusing to project"
             )
+    registered_endpoint_backend(
+        str(provider),
+        plan=_plan(data),
+        base_url=_metadata(data).get("base_url"),
+        connection_id=_metadata(data).get("connection_id"),
+    )
     tenant = str(tenant_id)
     models = registered_models(data)
     expected_version = registered_expected_version(data)
@@ -177,6 +185,8 @@ def apply_credential_registered(
         model=models[0] if models else _model(data),
         models=models,
         expected_version=expected_version,
+        base_url=_metadata(data).get("base_url"),
+        connection_id=_metadata(data).get("connection_id"),
     )
     return True
 
@@ -191,8 +201,12 @@ def _apply_routing_overlay(
     model: str,
     models: list[str],
     expected_version: int | None,
+    base_url: object = None,
+    connection_id: object = None,
 ) -> bool:
-    backend = resolve_byok_provider_backend(provider, plan=plan)
+    backend = registered_endpoint_backend(
+        provider, plan=plan, base_url=base_url, connection_id=connection_id
+    )
     if backend is None:
         return False
     catalogued = db.query(CREDENTIALS_TABLE, {"api_key_ref": api_key_ref})

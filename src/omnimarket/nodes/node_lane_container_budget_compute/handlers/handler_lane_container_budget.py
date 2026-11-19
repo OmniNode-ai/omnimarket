@@ -146,6 +146,12 @@ def _alarm(lane: ModelLaneContainerBudgetLane) -> ModelLaneContainerBudgetAlarm:
 
 
 class HandlerLaneContainerBudget:
+    """Judges a request's container listing against its declared budgets.
+
+    The runtime dispatches a request on the command topic the node's contract declares; the factory floor calls ``handle``
+    in process with the same request.
+    """
+
     def handle(
         self, request: ModelLaneContainerBudgetRequest
     ) -> ModelLaneContainerBudgetVerdict:

@@ -1,0 +1,381 @@
+# The onex TUI's design system (OMN-23413): colours, banner, words, shortcuts
+# and timings. The TUI reads this file when it starts; none of these values is
+# written in code. Loaded and checked by models/model_tui_design.py.
+
+# Colour tokens. Every widget and every line of output uses these by name.
+# Yellow-led warm (operator choice, 2026-11-13): warm yellow for borders, tabs,
+# the row cursor and buttons; teal for the summary and keys; violet highlights;
+# green for success; cyan for information; on warm charcoal.
+theme:
+  name: onex
+  dark: true
+  primary: "#f2c14e"
+  secondary: "#2ec4b6"
+  accent: "#b48ead"
+  success: "#8ac926"
+  info: "#56c7dc"
+  warning: "#f4a259"
+  error: "#e76f51"
+  foreground: "#efe7dc"
+  muted: "#a39686"
+  background: "#1c1915"
+  surface: "#241f1a"
+  panel: "#2c2620"
+
+# Left-to-right colour ramps for the banner words, from the same five colours.
+gradients:
+  cool: ["#56c7dc", "#2ec4b6", "#8ac926", "#f2c14e"]
+  warm: ["#f2c14e", "#f4a259", "#d08c9a", "#b48ead"]
+  fresh: ["#8ac926", "#2ec4b6", "#56c7dc", "#b48ead"]
+
+# Three-row block letters for the banner words.
+font:
+  " ": ["  ", "  ", "  "]
+  A: ["▄▀▀▄", "█▀▀█", "▀  ▀"]
+  C: ["▄▀▀▀", "█   ", " ▀▀▀"]
+  D: ["█▀▀▄", "█  █", "▀▀▀ "]
+  E: ["█▀▀▀", "█▀▀ ", "▀▀▀▀"]
+  G: ["▄▀▀▀", "█ ▀█", " ▀▀▀"]
+  I: ["█", "█", "▀"]
+  L: ["█   ", "█   ", "▀▀▀▀"]
+  M: ["█▄ ▄█", "█ ▀ █", "▀   ▀"]
+  N: ["█▄  █", "█ ▀▄█", "▀   ▀"]
+  O: ["▄▀▀▄", "█  █", " ▀▀ "]
+  T: ["▀█▀", " █ ", " ▀ "]
+  W: ["█   █", "█ █ █", " ▀ ▀ "]
+
+banner:
+  greeting: ""
+  words:
+    - {text: WELCOME TO, gradient: fresh}
+    - {text: OMNINODE, gradient: cool}
+    - {text: DELEGATION, gradient: warm}
+  tagline: "Your tasks, your models: run them where it costs least."
+  tips:
+    - {key: type a task, text: and press Enter to delegate it}
+    - {key: /config, text: "providers, keys and models"}
+    - {key: /model, text: pick the model to use first}
+    - {key: /delegation, text: Claude Code on or off}
+    - {key: /, text: "every command   ·   ↑↓ history   ·   ctrl+c quit"}
+
+# Shortcuts lead the / palette in this order; every onex CLI command follows.
+shortcuts:
+  - {path: [config], action: config, help: "Providers, keys and models for delegation."}
+  - {path: [model], action: model, help: Pick the model every task tries first.}
+  - {path: [delegation], action: delegation, help: Turn delegation on or off for Claude Code.}
+  - {path: [dashboard], action: dashboard, help: "Start, open or stop the local dashboard."}
+  - {path: [clear], action: clear, help: Clear the output.}
+  - {path: [help], action: help, help: Show keys and how commands work.}
+  - {path: [quit], action: quit, help: Leave the TUI.}
+
+# Typed but not listed: each opens the shortcut it names.
+aliases:
+  exit: quit
+
+# CLI commands a shortcut replaces in the TUI: neither listed nor typed here.
+# /config collects the choices and runs `onex setup` with them, so /setup is
+# not a second way in (operator decision 2026-11-12). The CLI command itself stays.
+replaced_commands:
+  - [setup]
+  # /dashboard is a tab: it starts, opens and stops the dashboard.
+  - [dashboard]
+
+# Marks used in the output pane.
+glyphs:
+  task: "›"
+  tip: "▸"
+  done: "✓"
+  unchanged: "·"
+  failed: "✗"
+
+prompt_placeholder: Ask ONEX to delegate a task, or type / for commands
+help: >-
+  Type a task and press Enter to delegate it. /config sets up providers, keys
+  and models, /model picks the model tried first, /delegation turns Claude Code
+  delegation on or off, /clear empties this pane. Type / to list every onex
+  command; keep typing to filter, Tab to complete, Enter to run, Esc to close.
+  Up and Down recall earlier entries.
+
+# /config loads a provider's models this long after the key or URL stops
+# changing; a key shorter than min_key_length is never sent.
+auto_find_seconds: 0.8
+# The live line under the log while a task runs (OMN-23413, operator
+# 2026-11-13: "like coding agents cli: spinner verb ... can cancel esc"). The
+# frames are braille dots, which every terminal font draws.
+activity:
+  frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+  frame_seconds: 0.1
+  verbs: ["Delegating", "Working", "Thinking", "Reasoning", "Composing"]
+  verb_seconds: 3
+  line: "{frame} {verb}… {seconds}s · esc to cancel"
+# A Done or Failed pop-up after an action stays this long.
+toast_seconds: 6
+# A test's failure reason is cut to this many characters on screen.
+reason_chars: 160
+# A setup read this recent, and not shown yet, opens a tab without reading it
+# again; an older one, or one a tab has shown, is read again after the tab opens.
+fresh_seconds: 30
+min_key_length: 8
+# /config's "Set up now" line names the models while it fits one line of the
+# tab (160 columns at most); past this it counts them per provider.
+basket_names_max_chars: 140
+
+# The model table every model screen shows: /config (tick models), /model
+# (pick the first or Auto) and /delegation (read-only). Columns, words and
+# colours are read here; the screens hold none of them (OMN-23413 AC20, AC27).
+model_table:
+  columns:
+    - {key: pick, title: " "}
+    - {key: provider, title: Provider}
+    - {key: model, title: Model}
+    - {key: context, title: Ctx}
+    - {key: price, title: "Price $/1M (in / out)"}
+    - {key: status, title: Status}
+    - {key: capabilities, title: Capabilities}
+  # Price words: an unknown price is never shown as free.
+  price_local: Local
+  # The I details view: its title, each row's name, and the words it uses.
+  details:
+    title: Model details
+    provider: Provider
+    server: Server
+    model: Model
+    name: Name
+    runs: Runs
+    context: Context
+    max_output: Max output
+    input: Input
+    output: Output
+    cache_read: Cache read
+    cache_write: Cache write
+    per_million: per 1M
+    pricing: Pricing
+    tiered: changes with context size or tier
+    status: Status
+    why: Why
+    metadata: Metadata
+    fetched: "models.dev, fetched {at}"
+    stale: "(stale: could not refresh)"
+    "yes": "Yes"
+    "no": "No"
+  # A model on the user's own server: the provider, then the server that answered.
+  server_label: "{provider} · {server}"
+  # Shown for any value no source states (price, context, capabilities).
+  unknown_mark: "-"
+  price_unknown: "-"
+  price_variable: Variable
+  # Shown after a price that changes with context size or another tier.
+  price_tier_mark: "*"
+  ticked: "●"
+  unticked: "○"
+  # A row starts with a bar in its deployment's colour; a status is a coloured pill.
+  row_bar: "▍"
+  status_pill: "●"
+  status:
+    ready: {text: READY, colour: success}
+    listed: {text: AVAILABLE, colour: info}
+    untested: {text: UNTESTED, colour: warning}
+    failed: {text: FAILED, colour: error}
+    unavailable: {text: UNAVAILABLE, colour: muted}
+  deployment:
+    local: {text: Local, colour: success}
+    cloud: {text: Cloud, colour: info}
+  # Capability badges: a supported capability is a coloured badge; unknown is dim.
+  capability_colours: [primary, secondary, success, accent, warning, error]
+  filters: [all, local, cloud]
+  filter_labels: {all: All, local: Local, cloud: Cloud}
+  sorts: [name, context, input, output]
+  sort_labels: {name: Name, context: Context, input: Input price, output: Output price}
+  search_placeholder: Search models, providers or capabilities
+  bar: "{shown} of {total} models  ·  {filter}  ·  sorted by {sort}"
+  bar_ticked: "  ·  {count} ticked"
+  auto_label: "Auto: ONEX picks per task (cost and availability)"
+  help:
+    config: "Tab next screen · Space ticks · Enter moves on · I details · / search · F filter · S sort · Ctrl+S saves · Esc back"
+    model: "Tab next screen · Enter selects · A auto · R remove · I details · / search · F filter · S sort · Esc back"
+    delegation: "Tab next screen · Space switches · I details · Ctrl+S saves · Esc back"
+    dashboard: "Tab next screen · S start · Enter opens · X stop · Esc back"
+
+# /delegation: one switch, the prompt hook; subagents always run on Claude (OMN-23413).
+delegation:
+  title: Claude Code delegation
+  table_title: Your selected models (from /config), in the order delegation tries them
+  enable:
+    - [delegation, "on", --json]
+  disable:
+    - [delegation, "off", --json]
+  switched_on: "Claude Code delegation is on: every prompt goes to your model first."
+  switched_off: "Claude Code delegation is off."
+  not_switched: "Claude Code delegation was not switched {state}: {reason}"
+  nothing_ticked: "Tick at least one model first: click it, or press Space on it."
+  no_models: "Select a model with /config first: Claude delegation needs at least one selected model."
+  # OMN-23413, operator 2026-11-14: the switch's state is written out, and the
+  # hook it installs is shown with whether Claude Code has it (one hook, 2026-11-17).
+  glyph_on: "●"
+  glyph_off: "○"
+  state_on: "ON"
+  state_off: "OFF"
+  state_pending: "press Save to apply"
+  # Review 2026-11-15: a state nobody has read is never drawn as OFF.
+  glyph_unknown: "◌"
+  state_reading: "checking…"
+  state_unread: "status could not be read"
+  hooks_title: "Delegation runs through one hook in Claude Code; switching it off removes the hook."
+  hooks:
+    - key: prompt_hook
+      label: Delegate prompts
+      name: Prompt hook
+      what: every prompt goes to delegation first
+      switch: prompts
+      pause_flag: --no-prompts
+  hook_installed: installed
+  hook_missing: not installed
+  hook_unknown: not read yet
+  hook_unread: not read
+  hook_paused: paused
+  # Save sends nothing from a state that was not read (review 2026-11-15).
+  save_reading: "Delegation's state is still being read, so Save changed nothing; save again once it shows."
+  save_unread: "Delegation's state could not be read, so Save changed nothing. Switch it on here, or run /delegation off to switch it off."
+  save_just_read: "Delegation's state was just read and is shown above; Save changed nothing."
+  # OMN-23413, operator 2026-11-13: Claude Code is the user's own install; the
+  # tab detects it with setup's read-only check and says so, and never installs it.
+  claude_check: [delegation, status, --json]
+
+# /dashboard (OMN-23413): the local dashboard as the fourth tab. Its state is
+# read from the CLI's own JSON; each button runs the onex command named here.
+dashboard:
+  title: Local dashboard
+  status: [dashboard, status, --json]
+  start: [dashboard, start, --json]
+  open: [dashboard, open, --json]
+  stop: [dashboard, stop, --json]
+  running: "Running at {url} (process {pid})"
+  not_running: "Not running. {fix}"
+  started: "Dashboard running at {url}"
+  opened: "Opened {url} in your browser"
+  stopped: "Dashboard stopped"
+  failed: "Dashboard {action} did not work: {reason}"
+
+# /config, /model and /delegation are three tabs of one place: Tab and
+# Shift+Tab move between them, and a click on a tab opens it.
+tabs:
+  - {id: config, label: "  Config  "}
+  - {id: model, label: "  Model  "}
+  - {id: delegation, label: "  Delegation  "}
+  - {id: dashboard, label: "  Dashboard  "}
+
+# Every word the /config, /model and /delegation screens show; {name} parts
+# are filled in. The screens hold no sentence of their own (OMN-23413 AC27).
+words:
+  config_title: "Models for delegation: provider, key or URL, then models"
+  key_placeholder: "API key"
+  url_placeholder: "Server URL, such as http://<host>:<port>"
+  basket_empty: "Selected: none yet (at least one is needed)"
+  basket: "Selected: {choices}"
+  loading: "loading {provider} models…"
+  key_first: "enter your {provider} API key first"
+  found: "{count} found: tick any number (Space), then Add or Ctrl+S"
+  none_found: "no models found"
+  needs_key: "{provider} needs an API key"
+  still_loading: "still loading models… tick them once they appear"
+  added: "added; pick another provider, or Save"
+  tick_first: "tick a model first (Space)"
+  model_title: "Choose the model every task tries first"
+  model_now: "Now: {current}"
+  cannot_be_first: "{model} cannot be tried first: {reason}"
+  nothing_set_up: "No model is set up yet. Type /config to connect one."
+  now_first: "{model} is now tried first ({provider})"
+  # The model tried first, and the server it runs on when it was added by URL.
+  first_model: "{model} ({provider})"
+  model_on_server: "{model} on {server}"
+  first_failed: "could not change the first model: {reason}"
+  # /model: R asks, R again removes the model (only from its own server).
+  remove_confirm: "Press R again to remove {model} ({provider}); move to another row to keep it."
+  removed: "{model} removed ({provider})"
+  remove_failed: "could not remove {model}: {reason}"
+  # /config: what is set up already, shown before anything new is ticked.
+  basket_current: "Set up now: {models}"
+  # OMN-23413: when the names do not fit one line (34 names filled seven lines
+  # of /config on 2026-11-13), a count per provider instead.
+  # The key line under it already says Space ticks and Esc goes back; the
+  # sentence that repeated it is gone (operator 2026-11-13: "no unnecessary stuff").
+  basket_counted: "Set up now: {count} · {providers}"
+  setting_up: "Setting up {provider} · {models} …"
+  also_added: "also added {models}"
+  adding_failed: "adding {models}: {reason}"
+  setup_failed: "setup failed: {reason}"
+  add_failed: "{provider} · {models} were not added: {reason}"
+  # /config Save: each model is stored, then tested with one real delegation.
+  adding_models: "adding {provider} · {models}: each is tested with one real delegation, which can take a minute…"
+  model_tested: "{done} of {total} tested (last: {model})…"
+  model_ready: "{model} ready ({provider})"
+  model_test_failed: "{model} was added, but its test failed: {reason}"
+  model_busy: "{model} was added; the provider was busy, so test it later: {reason}"
+  # A tab stays open while its action runs, then shows how it went.
+  working: "working…"
+  # Pop-up titles after an action.
+  toast_done: Done
+  toast_failed: Failed
+  toast_added: Added
+  still_working: "still working… the tab closes or changes once this finishes"
+  tab_loading: "opening {tab}…"
+  # The one line under the tabs: how many models, on how many servers, and the first.
+  summary: "{dot} {models} · {servers} · {first}"
+  summary_no_servers: "{dot} {models} · {first}"
+  summary_auto: "Auto picks per task"
+  summary_first: "{model} first"
+  # The status bar at the foot of the main screen.
+  status_reading: "reading your setup…"
+  status_none: "no model set up · /config"
+  status_auto: "Auto · {count}"
+  status_first: "{model} first"
+  # Claude Code delegation in the status bar, as it is (OMN-23413).
+  delegation_off: "delegation off"
+  delegation_hook: "delegation on"
+  delegation_hook_paused: "delegation on · paused"
+  delegation_reading: "delegation: checking…"
+  delegation_unknown: "delegation: status could not be read"
+  delegation_unreadable: "could not read delegation's state ({reason}); /delegation shows it as not read"
+  status_no_line: "no status line"
+  status_working: "working {seconds}s · esc cancels"
+  status_hint: "/ commands · ctrl+c quit"
+  status_unavailable: "status unavailable: {error}"
+  # Buttons on /config and /delegation.
+  button_add: Add
+  button_save: Save
+  button_cancel: Cancel
+  button_start: Start
+  button_open: Open
+  button_stop: Stop
+  # A task typed on the main screen.
+  delegating: "delegating…"
+  delegation_failed: "delegation failed: {reason}"
+  no_answer: "no answer"
+  task_running: "a task is still running: Esc or Ctrl+C cancels it"
+  task_cancelled: "cancelled after {seconds}s"
+  unreadable_command: "could not read that command: {error}"
+  exit_code: "exit {code}"
+  no_match: "no onex command matches '/{command}'; type / to list them"
+  setup_ready: "Ready: {provider} · {models}. Type a task to try it, or /model to choose which goes first."
+  # One delegated task's facts, and the status bar's note of the last one.
+  run_unknown_model: "unknown model"
+  # A Save while another onex setup holds the setup lock (OMN-23413): the first
+  # Save may still be installing Claude Code, a download of about 200 MB.
+  setup_busy: "another setup is still running (it may be installing Claude Code); wait for it to finish, then save again"
+  claude_checking: "Claude Code: checking…"
+  claude_ready: "Claude Code: ready"
+  claude_installed: "Claude Code: installed · Save adds the ONEX plugin and switches the hooks on"
+  claude_signed_out: "Claude Code: installed, not signed in · run claude and sign in, then save"
+  claude_missing: "Claude Code is not installed. Install it yourself from claude.com/claude-code, then switch delegation on here."
+  claude_unknown: "could not check Claude Code; Save will try and report what it finds"
+  run_tokens: "{tokens} tokens"
+  # Operator 2026-11-13: tokens in point down, tokens out point up.
+  run_tokens_in_out: "↓{tokens_in} in · ↑{tokens_out} out"
+  run_seconds: "{seconds} s"
+  run_cost: "${cost}"
+  # A zero cost with cost_measured false is unknown, not free (audit S9-1, OMN-24224).
+  run_cost_unmeasured: "cost not measured"
+  run_saved: "saved ${saved}"
+  run_id: "run {run}"
+  last_run: "last run {model} ${cost}"
+  last_run_unmeasured: "last run {model} · cost not measured"
