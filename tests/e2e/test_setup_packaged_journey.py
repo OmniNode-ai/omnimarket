@@ -591,3 +591,63 @@ def test_dashboard_observation_rejects_changed_current_tenant(
         server.shutdown()
         server.server_close()
         worker.join(timeout=5)
+
+
+def test_customer_launchers_only(tmp_path: Path) -> None:
+    """AC2: `uv tool install omninode-onex` puts exactly onex and omni-agent on PATH.
+
+    Opt in with ONEX_TEST_ONEX_WHEEL (the built omninode-onex wheel); the
+    distributions it pins resolve from PyPI. The control installs omnibase-core
+    the same way and must expose more than the customer launchers, which shows
+    the bin-directory read can see an extra launcher.
+    """
+    supplied = os.environ.get("ONEX_TEST_ONEX_WHEEL")
+    if not supplied:
+        if os.environ.get("ONEX_E2E_REQUIRE_COMPLETE") == "1":
+            pytest.fail("Customer launcher check requires ONEX_TEST_ONEX_WHEEL")
+        pytest.skip("Customer launcher check requires ONEX_TEST_ONEX_WHEEL")
+    wheel = Path(supplied).resolve()
+    assert wheel.is_file()
+    uv = os.environ.get("ONEX_TEST_UV") or "uv"
+
+    def install(target: str, name: str) -> tuple[set[str], Path]:
+        root = tmp_path / name
+        home, tools, bin_dir = root / "home", root / "tools", root / "bin"
+        for directory in (home, tools, bin_dir):
+            directory.mkdir(parents=True)
+        environment = {
+            "HOME": str(home),
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "UV_TOOL_DIR": str(tools),
+            "UV_TOOL_BIN_DIR": str(bin_dir),
+        }
+        installed = _run(
+            [
+                uv,
+                "tool",
+                "install",
+                "--python",
+                "3.12",
+                "--no-build",
+                "--find-links",
+                str(wheel.parent),
+                target,
+            ],
+            environment,
+            root,
+            timeout=900,
+        )
+        assert installed.returncode == 0, installed.stderr
+        return {entry.name for entry in bin_dir.iterdir()}, bin_dir
+
+    version = wheel.name.split("-")[1]
+    launchers, bin_dir = install(f"omninode-onex=={version}", "customer")
+    assert launchers == {"onex", "omni-agent"}, launchers
+    ran = _run(
+        [str(bin_dir / "onex"), "--version"], {"PATH": "/usr/bin:/bin"}, tmp_path
+    )
+    assert ran.returncode == 0, ran.stderr
+    assert ran.stdout.startswith("onex version "), ran.stdout
+
+    control, _ = install("omnibase-core", "control")
+    assert control > {"onex", "omni-agent"}, control

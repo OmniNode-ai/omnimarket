@@ -1,0 +1,43 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-25070
+title: The customer package omninode-onex declares the customer launchers and pins its distributions
+summary: >-
+  omnimarket now holds the customer package omninode-onex under packages/omninode-onex. It carries
+  no code, declares onex and omni-agent with omnibase_core's CLI as their target, and pins
+  omnibase-core, omnibase-infra and omnimarket with ==. A customer runs uv tool install
+  omninode-onex, which links only the named package's launchers, so exactly onex and omni-agent
+  land on PATH. During the testing phase omnibase-core keeps declaring the same two launchers.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn25070-customer-package
+    statement: The customer package declares exactly onex and omni-agent, pins each distribution with ==,
+      and its wheel carries no code.
+    acceptance:
+      - id: AC2
+        statement: >-
+          AC2 (testing-phase form): uv tool install of omninode-onex puts exactly onex and omni-agent on
+          PATH and onex runs; the package declares exactly those two with omnibase_core's target, pins
+          omnibase-core, omnibase-infra and omnimarket with ==, and its built wheel holds only its
+          dist-info -- falsifier: uv run pytest tests/ci/test_omninode_onex_package_omn25070.py fails on
+          omnimarket dev, where packages/omninode-onex does not exist
+evidence_requirements:
+  - kind: tests
+    description: The package tests; the opt-in install check runs with ONEX_TEST_ONEX_WHEEL set.
+    command: uv run --frozen pytest tests/ci/test_omninode_onex_package_omn25070.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn25070-customer-package
+    description: The customer package declares the two launchers, pins its distributions with == and
+      ships no code. The bound test fails on dev, where the package does not exist.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omninode_onex_package_omn25070.py -q --no-cov
+        cwd: .
