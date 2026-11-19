@@ -42,6 +42,7 @@ from omnimarket.models.stability_stack.model_stack_plan import (
     ModelStackRefusal,
     ModelStackStep,
 )
+from omnimarket.nodes.node_stability_stack_plan_compute.overlay import load_overlay
 
 _Other = tuple[
     str,  # name
@@ -76,8 +77,10 @@ def _refusal_key(refusal: ModelStackRefusal) -> tuple[str, str, str]:
 class HandlerStackPlan:
     """Fold the declared stack, the reserved lanes and the request into a plan."""
 
-    def __init__(self, overlay: ModelStackPlanOverlay) -> None:
-        self._overlay = overlay
+    def __init__(self, overlay: ModelStackPlanOverlay | None = None) -> None:
+        # A caller that holds the overlay passes it; the runtime constructs the
+        # handler bare, so it reads the overlay from the node's overlay root.
+        self._overlay = overlay if overlay is not None else load_overlay()
 
     def handle(self, request: ModelStackPlanRequest) -> ModelStackPlan:
         stack = next((s for s in self._overlay.stacks if s.name == request.stack), None)
