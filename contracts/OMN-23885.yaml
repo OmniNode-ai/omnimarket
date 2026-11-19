@@ -72,5 +72,5 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: |-
-      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane local-limits2-4910 -- uv run --frozen pytest tests/unit/routing/test_local_input_limits_overlay.py tests/unit/routing/test_measured_correct_ceiling_overlay.py -q --no-cov
+      env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane local-limits2-4910 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/routing/test_local_input_limits_overlay.py tests/unit/routing/test_measured_correct_ceiling_overlay.py -q --no-cov
     cwd: .
