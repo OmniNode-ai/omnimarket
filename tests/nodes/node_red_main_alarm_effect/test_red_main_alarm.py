@@ -417,7 +417,13 @@ async def test_red_main_alarm_bus_carries_a_scheduled_fire_to_the_handler(
     alarm_contract = node_root / "node_red_main_alarm_effect/contract.yaml"
     manifest = discover_contracts_from_paths([producer_contract, alarm_contract])
     assert not manifest.errors
-    alarm_topic = yaml.safe_load(alarm_contract.read_text())["terminal_event"]
+    alarm = yaml.safe_load(alarm_contract.read_text())
+    alarm_topic = alarm["terminal_event"]
+    # The result event the subscriber below reads is the contract's declared
+    # output, published and externally consumed under that one name.
+    assert alarm_topic == "onex.evt.omnimarket.red-main-alarm-completed.v1"
+    assert alarm_topic in alarm["event_bus"]["publish_topics"]
+    assert alarm_topic in alarm["externally_consumed_topics"]
     producer = yaml.safe_load(producer_contract.read_text())
     tick_topic = producer["input_subscriptions"][0]["topic"]
     fire_topic = producer["terminal_event"]
