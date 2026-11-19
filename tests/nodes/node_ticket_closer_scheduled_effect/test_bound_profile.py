@@ -86,9 +86,6 @@ def contract_schedule() -> ModelTicketCloserScheduleOverlay:
 def make_clone_root(tmp_path: Path) -> Path:
     scope = load_scope_overlay(PACKAGED_OVERLAY)
     (tmp_path / scope.pr_repositories[0].name / ".git").mkdir(parents=True)
-    state = tmp_path / ".claude_scratch" / "pr-watcher" / "state.json"
-    state.parent.mkdir(parents=True)
-    state.write_text("{}", encoding="utf-8")
     return tmp_path
 
 
@@ -100,9 +97,7 @@ def test_bound_profile_golden_builds_the_real_adapters(
         "omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.bound_profile.load_scope_overlay",
         lambda: load_scope_overlay(PACKAGED_OVERLAY),
     )
-    parts = bound_closer_parts(
-        contract_schedule(), {"TEST_HOME": str(tmp_path)}, clock=lambda: T0
-    )
+    parts = bound_closer_parts(contract_schedule(), {"TEST_HOME": str(tmp_path)})
     assert isinstance(parts, CloserParts)
     assert isinstance(parts.source, ContractCandidateSource)
     assert isinstance(parts.verifier, DodVerifyReader)
@@ -137,7 +132,7 @@ def test_bound_profile_refuses_naming_the_missing_thing(
         lambda: load_scope_overlay(PACKAGED_OVERLAY),
     )
     with pytest.raises(BoundProfileRefusedError) as excinfo:
-        bound_closer_parts(sched, environ, clock=lambda: T0)
+        bound_closer_parts(sched, environ)
     assert fragment in str(excinfo.value)
 
 
@@ -154,9 +149,7 @@ def test_bound_profile_refuses_when_scope_overlay_cannot_load(
         _raise,
     )
     with pytest.raises(BoundProfileRefusedError) as excinfo:
-        bound_closer_parts(
-            contract_schedule(), {"TEST_HOME": str(tmp_path)}, clock=lambda: T0
-        )
+        bound_closer_parts(contract_schedule(), {"TEST_HOME": str(tmp_path)})
     assert "scope overlay could not be loaded" in str(excinfo.value)
 
 
@@ -256,7 +249,7 @@ async def test_the_bound_parts_are_built_once_and_reused(
 
     built: list[int] = []
 
-    def fake(schedule: Any, environ: Any, clock: Any) -> CloserParts:
+    def fake(schedule: Any, environ: Any) -> CloserParts:
         built.append(1)
         return CloserParts(
             source=_EmptySource(),
@@ -287,9 +280,7 @@ def test_seam_the_bound_profile_builds_from_the_scope_overlay_the_node_ships(
         "omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.bound_profile.load_scope_overlay",
         lambda: shipped,
     )
-    parts = bound_closer_parts(
-        contract_schedule(), {"TEST_HOME": str(tmp_path)}, clock=lambda: T0
-    )
+    parts = bound_closer_parts(contract_schedule(), {"TEST_HOME": str(tmp_path)})
     assert isinstance(parts.source, ContractCandidateSource)
 
 
@@ -315,28 +306,8 @@ def test_bound_profile_refuses_when_no_scope_repository_is_cloned(
         lambda: load_scope_overlay(PACKAGED_OVERLAY),
     )
     with pytest.raises(BoundProfileRefusedError) as excinfo:
-        bound_closer_parts(
-            contract_schedule(), {"TEST_HOME": str(tmp_path)}, clock=lambda: T0
-        )
+        bound_closer_parts(contract_schedule(), {"TEST_HOME": str(tmp_path)})
     assert "no clone of any scope repository" in str(excinfo.value)
-
-
-def test_bound_profile_refuses_when_the_watcher_state_file_is_absent(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    make_clone_root(tmp_path)
-    (tmp_path / ".claude_scratch" / "pr-watcher" / "state.json").unlink()
-    monkeypatch.setattr(
-        "omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.bound_profile.load_scope_overlay",
-        lambda: load_scope_overlay(PACKAGED_OVERLAY),
-    )
-    with pytest.raises(BoundProfileRefusedError) as excinfo:
-        bound_closer_parts(
-            contract_schedule(), {"TEST_HOME": str(tmp_path)}, clock=lambda: T0
-        )
-    assert "the PR watcher state file is absent at its declared path" in str(
-        excinfo.value
-    )
 
 
 def test_status_line_counts_every_outcome_kind() -> None:

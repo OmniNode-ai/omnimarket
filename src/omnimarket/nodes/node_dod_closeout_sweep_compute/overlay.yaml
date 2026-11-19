@@ -66,6 +66,9 @@ pr_repositories:
   - {name: omnidash, default_branch: dev, location: under_registry}
   - {name: omniintelligence, default_branch: dev, location: under_registry}
   - {name: omnimemory, default_branch: dev, location: under_registry}
+# The GitHub owner of the repositories above: the ticket closer reads each one's open pull requests
+# from the GitHub gateway as <owner>/<name>.
+github_owner: OmniNode-ai
 # The branch a merged-commit ref must name for a repository the list above does not carry.
 binding_default_branch: dev
 # The closer's own bindings PRs are titled evidence(<id>): ... and are never the ticket's work.

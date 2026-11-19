@@ -7,6 +7,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
+from omnimarket.models.model_github_gateway_io import (
+    GithubGatewayResult,
+    ModelGithubGatewayRequest,
+)
 from omnimarket.models.ticket_closer import (
     ModelCloserCandidate,
     ModelCloserVerifyReading,
@@ -42,3 +46,13 @@ class ProtocolTicketDoneWriter(Protocol):
     def mark_done(
         self, ticket_id: str, *, state: str, lane: str, evidence: str
     ) -> ModelCloserWriteReceipt: ...
+
+
+@runtime_checkable
+class ProtocolGatewayRead(Protocol):
+    """One typed read of the GitHub gateway node, in process or over the bus.
+
+    Raises ``GatewayReadError`` when no typed result comes back.
+    """
+
+    def read(self, request: ModelGithubGatewayRequest) -> GithubGatewayResult: ...
