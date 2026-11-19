@@ -23,7 +23,7 @@ requirements:
       - id: AC5
         statement: "AC5: the node is installed from the branch on the host the tick runs on through the declared installer and read running there, with one alarm row read for a currently red main, recorded as `installed=<host>:<revision>` and `observed=<the row>` -- falsifier: the ledger shows no alarm row naming a currently red main with an owner cell, or the installed revision on that host is not the branch head"
       - id: AC6
-        statement: "AC6: the pull request is open and ready with a comment starting `Lab: head=<full head sha>`, its required checks read success at that head, and the lane hands it to the landing lane by one ledger MSG -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#<n>` lists a required check not success at the head, or a ledger read of MSG rows to `landing-controller` (`onex ledger query --stdin` with `kinds` MSG) returns no row naming the pull request"
+        statement: "AC6: the pull request is open and ready with a comment starting `Lab: head=<full head sha>`, its required checks read success at that head, and the lane hands it to the landing lane by one ledger MSG -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#<n>` lists a required check not success at the head, or a ledger read over the bus (`onex ledger query`) shows no MSG to landing-controller naming the pull request"
 evidence_requirements:
   - kind: tests
     description: Recorded check-run tests for the alarm node and its throughput subscription.
