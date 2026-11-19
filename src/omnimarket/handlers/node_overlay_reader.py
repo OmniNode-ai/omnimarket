@@ -14,6 +14,7 @@ setting and how to supply it. There is no packaged fallback value.
 from __future__ import annotations
 
 import os
+import socket
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -22,6 +23,11 @@ from pydantic import BaseModel, ValidationError
 
 OVERLAY_ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
 OVERLAY_FILE_NAME = "overlay.yaml"
+
+
+def local_host_short_name() -> str:
+    """The local host name without any domain suffix."""
+    return socket.gethostname().split(".", 1)[0]
 
 
 class NodeOverlayError(ValueError):
