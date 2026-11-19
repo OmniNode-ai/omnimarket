@@ -40,6 +40,7 @@ from omnibase_core.enums.enum_delegation_traffic_class import (
 from omnibase_core.models.delegation.wire import ModelDelegationProvenance
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_probe_rung_credential import EnumProbeRungCredential
 from omnimarket.enums.enum_usage_source import EnumUsageSource
@@ -275,6 +276,10 @@ def _result(
         usage_source=EnumUsageSource.MEASURED
         if cost_usd > 0
         else EnumUsageSource.UNKNOWN,
+        # A scripted paid answer is booked at a known price, as a real one is.
+        cost_basis=EnumCostBasis.CLOUD_API_COST
+        if cost_usd > 0
+        else EnumCostBasis.UNKNOWN,
         http_status=status,
         failure_class=failure,
         error_message=f"scripted {failure.value}" if failure is not None else None,
