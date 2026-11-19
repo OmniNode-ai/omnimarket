@@ -68,3 +68,8 @@ metadata:
   ticket: OMN-20867
   transport_type: kafka
 lifecycle: experimental
+
+# No node contract in this repo subscribes to the fire-plan request; the
+# launching Mac's lab fill tick consumes it from outside the ONEX node graph.
+externally_consumed_topics:
+  - onex.cmd.omnimarket.lab-fill-fire-plan-requested.v1

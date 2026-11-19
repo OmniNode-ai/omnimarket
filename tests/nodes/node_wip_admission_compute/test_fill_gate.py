@@ -14,11 +14,6 @@ import pytest
 import yaml
 
 from omnimarket.handlers.wip_admission_fill_gate import fill_wip_gate
-from omnimarket.nodes.node_idle_slot_fill_effect.handlers import (
-    handler_idle_slot_fill as handler,
-)
-from omnimarket.nodes.node_idle_slot_fill_effect.models import ModelIdleSlotFillRequest
-from tests.nodes.node_idle_slot_fill_effect.overlay_fixture import ENV
 from tests.nodes.node_wip_admission_compute.test_wip_admission import (
     NOW,
     REPO_A,
@@ -114,40 +109,3 @@ def test_unreadable_claims_refuse_new_work_only(tmp_path: Path) -> None:
     assert refusal({"kind": FIX_KIND, "repo": REPO_A, "key": "k"}) is None
     assert finding is not None
     assert "ledger gone" in finding[2]
-
-
-HOST = {
-    "name": "host-a",
-    "local": False,
-    "admission": {"claude_slots": 2, "codex_slots": 0, "probe_error": None},
-}
-LINES = [
-    "MISSING lab-headroom:host-a | free Claude slots 2 | FIX: dispatch",
-    "MISSING repo-status:fixture-repo | shared_red_unowned: check pytest red | FIX: dispatch",
-]
-
-
-def request(**extra: Any) -> ModelIdleSlotFillRequest:
-    return ModelIdleSlotFillRequest(
-        now="2026-10-30T12:00:00Z",
-        hosts=[HOST],
-        lines=LINES,
-        standing_tickets={"cause-red": "OMN-9101"},
-        **extra,
-    )
-
-
-def test_the_fill_skips_what_the_gate_refuses_and_sends_what_it_admits(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", ENV["ONEX_SKILL_OVERLAY_ROOTS"])
-    held = handler.HandlerIdleSlotFill().handle(
-        request(wip_refusal=lambda _item: "wip-limit: REFUSE")
-    )
-    assert held.sends == []
-    assert {
-        "key": "repo-status:fixture-repo",
-        "why": "wip-limit: REFUSE",
-    } in held.skipped
-    sent = handler.HandlerIdleSlotFill().handle(request(wip_refusal=lambda _item: None))
-    assert [s["key"] for s in sent.sends] == ["repo-status:fixture-repo"]

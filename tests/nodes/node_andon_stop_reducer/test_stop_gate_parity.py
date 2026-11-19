@@ -43,10 +43,6 @@ from omnimarket.nodes.node_binding_parity_orchestrator.models.model_parity impor
 from omnimarket.nodes.node_binding_parity_orchestrator.overlay import (
     ModelFactoryBindingsOverlay,
 )
-from omnimarket.nodes.node_idle_slot_fill_effect import models as fill_models
-from omnimarket.nodes.node_idle_slot_fill_effect.handlers import (
-    handler_idle_slot_fill as fill_handler,
-)
 from omnimarket.nodes.node_landing_worker_engine_compute import (
     HandlerLandingWorkerEngine,
 )
@@ -62,12 +58,11 @@ from tests.nodes.node_andon_stop_reducer.stop_gate_facts import (
     facts,
     stop,
 )
-from tests.nodes.node_idle_slot_fill_effect.overlay_fixture import ENV as FILL_ENV
 
 pytestmark = pytest.mark.unit
 
 BOOTSTRAP_ENV = "STOP_GATE_PARITY_BOOTSTRAP"
-NODES = ("fill", "placement", "worker_engine")
+NODES = ("placement", "worker_engine")
 CLAUDE = "claude_opus"
 CODEX = "codex_high"
 TIMEOUT_S = 30.0
@@ -78,12 +73,6 @@ OVERLAY = ModelFactoryBindingsOverlay.model_validate(
         "proof_bindings": ["inmemory", "redpanda"],
     }
 )
-
-
-@pytest.fixture(autouse=True)
-def _fill_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The fill reads its own ``idle_slot_fill`` and ``repos`` overlays; the stop policy travels in the facts."""
-    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", FILL_ENV["ONEX_SKILL_OVERLAY_ROOTS"])
 
 
 # ---------------------------------------------------------------- the nodes, as a consumer runs them
@@ -97,37 +86,6 @@ def _placement_api(claude: Any, codex: Any) -> Mock:
     api.resolve_engine.side_effect = lambda engine: engine
     api.preflight_skips.return_value = {}
     return api
-
-
-def run_fill(gate: ModelStopGateFacts) -> dict[str, Any]:
-    result = fill_handler.HandlerIdleSlotFill().handle(
-        fill_models.ModelIdleSlotFillRequest(
-            now="2026-11-02T03:00:00Z",
-            hosts=[
-                {
-                    "name": "host-a",
-                    "local": False,
-                    "admission": {"claude_slots": 2, "codex_slots": 0},
-                }
-            ],
-            lines=["MISSING lab-headroom:host-a | free Claude slots 3 | FIX: dispatch"],
-            backlog=[
-                {
-                    "kind": "ticket",
-                    "key": "t-1",
-                    "repo": "omnimarket",
-                    "ticket": "OMN-1",
-                }
-            ],
-            standing_tickets={"ticket": "OMN-9101"},
-            stop_gate=gate,
-        )
-    )
-    return {
-        "sends": [[s["key"], s["model"]] for s in result.sends],
-        "skipped": result.skipped,
-        "observed": result.stop_observed,
-    }
 
 
 def run_placement(gate: ModelStopGateFacts) -> dict[str, Any]:
@@ -177,7 +135,6 @@ def run_worker_engine(gate: ModelStopGateFacts) -> dict[str, Any]:
 
 
 RUNNERS: dict[str, Callable[[ModelStopGateFacts], dict[str, Any]]] = {
-    "fill": run_fill,
     "placement": run_placement,
     "worker_engine": run_worker_engine,
 }
@@ -191,7 +148,7 @@ def scenarios(root: Path) -> dict[str, ModelStopGateFacts]:
 
     out: dict[str, ModelStopGateFacts] = {}
     for node in NODES:
-        key = "opus" if node != "fill" else "claude_sonnet"
+        key = "opus"
         out[f"{node}:enforce"] = facts(root / node / "e", "enforce", stopped(key))
         out[f"{node}:observe"] = facts(root / node / "o", "observe", stopped(key))
         out[f"{node}:swarm"] = facts(
@@ -408,10 +365,7 @@ def test_stop_gate_parity_the_decisions_of_the_three_nodes_are_what_the_gate_say
     assert decisions["placement:enforce"]["outcome"] == "STOPPED"
     assert decisions["placement:observe"]["outcome"] == "ADMITTED"
     assert decisions["placement:swarm"]["host"] == "host-a"
-    assert decisions["fill:enforce"]["sends"] == []
-    assert decisions["fill:observe"]["sends"] != []
     assert decisions["worker_engine:enforce"]["record"]["engine_refused"]
-    assert f"andon_stop.modes.{CLASS}" in json.dumps(decisions["fill:mode-missing"])
     assert f"andon_stop.modes.{CLASS}" in json.dumps(
         decisions["placement:mode-missing"]
     )

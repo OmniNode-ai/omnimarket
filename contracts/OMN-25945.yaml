@@ -1,0 +1,97 @@
+schema_version: 1.0.0
+ticket_id: OMN-25945
+title: Unblock omnimarket PR 6291
+summary: Resolve the merge conflict and record publication and lab proof for the rebased head.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn25945-unblock
+    statement: Resolve the conflict while preserving dev's installer and retention changes.
+    acceptance:
+      - id: AC1
+        statement: >-
+          AC1: omnimarket PR 6291 has a new head with no merge conflict against its base, or a STATUS row names the single cause outside the pull request with shared=yes -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6291` shows a merge state of DIRTY at the lane's final head, and no STATUS row carries cause= and shared=yes
+      - id: AC2
+        statement: >-
+          AC2: a pull request comment starting `Lab:` names `head=<full new head sha>`, with installed=<host>:<revision> observed=<what ran> where the change touches a lab host unit or the plugin -- falsifier: the newest `Lab:` comment on the pull request names a head other than the pull request's current head
+      - id: AC3
+        statement: >-
+          AC3: no check was widened, skipped or bypassed and no shared dev runtime restart was made by the lane -- falsifier: `git diff <base> <new head> -- tests/ .github/` shows a removed assert, a new skip or xfail marker or a changed required-check list
+evidence_requirements:
+  - kind: tests
+    description: Exercise the retained registry declaration and single owner of lane receipt archives.
+    command: uv run --frozen pytest tests/nodes/node_host_retention_effect/test_host_retention_seams.py -q -k one_owner_seam --no-cov -n 0
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn25945-rebase-controls
+    description: Hosted checks for the two resolved contracts. Read mergeability from the watcher after publication.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_friction_rollup_unit.py -q -k the_unit_is_declared --no-cov -n 0
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_host_retention_effect/test_host_retention_seams.py -q -k one_owner_seam --no-cov -n 0
+        cwd: .
+  - id: dod-omn25945-proof-head
+    description: Hosted control for rejecting an installed revision that lacks the proposed head. Read the posted Lab comment and host observation at publication.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_pr_handoff_install_proof_compute/test_install_proof_ancestry_and_seam.py -q -k revision --no-cov -n 0
+        cwd: .
+  - id: dod-omn25945-caller-gate
+    description: Hosted caller policy check. Verify the original and rebased check diffs and record runtime actions in the lane report.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k test_caller_workflow_shape --no-cov -n 0
+        cwd: .
+  - id: dod-omn25945-installer-readback
+    description: The runner dispatches a read-only status request to the packaged installer and checks for the retired unit's exact typed refusal.
+    source: manual
+    checks:
+      - check_type: command
+        cwd: .
+        check_value: |
+          bash -c '
+            set -eu;
+            probe_dir=$(mktemp -d);
+            trap "rm -rf -- \"$probe_dir\"" EXIT;
+            onex_bin_dir=$(uv run --frozen python -c "import sys; from pathlib import Path; print(Path(sys.executable).parent)");
+            export PATH="$onex_bin_dir:$PATH"
+            python3 -c "
+          import json
+          import sys
+          from pathlib import Path
+
+          probe_dir = Path(sys.argv[1])
+          request = {\"unit\": \"lab-fill-tick\", \"mode\": \"status\", \"home\": str(probe_dir), \"registry_root\": sys.argv[2]}
+          (probe_dir / \"request.json\").write_text(json.dumps(request), encoding=\"utf-8\")
+          " "$probe_dir" "$PWD";
+            status=0;
+            onex node node_host_installer_registry_units \
+              --contract src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml \
+              --input "$probe_dir/request.json" --state-root "$probe_dir/state" \
+              --output receipt --backend event_bus=inmemory --timeout 20 \
+              > "$probe_dir/receipt.json" || status=$?;
+            test "$status" -eq 1;
+            python3 -c "
+          import json
+          import sys
+          from pathlib import Path
+
+          receipt = json.loads(Path(sys.argv[1]).read_text(encoding=\"utf-8\"))
+          result = receipt[\"result\"][\"terminal_payload\"]
+          assert result[\"unit\"] == \"lab-fill-tick\", result
+          assert result[\"exit_code\"] == 2, result
+          assert result[\"stderr\"].strip() == \"lab-fill-tick is not a unit of this node\", result
+          " "$probe_dir/receipt.json"
+          '

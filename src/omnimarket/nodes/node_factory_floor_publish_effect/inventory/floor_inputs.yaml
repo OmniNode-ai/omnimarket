@@ -198,8 +198,8 @@ inputs:
   - id: lab_fill_work_state_file
     order: 14
     class: file
-    where: .onex_state/work-state/work-state.json (read by the lab fill's local adapters, not by the floor publish)
-    read_by: [node_lab_fill_effect]
+    where: .onex_state/work-state/work-state.json (its reader, the lab fill's local adapters, was removed under OMN-24579; the floor publish does not read it)
+    read_by: []
     steps: []
     producer: node_work_state_projection_effect
     replacement: {node: node_work_state_projection_effect, topic: onex.snapshot.projection.floor-work-state.v1, status: new}
