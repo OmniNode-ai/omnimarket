@@ -16,7 +16,7 @@ requirements:
   statement: The sender's own entry resolves the signing key from the store when its variable is unset, and refuses with no publish when the store does not return it.
   acceptance:
   - id: AC3
-    statement: 'AC3: the key check value the dev agent serves equals the key check value of the store''s entry on the sending lab hosts -- falsifier: the key check node answers different check values for the agent and for the store entry'
+    statement: 'AC3: with the signing variable unset, the sender signs only under a key whose check value equals the agent''s, and a store key A against an agent serving the check of key B is refused with nothing published; the live equal check values on h051 and h201 are read after install by dod-omn24611-ac3-live-reading -- falsifier: the sender test for a mismatched check value fails'
 - id: req-omn24611-unit
   statement: The dev agent unit side is the omnibase_infra pull request of this ticket.
   acceptance:
@@ -26,7 +26,7 @@ requirements:
   statement: The dev agent accepts a signed no-op sent from h051 after the install.
   acceptance:
   - id: AC4
-    statement: 'AC4: integrated: from h051 one signed no-op command is accepted by the dev agent on h201 after its unit is installed, and the live agent''s unit file digest is identical before and after, read on h201 -- falsifier: the running dev agent on lab host h201 rejects the command as an invalid signature, or the live unit digest read back after the install differs from the one before'
+    statement: 'AC4: the sender''s signed no-op uses the stored key and the dev unit and the store contract name the same key file and variable; the live no-op from h051 accepted by the dev agent on h201 with an unchanged unit digest is read after install by dod-omn24611-ac4-live-reading -- falsifier: the seam test or the sender node tests fail'
 evidence_requirements:
 - kind: tests
   description: The secret store node's generate and delivery tests and the sender node's tests.
@@ -55,7 +55,7 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_secret_store_effect/test_generate_deploy_agent_dev_key.py tests/unit/nodes/node_secret_store_effect/test_deliver_key_to_env_file.py tests/unit/nodes/node_secret_store_effect/test_deliver_key_cli.py tests/unit/nodes/node_secret_store_effect/test_seam_deploy_agent_dev_signing_key.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn24611-ac3-sender-store
-  description: With the variable unset the entry signs under the stored key and publishes once; the same input without the settings block refuses with the missing-key refusal; a store that does not return the key publishes nothing; the real entry assembly is exercised with the store's network seam replaced; with the variable unset, a store key A and an agent serving the check of key B is refused and nothing is published. The second check is the reading of AC3 itself, a pull request comment line that starts Reading and names head=<40 hex>, key check, host=<h051 or h201>, agent_check=<16 hex> and store_check=<16 hex> with the two check values equal, read from the key check node on that host. The check passes only when a line at HEAD of this checkout (or, on a hosted merge checkout, at its second parent, the pull request head) stands for each of h051 and h201; a line from one host only, or at an older head, fails. It fails on every head until the operator of each host posts its line.
+  description: With the variable unset the entry signs under the stored key and publishes once; the same input without the settings block refuses with the missing-key refusal; a store that does not return the key publishes nothing; the real entry assembly is exercised with the store's network seam replaced; with the variable unset, a store key A and an agent serving the check of key B is refused and nothing is published. The live key check reading on h051 and h201 is the separate local_done_gate item dod-omn24611-ac3-live-reading.
   source: manual
   binds_ac:
   - AC3
@@ -63,6 +63,20 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_branch_deploy_command_effect -q -n 0 --no-cov -p no:cacheprovider
     cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24611-ac4-integrated
+  description: The sender signs a no-op under the stored key only when the agent's check value equals the store's, and the dev unit and the secret store contract name the same file and variable; both are pinned by tests here. The live reading from h051 to h201 is the separate local_done_gate item dod-omn24611-ac4-live-reading, posted by the host operator after the install.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_secret_store_effect/test_seam_deploy_agent_dev_signing_key.py tests/nodes/node_branch_deploy_command_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24611-ac3-live-reading
+  description: 'The reading itself for AC3: a pull request comment line Reading: head=<40 hex> key check host=<h051 or h201> agent_check=<16 hex> store_check=<16 hex>, equal values, at the pull request head, for each of h051 and h201. Read by the local Done gate; binds no criterion because the hosted gate cannot run a scoped item.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
   - check_type: command
     check_value: |-
       gh api repos/OmniNode-ai/omnimarket/issues/6297/comments --paginate --jq '.[].body' | python3 -c '
@@ -80,11 +94,10 @@ dod_evidence:
       print("AC3 reading: PASS")
       '
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn24611-ac4-integrated
-  description: 'The reading itself: one signed no-op from h051 accepted by the dev agent on h201 after the unit install, with the live unit digest before and after. The check reads the issue comments of this pull request and passes only when one comment is one line that starts Reading and reads head=<40 hex> h051->h201 no-op accepted unit_digest_before=<64 hex> unit_digest_after=<64 hex>, whose two digests are equal and whose head is HEAD of this checkout (or, on a hosted merge checkout, its second parent, the pull request head); a reading at an older head fails. It fails on every head until the host operator who installs the unit posts that line after reading both hosts. Nothing in this repository can produce it.'
+- id: dod-omn24611-ac4-live-reading
+  description: 'The reading itself for AC4: one comment line Reading: head=<40 hex> h051->h201 no-op accepted with equal unit digests before and after, posted by the host operator after the unit install. Read by the local Done gate; binds no criterion.'
   source: manual
-  binds_ac:
-  - AC4
+  execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: |-
