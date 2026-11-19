@@ -36,7 +36,7 @@ REMOVED_PROSE = (
 
 @pytest.mark.parametrize("relative_path", REMOVED_PROSE)
 def test_removed_prose_file_is_absent(relative_path: str) -> None:
-    # A changelog-only release pull request skips the test jobs, so this is often first seen red on dev.
+    # The main CI test jobs skip a changelog-only (docs-only) release pull request, so this is often first seen on dev.
     assert not (REPO_ROOT / relative_path).exists(), (
         f"{relative_path} is back in the repository; its prose lives in {KNOWLEDGE_BASE_URL}. "
         "Delete the file (a release pull request that writes CHANGELOG.md re-adds it)."
