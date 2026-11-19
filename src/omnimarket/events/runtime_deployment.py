@@ -37,9 +37,10 @@ from typing import Literal, Protocol
 from uuid import UUID
 
 from omnibase_core.models.runtime_deployment.wire import EnumRuntimeLane
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.evidence_pipeline.wire.types import ReadinessState
+from omnimarket.models.model_deploy_stamp import ModelDeployStamp, ModelHealthCheck
 from omnimarket.models.model_dev_deploy_route import (
     ModelDevDeployRoute,
 )
@@ -1462,17 +1463,6 @@ class EnumRedeployStatus(StrEnum):
     FAILED = "failed"
 
 
-class ModelHealthCheck(BaseModel):
-    """Single service health check result."""
-
-    model_config = ConfigDict(frozen=True, extra="ignore", from_attributes=True)
-
-    service: str = Field(..., description="Service name.")
-    endpoint: str = Field(..., description="Endpoint checked.")
-    status: Literal["pass", "fail"] = Field(..., description="Check result.")
-    latency_ms: int = Field(default=0, description="Latency in milliseconds.")
-
-
 class ModelDeployRebuildCommand(BaseModel):
     """Command to trigger a deploy agent rebuild.
 
@@ -1557,17 +1547,10 @@ class ModelDeployPhaseResults(BaseModel):
     publish: EnumPhaseResult = Field(default=EnumPhaseResult.PENDING)
 
 
-class ModelDeployRebuildCompleted(BaseModel):
+class ModelDeployRebuildCompleted(ModelDeployStamp):
     """Completion event from the deploy agent.
 
     Received from: onex.evt.deploy.rebuild-completed.v1
-
-    OMN-19998 (stability slice S2): the agent's terminal events also carry an
-    ownership stamp -- ``instance`` / ``host``, set only by an instance with the
-    ``commands_only`` flag -- plus ``lane_mirror`` and ``sibling_refs``. The reader
-    previously dropped all four under ``extra="ignore"``, so a receipt could not say
-    who ran the rebuild or whether the departure can be accepted as ours
-    (:attr:`accepted_as_ours`).
     """
 
     model_config = ConfigDict(frozen=True, extra="ignore", from_attributes=True)
@@ -1612,52 +1595,6 @@ class ModelDeployRebuildCompleted(BaseModel):
         default_factory=list,
         description="Service health check results.",
     )
-    # OMN-19998 (stability slice S2): the ownership stamp and evidence mappings the
-    # agent carries on its terminal events, kept by the reader instead of discarded.
-    instance: str | None = Field(
-        default=None,
-        description=(
-            "Deploy-agent instance that ran the rebuild, set only by an instance "
-            "with the commands_only flag; absent from the wire otherwise."
-        ),
-    )
-    host: str | None = Field(
-        default=None,
-        description=(
-            "Host the rebuild ran on, set only by a commands_only instance; absent "
-            "from the wire otherwise."
-        ),
-    )
-    lane_mirror: dict[str, object] | None = Field(
-        default=None,
-        description=(
-            "Lane-mirror evidence carried by the completed event; null when the "
-            "agent recorded none."
-        ),
-    )
-    sibling_refs: dict[str, str] | None = Field(
-        default=None,
-        description=(
-            "Per-repository sibling evidence (repo -> ref) the agent recorded for "
-            "this rebuild."
-        ),
-    )
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def accepted_as_ours(self) -> bool:
-        """Whether this receipt can be accepted as OUR departure.
-
-        True only when the receipt names a non-empty ``instance`` and ``host`` --
-        so a commands_only instance ran the rebuild -- AND the status is success.
-        A failed rebuild that names its instance is a receipt we keep but never
-        accept: the departure it describes did not go live.
-        """
-        return (
-            bool(self.instance)
-            and bool(self.host)
-            and self.status is EnumRedeployStatus.SUCCESS
-        )
 
 
 class EnumDeployRejectionReason(StrEnum):
@@ -1678,10 +1615,6 @@ class EnumDeployRejectionReason(StrEnum):
     ancestor of the build the lane already runs. The second refuses a ref that has
     diverged from the running build and is not on the lane's tracking branch. Neither
     names a replacement command, so both arrive as three keys like ``busy``.
-
-    ``ROUTE_UNCONFIRMED`` (OMN-19998, stability slice) refuses a command whose route
-    to a running instance was never confirmed: nothing was deployed, so no departure
-    can be attributed from the receipt.
     """
 
     BUSY = "busy"
@@ -1697,7 +1630,7 @@ class EnumDeployRejectionReason(StrEnum):
     ROUTE_UNCONFIRMED = "route_unconfirmed"
 
 
-class ModelDeployRebuildRejected(BaseModel):
+class ModelDeployRebuildRejected(ModelDeployStamp):
     """Rejection event from the deploy agent (OMN-18816).
 
     Received from: onex.evt.deploy.rebuild-rejected.v1
@@ -1739,32 +1672,6 @@ class ModelDeployRebuildRejected(BaseModel):
             "this one."
         ),
     )
-    # OMN-19998 (stability slice S2): the ownership stamp the agent puts on its
-    # terminal events, kept by the reader instead of discarded.
-    instance: str | None = Field(
-        default=None,
-        description=(
-            "Deploy-agent instance that refused the command, set only by an "
-            "instance with the commands_only flag; absent from the wire otherwise."
-        ),
-    )
-    host: str | None = Field(
-        default=None,
-        description=(
-            "Host the refusal came from, set only by a commands_only instance; "
-            "absent from the wire otherwise."
-        ),
-    )
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def accepted_as_ours(self) -> bool:
-        """Always False: a rejection is never an accepted departure.
-
-        The command a rejection answers never ran, so it cannot be our departure
-        even when the refusal names the ``instance`` and ``host`` that issued it.
-        """
-        return False
 
     @model_validator(mode="after")
     def _supersession_fields_match_the_reason(self) -> ModelDeployRebuildRejected:
