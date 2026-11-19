@@ -232,6 +232,20 @@ def _ensure_omni_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _no_real_models_dev_price_reads(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No unit test reads models.dev to price a call (OMN-23413 AC35).
+
+    A delegation call on a customer key falls back to models.dev's price; every
+    test sees an empty index unless it serves its own.
+    """
+    from omnimarket.handlers import model_catalog
+
+    monkeypatch.setattr(
+        model_catalog, "pricing_models_dev_index", lambda: model_catalog.EMPTY_INDEX
+    )
+
+
+@pytest.fixture(autouse=True)
 def _no_real_byok_model_list_reads(monkeypatch: pytest.MonkeyPatch) -> None:
     """No unit test reads a real provider's model list (OMN-20157).
 
