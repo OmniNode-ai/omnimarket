@@ -31,6 +31,7 @@ from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.handler_broker_a
 )
 from tests.nodes.node_broker_acl_reconcile_effect.test_aggregates_declared_grants import (
     ENV,
+    ENV_FILLS,
     FakeRemote,
 )
 
@@ -161,6 +162,7 @@ def make_env(
             "scope": scope,
             "ticket": "OMN-24566",
             "why": "two test logins running one node",
+            "placeholder_values": dict(ENV_FILLS),
             "roles": [
                 {
                     "name": "test_role",
