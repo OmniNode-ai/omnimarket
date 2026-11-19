@@ -81,3 +81,24 @@ def test_failed_run_duration_skill_terminal_at_zero_is_not_measured() -> None:
     row = _project(payload, InmemoryDatabaseAdapter())
     assert row.get("terminal_failure_cause")  # the fixture is a failed run
     assert row.get("execution_ms") is None
+
+
+# The re-review of #6442 (2026-11-19): the merge step lets a timing the new event leaves empty inherit the stored
+# one, so a failed terminal arriving over a stored 0 ms kept it as a measured duration.
+
+
+def test_failed_run_duration_a_failure_over_a_stored_zero_is_not_measured() -> None:
+    """F5: a failed terminal merged over a row stored at 0 ms stores no duration."""
+    db = InmemoryDatabaseAdapter()
+    first = _skill_terminal([_attempt(backend_id="only", host="h201", passed=True)])
+    first["execution_duration_ms"] = 0
+    assert _project(first, db).get("execution_ms") == 0  # a measured 0, no failure
+    failed = _skill_terminal([_attempt(backend_id="only", host="h201", passed=False)])
+    failed.update(
+        correlation_id=first["correlation_id"],
+        quality_gate_passed=False,
+        terminal_failure_cause="provider_error",
+    )
+    row = _project(failed, db)
+    assert row.get("terminal_failure_cause")  # the merged row is a failed run
+    assert row.get("execution_ms") is None

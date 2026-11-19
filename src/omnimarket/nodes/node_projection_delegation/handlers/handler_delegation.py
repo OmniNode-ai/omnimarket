@@ -86,6 +86,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     ModelProjectionTaskDelegatedEvent,
     _canonical_result_to_task_delegated_payload,
     _deciding_rung_stop_reason,
+    _failed_zero_to_none,
     _is_blank,
     _is_zero,
     _judge_verdict_projection_row,
@@ -1627,6 +1628,10 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
         ):
             row["compliance_attempts"] = existing["compliance_attempts"]
         _preserve_terminal_failure(existing, row)
+        # OMN-24615 AC8: same rule as the sync writer's merge.
+        row["execution_ms"] = _failed_zero_to_none(
+            row.get("execution_ms"), row.get("terminal_failure_cause")
+        )
         # OMN-19448: after precedence, so a model inherited from the stored row
         # never makes an unevidenced handler failure read as evidenced.
         _preserve_run_attribution(existing, row)
