@@ -97,5 +97,16 @@
   ],
   "runtime_profiles": [
     "main"
+  ],
+  "broker_acl_grants": [
+    {
+      "principal": "${ONEX_ACL_RUNTIME_PRINCIPAL}",
+      "grants": [
+        {"resource_type": "TOPIC", "pattern": "LITERAL", "name": "onex.cmd.omnimarket.topic-required-absent-read-requested.v1", "operation": "READ"},
+        {"resource_type": "TOPIC", "pattern": "LITERAL", "name": "onex.cmd.omnimarket.topic-required-absent-read-requested.v1", "operation": "DESCRIBE"},
+        {"resource_type": "TOPIC", "pattern": "LITERAL", "name": "onex.evt.omnimarket.topic-required-absent-read-completed.v1", "operation": "WRITE"},
+        {"resource_type": "TOPIC", "pattern": "LITERAL", "name": "onex.evt.omnimarket.topic-required-absent-read-completed.v1", "operation": "DESCRIBE"}
+      ]
+    }
   ]
 }
