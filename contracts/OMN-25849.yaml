@@ -19,6 +19,11 @@ requirements:
   - id: AC2
     statement: 'AC2: a batch older than the declared bound, a topic with no valid publication and a contract that still names a ledger path variable are each refused or caught -- falsifier: `uv run pytest -m unit
       tests/nodes/node_prove_running_workflow/test_prove_running_batch.py -k "stale_batch or no_batch or declared_in_the_contract"`'
+- id: req-omn25849-every-line
+  statement: The hourly run reads every NOT RUNNING line of the batch and starts one child per change; the only bounds are declared batching sizes (child_batch_size, merge_sha_workers), never a cap on the lines.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: read-not-running selects every NOT RUNNING line of a 60-line batch, the contract declares no selection limit, and children start in declared waves with one result per change -- falsifier: `uv run pytest -m unit tests/nodes/node_prove_running_workflow/test_prove_running_every_line.py` fails at the merge base (the batch contract carried `limit: 3`) and passes at the head'
 evidence_requirements:
 - kind: tests
   description: The workflow, starter and batch tests against Temporal's time-skipping test server.
@@ -45,6 +50,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow/test_prove_running_batch.py -q --no-cov -p no:randomly -k 'stale_batch or no_batch or declared_in_the_contract'
+    cwd: .
+- id: dod-omn25849-ac3
+  description: every NOT RUNNING line of the batch is read and gets one child; the contract declares batching sizes and no selection limit
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow/test_prove_running_every_line.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn25849-integration-proof-h051
   description: At the pushed revision the h051 lab worker runs the declared-input batch tests, and the installed worker's triggered batch run on h051 reads the topic or refuses with the typed reason.

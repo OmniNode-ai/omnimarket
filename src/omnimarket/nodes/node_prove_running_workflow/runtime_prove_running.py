@@ -130,7 +130,7 @@ def build_batch_plan(cfg: dict[str, Any]) -> ModelProveRunningBatchPlan:
     steps = {name: _argv(list(argv)) for name, argv in batch["steps"].items()}
     return ModelProveRunningBatchPlan(
         steps=ModelProveRunningBatchSteps(**steps),
-        limit=int(batch["limit"]),
+        child_batch_size=int(batch["child_batch_size"]),
         step_timeout_seconds=int(batch["step_timeout_seconds"]),
         step_max_attempts=int(batch["step_max_attempts"]),
     )
@@ -387,7 +387,7 @@ def snapshot_source(
 
 def cmd_read_not_running(cfg: dict[str, Any]) -> int:
     """Select the NOT RUNNING lines of the integration pass's newest typed batch, read from its snapshot topic."""
-    step = ModelProveRunningBatchStepInput.model_validate_json(sys.stdin.read())
+    ModelProveRunningBatchStepInput.model_validate_json(sys.stdin.read())
     declared = cfg["batch"]["input"]
     env = os.environ
     try:
@@ -417,9 +417,9 @@ def cmd_read_not_running(cfg: dict[str, Any]) -> int:
         sys.stderr.write(f"refused: {exc}\n")
         return EXIT_REFUSED
     resolver = _merge_sha_resolver(cfg, cfg["scm_owner"])
-    selected = HandlerProveRunningStarter(resolver).handle(
-        ModelProveRunningStartRequest(batch=batch, limit=step.limit)
-    )
+    selected = HandlerProveRunningStarter(
+        resolver, workers=int(cfg["batch"]["merge_sha_workers"])
+    ).handle(ModelProveRunningStartRequest(batch=batch))
     sys.stdout.write(selected.model_dump_json() + "\n")
     return 0
 
@@ -562,7 +562,12 @@ def main(argv: list[str] | None = None) -> int:
     sub.choices["start"].add_argument(
         "--batch", required=True, help="ModelIntegrationReadingBatch JSON file"
     )
-    sub.choices["start"].add_argument("--limit", type=int, default=3)
+    sub.choices["start"].add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="start at most this many changes; with no limit every NOT RUNNING line is started",
+    )
     sub.choices["start"].add_argument("--owner", default=cfg["scm_owner"])
     sub.choices["start"].add_argument(
         "--wait", action="store_true", help="wait for each result"

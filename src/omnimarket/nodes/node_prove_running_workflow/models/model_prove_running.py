@@ -126,10 +126,10 @@ class ModelProveRunningRowResult(_Frozen):
 
 
 class ModelProveRunningStartRequest(_Frozen):
-    """The starter's input: one integration pass's readings and how many NOT RUNNING lines to start."""
+    """The starter's input: one integration pass's readings; every NOT RUNNING line is started unless a caller names a limit."""
 
     batch: ModelIntegrationReadingBatch
-    limit: int = Field(gt=0, le=50)
+    limit: int | None = Field(default=None, gt=0)
 
 
 class ModelProveRunningStartBatch(_Frozen):
@@ -150,7 +150,7 @@ class ModelProveRunningBatchPlan(_Frozen):
     """The scheduled workflow input and its activity limits."""
 
     steps: ModelProveRunningBatchSteps
-    limit: int = Field(ge=1, le=50)
+    child_batch_size: int = Field(ge=1, le=500)
     step_timeout_seconds: int = Field(gt=0)
     step_max_attempts: int = Field(gt=0, le=20)
 
@@ -161,7 +161,6 @@ class ModelProveRunningBatchStepInput(_Frozen):
     step: str = Field(min_length=1)
     step_key: str = Field(min_length=1)
     batch_id: str = Field(min_length=1)
-    limit: int = Field(ge=1, le=50)
     payload: str = ""
 
 

@@ -113,7 +113,12 @@ prove_running:
   batch:
     schedule_id: onex-prove-running-hourly
     interval_seconds: 3600
-    limit: 3
+    # No cap on the lines read: every NOT RUNNING line of the batch is one child, one row per change per run. The two
+    # sizes below bound the work, never the lines: how many children run at once (each wave is awaited before the
+    # next starts, so the batch workflow's history and the host's open step processes stay bounded) and how many merge
+    # shas are read at once in the select step.
+    child_batch_size: 100
+    merge_sha_workers: 16
     # The integration pass's typed batch comes from its snapshot topic (the floor reader's overlay declares the topic, the
     # bound and the broker), never from a ledger file or a variable that names one.
     input:

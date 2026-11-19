@@ -63,7 +63,6 @@ class ProveRunningBatchWorkflow:
                 step=name,
                 step_key=f"{info.workflow_id}/{name}",
                 batch_id=info.workflow_id,
-                limit=plan.limit,
                 payload=payload,
             )
             return str(
@@ -83,11 +82,19 @@ class ProveRunningBatchWorkflow:
 
         started: dict[str, workflow.ChildWorkflowHandle[object, str]] = {}
         already_proven_or_running: list[str] = []
-        for group in grouped.groups:
-            for child_plan in group.plans:
+        outcomes: dict[str, str] = {}
+        child_plans = [
+            child_plan for group in grouped.groups for child_plan in group.plans
+        ]
+        # Every change gets its child. The declared child_batch_size bounds how many run at once: a wave is awaited
+        # before the next starts, so no line is dropped and no wave outgrows the history or the host.
+        size = plan.child_batch_size
+        for first in range(0, len(child_plans), size):
+            wave: dict[str, workflow.ChildWorkflowHandle[object, str]] = {}
+            for child_plan in child_plans[first : first + size]:
                 child_id = child_plan.change.workflow_id
                 try:
-                    started[child_id] = await workflow.start_child_workflow(
+                    wave[child_id] = await workflow.start_child_workflow(
                         WORKFLOW_NAME,
                         child_plan.model_dump_json(),
                         id=child_id,
@@ -97,11 +104,10 @@ class ProveRunningBatchWorkflow:
                     )
                 except WorkflowAlreadyStartedError:
                     already_proven_or_running.append(child_id)
-
-        outcomes = {}
-        for child_id, handle in started.items():
-            result = ModelProveRunningResult.model_validate_json(await handle)
-            outcomes[child_id] = result.outcome.value
+            started.update(wave)
+            for child_id, handle in wave.items():
+                result = ModelProveRunningResult.model_validate_json(await handle)
+                outcomes[child_id] = result.outcome.value
         return ModelProveRunningBatchResult(
             batch_id=info.workflow_id,
             read_changes=len(batch.changes),

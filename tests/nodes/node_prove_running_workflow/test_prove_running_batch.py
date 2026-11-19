@@ -206,7 +206,7 @@ def test_schedule_hourly() -> None:
 
     plan = runtime.build_batch_plan(cfg)
     assert list(schedule.action.args) == [plan.model_dump_json()]
-    assert plan.limit == 3
+    assert plan.child_batch_size == cfg["batch"]["child_batch_size"]
     assert plan.steps.read_not_running == (
         sys.executable,
         "-m",
@@ -216,12 +216,11 @@ def test_schedule_hourly() -> None:
     assert plan.steps.group_by_host == (sys.executable, "-m", NODE, "group-by-host")
 
 
-def _read_step(monkeypatch: pytest.MonkeyPatch, limit: int = 3) -> None:
+def _read_step(monkeypatch: pytest.MonkeyPatch) -> None:
     step = ModelProveRunningBatchStepInput(
         step="read_not_running",
         step_key="batch/read_not_running",
         batch_id="batch",
-        limit=limit,
     )
     monkeypatch.setattr(sys, "stdin", io.StringIO(step.model_dump_json()))
     monkeypatch.setenv(
@@ -259,10 +258,10 @@ def test_read_not_running_takes_the_newest_publication(
             ]
         },
     )
-    _read_step(monkeypatch, limit=1)
+    _read_step(monkeypatch)
     assert runtime.main(["read-not-running"]) == 0
     selected = ModelProveRunningStartBatch.model_validate_json(capsys.readouterr().out)
-    assert [c.number for c in selected.changes] == [41]
+    assert [c.number for c in selected.changes] == [41, 42, 43]
 
 
 def test_read_not_running_refuses_a_stale_batch(
@@ -322,7 +321,6 @@ def test_groups_by_host_cli(
         step="group_by_host",
         step_key="batch/group_by_host",
         batch_id="batch",
-        limit=4,
         payload=batch.model_dump_json(),
     )
     monkeypatch.setattr(sys, "stdin", io.StringIO(step.model_dump_json()))
