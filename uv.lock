@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -10,8 +10,8 @@ resolution-markers = [
 
 [manifest]
 overrides = [
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261111183916-a85cb916d4c1" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261113041401-2b0c3eacdf4d" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261113013358-a09066caf945" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261119084520-fe82074c1a23" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108170744-52946639a23a" },
 ]
 
@@ -1455,11 +1455,11 @@ wheels = [
 
 [[package]]
 name = "filelock"
-version = "4.2.1"
+version = "4.2.12"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d5/98/771d8ca889f220d7d7e352addf500666368f0fd081c6080a83767580c6e4/filelock-4.2.1.tar.gz", hash = "sha256:c4c937ccac2a813cee448e662a56366cfb374c0f8702e75f295c412cc1c5d5a3", size = 650997, upload-time = "2026-10-17T16:48:14.435Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/52/aa/8ccff8da9a27e089727fcffd3c5b61708383217e47eb1e1b8af37b1dd166/filelock-4.2.12.tar.gz", hash = "sha256:7e7da24d3ac39268b0f156e56870001de44886318f092f9d851e692f7114d6dd", size = 680837, upload-time = "2026-11-18T01:20:03.951Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/28/00/db89d339bc4ecdc8087fa7b8607ba22ffc27bf96286f340c9620bea428b3/filelock-4.2.1-py3-none-any.whl", hash = "sha256:7be2662e9e826b9bba28afc0f843a123280d799a2ea44bb5d35ccec67905ae44", size = 162455, upload-time = "2026-10-17T16:48:12.937Z" },
+    { url = "https://files.pythonhosted.org/packages/8a/c9/eb6b6528c7edb958d4c24ac47a8b94113d9de36e4cfc6eecd599b1a4f349/filelock-4.2.12-py3-none-any.whl", hash = "sha256:21decfec02f116ed4c954433cdb31f28c3b346b784543177b6d7059da2702ee9", size = 222442, upload-time = "2026-11-18T01:20:02.439Z" },
 ]
 
 [[package]]
@@ -3041,8 +3041,8 @@ wheels = [
 
 [[package]]
 name = "omnibase-core"
-version = "0.47.76"
-source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261111183916-a85cb916d4c1#a85cb916d4c1334b63877da178bbfbf3023f168a" }
+version = "0.47.73.dev9+ga09066ca"
+source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261113013358-a09066caf945#a09066caf945cd79e13447d92ad42549f1019f78" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -3064,7 +3064,7 @@ dependencies = [
 [[package]]
 name = "omnibase-infra"
 version = "0.38.77"
-source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261113041401-2b0c3eacdf4d#2b0c3eacdf4d49b07ed1e97ad22b8972e37da75a" }
+source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261119084520-fe82074c1a23#fe82074c1a23731ae8a2631c2baa15d2694676e4" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "aiofiles" },
@@ -3205,10 +3205,10 @@ requires-dist = [
     { name = "graphifyy", marker = "extra == 'dep-health'", specifier = "==0.8.2" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", specifier = ">=4.18.0" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261111183916-a85cb916d4c1" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261113041401-2b0c3eacdf4d" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261113013358-a09066caf945" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261119084520-fe82074c1a23" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108170744-52946639a23a" },
-    { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261112102309-92b9c1a20bef" },
+    { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261118033152-967ddaf9eed2" },
     { name = "packaging", specifier = ">=24.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pyasn1", specifier = ">=0.6.4" },
@@ -3244,8 +3244,8 @@ parity = [{ name = "mutmut", specifier = ">=3.3,<4" }]
 
 [[package]]
 name = "omninode-memory"
-version = "0.18.14"
-source = { git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261112102309-92b9c1a20bef#92b9c1a20bef7bbd32a4e0ba557d116d5c9fbb2d" }
+version = "0.18.15"
+source = { git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261118033152-967ddaf9eed2#967ddaf9eed2546bc9648dc9cdb68be0f8f0f7a8" }
 dependencies = [
     { name = "aiohttp" },
     { name = "alembic" },

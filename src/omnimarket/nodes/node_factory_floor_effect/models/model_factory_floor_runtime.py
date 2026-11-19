@@ -138,6 +138,21 @@ class ModelLedgerArchiveWindow(BaseModel):
     cache_ttl_seconds: int | None = Field(default=None, ge=1)
 
 
+class ModelLedgerProjectionWindow(BaseModel):
+    """The declared shape of a work ledger projection window: one UTC day at a time through a named reader (accepted, not read yet).
+
+    ``reader`` is the name the work ledger reader overlay lists in its moved_readers. A closed day's rows are kept for
+    ``cache_ttl_seconds``; ``read_workers`` days are read at once; yesterday is read live until ``settle_seconds`` after midnight UTC.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    reader: str = Field(min_length=1)
+    cache_ttl_seconds: int = Field(ge=1)
+    read_workers: int = Field(ge=1)
+    settle_seconds: int = Field(ge=0)
+
+
 class ModelFactoryFloorRuntime(BaseModel):
     """The ``runtime`` block of contract.yaml."""
 
@@ -156,6 +171,10 @@ class ModelFactoryFloorRuntime(BaseModel):
     ledger_window_days: int = Field(gt=0)
     ledger_cut_chars: int = Field(gt=0)
     ledger_timeout_seconds: int = Field(gt=0)
+    # What the window read uses for the archive block's two tuning values when the deployment overlay names none: how many split archives
+    # it reads at once, and how long a cached archive's rows are kept.
+    ledger_archive_read_workers: int = Field(ge=1)
+    ledger_archive_cache_ttl_seconds: int = Field(ge=1)
     # The row kinds the effect keeps from the window.
     ledger_kinds: tuple[str, ...] = Field(min_length=1)
     # Hours after which the unresolved step's record reads unread (its own margin past the window's edge is the other bound).
@@ -240,6 +259,9 @@ class ModelFactoryFloorOverlay(BaseModel):
     # Where the file ledger's split archives are, so the window read keeps each archive's rows in the source read cache and reads only
     # the live ledger each cycle (OMN-19998). Absent: the window is read as before.
     ledger_archives: ModelLedgerArchiveWindow | None = None
+    # Accepted so an overlay that declares it is not refused (OMN-23963, OMN-24490). No reader in this tree reads it yet: the
+    # window is still read from ledger_source and ledger_archives whether or not it is present.
+    ledger_projection: ModelLedgerProjectionWindow | None = None
     # The line board's declarations (OMN-22368). No default: an overlay without them is refused by name.
     processes: tuple[ModelFloorProcessDecl, ...]
     roles: tuple[str, ...]

@@ -51,6 +51,8 @@ ENV = {
     "ONEX_ACL_DEPLOY_AGENT_KEY_CHECK_PRINCIPAL": "User:deploy-agent-key-check",
     "ONEX_ACL_DEV_RUNTIME_EFFECTS_PRINCIPAL": "User:dev-runtime-effects",
 }
+ENV_FILLS = {key: value for key, value in ENV.items() if key.startswith("ONEX_ACL_")}
+"""The names ENV sets, as an overlay's placeholder_values: when an overlay is found it is the one source of the ${NAME} fills."""
 HEADER = (
     "PRINCIPAL HOST RESOURCE-TYPE RESOURCE-NAME RESOURCE-PATTERN-TYPE "
     "OPERATION PERMISSION ERROR\n"
@@ -263,7 +265,8 @@ def test_transactional_id_grants_applied() -> None:
     )
     assert len(remote.scripts) == 3
     assert all(
-        "docker inspect credentials" in script
+        "DEV_KAFKA_SASL_PASSWORD" in script
+        and "docker inspect" not in script
         and "sasl.mechanism=SCRAM-SHA-256" in script
         for script in remote.scripts
     )

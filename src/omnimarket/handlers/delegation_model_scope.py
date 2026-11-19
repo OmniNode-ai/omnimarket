@@ -9,7 +9,9 @@ skip; when the rule leaves no model, the run is refused before any provider
 call. With no rule, routing is what it was.
 
 A local model is one the developer runs: a model ``onex models add local``
-declared by URL, or a keyless rung of the local tier (Ollama). A free model is
+declared by URL, a keyless rung of the local tier, or a keyless backend whose
+resolved tier configs/delegation_model_scope.v1.yaml lists as local (a named
+connection has no ladder entry, only its resolved tier). A free model is
 a local one, or one the provider catalogue declares free: a plan billed as a
 free tier, a model the catalogue tags ``free`` (an OpenRouter ``:free`` id), or
 a model whose declared price is zero. Anything else counts as paid.
@@ -23,6 +25,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Final, Literal, cast, get_args
 
+import yaml
 from omnibase_infra.errors import ProtocolConfigurationError
 
 from omnimarket.handlers.routing.byok_provider_backends import (
@@ -33,6 +36,7 @@ from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
 from omnimarket.handlers.routing.local_byok_route import is_local_url_backend
+from omnimarket.inference.delegation_config_provenance import resolve_path_config
 from omnimarket.inference.local_byok_credential_adapter import local_model_tests_path
 
 ModelScopeRule = Literal["local", "free"]
@@ -40,6 +44,12 @@ MODEL_SCOPE_RULES: Final[tuple[str, ...]] = get_args(ModelScopeRule)
 MODEL_SCOPE_FILE: Final = "delegation_model_scope.json"
 #: The code a run refused by the rule carries.
 MODEL_SCOPE_REFUSAL_CODE: Final = "MODEL_SCOPE_LEAVES_NO_MODEL"
+#: The deployment pin that replaces the packaged list of local tiers.
+MODEL_SCOPE_CONFIG_PATH_ENV_KEY: Final = "DELEGATION_MODEL_SCOPE_CONFIG_PATH"
+MODEL_SCOPE_CONFIG_PACKAGED_DEFAULT_PATH: Final = (
+    Path(__file__).parent.parent / "configs" / "delegation_model_scope.v1.yaml"
+)
+_MODEL_SCOPE_CONFIG_SCHEMA: Final = "delegation_model_scope.v1"
 _RULE_TEXT: Final[dict[str, str]] = {
     "local": "local models only",
     "free": "free models only",
@@ -86,14 +96,50 @@ def model_scope_text(rule: ModelScopeRule) -> str:
     return _RULE_TEXT[rule]
 
 
+def local_scope_tiers() -> frozenset[str]:
+    """The resolved tiers that count as local, from configuration.
+
+    Read on every call, so a deployment's pin applies without a restart. A file
+    that cannot be read, is not this schema or does not list tier names refuses.
+    """
+    path, _provenance = resolve_path_config(
+        MODEL_SCOPE_CONFIG_PATH_ENV_KEY, MODEL_SCOPE_CONFIG_PACKAGED_DEFAULT_PATH
+    )
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise ProtocolConfigurationError(
+            f"model-scope config {path} cannot be read: {exc}"
+        ) from exc
+    if not isinstance(data, dict) or data.get("schema") != _MODEL_SCOPE_CONFIG_SCHEMA:
+        raise ProtocolConfigurationError(
+            f"model-scope config {path} is not {_MODEL_SCOPE_CONFIG_SCHEMA}"
+        )
+    listed = data.get("local_tiers")
+    if not isinstance(listed, list) or not all(
+        isinstance(name, str) and name for name in listed
+    ):
+        raise ProtocolConfigurationError(
+            f"model-scope config {path} must list local_tiers as tier names"
+        )
+    return frozenset(listed)
+
+
 def is_local_model(
     backend: ModelResolvedDelegationBackend, *, is_local_rung: Callable[[str], bool]
 ) -> bool:
-    """A model the developer runs: declared by URL, or a keyless local-tier rung."""
+    """A model the developer runs: declared by URL, or keyless and local by tier.
+
+    Keyless and local by tier means a rung of the ladder's local tier, or a
+    backend whose resolved tier the model-scope config lists as local. A backend
+    with a key is never local.
+    """
     if is_local_url_backend(backend.backend_id):
         return True
     keyless = backend.secret_ref is None and backend.api_key_env is None
-    return keyless and is_local_rung(backend.backend_id)
+    return keyless and (
+        backend.tier in local_scope_tiers() or is_local_rung(backend.backend_id)
+    )
 
 
 def is_free_model(
