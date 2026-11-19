@@ -286,6 +286,13 @@ metadata:
   ticket: OMN-23024
   transport_type: inmemory
 
+# The severity router is the delivery port the conditions hand their verdicts to; it is built by the CLI with the delivery
+# it wraps, so it is bound here by module and has no cli operation or handler_routing entry of its own.
+alarm_route_binding:
+  handler:
+    name: HandlerAlarmSeverityRoute
+    module: omnimarket.nodes.node_lab_alarm.handlers.alarm_route
+
 # Severity routing (OMN-24939). Read by omnimarket.nodes.node_lab_alarm.handlers.alarm_route.load_alarm_severity_table;
 # the load refuses a source with no severity, a fix-cause source with no cause, a condition listed twice and a CLI operation of
 # this node that no router source covers. Classes come from the 2026-11-09..16 alarm review (a 12 percent sample); basis says
