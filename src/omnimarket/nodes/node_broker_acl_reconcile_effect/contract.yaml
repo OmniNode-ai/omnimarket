@@ -22,7 +22,7 @@ broker_acl_reconcile:
   # and left alone.
   reconcile_scope:
     resource_types: [TOPIC]
-    name_prefixes: ["onex."]
+    name_prefixes: ["onex."]  # topic-name prefix scope, not a topic name
     # The scoped overlays under every overlay root whose scope directory starts with this
     # prefix also hold rows: a reconcile never removes a row any of them declares.
     declared_overlay_scope_prefix: broker_acls_
