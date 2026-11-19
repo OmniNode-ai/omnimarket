@@ -11,11 +11,11 @@ requirements:
   statement: Every topic a listed node contract declares is in the set boot provisioning creates for the loaded contract, and a command topic is a subscription only for a node whose handler the runtime can build without arguments.
   acceptance:
   - id: AC1
-    statement: "AC1: every topic that the 16 listed node contracts declare is created by the runtime's boot provisioning -- falsifier: pytest tests/nodes/test_declared_topics_provisioned.py -q fails on the contracts at origin/dev"
+    statement: "AC1: every topic that the 15 listed node contracts declare is created by the runtime's boot provisioning -- falsifier: pytest tests/nodes/test_declared_topics_provisioned.py -q fails on the contracts at origin/dev"
   - id: AC2
-    statement: "AC2: the 12 serve-style nodes list their topics as publish topics and externally consumed, never as subscriptions, and the 4 compute nodes subscribe to their command topic -- falsifier: the same test file, tests 2 and 3, fail when a command topic is moved between the lists"
+    statement: "AC2: the 11 serve-style nodes list their topics as publish topics and externally consumed, never as subscriptions, and the 4 compute nodes subscribe to their command topic -- falsifier: the same test file, tests 2 and 3, fail when a command topic is moved between the lists"
   - id: AC3
-    statement: "AC3: integrated: on the dev runtime after the rebuild, each of the 16 nodes' command topics exists on the broker and one command sent to each of the 4 compute nodes returns its terminal event -- falsifier: a broker topic listing on the dev lane missing a topic, or a command with no terminal event within the node's timeout"
+    statement: "AC3: integrated: on the dev runtime after the rebuild, each of the 15 nodes' command topics exists on the broker and one command sent to each of the 4 compute nodes returns its terminal event -- falsifier: a broker topic listing on the dev lane missing a topic, or a command with no terminal event within the node's timeout"
 evidence_requirements:
 - kind: tests
   description: The census test passes at the pushed head.

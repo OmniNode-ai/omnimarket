@@ -49,7 +49,6 @@ GROUP_A: tuple[str, ...] = (
     "node_overlay_drift_effect",
     "node_stop_escalation_effect",
     "node_validator_workflow_orchestrator",
-    "node_lab_proof_judge_compute",
 )
 
 # daily_line_effect is a scheduled writer: it declares a terminal event and no command topic.
@@ -119,11 +118,6 @@ EXPECTED_PUBLISH_TOPICS: dict[str, tuple[str, ...]] = {
         "onex.evt.omnimarket.validator-workflow-verdict-folded.v1",
         "onex.evt.omnimarket.validator-workflow-completed.v1",
         "onex.evt.omnimarket.validator-workflow-failed.v1",
-    ),
-    "node_lab_proof_judge_compute": (
-        "onex.cmd.omnimarket.lab-proof-judge-requested.v1",
-        "onex.evt.omnimarket.lab-proof-judge-decided.v1",
-        "onex.evt.omnimarket.lab-proof-judge-run-failed.v1",
     ),
     "node_ask_state_compute": (
         "onex.evt.omnimarket.ask-state-completed.v1",

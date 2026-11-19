@@ -50,6 +50,7 @@ ENV = {
     "ONEX_ACL_STABILITY_REFRESH_SERVE_PRINCIPAL": "User:stability-refresh-serve",
     "ONEX_ACL_DEPLOY_AGENT_KEY_CHECK_PRINCIPAL": "User:deploy-agent-key-check",
     "ONEX_ACL_DEV_RUNTIME_EFFECTS_PRINCIPAL": "User:dev-runtime-effects",
+    "ONEX_ACL_DEV_RUNTIME_PRINCIPAL": "User:dev-runtime",
 }
 HEADER = (
     "PRINCIPAL HOST RESOURCE-TYPE RESOURCE-NAME RESOURCE-PATTERN-TYPE "
