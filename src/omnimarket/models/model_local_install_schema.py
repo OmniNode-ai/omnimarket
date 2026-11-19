@@ -366,8 +366,47 @@ LOCAL_RUN_STORE_STEPS: tuple[
 )
 
 
+# OMN-25863: the version of the per-run savings rule, handler_run_savings.modelled_run_savings_columns. Change it
+# whenever that function changes what it computes; every local store then recomputes its stored savings once.
+RUN_SAVINGS_RULE_VERSION = "2026-11-19: priced by the model that ran (model_name, then delegated_to), spend from a named price only"
+
+
+def _manifest_price_lines() -> list[str]:
+    """Every model the pricing manifest prices, with both rates, sorted: what a stored saving was priced from."""
+    from omnimarket.pricing import (
+        _load_table,
+    )
+
+    return sorted(
+        f"{key},{entry.input_cost_per_1k},{entry.output_cost_per_1k}"
+        for key, entry in _load_table().models.items()
+    )
+
+
+def run_savings_rule_step() -> str:
+    """OMN-25863: the recompute step named by the savings rule's version and every manifest price.
+
+    A change to either names a new step, so a store recomputes its stored per-run savings once per change, through
+    the same one-time step machinery (its write transaction, its read-only handling) as every other step.
+    """
+    payload = "\n".join([RUN_SAVINGS_RULE_VERSION, *_manifest_price_lines()])
+    return (
+        "omn25863_run_savings_rule_" + hashlib.sha256(payload.encode()).hexdigest()[:16]
+    )
+
+
 def pending_local_run_steps(
     conn: sqlite3.Connection, recorded: Callable[[sqlite3.Connection, str], bool]
 ) -> list[tuple[str, Callable[[sqlite3.Connection], None], str]]:
-    """The run-level steps this store has not recorded, in order."""
-    return [step for step in LOCAL_RUN_STORE_STEPS if not recorded(conn, step[0])]
+    """The run-level steps this store has not recorded, in order, then the savings recompute for the current rule."""
+    pending = [step for step in LOCAL_RUN_STORE_STEPS if not recorded(conn, step[0])]
+    rule = run_savings_rule_step()
+    if not recorded(conn, rule):
+        pending.append(
+            (
+                rule,
+                recompute_run_savings,
+                "recomputed each run's modelled saving for the current rule and prices",
+            )
+        )
+    return pending
