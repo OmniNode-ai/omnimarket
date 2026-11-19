@@ -29,7 +29,7 @@ descriptor:
     - effects
 
 event_bus:
-  subscribe_topics: [onex.cmd.omnimarket.host-thermal-hold-report-requested.v1]
+  subscribe_topics: []
   publish_topics: [onex.evt.omnimarket.host-thermal-hold-reported.v1]
 
 handler:
@@ -42,17 +42,12 @@ handler:
 # parameters, so the tick main builds it and the contract declares no handler_routing.
 
 terminal_event: onex.evt.omnimarket.host-thermal-hold-reported.v1
-runtime_dispatch:
-  command_topic: onex.cmd.omnimarket.host-thermal-hold-report-requested.v1
 externally_consumed_topics: [onex.evt.omnimarket.host-thermal-hold-reported.v1]
 
-# The broker grants the node's two topics need (OMN-24005 coverage gate): the runtime login reads the request and writes
-# the terminal event.
+# The broker grants the node's two topics need (OMN-24005 coverage gate): the runtime login writes the terminal event.
 broker_acl_grants:
   - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
     grants:
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-thermal-hold-report-requested.v1, operation: READ}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-thermal-hold-report-requested.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-thermal-hold-reported.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-thermal-hold-reported.v1, operation: DESCRIBE}
 
