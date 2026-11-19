@@ -272,7 +272,7 @@ def test_the_model_accepts_a_rejection_that_omits_the_supersession_pair() -> Non
 def test_every_producer_reason_token_is_accepted() -> None:
     """A reason the producer can emit but the reader refuses dead-letters in prod.
 
-    The ten tokens are ``deploy_agent.events.EnumRejectionReason``'s members. A new
+    The eleven tokens are ``deploy_agent.events.EnumRejectionReason``'s members. A new
     token added on the producer side without a counterpart here fails this test rather
     than a live rejection.
     """
@@ -289,6 +289,8 @@ def test_every_producer_reason_token_is_accepted() -> None:
         # OMN-19270: the lineage fence's two refusals.
         "superseded_by_running_build",
         "divergent_ref",
+        # OMN-19998: producer side lands in omnibase_infra step S1b (stability slice).
+        "route_unconfirmed",
     ]
     for token in producer_tokens:
         payload = _wire_busy_payload() | {"reason": token}
