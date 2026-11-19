@@ -430,7 +430,7 @@ async def test_the_publisher_is_the_topic_login_and_never_the_envelope_producer(
 
 
 async def test_a_host_with_no_servable_writer_topic_refuses_to_start(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A host that could subscribe to none of its logins' topics serves nothing: it says so at start."""
     async with open_install_request_bus(
@@ -441,7 +441,7 @@ async def test_a_host_with_no_servable_writer_topic_refuses_to_start(
         async def refuse(*args: Any, **kwargs: Any) -> Any:
             raise RuntimeError("topic not found")
 
-        bus.subscribe = refuse  # type: ignore[method-assign]
+        monkeypatch.setattr(bus, "subscribe", refuse)
         host = InstallRequestHost(
             bus,
             _handler(overlay, InMemoryResultJournal()),

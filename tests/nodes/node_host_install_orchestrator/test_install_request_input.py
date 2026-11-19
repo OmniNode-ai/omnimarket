@@ -201,7 +201,7 @@ class _WithoutIgnore(HandlerHostInstallOrchestrator):
     def _on_install_result(
         self, result: ModelInstallRequestResult
     ) -> tuple[ModelHostInstallOutput, ...]:
-        self._tree_requests.pop((result.request_id, result.host), None)
+        self._pending_tree_installs.pop((result.request_id, result.host), None)
         return (self._tree_completed(result),)
 
 
@@ -277,7 +277,10 @@ class _WithoutPublisherRefusalIgnore(HandlerHostInstallOrchestrator):
     def _on_install_result(
         self, result: ModelInstallRequestResult
     ) -> tuple[ModelHostInstallOutput, ...]:
-        if self._tree_requests.pop((result.request_id, result.host), None) is None:
+        if (
+            self._pending_tree_installs.pop((result.request_id, result.host), None)
+            is None
+        ):
             return ()
         return (self._tree_completed(result),)
 
@@ -354,9 +357,8 @@ class _OverwritingOrchestrator(HandlerHostInstallOrchestrator):
     """The failing control: remembers a request by its id alone, so a repeat replaces the real one."""
 
     def _remember_tree_request(self, request: ModelInstallRequest) -> None:
-        self._tree_requests = {  # type: ignore[assignment]
-            (request.request_id, HOST): request
-        }
+        self._pending_tree_installs.clear()
+        self._pending_tree_installs[request.request_id, HOST] = request
 
 
 def test_failing_control_a_replacing_memory_drops_the_real_result() -> None:

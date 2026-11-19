@@ -116,20 +116,12 @@ externally_consumed_topics:
   - onex.evt.omnimarket.install-request-completed.v1
   - onex.evt.omnimarket.install-request-failed.v1
 
-# The host refuses to act on any request unless its bus connection is authenticated (SASL, a named principal) as the login its
-# overlay row names as host_principal; the per-login rows below are DERIVED from the overlay's allowed list by
-# node_install_request_acl_compute (one principal per login) and declared in the overlays repository.
-# The host process is the installer's login (the host reconciler principal, as for the host install orchestrator): it reads the
-# writer command topics (the prefixed grant below) and writes the two terminals. A lane's own login publishing is declared with
-# the lab logins in the deployment's per-principal grants, not here: each login may WRITE only
-# onex.cmd.omnimarket.install-requested-from-<its own login>.v1, which is what makes the topic the sender's identity.
+# The deployment derives the per-login grants with node_install_request_acl_compute.
+# Each host reads the exact writer topics of its allowed publishers and writes its own result topic.
+# The host reconciler's shared terminals have fixed names and are declared here.
 broker_acl_grants:
   - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
     grants:
-      - {resource_type: TOPIC, pattern: PREFIXED, name: onex.cmd.omnimarket.install-requested-from-, operation: READ}
-      - {resource_type: TOPIC, pattern: PREFIXED, name: onex.cmd.omnimarket.install-requested-from-, operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: PREFIXED, name: onex.evt.omnimarket.install-request-completed-from-, operation: WRITE}
-      - {resource_type: TOPIC, pattern: PREFIXED, name: onex.evt.omnimarket.install-request-completed-from-, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-completed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-completed.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-failed.v1, operation: WRITE}

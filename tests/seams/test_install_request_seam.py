@@ -28,7 +28,7 @@ import json
 import os
 import re
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -41,6 +41,7 @@ import yaml
 from pydantic import ValidationError
 
 from omnimarket.delegated_test_loop.lab_run_bus import (
+    MessageCallback,
     ProtocolLabRunBus,
     envelope_bytes_for,
 )
@@ -661,14 +662,14 @@ def test_the_effect_topics_are_the_contract_topics_and_the_host_reads_them_from_
     assert {topics.success, topics.failure} <= granted
     # The host reads the writer topics, never the shared command topic (the orchestrator's input).
     assert topics.command not in granted
-    prefix = topics.writer_command_topic("x").rsplit("x", 1)[0]
-    prefixed = {
-        g["name"]
+    assert {
+        (g["resource_type"], g["pattern"], g["name"], g["operation"])
         for g in contract["broker_acl_grants"][0]["grants"]
-        if g["pattern"] == "PREFIXED"
+    } == {
+        ("TOPIC", "LITERAL", topic, operation)
+        for topic in (topics.success, topics.failure)
+        for operation in ("WRITE", "DESCRIBE")
     }
-    result_prefix = topics.result_topic("x").rsplit("x", 1)[0]
-    assert prefixed == {prefix, result_prefix}
 
 
 def test_the_example_overlay_loads_through_the_overlay_model(tmp_path: Path) -> None:
@@ -774,7 +775,10 @@ class _BrokerRows:
     real broker applies rows)."""
 
     def __init__(
-        self, bus: Any, declaration: ModelBrokerAclScopeOverlay, login: str
+        self,
+        bus: ProtocolLabRunBus,
+        declaration: ModelBrokerAclScopeOverlay,
+        login: str,
     ) -> None:
         self._bus = bus
         self._declaration = declaration
@@ -782,7 +786,9 @@ class _BrokerRows:
         self.written: list[str] = []
         self.read: list[tuple[str, str]] = []
 
-    async def publish(self, topic: str, key: bytes | None, value: bytes) -> Any:
+    async def publish(
+        self, topic: str, key: bytes | None, value: bytes, headers: Any = None
+    ) -> object:
         if not permits(
             self._declaration,
             self._login,
@@ -792,11 +798,18 @@ class _BrokerRows:
         ):
             raise PermissionError(f"{self._login} holds no WRITE row on {topic}")
         self.written.append(topic)
-        return await self._bus.publish(topic, key, value)
+        return await self._bus.publish(topic, key, value, headers=headers)
 
     async def subscribe(
-        self, topic: str, on_message: Any, group_id: str, **kwargs: Any
-    ) -> Any:
+        self,
+        topic: str,
+        node_identity: Any = None,
+        on_message: MessageCallback | None = None,
+        *,
+        group_id: str | None = None,
+    ) -> Callable[[], Awaitable[None]]:
+        if group_id is None:
+            raise PermissionError("the subscription needs a consumer group")
         if not permits(
             self._declaration,
             self._login,
@@ -813,7 +826,7 @@ class _BrokerRows:
             raise PermissionError(f"{self._login} holds no READ row on {topic}")
         self.read.append((topic, group_id))
         return await self._bus.subscribe(
-            topic, on_message=on_message, group_id=group_id, **kwargs
+            topic, node_identity, on_message=on_message, group_id=group_id
         )
 
 
@@ -826,7 +839,7 @@ async def _login_topic_host(open_bus: Callable[[], Any], tmp_path: Path) -> None
         host_bus = _BrokerRows(bus, declaration, HOST_LOGIN)
         journal = InMemoryResultJournal()
         host = InstallRequestHost(
-            host_bus,  # type: ignore[arg-type]
+            host_bus,
             _handler(scene.root, journal),
             _two_login_overlay(scene.root),
             HOST,
@@ -846,7 +859,7 @@ async def _login_topic_host(open_bus: Callable[[], Any], tmp_path: Path) -> None
         # a login publishes through the real publisher: every topic it writes is a topic its rows grant
         lane_bus = _BrokerRows(bus, declaration, PUBLISHER)
         request = await publish_request(
-            lane_bus,  # type: ignore[arg-type]
+            lane_bus,
             _draft(scene.second),
             _overlay(scene.root),
             lambda: datetime.now(UTC),
@@ -877,7 +890,7 @@ async def _login_topic_host(open_bus: Callable[[], Any], tmp_path: Path) -> None
 
         reader = _BrokerRows(bus, declaration, PUBLISHER)
         reading = await read_owed(
-            reader,  # type: ignore[arg-type]
+            reader,
             _two_login_overlay(scene.root),
             lambda: datetime.now(UTC),
         )
