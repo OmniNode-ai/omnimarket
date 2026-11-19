@@ -65,7 +65,8 @@ def modelled_run_savings_columns(row: Mapping[str, object]) -> dict[str, object]
     record = ModelMeteringRecord(
         correlation_id=str(row["correlation_id"]),
         occurred_at=occurred_at,
-        model=str(row.get("delegated_to") or row.get("model_name") or ""),
+        # OMN-24615 AC6: the model that ran, the same order as the metering reader.
+        model=str(row.get("model_name") or row.get("delegated_to") or ""),
         task_type=str(row.get("task_type") or ""),
         tokens_in=None if unrecorded_tokens else tokens_in,
         tokens_out=None if unrecorded_tokens else tokens_out,
