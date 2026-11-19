@@ -167,7 +167,7 @@ def real_unread_event() -> ModelWorkStateProjectedEvent:
 
 def problems_real_unread(body_from_event: Any) -> list[str]:
     produced = real_unread_event()
-    decision = svc.WorkStatePanelReducerService().decide_publication(
+    decision = svc.WorkStatePanelRowCommitter().decide_publication(
         None, produced, produced.as_of, entry()
     )
     problems: list[str] = []

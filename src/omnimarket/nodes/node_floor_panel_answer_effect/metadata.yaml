@@ -15,6 +15,7 @@ capabilities:
   side_effect_class: none
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "asyncpg>=0.30.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "floor", "panel", "OMN-19998"]

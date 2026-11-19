@@ -31,7 +31,7 @@ from omnimarket.models.work_state_projection.model_work_state_projected_event im
     ModelWorkStateProjectedEvent,
 )
 from omnimarket.nodes.node_work_state_panel_reducer.handlers.service_work_state_panel_reducer import (
-    WorkStatePanelReducerService,
+    WorkStatePanelRowCommitter,
 )
 from omnimarket.nodes.node_work_state_panel_reducer.state_codec import (
     get_default_proxy,
@@ -95,7 +95,7 @@ class HandlerWorkStatePanelReducer:
         self._clock = clock if clock is not None else _utcnow
         self._overlay = overlay
         self._environ = environ
-        self._service = WorkStatePanelReducerService()
+        self._service = WorkStatePanelRowCommitter()
 
     @property
     def handler_type(self) -> HandlerType:

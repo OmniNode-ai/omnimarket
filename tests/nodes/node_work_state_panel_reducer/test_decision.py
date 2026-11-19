@@ -60,7 +60,7 @@ def _decide(
 ) -> tuple[ModelWorkStatePanelDecision | None, str | None]:
     """One decision; an exception a break makes the service raise is a problem, not an error."""
     try:
-        decision = svc.WorkStatePanelReducerService().decide_publication(
+        decision = svc.WorkStatePanelRowCommitter().decide_publication(
             held,
             incoming,
             now,
@@ -318,7 +318,7 @@ def test_control_refusal_ids_opaque(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(svc, "refusal_id", _break_marker_text_refusal_id)
     assert problems_refusal_ids_opaque() != []
     with pytest.raises(ValidationError):
-        svc.WorkStatePanelReducerService().decide_publication(
+        svc.WorkStatePanelRowCommitter().decide_publication(
             None,
             event(100, counts={MARKER: 1}),
             NOW,

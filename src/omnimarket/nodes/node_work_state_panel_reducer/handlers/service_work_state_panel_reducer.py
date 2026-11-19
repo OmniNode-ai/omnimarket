@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """The panel reducer's pure decision: fold one projected event against the held row.
 
-Module-level pure functions plus :class:`WorkStatePanelReducerService`. No I/O and
+Module-level pure functions plus :class:`WorkStatePanelRowCommitter`. No I/O and
 no clock of its own — the decision's ``now`` is always a parameter, so the fold is
 a deterministic ``delta(held, event, now) -> decision`` that a test can pin.
 """
@@ -104,7 +104,7 @@ def refusal_id(event: ModelWorkStateProjectedEvent) -> str:
     return "refused-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-class WorkStatePanelReducerService:
+class WorkStatePanelRowCommitter:
     """The panel's decision on one incoming publication, given the held row and ``now``."""
 
     def decide_publication(

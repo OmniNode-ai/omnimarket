@@ -12,6 +12,7 @@ name: node_work_state_panel_reducer
 contract_name: node_work_state_panel_reducer
 node_name: node_work_state_panel_reducer
 node_type: reducer
+lifecycle: experimental
 contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 
