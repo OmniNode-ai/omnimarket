@@ -78,34 +78,50 @@ def _assertion_of(command: str) -> str:
     return script.group(1)
 
 
-def _answer(command: str, raw_rows: list[str]) -> str:
-    """The query node's answer to the command's own query over a ledger holding ``raw_rows``."""
+def _answer(command: str, raw_rows: list[str], row_type: str = "STATUS") -> str:
+    """The query node's answer to the command's own query over a ledger holding ``raw_rows`` of ``row_type``."""
     reader = InMemoryWorkLedgerQueryReader()
     for number, raw_row in enumerate(raw_rows):
         reader.ingest(
-            {"row_id": f"row-{number}", "row_type": "STATUS", "raw_row": raw_row}
+            {"row_id": f"row-{number}", "row_type": row_type, "raw_row": raw_row}
         )
     request = ModelWorkLedgerQueryRequest(correlation_id=uuid4(), **_query_of(command))
     result = HandlerWorkLedgerQuery(reader=reader, now=lambda: _NOW).handle(request)
     return result.model_dump_json()
 
 
-def _run(command: str, raw_rows: list[str]) -> int:
+def _run(command: str, raw_rows: list[str], row_type: str = "STATUS") -> int:
     """The exit code of the contract's own assertion on the query node's answer."""
     return subprocess.run(
         [sys.executable, "-c", _assertion_of(command)],
-        input=_answer(command, raw_rows),
+        input=_answer(command, raw_rows, row_type),
         check=False,
         capture_output=True,
         text=True,
     ).returncode
 
 
-def _status_row(*, pr: str, check: str, shared: str) -> str:
+def _status_row(*, pr: str, check: str, shared: str, row_type: str = "STATUS") -> str:
     return (
-        "2026-11-16T19:03:41Z | STATUS | lane=fixture | ticket=OMN-24960 | "
+        f"2026-11-16T19:03:41Z | {row_type} | lane=fixture | ticket=OMN-24960 | "
         f"pr={pr} | check={check} | shared={shared} | fixture row"
     )
+
+
+def test_omn24829_ledger_status_commands_refuse_a_msg_row_quoting_the_cells() -> None:
+    """The old grep required ``| STATUS |``: a MSG row that quotes the same cells must still be refused."""
+    commands = _ledger_commands(_contract("OMN-24829"))
+    assert commands, "the contract carries no ledger read"
+    for command in commands:
+        named = re.search(r"check=([a-z-]+)", command)
+        assert named is not None, command
+        pr = _query_of(command)["pr"]
+        quoted = _status_row(pr=pr, check=named.group(1), shared="yes", row_type="MSG")
+        assert "| MSG |" in quoted
+        assert f"pr={pr} | check={named.group(1)} | shared=yes" in quoted, quoted
+        assert _run(command, [quoted], row_type="MSG") != 0, command
+        control = _status_row(pr=pr, check=named.group(1), shared="yes")
+        assert _run(command, [control]) == 0, command
 
 
 def test_omn24829_ledger_status_commands_refuse_an_empty_ledger() -> None:
@@ -116,7 +132,9 @@ def test_omn24829_ledger_status_commands_refuse_an_empty_ledger() -> None:
 
 
 def test_omn24829_ledger_status_commands_read_the_matching_row() -> None:
-    for command in _ledger_commands(_contract("OMN-24829")):
+    commands = _ledger_commands(_contract("OMN-24829"))
+    assert commands, "the contract carries no ledger read"
+    for command in commands:
         named = re.search(r"check=([a-z-]+)", command)
         assert named is not None, command
         check = named.group(1)
