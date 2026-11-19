@@ -62,5 +62,5 @@ dod_evidence:
     execution_scope: hosted_and_local
     checks:
       - check_type: command
-        check_value: "grep -q exemplar_graph_cell src/omnimarket/nodes/node_remote_lane_close_compute/handlers/handler_remote_lane_result.py && grep -q 'no exemplar or graph cell' src/omnimarket/nodes/node_remote_lane_close_compute/handlers/exemplar_graph_cell.py"
+        check_value: "gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_remote_lane_close_compute/handlers/exemplar_graph_cell.py?ref=omn-24686-exemplar-graph-cell' --jq .content | base64 -d | grep -q 'no exemplar or graph cell'"
         cwd: "."
