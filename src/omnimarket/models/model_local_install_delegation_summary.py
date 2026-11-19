@@ -30,6 +30,11 @@ DELEGATION_SUMMARY_VIEW_STEPS = (
         "omn24615_delegation_summary_evaluated_runs",
         "sqlite/delegation_summary_view_v3.sql",
     ),
+    # OMN-23413 AC51: the headline savings also keep NULL-data_source runs.
+    (
+        "omn23413_delegation_summary_counts_unclassified",
+        "sqlite/delegation_summary_view_v4.sql",
+    ),
 )
 
 

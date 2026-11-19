@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from omnimarket.nodes.node_host_table_copies_drift_compute.models import (
+from omnimarket.models.model_host_table_copies_drift import (
     ModelHostTableDriftCommand,
 )
 from tests.nodes.node_host_table_copies_drift_compute.drift_support import (

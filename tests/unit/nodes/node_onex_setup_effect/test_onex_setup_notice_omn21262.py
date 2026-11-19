@@ -11,6 +11,7 @@ OMN-23207 model-step tests use.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -35,7 +36,8 @@ def test_notice_precedes_the_first_model_question_interactive(
     assert LADDER_NOTICE, "LADDER_NOTICE is empty"
     result = _setup(
         ["--interactive", "--workspace", str(tmp_path / "ws")],
-        stdin=f"local\n{server}\n{MODEL}\n",
+        # OMN-23413 asks before checking models with one-token requests: "y".
+        stdin=f"local\n{server}\ny\n{MODEL}\n",
     )
     assert result.exit_code == 0, result.output
     assert LADDER_NOTICE in result.output, "notice not printed"
@@ -56,7 +58,10 @@ def test_notice_printed_before_any_step_unattended(
     assert result.exit_code == 0, result.output
     assert LADDER_NOTICE in result.output, "notice not printed unattended"
     notice_at = result.output.index(LADDER_NOTICE)
-    assert notice_at < result.output.index("[done]"), "notice must come before steps"
+    # Through the local runtime (OMN-24455) each step reads "[done|unchanged] <step>:".
+    first_step = re.search(r"^\[(?:done|unchanged)\] ", result.output, re.MULTILINE)
+    assert first_step is not None, result.output
+    assert notice_at < first_step.start(), "notice must come before steps"
     assert notice_at < result.output.index("Receipt: "), (
         "notice must come before the receipt"
     )
@@ -69,3 +74,19 @@ def test_notice_text_says_the_task_goes_back_to_claude_code(
     assert LADDER_NOTICE, "LADDER_NOTICE is empty"
     assert "goes back to Claude Code" in LADDER_NOTICE
     assert "no savings" in LADDER_NOTICE
+
+
+def test_notice_leaves_json_output_one_document(
+    home: Path, tmp_path: Path, server: str, recorder: Recorder
+) -> None:
+    """OMN-23413 merge: under --json the notice goes to stderr, never into the JSON."""
+    import json
+
+    args = _unattended(
+        tmp_path / "ws", "--provider", "local", "--url", server, "--model", MODEL
+    )
+    result = _setup([*args, "--json"], stdin="")
+    assert result.exit_code == 0, result.output
+    assert LADDER_NOTICE not in result.stdout
+    assert LADDER_NOTICE in result.stderr
+    assert isinstance(json.loads(result.stdout), dict)
