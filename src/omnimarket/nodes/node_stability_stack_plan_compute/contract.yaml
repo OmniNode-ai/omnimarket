@@ -37,14 +37,8 @@ handler:
   class: "HandlerStackPlan"
   input_model: "omnimarket.models.stability_stack.model_stack_plan.ModelStackPlanRequest"
   output_model: "omnimarket.models.stability_stack.model_stack_plan.ModelStackPlan"
-handler_routing:
-  routing_strategy: "operation_match"
-  default_handler: "omnimarket.nodes.node_stability_stack_plan_compute.handlers.handler_stack_plan:HandlerStackPlan"
-  handlers:
-    - operation: "plan_stability_stack"
-      handler:
-        name: "HandlerStackPlan"
-        module: "omnimarket.nodes.node_stability_stack_plan_compute.handlers.handler_stack_plan"
+# HandlerStackPlan takes the plan overlay as a constructor parameter, so the node runs through its own
+# caller, not handler_routing.
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.stability-stack-plan-requested.v1"
   terminal_events:

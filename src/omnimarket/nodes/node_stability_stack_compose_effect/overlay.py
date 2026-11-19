@@ -34,6 +34,8 @@ class ModelStackComposeOverlay(BaseModel):
     command_timeout_seconds: int = Field(ge=1)
     up_wait_seconds: int = Field(ge=1)
     health_timeout_seconds: int = Field(ge=1)
+    #: The name the health probe uses to reach a stack's published port on this host.
+    health_probe_host: str = Field(default="localhost", min_length=1)
     event_timeout_seconds: int = Field(ge=1)
 
 

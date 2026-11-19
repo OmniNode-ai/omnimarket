@@ -268,7 +268,7 @@ class HandlerStackCompose:
             )
         read = reads[0]
         port = dict(stack.ports)[read.port_key]
-        url = f"http://127.0.0.1:{port}/{read.path.lstrip('/')}"  # url-authority-ok: OMN-23968 the probe targets the stack's own published port on the host this effect runs on (local_host guard refuses any other host); the port comes from the plan overlay
+        url = f"http://{self._overlay.health_probe_host}:{port}/{read.path.lstrip('/')}"
         status = self._prober.status(url, self._overlay.health_timeout_seconds)
         outcome = _OK if status == read.expect_status else _FAILED
         return self._result(
