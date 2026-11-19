@@ -32,6 +32,7 @@ class EnumGitQueryOperation(StrEnum):
     ON_BASE = "on_base"
     LOG = "log"
     STATUS = "status"
+    IS_ANCESTOR = "is_ancestor"
 
 
 PR_SCOPED_OPERATIONS: frozenset[EnumGitQueryOperation] = frozenset(
@@ -88,6 +89,16 @@ class ModelGitQueryRequest(BaseModel):
         description="Base branch name; defaults to the mirror's default branch.",
         pattern=r"^[A-Za-z0-9_./-]+$",
     )
+    ancestor_sha: str | None = Field(
+        default=None,
+        description="is_ancestor only: the candidate ancestor commit sha.",
+        pattern=r"^[0-9a-f]{40}$",
+    )
+    descendant_sha: str | None = Field(
+        default=None,
+        description="is_ancestor only: the candidate descendant commit sha.",
+        pattern=r"^[0-9a-f]{40}$",
+    )
     max_age_s: int = Field(
         default=DEFAULT_MAX_AGE_S,
         ge=0,
@@ -111,6 +122,25 @@ class ModelGitQueryRequest(BaseModel):
     def _pr_scoped_needs_pr(self) -> ModelGitQueryRequest:
         if self.operation in PR_SCOPED_OPERATIONS and self.pr_number is None:
             raise ValueError(f"operation {self.operation.value} needs pr_number")
+        return self
+
+    @model_validator(mode="after")
+    def _is_ancestor_needs_shas(self) -> ModelGitQueryRequest:
+        if self.operation is EnumGitQueryOperation.IS_ANCESTOR:
+            if self.ancestor_sha is None or self.descendant_sha is None:
+                raise ValueError(
+                    f"operation {self.operation.value} needs "
+                    "ancestor_sha and descendant_sha"
+                )
+            if self.pr_number is not None:
+                raise ValueError(
+                    f"operation {self.operation.value} must not carry pr_number"
+                )
+        elif self.ancestor_sha is not None or self.descendant_sha is not None:
+            raise ValueError(
+                f"operation {self.operation.value} must not carry "
+                "ancestor_sha or descendant_sha"
+            )
         return self
 
 
@@ -179,6 +209,9 @@ class ModelGitQueryResult(BaseModel):
     conflicted_files: list[str] | None = None
     on_base: bool | None = None
     on_base_reason: EnumOnBaseReason | None = None
+    ancestor_sha: str | None = None
+    descendant_sha: str | None = None
+    is_ancestor: bool | None = None
     commits: list[ModelGitCommit] | None = None
     pull_refs: int | None = None
     head_refs: int | None = None
