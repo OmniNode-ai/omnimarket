@@ -16,6 +16,7 @@ from uuid import uuid4
 
 import pytest
 import yaml
+from omnibase_core.runtime.runtime_fanout_resolver import resolve_published_topic
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_branch_deploy_command_effect.models.model_branch_deploy_command import (
@@ -112,6 +113,33 @@ def test_s2_published_requests_are_the_effects_input_models() -> None:
             assert isinstance(payload, ModelBranchDeployCommandRequest)
         if topic.endswith("branch-deploy-probe-requested.v1"):
             assert isinstance(payload, ModelBranchDeployProbeRequest)
+
+
+def test_s2_every_published_payload_class_is_a_declared_published_event() -> None:
+    """Every payload class the golden flow publishes is a published_events entry on the topic it went out on."""
+    plant = run_flow("golden")
+    declared = {
+        entry["event_type"]: entry["topic"]
+        for entry in contract("node_branch_deploy_orchestrator")["published_events"]
+    }
+    for topic, payload in plant.log:
+        assert declared[type(payload).__name__.removeprefix("Model")] == topic
+
+
+def test_s5_the_runtimes_own_resolver_routes_every_published_payload() -> None:
+    """The state_io outbox resolves each captured event's topic with omnibase_core's resolver over the contract's map.
+
+    Every flow's every published payload must resolve, through that resolver, to the topic it went out on and to a
+    topic the node declares in ``publish_topics``: an event class renamed on either side fails here, not in the
+    runtime's commit path.
+    """
+    doc = contract("node_branch_deploy_orchestrator")
+    mapping = {entry["event_type"]: entry["topic"] for entry in doc["published_events"]}
+    for flow in FLOWS:
+        for topic, payload in run_flow(flow).log:
+            resolved = resolve_published_topic(mapping, payload)
+            assert resolved == topic
+            assert resolved in doc["event_bus"]["publish_topics"]
 
 
 def test_s3_deploy_agent_job_terminal_events() -> None:
