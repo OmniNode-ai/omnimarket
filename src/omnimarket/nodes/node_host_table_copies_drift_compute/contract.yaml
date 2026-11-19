@@ -24,8 +24,8 @@ description: >
 handler:
   module: omnimarket.nodes.node_host_table_copies_drift_compute.handlers.handler_host_table_copies_drift
   class: HandlerHostTableCopiesDrift
-  input_model: omnimarket.nodes.node_host_table_copies_drift_compute.models.model_host_table_copies_drift.ModelHostTableDriftCommand
-  output_model: omnimarket.nodes.node_host_table_copies_drift_compute.models.model_host_table_copies_drift.ModelHostTableDriftResult
+  input_model: omnimarket.models.model_host_table_copies_drift.ModelHostTableDriftCommand
+  output_model: omnimarket.models.model_host_table_copies_drift.ModelHostTableDriftResult
 
 # HandlerHostTableCopiesDrift takes the overlay, host, copy source, appender and clock as
 # constructor parameters, so the node runs through its own CLI, not handler_routing.
@@ -40,11 +40,11 @@ descriptor:
 
 input_model:
   name: ModelHostTableDriftCommand
-  module: omnimarket.nodes.node_host_table_copies_drift_compute.models.model_host_table_copies_drift
+  module: omnimarket.models.model_host_table_copies_drift
   description: A correlation id and whether to write.
 output_model:
   name: ModelHostTableDriftResult
-  module: omnimarket.nodes.node_host_table_copies_drift_compute.models.model_host_table_copies_drift
+  module: omnimarket.models.model_host_table_copies_drift
   description: The verdict, each differing field per host with its value per copy, and what happened on the ledger.
 
 terminal_event: onex.evt.omnimarket.host-table-copies-drift-run-completed.v1

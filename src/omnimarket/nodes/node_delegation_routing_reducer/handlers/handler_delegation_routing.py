@@ -2165,7 +2165,7 @@ def resolve_backend_grounding_budget(
     for backend in config.backends:
         if backend.backend_id == backend_id:
             if task_type is not None:
-                class_budget = grounded_input_budget(backend_id, task_type)
+                class_budget = grounded_input_budget(backend_id, task_type, backend)
                 if class_budget is not None:
                     return class_budget
             return backend.max_grounded_input_tokens

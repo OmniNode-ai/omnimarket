@@ -2089,3 +2089,44 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/lab-fill-tick/last-run.json
     state_directory: .onex_state/lab-fill-tick
+  # The friction rollup tick (OMN-22987, node_friction_rollup_tick_effect, the unit of OMN-19715 moved into the
+  # node): every two hours one pass reads the ledger and archive files, rolls up the FRICTION rows by class,
+  # writes the reports under the state directory and appends one STATUS row; the class rules are the overlay of
+  # node_friction_rollup_compute in the overlays repository; the unit holds no rule; it replaces the copied-tree
+  # unit of the same label in the private host installer (OMN-24574).
+  friction-rollup:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.friction-rollup
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 7200
+      run_at_load: false
+      description: every 7200 s
+    registry_project: omnimarket
+    # The tick's node timeout is 120000 ms (its contract); 300 s is a hung run, well under the 7200 s interval.
+    run_timeout_s: 300
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_friction_rollup_tick_effect.runtime_friction_rollup_tick
+    entry_file: src/omnimarket/nodes/node_friction_rollup_tick_effect/runtime_friction_rollup_tick.py
+    # The start check runs the module's own argparse help request, which runs no pass, no bus read and no write.
+    probe_argv: ["--help"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_LEDGER_COMMAND
+      - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      # The class rules are the overlay of node_friction_rollup_compute: the overlays canonical clone first, then the plugin's overlays.
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_LEDGER_PATH: "{registry_root}/docs/tracking/ROLLING_WORK_LEDGER.md"
+      ONEX_LEDGER_COMMAND: "{home}/.local/bin/onex-ledger"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+    evidence_file: .local/state/omni/friction-rollup/last-run.json
+    state_directory: .onex_state/friction-rollup
