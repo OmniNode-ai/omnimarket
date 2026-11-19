@@ -1,0 +1,102 @@
+{
+  "red": {
+    "total_count": 2,
+    "truncated": false,
+    "operation": "commit_check_runs",
+    "repo": "OmniNode-ai/fixture-core",
+    "head_sha": "ef09a084966d9586f7f5bcb8b55cf92d15e556a2",
+    "check_name": "ci",
+    "check_runs": [
+      {
+        "id": 135318882708,
+        "name": "ci",
+        "app_slug": "github-actions",
+        "status": "in_progress",
+        "conclusion": null,
+        "head_branch": null,
+        "started_at": "2026-11-19T03:33:40Z",
+        "completed_at": null
+      },
+      {
+        "id": 135223019992,
+        "name": "ci",
+        "app_slug": "github-actions",
+        "status": "completed",
+        "conclusion": "failure",
+        "head_branch": null,
+        "started_at": "2026-11-18T23:47:38Z",
+        "completed_at": "2026-11-18T23:48:06Z"
+      }
+    ]
+  },
+  "green": {
+    "total_count": 1,
+    "truncated": false,
+    "operation": "commit_check_runs",
+    "repo": "OmniNode-ai/fixture-core",
+    "head_sha": "81ea08dfe2c6f6ae5ec7c51d3b316ae20d9134e8",
+    "check_name": "ci",
+    "check_runs": [
+      {
+        "id": 135209722477,
+        "name": "ci",
+        "app_slug": "github-actions",
+        "status": "completed",
+        "conclusion": "success",
+        "head_branch": null,
+        "started_at": "2026-11-18T23:20:29Z",
+        "completed_at": "2026-11-18T23:34:59Z"
+      }
+    ]
+  },
+  "other_red": {
+    "total_count": 1,
+    "truncated": false,
+    "operation": "commit_check_runs",
+    "repo": "OmniNode-ai/fixture-core",
+    "head_sha": "9df8fac6b28cfe8f9e70de6f3c2fb5d0eb4568b2",
+    "check_name": "ci",
+    "check_runs": [
+      {
+        "id": 135157850239,
+        "name": "ci",
+        "app_slug": "github-actions",
+        "status": "completed",
+        "conclusion": "failure",
+        "head_branch": null,
+        "started_at": "2026-11-18T21:47:13Z",
+        "completed_at": "2026-11-18T21:47:19Z"
+      }
+    ]
+  },
+  "green_rerun": {
+    "total_count": 2,
+    "truncated": false,
+    "operation": "commit_check_runs",
+    "repo": "OmniNode-ai/fixture-core",
+    "head_sha": "ef09a084966d9586f7f5bcb8b55cf92d15e556a2",
+    "check_name": "ci",
+    "check_runs": [
+      {
+        "id": 135318882708,
+        "name": "ci",
+        "app_slug": "github-actions",
+        "status": "completed",
+        "conclusion": "success",
+        "head_branch": null,
+        "started_at": "2026-11-19T03:33:40Z",
+        "completed_at": "2026-11-19T03:39:23Z"
+      },
+      {
+        "id": 135223019992,
+        "name": "ci",
+        "app_slug": "github-actions",
+        "status": "completed",
+        "conclusion": "failure",
+        "head_branch": null,
+        "started_at": "2026-11-18T23:47:38Z",
+        "completed_at": "2026-11-18T23:48:06Z"
+      }
+    ]
+  }
+}
