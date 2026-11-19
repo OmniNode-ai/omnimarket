@@ -290,11 +290,16 @@ dependencies = [
     # S3 sink and KMS envelope encryption of topic archives; already resolved
     # through omnibase-infra, declared here because omnimarket now imports it.
     "boto3>=1.43.0,<2.0.0",
+    # node_floor_fill_temporal_workflow imports the Temporal SDK at module import.
+    "temporalio>=1.35.0,<2.0.0",
 ]
 
 [project.optional-dependencies]
 dep-health = [
     "graphifyy==0.8.2",
+]
+temporal = [
+    "temporalio>=1.35.0,<2.0.0",
 ]
 intelligence = [
     "adaptive-classifier>=0.1.2",
@@ -728,6 +733,7 @@ node_floor_fill_orchestrator = "omnimarket.nodes.node_floor_fill_orchestrator"
 node_floor_fill_owner_count_compute = "omnimarket.nodes.node_floor_fill_owner_count_compute"
 node_floor_fill_reducer = "omnimarket.nodes.node_floor_fill_reducer"
 node_floor_fill_scheduled_effect = "omnimarket.nodes.node_floor_fill_scheduled_effect"
+node_floor_fill_temporal_workflow = "omnimarket.nodes.node_floor_fill_temporal_workflow"
 node_floor_owner_map_publish_effect = "omnimarket.nodes.node_floor_owner_map_publish_effect"
 node_floor_page_api_effect = "omnimarket.nodes.node_floor_page_api_effect"
 node_floor_projection_read_effect = "omnimarket.nodes.node_floor_projection_read_effect"
@@ -2079,6 +2085,8 @@ dev = [
     "mypy>=1.19.1",
     "types-pyyaml>=6.0.12.20250822",
     "types-jsonschema>=4.25.1.20251222",
+    # node_floor_fill_temporal_workflow defines a Temporal workflow; strict mypy and its tests need the SDK.
+    "temporalio>=1.35.0,<2.0.0",
 ]
 
 [tool.coverage.run]

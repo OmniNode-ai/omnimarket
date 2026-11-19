@@ -867,10 +867,20 @@ class FloorFillOrchestrator:
             exit_code=EXIT_CODE_BY_STATUS[status],
             state_seq=ctx.state.seq,
             observed_at=ctx.now,
+            free_slots=self._free_slots_read(ctx),
+            unowned_work=_unowned_work(floor),
+            unread=tuple(ctx.unread),
         )
         if command is EnumFloorFillCommand.TICK:
             return self._publish(ctx, answer)
         return answer
+
+    @staticmethod
+    def _free_slots_read(ctx: _Pass) -> int | None:
+        """The free slots the pool read saw, None when that read failed."""
+        return (
+            None if any(u.startswith("pool:") for u in ctx.unread) else ctx.free_slots
+        )
 
     @staticmethod
     def _continuation_lines(ctx: _Pass) -> list[str]:
@@ -1095,7 +1105,19 @@ class FloorFillOrchestrator:
             exit_code=EXIT_CODE_BY_STATUS[EnumFloorFillStatus.OK],
             state_seq=state.seq,
             observed_at=ctx.now,
+            free_slots=self._free_slots_read(ctx),
+            unowned_work=_unowned_work(verdicts),
+            unread=tuple(ctx.unread),
         )
+
+
+def _unowned_work(floor: ModelFloorFillCandidatesResult | None) -> int | None:
+    """How many floor lines had a task left to start (startable, or startable once ticketed); None when not read."""
+    if floor is None or floor.verdict != "READ":
+        return None
+    return sum(
+        1 for line in floor.lines if line.verdict in ("STARTABLE", "NEEDS-TICKET")
+    )
 
 
 def _cause(error: BaseException) -> str:

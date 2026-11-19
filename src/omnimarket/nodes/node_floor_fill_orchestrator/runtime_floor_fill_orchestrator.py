@@ -23,6 +23,10 @@ import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
+import yaml
+
+from omnimarket.handlers.node_overlay_reader import find_node_overlay
+from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command import (
     HandlerFloorFillCommand,
 )
@@ -31,6 +35,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     EnumFloorFillCommand,
     EnumFloorFillStatus,
     FloorFillConfigError,
+    ModelFloorFillAnswer,
     ModelFloorFillCommandRequest,
     ModelFloorFillConfig,
     ModelFloorFillEntryResult,
@@ -42,6 +47,8 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_
 )
 
 OVERLAY_SECTION = "floor_fill"
+OVERLAY_NODE = "node_floor_fill_orchestrator"
+UNKNOWN_PREFIX = "UNKNOWN "
 
 
 def run_entry(
@@ -76,6 +83,91 @@ def run_entry(
     )
 
 
+def answer_json_line(
+    answer: ModelFloorFillAnswer | None, *, stdout: str = "", exit_code: int = 0
+) -> str:
+    """The one JSON line a scheduled caller reads after the entry's own lines (``--answer-json``).
+
+    It carries the typed answer's counts: ``free_slots`` (None when the pool was not read), ``unowned_work``, the lanes
+    this run placed, ``unread`` (each source that was not read) and ``why_none``, the first line of the answer when no lane
+    was placed. An entry that has no typed answer (a refused overlay, an unset store DSN, an unreachable fill host) is
+    reported from its printed first line and its exit code, so a refusal is read as a refusal and never as zero slots.
+    """
+    lines = list(answer.lines) if answer is not None else stdout.splitlines()
+    first = lines[0] if lines else ""
+    if answer is None:
+        unread = (
+            first.removeprefix(UNKNOWN_PREFIX)
+            if first.startswith(UNKNOWN_PREFIX)
+            else ""
+        )
+        record: dict[str, Any] = {
+            "status": EnumFloorFillStatus.FAILED.value,
+            "exit_code": exit_code,
+            "free_slots": None,
+            "unowned_work": None,
+            "placed_lanes": [],
+            "unread": unread,
+            "why_none": first or "the fill printed nothing",
+        }
+        return json.dumps(record, sort_keys=True)
+    placed = [r.lane for r in answer.key_results if r.kind == "started" and r.lane]
+    unread = ",".join(answer.unread)
+    if not unread and first.startswith(UNKNOWN_PREFIX):
+        unread = first.removeprefix(UNKNOWN_PREFIX)
+    record = {
+        "status": answer.status.value,
+        "exit_code": answer.exit_code,
+        "free_slots": answer.free_slots,
+        "unowned_work": answer.unowned_work,
+        "placed_lanes": placed,
+        "unread": unread,
+        "why_none": "" if placed else (first or answer.status.value),
+    }
+    return json.dumps(record, sort_keys=True)
+
+
+def _overlay_from_json(text: str | None) -> Mapping[str, Any] | None:
+    try:
+        loaded = json.loads(text or "")
+    except json.JSONDecodeError:
+        return None
+    return loaded if isinstance(loaded, dict) else None
+
+
+def overlay_from_roots() -> Mapping[str, Any] | None:
+    """The entry's overlay as the deployment holds it: ``<root>/node_floor_fill_orchestrator/overlay.yaml`` under
+    ``ONEX_SKILL_OVERLAY_ROOTS`` and the lab host table (the file's own ``lab_hosts`` rows when it carries them).
+
+    ``None`` when no root supplies the overlay or it is not a mapping, so the caller prints the one overlay refusal.
+    """
+    found = find_node_overlay(OVERLAY_NODE)
+    if found is None:
+        return None
+    loaded = yaml.safe_load(found.read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict):
+        return None
+    if "lab_hosts" not in loaded:
+        table = resolve_lab_hosts_table()
+        loaded = {
+            **loaded,
+            "lab_hosts": [
+                {"name": row.name, "available": row.available} for row in table.hosts
+            ],
+        }
+    return loaded
+
+
+def _refused(line: str, *, answer_json: bool) -> int:
+    code = EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
+    sys.stdout.write(line + "\n")
+    if answer_json:
+        sys.stdout.write(
+            answer_json_line(None, stdout=line + "\n", exit_code=code) + "\n"
+        )
+    return code
+
+
 def lab_host_rows(overlay: Mapping[str, Any]) -> list[tuple[str, bool]]:
     """The ``lab_hosts`` rows the caller passes beside the overlay, as ``(name, available)``; none means no host is listed."""
     return [
@@ -94,22 +186,33 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         return schedule_main(arguments[1:])
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--overlay-json", required=True)
-    parser.add_argument("--this-host", required=True)
+    parser.add_argument("--overlay-json", default=None)
+    parser.add_argument("--overlay-from-roots", action="store_true")
+    parser.add_argument("--this-host", default=None)
     parser.add_argument("--profile", default="inmemory")
+    parser.add_argument("--answer-json", action="store_true")
     known, rest = parser.parse_known_args(arguments)
     if known.profile not in ("inmemory", "live"):
-        sys.stdout.write(
-            f"UNKNOWN fill-state:profile-unbound:{known.profile} (no binding of that name)\n"
+        return _refused(
+            f"UNKNOWN fill-state:profile-unbound:{known.profile} (no binding of that name)",
+            answer_json=known.answer_json,
         )
-        return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
-    try:
-        overlay = json.loads(known.overlay_json)
-    except json.JSONDecodeError:
-        overlay = None
+    overlay = (
+        overlay_from_roots()
+        if known.overlay_from_roots
+        else _overlay_from_json(known.overlay_json)
+    )
     if not isinstance(overlay, dict):
-        sys.stdout.write("UNKNOWN fill-state:overlay:unreadable\n")
-        return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
+        return _refused(
+            "UNKNOWN fill-state:overlay:unreadable", answer_json=known.answer_json
+        )
+    this_host = known.this_host or str(
+        overlay.get(OVERLAY_SECTION, {}).get("host_id", "")
+    )
+    if not this_host:
+        return _refused(
+            "UNKNOWN fill-state:overlay:unreadable", answer_json=known.answer_json
+        )
     build_handler: Callable[[ModelFloorFillConfig], HandlerFloorFillCommand]
     if known.profile == "live":
         try:
@@ -117,16 +220,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 overlay.get(LIVE_OVERLAY_SECTION, {})
             )
         except FloorFillConfigError as error:
-            sys.stdout.write(
-                f"UNKNOWN fill-state:overlay:{','.join(error.keys) or error}\n"
+            return _refused(
+                f"UNKNOWN fill-state:overlay:{','.join(error.keys) or error}",
+                answer_json=known.answer_json,
             )
-            return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
         dsn = os.environ.get(live_settings.store_dsn_env, "")
         if not dsn:
-            sys.stdout.write(
-                f"UNKNOWN fill-state:store-dsn-unset:{live_settings.store_dsn_env}\n"
+            return _refused(
+                f"UNKNOWN fill-state:store-dsn-unset:{live_settings.store_dsn_env}",
+                answer_json=known.answer_json,
             )
-            return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
         from omnimarket.nodes.node_floor_fill_orchestrator.container.container_live import (
             build_live_handler_factory,
         )
@@ -142,11 +245,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     result = run_entry(
         rest,
         overlay,
-        host_id=known.this_host,
+        host_id=this_host,
         hosts=lab_host_rows(overlay),
         build_handler=build_handler,
     )
     sys.stdout.write(result.stdout)
+    if known.answer_json:
+        sys.stdout.write(
+            answer_json_line(
+                result.answer, stdout=result.stdout, exit_code=result.exit_code
+            )
+            + "\n"
+        )
     sys.stdout.flush()
     if result.timed_out:
         # The command is still running in a worker thread: end the process, so none remains.
