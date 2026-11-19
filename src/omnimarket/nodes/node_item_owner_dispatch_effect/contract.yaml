@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Item Owner Dispatch (OMN-25981, plan task 3.3 owner binding and the G1 reading of task 7.1)
+#
+# Blocked lanes, pending rulings, plan-owner MISSING verdicts and operator asks had no owner step: lanes that ended
+# blocked had no receiver and operator-capture asks carried no owner row. This node folds the four sources into one
+# typed item each and gives every item unowned past its bound exactly one owner lane, the host drift owner dispatch's
+# way (lane-brief check, then the remote-lane runner), writing the owner onto the item. It assigns owners only.
+name: node_item_owner_dispatch_effect
+contract_name: node_item_owner_dispatch_effect
+node_name: node_item_owner_dispatch_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  One pass over the rolling ledger, read over the bus. Each source event is one typed item with a deterministic id:
+  a lane TERMINAL whose outcome is blocked or partial and that no later CLAIM for its ticket or PR follows, a RULING
+  whose mechanism is pending until a CORRECTION names it, a MISSING verdict of the plan owner check, and an
+  operator-capture ask until a row closes it. Each item carries its source, first-seen time, revision, accountable
+  owner and running lane, read from the node's own state=owned transitions, the owner lane's CLAIM and TERMINAL, and
+  any live CLAIM whose cause cell names the item. An item with no running lane past the overlay's bound gets one owner
+  lane per (item, revision, generation): the brief goes through the lane-brief check, only a passing brief goes to the
+  remote-lane runner with cause=item:<id>, and after the lane started the node appends the state=owned row with the
+  revision, the generation and the run id. A TERMINAL of the owner lane ends that binding and leaves the accountable
+  owner, so the next pass past the bound gives the next generation's lane. The reading appends FINDING when an item has
+  had no owner for longer than the bound, UNREAD when the rows or the plan owner check could not be read, and OK
+  otherwise. No item is ever refused or admitted: every skip names a timing or placement fact.
+
+handler:
+  module: omnimarket.nodes.node_item_owner_dispatch_effect.handlers.handler_item_owner_dispatch
+  class: HandlerItemOwnerDispatch
+  input_model: omnimarket.nodes.node_item_owner_dispatch_effect.models.model_item_owner.ModelItemOwnerRequest
+
+# HandlerItemOwnerDispatch takes the overlay, the rows, the plan owner check, the reservation, the brief preparer, the
+# lane runner, the appender and the clock as constructor parameters, so it is built by the node's runtime module and
+# declares no handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-read, brief-file-write, lane-brief-check, lane-start, ledger-append]
+  timeout_ms: 900000
+
+input_model:
+  name: ModelItemOwnerRequest
+  module: omnimarket.nodes.node_item_owner_dispatch_effect.models.model_item_owner
+  description: The run id written on the owner rows, and whether the pass is a dry run.
+output_model:
+  name: ModelItemOwnerResult
+  module: omnimarket.nodes.node_item_owner_dispatch_effect.models.model_item_owner
+  description: Every item folded, the owner lanes placed or failed, and the items skipped with the fact that skipped them.
+
+terminal_event: onex.evt.omnimarket.item-owner-dispatch-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+  command_topic: onex.cmd.omnimarket.item-owner-dispatch-requested.v1
+
+topics:
+  dispatch_requested: onex.cmd.omnimarket.item-owner-dispatch-requested.v1
+  dispatch_completed: onex.evt.omnimarket.item-owner-dispatch-completed.v1
+  dispatch_failed: onex.evt.omnimarket.item-owner-dispatch-failed.v1
+  reading_completed: onex.evt.omnimarket.item-unowned-reading-completed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.item-owner-dispatch-completed.v1
+  - onex.evt.omnimarket.item-owner-dispatch-failed.v1
+  - onex.evt.omnimarket.item-unowned-reading-completed.v1
+
+overlay:
+  node: node_item_owner_dispatch_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.item-owner-dispatch-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.item-owner-dispatch-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.item-owner-dispatch-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.item-owner-dispatch-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.item-owner-dispatch-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.item-owner-dispatch-failed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.item-unowned-reading-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.item-unowned-reading-completed.v1, operation: DESCRIBE}
+
+dod_evidence:
+  - test: tests/unit/nodes/node_item_owner_dispatch_effect/test_item_owner_dispatch.py
+    description: "Four source rows fold to four items with deterministic ids and a replay adds none; two ticks and two concurrent runs place one lane and append one state=owned row; a live CLAIM or a 29-minute item gets no lane; an owner lane's blocked TERMINAL gives the next tick one new lane; the reading answers FINDING, UNREAD and OK; no path returns an admission or refusal verdict"
+
+metadata:
+  ticket: OMN-25981
+  transport_type: inmemory
