@@ -17,7 +17,7 @@ class ModelModelTestResult(BaseModel):
     """One test delegation pinned to a provider's backend.
 
     ``not_set_up`` means nothing was run: the provider has no key stored, or
-    (Ollama) no local routes point at it, or (local) no URL is declared.
+    or (a Local Model) no URL is declared.
 
     ``throttled`` (OMN-21464) means the provider answered HTTP 429: a retryable
     condition of the provider or the model, and no verdict on the key. It is
@@ -33,6 +33,19 @@ class ModelModelTestResult(BaseModel):
     model: str | None = None
     endpoint: str | None = None
     reason: str | None = None
+
+
+class ModelModelLocalModel(BaseModel):
+    """One model on one local server, as ``onex models add local`` declared it (OMN-23413)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    model: str
+    #: The server's base URL, without ``/v1/chat/completions``.
+    base_url: str
+    backend_id: str
+    #: This server's own last pinned test of this model.
+    last_test: ModelModelTestResult | None = None
 
 
 class ModelModelStatus(BaseModel):
@@ -52,6 +65,12 @@ class ModelModelStatus(BaseModel):
     tried_first: bool = False
     #: OMN-21346: the model tried first, when ``tried_first``.
     first_model: str | None = None
+    #: OMN-23413: the server ``first_model`` runs on, for a local model.
+    first_url: str | None = None
+    #: OMN-23413: each local model on each server, in the order they are
+    #: tried. Two servers can run the same model; each is its own entry with
+    #: its own backend and its own last test.
+    local_models: tuple[ModelModelLocalModel, ...] = ()
 
 
 #: How a model is billed: ``free`` (local, a free tier, an OpenRouter ``:free`` id
@@ -109,6 +128,7 @@ class ModelModelSetupResult(BaseModel):
 __all__ = [
     "ModelCostClass",
     "ModelModelLadderEntry",
+    "ModelModelLocalModel",
     "ModelModelSetupResult",
     "ModelModelStatus",
     "ModelModelTestResult",

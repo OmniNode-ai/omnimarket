@@ -12,6 +12,10 @@ CLAIM names the cutover plan.
 The exit code is 0 when every verdict is OWNED, 2 when any is UNKNOWN (a stop, never MISSING:
 a stale or failed read never proves a missing owner) and 1 when MISSING. Never reads a file
 of the ledger.
+
+An overlay that cannot be loaded (the reader's or this node's: not found under the roots of
+``ONEX_SKILL_OVERLAY_ROOTS``, or broken) is no read at all, so it is one UNKNOWN line that names
+the overlay and the roots searched and exits 2, never a traceback whose exit 1 reads as MISSING.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.model_work_ledger_reader import (
     EnumReaderQuery,
     ModelReaderRequest,
@@ -54,6 +59,16 @@ from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
     ProtocolLedgerPointRead,
 )
 
+#: The finding an unloadable overlay is reported under when no ``--finding`` names one: the rules
+#: live in the overlay that could not be read, so no rule's finding is known.
+OVERLAY_UNREADABLE_FINDING = "plan-owner"
+
+OVERLAY_UNREADABLE_FIX = (
+    "name the overlays clone's overlays directory in ONEX_SKILL_OVERLAY_ROOTS of the process "
+    "that runs this check, or set ONEX_LEDGER_READER_OVERLAY and ONEX_PLAN_OWNER_CHECK_OVERLAY "
+    "to the overlay files"
+)
+
 
 def main(
     argv: Sequence[str] | None = None,
@@ -70,8 +85,19 @@ def main(
     )
     args = parser.parse_args(argv)
     env = os.environ if environ is None else environ
-    reader_overlay = load_reader_overlay(env)
-    overlay = load_overlay(env)
+    try:
+        reader_overlay = load_reader_overlay(env)
+        overlay = load_overlay(env)
+    except NodeOverlayError as exc:
+        finding = args.finding[0] if args.finding else OVERLAY_UNREADABLE_FINDING
+        reason = " ".join(str(exc).split())
+        sys.stdout.write(
+            f"UNKNOWN {finding} | {reason} | FIX: {OVERLAY_UNREADABLE_FIX}\n"
+        )
+        sys.stderr.write(
+            f"PLAN-OWNER finding={finding} verdict=UNKNOWN reason=overlay-unreadable owners=none\n"
+        )
+        return 2
     reader = HandlerWorkLedgerReader(
         reader_overlay,
         point_read

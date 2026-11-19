@@ -27,8 +27,9 @@ description: >
   folder and key, creates a secret create-only (an existing key is reported,
   never read or updated), and lists a folder's key names. The machine identity
   resolves at run time from the bootstrap secret store, the endpoint, project
-  and environment from the private overlay. Every failure is a typed outcome;
-  no value, digest or credential is logged, published or put in a detail.
+  and environment from the private overlay. A separate operation writes an
+  overlay-declared host environment file and returns presence and SHA-256
+  readings. No operation publishes or logs a secret value.
 
 input_model:
   name: ModelSecretStoreRequest
@@ -87,6 +88,23 @@ handler_routing:
       event_model:
         name: ModelHouseModelKeyRequest
         module: omnimarket.models.secret_store.model_house_model_key_request
+
+    - operation: write_env_file
+      handler:
+        name: HandlerSecretEnvFile
+        module: omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_env_file
+      event_model:
+        name: ModelSecretEnvFileRequest
+        module: omnimarket.nodes.node_secret_store_effect.models.model_secret_env_file
+      output_model: omnimarket.nodes.node_secret_store_effect.models.model_secret_env_file.ModelSecretEnvFileResult
+
+# Bind each allowed destination to its consumer's overlay and store folder.
+# The request chooses a binding. Only the overlay supplies its path and names.
+secret_env_files:
+  floor_fill_live.store_dsn_env_file:
+    overlay: node_floor_fill_orchestrator
+    names_from: [store_dsn_env]
+    folder: /shared/env
 
 # Keys the node generates itself (OMN-23695): the value is made inside the runtime from the system's random source, stored create-only
 # under `folder`/`key`, and never printed, serialized, logged or put on a command line. A request names only the id.
