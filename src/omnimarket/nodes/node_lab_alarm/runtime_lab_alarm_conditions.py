@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Runtime wiring for the ONEX node_lab_alarm condition verbs.
 
-This module wires the four new lab-alarm conditions (lane_census,
-lab_pass_receipt, stale_indeterminate) to the CLI, following the shape of
+This module wires the four new lab-alarm operations (lane_census,
+lab_pass_receipt, loaded_code_sha, stale_indeterminate) to the CLI, following the shape of
 the dev-tag-heartbeat exemplar: handler builders are chosen from tables
 keyed by the overlay's bus backend, and each run_* function prints
 EVENT / summary / ALARM / DELIVERY lines and returns an exit code.
@@ -67,6 +67,15 @@ from omnimarket.nodes.node_lab_alarm.handlers.handler_lane_census import (
 from omnimarket.nodes.node_lab_alarm.handlers.handler_lane_census import (
     load_topics as lane_census_load_topics,
 )
+from omnimarket.nodes.node_lab_alarm.handlers.handler_loaded_code_sha import (
+    HandlerLoadedCodeSha,
+)
+from omnimarket.nodes.node_lab_alarm.handlers.handler_loaded_code_sha import (
+    events_for as loaded_code_sha_events_for,
+)
+from omnimarket.nodes.node_lab_alarm.handlers.handler_loaded_code_sha import (
+    load_topics as loaded_code_sha_load_topics,
+)
 from omnimarket.nodes.node_lab_alarm.handlers.handler_stale_indeterminate import (
     HandlerStaleIndeterminate,
 )
@@ -91,6 +100,10 @@ from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_lane_census import (
     EnumLaneCensusFault,
     EnumLaneCensusOutcome,
     ModelLaneCensusCommand,
+)
+from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_loaded_code_sha import (
+    EnumLoadedCodeShaOutcome,
+    ModelLoadedCodeShaRequest,
 )
 from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_stale_indeterminate import (
     EnumStaleIndeterminateFault,
@@ -126,12 +139,14 @@ __all__ = [
     "build_container_restarts_handler",
     "build_lab_pass_receipt_handler",
     "build_lane_census_handler",
+    "build_loaded_code_sha_handler",
     "build_stale_indeterminate_handler",
     "journal_exit",
     "run_condition_verb",
     "run_container_restarts",
     "run_lab_pass_receipt",
     "run_lane_census",
+    "run_loaded_code_sha",
     "run_stale_indeterminate",
 ]
 
@@ -307,6 +322,53 @@ def build_lab_pass_receipt_handler(
     )
 
 
+def _inmemory_loaded_code_sha_handler(
+    overlay: ModelLabAlarmOverlay,
+    settings: ModelLabPassReceiptSettings,
+    clock: Callable[[], datetime],
+) -> HandlerLoadedCodeSha:
+    return HandlerLoadedCodeSha(
+        sha_source=InMemoryDeliveredShaSource(error="no fixture sha")
+    )
+
+
+def _runtime_loaded_code_sha_handler(
+    overlay: ModelLabAlarmOverlay,
+    settings: ModelLabPassReceiptSettings,
+    clock: Callable[[], datetime],
+) -> HandlerLoadedCodeSha:
+    return HandlerLoadedCodeSha(
+        sha_source=HttpDeliveredShaSource(
+            settings.agent_url,
+            settings.ready_url,
+            settings.timeout_seconds,
+        )
+    )
+
+
+_LOADED_CODE_SHA_BACKEND_BUILDERS: dict[
+    str,
+    Callable[
+        [ModelLabAlarmOverlay, ModelLabPassReceiptSettings, Callable[[], datetime]],
+        HandlerLoadedCodeSha,
+    ],
+] = {
+    "inmemory": _inmemory_loaded_code_sha_handler,
+    "runtime": _runtime_loaded_code_sha_handler,
+}
+
+
+def build_loaded_code_sha_handler(
+    overlay: ModelLabAlarmOverlay,
+    settings: ModelLabPassReceiptSettings,
+    clock: Callable[[], datetime],
+) -> HandlerLoadedCodeSha:
+    """The loaded-code-sha handler wired to the overlay's backend."""
+    return _LOADED_CODE_SHA_BACKEND_BUILDERS[overlay.bus.backend](
+        overlay, settings, clock
+    )
+
+
 def _inmemory_stale_indeterminate_handler(
     overlay: ModelLabAlarmOverlay,
     settings: ModelStaleIndeterminateSettings,
@@ -423,6 +485,11 @@ _LAB_PASS_RECEIPT_EXIT: dict[EnumLabPassReceiptOutcome, int] = {
     EnumLabPassReceiptOutcome.OK: 0,
     EnumLabPassReceiptOutcome.ALARM: 2,
     EnumLabPassReceiptOutcome.INDETERMINATE: 3,
+}
+
+_LOADED_CODE_SHA_EXIT: dict[EnumLoadedCodeShaOutcome, int] = {
+    EnumLoadedCodeShaOutcome.READ: 0,
+    EnumLoadedCodeShaOutcome.UNREAD: 3,
 }
 
 _STALE_INDETERMINATE_EXIT: dict[EnumStaleIndeterminateOutcome, int] = {
@@ -577,6 +644,39 @@ def run_lab_pass_receipt(
     return _LAB_PASS_RECEIPT_EXIT[result.outcome]
 
 
+def run_loaded_code_sha(
+    *,
+    overlay: ModelLabAlarmOverlay,
+    handler: HandlerLoadedCodeSha | None = None,
+    out: Callable[[str], object] = sys.stdout.write,
+) -> int:
+    """One loaded-code-sha read; it never alarms and never delivers, so it keeps no fault and no probe form."""
+    settings = overlay.lab_pass_receipt
+    if settings is None:
+        sys.stderr.write(
+            "LAB-ALARM-REFUSED loaded_code_sha: the overlay has no lab_pass_receipt block; "
+            "the other verbs do not need it\n"
+        )
+        return 1
+    if handler is None:
+        handler = build_loaded_code_sha_handler(
+            overlay, settings, lambda: datetime.now(UTC)
+        )
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    result = handler.handle(
+        ModelLoadedCodeShaRequest(correlation_id=f"lab-alarm-loaded-code-sha-{now}")
+    )
+    for topic, body in loaded_code_sha_events_for(
+        result, loaded_code_sha_load_topics()
+    ):
+        out(f"EVENT topic={topic} correlation_id={body['correlation_id']}\n")
+    out(
+        f"LOADED-CODE-SHA sha={result.sha or 'none'} "
+        f"surface={result.surface or 'none'} outcome={result.outcome.value}\n"
+    )
+    return _LOADED_CODE_SHA_EXIT[result.outcome]
+
+
 def run_stale_indeterminate(
     verb: str,
     fault: EnumStaleIndeterminateFault,
@@ -636,6 +736,7 @@ CONDITION_VERBS: tuple[str, ...] = (
     "lab-pass-receipt-probe",
     "stale-indeterminate",
     "stale-indeterminate-probe",
+    "loaded-code-sha",
     "container-restarts",
     "container-restarts-probe",
 )
@@ -658,7 +759,7 @@ _FAULT_ENUMS: dict[
 def add_condition_parsers(
     sub: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
-    """Register the eight condition subparsers on the CLI subparser action."""
+    """Register the nine condition subparsers on the CLI subparser action."""
     for base in (
         "lane-drift",
         "container-unhealthy",
@@ -679,6 +780,11 @@ def add_condition_parsers(
                 default="none",
                 help="Fault to inject for this tick",
             )
+    # The loaded-code-sha read only reads: no probe form and no --fault to inject
+    sub.add_parser(
+        "loaded-code-sha", help="Read the sha the lane's deploy agent has loaded"
+    )
+    sub.choices["loaded-code-sha"].set_defaults(fault="none")
 
 
 def run_condition_verb(
@@ -699,6 +805,8 @@ def run_condition_verb(
         return run_stale_indeterminate(
             verb, EnumStaleIndeterminateFault(fault_value), overlay=overlay
         )
+    if base == "loaded-code-sha":
+        return run_loaded_code_sha(overlay=overlay)
     if base == "container-restarts":
         return run_container_restarts(
             verb, EnumContainerRestartsFault(fault_value), overlay=overlay
