@@ -200,10 +200,10 @@ def test_prompt_required_calls_without_it_fail() -> None:
         untyped_routing.backend_id_for_tier("local", "summarization")
     with pytest.raises(TypeError, match="prompt"):
         untyped_routing.sibling_backend_available_in_tier(
-            "local", "summarization", frozenset()
+            *("local", "summarization", frozenset())
         )
     with pytest.raises(TypeError, match="prompt"):
-        untyped_bound_members("local", [_Member("local-coder")])
+        untyped_bound_members(*("local", [_Member("local-coder")]))
 
 
 def _calls_without_prompt() -> list[str]:
