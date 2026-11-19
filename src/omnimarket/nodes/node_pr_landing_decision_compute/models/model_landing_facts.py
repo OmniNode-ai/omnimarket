@@ -571,6 +571,15 @@ class ModelLandingPolicy(BaseModel):
             "held as review_unread (it is never merged unread)."
         ),
     )
+    review_status_read_expected: bool = Field(
+        default=True,
+        description=(
+            "A new-work PR whose review fact carries no statuses (statuses None: none were read) is held as "
+            "review_status_unread: it is never merged unread. True by default, so a tick whose facts source "
+            "does not read the fable-review-gate statuses holds every new-work head instead of merging it; set "
+            "False only for a facts source that is known to read none."
+        ),
+    )
     lab_check_wait_seconds: int = Field(
         default=900,
         ge=1,
