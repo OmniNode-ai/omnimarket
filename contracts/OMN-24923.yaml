@@ -51,14 +51,14 @@ dod_evidence:
       bash -o pipefail -c 'h=$(gh api repos/OmniNode-ai/omnimarket/pulls/6327 --jq .head.sha) && body=$(gh api --paginate repos/OmniNode-ai/omnimarket/issues/6327/comments --jq ".[] | select(.body | startswith(\"Lab: head=$h\")) | .body") && test -n "$body" && printf "%s" "$body" | grep -F -e "--refuse-skips" > /dev/null && printf "%s" "$body" | grep -E "exit 0" > /dev/null && runs=$(gh api --paginate repos/OmniNode-ai/omnimarket/commits/$h/check-runs --jq ".check_runs[] | \"\(.name)|\(.conclusion)\"") && { gh api repos/OmniNode-ai/omnimarket/branches/dev/protection/required_status_checks --jq ".contexts[]"; echo "repo-evidence / dod-verify"; } | while IFS= read -r c; do printf "%s\n" "$runs" | grep -x -F -e "$c|success" > /dev/null || { echo "not success: $c"; exit 1; }; done'
     cwd: .
 - id: dod-omn24923-ac2-split-flags
-  description: 'AC2: the flags of the :27 command that the CI split also uses (coverage on, 300 s thread timeout, not kafka) are present in the workflow file, and neither the workflow nor pyproject sets xdist or an import mode for the split; this check fails if the split drops one of them or gains -n.'
+  description: 'AC2: the flags of the :27 command that the CI split also uses (coverage on, 300 s thread timeout, not kafka) are present in the workflow file, and neither the workflow nor pyproject sets xdist or an import mode for the split; this check fails if the split drops one of them or gains -n, and at the merge base, which has no tests/refuse_skips.py.'
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: command
     check_value: |-
-      bash -o pipefail -c 'grep -F -e "--cov=src --cov-report=" .github/workflows/ci.yml > /dev/null && grep -F -e "--timeout=300 --timeout-method=thread" .github/workflows/ci.yml > /dev/null && grep -F -e "-m \"not kafka\"" .github/workflows/ci.yml > /dev/null && ! grep -E "^addopts|import.mode|--import-mode" pyproject.toml'
+      bash -o pipefail -c 'grep -F -e "--cov=src --cov-report=" .github/workflows/ci.yml > /dev/null && grep -F -e "--timeout=300 --timeout-method=thread" .github/workflows/ci.yml > /dev/null && grep -F -e "-m \"not kafka\"" .github/workflows/ci.yml > /dev/null && ! grep -E "^addopts|import.mode|--import-mode" pyproject.toml && test -f tests/refuse_skips.py'
     cwd: .
 - id: dod-omn24923-ac3-refuse-skips
   description: 'AC3: tests/refuse_skips.py defines --refuse-skips, pytest-timeout is declared in the dev group of pyproject.toml, and the :27 command of the contract of OMN-24844 passes --refuse-skips; this check fails if one is missing. The whole-suite split does not pass it, which the pull request comment argues.'
@@ -101,13 +101,13 @@ dod_evidence:
       bash -o pipefail -c 'f=tests/test_capture_item_identity_effect.py; for t in test_the_test_file_calls_no_skip_xfail_or_importorskip test_the_collected_eight_writer_item_carries_no_marker_added_by_conftest test_the_mark_reader_accepts_a_module_mark_that_is_a_list test_a_pool_that_does_not_shut_down_fails_inside_its_bound; do grep -F "def $t(" "$f" > /dev/null || exit 1; if git show f7d10ded4f3230a27480b4bb1352bea4d51d8a8e:"$f" | grep -F "def $t(" > /dev/null; then exit 1; fi; done'
     cwd: .
 - id: dod-omn24923-ac5-nonblocking
-  description: 'AC5: tests/__init__.py exists, the mark reader takes a module mark that is a list, and the pool shutdown is bounded; the tests for the last two are in the run below. This check fails if tests/__init__.py is gone.'
+  description: 'AC5: tests/__init__.py exists, the mark reader takes a module mark that is a list, and the pool shutdown is bounded; the tests for the last two are in the run below. This check fails if tests/__init__.py is gone and at the merge base, which has no tests/refuse_skips.py.'
   source: manual
   binds_ac:
   - AC5
   checks:
   - check_type: command
-    check_value: test -f tests/__init__.py
+    check_value: bash -o pipefail -c 'test -f tests/__init__.py && test -f tests/refuse_skips.py'
     cwd: .
   - check_type: test_passes
     check_value: uv run pytest tests/test_capture_item_identity_effect.py -q -k "mark_reader_accepts or does_not_shut_down" --no-cov --refuse-skips -o xfail_strict=true -p no:cacheprovider
