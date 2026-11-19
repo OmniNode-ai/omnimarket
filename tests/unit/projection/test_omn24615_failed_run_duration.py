@@ -102,3 +102,18 @@ def test_failed_run_duration_a_failure_over_a_stored_zero_is_not_measured() -> N
     row = _project(failed, db)
     assert row.get("terminal_failure_cause")  # the merged row is a failed run
     assert row.get("execution_ms") is None
+
+
+def test_failed_run_duration_a_completed_run_merged_over_a_stored_zero_keeps_it() -> (
+    None
+):
+    """F6: the merge rule clears only a failed run's 0 ms; a run that did not fail keeps its measured 0."""
+    db = InmemoryDatabaseAdapter()
+    first = _skill_terminal([_attempt(backend_id="only", host="h201", passed=True)])
+    first["execution_duration_ms"] = 0
+    _project(first, db)
+    again = _skill_terminal([_attempt(backend_id="only", host="h201", passed=True)])
+    again["correlation_id"] = first["correlation_id"]
+    row = _project(again, db)
+    assert not row.get("terminal_failure_cause")
+    assert row.get("execution_ms") == 0

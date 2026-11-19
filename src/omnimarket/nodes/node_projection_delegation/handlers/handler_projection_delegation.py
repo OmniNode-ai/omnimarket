@@ -2106,10 +2106,6 @@ def _preserve_existing_evidence(
     ):
         row["compliance_attempts"] = existing["compliance_attempts"]
     _preserve_terminal_failure(existing, row)
-    # OMN-24615 AC8: a failed run inherits no stored 0 ms as a measured duration.
-    row["execution_ms"] = _failed_zero_to_none(
-        row.get("execution_ms"), row.get("terminal_failure_cause")
-    )
     # OMN-19448: after precedence, so a model inherited from the stored row
     # never makes an unevidenced handler failure read as evidenced.
     _preserve_run_attribution(existing, row)
@@ -2451,6 +2447,10 @@ def _preserve_terminal_failure(
         ):
             row["attempt_history"] = existing_history
     apply_terminal_precedence(existing, row)
+    # OMN-24615 AC8: both writers' merges end here, so a failed run inherits no stored 0 ms as measured.
+    row["execution_ms"] = _failed_zero_to_none(
+        row.get("execution_ms"), row.get("terminal_failure_cause")
+    )
 
 
 def _is_blank(value: object) -> bool:

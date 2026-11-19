@@ -165,3 +165,24 @@ async def test_failed_terminal_over_a_stored_zero_stores_no_measured_duration() 
         row = await admin_conn.fetchrow(_SELECT, cid)
         assert row is not None
         assert row["execution_ms"] is None
+
+
+@pytest.mark.integration
+async def test_completed_terminal_over_a_stored_zero_keeps_the_measured_zero() -> None:
+    """OMN-24615 AC8, the control for the async merge: only a failed run loses a stored 0 ms."""
+    first = _timed_skill_terminal()
+    first.update(tenant_id=_TENANT, execution_duration_ms=0)
+    again = _timed_skill_terminal()
+    again.update(tenant_id=_TENANT, correlation_id=first["correlation_id"])
+    del again["execution_duration_ms"]
+    cid = str(first["correlation_id"])
+    async with _provisioned_runner() as (runner, admin_conn, _schema):
+        for offset, payload in enumerate((first, again)):
+            assert await runner.project_event(
+                runner._topic_delegate_skill_completed,
+                payload,
+                MessageMeta(partition=0, offset=offset, fallback_id=cid),
+            )
+        row = await admin_conn.fetchrow(_SELECT, cid)
+        assert row is not None
+        assert row["execution_ms"] == 0
