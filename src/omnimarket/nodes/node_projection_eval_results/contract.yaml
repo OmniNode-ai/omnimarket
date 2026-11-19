@@ -27,9 +27,35 @@ handler_routing:
   handlers:
     # Only the writer is routed (OMN-19833): a routed pure fold is handed the raw event beside
     # the writer and cannot report a write. The writer calls the fold in process (rule 7a).
-    # One entry with no topic of its own: a sole handler entry owns every subscribe topic, and the
-    # writer reads the topic it was handed.
+    # One entry per subscribe topic (OMN-18013: an entry's category comes from its topic's name, so
+    # the event topics and the intent tick cannot share one). Every entry routes to the same writer,
+    # which reads the topic it was handed.
     - operation: eval_results_projection_writer
+      topic: onex.evt.omnimarket.context-roi-run-completed.v1
+      handler:
+        name: EvalResultsProjectionWriter
+        module: omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results_writer
+      handler_module: omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results_writer
+    - operation: eval_results_projection_writer
+      topic: onex.evt.omnimarket.delegation-acceptance-judged.v1
+      handler:
+        name: EvalResultsProjectionWriter
+        module: omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results_writer
+      handler_module: omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results_writer
+    - operation: eval_results_projection_writer
+      topic: onex.evt.omnimarket.code-eval-run-closed.v1
+      handler:
+        name: EvalResultsProjectionWriter
+        module: omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results_writer
+      handler_module: omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results_writer
+    - operation: eval_results_projection_writer
+      topic: onex.evt.omnimarket.eval-item-traced.v1
+      handler:
+        name: EvalResultsProjectionWriter
+        module: omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results_writer
+      handler_module: omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results_writer
+    - operation: eval_results_projection_writer
+      topic: onex.intent.platform.runtime-tick.v1
       handler:
         name: EvalResultsProjectionWriter
         module: omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results_writer
