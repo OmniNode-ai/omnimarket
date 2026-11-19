@@ -18,6 +18,8 @@ Usage::
     python -m omnimarket.nodes.node_git_query_mirror_effect on-base --repo omnimarket --pr 2905
     python -m omnimarket.nodes.node_git_query_mirror_effect log --repo omnimarket --pr 2905
     python -m omnimarket.nodes.node_git_query_mirror_effect status --repo omnimarket
+    python -m omnimarket.nodes.node_git_query_mirror_effect is-ancestor \
+        --repo omnimarket --ancestor <sha> --descendant <sha>
 
 The mirror root is ``$ONEX_GIT_QUERY_MIRROR_ROOT``, else
 ``$ONEX_STATE_DIR/git-query-mirrors``; with neither set the CLI refuses.
@@ -42,16 +44,7 @@ from omnimarket.nodes.node_git_query_mirror_effect.models.model_git_query_mirror
 )
 
 _DEFAULT_OWNER = "OmniNode-ai"
-_COMMANDS: dict[str, EnumGitQueryOperation] = {
-    "sync": EnumGitQueryOperation.SYNC,
-    "status": EnumGitQueryOperation.STATUS,
-    "head-sha": EnumGitQueryOperation.HEAD_SHA,
-    "changed-files": EnumGitQueryOperation.CHANGED_FILES,
-    "diff": EnumGitQueryOperation.DIFF,
-    "conflicts": EnumGitQueryOperation.CONFLICTS,
-    "on-base": EnumGitQueryOperation.ON_BASE,
-    "log": EnumGitQueryOperation.LOG,
-}
+_COMMANDS = {op.value.replace("_", "-"): op for op in EnumGitQueryOperation}
 
 
 def _slug(repo: str) -> str:
@@ -87,27 +80,23 @@ def main(argv: list[str] | None = None) -> int:
         help="owner/name or bare name (owner defaults to OmniNode-ai); repeat for sync/status.",
     )
     parser.add_argument("--pr", type=int, default=None, help="PR number.")
-    parser.add_argument(
-        "--base", default=None, help="Base branch (default: the repo default branch)."
-    )
+    parser.add_argument("--base", help="Base branch (default: the repo default).")
+    parser.add_argument("--ancestor", help="is-ancestor only: ancestor sha.")
+    parser.add_argument("--descendant", help="is-ancestor only: descendant sha.")
     parser.add_argument(
         "--max-age",
         type=int,
         default=DEFAULT_MAX_AGE_S,
         help="Seconds; an older mirror refreshes the PR ref by git fetch first (0 = always).",
     )
-    parser.add_argument(
-        "--no-gh-fallback",
-        action="store_true",
-        help="Never call the GitHub API; report unavailable instead.",
-    )
-    parser.add_argument(
-        "--text",
-        action="store_true",
-        help="Print the raw diff (diff) or one path per line (changed-files) instead of JSON.",
-    )
+    parser.add_argument("--no-gh-fallback", action="store_true", help="No GitHub API.")
+    parser.add_argument("--text", action="store_true", help="Raw diff/paths, not JSON.")
     args = parser.parse_args(argv)
     op = _COMMANDS[args.command]
+    if op is not EnumGitQueryOperation.IS_ANCESTOR and (
+        args.ancestor is not None or args.descendant is not None
+    ):
+        return _usage_error(parser, f"{args.command} takes no --ancestor/--descendant")
 
     try:
         root = resolve_mirror_root()
@@ -116,7 +105,16 @@ def main(argv: list[str] | None = None) -> int:
     mirror = GitQueryMirror(root=root)
 
     repos = [_slug(r) for r in (args.repo or [])]
-    if op in (EnumGitQueryOperation.SYNC, EnumGitQueryOperation.STATUS):
+    if op is EnumGitQueryOperation.IS_ANCESTOR:
+        if len(repos) != 1 or args.ancestor is None or args.descendant is None:
+            return _usage_error(
+                parser,
+                f"{args.command} needs exactly one --repo, --ancestor and --descendant",
+            )
+        if args.pr is not None:
+            return _usage_error(parser, f"{args.command} takes no --pr")
+        targets = repos
+    elif op in (EnumGitQueryOperation.SYNC, EnumGitQueryOperation.STATUS):
         targets = repos or list(REGISTRY_REPOS)
     else:
         if len(repos) != 1 or args.pr is None:
@@ -132,6 +130,8 @@ def main(argv: list[str] | None = None) -> int:
             repo=repo,
             pr_number=args.pr,
             base=args.base,
+            ancestor_sha=args.ancestor,
+            descendant_sha=args.descendant,
             max_age_s=args.max_age,
             allow_gh_fallback=not args.no_gh_fallback,
             # The CLI publishes nothing, so it must not move the merge-scan watermark.

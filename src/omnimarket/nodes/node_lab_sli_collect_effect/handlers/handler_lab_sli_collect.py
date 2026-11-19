@@ -46,6 +46,7 @@ class ModelLabSliCollectConfig(BaseModel):
 
     merge_window_minutes: int = Field(ge=1)
     launchd_label_domains: tuple[str, ...]
+    launchd_reading_exits: Mapping[str, tuple[int, ...]]
     fseventsd_dir_name: str = Field(min_length=1)
 
 
@@ -194,9 +195,19 @@ def _meminfo(text: str, field: str) -> float:
     return int(match.group(1)) * 1024 / _GB
 
 
-def _launchd_failures(listing: str, domains: tuple[str, ...]) -> list[str]:
+def _is_declared_reading(
+    label: str, status: str, reading_exits: Mapping[str, tuple[int, ...]]
+) -> bool:
+    try:
+        return int(status) in reading_exits.get(label, ())
+    except ValueError:
+        return False
+
+
+def _launchd_nonzero(listing: str, domains: tuple[str, ...]) -> list[tuple[str, str]]:
+    """The (label, status) of every unit inside a label domain whose last exit is not 0."""
     prefixes = tuple(f"{domain}." for domain in domains)
-    failing = []
+    found = []
     for line in listing.splitlines()[1:]:
         parts = line.split("\t")
         if len(parts) != 3:
@@ -206,8 +217,33 @@ def _launchd_failures(listing: str, domains: tuple[str, ...]) -> list[str]:
             continue
         status = parts[1].strip()
         if status not in ("0", "-"):
-            failing.append(f"{parts[2]}={status}")
-    return sorted(failing)
+            found.append((label, status))
+    return found
+
+
+def _launchd_failures(
+    listing: str,
+    domains: tuple[str, ...],
+    reading_exits: Mapping[str, tuple[int, ...]] | None = None,
+) -> list[str]:
+    return sorted(
+        f"{label}={status}"
+        for label, status in _launchd_nonzero(listing, domains)
+        if reading_exits is None
+        or not _is_declared_reading(label, status, reading_exits)
+    )
+
+
+def _launchd_readings(
+    listing: str,
+    domains: tuple[str, ...],
+    reading_exits: Mapping[str, tuple[int, ...]],
+) -> list[str]:
+    return sorted(
+        f"{label}={status}"
+        for label, status in _launchd_nonzero(listing, domains)
+        if _is_declared_reading(label, status, reading_exits)
+    )
 
 
 class HandlerLabSliCollect:
@@ -371,15 +407,18 @@ class HandlerLabSliCollect:
         raise ProbeError("; ".join(problems))
 
     def _scheduler(self, host: str, listing: str) -> ModelLabSliReading:
-        failing = _launchd_failures(listing, self._config.launchd_label_domains)
-        return _one(
-            "scheduled_job_failures",
-            host,
-            float(len(failing)),
+        domains = self._config.launchd_label_domains
+        reading_exits = self._config.launchd_reading_exits
+        failing = _launchd_failures(listing, domains, reading_exits)
+        readings = _launchd_readings(listing, domains, reading_exits)
+        detail = (
             "nonzero last exit: " + ", ".join(failing)
             if failing
-            else "every unit exited 0",
+            else "every unit exited 0"
         )
+        if readings:
+            detail += "; declared reading exits, not counted: " + ", ".join(readings)
+        return _one("scheduled_job_failures", host, float(len(failing)), detail)
 
     @staticmethod
     def _systemd(host: str, listing: str) -> ModelLabSliReading:

@@ -1,0 +1,93 @@
+schema_version: 1.0.0
+ticket_id: OMN-24721
+title: The evidence contract of omnimarket#6316 binds every criterion with a real check, and the real ingest contract is dispatched through wire_from_manifest
+summary: contracts/OMN-24693.yaml binds each of its criteria by a hosted test item, its dev runtime log read is a real command that fails on a no-result-applier line or a missing write line, the ingest handler logs one INFO line per write, and a test dispatches the real ingest contract and handler through wire_from_manifest.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24721-evidence-contract-and-real-dispatch
+  statement: The evidence contract of the ingest change binds every criterion with a hosted test, its local Done gate check reads the dev runtime log for real, the handler leaves a trace of a write, and the real contract and handler are dispatched through wire_from_manifest.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: contracts/OMN-24693.yaml binds AC1, AC2 and AC3 each by a hosted item, no local_done_gate item carries binds_ac, and the grep item that checks the deleted model binds nothing -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov in omnimarket, red at head 45399a2fdeb1 (2 failed) and green after the fix'
+  - id: AC2
+    statement: 'AC2: the AC3 local_done_gate check reads the dev runtime log over ssh and exits non-zero unless the no-result-applier count since the recreate is 0 and at least one dispatch line for this node is present, and no echo-only check remains in contracts -- falsifier: a pytest case in omnimarket runs the check command against fixture log text and fails for a log holding a no-result-applier line and for a log with no dispatch line, and uv run pytest tests/ci -q --no-cov passes'
+  - id: AC3
+    statement: 'AC3: the handler logs one INFO line when it writes a record (key, digest, hosts, admitted) and no such line when it ignores one -- falsifier: uv run pytest tests/nodes/node_host_table_keys_ingest_effect -q --no-cov with a caplog case that fails on the head handler and passes after the change'
+  - id: AC4
+    statement: 'AC4: a test in omnimarket dispatches the real contract.yaml and HandlerHostTableKeysIngest through wire_from_manifest with an injected store and overlay, and asserts the handler ran and the undeliverable-output route was never awaited -- falsifier: uv run pytest tests/nodes/node_host_table_keys_ingest_effect -q --no-cov, red when the handler body is changed to raise and green with the handler restored'
+  - id: AC5
+    statement: 'AC5: the description of the contract item bound to AC2 says that the real AC2 check lives in the contract of omnibase_infra#6032 and that the omnimarket check is the golden chain -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov passes and grep -n ''omnibase_infra#6032'' contracts/OMN-24693.yaml prints the item description'
+  - id: AC6
+    statement: 'AC6: the pull request''s required suites run on a lab host at the new head, in parts if a whole run times out, and the new head and results are commented on omnimarket#6316 -- falsifier: onex scm pr-view OmniNode-ai/omnimarket#6316 --source bus lists a comment naming the new head sha with the lab suite results'
+evidence_requirements:
+- kind: tests
+  description: The contract test, the log-check test and the node tests pass at the pushed head.
+  command: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py tests/ci/test_omn24693_dev_runtime_log_check.py tests/nodes/node_host_table_keys_ingest_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24721-ac1
+  description: The contract test of the repository runs every contract against the binding rules; it was red at head 45399a2fdeb1 (2 failed, 33 passed) because the AC3 item was local_done_gate and carried binds_ac and the model-deleted grep item bound AC1 with a command. It passes with the fix, so each criterion of contracts/OMN-24693.yaml is bound by a hosted test item.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24721-ac2
+  description: Runs the real log-read command of the local Done gate item against fixture log text with a stand-in ssh. It passes for a clean log holding a write line and fails for a log with a no-result-applier line, for a log with no write line, for an unset recreate time and for a failed read; the same file asserts that no contract holds an echo-only check.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_omn24693_dev_runtime_log_check.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24721-ac3
+  description: Runs the caplog test of the ingest handler. One INFO line carries key, digest, hosts and admitted after a write; an ignored record and a refused record leave no such line. On the handler at head 45399a2fdeb1 the write case fails because no line is logged.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_table_keys_ingest_effect/test_host_table_keys_ingest_write_log.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24721-ac4
+  description: Wires the real contract.yaml and the real handler through wire_from_manifest on an in-memory bus with an injected store and overlay, publishes one record and asserts the key was written and the undeliverable-output route was never awaited. A second case replaces the handler body with one that raises and finds no key written.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_table_keys_ingest_effect/test_real_contract_wire_from_manifest.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24721-ac6
+  description: The hosted run of the node's tests and the contract tests at the pushed head. The lab run at the new head and its results are recorded in the pull request comment that names the head, which is where AC6 is read.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_table_keys_ingest_effect tests/ci/test_omn24693_dev_runtime_log_check.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24721-deploy
+  description: The change is a log line in one handler, tests and contract files; the node tests above run on the hosted runner.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_table_keys_ingest_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24721-integration-proof
+  description: Run the node's tests, the contract test and the log-check test on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24721 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_table_keys_ingest_effect tests/nodes/node_host_table_keys_read_effect tests/ci/test_repo_evidence_caller_workflow.py tests/ci/test_omn24693_dev_runtime_log_check.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

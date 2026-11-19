@@ -1,0 +1,38 @@
+# Replay fixture for the orchestrating-session stall of 2026-11-17 (OMN-25405).
+#
+# Each row carries source: quoted | shaped.
+#   quoted  the timestamp is one the ticket's own text carries (the whys report's reading of the session transcript).
+#   shaped  the row is built to give the judge the surrounding traffic; its timestamp is derived, not read:
+#           the ticks before 07:47:56Z sit on the ticket's "about 30 minutes" cadence counted back from the quoted
+#           07:47:56Z, each enqueued and dequeued in the same second; the three dequeues after the quoted 11:37:15Z
+#           dequeue carry that same instant, because the ticket says the queue drained at once.
+# The operator's reply at 11:37:56Z is an answer, not a queue operation, so no row carries it.
+rows:
+  - {at: "2026-11-17T05:17:56Z", operation: enqueue, source: shaped}
+  - {at: "2026-11-17T05:17:56Z", operation: task_fired, source: shaped}
+  - {at: "2026-11-17T05:17:56Z", operation: dequeue, source: shaped}
+  - {at: "2026-11-17T05:47:56Z", operation: enqueue, source: shaped}
+  - {at: "2026-11-17T05:47:56Z", operation: task_fired, source: shaped}
+  - {at: "2026-11-17T05:47:56Z", operation: dequeue, source: shaped}
+  - {at: "2026-11-17T06:17:56Z", operation: enqueue, source: shaped}
+  - {at: "2026-11-17T06:17:56Z", operation: task_fired, source: shaped}
+  - {at: "2026-11-17T06:17:56Z", operation: dequeue, source: shaped}
+  - {at: "2026-11-17T06:47:56Z", operation: enqueue, source: shaped}
+  - {at: "2026-11-17T06:47:56Z", operation: task_fired, source: shaped}
+  - {at: "2026-11-17T06:47:56Z", operation: dequeue, source: shaped}
+  - {at: "2026-11-17T07:17:56Z", operation: enqueue, source: shaped}
+  - {at: "2026-11-17T07:17:56Z", operation: task_fired, source: shaped}
+  - {at: "2026-11-17T07:17:56Z", operation: dequeue, source: shaped}
+  - {at: "2026-11-17T07:47:56Z", operation: enqueue, source: quoted}
+  - {at: "2026-11-17T07:47:56Z", operation: task_fired, source: quoted}
+  - {at: "2026-11-17T07:47:56Z", operation: dequeue, source: quoted}
+  # The stall: four enqueues the transcript shows, no dequeue until 11:37:15Z.
+  - {at: "2026-11-17T07:58:57Z", operation: enqueue, source: quoted}
+  - {at: "2026-11-17T08:05:00Z", operation: enqueue, source: quoted}
+  - {at: "2026-11-17T08:42:15Z", operation: enqueue, source: quoted}
+  - {at: "2026-11-17T08:55:21Z", operation: enqueue, source: quoted}
+  - {at: "2026-11-17T11:37:15Z", operation: dequeue, source: quoted}
+  - {at: "2026-11-17T11:37:15Z", operation: dequeue, source: shaped}
+  - {at: "2026-11-17T11:37:15Z", operation: dequeue, source: shaped}
+  - {at: "2026-11-17T11:37:15Z", operation: dequeue, source: shaped}
+  - {at: "2026-11-17T11:37:15Z", operation: task_fired, source: quoted}
