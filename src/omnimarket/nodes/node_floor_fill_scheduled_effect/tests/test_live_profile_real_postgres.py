@@ -16,7 +16,7 @@ import pytest
 import yaml
 
 from omnimarket.nodes.node_floor_fill_orchestrator.tests.test_floor_fill_postgres_store import (
-    schema_dsn,  # noqa: F401 -- a pytest fixture, used by name
+    schema_dsn as store_schema_dsn,
 )
 from omnimarket.nodes.node_floor_fill_scheduled_effect.handlers.handler_floor_fill_scheduled import (
     HandlerFloorFillScheduled,
@@ -31,14 +31,17 @@ from omnimarket.nodes.node_floor_fill_scheduled_effect.tests.test_live_profile i
 psycopg2: Any = importlib.import_module("psycopg2")
 sql: Any = importlib.import_module("psycopg2.sql")
 
+# The imported fixture is collected under its alias, so it is exported by name.
+__all__ = ["store_schema_dsn"]
+
 pytestmark = pytest.mark.integration
 
 
 def test_ac4_a_live_tick_leaves_a_row_in_the_floor_fill_state_table(
     tmp_path: Path,
-    schema_dsn: tuple[str, str],  # noqa: F811 -- the fixture's parameter name
+    store_schema_dsn: tuple[str, str],
 ) -> None:
-    dsn, schema_name = schema_dsn
+    dsn, schema_name = store_schema_dsn
     (tmp_path / NODE).mkdir()
     (tmp_path / NODE / "overlay.yaml").write_text(
         yaml.safe_dump(
