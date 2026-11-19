@@ -266,6 +266,8 @@ not_routing_resolution_sites:
     reason: names the overlay file in an error message when an idle_slot_fill or repos key is not configured; the keys supply repository names, a cloud backlog declaration and experiment designs and select no route for delegated work
   - site: "src/omnimarket/nodes/node_install_superset_guard_effect/handlers/handler_install_superset_cli.py:resolve_setting(PLUGIN_INSTALL_OVERLAY)"
     reason: the ticket id the installer's superset check writes into each intentional-drop ledger row; a ledger cell, not a route for delegated work
+  - site: "src/omnimarket/handlers/floor_fill_scheduled_tick.py:resolve_setting('node_floor_fill_scheduled_effect')"
+    reason: the name of the environment variable that holds the floor fill state store's connection string; a store address, not a route for delegated work
   - site: "src/omnimarket/nodes/node_brief_compact_compute/handlers/handler_brief_compact.py:resolve_setting('node_brief_compact_compute')"
     reason: the knowledge-base repository name a rendered lane brief names; brief text, not a route for delegated work
   - site: "src/omnimarket/nodes/node_lane_host_discovery_compute/handlers/handler_lane_host_discovery.py:resolve_setting('node_lane_host_discovery_compute')"
