@@ -70,7 +70,7 @@ dod_evidence:
           curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_local_environment_observe_effect/handlers/handler_local_environment_observe.py" | python3 -c 'import ast, sys; tree = ast.parse(sys.stdin.read()); clients = [n for n in ast.walk(tree) if isinstance(n, ast.AsyncWith) and any(isinstance(i.context_expr, ast.Call) and isinstance(i.context_expr.func, ast.Attribute) and i.context_expr.func.attr == "AsyncClient" for i in n.items)]; assert len(clients) == 1; assert any(isinstance(n, ast.AsyncWith) and any(isinstance(i.context_expr, ast.Call) and isinstance(i.context_expr.func, ast.Attribute) and i.context_expr.func.attr == "timeout" for i in n.items) for n in clients[0].body); print("local environment deploy probe: PASS")'
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn18010-pr4562-work-contract-pins"
-    description: "Load the packaged corpus against this tree after the release bump; the test fails when any pinned input digest differs from the file on disk."
+    description: "Load the packaged corpus against this tree after the release bump; the test fails when any pinned input digest differs from the file on disk, and when uv.lock pins omnimarket below 0.4.322, the version this bump opens, which the merge base lock (0.4.321) fails."
     source: "manual"
     binds_ac: ["AC4"]
     checks:

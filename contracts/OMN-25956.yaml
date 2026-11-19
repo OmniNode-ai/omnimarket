@@ -1,0 +1,76 @@
+schema_version: 1.0.0
+ticket_id: OMN-25956
+title: The post-release bump of dev to 0.4.322 reads green on Customer Clean-Install Delegate Gate, repo-evidence / dod-verify and Sibling Release Compatibility Gate
+summary: At head a0d56c6dcdb2 the bump read red on Sibling Release Compatibility Gate because the omnibase-core floor raised to 0.47.75 cannot be met by the omnibase-core 0.47.73.dev9 that uv.lock pins through its dev tag, and on repo-evidence / dod-verify because the only AC-bound check of contracts/OMN-18010.yaml (the work-contract pins check) was unchanged against the merge base, so the base control had zero bound checks. The change restores the 0.47.60 floor, which the package index still resolves to omnibase-core 0.47.75 for the clean-install job, and states the 0.4.322 floor in the pins check so the base control runs it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25956-bump-green
+  statement: The bump of dev to 0.4.322 installs against the sibling pins its uv.lock names and carries evidence the base control can run.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the red text of the failing jobs at head a0d56c6dcdb2 is quoted from each job log in the lane report with the cause named -- falsifier: a job log holds a red line the report does not quote'
+  - id: AC2
+    statement: 'AC2: the omnibase-core floor in pyproject.toml is satisfied by the omnibase-core that uv.lock pins, and a customer venv built from the index carries omnibase_core.enums.enum_provenance_install_source -- falsifier: the floor exceeds the locked omnibase-core version, or the module import fails in that venv'
+  - id: AC3
+    statement: 'AC3: the pins check of contracts/OMN-18010.yaml is part of the base control of the bump -- falsifier: the base control reports zero bound checks'
+evidence_requirements:
+- kind: tests
+  description: The core floor against the locked core, and the pins test at the pushed head.
+  command: uv run --frozen pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25956-ac1
+  description: The lane report quotes each red job's own log line. Only the local Done gate reads the report, which lives outside the repository.
+  source: manual
+  binds_ac:
+  - AC1
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: test -n "$(ls "$OMNI_HOME"/.claude_scratch/reports/keystone-1200-*.md)"
+    cwd: .
+- id: dod-omn25956-ac2
+  description: The omnibase-core floor in both places of pyproject.toml is met by the locked omnibase-core, and the head opens 0.4.322. At the merge base the head version is 0.4.321, so the control fails.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: |-
+      uv run python - <<'PY'
+      import re, tomllib
+      from packaging.specifiers import SpecifierSet
+      from packaging.version import Version
+      project = tomllib.load(open("pyproject.toml", "rb"))
+      lock = tomllib.load(open("uv.lock", "rb"))
+      assert project["project"]["version"] == "0.4.322", project["project"]["version"]
+      locked = Version(next(p["version"] for p in lock["package"] if p["name"] == "omnibase-core"))
+      floors = [d for d in project["project"]["dependencies"] + project["tool"]["uv"]["override-dependencies"] if re.match(r"omnibase-core[<>=]", d)]
+      assert len(floors) == 2, floors
+      for floor in floors:
+          assert locked in SpecifierSet(floor.split("omnibase-core", 1)[1], prereleases=True), (floor, str(locked))
+      print("core floor met by the locked core: PASS")
+      PY
+    cwd: .
+- id: dod-omn25956-ac3
+  description: The work-contract pins test passes at the head and fails against the merge base lock (0.4.321).
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_work_contract_pins_current.py -q
+    cwd: .
+- id: dod-omn25956-integration-proof
+  description: The pushed head ran the work-contract pins test on a lab host through the lab work runner and exited 0. Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25956 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov
+    cwd: .
