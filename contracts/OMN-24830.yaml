@@ -1,0 +1,93 @@
+schema_version: 1.0.0
+ticket_id: OMN-24830
+title: Unblock omnimarket pull request 6253
+summary: Rebase the existing pull request on dev. Read its checks and comments after publication and record any shared blocker in the work ledger.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24830-unblock
+  statement: Resolve the merge conflict while preserving the PR's assertions and CI configuration.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every required check-run of omnimarket#6253 reads success at the new head, read through the declared scm path after the fix push -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6253` lists a required context that is not success at the new head'
+  - id: AC2
+    statement: 'AC2: the fix weakens no check or test, so the diff from head dcfc6b6d2691 to the new head removes no assertion and adds no skip, xfail, loosened threshold or widened check -- falsifier: `git diff dcfc6b6d2691 <new head> -- tests/ .github/` shows a removed assert, a new skip or xfail marker or a changed required-check list'
+  - id: AC3
+    statement: "AC3: the new head is on the PR as a comment starting `Lab: head=<new head>` and the lane's TERMINAL names it -- falsifier: the PR carries no comment starting `Lab: head=` with the new head sha"
+  - id: AC4
+    statement: 'AC4: when the cause is outside the PR the lane writes one STATUS row with cause=<one line> shared=yes and the evidence, and pushes nothing -- falsifier: the ledger holds neither a pushed new head nor a STATUS row with shared=yes naming omnimarket#6253 after the lane''s TERMINAL'
+dod_evidence:
+- id: dod-omn24830-ac1-required-checks
+  source: manual
+  execution_scope: local_done_gate
+  description: Read every required context at the pushed head from the watcher, including branch protection and ruleset contexts.
+  checks:
+  - check_type: command
+    cwd: .
+    check_value: |
+      set -eu
+      checks=$(onex scm pr-checks 'OmniNode-ai/omnimarket#6253' --source local)
+      python3 - "$checks" "$(git rev-parse HEAD)" <<'PY'
+      import json, os, sys
+      from pathlib import Path
+      result = json.loads(sys.argv[1])["result"]
+      with Path(os.environ["ONEX_PR_WATCHER_STATE"]).open() as state:
+          protection = json.load(state)["settings"]["omnimarket"]["branches"]["dev"]
+      assert protection["protection"] in {"protected", "unprotected"} and protection["rules_read"]
+      required = set(protection["contexts"]) | set(protection["rule_contexts"])
+      assert required and result["head_sha"] == sys.argv[2]
+      assert result["head_sha"] != "d27ec8505752babd13e5eccca3e6647f5be7ec05"
+      conclusions = {}
+      for name, status, conclusion, stamp, *_ in result["runs"]:
+          if name not in conclusions or (stamp or "") >= conclusions[name][0]:
+              conclusions[name] = (stamp or "", status, conclusion)
+      missing = sorted(name for name in required if conclusions.get(name, (None,))[1:] != ("completed", "success"))
+      assert not missing, missing
+      PY
+- id: dod-omn24830-ac2-diff
+  source: manual
+  execution_scope: local_done_gate
+  description: Read the ticket's historical comparison and fail on removed assertion lines or added skip and xfail markers. Review its threshold and required-check changes before closing the ticket.
+  checks:
+  - check_type: command
+    cwd: .
+    check_value: |
+      python3 - <<'PY'
+      import re
+      import subprocess
+      diff = subprocess.check_output(
+          ["git", "diff", "--unified=0", "dcfc6b6d2691", "HEAD", "--", "tests/", ".github/"], text=True
+      )
+      findings = [line for line in diff.splitlines() if re.match(r"^-\s*assert\b", line)
+                  or (line.startswith("+") and re.search(r"pytest\.(?:mark\.)?(?:skip(?:if)?|xfail)\b", line))]
+      assert not findings, f"{len(findings)} removed assertion or added skip/xfail lines"
+      PY
+- id: dod-omn24830-ac3-lab-comment
+  source: manual
+  execution_scope: local_done_gate
+  description: Read the exact-head Lab comment and the lane's TERMINAL from their declared sources.
+  checks:
+  - check_type: command
+    cwd: .
+    check_value: 'onex scm pr-view ''OmniNode-ai/omnimarket#6253'' --source bus | python3 tests/ci/pr_state_checks.py lab-comment "$(git rev-parse HEAD)"'
+  - check_type: command
+    cwd: .
+    check_value: 'rg -F " | TERMINAL | " "${ONEX_LEDGER_PATH:?}" | rg -F " | lane=unblk6253-0145 | " | rg -F "$(git rev-parse HEAD)"'
+- id: dod-omn24830-ac4-shared-blocker
+  source: manual
+  execution_scope: local_done_gate
+  description: Read the existing PR head. If it is unchanged, require the lane's shared-cause STATUS row before closing the ticket.
+  checks:
+  - check_type: command
+    cwd: .
+    check_value: |
+      set -eu
+      view=$(onex scm pr-view 'OmniNode-ai/omnimarket#6253' --source local)
+      head=$(printf '%s' "$view" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["head_sha"])')
+      if test "$head" = d27ec8505752babd13e5eccca3e6647f5be7ec05; then
+        rg -F ' | STATUS | ' "${ONEX_LEDGER_PATH:?}" | rg -F ' | lane=unblk6253-0145 | ' |
+          rg -F ' | pr=omnimarket#6253 | ' | rg -F ' | shared=yes | ' | rg ' \| cause=[^|]+'
+      else
+        test "$head" = "$(git rev-parse HEAD)"
+      fi
