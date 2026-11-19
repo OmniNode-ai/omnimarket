@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeGatewayBatchIngestEffect
+#
+# The stateless HTTPS batch ingest door of the cloud forwarding path. A customer-side forwarder POSTs one batch of
+# records with a bearer token; the door verifies the token, binds the tenant from the claim alone, validates the whole
+# batch, and answers 202 only after each record's own delivery callback confirmed it. It holds no store, claim or
+# lease: a retried batch is written again, byte-identical, and consumers deduplicate by the message-id header.
+name: "node_gateway_batch_ingest_effect"
+contract_name: "node_gateway_batch_ingest_effect"
+node_name: "node_gateway_batch_ingest_effect"
+node_type: "EFFECT_GENERIC"
+runtime_profiles:
+  - effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "0.1.0"
+lifecycle: experimental
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: false
+description: >
+  Serves POST /v1/gateway/batch-ingest on the runtime's HTTP port. Verifies the bearer token against the overlay's
+  JWKS (audience exactly gateway-attach), binds the tenant from the verified claim, validates every record of the batch
+  before publishing any, produces each record on tenant-<slug>.<canonical topic> with one delivery callback per record,
+  and answers 202 only when every record is confirmed, 422 naming the first invalid record, or 503 naming the first
+  record that was not confirmed and how many were not attempted.
+input_model:
+  name: "ModelBatchIngestRequest"
+  module: "omnimarket.nodes.node_gateway_batch_ingest_effect.models"
+  description: "One batch: the verified claims and the decoded JSON document."
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics: []
+  publish_topics:
+    - "onex.evt.omnimarket.pool-usage-verdict-evaluated.v1"
+    - "onex.evt.omniclaude.tool-executed.v1"
+externally_produced_topics: []
+published_events:
+  - topic: "onex.evt.omnimarket.pool-usage-verdict-evaluated.v1"
+    event_type: "PoolUsageVerdictEvaluated"
+    description: "Produced on tenant-<slug>.onex.evt.omnimarket.pool-usage-verdict-evaluated.v1 for the tenant whose token carried the batch."
+  - topic: "onex.evt.omniclaude.tool-executed.v1"
+    event_type: "ToolExecuted"
+    description: "Produced on tenant-<slug>.onex.evt.omniclaude.tool-executed.v1 for the tenant whose token carried the batch."
+# No handler_routing and no subscribed topic on purpose: this door is served only through the http_mount below, never by a
+# bus command, so the first slice ships as an experimental node (the staged shape node_workflow_gateway_effect uses).
+# Runtime-owned HTTP boundary: the mount is the only serving path. max_body_bytes is the ceiling the runtime enforces
+# on every request body before it reaches the app; the overlay's max_body_bytes may not exceed it, and the overlay's
+# chunk_headroom_bytes must exceed it so no chunk the runtime hands over can pass a request's reservation.
+http_mount:
+  factory: "omnimarket.nodes.node_gateway_batch_ingest_effect.asgi:create_app"
+  path_prefix: "/v1/gateway/batch-ingest"
+  max_body_bytes: 1048576
+config:
+  wire_topic_template: "tenant-{tenant_slug}.{canonical_topic}"
+  audience: "gateway-attach"
+dependencies: []
+# The broker grants the door's two canonical topics need (OMN-24005 coverage gate): the dev runtime login writes them.
+# The door produces on the tenant-prefixed wire topics, whose broker rows belong to the tenant topic provisioning in
+# omnibase_infra, not to this contract.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.pool-usage-verdict-evaluated.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.pool-usage-verdict-evaluated.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omniclaude.tool-executed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omniclaude.tool-executed.v1, operation: DESCRIBE}
+capabilities:
+  - name: "gateway_batch_ingest_http"
+    description: "Serve the authenticated batch ingest door on the runtime's port."
+  - name: "gateway_batch_ingest_tenant_binding"
+    description: "Bind the tenant from the verified claim to the overlay registry; refuse unknown, mismatched and retired tenants."
+  - name: "gateway_batch_ingest_confirmed_publish"
+    description: "Confirm each record's own delivery callback before answering 202."
+metadata:
+  description: "Stateless HTTPS batch ingest door."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-19"
+  ticket: "OMN-25547"
+  tags:
+    - "effect"
+    - "gateway"
+    - "http"
