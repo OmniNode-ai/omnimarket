@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.321"
+version = "0.4.322"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -155,7 +155,12 @@ dependencies = [
     # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
     # Raised in BOTH places.
     "omnibase-core>=0.47.60,<0.48.0",
-    "omnibase-spi>=0.23.3,<0.24.0",
+    # OMN-23518: floor raised 0.23.3 -> 0.23.15, the release whose notes list the lane process
+    # wire models (omnibase_spi CHANGELOG v0.23.15, "Included Since v0.23.14": ProtocolLaneProcessRunner
+    # and lane process wire models) the floor fill orchestrator imports from
+    # omnibase_spi.contracts.services (ModelLaneProcessRunResult, ModelLaneProcessStartResult,
+    # ModelLaneStartSpec); v0.23.14 carries none of the three. Raised in BOTH places.
+    "omnibase-spi>=0.23.15,<0.24.0",
     # OMN-17549: floor raised 0.38.15 -> 0.38.16. 0.38.16 carries the OMN-17379
     # fail-closed projection guard -- a projection handler that consumes an
     # event and writes no row raises ProjectionNotMaterializedError instead of
@@ -803,6 +808,8 @@ node_host_capability_compute = "omnimarket.nodes.node_host_capability_compute"
 node_host_capacity_compute = "omnimarket.nodes.node_host_capacity_compute"
 node_host_disk_decision_compute = "omnimarket.nodes.node_host_disk_decision_compute"
 node_host_disk_orchestrator = "omnimarket.nodes.node_host_disk_orchestrator"
+node_host_down_compute = "omnimarket.nodes.node_host_down_compute"
+node_host_down_reading_effect = "omnimarket.nodes.node_host_down_reading_effect"
 node_host_drain_effect = "omnimarket.nodes.node_host_drain_effect"
 node_host_drift_check_effect = "omnimarket.nodes.node_host_drift_check_effect"
 node_host_drift_fleet = "omnimarket.nodes.node_host_drift_fleet"
@@ -1285,6 +1292,7 @@ node_receipt_gate_pin_advance_compute = "omnimarket.nodes.node_receipt_gate_pin_
 node_receipt_gate_pin_advance_effect = "omnimarket.nodes.node_receipt_gate_pin_advance_effect"
 node_receipt_gate_pin_friction_ledger_effect = "omnimarket.nodes.node_receipt_gate_pin_friction_ledger_effect"
 node_receipt_gate_pin_friction_report_compute = "omnimarket.nodes.node_receipt_gate_pin_friction_report_compute"
+node_red_main_alarm_effect = "omnimarket.nodes.node_red_main_alarm_effect"
 node_redeploy_deploy_effect = "omnimarket.nodes.node_redeploy_deploy_effect"
 node_redeploy_fsm_reducer = "omnimarket.nodes.node_redeploy_fsm_reducer"
 node_redeploy_orchestrator = "omnimarket.nodes.node_redeploy_orchestrator"
@@ -1931,7 +1939,12 @@ override-dependencies = [
     # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
     # Raised in BOTH places.
     "omnibase-core>=0.47.60,<0.48.0",
-    "omnibase-spi>=0.23.3,<0.24.0",
+    # OMN-23518: floor raised 0.23.3 -> 0.23.15, the release whose notes list the lane process
+    # wire models (omnibase_spi CHANGELOG v0.23.15, "Included Since v0.23.14": ProtocolLaneProcessRunner
+    # and lane process wire models) the floor fill orchestrator imports from
+    # omnibase_spi.contracts.services (ModelLaneProcessRunResult, ModelLaneProcessStartResult,
+    # ModelLaneStartSpec); v0.23.14 carries none of the three. Raised in BOTH places.
+    "omnibase-spi>=0.23.15,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the
     # runtime wire the delegation projection binding at all. An override
@@ -2052,9 +2065,9 @@ force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.y
 # the pin means replacing those parts too: delete the old ones, then run
 # `split -b 720000 -d <asset> <asset>.part-` in that directory. A test names the
 # pin and the parts that disagree.
-version = "v1.1.13"
-sha256 = "9171c1815d8145e6b93a395105d07e4d14b5ef80241bf647ed09b86688978cd6"
-asset = "omnidash-bundle-v1.1.13.tar.gz"
+version = "v1.1.14"
+sha256 = "f3718ee217f739ab7a0a00c01d07d887fba1ff01ad3b6663ceb6773e4c2441c5"
+asset = "omnidash-bundle-v1.1.14.tar.gz"
 repository = "OmniNode-ai/omnidash"
 
 [tool.hatch.build]
