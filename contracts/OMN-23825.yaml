@@ -1,0 +1,45 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-23825"
+title: "A participant cannot add a provider key after setup"
+summary: "Phase 1 of the approved spec (records/plans/OMN-23825/spec.md, sha256 a1441069d0ffeff53975fbd3f0f4d4c67e6eff9e7c78e5f3382ec575b4988136). A bare listed provider name under `onex models` exits non-zero with a one-line hint naming `onex models add <provider>`, and `onex models --help` names `onex models add`. AC2 and the setup-completion half of AC3 are Phase 2, waiting on omnimarket#5813 (merged 2026-11-19T01:44:25Z) and are out of this contract."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn23825-bare-provider-hint"
+    statement: "A listed provider name invoked bare under `onex models` exits non-zero and its output names `onex models add <provider>`."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: `onex models <provider>` for every provider in LISTED_PROVIDERS exits non-zero with a one-line hint naming `onex models add <provider>` -- falsifier: `onex models gemini` on dev prints "No such command" with no hint"
+  - id: "req-omn23825-help-names-add"
+    statement: "`onex models --help` names `onex models add`."
+    acceptance:
+      - id: "AC3-help"
+        statement: "AC3 (help half): `onex models --help` contains "onex models add" -- falsifier: neither output contains "onex models add""
+evidence_requirements:
+  - kind: tests
+    description: "The new test file proves AC1 and the help half of AC3 on the branch and fails at dev."
+    command: "uv run pytest tests/unit/cli/test_models_bare_provider_omn23825.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn23825-ac1"
+    description: "AC1: each provider invoked bare yields a non-zero exit and a one-line hint naming `onex models add <provider>`; the test file asserts it."
+    source: manual
+    binds_ac:
+      - "AC1"
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/unit/cli/test_models_bare_provider_omn23825.py -q -p no:randomly"
+        cwd: .
+  - id: "dod-omn23825-ac3-help"
+    description: "AC3 (help half): `onex models --help` contains "onex models add"."
+    source: manual
+    binds_ac:
+      - "AC3-help"
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/unit/cli/test_models_bare_provider_omn23825.py -q -p no:randomly"
+        cwd: .
