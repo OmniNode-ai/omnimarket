@@ -156,6 +156,11 @@ LITERAL_OUTCOMES: dict[str, tuple[str, str]] = {
     "test": (LOCAL_CODER, BEYOND),
     "validator_generation": (LOCAL_CODER, BEYOND),
 }
+ALL_LOCAL_PAIRS = tuple(
+    (backend, task)
+    for backend in (LOCAL_CODER, LOCAL_HEAVY)
+    for task in LITERAL_OUTCOMES
+)
 # A large-window rung outside the local tier that a pin reaches whether or not
 # the class lists it (the unpinned route per class is LITERAL_OUTCOMES).
 PINNED_BEYOND_LOCAL = ("cloud-gemini-2-5-flash", "cheap_cloud")
@@ -204,6 +209,9 @@ def packaged_ladder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator
     path = tmp_path / "bifrost.yaml"
     path.write_text(yaml.safe_dump(data))
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(path))
+    # The packaged ladder names no window (OMN-23631): the code budget overlay
+    # does, for every class each local rung serves, at the coarse input budget.
+    overlay(monkeypatch, tmp_path, INPUT_BUDGET)
     routing._config = None
     routing._get_task_class_contract.cache_clear()
     routing._load_bifrost_endpoints.cache_clear()
@@ -229,13 +237,14 @@ def overlay(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     ceiling: int,
-    pairs: tuple[tuple[str, str], ...] = (("local-heavy-reasoning", "summarization"),),
+    pairs: tuple[tuple[str, str], ...] | None = None,
     narrowed: dict[tuple[str, str], int] | None = None,
 ) -> Path:
     """Load a code budget overlay declaring ``ceiling`` for every pair in ``pairs``.
 
     ``narrowed`` replaces the ceiling of named pairs inside the same file.
     """
+    pairs = pairs if pairs is not None else ALL_LOCAL_PAIRS
     root = tmp_path / "overlays"
     path = root / "node_delegation_code_budget_compute" / "overlay.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -392,7 +401,7 @@ def test_both_local_rungs_fit_the_served_window(model: dict[str, Any]) -> None:
     assert backend["endpoint_url_env"] == SERVED["endpoint_env"]
     assert model["id"] == SERVED_MODEL["id"]
     assert backend["max_tokens"] == OUTPUT_RESERVE
-    assert model["max_context_tokens"] == INPUT_BUDGET
+    assert "max_context_tokens" not in model
     assert RUNG_BOUND + WRAPPER_MAX + backend["max_tokens"] <= SERVED_MAX_MODEL_LEN
 
 

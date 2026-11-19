@@ -16,7 +16,8 @@ from typing import Any
 
 import click
 
-from omnimarket.handlers.handler_model_keys import MODEL_LABELS, model_handler
+from omnimarket.handlers.handler_model_keys import model_handler
+from omnimarket.handlers.model_provider_labels import LABEL_WIDTH, MODEL_LABELS
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelModelSetupRequest,
 )
@@ -41,7 +42,7 @@ def show_ladder(as_json: bool) -> None:
             continue
         note = _UNKNOWN_NOTE if rung.cost_class == "unknown" else ""
         click.echo(
-            f"{rung.position}. {MODEL_LABELS[rung.provider]:<11} {rung.model}  "
+            f"{rung.position}. {MODEL_LABELS[rung.provider]:<{LABEL_WIDTH}} {rung.model}  "
             f"{rung.cost_class}{note}"
         )
 

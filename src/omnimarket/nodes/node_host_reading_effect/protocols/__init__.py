@@ -14,6 +14,12 @@ from omnimarket.models.model_host_capacity_advertisement import (
 )
 from omnimarket.models.model_host_reading import ModelCanaryHost, ModelCanaryRun
 from omnimarket.models.model_join_j1 import ModelGraphRunVerdicts
+from omnimarket.nodes.node_host_table_copies_drift_compute.overlay import (
+    ModelHostTableCopiesDriftOverlay,
+)
+from omnimarket.nodes.node_host_table_copies_drift_compute.protocols import (
+    ProtocolCopySource,
+)
 
 PathKind = Literal["link", "file", "directory", "missing"]
 
@@ -74,6 +80,20 @@ class ProtocolGraphVerdictSource(Protocol):
     def read(self, correlation_id: str) -> ModelGraphRunVerdicts: ...
 
 
+class ProtocolHostTableCopies(Protocol):
+    """The host table copies drift node's own overlay and the source of the copies it names.
+
+    ``overlay`` raises ``NodeOverlayError`` when the drift node's overlay is missing or invalid; the
+    copies, and their paths, are that overlay's and nothing here names one.
+    """
+
+    def overlay(self) -> ModelHostTableCopiesDriftOverlay: ...
+
+    def source(
+        self, overlay: ModelHostTableCopiesDriftOverlay
+    ) -> ProtocolCopySource: ...
+
+
 __all__ = [
     "PathKind",
     "ProtocolAdvertisementSource",
@@ -81,4 +101,5 @@ __all__ = [
     "ProtocolGraphVerdictSource",
     "ProtocolHostFiles",
     "ProtocolHostInventory",
+    "ProtocolHostTableCopies",
 ]

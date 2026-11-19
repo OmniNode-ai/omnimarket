@@ -10,7 +10,7 @@ import inspect
 import random
 import string
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -33,13 +33,17 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
 )
 
-from .test_local_rung_context_ceiling_omn24980 import (  # noqa: F401  (autouse fixture)
+from .test_local_rung_context_ceiling_omn24980 import (
     LOCAL_HEAVY,
     PEER,
     local_choices,
     packaged_ladder,
     with_spread_peer,
 )
+
+# The imported ``packaged_ladder`` is an autouse fixture; naming it here is what
+# makes this module's tests run under it.
+_AUTOUSE_FIXTURES = (packaged_ladder,)
 
 pytestmark = pytest.mark.unit
 
@@ -184,20 +188,22 @@ def test_prompt_required_by_every_selection_function(name: str) -> None:
 
 
 def test_prompt_required_calls_without_it_fail() -> None:
+    untyped_routing: Any = routing
+    untyped_bound_members: Any = input_bound_members
     with pytest.raises(TypeError, match="prompt"):
-        routing.first_eligible_tier("summarization")  # type: ignore[call-arg]
+        untyped_routing.first_eligible_tier("summarization")
     with pytest.raises(TypeError, match="prompt"):
-        routing.next_eligible_tier(  # type: ignore[call-arg]
+        untyped_routing.next_eligible_tier(
             "local", frozenset(), task_type="summarization"
         )
     with pytest.raises(TypeError, match="prompt"):
-        routing.backend_id_for_tier("local", "summarization")  # type: ignore[call-arg]
+        untyped_routing.backend_id_for_tier("local", "summarization")
     with pytest.raises(TypeError, match="prompt"):
-        routing.sibling_backend_available_in_tier(  # type: ignore[call-arg]
+        untyped_routing.sibling_backend_available_in_tier(
             "local", "summarization", frozenset()
         )
     with pytest.raises(TypeError, match="prompt"):
-        input_bound_members("local", [_Member("local-coder")])  # type: ignore[call-arg]
+        untyped_bound_members("local", [_Member("local-coder")])
 
 
 def _calls_without_prompt() -> list[str]:
@@ -433,7 +439,7 @@ def test_none_request_has_one_rule_at_every_routing_site() -> None:
 
     with pytest.raises(ValueError, match="no request"):
         workflow_mod._routing_prompt(
-            SimpleNamespace(request=None, correlation_id="c-1")  # type: ignore[arg-type]
+            cast(Any, SimpleNamespace(request=None, correlation_id="c-1"))
         )
     source = inspect.getsource(workflow_mod)
     assert "workflow.request.prompt if workflow.request" not in source

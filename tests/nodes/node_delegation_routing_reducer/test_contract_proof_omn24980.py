@@ -217,7 +217,7 @@ def test_proof_accepts_an_answer_from_the_changed_rung(tmp_path: Path) -> None:
     assert CHANGED_RUNG in completed.stdout
     local_rungs = next(t for t in PACKAGED_LADDER["tiers"] if t["name"] == "local")
     changed = next(m for m in local_rungs["models"] if m["backend_id"] == CHANGED_RUNG)
-    assert changed["max_context_tokens"] > 8192
+    assert "max_context_tokens" not in changed
     assert payload(control)["metrics"]["input_tokens"] > 8192
 
 

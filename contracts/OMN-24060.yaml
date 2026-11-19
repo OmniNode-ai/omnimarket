@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-24060
+title: An open job-exit episode, a repeating install failure and a fast-growing disk raise again with their age and count
+summary: The silent-failure alarm raised an open job-exit episode once and never again. An open episode past its age limit now raises again each limit period, naming its age and raise count; a repeating install failure raises after a set number of rows in a window and again after its limit; the disk watermark adds a growth rate and pages when the admission floor is within the declared hours. Every limit is an option of the alarm or a field of the host's overlay row.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24060-reraise-old-episodes
+  statement: A failure that repeats is raised again with its age and count, and a healthy interval raises nothing.
+  acceptance:
+  - id: AC1
+    statement: "AC1: an open job-exit episode past its age limit raises again, naming its age and how many times it was raised, with the limit read from the alarm's options. -- falsifier: uv run pytest tests/nodes/node_silent_failure_alarm_compute/test_job_exit_reraise_omn21663.py -k job_exit_open_episode"
+  - id: AC2
+    statement: "AC2: a repeating install failure raises after the configured number of rows and again after its limit; a disk reading adds a growth rate and pages when the floor is within the declared hours. -- falsifier: uv run pytest tests/nodes/node_silent_failure_alarm_compute/test_install_failure_reraise_omn21663.py tests/nodes/node_lab_disk_watermark_effect/test_disk_growth_rate_omn21663.py"
+  - id: AC3
+    statement: "AC3: a healthy job interval raises no job-exit row and no re-raise. -- falsifier: uv run pytest tests/nodes/node_silent_failure_alarm_compute -k job_exit_no_false_alarm"
+  - id: AC4
+    statement: "AC4: integrated: in the running alarm tick on a lab host at the merged revision, an old open episode produces one re-raise line in the tick summary with reraised=1. -- falsifier: read the alarm tick's summary line on the host for reraised="
+evidence_requirements:
+- kind: tests
+  description: The focused tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_silent_failure_alarm_compute tests/nodes/node_silent_failure_alarm_effect tests/nodes/node_lab_disk_watermark_effect -q -n 0 --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24060-ac1
+  description: 'AC1: the re-raise test is added by this change; with the limit set to 0 (the injected break) it sees no re-raise.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_silent_failure_alarm_compute/test_job_exit_reraise_omn21663.py tests/nodes/node_silent_failure_alarm_effect/test_job_exit_reraise_omn21663.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24060-ac2
+  description: 'AC2: the install failure decision and the disk growth reading.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_silent_failure_alarm_compute/test_install_failure_reraise_omn21663.py tests/nodes/node_silent_failure_alarm_effect/test_install_failure_reraise_omn21663.py tests/nodes/node_lab_disk_watermark_effect/test_disk_growth_rate_omn21663.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24060-ac3
+  description: 'AC3: a healthy interval over 59 ticks raises nothing.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_silent_failure_alarm_compute -q -n 0 --no-cov -p no:randomly -k job_exit_no_false_alarm
+    cwd: .
+- id: dod-omn24060-ac4
+  description: 'hosted proxy for AC4: the effect tick test that reads reraised= in the summary passes here; the running-tick reading on a lab host is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_silent_failure_alarm_effect/test_job_exit_reraise_omn21663.py -q -n 0 --no-cov -p no:randomly -k old_open_episode
+    cwd: .
+- id: dod-omn24060-integration-proof
+  description: the focused tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-omn24060 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute tests/nodes/node_silent_failure_alarm_effect tests/nodes/node_lab_disk_watermark_effect -q --no-cov -n 0 -p no:randomly

@@ -29,6 +29,7 @@ import time
 from collections.abc import Callable, Mapping, MutableMapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, ClassVar, Final, Literal, cast
 from urllib.parse import urlparse
@@ -137,6 +138,7 @@ from omnimarket.handlers.routing.backend_placement import (
 )
 from omnimarket.handlers.routing.byok_provider_backends import (
     byok_backend_max_retries,
+    byok_declared_price_per_1m,
     resolve_byok_backend_by_id,
 )
 from omnimarket.handlers.routing.customer_key_terminus import (
@@ -200,6 +202,9 @@ from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestRunRequest,
     ModelNamedTestRunResult,
     ModelNamedTestSpec,
+)
+from omnimarket.models.model_tenant_routing_overlay_backend import (
+    TENANT_OVERLAY_TIER_NAME,
 )
 from omnimarket.models.routing.model_escalation_decision_request import (
     ModelEscalationDecisionRequest,
@@ -280,7 +285,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     NO_HIGHER_TIER_REASON_TOKEN,
-    TENANT_OVERLAY_TIER_NAME,
     describe_no_higher_tier_available,
     is_free_tier,
     lead_backend_refs,
@@ -5505,11 +5509,23 @@ class HandlerDelegationWorkflow:
         not double-counted. Returns the measured metered cost for the caller to
         bank when it knows the attempt is non-terminal.
         """
+        # OMN-25411: price the attempt at its OWN endpoint: the decision it names by
+        # routing_decision_id. A different (re-issued) decision prices nothing.
+        own_route = workflow.routing_decision
+        own_endpoint = (
+            own_route.endpoint_url
+            if own_route is not None
+            and attempt.routing_decision_id is not None
+            and attempt.routing_decision_id == own_route.selected_backend_id
+            else None
+        )
         measurement = self._measure_terminal_cost(
             tier_name=attempt.tier_name,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             premium_counterfactual=None,
+            endpoint_url=own_endpoint,
+            model_id=attempt.model_used,
         )
         priced_attempt = attempt.model_copy(
             update={
@@ -5557,6 +5573,8 @@ class HandlerDelegationWorkflow:
         prompt_tokens: int,
         completion_tokens: int,
         premium_counterfactual: ModelPremiumCounterfactual | None,
+        endpoint_url: str | None,
+        model_id: str,
     ) -> ModelActualCostMeasurement:
         """Measure a terminal event's actual cost from the typed tier cost model.
 
@@ -5573,12 +5591,51 @@ class HandlerDelegationWorkflow:
         canonical routing registry, priced against the measured token counts —
         ``free_local`` → 0.0, ``metered`` → ``rate_per_1k_usd * tokens / 1000``.
         No parallel formula, no hardcoded 0.0.
+
+        OMN-24874: ``tenant_overlay`` (own key, no registry cost model) is priced from the
+        declared per-1M price, booked ``metered``; any other case keeps the measurement.
         """
-        return recompute_actual_cost_and_savings(
+        measurement = recompute_actual_cost_and_savings(
             tier_name=tier_name,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             premium_counterfactual=premium_counterfactual,
+        )
+        if (
+            tier_name != TENANT_OVERLAY_TIER_NAME
+            or measurement.cost_measurement_source != "no_cost_model"
+        ):
+            return measurement
+        declared = byok_declared_price_per_1m(endpoint_url, model_id)
+        if declared is None:
+            return measurement
+        price_in, price_out = declared
+        cash = round(
+            float(
+                (
+                    Decimal(prompt_tokens) * price_in
+                    + Decimal(completion_tokens) * price_out
+                )
+                / Decimal(1_000_000)
+            ),
+            10,
+        )
+        if cash <= 0:  # no declared price, or no tokens served: the measurement stands
+            return measurement
+        savings = (
+            0.0
+            if premium_counterfactual is None
+            else float(
+                premium_counterfactual.counterfactual_cost_usd - Decimal(str(cash))
+            )
+        )
+        return measurement.model_copy(
+            update={
+                "cash_cost_usd": cash,
+                "cost_savings_usd": savings,
+                "cost_tier_type": "metered",
+                "cost_measurement_source": "metered",
+            }
         )
 
     @staticmethod
@@ -5730,6 +5787,8 @@ class HandlerDelegationWorkflow:
             prompt_tokens=inputs.prompt_tokens,
             completion_tokens=inputs.completion_tokens,
             premium_counterfactual=inputs.premium_counterfactual,
+            endpoint_url=inputs.endpoint_url,
+            model_id=inputs.model_used,
         )
 
         # OMN-13535: total metered spend = the FINAL tier's measured cost PLUS the

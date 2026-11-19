@@ -50,7 +50,7 @@ tiers:
     # Input bound per member (not declared here): the endpoint meters real
     # tokens, not the characters-over-four estimate (digit-named generated code
     # meters 2.0 characters per token, digits and floats 1.0), so a prompt inside
-    # max_context_tokens can still fill the window. The router drops a member
+    # the overlay input ceiling can still fill the window. The router drops a member
     # whose bound is below the prompt's token upper bound
     # (omnimarket.handlers.routing.input_token_bound, LOCAL_MEMBER_INPUT_BOUNDS):
     # local-coder and local-heavy-reasoning read a 131072-token window with
@@ -74,12 +74,9 @@ tiers:
       # header comment) — a mismatch here would strand routing.
       - id: Qwen3.8-27B
         backend_id: local-coder
-        # Coarse input budget in the handler's characters-over-four estimate.
-        # It is not the window guard: real text meters 1.0 to 6.3 characters
-        # per token, so the guard is the per-member input bound (see the tier comment above). The readings are in
-        # tests/nodes/node_delegation_routing_reducer/fixtures/metered_token_readings.json.
-        # Keep this bound even when no input-ceiling overlay is loaded.
-        max_context_tokens: 35000
+        # OMN-23631: no packaged window. The rung's input window is the largest ceiling the code budget overlay names for
+        # this backend (delegation.code_budget.input_ceilings.local-coder.*), read when this file is parsed; an overlay that
+        # names none is a typed refusal naming that key.
         # OMN-13599 (SUPERSEDED by OMN-16442 for `test`): local-coder was the
         # CODE backend only; `test` and `research` were removed here so the
         # code-only fast_path_threshold did not bleed local-coder into task
@@ -112,10 +109,8 @@ tiers:
           # OMN-16442: restored — see the block comment above.
           - test
         # OMN-13599: AI-PC local-coder is the preferred local code backend when
-        # its Tailscale hostname overlay is present. Without a threshold, the
-        # fast-path selector can prefer later local models that also declare
-        # code_generation.
-        fast_path_threshold_tokens: 65536
+        # its Tailscale hostname overlay is present. OMN-23631: the packaged
+        # fast-path threshold is gone; the overlay's per-class ceiling is the one input limit.
       # OMN-16442: the `local-reasoner` rung (id Qwen3.6-27B-MTP-IQ4_XS.gguf,
       # .201:8001) was DELETED here. That endpoint is the RTX 4090 slot
       # physically removed from .201 for RMA (OMN-16407); re-probed 2026-08-28
@@ -144,10 +139,7 @@ tiers:
       # across both rungs.
       - id: Qwen3.8-27B
         backend_id: local-heavy-reasoning
-        # Same endpoint, window and output reserve as local-coder above, so the
-        # same coarse budget and the same per-member input bound.
-        # Overlay ceilings may narrow individual classes further.
-        max_context_tokens: 35000
+        # OMN-23631: no packaged window; see the local-coder rung above (key ...input_ceilings.local-heavy-reasoning.*).
         use_for:
           - research
           - reasoning
@@ -165,12 +157,9 @@ tiers:
           # taxonomy, so serving escalation's declared ``reasoning`` capability
           # is not a new claim. escalation's other declared capability,
           # ``context_window_large``, stays mechanically honoured rather than
-          # asserted: ``max_context_tokens`` (35000 here) excludes this model
-          # from selection for any prompt that does not fit. Measured at this
-          # budget: an unpinned escalation prompt above it is refused, because
-          # the one rung beyond the local tier that lists escalation (and
-          # research), cloud-gemini-2-5-flash, is explicit_pin_only; a pin to
-          # it reaches it.
+          # asserted: the overlay's input ceiling excludes this model
+          # from selection for any prompt that does not fit, which escalates to
+          # the large-window rungs below / the ceiling instead.
           - escalation
           # OMN-17427: evidence_comment, the internal class that drafts
           # done-evidence comments from a lane report. Local only (its
@@ -210,7 +199,6 @@ tiers:
           - tail_summary
           - context_selection
           - context_compaction
-        fast_path_threshold_tokens: 8192
     eval_before_accept: true
     eval_model: null
     max_retries: 2

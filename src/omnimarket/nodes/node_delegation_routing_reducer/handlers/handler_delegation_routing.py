@@ -45,7 +45,6 @@ from __future__ import annotations
 import importlib
 import importlib.resources
 import logging
-import re
 from functools import lru_cache
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
@@ -109,6 +108,7 @@ from omnimarket.handlers.routing.paid_rungs import (
     paid_rung_gate_reason,
     with_registered_byok_tier,
 )
+from omnimarket.handlers.routing.prompt_waiver import prompt_waived_rules
 from omnimarket.handlers.routing.routing_tiers_path import (
     load_delegation_routing_overlay,
     resolve_routing_tiers_path,
@@ -1596,53 +1596,6 @@ def _class_declares_heuristic_for_shape(
     return isinstance(for_shape, dict) and isinstance(for_shape.get("heuristic"), list)
 
 
-def _prompt_waived_rules(
-    contract: dict[str, object] | None,
-    heuristic: tuple[str, ...],
-    prompt: str,
-) -> tuple[str, ...]:
-    """Heuristic rules whose own declaration says this prompt's layout waives them.
-
-    OMN-19432. A rule declares ``waived_when_prompt_matches`` (and, OMN-20844,
-    ``waived_unless_prompt_matches``: the input it needs) under
-    ``quality_rules`` in the SAME contract this resolver reads the DoD from, so
-    what the model is told and what the gate enforces stay one list. Returns the
-    waived names in band order. A rule the contract does not declare, or a
-    malformed declaration, waives nothing: an unreadable waiver must never
-    silently drop a veto (the fail-closed default of ``resolve_quality_rule``).
-    """
-    if not isinstance(contract, dict):
-        return ()
-    rules = contract.get("quality_rules")
-    if not isinstance(rules, dict):
-        return ()
-    waived: list[str] = []
-    for name in heuristic:
-        rule = rules.get(name)
-        if not isinstance(rule, dict):
-            continue
-        patterns = rule.get("waived_when_prompt_matches")
-        if isinstance(patterns, list) and any(
-            isinstance(pattern, str) and re.search(pattern, prompt, re.IGNORECASE)
-            for pattern in patterns
-        ):
-            waived.append(name)
-            continue
-        # OMN-20844: the input the rule judges. A rule that declares what its
-        # input looks like applies only to a prompt carrying some; a malformed
-        # declaration (no readable pattern) leaves the rule in force.
-        needed = rule.get("waived_unless_prompt_matches")
-        if not isinstance(needed, list):
-            continue
-        input_patterns = [pattern for pattern in needed if isinstance(pattern, str)]
-        if input_patterns and not any(
-            re.search(pattern, prompt, re.IGNORECASE | re.MULTILINE)
-            for pattern in input_patterns
-        ):
-            waived.append(name)
-    return tuple(waived)
-
-
 def resolve_task_class_dod_resolution(
     task_type: str,
     prompt: str | None = None,
@@ -1694,7 +1647,7 @@ def resolve_task_class_dod_resolution(
     # OMN-19432: a rule the prompt's own layout contradicts leaves the HEURISTIC
     # band, applied last so it holds whichever band (class, class shape override,
     # contract default) supplied the rule. The deterministic floor is untouched.
-    waived_rules = _prompt_waived_rules(contract, dod_heuristic, prompt)
+    waived_rules = prompt_waived_rules(contract, dod_heuristic, prompt)
     if waived_rules:
         dod_heuristic = tuple(
             name for name in dod_heuristic if name not in waived_rules
@@ -2172,7 +2125,7 @@ def resolve_backend_grounding_budget(
     for backend in config.backends:
         if backend.backend_id == backend_id:
             if task_type is not None:
-                class_budget = grounded_input_budget(backend_id, task_type)
+                class_budget = grounded_input_budget(backend_id, task_type, backend)
                 if class_budget is not None:
                     return class_budget
             return backend.max_grounded_input_tokens
