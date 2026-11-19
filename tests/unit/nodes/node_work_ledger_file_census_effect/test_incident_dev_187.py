@@ -1,0 +1,116 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Regression for the census incident at origin/dev 3c2a974be5: 187 files against a ratchet of 186.
+
+``fixtures/incident_census_187.txt`` is the census output recorded on origin/dev at 3c2a974be5 (``--verbose``): the
+summary line and every counted hit of the 187 counted files. Against the census at the merge of the ratchet
+(186 files, bf4163f91a) four files were added and three were dropped, which took the count to 187 and made the
+ledger-file-census hook refuse every omnimarket commit:
+
+* ``contracts/OMN-24829.yaml``: a done-gate check that read the ledger file by its path variable.
+* ``contracts/OMN-25860.yaml``: an acceptance-criterion falsifier that named the path variable.
+* ``tests/nodes/node_factory_floor_publish_effect/test_factory_floor_cold_archive_reads.py``: a fixture that named
+  the ledger file.
+* ``src/omnimarket/nodes/node_review_key_credit_probe_effect/handlers/handler_review_key_credit_probe.py``: a writer
+  whose click option reads the path variable. It is not moved here: it is a writer the reader node does not serve,
+  and moving it changes the environment of the deployed unit, which lives outside this repository.
+
+The recorded output is the input of these tests; the live files are classified by the census's own classifier, so
+the tests fail on origin/dev and pass once the three moved files hold no executable reader or writer.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+import yaml
+
+from omnimarket.handlers.emission_sink import InMemoryEmissionSink
+from omnimarket.nodes.node_work_ledger_file_census_effect.adapters import (
+    GitRepositorySource,
+    YamlRatchetStore,
+)
+from omnimarket.nodes.node_work_ledger_file_census_effect.handlers import (
+    HandlerFileCensus,
+)
+from omnimarket.nodes.node_work_ledger_file_census_effect.handlers.classify import (
+    executable_hits,
+)
+from omnimarket.nodes.node_work_ledger_file_census_effect.models import (
+    ModelCensusOverlay,
+    ModelCensusRequest,
+)
+
+pytestmark = pytest.mark.unit
+
+ROOT = Path(__file__).resolve().parents[4]
+PACKAGE = ROOT / "src/omnimarket/nodes/node_work_ledger_file_census_effect"
+RECORDED = Path(__file__).with_name("fixtures") / "incident_census_187.txt"
+SUMMARY = re.compile(
+    r"^CENSUS omnimarket counted state=(?P<state>\w+) files=(?P<files>\d+) "
+    r"readers=\d+ writers=\d+ ratchet=(?P<ratchet>\d+)$"
+)
+HIT = re.compile(r"^  (?P<kind>reader|writer) (?P<path>\S+):(?P<line>\d+)$")
+
+#: The files of the recorded list that this change moves off the ledger file's name or path variable.
+MOVED = (
+    "contracts/OMN-24829.yaml",
+    "contracts/OMN-25860.yaml",
+    "tests/nodes/node_factory_floor_publish_effect/test_factory_floor_cold_archive_reads.py",
+)
+
+
+def _recorded() -> tuple[re.Match[str], tuple[str, ...]]:
+    lines = RECORDED.read_text(encoding="utf-8").splitlines()
+    summary = SUMMARY.match(lines[0])
+    assert summary is not None
+    paths = tuple(sorted({m["path"] for line in lines if (m := HIT.match(line))}))
+    return summary, paths
+
+
+def _overlay() -> ModelCensusOverlay:
+    data = yaml.safe_load((PACKAGE / "overlay.example.yaml").read_text())
+    return ModelCensusOverlay.model_validate(data)
+
+
+def test_recorded_dev_is_over_the_ratchet() -> None:
+    summary, paths = _recorded()
+    assert summary["state"] == "grew"
+    assert int(summary["files"]) == len(paths) == 187
+    assert int(summary["files"]) > int(summary["ratchet"]) == 186
+
+
+@pytest.mark.parametrize("path", MOVED)
+def test_moved_file_is_on_the_recorded_dev_list(path: str) -> None:
+    assert path in _recorded()[1]
+
+
+@pytest.mark.parametrize("path", MOVED)
+def test_moved_file_holds_no_executable_ledger_file_read(path: str) -> None:
+    """Reject a recorded file while it still has an executable reader or writer."""
+    text = (ROOT / path).read_text(encoding="utf-8")
+    hits = executable_hits(path, text, _overlay())
+    assert hits == (), [f"{h.kind.value} {h.path}:{h.line}" for h in hits]
+
+
+def test_live_census_is_within_the_ratchet_and_drops_the_moved_files() -> None:
+    overlay = _overlay()
+    result = HandlerFileCensus(
+        overlay,
+        GitRepositorySource(ROOT, overlay.max_file_bytes, {"omnimarket": "."}),
+        YamlRatchetStore(ROOT / overlay.ratchet_file),
+        InMemoryEmissionSink(),
+    ).handle(
+        ModelCensusRequest(
+            correlation_id="incident-dev-187",
+            repositories=("omnimarket",),
+        )
+    )
+
+    assert result.passed, (result.failure_code, result.failure_detail)
+    (count,) = result.counts
+    assert count.files <= 186
+    remaining = sorted(set(MOVED).intersection(hit.path for hit in count.hits))
+    assert not remaining, f"Moved files still contribute to the census: {remaining}"

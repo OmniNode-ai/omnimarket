@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-26055
+title: omnimarket dev passes the ledger-file-census hook at its ratchet of 186 once the readers that pushed it over read the ledger from the bus
+summary: >-
+  The census counted 187 files at origin/dev 3c2a974be5 against a ratchet of 186.
+  Against the census at the merge of the ratchet (bf4163f91a, 186 files) four files
+  were added (contracts/OMN-24829.yaml, contracts/OMN-25860.yaml, the review key credit
+  probe handler and a factory floor cold archive test) and three were dropped. This branch
+  moves three of the four off the ledger file's name and path variable: two contract checks
+  and falsifiers now read through the ledger query node, and the floor test names its own
+  fixture file. The credit probe handler is a writer the reader node does not serve and is
+  named, not moved. The ratchet file and the hook are byte-identical to dev.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26055-census-back-at-ratchet
+  statement: The census counts 186 files or fewer on omnimarket dev and the files that took it past the ratchet no longer hold an executable read or write of the ledger file.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the census run `env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=.` exits 0 and counts 186 files or fewer on omnimarket dev after the fix merges -- falsifier: the same command on a clean checkout of origin/dev exits nonzero or prints a count above 186'
+  - id: AC2
+    statement: 'AC2: a test built from the recorded census file list of origin/dev 3c2a974be5 (fixture path in the pull request) fails on the broken code and passes on the fix -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect -q exits nonzero at the fix head'
+  - id: AC3
+    statement: 'AC3: the ratchet value in `src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml` is not raised and no hook, check or baseline is widened by the fix -- falsifier: git diff origin/dev -- src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml .pre-commit-config.yaml shows a higher count or a removed hook line'
+evidence_requirements:
+- kind: tests
+  description: The incident regression test built from the recorded census output of origin/dev 3c2a974be5 and the census node tests pass at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26055-ac1
+  description: AC1 the census run of the hook's own entry exits 0 and the live census test counts 186 files or fewer on the branch, where origin/dev counts 187.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=.
+    cwd: .
+- id: dod-omn26055-ac2
+  description: AC2 the regression test built from the recorded census output of origin/dev 3c2a974be5 (tests/unit/nodes/node_work_ledger_file_census_effect/fixtures/incident_census_187.txt) fails while a moved file holds an executable read of the ledger file (origin/dev) and passes on the branch.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn26055-ac3
+  description: AC3 the ratchet file and the hook entry are byte-identical to origin/dev.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: git diff --exit-code origin/dev -- src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml .pre-commit-config.yaml
+    cwd: .
