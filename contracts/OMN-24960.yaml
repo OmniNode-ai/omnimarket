@@ -1,0 +1,89 @@
+schema_version: 1.0.0
+ticket_id: OMN-24960
+title: 'Review findings 1 to 9 on omnimarket PR 5737 at head d5d2dcef740e are fixed or argued: the evidence commands exit 0, the pypi-pin-resolvability red is answered with the published pin read, and the Lab comment carries the full head'
+summary: 'This change answers the second review of omnimarket pull request 5737. The spi floor test parses entries with packaging.requirements and matches on the name, matches the lock source up to the commit separator, moves the installed-version comparison into a helper with a monkeypatched test that expects it to fail, compares a published pin to the floor range with packaging, and reads the newest Lab comment for the full 40-character head. contracts/OMN-24829.yaml drops the floors_agree test and carries one ledger check per named cause of red; contracts/OMN-24911.yaml binds each criterion to a check that can fail for it; the first-release claim cites the omnibase_spi v0.23.15 release notes. The CI state, the lock check and the lab runs at the head are reported in a pull request comment. No check, ratchet or workflow file is touched.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn24960-pr5737-review-round-two
+    statement: The second-round review findings on omnimarket pull request 5737 are each fixed in the pull request or argued with evidence in a pull request comment.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the evidence commands of contracts/OMN-24911.yaml and contracts/OMN-24829.yaml exit 0 at the new head, AC3 of OMN-24829 is bound to a check that reads the STATUS rows, and floors_agree is dropped from contracts/OMN-24829.yaml -- falsifier: `grep -c floors_agree contracts/OMN-24829.yaml` prints a number above 0 at the new head, or any evidence command of contracts/OMN-24911.yaml exits non-zero when run from the repository root with uv run'
+      - id: AC2
+        statement: 'AC2: the pypi-pin-resolvability red is read at the new head and either cleared by published upstream releases (omnibase-spi 0.23.15 read as published on PyPI and the infra pin that admits it read as published) or answered by a PR comment that quotes the dev tip 6efbe3ee result of the check, says whether the check is required and names the owner, and AC3 of contracts/OMN-24829.yaml is reworded to match -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#5737` lists pypi-pin-resolvability as not success at the new head and no PR comment carries the published-pin read'
+      - id: AC3
+        statement: 'AC3: every acceptance criterion of contracts/OMN-24911.yaml is bound to a check that can fail for that criterion, the pin check compares the published pin to the floor with packaging.requirements and packaging.version.Version, and a test is red against a pin that equals the floor -- falsifier: `uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q` passes with the published pin patched to ==0.23.15'
+      - id: AC4
+        statement: 'AC4: the PR carries the output of `uv lock --check` (exit 0) and of the floor test at the new head, and a check in the contract reads the PR''s Lab comment and fails unless its sha is the full 40-character head -- falsifier: the new Lab check exits 0 against a comment that carries a 12-character sha, run with `uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q`'
+      - id: AC5
+        statement: 'AC5: `_spi_entries` in tests/ci/test_omn23518_spi_lock_floor.py parses with packaging.requirements.Requirement and matches on the name, so a second entry written as ==, ~=, [extra]>= or @ git+ fails the one-entry-each test, and the lock source match uses startswith(locked_source + "#") -- falsifier: `uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q` passes with an added `omnibase-spi==0.23.7` entry or a longer tag in the lock source'
+      - id: AC6
+        statement: 'AC6: the AC4 falsifier of the spi lock test is exercised: the version comparison is a helper and a monkeypatched test expects it to fail when the installed version differs, the claim of the first release that carries the lane process types cites the spi release notes or is reworded in pyproject.toml and contracts/OMN-23518.yaml, and the ledger commands of contracts/OMN-24829.yaml are exercised against an empty ledger -- falsifier: `uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q` passes with the helper left to accept a differing installed version'
+evidence_requirements:
+  - kind: tests
+    description: The omnibase-spi floor tests pass at the head.
+    command: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn24960-ac1-contracts-bound
+    description: AC1. contracts/OMN-24829.yaml AC3 is bound to the check that runs its ledger commands against an empty and a matching ledger, and no check bound to AC3 is a floors check.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/contracts/test_omn24829_contract_evidence.py -q --no-cov -n 0 -p no:randomly -k "ledger_status or ac3_bound"
+        cwd: .
+  - id: dod-omn24960-ac2-published-pin-answered
+    description: AC2. The published pin comparison is exercised by the tests; whether the published omnibase-infra pin admits the floor is read by the local_done_gate items of contracts/OMN-24911.yaml and contracts/OMN-24829.yaml.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k published_pin
+        cwd: .
+  - id: dod-omn24960-ac3-pin-compared-with-packaging
+    description: 'AC3. The published pin is compared with the floor range through packaging.requirements and packaging.version.Version, and the test is red for a pin that equals the floor.'
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k published_pin
+        cwd: .
+  - id: dod-omn24960-ac4-lab-comment-check
+    description: 'AC4. The Lab comment parser fails for a comment that carries a 12-character sha. The read of the pull request''s comments is dod-omn24829-ac2-lab-comment-full-head, scoped local_done_gate. The lock check and the floor test run at the head are reported in the pull request comment, not in a contract.'
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k lab_comment
+        cwd: .
+  - id: dod-omn24960-ac5-entries-and-lock-source
+    description: 'AC5. A second omnibase-spi entry in any spelling fails the one-entry-each test, and a longer tag fails the lock source match.'
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k "spi_entries or lock_source"
+        cwd: .
+  - id: dod-omn24960-ac6-installed-helper-and-notes
+    description: AC6. The monkeypatched test expects the installed-version helper to fail for a differing version, and the first-release claim cites the omnibase_spi release notes in pyproject.toml and contracts/OMN-23518.yaml.
+    source: manual
+    binds_ac:
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k installed_version
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/contracts/test_omn24829_contract_evidence.py -q --no-cov -n 0 -p no:randomly -k omn23518_contract
+        cwd: .

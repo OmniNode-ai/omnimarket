@@ -64,7 +64,7 @@ async def read_gateway(
         )
     if not result.text:
         return ModelJobLogProbeReading(verdict="gateway_failed", reason="empty_log")
-    return ModelJobLogProbeReading(verdict="log_returned", reason="log_body")
+    return ModelJobLogProbeReading(verdict="WORKING", reason="log_body")
 
 
 @asynccontextmanager

@@ -151,8 +151,10 @@ class HandlerJobLogProbe:
             )
         latency_ms = round((monotonic() - started) * 1000)
 
-        previous_streak = state.no_terminal_streak if state.target == target else 0
-        streak = min(2, previous_streak + 1) if reading.verdict == "no_terminal" else 0
+        # Any reading but a returned log body is a failed read: a missing job answers
+        # gateway_failed, a silent consumer answers no_terminal.
+        previous_streak = state.failed_streak if state.target == target else 0
+        streak = min(2, previous_streak + 1) if reading.verdict != "WORKING" else 0
         rows = _ledger_request(
             settings,
             gateway_request,
@@ -165,7 +167,7 @@ class HandlerJobLogProbe:
             last_scheduled_at=request.scheduled_at,
             last_read_at=now,
             target=target,
-            no_terminal_streak=streak,
+            failed_streak=streak,
             pending=rows,
         )
         _save_state(path, state)
@@ -179,7 +181,7 @@ class HandlerJobLogProbe:
         return self._event(
             request,
             settings,
-            "completed" if reading.verdict == "log_returned" else "failed",
+            "completed" if reading.verdict == "WORKING" else "failed",
             f"{reading.verdict} reason={reading.reason} latency_ms={latency_ms}",
         )
 
@@ -219,21 +221,26 @@ def _ledger_request(
     raise_alarm: bool,
 ) -> ModelWorkLedgerAppendRequest:
     stamp = observed.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    actor = f"lane={_LANE} | actor=node:{NODE_NAME}"
-    route = f"consumer_host={settings.consumer_host} | owner={settings.owner_lane}"
+    actor = f"lane={_LANE} | actor=node:{NODE_NAME} | model=none"
+    drill = " | drill=yes" if settings.drill else ""
     target = f"repo={request.repo} | job_id={request.job_id}"
     reading_cells = (
         f"verdict={reading.verdict} | latency_ms={latency_ms} | reason={reading.reason}"
     )
     rows = (
-        f"{stamp} | STATUS | {actor} | ticket={_TICKET} | {route} | {target}"
-        f" | correlation_id={request.correlation_id} | {reading_cells} | Scheduled job-log read.\n"
+        f"{stamp} | STATUS | {actor} | src=job-log-probe | ticket={_TICKET}"
+        f" | consumer_host={settings.consumer_host} | owner={settings.owner_lane} | {target}"
+        f" | correlation_id={request.correlation_id} | {reading_cells}{drill}"
+        " | Scheduled job-log read.\n"
     )
     if raise_alarm:
         rows += (
-            f"{stamp} | FRICTION | {actor} | existing={_TICKET} | {route} | {target}"
-            f" | correlation_id={request.correlation_id} | cost=~0 lane-minutes at raise"
-            " | Two consecutive scheduled job-log reads returned no_terminal.\n"
+            f"{stamp} | STATUS | {actor} | src=alarm | alarm=job-log-reader-failed"
+            f" | ticket={_TICKET} | host={settings.consumer_host}"
+            f" | owner={settings.owner_lane} | {target}"
+            f" | correlation_id={request.correlation_id} | verdict={reading.verdict}"
+            f" | reason={reading.reason}{drill}"
+            " | Two consecutive scheduled job-log reads did not return a log body.\n"
         )
     return ModelWorkLedgerAppendRequest(
         request_id=request.correlation_id,

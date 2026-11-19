@@ -22,7 +22,10 @@ from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.delegated_test_loop.lab_run_bus import event_type_for
-from omnimarket.handlers.ledger_row_grammar import refusal_for_payload
+from omnimarket.handlers.ledger_row_grammar import (
+    GOVERNED_LEDGER_NAMES,
+    refusal_for_payload,
+)
 from omnimarket.handlers.scm.handler_scm_dispatch import load_topics
 from omnimarket.models.model_github_gateway_io import (
     ModelGithubGatewayRequest,
@@ -46,6 +49,7 @@ from omnimarket.nodes.node_github_job_log_probe_effect.runtime_adapters import (
     read_gateway,
 )
 
+_GOVERNED = sorted(GOVERNED_LEDGER_NAMES)[0]
 _START = datetime(2026, 11, 19, 1, tzinfo=UTC)
 _SETTINGS = ModelJobLogProbeSettings(
     job_id="github_job_log_probe",
@@ -135,20 +139,20 @@ async def test_no_terminal_writes_one_status_reading(tmp_path: Path) -> None:
     assert " | STATUS | " in ledger.rows[0]
     assert " | verdict=no_terminal | " in ledger.rows[0]
     assert " | latency_ms=" in ledger.rows[0]
-    assert refusal_for_payload(ledger.rows[0], "ROLLING_WORK_LEDGER.md") is None
+    assert refusal_for_payload(ledger.rows[0], _GOVERNED) is None
 
 
 @pytest.mark.asyncio
-async def test_two_no_terminals_raise_one_owned_alarm_and_reset_on_reply(
+async def test_two_failed_reads_raise_one_owned_alarm_and_reset_on_reply(
     tmp_path: Path,
 ) -> None:
     replies = iter(
         [
             "no_terminal",
-            "no_terminal",
-            "no_terminal",
             "gateway_failed",
             "no_terminal",
+            "WORKING",
+            "gateway_failed",
             "no_terminal",
         ]
     )
@@ -180,12 +184,54 @@ async def test_two_no_terminals_raise_one_owned_alarm_and_reset_on_reply(
         1,
         2,
     ]
-    alarms = [row for row in ledger.rows if " | FRICTION | " in row]
+    alarms = [row for row in ledger.rows if " | src=alarm | " in row]
     assert len(alarms) == 2
     for alarm in alarms:
-        assert " | consumer_host=h201 | " in alarm
+        assert " | STATUS | " in alarm
+        assert " | alarm=job-log-reader-failed | " in alarm
+        assert " | host=h201 | " in alarm
         assert " | owner=probe-owner | " in alarm
-        assert refusal_for_payload(alarm, "ROLLING_WORK_LEDGER.md") is None
+        assert " | drill=yes" not in alarm
+        assert refusal_for_payload(alarm, _GOVERNED) is None
+    for row in ledger.rows:
+        assert refusal_for_payload(row, _GOVERNED) is None
+
+
+@pytest.mark.asyncio
+async def test_drill_on_a_missing_job_writes_two_readings_and_one_alarm_marked_drill(
+    tmp_path: Path,
+) -> None:
+    """A job id that does not exist answers a failed terminal each run; the second raises the alarm."""
+    settings = _SETTINGS.model_copy(update={"drill": True, "finished_job_id": 1})
+    ledger = Ledger()
+
+    async def read(request: ModelGithubGatewayRequest) -> ModelJobLogProbeReading:
+        assert request.job_id == 1
+        return ModelJobLogProbeReading(
+            verdict="gateway_failed", reason="failed_terminal"
+        )
+
+    for index in range(2):
+        now = tick(index)
+        handler = HandlerJobLogProbe(
+            settings=settings,
+            runtime_lane="test-dev",
+            state_path=tmp_path / "probe.json",
+            read=read,
+            append=ledger,
+            clock=_clock_at(now.now),
+        )
+        await handler.handle(now)
+
+    readings = [row for row in ledger.rows if " | src=job-log-probe | " in row]
+    alarms = [row for row in ledger.rows if " | src=alarm | " in row]
+    assert len(readings) == 2
+    assert len(alarms) == 1
+    for row in (*readings, *alarms):
+        assert " | drill=yes" in row
+        assert " | verdict=gateway_failed" in row
+        assert refusal_for_payload(row, _GOVERNED) is None
+    assert " | owner=probe-owner | " in alarms[0]
 
 
 @pytest.mark.asyncio
@@ -251,10 +297,10 @@ async def test_probe_records_a_timed_job_log_return_after_an_owned_alarm(
     first, second, alarm, recovery = ledger.rows
     assert " | verdict=no_terminal | " in first
     assert " | verdict=no_terminal | " in second
-    assert " | FRICTION | " in alarm
+    assert " | src=alarm | " in alarm
     assert f" | owner={settings.owner_lane} | " in alarm
     assert " | STATUS | " in recovery
-    assert " | verdict=log_returned | " in recovery
+    assert " | verdict=WORKING | " in recovery
     fields = dict(
         cell.split("=", maxsplit=1) for cell in recovery.split(" | ") if "=" in cell
     )
@@ -271,7 +317,7 @@ async def test_pending_append_replays_identical_request_without_another_read(
 
     async def read(request: ModelGithubGatewayRequest) -> ModelJobLogProbeReading:
         reads.append(request)
-        return ModelJobLogProbeReading(verdict="log_returned", reason="log_body")
+        return ModelJobLogProbeReading(verdict="WORKING", reason="log_body")
 
     def handler() -> HandlerJobLogProbe:
         return HandlerJobLogProbe(
@@ -304,7 +350,7 @@ async def test_contract_tick_wires_probe_and_returns_schedule_event(
     ) -> ModelJobLogProbeReading:
         reads.append(request)
         assert timeout_s == _SETTINGS.timeout_seconds
-        return ModelJobLogProbeReading(verdict="log_returned", reason="log_body")
+        return ModelJobLogProbeReading(verdict="WORKING", reason="log_body")
 
     async def append(
         request: ModelWorkLedgerAppendRequest, *, timeout_s: float
@@ -361,7 +407,7 @@ async def test_contract_tick_wires_probe_and_returns_schedule_event(
     assert len(reads) == len(ledger.requests) == len(replies) == 1
     assert published_topics == ["onex.evt.omnimarket.schedule-run.v1"]
     assert replies[0]["outcome"] == "completed"
-    assert " | verdict=log_returned | " in ledger.rows[0]
+    assert " | verdict=WORKING | " in ledger.rows[0]
 
 
 @pytest.mark.asyncio

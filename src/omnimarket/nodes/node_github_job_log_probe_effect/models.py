@@ -26,6 +26,8 @@ class ModelJobLogProbeSettings(ModelScheduleDeclaration):
     ledger_timeout_seconds: float = Field(gt=0, le=15)
     consumer_host: str = Field(pattern=r"^[a-zA-Z0-9][a-zA-Z0-9.-]*$")
     owner_lane: str = Field(pattern=r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
+    # A drill points finished_job_id at a job that does not exist; its rows carry drill=yes.
+    drill: bool = False
 
 
 def load_job_log_probe_settings() -> ModelJobLogProbeSettings:
@@ -35,7 +37,7 @@ def load_job_log_probe_settings() -> ModelJobLogProbeSettings:
 class ModelJobLogProbeReading(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    verdict: Literal["log_returned", "no_terminal", "gateway_failed", "unreadable"]
+    verdict: Literal["WORKING", "no_terminal", "gateway_failed", "unreadable"]
     reason: str = Field(pattern=r"^[A-Za-z0-9_]+$")
 
 
@@ -45,5 +47,5 @@ class ModelJobLogProbeState(BaseModel):
     last_scheduled_at: datetime | None = None
     last_read_at: datetime | None = None
     target: tuple[str, int] | None = None
-    no_terminal_streak: int = Field(default=0, ge=0, le=2)
+    failed_streak: int = Field(default=0, ge=0, le=2)
     pending: ModelWorkLedgerAppendRequest | None = None
