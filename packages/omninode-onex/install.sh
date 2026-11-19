@@ -356,6 +356,13 @@ EOF
     local reported
     reported="$("$bin_dir/onex" --version 2>&1)" ||
         fail "onex was installed but 'onex --version' failed:" "$reported"
+    # --help loads every command's entry point, so it catches a command that
+    # cannot import, which --version alone does not.
+    local help_output
+    help_output="$("$bin_dir/onex" --help 2>&1)" ||
+        fail "onex was installed but 'onex --help' failed, so a command cannot load:" \
+            "$(printf '%s\n' "$help_output" | grep -E 'Error' | tail -n 1 | cut -c1-300)" \
+            "Report it at $SUPPORT_URL; installing again will not fix it."
     say "Installed: $reported ($bin_dir/onex)"
     path_guidance "$bin_dir"
     say "Done. Run 'onex --help' to get started."

@@ -654,6 +654,17 @@ def test_customer_launchers_only(tmp_path: Path) -> None:
     )
     assert ran.returncode == 0, ran.stderr
     assert ran.stdout.startswith("onex version "), ran.stdout
+    # --help loads every command's entry point; --version alone does not.
+    listed = _run(
+        [str(bin_dir / "onex"), "--help"],
+        {
+            "HOME": str(tmp_path / "customer" / "home"),
+            "PATH": "/usr/bin:/bin",
+            "LANG": "en_US.UTF-8",
+        },
+        tmp_path,
+    )
+    assert listed.returncode == 0, listed.stdout + listed.stderr
 
     control, _ = install("omnibase-core", "control")
     assert control > {"onex", "omni-agent"}, control
