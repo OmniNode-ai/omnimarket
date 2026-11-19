@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""AdapterUrllibProber — real ``urllib`` implementation of the health prober.
+"""HandlerUrllibProber — real ``urllib`` implementation of the health prober.
 
 One plain GET per call for the compose effect node (OMN-23968): the URL comes
 from the handler (built from the stack's ports and the health read), the
@@ -19,12 +19,12 @@ import urllib.error
 import urllib.request
 from typing import Final
 
-__all__ = ["AdapterUrllibProber"]
+__all__ = ["HandlerUrllibProber"]
 
 _READ_LIMIT_BYTES: Final = 65536
 
 
-class AdapterUrllibProber:
+class HandlerUrllibProber:
     """GETs ``url`` and returns its HTTP status, ``0`` when there is no answer.
 
     Implements :class:`~omnimarket.nodes.node_stability_stack_compose_effect.protocols.protocol_stack_health_prober.ProtocolStackHealthProber`

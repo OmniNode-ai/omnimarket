@@ -10,13 +10,13 @@ caller injects, so tests substitute fakes and nothing here runs in tests.
 from __future__ import annotations
 
 from omnimarket.nodes.node_stability_stack_compose_effect.adapters.adapter_subprocess_runner import (
-    AdapterSubprocessRunner,
+    HandlerSubprocessRunner,
 )
 from omnimarket.nodes.node_stability_stack_compose_effect.adapters.adapter_urllib_prober import (
-    AdapterUrllibProber,
+    HandlerUrllibProber,
 )
 
 __all__ = [
-    "AdapterSubprocessRunner",
-    "AdapterUrllibProber",
+    "HandlerSubprocessRunner",
+    "HandlerUrllibProber",
 ]
