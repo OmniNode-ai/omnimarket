@@ -5,35 +5,26 @@
 
 from __future__ import annotations
 
-from omnibase_infra.runtime.overlay.contract_env_ref import expand_contract_env_refs
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.handlers.arch_graph_bolt_host_overlay import resolve_arch_graph_bolt_uri
 
 __all__ = ["ModelArchitectureGraphQueryConfig"]
 
-# Contract-declared endpoint reference. The Bolt URI for the Memgraph instance
-# resolves through the sanctioned overlay boundary (``expand_contract_env_refs``,
-# the one env-reading surface) — a per-lane overlay binds ``ARCH_GRAPH_BOLT_URI``
-# to the dev/stability/prod value. The handler must NOT read ``os.environ``
-# directly (OMN-13557 endpoint-overlay migration).
-_BOLT_URI_CONTRACT_REF = "${env.ARCH_GRAPH_BOLT_URI}"
+# The Bolt URI resolves through ``resolve_arch_graph_bolt_uri``: the contract reference
+# ``${env.ARCH_GRAPH_BOLT_URI}`` through the sanctioned overlay boundary, then this host's
+# row of the ``arch_graph_bolt`` overlay. The handler must NOT read ``os.environ`` directly
+# (OMN-13557 endpoint-overlay migration).
 
 
 def _bolt_uri_from_overlay() -> str:
     """Resolve the Bolt URI through the overlay seam — fail closed if unset.
 
-    The contract declares ``bolt_uri`` as ``${env.ARCH_GRAPH_BOLT_URI}``; the
-    overlay resolver expands it against the lane environment. An unset var
-    expands to the empty string, which fails the explicit guard below rather
-    than silently falling back to localhost.
+    The variable ``ARCH_GRAPH_BOLT_URI`` wins where a lane sets it; a host that sets
+    nothing reads its own row of the ``arch_graph_bolt`` overlay (OMN-24687). With
+    neither, resolution raises rather than silently falling back to localhost.
     """
-    resolved: str = expand_contract_env_refs(_BOLT_URI_CONTRACT_REF)
-    if not resolved:
-        raise ValueError(
-            "ARCH_GRAPH_BOLT_URI is not bound by the active overlay; declare it "
-            "in the per-lane overlay so the contract reference "
-            f"{_BOLT_URI_CONTRACT_REF!r} resolves to a Bolt URI."
-        )
-    return resolved
+    return resolve_arch_graph_bolt_uri()
 
 
 class ModelArchitectureGraphQueryConfig(BaseModel):
