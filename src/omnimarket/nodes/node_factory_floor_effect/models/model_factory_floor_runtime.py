@@ -138,7 +138,7 @@ class ModelLedgerArchiveWindow(BaseModel):
     cache_ttl_seconds: int | None = Field(default=None, ge=1)
 
 
-class ModelLedgerProjectionRead(BaseModel):
+class ModelLedgerProjectionWindow(BaseModel):
     """The window read answered from the work ledger projection instead of the ledger file (OMN-19998, ledger cutover Wave 0).
 
     ``reader`` is the name this step reads under: the work ledger reader node answers a rows window for a reader its own overlay
@@ -149,7 +149,7 @@ class ModelLedgerProjectionRead(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    reader: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
+    reader: str = Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")
     # The window is read one UTC day at a time. A closed day's rows are kept in the source read cache for ``cache_ttl_seconds`` and read
     # again only when it ends; today's rows are read every run. A whole 14-day window in one read measured 102 s for 96 hours on the dev
     # bus (2026-11-14), far past the step's limit. ``read_workers`` is how many closed days are read at once; absent: one at a time.
@@ -177,6 +177,10 @@ class ModelFactoryFloorRuntime(BaseModel):
     ledger_window_days: int = Field(gt=0)
     ledger_cut_chars: int = Field(gt=0)
     ledger_timeout_seconds: int = Field(gt=0)
+    # What the window read uses for the archive block's two tuning values when the deployment overlay names none: how many split archives
+    # it reads at once, and how long a cached archive's rows are kept.
+    ledger_archive_read_workers: int = Field(ge=1)
+    ledger_archive_cache_ttl_seconds: int = Field(ge=1)
     # The row kinds the effect keeps from the window.
     ledger_kinds: tuple[str, ...] = Field(min_length=1)
     # Hours after which the unresolved step's record reads unread (its own margin past the window's edge is the other bound).
@@ -263,7 +267,7 @@ class ModelFactoryFloorOverlay(BaseModel):
     ledger_archives: ModelLedgerArchiveWindow | None = None
     # Present: the window read is a rows read of the work ledger projection under this reader name, and no ledger file is read.
     # Absent: the file read above (ledger_source, ledger_archives) as before.
-    ledger_projection: ModelLedgerProjectionRead | None = None
+    ledger_projection: ModelLedgerProjectionWindow | None = None
     # The line board's declarations (OMN-22368). No default: an overlay without them is refused by name.
     processes: tuple[ModelFloorProcessDecl, ...]
     roles: tuple[str, ...]

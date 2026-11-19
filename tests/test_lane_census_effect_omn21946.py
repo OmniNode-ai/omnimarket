@@ -204,6 +204,54 @@ def test_lane_census_rendered_units_run_the_node_after_docker() -> None:
     assert "Unit=onex-lane-census.service" in timer
 
 
+def test_lane_census_rendered_service_pins_the_overlay_roots_the_install_read() -> None:
+    """The run reads the compose project policy overlay from the roots the install saw (OMN-25351)."""
+    service, _ = render_units(
+        load_schedule(),
+        omni_root=Path("/srv/omni"),
+        venv=Path("/srv/omni/.onex-dispatch-venv"),
+        home=Path("/home/u"),
+        registry_path=Path("/srv/overlays/overlay.yaml"),
+        overlay_roots=(Path("/srv/overlays"), Path("/srv/more")),
+    )
+    assert 'Environment="ONEX_SKILL_OVERLAY_ROOTS=/srv/overlays:/srv/more"' in service
+    bare, _ = render_units(
+        load_schedule(),
+        omni_root=Path("/srv/omni"),
+        venv=Path("/srv/omni/.onex-dispatch-venv"),
+        home=Path("/home/u"),
+        registry_path=Path("/srv/overlays/overlay.yaml"),
+    )
+    assert "ONEX_SKILL_OVERLAY_ROOTS" not in bare
+
+
+def test_lane_census_install_pins_the_install_environment_overlay_roots(
+    tmp_path: Path,
+) -> None:
+    omni = tmp_path / "omni"
+    python = omni / ".onex-dispatch-venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.write_text("", encoding="utf-8")
+    overlays = tmp_path / "overlays"
+    overlay_file = overlays / "node_lane_census_effect" / "overlay.yaml"
+    overlay_file.parent.mkdir(parents=True)
+    overlay_file.write_text("", encoding="utf-8")
+
+    def run(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(list(argv), 0, "", "")
+
+    scheduler = LaneCensusScheduler(
+        schedule=load_schedule(),
+        overlay=hosts("host-a"),
+        home=tmp_path / "home",
+        run=run,
+        environ={"ONEX_SKILL_OVERLAY_ROOTS": str(overlays)},
+    )
+    done = scheduler.install("host-a", omni_root=omni, dry_run=True)
+    assert done.exit_code == 0
+    assert f'Environment="ONEX_SKILL_OVERLAY_ROOTS={overlays}"' in done.stdout
+
+
 def test_lane_census_install_writes_units_and_enables_the_timer(tmp_path: Path) -> None:
     omni = tmp_path / "omni"
     python = omni / ".onex-dispatch-venv" / "bin" / "python"

@@ -14,7 +14,7 @@ requirements:
   - id: AC2
     statement: "AC2: the fix is made on the pull request's own branch with no check widened, skipped or bypassed, and a PR comment starting `Lab: head=<full head sha>` carries the red-then-green lab proof for the new head -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#5972` comments contain a `Lab: head=` line whose sha equals the head, and the diff against the base touches no check or ratchet file"
   - id: AC3
-    statement: "AC3: when the cause is outside the pull request, the lane writes a STATUS row with `cause=<one line> shared=yes` and the evidence, and patches nothing around it -- falsifier: `grep -F 'shared=yes' <the rolling ledger file> | grep -F 'unblk5972-1125'` returns the row, or AC1 holds"
+    statement: "AC3: when the cause is outside the pull request, the lane writes a STATUS row with `cause=<one line> shared=yes` and the evidence, and patches nothing around it -- falsifier: a ledger read of STATUS rows for lane `unblk5972-1125` carrying `shared=yes` returns the row, or AC1 holds"
 evidence_requirements:
 - kind: tests
   description: The focused tests pass at the pushed head.
