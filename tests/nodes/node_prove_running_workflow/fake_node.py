@@ -46,6 +46,7 @@ def batch_step(verb: str) -> int:
     with (
         patch.object(runtime, "contract_config", return_value=cfg),
         patch.object(runtime, "projection_overlay", return_value=overlay),
+        patch.object(runtime, "batch_hosts", return_value=("h051", "h053")),
         patch.object(
             runtime, "snapshot_source", return_value=InMemorySnapshotSource(held)
         ),

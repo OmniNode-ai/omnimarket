@@ -188,3 +188,9 @@ class ModelProveRunningBatchResult(_Frozen):
     started: tuple[str, ...]
     already_proven_or_running: tuple[str, ...]
     outcomes: dict[str, str]
+
+
+class ModelProveRunningHostsOverlay(_Frozen):
+    """The deployment overlay of the batch workflow: the host names a change's target is matched against, in order."""
+
+    hosts: tuple[str, ...] = Field(min_length=1)
