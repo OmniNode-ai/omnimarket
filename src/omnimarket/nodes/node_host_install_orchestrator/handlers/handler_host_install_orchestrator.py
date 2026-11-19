@@ -120,9 +120,9 @@ class HandlerHostInstallOrchestrator:
         self._configured_overlay = overlay
         self._clock = clock if clock is not None else _utc_now
         self._contexts: OrderedDict[UUID, ModelHostInstallContext] = OrderedDict()
-        self._tree_requests: OrderedDict[tuple[UUID, str], ModelInstallRequest] = (
-            OrderedDict()
-        )
+        self._tree_install_orders: OrderedDict[
+            tuple[UUID, str], ModelInstallRequest
+        ] = OrderedDict()
 
     @property
     def _overlay(self) -> ModelHostInstallOrchestratorOverlay:
@@ -133,7 +133,7 @@ class HandlerHostInstallOrchestrator:
     @property
     def known_installs(self) -> tuple[UUID, ...]:
         return tuple(self._contexts) + tuple(
-            request_id for request_id, _host in self._tree_requests
+            request_id for request_id, _host in self._tree_install_orders
         )
 
     async def handle(
@@ -192,16 +192,16 @@ class HandlerHostInstallOrchestrator:
         ignored, and one that names another host is a different request.
         """
         key = (request.request_id, request.host)
-        if key in self._tree_requests:
+        if key in self._tree_install_orders:
             logger.warning(
                 "host install orchestrator kept the first request under %s on %s; a repeat is ignored",
                 request.request_id,
                 request.host,
             )
             return
-        self._tree_requests[key] = request
-        while len(self._tree_requests) > self._overlay.context_limit:
-            self._tree_requests.popitem(last=False)
+        self._tree_install_orders[key] = request
+        while len(self._tree_install_orders) > self._overlay.context_limit:
+            self._tree_install_orders.popitem(last=False)
 
     def _awaiting(
         self, key: UUID, phase: EnumHostInstallPhase
@@ -542,7 +542,7 @@ class HandlerHostInstallOrchestrator:
     def _on_install_result(
         self, result: ModelInstallRequestResult
     ) -> tuple[ModelHostInstallOutput, ...]:
-        request = self._tree_requests.get((result.request_id, result.host))
+        request = self._tree_install_orders.get((result.request_id, result.host))
         if request is None:
             logger.warning(
                 "host install orchestrator ignored an install request result for %s on %s",
@@ -571,7 +571,7 @@ class HandlerHostInstallOrchestrator:
                 result.request_id,
             )
             return ()
-        self._tree_requests.pop((result.request_id, result.host), None)
+        self._tree_install_orders.pop((result.request_id, result.host), None)
         return (self._tree_completed(result),)
 
     def _tree_completed(

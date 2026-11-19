@@ -187,7 +187,7 @@ def test_a_request_alone_publishes_nothing() -> None:
     assert orchestrator.known_installs == (ask.request_id,)
 
 
-def test_tree_requests_drop_the_oldest_past_the_limit() -> None:
+def test_tree_install_orders_drop_the_oldest_past_the_limit() -> None:
     overlay = orchestrator_overlay().model_copy(update={"context_limit": 2})
     orchestrator = HandlerHostInstallOrchestrator(overlay, StepClock())
     ids = [uuid4() for _ in range(3)]
@@ -202,7 +202,7 @@ class _WithoutIgnore(HandlerHostInstallOrchestrator):
     def _on_install_result(
         self, result: ModelInstallRequestResult
     ) -> tuple[ModelHostInstallOutput, ...]:
-        self._tree_requests.pop((result.request_id, result.host), None)
+        self._tree_install_orders.pop((result.request_id, result.host), None)
         return (self._tree_completed(result),)
 
 
@@ -278,7 +278,10 @@ class _WithoutPublisherRefusalIgnore(HandlerHostInstallOrchestrator):
     def _on_install_result(
         self, result: ModelInstallRequestResult
     ) -> tuple[ModelHostInstallOutput, ...]:
-        if self._tree_requests.pop((result.request_id, result.host), None) is None:
+        if (
+            self._tree_install_orders.pop((result.request_id, result.host), None)
+            is None
+        ):
             return ()
         return (self._tree_completed(result),)
 
@@ -356,7 +359,7 @@ class _OverwritingOrchestrator(HandlerHostInstallOrchestrator):
 
     def _remember_tree_request(self, request: ModelInstallRequest) -> None:
         replaced: Any = {(request.request_id, HOST): request}
-        self._tree_requests = replaced
+        self._tree_install_orders = replaced
 
 
 def test_failing_control_a_replacing_memory_drops_the_real_result() -> None:
