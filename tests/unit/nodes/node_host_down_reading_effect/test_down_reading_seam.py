@@ -24,13 +24,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.events.host_down import (
-    EnumHostState,
-    ModelHostReading,
-)
 from omnimarket.handlers.overlay_store.bus_opener import open_lane_bus, workspace_root
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
+)
+from omnimarket.models.model_host_down import (
+    EnumHostState,
+    ModelHostReading,
 )
 from omnimarket.nodes.node_host_down_reading_effect.adapters.fakes import (
     InMemoryReadingPublisher,

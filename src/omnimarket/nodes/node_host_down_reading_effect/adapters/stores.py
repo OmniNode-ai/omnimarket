@@ -8,7 +8,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from omnimarket.events.host_down import (
+from omnimarket.models.model_host_down import (
     EnumHostState,
 )
 from omnimarket.nodes.node_host_down_reading_effect.models.model_host_down_reading import (

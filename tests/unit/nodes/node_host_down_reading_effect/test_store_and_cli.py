@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.events.host_down import (
+from omnimarket.models.model_host_down import (
     EnumHostState,
 )
 from omnimarket.nodes.node_host_down_reading_effect import runtime_host_down as cli

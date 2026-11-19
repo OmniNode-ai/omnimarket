@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.events.host_down import (
+from omnimarket.models.model_host_down import (
     EnumHostState,
     ModelHostDownReading,
     ModelHostDownRequest,
