@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from importlib.resources import as_file, files
@@ -23,7 +24,11 @@ from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 from omnimarket.delegated_test_loop.lab_run_bus import event_type_for
 from omnimarket.handlers.ledger_row_grammar import refusal_for_payload
 from omnimarket.handlers.scm.handler_scm_dispatch import load_topics
-from omnimarket.models.model_github_gateway_io import ModelGithubGatewayRequest
+from omnimarket.models.model_github_gateway_io import (
+    ModelGithubGatewayRequest,
+    ModelGithubGatewayResponse,
+    ModelJobLogTailResult,
+)
 from omnimarket.models.scm import EnumScmNode
 from omnimarket.models.work_ledger_append import ModelWorkLedgerAppendRequest
 from omnimarket.nodes.node_github_job_log_probe_effect.handlers import (
@@ -68,6 +73,10 @@ def tick(index: int) -> ModelRuntimeTick:
         scheduler_id="test-dev",
         tick_interval_ms=1000,
     )
+
+
+def _clock_at(now: datetime) -> Callable[[], datetime]:
+    return lambda: now
 
 
 @dataclass
@@ -159,7 +168,7 @@ async def test_two_no_terminals_raise_one_owned_alarm_and_reset_on_reply(
             state_path=tmp_path / "probe.json",
             read=read,
             append=ledger,
-            clock=lambda now=now: now.now,
+            clock=_clock_at(now.now),
         )
         await handler.handle(now)
 
@@ -177,6 +186,79 @@ async def test_two_no_terminals_raise_one_owned_alarm_and_reset_on_reply(
         assert " | consumer_host=h201 | " in alarm
         assert " | owner=probe-owner | " in alarm
         assert refusal_for_payload(alarm, "ROLLING_WORK_LEDGER.md") is None
+
+
+@pytest.mark.asyncio
+async def test_probe_records_a_timed_job_log_return_after_an_owned_alarm(
+    tmp_path: Path,
+) -> None:
+    settings = _SETTINGS.model_copy(update={"timeout_seconds": 1.0})
+    bus = EventBusInmemory(environment="local", group="job-log-probe-recovery-test")
+    ledger = Ledger()
+    requests: list[ModelGithubGatewayRequest] = []
+
+    async def reply_after_alarm(message: ModelEventMessage) -> None:
+        command = ModelEventEnvelope[ModelGithubGatewayRequest].model_validate_json(
+            message.value
+        )
+        requests.append(command.payload)
+        if len(requests) < 3:
+            return
+
+        log_text = "job completed\n"
+        result = ModelJobLogTailResult(
+            repo=settings.repo,
+            job_id=settings.finished_job_id,
+            text=log_text,
+            total_bytes=len(log_text),
+            truncated=False,
+        )
+        reply = ModelEventEnvelope[ModelGithubGatewayResponse](
+            payload=ModelGithubGatewayResponse(
+                correlation_id=command.correlation_id,
+                result=result,
+            ),
+            correlation_id=command.correlation_id,
+            event_type=event_type_for(_TOPICS.success),
+        )
+        await bus.publish(_TOPICS.success, None, reply.model_dump_json().encode())
+
+    async def read(request: ModelGithubGatewayRequest) -> ModelJobLogProbeReading:
+        return await read_gateway(bus, request, timeout_s=settings.timeout_seconds)
+
+    await bus.start()
+    try:
+        await bus.subscribe(
+            _TOPICS.command, on_message=reply_after_alarm, group_id="gateway"
+        )
+        for index in range(3):
+            scheduled = tick(index)
+            handler = HandlerJobLogProbe(
+                settings=settings,
+                runtime_lane=settings.runtime_lane,
+                state_path=tmp_path / "probe.json",
+                read=read,
+                append=ledger,
+                clock=_clock_at(scheduled.now),
+            )
+            event = await handler.handle(scheduled)
+            assert event is not None
+            assert event.outcome == ("failed" if index < 2 else "completed")
+    finally:
+        await bus.close()
+
+    assert [request.job_id for request in requests] == [settings.finished_job_id] * 3
+    first, second, alarm, recovery = ledger.rows
+    assert " | verdict=no_terminal | " in first
+    assert " | verdict=no_terminal | " in second
+    assert " | FRICTION | " in alarm
+    assert f" | owner={settings.owner_lane} | " in alarm
+    assert " | STATUS | " in recovery
+    assert " | verdict=log_returned | " in recovery
+    fields = dict(
+        cell.split("=", maxsplit=1) for cell in recovery.split(" | ") if "=" in cell
+    )
+    assert 0 <= int(fields["latency_ms"]) < 60_000
 
 
 @pytest.mark.asyncio
@@ -241,9 +323,11 @@ async def test_contract_tick_wires_probe_and_returns_schedule_event(
 
     now = datetime.now(UTC)
     incoming = tick(0).model_copy(update={"now": now, "scheduled_at": now})
+    published_topics: list[str] = []
     replies: list[dict[str, object]] = []
 
     async def collect(message: ModelEventMessage) -> None:
+        published_topics.append(message.topic)
         replies.append(json.loads(message.value)["payload"])
 
     resource = files(f"omnimarket.nodes.{NODE_NAME}").joinpath("contract.yaml")
@@ -251,6 +335,7 @@ async def test_contract_tick_wires_probe_and_returns_schedule_event(
         manifest = discover_contracts_from_paths([path])
         assert not manifest.errors
         (contract,) = manifest.contracts
+        assert contract.event_bus is not None
         (tick_topic,) = contract.event_bus.subscribe_topics
         (result_topic,) = contract.event_bus.publish_topics
         envelope = ModelEventEnvelope[ModelRuntimeTick](
@@ -274,6 +359,7 @@ async def test_contract_tick_wires_probe_and_returns_schedule_event(
             await bus.close()
 
     assert len(reads) == len(ledger.requests) == len(replies) == 1
+    assert published_topics == ["onex.evt.omnimarket.schedule-run.v1"]
     assert replies[0]["outcome"] == "completed"
     assert " | verdict=log_returned | " in ledger.rows[0]
 
