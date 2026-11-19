@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Final
 
 from omnimarket.handlers.node_overlay_reader import OVERLAY_ROOTS_ENV
@@ -38,21 +37,17 @@ def registry_root_from(environ: Mapping[str, str] | None = None) -> str | None:
     return None
 
 
-def resolved_overlay_roots(
+def resolver_overlay_roots(
     environ: Mapping[str, str] | None = None,
-    workspace_root: Path | None = None,
 ) -> tuple[str, ...]:
     """The ordered, present overlay roots: store, canonical overlays clone, then the declared roots."""
     env = os.environ if environ is None else environ
     declared = tuple(
         root for root in env.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep) if root
     )
-    registry_root = (
-        str(workspace_root) if workspace_root is not None else registry_root_from(env)
-    )
     request = ModelOverlayRootsRequest(
         declared_roots=declared,
-        registry_root=registry_root,
+        registry_root=registry_root_from(env),
         home=env.get("HOME") or None,
     )
     return HandlerOverlayRootsResolve().handle(request).paths()
@@ -67,7 +62,7 @@ def resolved_overlay_environ(
     refusal that follows still names the roots the host declared.
     """
     env = dict(os.environ if environ is None else environ)
-    roots = resolved_overlay_roots(env)
+    roots = resolver_overlay_roots(env)
     if roots:
         env[OVERLAY_ROOTS_ENV] = os.pathsep.join(roots)
     return env
@@ -77,5 +72,5 @@ __all__ = [
     "REGISTRY_ROOT_ENVS",
     "registry_root_from",
     "resolved_overlay_environ",
-    "resolved_overlay_roots",
+    "resolver_overlay_roots",
 ]
