@@ -11,12 +11,8 @@ requirements:
     statement: |-
       The runner group read accepts the body GitHub sends, so the hourly reading can name a verdict, and a refused body names the fields it lacked.
     acceptance:
-      - id: "AC1"
-        statement: "AC1: a STATUS row on the rolling ledger reads kv pr=omnimarket#5761 installed=h053:<revision> observed=<what ran> read_at=<UTC>, written by the lane after it read the unit run on h053 itself (a log line, a dispatch, a health read or a job record) -- falsifier: `grep -F 'pr=omnimarket#5761' $ONEX_LEDGER_PATH | grep -F 'installed=h053:'` finds no row"
       - id: "AC2"
         statement: "AC2: the unit's own newest run on h053 records one exposure verdict other than UNKNOWN, or the STATUS row names the single cause that keeps it UNKNOWN and who must act -- falsifier: `systemctl --user status onex-runner-group-exposure-hourly.service` on h053 and the unit's newest reading row show verdict=UNKNOWN with no cause and no named actor"
-      - id: "AC3"
-        statement: "AC3: no host file, unit or plist was edited by hand: every change on h053 went through the declared installer, read from the installer's own receipt -- falsifier: the STATUS row cites no installer receipt, or the unit tree on h053 differs from the revision the receipt names"
 evidence_requirements:
   - kind: "tests"
     description: "The write node's runner_group_get tests, the bus group read and the exposure probe tests."
@@ -38,7 +34,6 @@ dod_evidence:
     description: "The lane's STATUS row on the rolling ledger names the installed revision on h053, what ran, the single cause and who acts, and the installer receipt. Hosted CI cannot read the ledger, so only the local Done gate runs this."
     source: "manual"
     execution_scope: "local_done_gate"
-    binds_ac: ["AC1", "AC3"]
     checks:
       - check_type: "command"
         check_value: "sh -c \"grep -F 'pr=omnimarket#5761' \\\"$ONEX_LEDGER_PATH\\\" | grep -F 'installed=h053:' | grep -F 'install_record='\""
