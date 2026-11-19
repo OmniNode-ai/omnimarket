@@ -11,6 +11,7 @@ with where it is carried. The local checks stay as unbound local evidence.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -19,29 +20,26 @@ _ROOT = Path(__file__).resolve().parents[2]
 _CONTRACTS = _ROOT / "contracts"
 
 
-def _load(ticket: str) -> dict[str, object]:
-    return yaml.safe_load(  # type: ignore[no-any-return]
-        (_CONTRACTS / f"{ticket}.yaml").read_text()
-    )
+def _load(ticket: str) -> dict[str, Any]:
+    loaded: dict[str, Any] = yaml.safe_load((_CONTRACTS / f"{ticket}.yaml").read_text())
+    return loaded
 
 
-def _items(ticket: str) -> list[dict[str, object]]:
-    return list(_load(ticket)["dod_evidence"])  # type: ignore[call-overload]
+def _items(ticket: str) -> list[dict[str, Any]]:
+    return list(_load(ticket)["dod_evidence"])
 
 
 def _listed(ticket: str) -> list[str]:
     return [
-        ac["id"]
-        for req in _load(ticket)["requirements"]  # type: ignore[attr-defined]
-        for ac in req["acceptance"]
+        ac["id"] for req in _load(ticket)["requirements"] for ac in req["acceptance"]
     ]
 
 
-def _checks(item: dict[str, object]) -> list[str]:
-    return [str(chk["check_value"]) for chk in item["checks"]]  # type: ignore[attr-defined]
+def _checks(item: dict[str, Any]) -> list[str]:
+    return [str(chk["check_value"]) for chk in item["checks"]]
 
 
-def _local(ticket: str) -> list[dict[str, object]]:
+def _local(ticket: str) -> list[dict[str, Any]]:
     return [
         item
         for item in _items(ticket)
@@ -88,7 +86,7 @@ def test_arch_graph_bolt_each_listed_criterion_has_a_hosted_pytest_binding(
     ticket: str,
 ) -> None:
     for ac_id in _listed(ticket):
-        bound = [item for item in _items(ticket) if ac_id in item.get("binds_ac", [])]  # type: ignore[operator]
+        bound = [item for item in _items(ticket) if ac_id in item.get("binds_ac", [])]
         assert bound, ac_id
         for item in bound:
             assert item.get("execution_scope") != "local_done_gate"
