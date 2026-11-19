@@ -12,6 +12,7 @@ the verdicts and are not constants.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -188,10 +189,10 @@ def test_an_overlay_changed_after_the_tick_loaded_it_is_not_reloaded_and_never_t
     neither tracebacks nor reads another policy than the one it loaded."""
     cli_env(tmp_path, monkeypatch, [cli_row("row-true", "pass", {"kind": "exit_zero"})])
     (overlay,) = tmp_path.glob("node_ruling_register_compute/**/*.yaml")
-    real_load_route = tick.load_route
+    real_load_route: Callable[..., object] = tick.load_route
 
     def load_route_then_break_the_register(*args: object, **kwargs: object) -> object:
-        route = real_load_route(*args, **kwargs)  # type: ignore[arg-type]
+        route = real_load_route(*args, **kwargs)
         overlay.write_text("rows: [not, a, register]\n", encoding="utf-8")
         return route
 

@@ -34,6 +34,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import cast
 
 import pytest
 import yaml
@@ -381,7 +382,9 @@ def register_bound(
 ) -> tuple[int, int, int]:
     """The three reads of the bound: the unit's run limit, the route's timeout and the worst case of the register."""
     unit = (units if units is not None else load_units())["ruling-register-systemd"]
-    limit = int(unit["schedule"]["run_timeout_s"])  # type: ignore[index]
+    limit = int(
+        cast("int", cast("dict[str, object]", unit["schedule"])["run_timeout_s"])
+    )
     route_timeout = load_route(environ).timeout_seconds
     rows = load_ruling_register_policy(environ).rows
     return limit, route_timeout, worst_case_seconds(rows, route_timeout)
@@ -1105,7 +1108,7 @@ def test_the_register_reads_the_hosts_own_rows_locally_under_the_lab_work_local_
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     own_row = cli_row("row-self", "pass", {"kind": "exit_zero"})
-    own_row["read"]["host"] = "host-a"  # type: ignore[index]
+    cast("dict[str, object]", own_row["read"])["host"] = "host-a"
     env = cli_env(tmp_path, monkeypatch, [own_row])
     # host-a has no target in the route: without its own name the row cannot be reached and reads UNREAD
     assert main([], environ=env, clock=lambda: NOW) == 1

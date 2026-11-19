@@ -17,6 +17,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import cast
 
 import pytest
 import yaml
@@ -566,7 +567,9 @@ def test_the_real_h201_rows_run_under_the_units_path_and_user_and_read_locally_u
     environ, unit_env, rows = _h201_register(tmp_path, monkeypatch)
     judged, sink_errors = read_register(environ)
     assert sink_errors == ()
-    assert {row["read"]["host"] for row in rows} == {unit_env["LAB_WORK_HOST_NAME"]}  # type: ignore[index]
+    assert {cast("dict[str, object]", row["read"])["host"] for row in rows} == {
+        unit_env["LAB_WORK_HOST_NAME"]
+    }
     assert {v.row_id: v.verdict.value for v in judged.verdicts} == dict.fromkeys(
         H201_ROWS, "TRUE"
     )
