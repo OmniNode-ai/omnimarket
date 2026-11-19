@@ -99,7 +99,7 @@ repos:
   # a missing or extra final newline and a staged tmp/ file; commit-hygiene-message
   # refuses an AI co-author trailer). Stages and types are the published ones.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: dev-20261029044430-3f33be0d5364
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       - id: check-action-pins
         files: ^\.github/workflows/[^/]+\.ya?ml$
@@ -119,7 +119,7 @@ repos:
   # tag (ci.yml, delegation-regression-nightly.yml, precommit-fail-loud-gate.yml,
   # reject-leaked-literals.yml): keep those tags equal to this rev.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: dev-20261101023710-a66b5ff79cc0
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       # OMN-22848 (stopped-line fill plan T15, Step 1 item 0): omnibase_core validators of the plan's
       # G-NODE point 2 that this config did not run, scoped by directory glob to the stopped-line fill
@@ -180,7 +180,7 @@ repos:
   # lab has a typed route packaged with this core, and the routes only shrink. CI twin:
   # the last steps of job public-runner-placement in .github/workflows/ci.yml read this rev.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: dev-20261105190003-87a6f5ddcbcc
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       - id: check-public-lab-selection
         args: [--repo, omnimarket, --visibility, public]
@@ -190,7 +190,7 @@ repos:
   # public-runner-placement in .github/workflows/ci.yml; keep this rev equal to
   # that job's pin.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: c880801d4deeaa1627535c8622ab6c4ab8cfbecd
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       - id: check-public-runner-placement
         args: [--repo, omnimarket, --visibility, public]
@@ -198,7 +198,7 @@ repos:
   # Stub implementation detection + receipt-honesty gate + transport-mock lint
   # sourced from omnibase_core. Rev bumped to OMN-13026 (transport-mock-lint).
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: cfaa6ec863c3026b5e65196151ed76cdad13dae3 # pragma: allowlist secret
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       - id: check-stub-implementations
         require_serial: true
@@ -221,7 +221,7 @@ repos:
   # eval; any (from_state, trigger)->to_state or guard divergence blocks. Pinned to
   # the omnibase_core#1360 PR head; re-pin to the merged-dev SHA once it lands.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: 2d6e64e76a8bd90757eeacb8b4663c8e187beb59 # pragma: allowlist secret
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       - id: check-fsm-handler-drift
         require_serial: true
@@ -236,7 +236,7 @@ repos:
   # Pinned to omnibase_core#1770's squash commit on omnibase_core dev. SYNC with
   # OMNIBASE_CORE_WALKER_REV in .github/workflows/contract-walker.yml.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: fe19489c3e734e5e96407d438443fbafa9004c49 # pragma: allowlist secret
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       - id: report-contract-walk
         require_serial: true
@@ -252,7 +252,7 @@ repos:
   # shared baseline at omnibase_core/src/omnibase_core/validation/baselines/canonical_inference_baseline.json;
   # baseline is burn-down only. Suppression: # canonical-inference-ok: <reason>
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: 940d2f2ab44d2f455a607926674b90ecbc9b74ba # pragma: allowlist secret
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       - id: check-canonical-inference
         require_serial: true
@@ -267,7 +267,7 @@ repos:
   # shared baseline at omnibase_core/src/omnibase_core/validation/baselines/url_authority_baseline.json.
   # Baseline is burn-down only. Suppress with: # url-authority-ok: <reason>
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: d720f33cf02aca1886d43811337d80aa1a47720e # pragma: allowlist secret
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       - id: check-url-authority
         require_serial: true
@@ -280,7 +280,7 @@ repos:
   # no-plugin-daemon-classes export; bumps to the squash-merge SHA when the core
   # OMN-13284 PR lands.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: a509d3fb2777693242fdcd979e5d67bed2bbefeb # pragma: allowlist secret
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       - id: no-plugin-daemon-classes
         require_serial: true
@@ -305,14 +305,14 @@ repos:
   # The canonical-file-shape hook runs the node_canonical_file_shape_check_compute entry
   # (hook id unchanged), pinned to an omnibase_core dev-merge tag. Its own block below.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: dev-20261029151319-6e0a5eee541a
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       - id: canonical-file-shape
         args: [--rules, file-shape]
         require_serial: true
         stages: [manual]
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: 031148215620031436cba30619bbae67c0bb38ad # pragma: allowlist secret
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       # Shape-gate independence (OMN-20298): a shape-gate detector job never waits
       # on the change-control preflight and never reads its result. BLOCKING, zero
@@ -344,7 +344,7 @@ repos:
   # extend dynamic resolution checks to handlers of every node kind (OMN-21372).
   # node-purity still owns the broader compute/reducer no-I/O check.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: 664c42c354cb19c3a127a1564312c54bf2377127 # pragma: allowlist secret
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       # Co-located node tests legitimately perform file I/O (fixtures, temp dirs)
       # and are excluded. The 14 handler/consumer files below carry pre-existing
@@ -389,7 +389,7 @@ repos:
   # repo's own architecture-handshakes/validator-requirements-baseline.yaml.
   # Re-pin rev to the merged-dev SHA once omnibase_core#<core-pr> lands.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: d163312724489f10f58ffdf8115ba1fa9d5783e8 # pragma: allowlist secret
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       - id: validate-validator-requirements
         require_serial: true
@@ -419,7 +419,7 @@ repos:
   # tree whenever a projection contract.yaml or a migration .sql changes.
   # Re-pin rev to the merged-dev SHA once omnibase_core#1350 lands.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: 0c69dff015b6f83365d4b0247d8b3230516276ae # pragma: allowlist secret
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       - id: check-projection-exposure-drift
         require_serial: true
@@ -439,7 +439,7 @@ repos:
   # still fires this. Pinned to the merged omnibase_core dev commit from
   # omnibase_core#1434.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: c6ebe3c49448ef821013c616d5dbe1e764104d85 # pragma: allowlist secret
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       - id: check-duplicate-registry-ids
         require_serial: true
@@ -449,7 +449,7 @@ repos:
   # this id is no longer pulled from the change-control repository; omnibase_core
   # exports it under the same id.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: 4a4177335d11b138a29fe28e2f4c5575afa92b2b  # pragma: allowlist secret
+    rev: dev-20261119101844-59e0293aeaef
     hooks:
       - id: no-hardcoded-topics
         require_serial: true

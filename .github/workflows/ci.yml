@@ -545,7 +545,7 @@ jobs:
       # pre-commit hook 'check-action-pins'.
       - name: GitHub Actions pin check
         env:
-          ACTION_PINS_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261029044430-3f33be0d5364"
+          ACTION_PINS_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261119101844-59e0293aeaef"
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           MQ_BASE: ${{ github.event.merge_group.base_sha }}
         run: |
@@ -1897,7 +1897,7 @@ jobs:
           echo "Reading ${#reports[@]} JUnit report(s)."
           # OMN-21940: the ratchet is omnibase_core's node runtime, at the dev-merge tag the
           # pre-commit hook 'skip-count-ratchet' pins; this repo supplies only the baseline.
-          uv run --no-project --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261101023710-a66b5ff79cc0' \
+          uv run --no-project --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261119101844-59e0293aeaef' \
             python -m omnibase_core.nodes.node_skip_count_ratchet_check_compute.runtime_skip_count_ratchet_check \
             --suite omnimarket/test \
             --baseline config/skip_count_baseline.yaml \
@@ -2068,7 +2068,7 @@ jobs:
         run: |
           # OMN-21940: omnibase_core's runtime, at the tag the pre-commit hook
           # 'integration-skip-guard' pins; this repo supplies scripts/ci/integration_skip_guard.yaml.
-          uv run --no-project --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261101023710-a66b5ff79cc0' \
+          uv run --no-project --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261119101844-59e0293aeaef' \
             python -m omnibase_core.nodes.node_integration_skips_check_compute.runtime_integration_skips_check \
             --config scripts/ci/integration_skip_guard.yaml \
             --junit integration-guard.xml
@@ -2464,7 +2464,7 @@ jobs:
           git fetch --quiet origin "${BASE}" || true
           # OMN-21940: omnibase_core's runtime, at the tag the pre-commit hook
           # 'check-release-identity' pins.
-          uv run --no-project --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261101023710-a66b5ff79cc0' \
+          uv run --no-project --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261119101844-59e0293aeaef' \
             python -m omnibase_core.nodes.node_release_identity_check_compute.runtime_release_identity_check \
             --root . --base "origin/${BASE}"
 
@@ -4285,7 +4285,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      CANONICAL_FILE_SHAPE_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261029151319-6e0a5eee541a"
+      CANONICAL_FILE_SHAPE_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261119101844-59e0293aeaef"
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6

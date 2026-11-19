@@ -82,7 +82,7 @@ jobs:
         run: |
           python3 -m venv "${RUNNER_TEMP}/core-venv"
           "${RUNNER_TEMP}/core-venv/bin/python" -m pip install --quiet \
-            'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261101023710-a66b5ff79cc0'
+            'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261119101844-59e0293aeaef'
           "${RUNNER_TEMP}/core-venv/bin/python" -m omnibase_core.nodes.node_exposed_identifiers_check_compute.runtime_exposed_identifiers_check \
             --mode blocking --scope all \
             --denylist scripts/validation/exposed_identifiers_denylist.json
