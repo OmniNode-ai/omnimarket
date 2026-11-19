@@ -20,7 +20,7 @@ requirements:
         statement: >-
           AC2 (testing-phase form, package part): the package declares exactly onex and omni-agent with
           omnibase_core's target, pins omnibase-core, omnibase-infra and omnimarket with ==, pins
-          omnimarket at this repository's own version, and its built wheel holds only its dist-info --
+          omnimarket no newer than this repository's version, and its built wheel holds only its dist-info --
           falsifier: uv run pytest tests/ci/test_omninode_onex_package_omn25070.py fails on omnimarket
           dev, where packages/omninode-onex does not exist. The install part (uv tool install puts
           exactly onex and omni-agent on PATH and onex runs) is the opt-in

@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 from packaging.requirements import Requirement
+from packaging.version import Version
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_DIR = REPO_ROOT / "packages" / "omninode-onex"
@@ -85,15 +86,18 @@ def test_every_dependency_is_pinned_exactly() -> None:
 
 
 @pytest.mark.unit
-def test_omnimarket_pin_follows_this_repository_version() -> None:
+def test_omnimarket_pin_is_not_newer_than_this_repository() -> None:
+    # omninode-onex releases on its own tag, so its omnimarket pin may trail
+    # this repository's version; it must never name an unreleased, newer one.
     with (REPO_ROOT / "pyproject.toml").open("rb") as stream:
-        own_version = tomllib.load(stream)["project"]["version"]
+        own_version = Version(tomllib.load(stream)["project"]["version"])
     dependencies = _project()["dependencies"]
     assert isinstance(dependencies, list)
     pins = {
         Requirement(str(item)).name: Requirement(str(item)) for item in dependencies
     }
-    assert str(pins["omnimarket"].specifier) == f"=={own_version}"
+    pinned = Version(next(iter(pins["omnimarket"].specifier)).version)
+    assert pinned <= own_version, (pinned, own_version)
 
 
 @pytest.mark.unit
@@ -133,3 +137,27 @@ def test_built_wheel_carries_no_code_and_matches_pyproject(tmp_path: Path) -> No
     dependencies = project["dependencies"]
     assert isinstance(dependencies, list)
     assert requires == sorted(str(item) for item in dependencies)
+
+
+@pytest.mark.unit
+def test_release_workflow_has_its_own_tag_and_checks_the_installer_pin() -> None:
+    import fnmatch
+
+    import yaml
+
+    workflows = REPO_ROOT / ".github" / "workflows"
+    onex = yaml.safe_load((workflows / "release-omninode-onex.yml").read_text())
+    market = yaml.safe_load((workflows / "release.yml").read_text())
+    onex_tags = onex[True]["push"]["tags"]
+    market_tags = market[True]["push"]["tags"]
+    version = _project()["version"]
+    onex_tag = f"omninode-onex-v{version}"
+    assert any(fnmatch.fnmatch(onex_tag, p) for p in onex_tags)
+    assert not any(fnmatch.fnmatch(onex_tag, p) for p in market_tags)
+    assert not any(fnmatch.fnmatch("v0.4.321", p) for p in onex_tags)
+    steps = "\n".join(
+        str(step.get("run", "")) for step in onex["jobs"]["release"]["steps"]
+    )
+    assert "packages/omninode-onex/pyproject.toml" in steps
+    assert "packages/omninode-onex/install.sh" in steps
+    assert "verify_pypi_pin_resolvability.py dist/" in steps
