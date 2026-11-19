@@ -21,7 +21,7 @@ def test_work_contract_environment_pins_match_uv_lock() -> None:
 
     lock = tomllib.loads((ROOT / "uv.lock").read_text())
     version = next(p["version"] for p in lock["package"] if p["name"] == "omnimarket")
-    assert tuple(int(x) for x in version.split(".")) >= (0, 4, 321), (
+    assert tuple(int(x) for x in version.split(".")) >= (0, 4, 322), (
         f"uv.lock predates the post-release re-lock: omnimarket {version}"
     )
     lock_digest = hashlib.sha256((ROOT / "uv.lock").read_bytes()).hexdigest()

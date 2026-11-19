@@ -97,7 +97,7 @@ dod_evidence:
           assert pin["path"] == "uv.lock"
           lock = tomllib.loads((root / "uv.lock").read_text())
           version = next(p["version"] for p in lock["package"] if p["name"] == "omnimarket")
-          assert tuple(int(x) for x in version.split(".")) >= (0, 4, 321), "deployed lockfile predates the post-release re-lock"
+          assert tuple(int(x) for x in version.split(".")) >= (0, 4, 322), "deployed lockfile predates the post-release re-lock"
           assert pin["sha256"] == hashlib.sha256((root / "uv.lock").read_bytes()).hexdigest(), "deployed work-contract lockfile pin mismatch"
           print("work-contract source-artifact deploy probe: PASS")
           PY
