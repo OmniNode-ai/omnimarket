@@ -118,6 +118,8 @@ operations:
   # OMN-21146: commit checks and one PR's merge details.
   - name: commit_check_runs
     description: "Request ModelGithubGatewayRequest, result ModelCommitCheckRunsResult; replaces gh api repos/<r>/commits/<sha>/check-runs."
+  - name: commit_statuses
+    description: "Request ModelGithubGatewayRequest with head_sha, result ModelCommitStatusesResult (id, context, state, target_url per status, newest first); replaces gh api repos/<r>/commits/<sha>/statuses."
   - name: merged_pr
     description: "Request ModelGithubGatewayRequest, result ModelMergedPrResult; replaces gh pr view --json state,mergedAt,mergeCommit,headRefOid,headRefName,baseRefName."
 

@@ -38,6 +38,16 @@ Rules this handler enforces:
   in the asked-for state. workflow_dispatch has no GitHub-side record, so only
   the in-process record guards a retry. check_run_create likewise only has
   the in-process record; a restart can create another check run.
+- **Commit status.** commit_status_create posts one commit status (context
+  fable-review-gate, state success or failure, the verdict link) to
+  /statuses/{sha}; the request model refuses another context or state and an
+  empty or short sha before any call. Like check_run_create it keeps only the
+  in-process replay record.
+- **Required contexts.** required_context_apply adds one required status-check
+  context to a branch's protection with an add-only POST to its ``contexts`` endpoint (the
+  checks already required are never rewritten), only for a (repository, branch, context)
+  the overlay's ``required_contexts`` names; anything else or an unreadable overlay
+  is refused ``required_context_not_allowed`` before any GitHub call, in either mode.
 - **Allowed labels.** pr_label adds and removes labels on a pull request, pinned to
   the expected head like pr_edit. Every label must be in the ``allowed_labels`` set of
   the node's overlay (``overlay.py``); one that is not, or an overlay that cannot be
@@ -179,6 +189,9 @@ from omnimarket.nodes.node_github_repo_write_effect.protocols import (
     ProtocolLeaseFence,
     ProtocolPrClaimLookup,
 )
+from omnimarket.nodes.node_github_repo_write_effect.services.commit_status import (
+    commit_status_request,
+)
 from omnimarket.nodes.node_github_repo_write_effect.services.pr_label import (
     add_labels_request,
     remove_label_request,
@@ -202,6 +215,10 @@ from omnimarket.nodes.node_github_repo_write_effect.services.repo_variable impor
     read_variable_source_value,
     update_variable_request,
     variable_digest,
+)
+from omnimarket.nodes.node_github_repo_write_effect.services.required_context import (
+    add_required_context_request,
+    read_required_checks_request,
 )
 from omnimarket.nodes.node_github_repo_write_effect.services.runner_registration import (
     delete_runner_request,
@@ -376,6 +393,8 @@ class _Run:
         comment_id: int | None = None,
         review_id: int | None = None,
         check_run_id: int | None = None,
+        commit_status_id: int | None = None,
+        required_context_applied: bool | None = None,
         variable_name: str | None = None,
         variable_value: str | None = None,
         variable_digest: str | None = None,
@@ -403,6 +422,8 @@ class _Run:
             comment_id=comment_id,
             review_id=review_id,
             check_run_id=check_run_id,
+            commit_status_id=commit_status_id,
+            required_context_applied=required_context_applied,
             variable_name=variable_name,
             variable_value=variable_value,
             variable_digest=variable_digest,
@@ -729,6 +750,41 @@ class HandlerGithubRepoWriteEffect:
             "node's runner_removals overlay; no call made",
         )
 
+    def _required_context_refusal(
+        self, request: ModelRepoWriteRequest
+    ) -> ModelRepoWriteFailed | None:
+        """Refuse a required_context_apply the overlay does not allow, before any call.
+
+        The overlay's ``required_contexts`` names each (repository, branch, context) the
+        node may add to a branch's protection; any other triple, and a missing overlay,
+        is refused, never defaulted from a value here.
+        """
+        if request.operation is not EnumRepoWriteOperation.REQUIRED_CONTEXT_APPLY:
+            return None
+        try:
+            if self._write_overlay is None:
+                self._write_overlay = load_overlay()
+        except NodeOverlayError as exc:
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.REQUIRED_CONTEXT_NOT_ALLOWED,
+                f"no required_contexts overlay is configured: {exc}",
+            )
+        allowed = self._write_overlay.required_contexts
+        if allowed is not None and any(
+            entry.repository.lower() == request.repo.lower()
+            and entry.branch == request.protected_branch
+            and entry.context == request.required_context
+            for entry in allowed.entries
+        ):
+            return None
+        return self._preflight_refusal(
+            request,
+            EnumRepoWriteRefusal.REQUIRED_CONTEXT_NOT_ALLOWED,
+            f"{request.required_context} on {request.repo} {request.protected_branch} "
+            "is not in the node's required_contexts overlay; no call made",
+        )
+
     def _label_refusal(
         self, request: ModelRepoWriteRequest
     ) -> ModelRepoWriteFailed | None:
@@ -806,6 +862,9 @@ class HandlerGithubRepoWriteEffect:
         if refused is not None:
             return refused
         refused = self._label_refusal(request)
+        if refused is not None:
+            return refused
+        refused = self._required_context_refusal(request)
         if refused is not None:
             return refused
         variable_plan = self._variable_plan(request)
@@ -1080,6 +1139,10 @@ class HandlerGithubRepoWriteEffect:
             return await _pr_review_post(run)
         if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
             return await _check_run_create(run)
+        if op is EnumRepoWriteOperation.COMMIT_STATUS_CREATE:
+            return await _commit_status_create(run)
+        if op is EnumRepoWriteOperation.REQUIRED_CONTEXT_APPLY:
+            return await _required_context_apply(run)
         return await _workflow_dispatch(run)
 
 
@@ -1595,6 +1658,48 @@ async def _check_run_create(run: _Run) -> ModelRepoWriteCompleted:
     )
 
 
+def _commit_status_create_request(c: ModelRepoWriteRequest) -> ModelGithubHttpRequest:
+    return commit_status_request(
+        c.repo,
+        c.commit_sha or "",
+        state=c.status_state or "",
+        context=c.status_context or "",
+        target_url=c.status_target_url or "",
+        description=c.status_description,
+    )
+
+
+async def _commit_status_create(run: _Run) -> ModelRepoWriteCompleted:
+    created = (await run.send(_commit_status_create_request(run.command))).body
+    return run.completed(
+        commit_status_id=_int_at(created, "id"),
+        html_url=_str_at(created, "url"),
+        head_sha=run.command.commit_sha,
+    )
+
+
+async def _required_context_apply(run: _Run) -> ModelRepoWriteCompleted:
+    c = run.command
+    branch, context = c.protected_branch or "", c.required_context or ""
+    current = (await run.send(read_required_checks_request(c.repo, branch))).body or {}
+    raw = current.get("checks")
+    checks = [
+        entry
+        for entry in (raw if isinstance(raw, list) else [])
+        if isinstance(entry, dict)
+    ]
+    legacy = current.get("contexts")
+    named = {entry.get("context") for entry in checks} | {
+        name
+        for name in (legacy if isinstance(legacy, list) else [])
+        if isinstance(name, str)
+    }
+    if context in named:
+        return run.completed(replayed=True, required_context_applied=False)
+    await run.send(add_required_context_request(c.repo, branch, context))
+    return run.completed(required_context_applied=True)
+
+
 async def _workflow_dispatch(run: _Run) -> ModelRepoWriteCompleted:
     c = run.command
     ref = c.ref or ""
@@ -1675,6 +1780,11 @@ def planned_requests(
         )
     if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
         return (_check_run_create_request(c),)
+    if op is EnumRepoWriteOperation.COMMIT_STATUS_CREATE:
+        return (_commit_status_create_request(c),)
+    if op is EnumRepoWriteOperation.REQUIRED_CONTEXT_APPLY:
+        # The PATCH follows the read of the branch's current checks; a plan shows the read.
+        return (read_required_checks_request(c.repo, c.protected_branch or ""),)
     if op is EnumRepoWriteOperation.WORKFLOW_DISPATCH:
         return (
             *tip,
