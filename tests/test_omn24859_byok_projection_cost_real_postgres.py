@@ -8,7 +8,8 @@ real, migrated Postgres schema (the ``INTEGRATION_POSTGRES_*`` database of the h
 ``tests/test_omn15909_real_postgres_projection_write_path_gate.py``, which it reuses). The row the
 tenant Runs list reads, and the R8 scenario's ``organic_run_has_values`` assertion reads, carries
 ``cost_usd`` above zero for ``glm-5.3-flash`` on ``byok-glm-general`` and an unpriced model is
-still stored with no cost.
+still stored with no cost. The price comes from
+``byok_actual_cost.byok_priced_actual_cost`` in the projection node's handlers package.
 """
 
 from __future__ import annotations
