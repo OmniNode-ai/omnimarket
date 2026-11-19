@@ -99,8 +99,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/projection/test_omn24615_failed_run_duration.py tests/unit/projection/test_omn24615_failed_zero_duration_store_step.py -q -p no:randomly --no-cov
     cwd: .
+# OMN-24615 AC9 (2026-11-19): #5813 (OMN-23413) brought the reflection provider to dev, so the check's
+# -k models_every_provider now also selects the falsifier as written, a reflection key registered in the
+# temporary ONEX home (test_models_every_provider_a_reflection_key_is_served_as_set_up). The binding below
+# is kept as merged so dod-verify carries it: its tests pass at the merge base by construction.
 - id: dod-omn24615-ac9
-  description: 'AC9: a provider set up in the terminal outside the old four (Anthropic, on a temporary store) is served by GET /models as set up and passed, the served rows equal onex models list --json row for row, and no allow-list is left in the key module or the dashboard route; fails while the allow-list filters the rows. A reflection key registered in the temporary ONEX home, the falsifier as written, is served as set up and passed and equals its terminal row; the reflection provider reached dev with #5813 (OMN-23413), and putting the old three-provider allow-list back fails that case.'
+  description: 'AC9: a provider set up in the terminal outside the old four (Anthropic, on a temporary store) is served by GET /models as set up and passed, the served rows equal onex models list --json row for row, and no allow-list is left in the key module or the dashboard route; fails while the allow-list filters the rows. dev has no reflection provider (it is on the OMN-23413 branch), so the falsifier uses Anthropic; reflection is served the same way once that branch lands.'
   source: manual
   binds_ac:
   - AC9
