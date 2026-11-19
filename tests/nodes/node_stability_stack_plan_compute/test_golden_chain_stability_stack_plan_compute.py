@@ -17,14 +17,14 @@ from typing import Any
 
 import pytest
 
-from omnimarket.nodes.node_stability_stack_plan_compute.handlers.handler_stack_plan import (
-    HandlerStackPlan,
-)
-from omnimarket.nodes.node_stability_stack_plan_compute.models.model_stack_plan import (
+from omnimarket.models.stability_stack.model_stack_plan import (
     EnumStackRefusalKind,
     EnumStackStepKind,
     ModelStackPlanOverlay,
     ModelStackPlanRequest,
+)
+from omnimarket.nodes.node_stability_stack_plan_compute.handlers.handler_stack_plan import (
+    HandlerStackPlan,
 )
 from omnimarket.nodes.node_stability_stack_plan_compute.overlay import load_overlay
 

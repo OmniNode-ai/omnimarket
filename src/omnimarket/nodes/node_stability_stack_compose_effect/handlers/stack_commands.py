@@ -15,11 +15,11 @@ import shlex
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from omnimarket.models.stability_stack.model_stack_plan import (
+    ModelStackDescription,
+)
 from omnimarket.nodes.node_stability_stack_compose_effect.overlay import (
     ModelStackComposeOverlay,
-)
-from omnimarket.nodes.node_stability_stack_plan_compute.models.model_stack_plan import (
-    ModelStackDescription,
 )
 
 if TYPE_CHECKING:

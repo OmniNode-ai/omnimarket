@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerSubprocessRunner — real ``subprocess`` implementation of the command runner.
+"""SubprocessStackCommands — real ``subprocess`` implementation of the command runner.
 
 Thin subprocess wrapper for the compose effect node (OMN-23968): it runs the
 argv list it is given with the environment and timeout it is given and returns
@@ -23,10 +23,10 @@ from omnimarket.nodes.node_stability_stack_compose_effect.models.model_stack_com
     ModelCommandOutput,
 )
 
-__all__ = ["HandlerSubprocessRunner"]
+__all__ = ["SubprocessStackCommands"]
 
 
-class HandlerSubprocessRunner:
+class SubprocessStackCommands:
     """Runs one argv list via ``subprocess.run`` and returns ``ModelCommandOutput``.
 
     Implements :class:`~omnimarket.nodes.node_stability_stack_compose_effect.protocols.protocol_stack_command_runner.ProtocolStackCommandRunner`

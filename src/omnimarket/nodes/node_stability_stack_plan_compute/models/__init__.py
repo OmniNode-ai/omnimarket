@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Models of node_stability_stack_plan_compute."""
 
-from omnimarket.nodes.node_stability_stack_plan_compute.models.model_stack_plan import (
+from omnimarket.models.stability_stack.model_stack_plan import (
     EnumStackRefusalKind,
     EnumStackStepKind,
     ModelEventRoundtrip,

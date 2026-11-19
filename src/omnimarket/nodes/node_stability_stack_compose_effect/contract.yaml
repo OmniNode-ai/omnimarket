@@ -59,6 +59,12 @@ descriptor:
   side_effects:
     - "docker compose project lifecycle changes (up, down, remove-orphans, volume removal)"
     - "writes of the rendered compose files under the render directory"
+dependency_ownership:
+  plan_overlay: "Owned by the caller that invokes the handler; the loaded plan overlay declaring the stacks."
+  overlay: "Owned by the caller that invokes the handler; the loaded compose overlay (lab host, docker binary, step timeouts)."
+  runner: "Owned by the caller that invokes the handler; the argv command runner (SubprocessStackCommands in production, a fake in tests)."
+  prober: "Owned by the caller that invokes the handler; the HTTP health prober (UrllibHealthProber in production, a fake in tests)."
+  environ: "Owned by the caller that invokes the handler; the process environment mapping handed to the runner."
 overlay:
   node: node_stability_stack_compose_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS

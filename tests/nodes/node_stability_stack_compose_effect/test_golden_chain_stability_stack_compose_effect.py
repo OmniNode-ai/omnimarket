@@ -14,6 +14,11 @@ from uuid import UUID
 
 import pytest
 
+from omnimarket.models.stability_stack.model_stack_plan import (
+    EnumStackStepKind,
+    ModelStackPlanOverlay,
+    ModelStackStep,
+)
 from omnimarket.nodes.node_stability_stack_compose_effect.handlers.handler_stack_compose import (
     HandlerStackCompose,
 )
@@ -25,11 +30,6 @@ from omnimarket.nodes.node_stability_stack_compose_effect.models.model_stack_com
 )
 from omnimarket.nodes.node_stability_stack_compose_effect.overlay import (
     ModelStackComposeOverlay,
-)
-from omnimarket.nodes.node_stability_stack_plan_compute.models.model_stack_plan import (
-    EnumStackStepKind,
-    ModelStackPlanOverlay,
-    ModelStackStep,
 )
 
 CID = UUID("11111111-1111-1111-1111-111111111111")

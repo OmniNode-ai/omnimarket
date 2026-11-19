@@ -4,7 +4,7 @@
 
 Found at ``<root>/node_stability_stack_plan_compute/overlay.yaml`` under a root named in ``ONEX_SKILL_OVERLAY_ROOTS``. The package
 ships ``overlay.example.yaml`` with synthetic values. The overlay models themselves live in
-``models/model_stack_plan.py`` beside the request and plan models; this module only loads the overlay, so a deployment's
+``omnimarket.models.stability_stack.model_stack_plan`` beside the request and plan models; this module only loads the overlay, so a deployment's
 stack descriptions, reserved lanes and dev-merge tag pattern are data and the handler stays pure. Nothing here has a default:
 an absent key refuses the load.
 """
@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_stability_stack_plan_compute.models.model_stack_plan import (
+from omnimarket.models.stability_stack.model_stack_plan import (
     ModelStackPlanOverlay,
 )
 

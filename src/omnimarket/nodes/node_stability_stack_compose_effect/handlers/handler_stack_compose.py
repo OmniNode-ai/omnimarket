@@ -13,6 +13,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
+from omnimarket.models.stability_stack.model_stack_plan import (
+    EnumStackStepKind,
+    ModelStackDescription,
+    ModelStackPlanOverlay,
+)
 from omnimarket.nodes.node_stability_stack_compose_effect.handlers.stack_commands import (
     compose_argv,
     compose_env,
@@ -38,11 +43,6 @@ from omnimarket.nodes.node_stability_stack_compose_effect.protocols.protocol_sta
 )
 from omnimarket.nodes.node_stability_stack_compose_effect.protocols.protocol_stack_health_prober import (
     ProtocolStackHealthProber,
-)
-from omnimarket.nodes.node_stability_stack_plan_compute.models.model_stack_plan import (
-    EnumStackStepKind,
-    ModelStackDescription,
-    ModelStackPlanOverlay,
 )
 
 _OK = EnumStackStepOutcome.OK
@@ -268,7 +268,7 @@ class HandlerStackCompose:
             )
         read = reads[0]
         port = dict(stack.ports)[read.port_key]
-        url = f"http://127.0.0.1:{port}/{read.path.lstrip('/')}"
+        url = f"http://127.0.0.1:{port}/{read.path.lstrip('/')}"  # url-authority-ok: OMN-23968 the probe targets the stack's own published port on the host this effect runs on (local_host guard refuses any other host); the port comes from the plan overlay
         status = self._prober.status(url, self._overlay.health_timeout_seconds)
         outcome = _OK if status == read.expect_status else _FAILED
         return self._result(

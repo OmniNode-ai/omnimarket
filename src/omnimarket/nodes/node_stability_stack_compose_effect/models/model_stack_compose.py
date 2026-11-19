@@ -15,7 +15,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.nodes.node_stability_stack_plan_compute.models.model_stack_plan import (
+from omnimarket.models.stability_stack.model_stack_plan import (
     ModelStackStep,
 )
 
