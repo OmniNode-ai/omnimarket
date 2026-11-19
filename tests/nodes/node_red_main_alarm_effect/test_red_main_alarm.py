@@ -22,6 +22,10 @@ from omnibase_infra.runtime.auto_wiring.models import ModelAutoWiringManifest
 from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
+from omnimarket.handlers.ledger_row_grammar import (
+    GOVERNED_LEDGER_NAMES,
+    refusal_for_payload,
+)
 from omnimarket.models.model_github_gateway_io import ModelCommitCheckRunsResult
 from omnimarket.models.model_runtime_tick_schedule import ModelScheduledFire
 from omnimarket.models.overlay_documents.model_registry_documents import (
@@ -227,6 +231,10 @@ async def test_red_main_alarm_row_matches_the_ledger_alarm_grep() -> None:
     (request,) = ports.requests.values()
     status = request.rows.splitlines()[0]
     assert re.search(r"src=alarm.*alarm=main-red", status)
+    # The ledger refused the MSG id this node wrote on 2026-11-19: an id is the row's own
+    # timestamp and the sender's lane, and nothing else.
+    assert refusal_for_payload(request.rows, sorted(GOVERNED_LEDGER_NAMES)[0]) is None
+    assert " | id=2026-11-19T03:40:00Z-red-main-alarm | " in request.rows
     assert re.search(r" \| owner=[^ |]+ \| ", status)
 
 

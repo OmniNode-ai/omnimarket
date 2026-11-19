@@ -168,7 +168,7 @@ def _append_request(
         " | Required default-branch check is red"
     )
     message = (
-        f"{at} | MSG | from={_ACTOR} | to={alarm.owner} | id={at}-{_ACTOR}-{request_id}"
+        f"{at} | MSG | from={_ACTOR} | to={alarm.owner} | id={at}-{_ACTOR}"
         f" | {location}{drill} | req={request_id}"
         f" | {alarm.owner}: {alarm.check_name} on {alarm.repo} {alarm.branch} is {alarm.conclusion}"
     )
