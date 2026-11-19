@@ -286,3 +286,45 @@ def test_control_a_broken_wilson_formula_fails_the_golden_numbers(
     doc = _build()
     hour = _series(doc, f"Model-X@{LOCAL_HOST}", "document").hours[0]
     assert (hour.success.wilson_low, hour.success.wilson_high) != (0.4902, 0.9433)
+
+
+def test_error_a_cost_no_attempt_recorded_stays_null_not_zero() -> None:
+    """A hosted model whose attempts carry no cost is not a model that cost nothing: the point says None, never 0."""
+    doc = _build(
+        attempts=(
+            attempts(
+                "2026-11-14T01:00:00Z",
+                n=3,
+                accepted=2,
+                model="glm-flash",
+                backend="harness:glm:flash",
+                host="client-1",
+                cost=None,
+            ),
+            attempts(
+                "2026-11-14T02:00:00Z",
+                n=2,
+                accepted=1,
+                model="glm-flash",
+                backend="harness:glm:flash",
+                host="client-1",
+                cost=None,
+            ),
+            attempts("2026-11-14T01:00:00Z", n=4, accepted=4, cost=0.5),
+            attempts("2026-11-14T02:00:00Z", n=2, accepted=1, cost=None),
+        )
+    )
+    glm = _series(doc, "glm-flash", "document")
+    assert {h.cost_usd for h in glm.hours} == {None}
+    assert {d.cost_usd for d in glm.days} == {None}
+    assert glm.total is not None
+    assert glm.total.cost_usd is None
+    # a day that holds one costed hour and one hour with no cost sums the recorded cost
+    local = _series(doc, f"Model-X@{LOCAL_HOST}", "document")
+    by_hour = {h.bucket: h.cost_usd for h in local.hours}
+    assert by_hour["2026-11-14T01:00:00Z"] == 0.5
+    assert by_hour["2026-11-14T02:00:00Z"] is None
+    day = next(d for d in local.days if d.bucket == "2026-11-14T00:00:00Z")
+    assert day.cost_usd == 0.5
+    assert local.total is not None
+    assert local.total.cost_usd == 0.5
