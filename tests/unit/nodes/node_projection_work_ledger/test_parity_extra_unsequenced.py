@@ -70,7 +70,7 @@ def _run(
     seq_on_matched: bool = True,
     drop_matched: int = 0,
 ) -> int:
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
+    ledger = tmp_path / "ledger_copy.md"
     ledger.write_text("# ledger\n" + "\n".join(ROWS) + "\n")
     matched = [
         _entry(
@@ -179,7 +179,7 @@ class _Connection:
 def _database_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, fail: bool
 ) -> int:
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
+    ledger = tmp_path / "ledger_copy.md"
     ledger.write_text("# ledger\n" + "\n".join(ROWS) + "\n")
     state = tmp_path / "state"
     state.mkdir()

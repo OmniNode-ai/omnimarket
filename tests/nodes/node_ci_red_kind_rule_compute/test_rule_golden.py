@@ -257,7 +257,7 @@ def test_the_pinned_overlay_file_named_by_the_env_wins_over_the_roots(
     assert answer.kind == "pinned-kind"
 
 
-def test_the_contract_names_the_handler_and_declares_local_invocation_with_no_bus() -> (
+def test_the_contract_names_the_handler_and_declares_its_command_and_answer_topics() -> (
     None
 ):
     contract_path = (
@@ -266,13 +266,16 @@ def test_the_contract_names_the_handler_and_declares_local_invocation_with_no_bu
     )
     contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
     assert contract["handler"]["class"] == "HandlerCiRedKindRule"
-    operations = {
-        handler["operation"]: handler["handler"]["name"]
+    handlers = {
+        handler["handler"]["name"]: handler["event_model"]["name"]
         for handler in contract["handler_routing"]["handlers"]
     }
-    assert operations == {"classify_ci_red_kind_by_rule": "HandlerCiRedKindRule"}
-    assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
-    assert contract["metadata"]["transport_type"] == "local"
+    assert handlers == {"HandlerCiRedKindRule": "ModelCiRedKindRuleRequest"}
+    assert contract["event_bus"] == {
+        "subscribe_topics": ["onex.cmd.omnimarket.ci-red-kind-rule-requested.v1"],
+        "publish_topics": ["onex.evt.omnimarket.ci-red-kind-rule-answered.v1"],
+    }
+    assert contract["metadata"]["transport_type"] == "kafka"
 
 
 ERROR_LINE_504 = "##[error]Unexpected HTTP response: 504"

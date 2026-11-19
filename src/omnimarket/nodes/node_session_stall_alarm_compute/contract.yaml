@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The session stall alarm effect calls this handler in process with the rows its transcript reader supplied. The decision
+# is pure: no clock, no file, no bus.
+name: node_session_stall_alarm_compute
+contract_name: node_session_stall_alarm_compute
+node_name: node_session_stall_alarm_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Decide whether the orchestrating session stopped dequeuing input or firing its scheduled ticks, from the queue rows a
+  reader supplies and the time now: the oldest enqueue with no dequeue for 15 minutes, or, while a recurring session tick
+  is declared, no scheduled task fired for 45 minutes. The verdict carries the reasons, the oldest waiting enqueue, the
+  last task and the detail and evidence the alarm quotes.
+handler:
+  module: omnimarket.nodes.node_session_stall_alarm_compute.handlers.handler_session_stall_judge
+  class: HandlerSessionStallJudge
+  input_model: omnimarket.models.session_stall.ModelSessionStallRequest
+  output_model: omnimarket.models.session_stall.ModelSessionStallVerdict
+input_model:
+  name: ModelSessionStallRequest
+  module: omnimarket.models.session_stall
+output_model:
+  name: ModelSessionStallVerdict
+  module: omnimarket.models.session_stall
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: []
+runtime_dispatch:
+  external_trigger: "The session stall alarm effect invokes the handler in process with rows its transcript reader read."
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+lifecycle: experimental
+metadata:
+  ticket: OMN-25405
+  transport_type: local
