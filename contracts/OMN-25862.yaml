@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-25862
+title: A $0 run on a model the pricing manifest does not list is unpriced in the metering headline but a measured zero in the savings and model-routing views
+summary: 'The metering headline counts a run as unpriced by priced_spend: a run on a model the pricing manifest does not list is unpriced at any cost, $0 included. The savings view (revision 6) and model-routing view v4 kept such a $0 run as a measured zero, so one store served two unpriced counts. This change adds savings view revision 7 and model-routing view v5, each a new one-time store step, whose unpriced rule is priced_spend''s. Money totals do not change; only the unpriced count does.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25862-one-unpriced-rule
+  statement: The metering headline and the local savings and model-routing views count unpriced runs by one rule.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the metering headline and the savings and model-routing views serve the same unpriced count for the same store -- falsifier: uv run pytest with a $0 run on an unlisted model fails unless the three counts agree'
+evidence_requirements:
+- kind: tests
+  description: The one-unpriced-rule tests pass at the pushed head.
+  command: uv run pytest tests/unit/projection/test_omn25862_one_unpriced_rule.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25862-ac1
+  description: 'AC1: for one store, the metering headline''s runs_unknown_spend, the savings view''s unpriced_call_count and model-routing''s unmeasured_cost_count agree, with a $0 run on an unlisted model as the one unpriced run, and listed models at $0 stay measured; fails on the previous view revisions.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn25862_one_unpriced_rule.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn25862-integration-proof
+  description: the view store steps and their tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25862 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/projection/test_omn25862_one_unpriced_rule.py -q --no-cov
+    cwd: .
