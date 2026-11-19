@@ -18,15 +18,22 @@ from temporalio.client import Client, ScheduleActionStartWorkflow, ScheduleOverl
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
+from omnimarket.handlers.floor_projection import InMemorySnapshotSource
+from omnimarket.models.floor_projection import (
+    ModelFloorProjectionEnvelope,
+    ModelFloorProjectionReadOverlay,
+)
 from omnimarket.models.integration_reading import (
     EnumIntegrationGapClass,
     EnumIntegrationState,
+    ModelIntegrationReading,
+    ModelIntegrationReadingBatch,
+)
+from omnimarket.nodes.node_integration_projection_compute.handlers.handler_integration_projection import (
+    HandlerIntegrationProjection,
 )
 from omnimarket.nodes.node_prove_running_workflow import (
     runtime_prove_running as runtime,
-)
-from omnimarket.nodes.node_prove_running_workflow.handlers.handler_integration_ledger_reader import (
-    read_not_running,
 )
 from omnimarket.nodes.node_prove_running_workflow.handlers.temporal_prove_running import (
     ProveRunningWorkflow,
@@ -58,15 +65,89 @@ from tests.nodes.node_prove_running_workflow.test_prove_running_workflow import 
 
 pytestmark = pytest.mark.unit
 
-LEDGER = """# Integration ledger
-## NOT RUNNING (4, oldest merge first)
-- omnimarket 42 | Second | merged 2026-11-16 09:01Z | runs: worker on h053 | state: NOT RUNNING | gap: unit missing | step: install it | owner: NONE
-- omnimarket 41 | First | merged 2026-11-16 09:00Z | runs: worker on H051 | state: NOT RUNNING | gap: unit missing | step: install it
-- omnimarket (no number) | Overlay | merged 2026-11-16 08:59Z | runs: h202 | state: NOT RUNNING | gap: missing | step: read again
-- omnimarket 43 | Third | merged 2026-11-16 09:02Z | runs: dev runtime | state: NOT RUNNING | gap: | step:
-## SEEN RUNNING
-- omnimarket 44 | Other section | merged 2026-11-16 08:58Z | runs: h202 | state: NOT RUNNING | gap: old | step: reread
-"""
+TOPIC = "onex.snapshot.projection.floor-integration.v1"
+PRODUCER = "node_integration_reading_publish_effect:test-pass"
+
+
+def _reading(
+    number: int,
+    target: str,
+    merged: datetime,
+    state: EnumIntegrationState = EnumIntegrationState.NOT_RUNNING,
+) -> ModelIntegrationReading:
+    running = state is EnumIntegrationState.RUNNING
+    return ModelIntegrationReading(
+        repository="omnimarket",
+        number=number,
+        title=f"Change {number}",
+        merged_at=merged,
+        target=target,
+        state=state,
+        gap_class=(
+            EnumIntegrationGapClass.NONE
+            if running
+            else EnumIntegrationGapClass.NEEDS_UNIT
+        ),
+        gap="" if running else "unit missing",
+        step="" if running else "install it",
+        running_path="some_unit" if running else "",
+        running_line="SEEN_RUNNING line" if running else "",
+        read_at=merged,
+        origin="test-pass",
+    )
+
+
+def publication(as_of: datetime, *, producer: str = PRODUCER) -> bytes:
+    """One publication of the integration projection: three NOT RUNNING lines, one running, one more line later."""
+    merged = datetime(2026, 11, 16, 9, tzinfo=UTC)
+    readings = (
+        _reading(42, "worker on h053", merged + timedelta(minutes=1)),
+        _reading(41, "worker on H051", merged),
+        _reading(43, "dev runtime", merged + timedelta(minutes=2)),
+        _reading(
+            44,
+            "worker on h202",
+            merged + timedelta(minutes=3),
+            EnumIntegrationState.RUNNING,
+        ),
+    )
+    projection = HandlerIntegrationProjection().handle(
+        ModelIntegrationReadingBatch(as_of=as_of, origin="test-pass", readings=readings)
+    )
+    return (
+        ModelFloorProjectionEnvelope(
+            projection_id="integration",
+            as_of=as_of,
+            producer=producer,
+            payload=projection.model_dump(mode="json"),
+        )
+        .model_dump_json()
+        .encode()
+    )
+
+
+def _declare_projection(
+    monkeypatch: pytest.MonkeyPatch, held: dict[str, list[bytes]]
+) -> None:
+    """The declared overlay and the held publications, in place of the broker (the stand-in of the unit's overlay)."""
+    monkeypatch.setattr(
+        runtime,
+        "snapshot_source",
+        lambda *_args: InMemorySnapshotSource(held),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "projection_overlay",
+        lambda *_args: ModelFloorProjectionReadOverlay.model_validate(
+            {
+                "bus": "inmemory",
+                "read_window_s": 1.0,
+                "projections": {"integration": {"topic": TOPIC, "max_age_s": 7800}},
+            }
+        ),
+    )
+
+
 HOSTS = ("h051", "h053", "dev-runtime")
 WORKFLOW_IDS = tuple(f"omnimarket#{number}@{number:040x}" for number in (41, 42, 43))
 
@@ -75,9 +156,10 @@ WORKFLOW_IDS = tuple(f"omnimarket#{number}@{number:040x}" for number in (41, 42,
 def batch_files(
     files: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> dict[str, Path]:
-    integration = tmp_path / "integration.md"
-    integration.write_text(LEDGER, encoding="utf-8")
-    monkeypatch.setenv("ONEX_INTEGRATION_LEDGER_PATH", str(integration))
+    monkeypatch.delenv("ONEX_INTEGRATION_LEDGER_PATH", raising=False)
+    published = tmp_path / "integration-publication.json"
+    published.write_bytes(publication(datetime.now(UTC)))
+    monkeypatch.setenv("FAKE_INTEGRATION_PUBLICATION", str(published))
     monkeypatch.setenv(
         "ONEX_PROVE_RUNNING_MERGE_SHA_ARGV",
         json.dumps([sys.executable, FAKE, "merge-sha"]),
@@ -134,47 +216,88 @@ def test_schedule_hourly() -> None:
     assert plan.steps.group_by_host == (sys.executable, "-m", NODE, "group-by-host")
 
 
-def test_read_not_running_section() -> None:
-    as_of = datetime(2026, 11, 16, 10, tzinfo=UTC)
-    batch = read_not_running(LEDGER, as_of=as_of, origin="test")
-    assert batch.as_of == as_of
-    assert batch.origin == "test"
-    assert [reading.number for reading in batch.readings] == [42, 41, 43]
-    first, _, last = batch.readings
-    assert first.title == "Second"
-    assert first.merged_at == datetime(2026, 11, 16, 9, 1, tzinfo=UTC)
-    assert first.read_at == as_of
-    assert first.state is EnumIntegrationState.NOT_RUNNING
-    assert first.gap_class is EnumIntegrationGapClass.NEEDS_READING
-    assert first.target == "worker on h053"
-    assert first.gap == "unit missing"
-    assert first.step == "install it"
-    assert last.gap == last.step == "none stated"
-
-
-@pytest.mark.parametrize("missing", [None, "missing-ledger.md"])
-def test_read_not_running_refuses_unreadable_ledger(
-    missing: str | None,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    env_var = "ONEX_INTEGRATION_LEDGER_PATH"
-    if missing is None:
-        monkeypatch.delenv(env_var, raising=False)
-    else:
-        monkeypatch.setenv(env_var, str(tmp_path / missing))
+def _read_step(monkeypatch: pytest.MonkeyPatch, limit: int = 3) -> None:
     step = ModelProveRunningBatchStepInput(
         step="read_not_running",
         step_key="batch/read_not_running",
         batch_id="batch",
-        limit=3,
+        limit=limit,
     )
     monkeypatch.setattr(sys, "stdin", io.StringIO(step.model_dump_json()))
+    monkeypatch.setenv(
+        "ONEX_PROVE_RUNNING_MERGE_SHA_ARGV",
+        json.dumps([sys.executable, FAKE, "merge-sha"]),
+    )
+
+
+def test_read_not_running_reads_the_declared_batch_with_no_env_set_by_hand(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("ONEX_INTEGRATION_LEDGER_PATH", raising=False)
+    _declare_projection(monkeypatch, {TOPIC: [publication(datetime.now(UTC))]})
+    _read_step(monkeypatch)
+    assert runtime.main(["read-not-running"]) == 0
+    selected = ModelProveRunningStartBatch.model_validate_json(capsys.readouterr().out)
+    assert [c.number for c in selected.changes] == [41, 42, 43]
+    assert [c.target for c in selected.changes] == [
+        "worker-on-H051",
+        "worker-on-h053",
+        "dev-runtime",
+    ]
+
+
+def test_read_not_running_takes_the_newest_publication(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    now = datetime.now(UTC)
+    _declare_projection(
+        monkeypatch,
+        {
+            TOPIC: [
+                publication(now),
+                publication(now - timedelta(minutes=30), producer="older"),
+            ]
+        },
+    )
+    _read_step(monkeypatch, limit=1)
+    assert runtime.main(["read-not-running"]) == 0
+    selected = ModelProveRunningStartBatch.model_validate_json(capsys.readouterr().out)
+    assert [c.number for c in selected.changes] == [41]
+
+
+def test_read_not_running_refuses_a_stale_batch(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    stale = datetime.now(UTC) - timedelta(hours=13)
+    _declare_projection(monkeypatch, {TOPIC: [publication(stale)]})
+    _read_step(monkeypatch)
     assert runtime.main(["read-not-running"]) == runtime.EXIT_REFUSED
     output = capsys.readouterr()
-    assert env_var in output.err
+    assert "over the declared 7800 s" in output.err
+    assert "the integration pass has published no current batch" in output.err
     assert not output.out
+
+
+def test_read_not_running_refuses_a_topic_with_no_batch(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _declare_projection(monkeypatch, {})
+    _read_step(monkeypatch)
+    assert runtime.main(["read-not-running"]) == runtime.EXIT_REFUSED
+    output = capsys.readouterr()
+    assert f"{TOPIC} holds no valid publication of integration" in output.err
+    assert not output.out
+
+
+def test_input_is_declared_in_the_contract_not_in_an_env_var() -> None:
+    cfg = runtime.contract_config()
+    assert "ledger_path_env" not in cfg["batch"]
+    assert cfg["batch"]["input"]["projection_id"] == "integration"
+    contract = (
+        Path(runtime.__file__).with_name("contract.yaml").read_text(encoding="utf-8")
+    )
+    assert "ONEX_INTEGRATION_LEDGER_PATH" not in contract
+    assert TOPIC in contract
 
 
 def test_groups_by_host_cli(

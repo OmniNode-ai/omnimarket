@@ -28,7 +28,28 @@ def batch_step(verb: str) -> int:
         install=["{python}", __file__, "install"],
         read_running=["{python}", __file__, "read"],
     )
-    with patch.object(runtime, "contract_config", return_value=cfg):
+    # The broker is out of a unit test: the batch input is the publication the test holds under the declared topic.
+    from pathlib import Path
+
+    from omnimarket.handlers.floor_projection import InMemorySnapshotSource
+    from omnimarket.models.floor_projection import ModelFloorProjectionReadOverlay
+
+    topic = "onex.snapshot.projection.floor-integration.v1"
+    held = {topic: [Path(os.environ["FAKE_INTEGRATION_PUBLICATION"]).read_bytes()]}
+    overlay = ModelFloorProjectionReadOverlay.model_validate(
+        {
+            "bus": "inmemory",
+            "read_window_s": 1.0,
+            "projections": {"integration": {"topic": topic, "max_age_s": 7800}},
+        }
+    )
+    with (
+        patch.object(runtime, "contract_config", return_value=cfg),
+        patch.object(runtime, "projection_overlay", return_value=overlay),
+        patch.object(
+            runtime, "snapshot_source", return_value=InMemorySnapshotSource(held)
+        ),
+    ):
         return runtime.main([verb])
 
 
