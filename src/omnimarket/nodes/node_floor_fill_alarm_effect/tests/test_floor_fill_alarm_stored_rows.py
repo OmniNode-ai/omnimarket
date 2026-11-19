@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -226,8 +227,8 @@ def test_floor_fill_alarm_the_run_log_is_written_whole_or_not_at_all(
     store[ANSWER_KEY] = _stored(2, lanes=2, minutes_ago=10)
     real = Path.write_text
 
-    def cut_short(self: Path, text: str, *args: object, **kwargs: object) -> int:
-        real(self, text[: len(text) // 3], *args, **kwargs)  # type: ignore[arg-type]
+    def cut_short(self: Path, text: str, *args: Any, **kwargs: Any) -> int:
+        real(self, text[: len(text) // 3], *args, **kwargs)
         raise OSError("disk full")
 
     monkeypatch.setattr(Path, "write_text", cut_short)
@@ -368,9 +369,11 @@ def _claim_row(stamp: datetime) -> str:
 def test_floor_fill_alarm_a_claim_in_the_same_second_as_the_start_is_a_claim() -> None:
     started = NOW - timedelta(minutes=20) + timedelta(microseconds=700000)
     rows = (_claim_row(started.replace(microsecond=0)),)
-    (lane,) = StoredStateSentLanes(
+    read_lanes = StoredStateSentLanes(
         {SCOPE: _state_started_at(started)}.get, SCOPE, lambda: rows
     ).read_sent_lanes()
+    assert len(read_lanes) == 1
+    lane = read_lanes[0]
     assert lane.claim_at is not None
     assert lane.claim_at >= lane.sent_at
     handler = HandlerFloorFillAlarmCheck(
@@ -393,9 +396,11 @@ def test_floor_fill_alarm_a_claim_in_the_same_second_as_the_start_is_a_claim() -
 def test_floor_fill_alarm_a_claim_in_the_second_before_the_start_is_no_claim() -> None:
     started = NOW - timedelta(minutes=20) + timedelta(microseconds=700000)
     rows = (_claim_row(started.replace(microsecond=0) - timedelta(seconds=1)),)
-    (lane,) = StoredStateSentLanes(
+    read_lanes = StoredStateSentLanes(
         {SCOPE: _state_started_at(started)}.get, SCOPE, lambda: rows
     ).read_sent_lanes()
+    assert len(read_lanes) == 1
+    lane = read_lanes[0]
     assert lane.claim_at is None
 
 

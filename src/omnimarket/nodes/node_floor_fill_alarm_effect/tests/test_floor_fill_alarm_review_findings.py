@@ -15,6 +15,7 @@ import inspect
 import json
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -175,7 +176,9 @@ def test_floor_fill_alarm_a_lane_that_ended_without_a_claim_alarms_once(
         }
     )
     source = StoredStateSentLanes({SCOPE: ended_state}.get, SCOPE, lambda: ())
-    (ended,) = source.read_sent_lanes()
+    ended_lanes = source.read_sent_lanes()
+    assert len(ended_lanes) == 1
+    ended = ended_lanes[0]
     assert ended.ended is True
     ledger = _Ledger()
     handler = HandlerFloorFillAlarmCheck(
@@ -318,12 +321,12 @@ def test_floor_fill_alarm_the_handler_is_built_with_no_ports_and_refuses_by_name
 # Finding 2: the fill's own entry runs the check after a live tick.
 
 
-def run_alarm_after_tick(*args: object, **kwargs: object) -> ModelFloorFillEntryResult:
+def run_alarm_after_tick(*args: Any, **kwargs: Any) -> ModelFloorFillEntryResult:
     from omnimarket.nodes.node_floor_fill_orchestrator import (
         runtime_floor_fill_orchestrator as entry,
     )
 
-    return entry.run_alarm_after_tick(*args, **kwargs)  # type: ignore[arg-type]
+    return entry.run_alarm_after_tick(*args, **kwargs)
 
 
 def _entry_result(tmp_path: Path) -> tuple[ModelFloorFillEntryResult, dict[str, str]]:
