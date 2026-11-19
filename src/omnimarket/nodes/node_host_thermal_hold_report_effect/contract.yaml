@@ -32,6 +32,15 @@ event_bus:
   subscribe_topics: [onex.cmd.omnimarket.host-thermal-hold-report-requested.v1]
   publish_topics: [onex.evt.omnimarket.host-thermal-hold-reported.v1]
 
+handler:
+  module: omnimarket.nodes.node_host_thermal_hold_report_effect.handlers.handler_host_thermal_hold_report
+  class: HandlerHostThermalHoldReport
+  input_model: omnimarket.nodes.node_host_thermal_hold_report_effect.models.model_host_thermal_hold_report.ModelHostThermalHoldReportRequest
+  output_model: omnimarket.nodes.node_host_thermal_hold_report_effect.models.model_host_thermal_hold_report.ModelHostThermalHoldReportResult
+
+# Not a runtime-dispatched handler: it takes the guard, episode and ledger ports and the clock as constructor
+# parameters, so the tick main builds it and the contract declares no handler_routing.
+
 terminal_event: onex.evt.omnimarket.host-thermal-hold-reported.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.host-thermal-hold-report-requested.v1
