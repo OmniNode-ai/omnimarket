@@ -117,3 +117,20 @@ def test_failed_run_duration_a_completed_run_merged_over_a_stored_zero_keeps_it(
     row = _project(again, db)
     assert not row.get("terminal_failure_cause")
     assert row.get("execution_ms") == 0
+
+
+def test_failed_run_duration_a_failure_over_a_measured_duration_keeps_it() -> None:
+    """F7: a failed terminal merged over a measured duration keeps it; only a stored 0 ms is cleared."""
+    db = InmemoryDatabaseAdapter()
+    first = _skill_terminal([_attempt(backend_id="only", host="h201", passed=True)])
+    first["execution_duration_ms"] = 850
+    _project(first, db)
+    failed = _skill_terminal([_attempt(backend_id="only", host="h201", passed=False)])
+    failed.update(
+        correlation_id=first["correlation_id"],
+        quality_gate_passed=False,
+        terminal_failure_cause="provider_error",
+    )
+    row = _project(failed, db)
+    assert row.get("terminal_failure_cause")
+    assert row.get("execution_ms") == 850

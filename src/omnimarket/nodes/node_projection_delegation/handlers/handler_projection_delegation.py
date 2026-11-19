@@ -2532,9 +2532,10 @@ def _preserve_terminal_failure(
             row["attempt_history"] = existing_history
     apply_terminal_precedence(existing, row)
     # OMN-24615 AC8: both writers' merges end here, so a failed run inherits no stored 0 ms as measured.
-    row["execution_ms"] = _failed_zero_to_none(
-        row.get("execution_ms"), row.get("terminal_failure_cause")
-    )
+    duration = row.get("execution_ms")
+    if isinstance(duration, int):
+        cause = row.get("terminal_failure_cause")
+        row["execution_ms"] = _failed_zero_to_none(duration, cause)
 
 
 def _is_blank(value: object) -> bool:
