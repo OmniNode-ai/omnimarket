@@ -10,14 +10,15 @@
 name: node_runtime_bus_forward_effect
 contract_name: node_runtime_bus_forward_effect
 node_name: node_runtime_bus_forward_effect
-contract_version: {major: 1, minor: 0, patch: 0}
-node_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 node_type: effect
 lifecycle: experimental
 runtime_profiles: [effects]
 
 description: >
-  Carries the events one node run published to the runtime-local bus to the hosted bus the node's overlay declares.
+  Carries the events one node run published to the runtime-local bus to the Kafka lane or HTTPS endpoint declared
+  by the node's overlay.
   Every publish goes through the injected publisher (the handler dials nothing itself). An event whose topic is under
   none of the overlay's allowed topic prefixes, or past the overlay's max_events, is refused by name and never
   published; a publish the client refuses, or a flush that leaves events unconfirmed, counts as failed, and the run's
