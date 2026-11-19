@@ -173,7 +173,7 @@ class HandlerSetupDashboard:
                     if self._ready(existing):
                         return
                 except httpx.HTTPError:
-                    pass
+                    pass  # not answering yet counts as not ready: stop the old record and serve again
                 self._stop_record(existing)
             identity = read_local_tenant_identity(db_path=self._store.db_path)
             if identity is None:
@@ -250,7 +250,7 @@ class HandlerSetupDashboard:
                                 self._write(record)
                                 return
                         except httpx.TransportError:
-                            pass
+                            pass  # still starting: retry until the readiness deadline
                         time.sleep(0.1)
                     raise RuntimeError(
                         "The dashboard did not pass authenticated readiness"

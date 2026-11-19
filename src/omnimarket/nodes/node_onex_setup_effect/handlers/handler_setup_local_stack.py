@@ -236,7 +236,7 @@ class HandlerSetupLocalStack:
                 self._applied_digest = digest
                 return None
         except (OSError, ValueError, RuntimeError):
-            pass
+            pass  # a failed provision falls through to the action-needed observation below
         return ModelSetupObservation(
             step=self.name,
             status="failure",

@@ -24,6 +24,9 @@
 #     that excludes it          -> refuse missing_ticket
 #   no CLAIM names PR or ticket -> refuse not_owned
 #   no lab proof at the head    -> refuse missing_lab_proof
+#   new-work PR, no success fable-review-gate status on the head
+#                               -> refuse review_status_missing, review_status_failing
+#                                  or review_status_other_head
 #   otherwise                   -> ready, with the MSG and the closing row
 name: "node_pr_handoff_decision_compute"
 node_type: "COMPUTE_GENERIC"

@@ -229,7 +229,7 @@ class _SetupCommand(click.Command):
                     message="Invalid setup arguments. Review onex setup --help and provide the required option values."
                 ).model_dump_json()
             )
-            ctx.exit(error.exit_code)
+            raise click.exceptions.Exit(error.exit_code) from error
 
 
 def current_folder_workspace(cwd: Path, home: Path) -> Path | None:

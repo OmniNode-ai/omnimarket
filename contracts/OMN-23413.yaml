@@ -143,30 +143,30 @@ requirements:
   - id: AC22
     statement: '/config selects models from a live list, never a typed id. After the provider and its key or URL, the provider''s models load on their own and show provider, model, context, price (USD per 1M tokens, in / out), capabilities and status, with search, filter, sort and a details view. Any number can be ticked; every ticked model is stored in order and used by delegation. Values no source states show "-", never zero or "no". A model on the user''s own server is named by that server (Ollama or vLLM) with the context and capabilities it reports.'
 - id: req-omn23413-ac25
-  statement: '/delegation needs no typed input and refuses without a model. It shows selected models and one delegation switch for ordinary prompts and Agent/Task calls under bit 11. CLI and TUI install and remove both hooks together without changing Claude model, aliases, provider, authentication, permissions or unrelated settings.'
+  statement: '/delegation needs no typed input and refuses without a model. It shows selected models and one delegation switch for ordinary prompts under bit 11; subagents stay on Claude (Amendment 14a, 2026-11-17: one prompt hook). CLI and TUI install and remove that hook, with its history helper, without changing Claude model, aliases, provider, authentication, permissions or unrelated settings.'
   acceptance:
   - id: AC25
-    statement: '/delegation needs no typed input and refuses without a model. It shows selected models and one delegation switch for ordinary prompts and Agent/Task calls under bit 11. CLI and TUI install and remove both hooks together without changing Claude model, aliases, provider, authentication, permissions or unrelated settings.'
+    statement: '/delegation needs no typed input and refuses without a model. It shows selected models and one delegation switch for ordinary prompts under bit 11; subagents stay on Claude (Amendment 14a, 2026-11-17: one prompt hook). CLI and TUI install and remove that hook, with its history helper, without changing Claude model, aliases, provider, authentication, permissions or unrelated settings.'
 - id: req-omn23413-ac27
   statement: 'One catalogue, no hard-coded lists. /model, /config and /delegation read the same entries; the providers, capabilities, columns and words come from configuration. /model chooses the first model or Auto.'
   acceptance:
   - id: AC27
     statement: 'One catalogue, no hard-coded lists. /model, /config and /delegation read the same entries; the providers, capabilities, columns and words come from configuration. /model chooses the first model or Auto.'
 - id: req-omn23413-ac33
-  statement: Every ordinary prompt goes to delegation first when bit 11 is enabled; documented slash and @claude skips remain native. A quality-passed answer is shown with model and full run ID without native Claude inference. Decline via the fixed CANNOT_ANSWER marker, failure, timeout, quality veto or OFF continues to Claude. Bounded delegated history is deduplicated by run ID and delivered once on the next native turn. onex delegation on/off and the TUI switch add/remove prompt and Agent/Task hooks together while preserving Claude settings. Real inference and token receipt evidence is required separately from deterministic process controls.
+  statement: Every ordinary prompt goes to delegation first when bit 11 is enabled; documented slash and @claude skips remain native. A quality-passed answer is shown with model and full run ID without native Claude inference. Decline via the fixed CANNOT_ANSWER marker, failure, timeout, quality veto or OFF continues to Claude. Bounded delegated history is deduplicated by run ID and delivered once on the next native turn. onex delegation on/off and the TUI switch add and remove the one prompt hook while preserving Claude settings; subagents stay on Claude (Amendment 14a, 2026-11-17). Real inference and token receipt evidence is required separately from deterministic process controls.
   acceptance:
   - id: AC33
-    statement: Every ordinary prompt goes to delegation first when bit 11 is enabled; documented slash and @claude skips remain native. A quality-passed answer is shown with model and full run ID without native Claude inference. Decline via the fixed CANNOT_ANSWER marker, failure, timeout, quality veto or OFF continues to Claude. Bounded delegated history is deduplicated by run ID and delivered once on the next native turn. onex delegation on/off and the TUI switch add/remove prompt and Agent/Task hooks together while preserving Claude settings. Real inference and token receipt evidence is required separately from deterministic process controls.
+    statement: Every ordinary prompt goes to delegation first when bit 11 is enabled; documented slash and @claude skips remain native. A quality-passed answer is shown with model and full run ID without native Claude inference. Decline via the fixed CANNOT_ANSWER marker, failure, timeout, quality veto or OFF continues to Claude. Bounded delegated history is deduplicated by run ID and delivered once on the next native turn. onex delegation on/off and the TUI switch add and remove the one prompt hook while preserving Claude settings; subagents stay on Claude (Amendment 14a, 2026-11-17). Real inference and token receipt evidence is required separately from deterministic process controls.
 - id: req-omn23413-ac37
-  statement: 'No Claude gateway remains (Amendment 11): no claude_gateway, cli_gateway, gateway_owns_session or `onex claude` command in omnimarket; Claude Code delegation is the two hooks.'
+  statement: 'No Claude gateway remains (Amendment 11): no claude_gateway, cli_gateway, gateway_owns_session or `onex claude` command in omnimarket; Claude Code delegation is the one prompt hook (Amendment 14a).'
   acceptance:
   - id: AC37
-    statement: 'No Claude gateway remains (Amendment 11): no claude_gateway, cli_gateway, gateway_owns_session or `onex claude` command in omnimarket; Claude Code delegation is the two hooks.'
+    statement: 'No Claude gateway remains (Amendment 11): no claude_gateway, cli_gateway, gateway_owns_session or `onex claude` command in omnimarket; Claude Code delegation is the one prompt hook (Amendment 14a).'
 - id: req-omn23413-ac38
-  statement: '`onex delegation status` reports on only when both delegation hooks (UserPromptSubmit and PreToolUse Agent|Task) are installed and bit 11 is set; a subagent-only install reports off and names the missing prompt hook. Each hook can be paused on its own (operator 2026-11-15).'
+  statement: '`onex delegation status` reports on only when the prompt hook (UserPromptSubmit) is installed and bit 11 is set; an older install that has only the subagent hook reports off and names the missing prompt hook. The prompt hook can be paused on its own (operator 2026-11-15); Amendment 14a (2026-11-17) removed the subagent hook.'
   acceptance:
   - id: AC38
-    statement: '`onex delegation status` reports on only when both delegation hooks (UserPromptSubmit and PreToolUse Agent|Task) are installed and bit 11 is set; a subagent-only install reports off and names the missing prompt hook. Each hook can be paused on its own (operator 2026-11-15).'
+    statement: '`onex delegation status` reports on only when the prompt hook (UserPromptSubmit) is installed and bit 11 is set; an older install that has only the subagent hook reports off and names the missing prompt hook. The prompt hook can be paused on its own (operator 2026-11-15); Amendment 14a (2026-11-17) removed the subagent hook.'
 evidence_requirements:
 - kind: tests
   description: Run fixture controls plus required installed-wheel and actual model/Claude evidence; preserve
@@ -281,7 +281,7 @@ dod_evidence:
     cwd: .
 - id: dod-omn23413-ac9-cli-behavior
   description: Interactive and unattended share one engine; typed JSON, offline help and positive-control
-    secret scans over argv, output, plans and journals.
+    secret scans over argv, output, plans and journals; a plan carrying a secret is refused before any write.
   source: manual
   execution_scope: hosted_and_local
   binds_ac:
@@ -290,6 +290,7 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/cli/test_setup_model_picker.py tests/unit/nodes/node_onex_setup_effect/test_setup_configuration.py
       tests/e2e/test_setup_json_errors.py tests/e2e/test_setup_unattended_terminal.py tests/e2e/test_setup_model_probe_cli.py
+      "tests/e2e/test_setup_workflow_cli.py::test_secret_bearing_plan_is_refused_before_writes"
       -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23413-ac10-close-evidence
@@ -434,7 +435,7 @@ dod_evidence:
     check_value: 'uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/handlers/test_local_model_details.py -q --no-cov -n 0 -p no:randomly -k "config or server or ticked or searchable or key"'
     cwd: .
 - id: dod-omn23413-ac25-delegation-no-typed-input
-  description: '/delegation uses one prompt and Agent/Task hook switch, refuses without a model, and preserves Claude settings.'
+  description: '/delegation uses one prompt-hook switch (Amendment 14a), refuses without a model, and preserves Claude settings.'
   source: manual
   execution_scope: hosted_and_local
   binds_ac:
@@ -468,8 +469,8 @@ dod_evidence:
 - id: dod-omn23413-ac33-prompt-routing
   description: The hook node delegates any prompt and blocks Claude with the accepted answer; a declined
     prompt, a quality-gate-vetoed decline, and a failed or timed-out delegation pass the prompt to Claude;
-    the prompt switch pauses only prompts; Claude is told once what delegation answered while blocked;
-    the history given to Claude is bounded; and an identical subagent task reuses one answer. The skip
+    the prompt switch pauses only prompts; Claude is told once what delegation answered while blocked,
+    and the history given to Claude is bounded. Subagents stay on Claude (Amendment 14a). The skip
     prefix and the installed-hook journey with a real receipt are the unbound local Done gate item below.
   source: manual
   execution_scope: hosted_and_local
@@ -483,8 +484,10 @@ dod_evidence:
 
 - id: dod-omn23413-ac33-installed-prompt-controls
   description: Required isolated installed-hook journey executes accepted prompt blocking, fixed decline,
-    quality veto, process failure, timeout, OFF and skip controls, history delivery once, Agent/Task
-    reuse and unchanged Claude configuration. Requires the companion omniclaude source or unpacked
+    quality veto, process failure, timeout, OFF and skip controls, history delivery once, and unchanged
+    Claude configuration. It also calls the hook script directly with an Agent/Task event, which the script
+    still answers; `onex delegation on` registers only the prompt hook (Amendment 14a), so in a real session
+    subagents stay on Claude. Aligning this journey with Amendment 14a follows with omniclaude#3270. Requires the companion omniclaude source or unpacked
     wheel customer resource root via ONEX_COMBINED_HOOK_SOURCE; missing assets fail. The same required
     command also checks the TUI and joins a captured real prompt receipt to exactly one measured-usage
     delegation_events row and the actual native Claude result with zero native turns or cost.
