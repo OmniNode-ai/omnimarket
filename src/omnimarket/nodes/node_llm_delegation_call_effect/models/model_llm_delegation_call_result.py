@@ -62,8 +62,19 @@ class ModelLlmDelegationCallResult(BaseModel):
     actual_cost_usd: Decimal = Decimal("0")
     opus_equivalent_cost_usd: Decimal = Decimal("0")
     savings_usd: Decimal = Decimal("0")
+    # Token evidence only; cost provenance is carried separately by cost_basis.
     usage_source: EnumUsageSource = EnumUsageSource.UNKNOWN
     cost_basis: EnumCostBasis = EnumCostBasis.UNKNOWN
+
+    @property
+    def cost_usage_source(self) -> EnumUsageSource:
+        """Preserve the existing cost-source contracts at downstream boundaries."""
+        return (
+            EnumUsageSource.UNKNOWN
+            if self.cost_basis is EnumCostBasis.UNKNOWN
+            else EnumUsageSource.MEASURED
+        )
+
     # OMN-23756: the cost the provider itself reported for this call in its
     # usage accounting (``usage.cost``), beside the cost booked from the
     # declared price. None when the provider reported none.

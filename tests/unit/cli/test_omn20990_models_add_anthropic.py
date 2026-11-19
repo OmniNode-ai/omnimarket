@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -238,7 +239,9 @@ class TestModelsAddAnthropicAcceptedKey:
         result = _add()
 
         assert delegate.pins == ["byok-anthropic"]
-        assert "Anthropic   ✓ answered (claude-haiku-5-5)" in result.output
+        assert re.search(
+            r"^Anthropic +✓ answered \(claude-haiku-5-5\)$", result.output, re.M
+        )
 
     def test_models_add_anthropic_reads_the_list_with_anthropics_own_headers(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
