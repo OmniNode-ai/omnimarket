@@ -47,8 +47,6 @@ dod_evidence:
   description: 'AC2: the gate command named in the falsifier of AC2 exits 0 at the head; it reads the base branch revision, so only the local Done gate runs it.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref origin/dev
@@ -66,8 +64,6 @@ dod_evidence:
   description: 'AC3: after the dev runtime rebuilds from the merge, repo-state query for h053 and for h201 each exit 0 on the dev bus (today each times out after 30 s on the missing answer topic). Run at the local Done gate on a lab host; hosted CI has no dev bus.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: sh -c 'onex="${OMNI_HOME:?set OMNI_HOME}/omnibase_infra/scripts/onex"; "$onex" repo-state query --host h053 --repo OmniNode-ai/omnimarket --want refs && "$onex" repo-state query --host h201 --repo OmniNode-ai/omnimarket --want refs'
