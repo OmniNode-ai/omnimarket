@@ -86,7 +86,16 @@ async def test_runtime_mount_serves_catalog_to_a_resolved_tenant_only(
         )
     http_dependencies.bind_tenant_identity(SeededIdentity())
 
-    manifest = discover_contracts_from_paths([CONTRACT])
+    # The shipped contract declares no mount (the gateway owns /v1/workflows); this
+    # profile mounts the catalog factory alone, so it adds the mount to a copy.
+    standalone = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
+    standalone["http_mount"] = {
+        "factory": "omnimarket.nodes.node_workflow_contract_catalog_effect.handlers.http_app:create_app",
+        "path_prefix": ROUTE,
+    }
+    standalone_path = tmp_path / "contract.yaml"
+    standalone_path.write_text(yaml.safe_dump(standalone), encoding="utf-8")
+    manifest = discover_contracts_from_paths([standalone_path])
     assert manifest.total_errors == 0
     server = ServiceHealth(runtime=MagicMock(), port=0, host="127.0.0.1")
     try:

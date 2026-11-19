@@ -26,6 +26,11 @@ requirements:
   acceptance:
   - id: AC4
     statement: 'AC4: integrated: after install on a lab host from the branch, the host''s announcement is read on the development bus with start, heartbeat and stop reasons in order, and matches its capacity advertisement read in the same minute -- falsifier: onex lab-work hosts and a read of the announced topic on the development lane for that host name'
+- id: req-omn24409-ci-gate-budget
+  statement: the direct model call gate in the main CI workflow has timeout room over its seven repository scans, so a loaded push run on the base branch is not cancelled
+  acceptance:
+  - id: AC5
+    statement: 'AC5: the direct-model-call-gate job in ci.yml declares timeout-minutes of at least 30 -- falsifier: pytest tests/ci/test_direct_model_call_gate_timeout_omn24409.py -q, failing on the 15 minute limit that cancelled the dev push run 43720908237 and left CI Summary red'
 evidence_requirements:
 - kind: tests
   description: The host introspection compute and announce effect tests pass at the pushed head.
@@ -70,6 +75,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_introspection_announce_effect/test_host_announcer_chain_omn19998.py -q -n 0 --no-cov -k "golden"
+    cwd: .
+- id: dod-omn24409-ac5
+  description: 'AC5: the direct-model-call-gate job keeps at least 30 minutes of timeout; fails against the 15 minute limit that cancelled the dev push run.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_direct_model_call_gate_timeout_omn24409.py -q -n 0 --no-cov
     cwd: .
 - id: dod-omn24409-integration-proof
   description: 'AC4 lab proxy: the compute and announce effect tests run on a lab host at the pushed head; the announcement read on the development bus after the install is recorded in the pull request''s Lab comment and is not claimed by this local check.'

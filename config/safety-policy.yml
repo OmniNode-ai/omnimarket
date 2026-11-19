@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Policy for the Dependency Security Scan (safety check, enforcing step of
+# .github/workflows/security-scan.yml). One dated exception for one advisory.
+# safety ignores the advisory only until the `expires` date; after that date
+# the scan fails on it again.
+version: '3.0'
+security:
+  ignore-vulnerabilities:
+    SFTY-20261018-93041:
+      reason: >-
+        opentelemetry-exporter-otlp-proto-http 1.44.0, affected >=1.5.0,<1.45.0.
+        Temporary one-week exception while the dependency range change that
+        admits the patched release is made (OMN-25587).
+      expires: '2026-11-25'
