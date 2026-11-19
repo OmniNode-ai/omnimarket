@@ -11,7 +11,7 @@ requirements:
   statement: The second benchmark arm runs on the runtime tick from overlay values and reports a typed run event naming the backend that answered, or the single cause it failed.
   acceptance:
   - id: AC1
-    statement: 'AC1: a STATUS row on the rolling ledger reads kv pr=omnimarket#5798 installed=<host>:<revision> observed=<what ran> read_at=<UTC>, written by the lane after it read one run on the dev runtime on h201 itself (a log line, a dispatch, a health read or a job record) -- falsifier: grep -F pr=omnimarket#5798 $ONEX_LEDGER_PATH | grep -F installed= finds no row'
+    statement: 'AC1: a STATUS row on the rolling ledger reads kv pr=omnimarket#5798 installed=<host>:<revision> observed=<what ran> read_at=<UTC>, written by the lane after it read one run on the dev runtime on h201 itself (a log line, a dispatch, a health read or a job record) -- falsifier: a search of the rolling ledger for pr=omnimarket#5798 with installed= finds no row'
   - id: AC2
     statement: 'AC2: the change of omnimarket#5798 handles one run on the dev runtime, or the STATUS row names the single measured cause that keeps it from running and who must act -- falsifier: the dev runtime log and job record on h201 show no run line and the STATUS row names no cause and no actor'
   - id: AC3
