@@ -26,6 +26,20 @@ requirements:
           exactly onex and omni-agent on PATH and onex runs) is the opt-in
           tests/e2e/test_setup_packaged_journey.py -k customer_launchers_only, run with
           ONEX_TEST_ONEX_WHEEL set.
+  - id: req-omn25070-curl-installer
+    statement: curl -fsSL https://omninode.ai/install.sh | bash installs omninode-onex on macOS and Linux with a
+      checksum-verified uv, refuses unsupported platforms and foreign launchers, and is safe to rerun.
+    acceptance:
+      - id: AC4
+        statement: >-
+          AC4 (testing-phase form): packages/omninode-onex/install.sh, piped into bash, maps macOS arm64
+          and x86_64 and Linux x86_64 and arm64 to the right uv build and refuses anything else (Windows
+          names WSL); never runs a uv archive whose sha256 differs from the value in the script; refuses,
+          naming the file and leaving it unchanged, when a launcher it did not install is in uv's bin
+          directory; and installs, reinstalls and upgrades leaving exactly onex and omni-agent on PATH --
+          falsifier: uv run pytest tests/ci/test_omninode_onex_install_sh_omn25070.py fails on omnimarket
+          dev, where the script does not exist; the real install cases run with ONEX_TEST_ONEX_WHEEL set,
+          on each platform in .github/workflows/onex-installer.yml.
 evidence_requirements:
   - kind: tests
     description: The package tests; the opt-in install check runs with ONEX_TEST_ONEX_WHEEL set.
@@ -43,4 +57,13 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_omninode_onex_package_omn25070.py -q --no-cov
+        cwd: .
+  - id: dod-omn25070-curl-installer
+    description: The installer's platform, checksum and conflict cases, run through bash from stdin. The bound
+      test fails on dev, where the script does not exist.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omninode_onex_install_sh_omn25070.py -q --no-cov
         cwd: .

@@ -1,0 +1,131 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: onex installer
+
+# Runs packages/omninode-onex/install.sh for real on each launch platform:
+# a clean install with no uv on PATH (the script downloads and verifies its
+# pinned uv), a reinstall, and an upgrade, plus the platform, checksum and
+# conflict cases. The omninode-onex wheel is built from this commit and found
+# through ONEX_INSTALL_FIND_LINKS; every other package comes from PyPI.
+#
+#   ubuntu-latest     Linux x86_64
+#   ubuntu-24.04-arm  Linux arm64
+#   macos-latest      Apple Silicon macOS
+#   macos-15-intel    Intel macOS, with the documented recipe
+#                     (brew install openssl@3 rust): cryptography has no
+#                     macOS x86_64 wheel, so that one package is built.
+
+on:
+  pull_request:
+    paths:
+      - packages/omninode-onex/**
+      - tests/ci/test_omninode_onex_install_sh_omn25070.py
+      - .github/workflows/onex-installer.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-x86_64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          python-version: '3.12'
+          enable-cache: false
+      - name: Build the omninode-onex wheel
+        shell: bash
+        run: uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" packages/omninode-onex
+      - name: Run the installer tests
+        shell: bash
+        run: |
+          wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
+          ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest pytest -o addopts="" --noconftest \
+            -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py
+
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          python-version: '3.12'
+          enable-cache: false
+      - name: Build the omninode-onex wheel
+        shell: bash
+        run: uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" packages/omninode-onex
+      - name: Run the installer tests
+        shell: bash
+        run: |
+          wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
+          ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest pytest -o addopts="" --noconftest \
+            -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py
+
+  macos-arm64:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          python-version: '3.12'
+          enable-cache: false
+      - name: Build the omninode-onex wheel
+        shell: bash
+        run: uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" packages/omninode-onex
+      - name: Run the installer tests
+        shell: bash
+        run: |
+          wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
+          ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest pytest -o addopts="" --noconftest \
+            -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py
+
+  macos-intel:
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          python-version: '3.12'
+          enable-cache: false
+      - name: Intel macOS from-source prerequisites (documented recipe)
+        shell: bash
+        run: |
+          brew install openssl@3 rust
+          # The runner's rustup shim has no default toolchain; a user following
+          # the recipe has Homebrew's Rust only, so put it first.
+          echo "$(brew --prefix rust)/bin" >> "$GITHUB_PATH"
+      - name: Build the omninode-onex wheel
+        shell: bash
+        run: uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" packages/omninode-onex
+      - name: Run the installer tests
+        shell: bash
+        run: |
+          wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
+          ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest pytest -o addopts="" --noconftest \
+            -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py
