@@ -22,6 +22,11 @@ repo_variables:
     - SECRET
     - TOKEN
     - PASSWORD
+required_contexts:
+  entries:
+    - repository: example/owner-repo
+      branch: main
+      context: fable-review-gate
 runner_removals:
   entries:
     - organization: example-org

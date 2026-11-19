@@ -14,7 +14,7 @@ entry_points:
     node_lane_container_budget_compute: omnimarket.nodes.node_lane_container_budget_compute
 capabilities:
   standalone: true
-  full_runtime: false
+  full_runtime: true
   requires_network: false
   requires_repo: false
   requires_secrets: false

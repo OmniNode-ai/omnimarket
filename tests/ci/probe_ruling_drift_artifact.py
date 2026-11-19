@@ -60,7 +60,9 @@ def main() -> None:
         archive = root / "archive"
         archive.mkdir()
         request = FileRetentionRequest(
-            entries=[entry.model_copy(update={"path": str(root / "runs")})],
+            entries=[
+                entry.model_copy(update={"path": str(root / "runs"), "enabled": True})
+            ],
             now=now,
             host="wheel-proof",
             archive_root=str(archive),

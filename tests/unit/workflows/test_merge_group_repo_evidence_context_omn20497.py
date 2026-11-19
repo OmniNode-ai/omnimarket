@@ -3,9 +3,8 @@
 """The merge queue gets the repo-evidence context dev requires (OMN-20497).
 
 dev's repo-evidence ruleset requires `repo-evidence / dod-verify`. Its caller
-runs on pull_request_target and its reusable refuses any other event, so a queue
-commit carries the context only through the merge-group shim workflow. These
-tests read this repository's own workflow files.
+runs on pull_request, so a queue commit carries the context through the
+merge-group shim workflow. These tests read this repository's own workflow files.
 """
 
 from __future__ import annotations
