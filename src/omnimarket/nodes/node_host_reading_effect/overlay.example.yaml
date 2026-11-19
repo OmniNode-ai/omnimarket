@@ -77,6 +77,11 @@ canary:
   # A drill overlay sets drill: true, so its rows carry drill=yes and never count as operational.
   drill: false
   injected_fault: Kill the canary's wrapper so its result is not typed
+# The host-table-copies probe (OMN-24558): a host that lists it reads every copy of the lab host table that
+# node_host_table_copies_drift_compute's own overlay declares and reads NOT WORKING when the copies differ.
+# The copies and their paths are that overlay's; only the fault that turns the reading red is named here.
+host_table_copies:
+  injected_fault: Change one field of one host in one declared copy of the lab host table in a sandbox
 # Join J1, the code graph to hosts and capacity: the nodes host discovery and placement depend on, and the
 # emission journal the floor reads its receipts from.
 join_j1:
@@ -150,3 +155,10 @@ hosts:
       ONEX_LEDGER_BUS_APPEND_COMMAND: /example/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev
       EXAMPLE_REPOS_ROOT: /example/clones
       EXAMPLE_FLOOR_HOME: /example/floor-home
+  - name: example-table-host
+    scheduler: systemd-user
+    probes: [host-table-copies]
+    venv: example-venv
+    environment:
+      ONEX_LEDGER_HOST_NAME: example-table-host
+      ONEX_LEDGER_BUS_APPEND_COMMAND: /example/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev
