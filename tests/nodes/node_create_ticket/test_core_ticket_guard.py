@@ -20,8 +20,10 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
 )
 
 _GATE = "Gate: C7"
+# omnibase-core 0.47.73 refuses a code ticket without an integrated criterion that reads the running system.
 _CRITERION = (
-    "- [ ] AC1: the check works -- falsifier: uv run pytest tests/unit/test_x.py -q"
+    "- [ ] AC1: the check works -- falsifier: uv run pytest tests/unit/test_x.py -q\n"
+    "- [ ] AC2: integrated: the check runs on the dev lane -- falsifier: run it on a lab host and read back the result"
 )
 
 
