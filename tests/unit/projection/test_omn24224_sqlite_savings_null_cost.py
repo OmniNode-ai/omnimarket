@@ -45,7 +45,13 @@ def _three_runs(tmp_path: Path) -> Path:
         (
             _delegation("unmeasured", cost_usd=None, cost_savings_usd=None),
             _delegation("free", cost_usd=0.0, cost_savings_usd=0.000486),
-            _delegation("priced", cost_usd=0.25, cost_savings_usd=0.75),
+            _delegation(
+                "priced",
+                model_name="gpt-4o-mini",
+                delegated_to="gpt-4o-mini",
+                cost_usd=0.25,
+                cost_savings_usd=0.75,
+            ),
         ),
         (
             _call("unmeasured", "measured"),
@@ -80,7 +86,13 @@ def test_savings_view_null_cost_measured_totals_are_unchanged(
             tmp_path / "b",
             (
                 _delegation("free", cost_usd=0.0, cost_savings_usd=0.000486),
-                _delegation("priced", cost_usd=0.25, cost_savings_usd=0.75),
+                _delegation(
+                    "priced",
+                    model_name="gpt-4o-mini",
+                    delegated_to="gpt-4o-mini",
+                    cost_usd=0.25,
+                    cost_savings_usd=0.75,
+                ),
             ),
             (_call("free", "measured"), _call("priced", "measured")),
         )
