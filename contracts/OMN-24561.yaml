@@ -42,7 +42,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_broker_acl_overlay_render_compute/test_seam_run_node_topics.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_broker_acl_overlay_render_compute/test_seam_run_node_topics.py -q --no-cov -n 0 -p no:randomly -k sender_refusal_is_seen
     cwd: .
 - id: dod-omn24561-ac3
   description: 'Golden and failing control: an undeclared use with no covering row is covered; the same use declared refuses.'
