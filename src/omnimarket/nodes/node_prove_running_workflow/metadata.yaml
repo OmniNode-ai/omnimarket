@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_prove_running_workflow
+version: "1.0.0"
+description: Workflow 1, prove-running, a Temporal workflow whose every step is one of our nodes
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_prove_running_workflow: omnimarket.nodes.node_prove_running_workflow
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: external_write
+dependencies:
+  - pydantic>=2.11.0
+  - pyyaml
+  - temporalio>=1.35.0,<2.0.0
+authors: [OmniNode Team]
+license: MIT
+tags: [orchestrator, temporal, prove-running, merged-changes]
+node_role: orchestrator
+pack: "routing"
+display_name: "Prove Running Workflow"

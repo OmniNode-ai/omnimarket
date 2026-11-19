@@ -291,6 +291,7 @@ dependencies = [
     # through omnibase-infra, declared here because omnimarket now imports it.
     "boto3>=1.43.0,<2.0.0",
     # node_floor_fill_temporal_workflow imports the Temporal SDK at module import.
+    # OMN-24901: node_prove_running_workflow imports the Temporal SDK at module import.
     "temporalio>=1.35.0,<2.0.0",
 ]
 
@@ -1264,6 +1265,7 @@ node_projection_worktree_reconcile = "omnimarket.nodes.node_projection_worktree_
 node_projection_write_effect = "omnimarket.nodes.node_projection_write_effect"
 node_prompt_cost_estimate_compute = "omnimarket.nodes.node_prompt_cost_estimate_compute"
 node_prompt_intent_classify_compute = "omnimarket.nodes.node_prompt_intent_classify_compute"
+node_prove_running_workflow = "omnimarket.nodes.node_prove_running_workflow"
 node_provider_model_catalogue_effect = "omnimarket.nodes.node_provider_model_catalogue_effect"
 node_provider_rung_canary_effect = "omnimarket.nodes.node_provider_rung_canary_effect"
 node_prrp_snapshot_publish_effect = "omnimarket.nodes.node_prrp_snapshot_publish_effect"
@@ -1419,6 +1421,7 @@ node_skill_overseer_verify_orchestrator = "omnimarket.nodes.node_skill_overseer_
 node_skill_tree_read_effect = "omnimarket.nodes.node_skill_tree_read_effect"
 node_slack_publish_effect = "omnimarket.nodes.node_slack_publish_effect"
 node_source_read_cache_effect = "omnimarket.nodes.node_source_read_cache_effect"
+node_sprint_closer_effect = "omnimarket.nodes.node_sprint_closer_effect"
 node_stability_lane_refresh_effect = "omnimarket.nodes.node_stability_lane_refresh_effect"
 node_staging_readiness_compute = "omnimarket.nodes.node_staging_readiness_compute"
 node_stall_responder_compute = "omnimarket.nodes.node_stall_responder_compute"
@@ -1560,6 +1563,7 @@ node_workflow_comparison_compute = "omnimarket.nodes.node_workflow_comparison_co
 node_workflow_contract_catalog_effect = "omnimarket.nodes.node_workflow_contract_catalog_effect"
 node_workflow_gateway_effect = "omnimarket.nodes.node_workflow_gateway_effect"
 node_workflow_routing_scan_compute = "omnimarket.nodes.node_workflow_routing_scan_compute"
+node_worktree_prune_temporal_effect = "omnimarket.nodes.node_worktree_prune_temporal_effect"
 node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
 [project.scripts]
 onex-triage-fences-node = "omnimarket.nodes.node_triage_fences_effect.runtime_triage_fences_cli:main"
@@ -2086,6 +2090,7 @@ dev = [
     "types-pyyaml>=6.0.12.20250822",
     "types-jsonschema>=4.25.1.20251222",
     # node_floor_fill_temporal_workflow defines a Temporal workflow; strict mypy and its tests need the SDK.
+    # OMN-24901: node_prove_running_workflow defines a Temporal workflow; strict mypy and its tests need the SDK.
     "temporalio>=1.35.0,<2.0.0",
 ]
 

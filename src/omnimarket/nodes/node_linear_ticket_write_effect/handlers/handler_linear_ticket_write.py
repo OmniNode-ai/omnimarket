@@ -118,7 +118,9 @@ class HandlerLinearTicketWriteEffect:
             request.idempotency_key,
         )
         cacheable = (
-            request.operation is not EnumTicketOperation.READ and not request.dry_run
+            request.operation
+            not in (EnumTicketOperation.READ, EnumTicketOperation.LIST_OPEN)
+            and not request.dry_run
         )
         async with self._lock:
             if cacheable and key in self._done:

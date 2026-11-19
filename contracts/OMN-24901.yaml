@@ -1,7 +1,14 @@
 schema_version: 1.0.0
 ticket_id: OMN-24901
 title: The worktree reconcile tick skips a failed transient unit whose environment file is gone
-summary: The unit reader of node_worktree_reconcile_effect raised UnitSnapshotError for a failed transient unit whose required environment file no longer existed, which kept and failed every tree (failures=22 of scanned=22, exit 1). It now skips a transient, not-running unit that names no worktree with a typed skipped_units entry (unit, reason environment_file_missing, path) and keeps scanning. An installed unit, a worktree unit and an active unit with a missing required environment file still raise.
+summary: 'The unit reader of node_worktree_reconcile_effect raised UnitSnapshotError for a failed transient unit whose required environment file no longer existed, which kept and failed every tree (failures=22
+  of scanned=22, exit 1). It now skips a transient, not-running unit that names no worktree with a typed skipped_units entry (unit, reason environment_file_missing, path) and keeps scanning. An installed
+  unit, a worktree unit and an active unit with a missing required environment file still raise.
+
+
+  Also carries node_prove_running_workflow: node_prove_running_workflow: a Temporal workflow, id <repo>#<n>@<sha>, whose every step is one activity running a node command: read install status, install through
+  the declared installer when needed, durable wait and read running up to a declared limit and deadline, then a ledger STATUS row or an alarm row through the ledger CLI; a starter starts one workflow per
+  NOT RUNNING line of an integration pass batch.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -10,13 +17,41 @@ requirements:
   statement: A transient failed unit with a gone environment file is a typed skip the tick's report carries, and every other missing required environment file still fails the snapshot.
   acceptance:
   - id: AC1
-    statement: 'AC1: a failed transient unit with a missing required environment file is skipped with reason environment_file_missing and its path, the scan completes and the run reports failures 0 -- falsifier: uv run pytest tests/test_worktree_reconcile_gone_env.py -q fails at the merge base and passes at the PR head'
+    statement: 'AC1: a failed transient unit with a missing required environment file is skipped with reason environment_file_missing and its path, the scan completes and the run reports failures 0 -- falsifier:
+      uv run pytest tests/test_worktree_reconcile_gone_env.py -q fails at the merge base and passes at the PR head'
   - id: AC2
-    statement: 'AC2: an installed unit, a worktree unit and an active transient unit with a missing required environment file still raise UnitSnapshotError -- falsifier: uv run pytest tests/test_worktree_reconcile_gone_env.py -q -k still_raises fails when the skip is widened to them'
+    statement: 'AC2: an installed unit, a worktree unit and an active transient unit with a missing required environment file still raise UnitSnapshotError -- falsifier: uv run pytest tests/test_worktree_reconcile_gone_env.py
+      -q -k still_raises fails when the skip is widened to them'
+- id: req-omn24901-prove-running
+  statement: Each merged change is proven running where it belongs by one durable workflow whose every step is one of our nodes, ending in a STATUS row or an alarm row.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the workflow id is repo#n@sha, so a second start for the same change is refused or joins the first and the install and read steps run once -- falsifier: `uv run pytest -m unit <workflow
+      test file> -k duplicate_start` against Temporal''s test server'
+  - id: AC2
+    statement: 'AC2: every step is an activity that calls one of our nodes through onex run-node or the node''s declared CLI, and the workflow body holds no inline logic -- falsifier: `uv run pytest -m
+      unit <workflow test file> -k activities_call_nodes` fails when an activity is replaced by inline code'
+  - id: AC3
+    statement: 'AC3: a worker restart during the durable wait does not run the install or read step a second time -- falsifier: `uv run pytest -m unit <workflow test file> -k worker_restart_mid_wait` against
+      Temporal''s test server, counting step keys'
+  - id: AC4
+    statement: 'AC4: a change that never runs ends in an alarm row naming the change and the last reading after the declared deadline, and a change that runs ends in a STATUS row kv pr=<repo>#<n> installed=<host>:<revision>
+      observed=<what ran> read_at=<UTC> written through the ledger node -- falsifier: `uv run pytest -m unit <workflow test file> -k "never_runs or proves_running"`'
+  - id: AC5
+    statement: 'AC5: a starter feeds the workflow the integration ledger''s bottom-layer NOT RUNNING lines, one start per line -- falsifier: `uv run pytest -m unit <starter test file> -k not_running_lines`'
+  - id: AC6
+    statement: 'AC6: workflow 1 ran on h051 for three real NOT RUNNING lines and each line''s outcome (STATUS row or alarm row) is on the ledger -- falsifier: grep of the ledger for the three pr= cells
+      with their read_at values'
+  - id: AC7
+    statement: 'AC7: the draft pull request body carries a Lab: line and the lane handed off nothing -- falsifier: `onex scm pr-view <repo>#<n>` body read for the Lab: line'
 evidence_requirements:
 - kind: tests
   description: The gone-environment-file tests and the existing worktree reconcile tests.
-  command: env -u PYTHONPATH uv run --frozen pytest tests/test_worktree_reconcile_gone_env.py tests/test_worktree_reconcile_units.py tests/test_worktree_reconcile_effect.py tests/test_golden_chain_worktree_reconcile.py -q --no-cov -n 0 -p no:randomly
+  command: env -u PYTHONPATH uv run --frozen pytest tests/test_worktree_reconcile_gone_env.py tests/test_worktree_reconcile_units.py tests/test_worktree_reconcile_effect.py tests/test_golden_chain_worktree_reconcile.py
+    -q --no-cov -n 0 -p no:randomly
+- kind: tests
+  description: The workflow and starter tests against Temporal's time-skipping test server.
+  command: uv run pytest -m unit tests/nodes/node_prove_running_workflow -q --no-cov -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -46,9 +81,90 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: >-
-      onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
-      --host h051 --lane dod-integration-proof-24901 --kind test --
-      uv run --frozen --python 3.12 pytest tests/test_worktree_reconcile_gone_env.py
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host h051 --lane dod-integration-proof-24901 --kind test -- uv run --frozen --python 3.12 pytest tests/test_worktree_reconcile_gone_env.py
       -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24901-ac1
+  description: the workflow id is repo#n@sha, so a second start for the same change is refused or joins the first and the install and read steps run once
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow/test_prove_running_workflow.py -q --no-cov -p no:randomly -k 'duplicate_start'
+    cwd: .
+- id: dod-omn24901-ac2
+  description: every step is an activity that calls one of our nodes through onex run-node or the node's declared CLI, and the workflow body holds no inline logic
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow/test_prove_running_workflow.py -q --no-cov -p no:randomly -k 'activities_call_nodes'
+    cwd: .
+- id: dod-omn24901-ac3
+  description: a worker restart during the durable wait does not run the install or read step a second time
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow/test_prove_running_workflow.py -q --no-cov -p no:randomly -k 'worker_restart_mid_wait'
+    cwd: .
+- id: dod-omn24901-ac4
+  description: a change that never runs ends in an alarm row naming the change and the last reading after the declared deadline, and a change that runs ends in a STATUS row kv pr=<repo>#<n> installed=<host>:<revision>
+    observed=<what ran> read_at=<UTC> written through the ledger node
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow/test_prove_running_workflow.py -q --no-cov -p no:randomly -k 'never_runs or proves_running'
+    cwd: .
+- id: dod-omn24901-ac5
+  description: a starter feeds the workflow the integration ledger's bottom-layer NOT RUNNING lines, one start per line
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow/test_prove_running_starter.py -q --no-cov -p no:randomly -k 'not_running_lines'
+    cwd: .
+- id: dod-omn24901-ac6-row-shape
+  description: 'The row a live run writes for each line: a STATUS row pr= installed= observed= read_at= or an alarm row naming the change and its last reading, appended through the ledger CLI. The live
+    h051 rows are the unbound local Done gate check below.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow/test_prove_running_workflow.py -q --no-cov -p no:randomly -k 'never_runs or proves_running'
+    cwd: .
+- id: dod-omn24901-integration-proof
+  description: 'Hosted CI cannot reach the h051 Temporal server, so only the local Done gate runs this unbound check: on a lab host at the sha, workflow 1 is started for up to three NOT RUNNING lines of
+    an integration pass batch against the live Temporal server and waited on; each ends in a STATUS row or an alarm row on the ledger.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24901 --kind test -- sh -c 'uv run --frozen python -m omnimarket.nodes.node_prove_running_workflow
+      start --target-host "$ONEX_TEMPORAL_TARGET" --batch "$PROVE_RUNNING_BATCH" --limit 3 --wait'
+    cwd: .
+- id: dod-omn24901-ac7-lab-line
+  description: 'The pull request body carries a Lab: line. The body is not part of the tree, so it cannot differ between the merge base and this head; only the local Done gate reads it, as an unbound local
+    Done gate check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'onex scm pr-view OmniNode-ai/omnimarket#6336 | grep -Eq ''Lab: '''
+    cwd: .
+- id: dod-omn24901-ac7-lab-command
+  description: 'The command the Lab: line cites is the focused workflow and starter test run; hosted CI runs that same command and it passes only with the change in place.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow -q --no-cov -p no:randomly
     cwd: .

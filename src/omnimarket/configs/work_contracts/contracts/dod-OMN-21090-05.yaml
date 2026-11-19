@@ -32,7 +32,7 @@ acceptance:
     - '{answer}'
     environment:
       path: uv.lock
-      sha256: 7f619859c4c21c0cd167da231d495d3f13833b820191efda00b2aa7837481c45
+      sha256: e92d7190b12c56abae6783e3183a6fc9ab99937380e323d34c0bccc1ee7ce858
     expected_exit: 0
     ticket: OMN-21090
     evidence_id: dod-omn21090-ac2-measurement-boundaries
