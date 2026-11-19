@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_baseline_cluster_ticket_effect/overlay.yaml. All values here are synthetic; supply your
+# deployment's facts. Every key is required and none has a default: a missing key refuses naming it.
+baseline_cluster:
+  # The deadline of each call of the ticket store (search, read, create, comment), in seconds. A call past it
+  # ends the report unavailable and the next run searches first again.
+  timeout_seconds: 30
+  # The ticket store the bus handler binds when it is asked for a ticket: inmemory (a store that lives in the process, for a
+  # profile that must not reach the tracker) or linear (the real tracker, whose key the secret store supplies).
+  ticket_store: inmemory
+  # The parent ticket under which a new ticket is created.
+  parent: OMN-19998
+  # The gate line the created ticket carries (the ticket-creation gate requires one).
+  gate: example-org/example-repo example-workflow.yml
+  # The diagnosis citation the created ticket carries: the ticket-creation gate reads a failure as a defect and requires
+  # one citation (a pull request as owner/repo#number, a file and line, or a ledger line).
+  diagnosis: example-org/example-repo#1
+  # The maximum number of duplicate hops to follow before giving up and creating a new ticket.
+  max_duplicate_hops: 3
+  # The limit of examples in the ticket description and occurrence comment.
+  example_limit: 5

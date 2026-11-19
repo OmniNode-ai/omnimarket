@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+binding:
+  runtime_ref: example-runtime-a
+  principal_ref: example-edge-writer
+  tenant_slug_ref: example-tenant-a
+  origin_lane: example-lane
+  permitted_lanes:
+    - example-lane
+edge_id: example-inmemory-to-lane
+direction:
+  name: up
+  from:
+    type: inmemory
+    runtime_ref: example-runtime-a
+    max_events: 500
+    flush_timeout_seconds: 10
+  to:
+    type: kafka
+    lane: example-lane
+    auth_ref: example-edge-writer
+    producer_acks: all
+    idempotent_producer: true
+    acl_probe_ref: example-acl-probe-record
+    acl_probe_max_age_seconds: 86400
+  allowed_topic: onex.cmd.omnimarket.lifecycle-start-requested.v1
+  pinned_physical_topic: "tenant-example-tenant-a.onex.cmd.omnimarket.lifecycle-start-requested.v1"
+  key_pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+  key_binding: command_id
+  header_allow_list:
+    - name: message-id
+      pattern: "^[0-9a-f-]{36}$"
+  max_headers: 4
+  max_value_bytes: 16384
+  max_value_depth: 8
+  stamp_headers:
+    origin_lane: origin-lane
+    source_lane: source-lane
+    hops: hops
+  message_id_header: message-id
+  classes:
+    - internal
+  delivery_mode: once_per_run
+  wire_topic_mapping: tenant_wire_prefix
+  receipt:
+    request_topic: onex.cmd.omnimarket.lease-receipt-requested.v1
+    record_topic: onex.evt.omnimarket.lease-receipt-recorded.v1
+    refusal_topic: onex.evt.omnimarket.lease-receipt-refused.v1
+    wait_seconds: 15
+    in_doubt_scan_max_records: 5000
+    in_doubt_max_age_seconds: 3600
+    effect_class: read_before_act
+    item_kind: unit
+  acl:
+    write_principal_ref: example-edge-writer
+    read_principal_ref: example-edge-reader
+    read_group_prefix: example-edge-reader-group

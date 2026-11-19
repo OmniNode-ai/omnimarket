@@ -283,7 +283,11 @@ units:
     evidence_file: .local/state/omni/declared-clone-refresh/last-run.json
     state_directory: .onex_state/declared-clone-refresh
     log_directory: .local/state/omni/declared-clone-refresh
+    # The job stands in the launchd state directory (h101's registry root links to an external volume), while the tick
+    # reads the real registry root (tick_omni_home): a clone path written `$OMNI_HOME/...` resolves on the host against
+    # that root, never against this job's own state directory (OMN-19998).
     launchd_root: .local/state/omni/declared-clone-refresh
+    tick_omni_home: registry_root
   # The same reader on a Linux pool host (OMN-22878): a systemd user service and timer, so every lab host keeps the
   # host-list projection the lab tools, serve units and host drift read (RULING 2026-11-07T15:59:02Z).
   overlay-store-refresh-systemd:
@@ -1671,6 +1675,9 @@ units:
     required_environment_inputs: [ONEX_HOST_NAME]
     evidence_file: .local/state/omni/claude-pool-rotation-tick/last-run.json
     state_directory: .onex_state/claude-pool-rotation-tick
+    # h101's registry root links to an external volume, launchd could not open logs or stand in a working directory there, exit 78.
+    log_directory: .local/state/omni/claude-pool-rotation-tick
+    launchd_root: .local/state/omni/claude-pool-rotation-tick
   silent-failure-alarm:
     platform: launchd
     kind: registry_module_tick

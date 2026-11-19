@@ -840,6 +840,18 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-24432: effect-node bypass ratchet (RULING 2026-11-14T11:59:02Z). Counts the outside-world calls
+      # (gh, GitHub API, git remotes, Slack, Linear, ssh to lab hosts, docker and kafka admin) that skip their
+      # effect node and refuses a rise against .onex_ratchets/effect_bypass_ceiling.yaml. Shrink-only baseline;
+      # CI twin: ci.yml job 'effect-bypass-ratchet', which also holds the merge base's copy.
+      - id: effect-bypass-ratchet
+        name: No new bypass of an effect node (OMN-24432)
+        language: system
+        entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_effect_bypass_scan_effect check --repository omnimarket --root . --baseline .onex_ratchets/effect_bypass_ceiling.yaml
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
       # OMN-18013: a burned-down baseline may not come back, and a baseline still held
       # open for another lane may not grow past that lane's rows. Pure filesystem
       # assertion — no scan, no derivation, nothing to soften.
