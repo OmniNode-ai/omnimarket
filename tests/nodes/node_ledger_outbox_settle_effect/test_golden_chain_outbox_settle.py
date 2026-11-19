@@ -29,6 +29,10 @@ def test_outbox_settle_golden_chain_settles_a_refused_request_through_the_node(
     node = NodeLedgerOutboxSettleEffect(Publisher(["accepted"]))
     contract = yaml.safe_load(node.contract_path.read_text())
     assert contract["name"] == "node_ledger_outbox_settle_effect"
+    assert (
+        contract["terminal_event"]
+        == "onex.evt.omnimarket.ledger-outbox-settle-completed.v1"
+    )
     assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
     result = node.handle(ModelOutboxSettleRequest(ledger_path=str(ledger), now=NOW))
     assert (result.settled, result.remaining, result.stopped) == (1, 0, "")
