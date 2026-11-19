@@ -41,6 +41,7 @@ from omnimarket.nodes.node_work_ledger_file_census_effect.handlers.classify impo
 from omnimarket.nodes.node_work_ledger_file_census_effect.models import (
     ModelCensusOverlay,
     ModelCensusRequest,
+    ModelCensusResult,
 )
 
 pytestmark = pytest.mark.unit
@@ -95,7 +96,7 @@ def test_moved_file_holds_no_executable_ledger_file_read(path: str) -> None:
     assert hits == (), [f"{h.kind.value} {h.path}:{h.line}" for h in hits]
 
 
-def test_live_census_is_within_the_ratchet_and_drops_the_moved_files() -> None:
+def _live_census() -> tuple[ModelCensusOverlay, ModelCensusResult]:
     overlay = _overlay()
     result = HandlerFileCensus(
         overlay,
@@ -108,9 +109,39 @@ def test_live_census_is_within_the_ratchet_and_drops_the_moved_files() -> None:
             repositories=("omnimarket",),
         )
     )
+    return overlay, result
+
+
+def test_live_census_is_within_the_ratchet_and_drops_the_moved_files() -> None:
+    _, result = _live_census()
 
     assert result.passed, (result.failure_code, result.failure_detail)
     (count,) = result.counts
     assert count.files <= 186
     remaining = sorted(set(MOVED).intersection(hit.path for hit in count.hits))
     assert not remaining, f"Moved files still contribute to the census: {remaining}"
+
+
+def test_ratchet_and_hook_hold_while_the_moved_files_drop_out() -> None:
+    """AC3: the count comes under the ratchet by moving files, never by raising the ratchet or widening the hook."""
+    overlay, result = _live_census()
+    ratchet = yaml.safe_load((ROOT / overlay.ratchet_file).read_text())["ratchet"]
+    assert ratchet == {"omnimarket": 186}
+
+    config = yaml.safe_load((ROOT / ".pre-commit-config.yaml").read_text())
+    hooks = [
+        hook
+        for repo in config["repos"]
+        for hook in repo["hooks"]
+        if hook["id"] == "ledger-file-census"
+    ]
+    assert len(hooks) == 1
+    assert hooks[0]["stages"] == ["pre-commit"]
+    assert hooks[0]["entry"].endswith("--repos omnimarket --directory omnimarket=.")
+
+    (count,) = result.counts
+    assert count.files <= ratchet["omnimarket"]
+    remaining = sorted(set(MOVED).intersection(hit.path for hit in count.hits))
+    assert not remaining, (
+        f"The ratchet holds only if the moved files drop out: {remaining}"
+    )
