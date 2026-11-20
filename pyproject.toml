@@ -1456,6 +1456,7 @@ node_swarm_subtask_state_reducer = "omnimarket.nodes.node_swarm_subtask_state_re
 node_swarm_supervisor_orchestrator = "omnimarket.nodes.node_swarm_supervisor_orchestrator"
 node_sweep_outcome_classify = "omnimarket.nodes.node_sweep_outcome_classify"
 node_tailnet_https_serve_effect = "omnimarket.nodes.node_tailnet_https_serve_effect"
+node_tailscale_key_expiry_alarm_effect = "omnimarket.nodes.node_tailscale_key_expiry_alarm_effect"
 node_tart_host_admission_compute = "omnimarket.nodes.node_tart_host_admission_compute"
 node_task_execution_orchestrator = "omnimarket.nodes.node_task_execution_orchestrator"
 node_team_identity_compute = "omnimarket.nodes.node_team_identity_compute"
