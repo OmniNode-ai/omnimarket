@@ -295,6 +295,8 @@ dependencies = [
     # S3 sink and KMS envelope encryption of topic archives; already resolved
     # through omnibase-infra, declared here because omnimarket now imports it.
     "boto3>=1.43.0,<2.0.0",
+    # OMN-24901: node_prove_running_workflow imports the Temporal SDK at module import.
+    "temporalio>=1.35.0,<2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -1427,6 +1429,7 @@ node_skill_overseer_verify_orchestrator = "omnimarket.nodes.node_skill_overseer_
 node_skill_tree_read_effect = "omnimarket.nodes.node_skill_tree_read_effect"
 node_slack_publish_effect = "omnimarket.nodes.node_slack_publish_effect"
 node_source_read_cache_effect = "omnimarket.nodes.node_source_read_cache_effect"
+node_sprint_closer_effect = "omnimarket.nodes.node_sprint_closer_effect"
 node_stability_lane_refresh_effect = "omnimarket.nodes.node_stability_lane_refresh_effect"
 node_stability_stack_compose_effect = "omnimarket.nodes.node_stability_stack_compose_effect"
 node_stability_stack_plan_compute = "omnimarket.nodes.node_stability_stack_plan_compute"
@@ -1571,6 +1574,7 @@ node_workflow_comparison_compute = "omnimarket.nodes.node_workflow_comparison_co
 node_workflow_contract_catalog_effect = "omnimarket.nodes.node_workflow_contract_catalog_effect"
 node_workflow_gateway_effect = "omnimarket.nodes.node_workflow_gateway_effect"
 node_workflow_routing_scan_compute = "omnimarket.nodes.node_workflow_routing_scan_compute"
+node_worktree_prune_temporal_effect = "omnimarket.nodes.node_worktree_prune_temporal_effect"
 node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
 [project.scripts]
 onex-triage-fences-node = "omnimarket.nodes.node_triage_fences_effect.runtime_triage_fences_cli:main"
@@ -2101,6 +2105,8 @@ dev = [
     "mypy>=1.19.1",
     "types-pyyaml>=6.0.12.20250822",
     "types-jsonschema>=4.25.1.20251222",
+    # OMN-24901: node_prove_running_workflow defines a Temporal workflow; strict mypy and its tests need the SDK.
+    "temporalio>=1.35.0,<2.0.0",
 ]
 
 [tool.coverage.run]
