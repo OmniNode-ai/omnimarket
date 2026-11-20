@@ -7,6 +7,7 @@ import json
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -26,6 +27,7 @@ from omnimarket.handlers.ledger_row_grammar import (
     GOVERNED_LEDGER_NAMES,
     refusal_for_payload,
 )
+from omnimarket.handlers.scm.handler_scm_local_state import WATCHER_SCHEMA
 from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
     ModelCommitCheckRunsResult,
@@ -591,7 +593,7 @@ async def test_red_main_alarm_raises_one_alarm_per_red_head_over_two_ticks() -> 
 class RecordedGateway:
     """The SCM gateway as the overlays main read recorded it: one workflow-run answer."""
 
-    def __init__(self, recorded_answer: dict[str, object]) -> None:
+    def __init__(self, recorded_answer: dict[str, Any]) -> None:
         self.recorded_answer = recorded_answer
         self.requests: list[ModelGithubGatewayRequest] = []
 
@@ -609,8 +611,11 @@ class RecordedGateway:
         return type("Terminal", (), {"failed": False, "payload": payload})()
 
 
-def overlays_main_fixture() -> dict[str, object]:
-    return dict(json.loads((FIXTURES / "overlays_main_red.json").read_text()))
+def overlays_main_fixture() -> dict[str, Any]:
+    recorded_fixture: dict[str, Any] = json.loads(
+        (FIXTURES / "overlays_main_red.json").read_text()
+    )
+    return recorded_fixture
 
 
 MAP = ModelAlarmSettings(
@@ -628,41 +633,56 @@ MAP = ModelAlarmSettings(
 
 
 async def test_red_main_alarm_reads_overlays_main_with_no_watcher_snapshot(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """The earlier silence, recorded: the runtime held no PR watcher snapshot and the
     snapshot's settings read of overlays main named no required context, so the scan
     skipped it. With the repository map the head and the context are declared."""
     recorded_fixture = overlays_main_fixture()
-    settings_read = {
-        "schema": 1,
-        "last_tick": NOW.isoformat(),
-        "repos": {"overlays": {"default_branch": "main"}},
-        "branches": {},
-        "settings": recorded_fixture["watcher_settings"],
-    }
-    assert settings_read["settings"]["overlays"]["branches"]["main"]["contexts"] == []  # type: ignore[index]
-
-    gateway = RecordedGateway(recorded_fixture["workflow_runs"])  # type: ignore[arg-type]
-    ports = AlarmBusPorts(
-        None,
-        MAP,
-        EventBusInmemory(environment="test", group="test"),
-        object(),  # type: ignore[arg-type]
-    )
-    ports._calls = gateway  # type: ignore[assignment]
+    read_at = datetime(2026, 11, 20, 0, 30, tzinfo=UTC)
     registry = ModelRepositoryRegistryOverlay.model_validate(
         {
             "repositories": [
                 {
-                    "name": "omnimarket",
-                    "repo": "OmniNode-ai/omnimarket",
-                    "type": "python",
-                    "description": "market nodes",
+                    "name": "overlays",
+                    "repo": "OmniNode-ai/overlays",
+                    "type": "other",
+                    "description": "deployment overlays",
                 }
             ]
         }
     )
+    watcher = tmp_path / "state.json"
+    watcher.write_text(
+        json.dumps(
+            {
+                "schema": WATCHER_SCHEMA,
+                "last_tick": read_at.isoformat(),
+                "repos": {"overlays": {"default_branch": "main"}},
+                "branches": {
+                    "overlays@main": {
+                        "sha": "24186de77a07413b4ab75aaa55fd103996afd2fa",
+                        "tip_read_at": read_at.isoformat(),
+                    }
+                },
+                "settings": recorded_fixture["watcher_settings"],
+            }
+        )
+    )
+    skipped = read_inventory(
+        watcher, read_at, scm_owner="OmniNode-ai", registry=registry
+    )
+    assert not skipped.failures
+    assert not skipped.targets
+
+    gateway = RecordedGateway(recorded_fixture["workflow_runs"])
+    ports = AlarmBusPorts(
+        None,
+        MAP,
+        EventBusInmemory(environment="test", group="test"),
+        cast(Any, object()),
+    )
+    monkeypatch.setattr(ports, "_calls", gateway)
     monkeypatch.setattr(
         ports_module, "load_structured_overlay", lambda *_a, **_k: registry
     )
@@ -713,9 +733,9 @@ async def test_red_main_alarm_gateway_head_failure_is_typed_per_repository(
         None,
         MAP,
         EventBusInmemory(environment="test", group="test"),
-        object(),  # type: ignore[arg-type]
+        cast(Any, object()),
     )
-    ports._calls = gateway  # type: ignore[assignment]
+    monkeypatch.setattr(ports, "_calls", gateway)
     registry = ModelRepositoryRegistryOverlay.model_validate(
         {
             "repositories": [
