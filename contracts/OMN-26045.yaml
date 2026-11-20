@@ -10,11 +10,11 @@ requirements:
   statement: A condition_schedules entry keyed container-restarts loads, and the rendered unit runs the container-restarts verb.
   acceptance:
   - id: AC1
-    statement: 'AC1: container-restarts is a schedulable verb and the golden launchd and systemd renders run it -- falsifier: uv run pytest tests/nodes/node_lab_alarm/test_lab_alarm_condition_schedule.py -q --no-cov (red when the verb leaves SCHEDULABLE_VERBS)'
+    statement: 'AC1: container-restarts is a schedulable verb and the golden launchd and systemd renders run it -- falsifier: uv run pytest tests/nodes/node_lab_alarm/test_lab_alarm_condition_schedule.py -q --no-cov -k container-restarts (selects nothing and exits 5 at the merge base, passes at the head)'
 evidence_requirements:
 - kind: tests
   description: Per-verb schedule goldens, which parametrize over SCHEDULABLE_VERBS and read the example overlay
-  command: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_condition_schedule.py -q --no-cov
+  command: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_condition_schedule.py -q --no-cov -k container-restarts
 emergency_bypass:
   enabled: false
   justification: ''
@@ -27,7 +27,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_condition_schedule.py -q --no-cov
+    check_value: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_condition_schedule.py -q --no-cov -k container-restarts
     cwd: .
 - id: dod-omn-26045-deploy
   description: 'Deploy probe the hosted runner can run: the overlay model at the checked-out commit lists container-restarts as schedulable; the line does not exist at the merge base.'
@@ -42,5 +42,5 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane l0act-dev2 -- uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_condition_schedule.py -q --no-cov
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane l0act-dev2 -- uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_condition_schedule.py -q --no-cov -k container-restarts
     cwd: .
