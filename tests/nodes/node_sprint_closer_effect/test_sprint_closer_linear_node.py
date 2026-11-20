@@ -19,8 +19,8 @@ from omnimarket.nodes.node_sprint_closer_effect.handlers import (
     sprint_closer_sources as sources,
 )
 from omnimarket.nodes.node_sprint_closer_effect.handlers.sprint_closer_sources import (
-    HandlerBusTicketCall,
-    HandlerLinearTicketNode,
+    BusTicketCall,
+    LinearTicketNode,
 )
 from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.ticket_bus_call import (
     TicketBusCallError,
@@ -63,7 +63,7 @@ def test_activities_call_nodes_every_linear_call_is_a_node_request(
     tmp_path: Path,
 ) -> None:
     runner = RecordingRunner()
-    client = HandlerLinearTicketNode(runner, tmp_path)
+    client = LinearTicketNode(runner, tmp_path)
     assert client.open_issue_ids("proj") == ["OMN-1", "OMN-2"]
     issue = client.read_issue("OMN-7")
     assert (issue.state, issue.assignee, issue.closed) == ("In Review", "Owner", False)
@@ -83,7 +83,7 @@ def test_activities_call_nodes_every_linear_call_is_a_node_request(
 def test_own_last_comment_is_kept_so_the_fingerprint_rule_can_read_it(
     tmp_path: Path,
 ) -> None:
-    client = HandlerLinearTicketNode(RecordingRunner(), tmp_path)
+    client = LinearTicketNode(RecordingRunner(), tmp_path)
     assert client.read_issue("OMN-7").comment_bodies == ()
     client.comment("OMN-7", "actor: x\nclosed by evidence")
     assert client.read_issue("OMN-7").comment_bodies == (
@@ -127,7 +127,7 @@ def test_bus_runner_sends_the_request_over_the_bus_and_returns_the_result() -> N
             payload={"outcome": "completed", "result": {"ticket_status": "Done"}},
         )
     )
-    out = HandlerBusTicketCall(call=fake)(
+    out = BusTicketCall(call=fake)(
         {"operation": "read", "ticket_id": "OMN-7", "idempotency_key": "k"}
     )
     assert out == {"ticket_status": "Done"}
@@ -149,7 +149,7 @@ def test_a_failed_terminal_raises_with_the_nodes_reason_and_codes() -> None:
         )
     )
     with pytest.raises(RuntimeError, match=r"guard_refused.*\['x'\]"):
-        HandlerBusTicketCall(call=fake)(
+        BusTicketCall(call=fake)(
             {
                 "operation": "transition",
                 "ticket_id": "OMN-7",
@@ -162,7 +162,7 @@ def test_a_failed_terminal_raises_with_the_nodes_reason_and_codes() -> None:
 def test_no_terminal_raises_as_an_unknown_outcome_not_a_silent_success() -> None:
     fake = FakeBusCall(TicketBusCallError("read for OMN-7: no answer on lane 'dev'"))
     with pytest.raises(RuntimeError, match="unknown outcome"):
-        HandlerBusTicketCall(call=fake)(
+        BusTicketCall(call=fake)(
             {"operation": "read", "ticket_id": "OMN-7", "idempotency_key": "k"}
         )
 
@@ -182,9 +182,7 @@ def test_the_default_call_binds_the_dev_lane_and_the_timeout(
         )
 
     monkeypatch.setattr(sources, "bus_ticket_call", fake_bus_ticket_call)
-    HandlerBusTicketCall()(
-        {"operation": "read", "ticket_id": "OMN-7", "idempotency_key": "k"}
-    )
+    BusTicketCall()({"operation": "read", "ticket_id": "OMN-7", "idempotency_key": "k"})
     assert seen == {"bus_lane": "dev", "timeout_s": 90.0}
 
 
