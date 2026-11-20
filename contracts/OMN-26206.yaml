@@ -43,7 +43,6 @@ dod_evidence:
   - id: dod-omn26206-ac3-installed-and-observed
     description: The lane has one STATUS row for this ticket carrying both an installed= and an observed= cell.
     source: manual
-    binds_ac: [AC3]
     execution_scope: local_done_gate
     checks:
       - check_type: command
@@ -55,12 +54,19 @@ dod_evidence:
   - id: dod-omn26206-integration-proof-dev-runtime
     description: Asserted read of the live dev runtime on h201 after the branch install with restart false; the log of the last ten minutes holds no KeyError for judge_run_id.
     source: manual
-    binds_ac: [AC3]
     execution_scope: local_done_gate
     checks:
       - check_type: command
         check_value: |-
           python3 "${OMNI_PLUGIN_ROOT:?}/scripts/onex_lab_run.py" --via bus --host h201 --lane evalkey-1415 --repo omnimarket --ref dev -- bash -c "! docker logs --since 10m omninode-runtime 2>&1 | grep -q \"KeyError: 'judge_run_id'\""
+        cwd: .
+  - id: dod-omn26206-ac3-writer-against-real-postgres
+    description: The writer consumes the recorded judged event against a real Postgres, refuses it to the dead-letter topic with dlq_routed 1 and no KeyError, writes no score row, and still lands a valid judged event. The h201 install read stays in the local_done_gate items.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q --no-cov -n 0 -p no:randomly tests/test_omn24171_eval_results_real_postgres.py -k judge_run_id
         cwd: .
   - id: dod-omn26206-deploy-gate-head-carries-the-fix
     description: The pull request head carries the judged-mapping fix (the helper that names the failing field of a payload pydantic does not wrap).
