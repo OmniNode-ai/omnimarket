@@ -5,7 +5,8 @@
 One stored version is one revision of one repository: a ``CgRevision`` node keyed ``<repo>@<commit>``,
 a ``CgModule`` node per module file, a ``CgSymbol`` node per class or function, ``CG_IMPORTS`` edges
 between modules, ``CG_DEFINES`` edges from a module to its symbols, and ``CgShape`` and ``CgExemplar``
-nodes for the same-shape and exemplar questions. Every node and edge carries the revision key in
+nodes for the same-shape and exemplar questions, and a ``CgNodeFile`` node per node file for the locate
+question (OMN-26202). Every node and edge carries the revision key in
 ``rev``, so the counts of one build read back with ``MATCH (n {rev: $key})`` and a prune is a delete by
 ``rev``. Every write is a ``MERGE``; a revision is readable only once its ``complete`` flag is set, the
 last statement of a write, so a write that died halfway is rewritten by the next build and never read.
@@ -25,9 +26,11 @@ from typing import Any, Protocol, cast
 
 from omnimarket.models.model_code_graph_lookup import (
     EnumLookupFallbackReason,
+    EnumNodeFileKind,
     ModelCodeGraphVersion,
     ModelExemplarNode,
     ModelImportRelation,
+    ModelNodeFile,
     ModelShapeEntry,
     ModelSymbolDefinition,
 )
@@ -39,12 +42,22 @@ DEFAULT_RETENTION_VERSIONS = 7
 #: Seconds the driver waits to open the Bolt connection.
 CONNECTION_TIMEOUT_SECONDS = 5.0
 
-_NODE_LABELS = ("CgSymbol", "CgShape", "CgExemplar", "CgModule", "CgRevision")
+_NODE_LABELS = (
+    "CgSymbol",
+    "CgShape",
+    "CgExemplar",
+    "CgNodeFile",
+    "CgModule",
+    "CgRevision",
+)
 _INDEXES = (
     *(f"CREATE INDEX ON :{label}(rev)" for label in _NODE_LABELS),
     *(f"CREATE INDEX ON :{label}(key)" for label in _NODE_LABELS),
     "CREATE INDEX ON :CgRevision(repo)",
 )
+
+
+_KIND_ORDER = {kind: index for index, kind in enumerate(EnumNodeFileKind)}
 
 
 class MemgraphUnreachableError(RuntimeError):
@@ -195,6 +208,7 @@ class MemgraphVersionStore:
         self._write_imports(key, version)
         self._write_shapes(key, version)
         self._write_exemplars(key, version)
+        self._write_node_files(key, version)
         self._run(
             "MATCH (r:CgRevision {key: $key}) SET r.complete = true, "
             "r.modules = $modules, r.symbols = $symbols, r.imports = $imports",
@@ -305,6 +319,26 @@ class MemgraphVersionStore:
                 rev=key,
             )
 
+    def _write_node_files(self, key: str, version: ModelCodeGraphVersion) -> None:
+        rows = [
+            {
+                "key": f"{key}|{f.node}|{f.kind.value}|{f.path}",
+                "node": f.node,
+                "kind": f.kind.value,
+                "path": f.path,
+            }
+            for f in version.node_files
+        ]
+        for batch in _chunks(rows):
+            self._run(
+                "UNWIND $rows AS row MATCH (r:CgRevision {key: $rev}) "
+                "MERGE (f:CgNodeFile {key: row.key}) "
+                "SET f.node = row.node, f.kind = row.kind, f.path = row.path, f.rev = $rev "
+                "MERGE (r)-[c:CG_HAS_NODE_FILE]->(f) SET c.rev = $rev",
+                rows=batch,
+                rev=key,
+            )
+
     def _prune(self, repo: str) -> tuple[str, ...]:
         rows = self._run(
             "MATCH (r:CgRevision {repo: $repo, complete: true}) "
@@ -383,6 +417,11 @@ class MemgraphVersionStore:
             "RETURN e.path AS path, e.name AS name, e.archetype AS archetype",
             key=key,
         )
+        node_files = self._run(
+            "MATCH (f:CgNodeFile {rev: $key}) "
+            "RETURN f.node AS node, f.kind AS kind, f.path AS path",
+            key=key,
+        )
         return ModelCodeGraphVersion(
             repo=str(head[0]["repo"]),
             commit=str(head[0]["commit"]),
@@ -417,6 +456,19 @@ class MemgraphVersionStore:
                     path=row["path"], name=row["name"], archetype=row["archetype"]
                 )
                 for row in exemplars
+            ),
+            node_files=tuple(
+                sorted(
+                    (
+                        ModelNodeFile(
+                            node=row["node"],
+                            kind=EnumNodeFileKind(row["kind"]),
+                            path=row["path"],
+                        )
+                        for row in node_files
+                    ),
+                    key=lambda f: (f.node, _KIND_ORDER[f.kind], f.path),
+                )
             ),
         )
 
