@@ -90,15 +90,17 @@ class _Resolver:
 def test_not_running_lines_one_start_per_line_oldest_first() -> None:
     resolver = _Resolver()
     out = HandlerProveRunningStarter(resolver).handle(
-        ModelProveRunningStartRequest(batch=BATCH, limit=3)
+        ModelProveRunningStartRequest(batch=BATCH)
     )
     assert [c.workflow_id for c in out.changes] == [
         "omnibase_infra#5990@0005990abcdef",
         "omnimarket#6003@0006003abcdef",
         "omnimarket#6002@0006002abcdef",
+        "omnimarket#6004@0006004abcdef",
     ]
     assert [c.target for c in out.changes] == [
         "h051-unit",
+        "dev-runtime",
         "dev-runtime",
         "dev-runtime",
     ]
@@ -106,13 +108,16 @@ def test_not_running_lines_one_start_per_line_oldest_first() -> None:
         "omnibase_infra#5990",
         "omnimarket#6003",
         "omnimarket#6002",
+        "omnimarket#6004",
     ]
     assert out.skipped == ()
+    assert out.unresolved == ()
+    assert out.lines_read == 4
 
 
 def test_not_running_lines_skip_running_and_settled_lines() -> None:
     out = HandlerProveRunningStarter(_Resolver()).handle(
-        ModelProveRunningStartRequest(batch=BATCH, limit=50)
+        ModelProveRunningStartRequest(batch=BATCH)
     )
     keys = {c.key for c in out.changes}
     assert keys == {
@@ -126,10 +131,21 @@ def test_not_running_lines_skip_running_and_settled_lines() -> None:
 def test_not_running_lines_unread_sha_is_skipped_with_reason() -> None:
     resolver = _Resolver(missing=frozenset({"omnibase_infra#5990"}))
     out = HandlerProveRunningStarter(resolver).handle(
-        ModelProveRunningStartRequest(batch=BATCH, limit=2)
+        ModelProveRunningStartRequest(batch=BATCH)
     )
-    assert [c.key for c in out.changes] == ["omnimarket#6003", "omnimarket#6002"]
+    assert [c.key for c in out.changes] == [
+        "omnimarket#6003",
+        "omnimarket#6002",
+        "omnimarket#6004",
+    ]
     assert out.skipped == ("omnibase_infra#5990: merge sha unread",)
+    (unread,) = out.unresolved
+    assert (unread.key, unread.target, unread.next_step) == (
+        "omnibase_infra#5990",
+        "h051-unit",
+        "roll dev",
+    )
+    assert out.lines_read == len(out.changes) + len(out.unresolved) == 4
 
 
 async def test_not_running_lines_start_one_workflow_each_and_never_twice() -> None:
@@ -142,7 +158,7 @@ async def test_not_running_lines_start_one_workflow_each_and_never_twice() -> No
     )
 
     out = HandlerProveRunningStarter(_Resolver()).handle(
-        ModelProveRunningStartRequest(batch=BATCH, limit=3)
+        ModelProveRunningStartRequest(batch=BATCH)
     )
     env = await WorkflowEnvironment.start_time_skipping()
     try:
@@ -172,7 +188,7 @@ SHA = "270e510aaf9da7fb52ba45df4ede46af2444b83c"
 
 
 def test_parse_merge_sha_reads_the_verbs_json_line() -> None:
-    from omnimarket.nodes.node_prove_running_workflow.runtime_prove_running import (
+    from omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_merge_sha import (
         parse_merge_sha,
     )
 
@@ -184,7 +200,7 @@ def test_parse_merge_sha_reads_the_verbs_json_line() -> None:
 
 
 def test_parse_merge_sha_reads_a_bare_sha_and_refuses_the_rest() -> None:
-    from omnimarket.nodes.node_prove_running_workflow.runtime_prove_running import (
+    from omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_merge_sha import (
         parse_merge_sha,
     )
 

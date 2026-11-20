@@ -43,6 +43,7 @@ from omnimarket.nodes.node_prove_running_workflow.handlers.temporal_prove_runnin
     BATCH_ACTIVITY_NAME,
     ProveRunningBatchWorkflow,
     prove_running_batch_step,
+    prove_running_earlier,
 )
 from omnimarket.nodes.node_prove_running_workflow.models import (
     ModelProveRunningBatchResult,
@@ -174,7 +175,11 @@ def _worker(client: Client) -> Worker:
         client,
         task_queue=QUEUE,
         workflows=[ProveRunningBatchWorkflow, ProveRunningWorkflow],
-        activities=[prove_running_batch_step, prove_running_step],
+        activities=[
+            prove_running_batch_step,
+            prove_running_earlier,
+            prove_running_step,
+        ],
     )
 
 
@@ -206,7 +211,8 @@ def test_schedule_hourly() -> None:
 
     plan = runtime.build_batch_plan(cfg)
     assert list(schedule.action.args) == [plan.model_dump_json()]
-    assert plan.limit == 3
+    assert "limit" not in type(plan).model_fields
+    assert "limit" not in plan.model_dump()
     assert plan.steps.read_not_running == (
         sys.executable,
         "-m",
@@ -216,12 +222,11 @@ def test_schedule_hourly() -> None:
     assert plan.steps.group_by_host == (sys.executable, "-m", NODE, "group-by-host")
 
 
-def _read_step(monkeypatch: pytest.MonkeyPatch, limit: int = 3) -> None:
+def _read_step(monkeypatch: pytest.MonkeyPatch) -> None:
     step = ModelProveRunningBatchStepInput(
         step="read_not_running",
         step_key="batch/read_not_running",
         batch_id="batch",
-        limit=limit,
     )
     monkeypatch.setattr(sys, "stdin", io.StringIO(step.model_dump_json()))
     monkeypatch.setenv(
@@ -250,19 +255,34 @@ def test_read_not_running_takes_the_newest_publication(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     now = datetime.now(UTC)
+    older = now - timedelta(minutes=30)
+    older_lines = (_reading(99, "dev runtime", older - timedelta(hours=1)),)
     _declare_projection(
         monkeypatch,
         {
             TOPIC: [
                 publication(now),
-                publication(now - timedelta(minutes=30), producer="older"),
+                ModelFloorProjectionEnvelope(
+                    projection_id="integration",
+                    as_of=older,
+                    producer="older",
+                    payload=HandlerIntegrationProjection()
+                    .handle(
+                        ModelIntegrationReadingBatch(
+                            as_of=older, origin="test-pass", readings=older_lines
+                        )
+                    )
+                    .model_dump(mode="json"),
+                )
+                .model_dump_json()
+                .encode(),
             ]
         },
     )
-    _read_step(monkeypatch, limit=1)
+    _read_step(monkeypatch)
     assert runtime.main(["read-not-running"]) == 0
     selected = ModelProveRunningStartBatch.model_validate_json(capsys.readouterr().out)
-    assert [c.number for c in selected.changes] == [41]
+    assert [c.number for c in selected.changes] == [41, 42, 43]
 
 
 def test_read_not_running_refuses_a_stale_batch(
@@ -322,7 +342,6 @@ def test_groups_by_host_cli(
         step="group_by_host",
         step_key="batch/group_by_host",
         batch_id="batch",
-        limit=4,
         payload=batch.model_dump_json(),
     )
     monkeypatch.setattr(sys, "stdin", io.StringIO(step.model_dump_json()))
@@ -421,7 +440,15 @@ async def test_refire_no_duplicate(
     assert set(second.already_proven_or_running) == set(WORKFLOW_IDS)
     assert second.started == ()
     assert second.outcomes == {}
-    assert len(batch_files["ledger"].read_text(encoding="utf-8").splitlines()) == 3
+    # The refire starts nothing and still answers each line: one row each, carrying the earlier proof.
+    rows = batch_files["ledger"].read_text(encoding="utf-8").splitlines()
+    assert len(rows) == 6
+    assert second.lines_read == second.results_written == 3
+    assert set(second.results.values()) == {"proven"}
+    for wf_id in WORKFLOW_IDS:
+        (earlier,) = [r for r in rows if f"earlier_workflow={wf_id} " in r]
+        assert " | result=proven | " in earlier
+        assert f"earlier_proof={wf_id} " in earlier
     steps = Counter(batch_files["log"].read_text(encoding="utf-8").splitlines())
     for wf_id in WORKFLOW_IDS:
         assert steps[f"read {wf_id}/read_status"] == 1

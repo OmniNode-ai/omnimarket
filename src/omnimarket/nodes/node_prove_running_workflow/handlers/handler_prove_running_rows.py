@@ -8,6 +8,8 @@ import re
 
 from omnimarket.nodes.node_prove_running_workflow.models.model_prove_running import (
     EnumProveRunningOutcome,
+    EnumProveRunningResultKind,
+    ModelProveRunningChange,
     ModelProveRunningRowRequest,
     ModelProveRunningRowResult,
 )
@@ -28,9 +30,25 @@ def _token(text: str) -> str:
     return re.sub(r"\s+", "-", _cell(text))
 
 
+def alarm_result_kind(change: ModelProveRunningChange) -> EnumProveRunningResultKind:
+    """A change still not running at the deadline is blocked when its line names an owner, else it is a next step."""
+    return (
+        EnumProveRunningResultKind.BLOCKED
+        if change.owner.strip()
+        else EnumProveRunningResultKind.NEXT_STEP
+    )
+
+
+def alarm_next_step(change: ModelProveRunningChange) -> str:
+    return change.next_step.strip() or (
+        f"roll {change.target} to {change.merge_sha[:12]} and read it again at the next hourly run"
+    )
+
+
 class HandlerProveRunningRows:
-    """A STATUS row ``pr= installed= observed= read_at=`` when proved; an alarm row naming the change and the last
-    reading when the deadline passed with the change still not running."""
+    """A STATUS row ``result=proven pr= installed= observed= read_at=`` when proved; an alarm row naming the change and
+    the last reading, ``result=blocked owner=`` or ``result=next-step next_step=``, when the deadline passed with the
+    change still not running. One row per change."""
 
     def handle(
         self, request: ModelProveRunningRowRequest
@@ -50,7 +68,7 @@ class HandlerProveRunningRows:
             if reading is None or not reading.running:
                 raise ValueError("a STATUS row is written only from a running reading")
             row = (
-                f"{head} | pr={change.key} | installed={_token(reading.host)}:{_token(reading.revision)}"
+                f"{head} | result={EnumProveRunningResultKind.PROVEN.value} | pr={change.key} | installed={_token(reading.host)}:{_token(reading.revision)}"
                 f" | observed={_cell(reading.observed)} | read_at={_token(reading.read_at)} | {workflow_cells}"
                 f" | {change.key} read running on {_cell(reading.host)} after the durable wait"
             )
@@ -64,8 +82,14 @@ class HandlerProveRunningRows:
                 )
             )
             read_at = "none" if reading is None else _token(reading.read_at)
+            kind = alarm_result_kind(change)
+            carried = (
+                f"owner={_token(change.owner)}"
+                if kind is EnumProveRunningResultKind.BLOCKED
+                else f"next_step={_token(alarm_next_step(change))}"
+            )
             row = (
-                f"{head} | src=alarm | alarm={ALARM_KEY} | pr={change.key} | sha={change.merge_sha}"
+                f"{head} | result={kind.value} | {carried} | src=alarm | alarm={ALARM_KEY} | pr={change.key} | sha={change.merge_sha}"
                 f" | target={_token(change.target)} | last_reading={last} | read_at={read_at} | {workflow_cells}"
                 f" | {change.key}@{change.merge_sha} still not running on {_cell(change.target)} after the declared deadline"
             )

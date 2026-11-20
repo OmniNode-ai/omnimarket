@@ -27,6 +27,23 @@ class EnumProveRunningOutcome(StrEnum):
     ALARM = "alarm"
 
 
+class EnumProveRunningResultKind(StrEnum):
+    """The one kind of every result row: proven (carries its reading), blocked (carries its owner) or next-step
+    (carries the one next step)."""
+
+    PROVEN = "proven"
+    BLOCKED = "blocked"
+    NEXT_STEP = "next-step"
+
+
+class EnumProveRunningLineCase(StrEnum):
+    """Why the batch, not the change's own workflow, writes a line's result row."""
+
+    ALREADY_STARTED = "already-started"
+    UNRESOLVED = "merge-sha-unread"
+    CHILD_FAILED = "child-failed"
+
+
 class ModelProveRunningChange(_Frozen):
     """One merged change and the place it should run (a host or a runtime)."""
 
@@ -34,6 +51,9 @@ class ModelProveRunningChange(_Frozen):
     number: int = Field(gt=0)
     merge_sha: str = Field(pattern=r"^[0-9a-f]{7,40}$")
     target: str = Field(min_length=1, pattern=r"^\S+$")
+    # The integration line's own owner and next step: a result row that is not a proof carries one of them.
+    owner: str = ""
+    next_step: str = ""
 
     @property
     def key(self) -> str:
@@ -125,18 +145,76 @@ class ModelProveRunningRowResult(_Frozen):
     row: str = Field(min_length=1)
 
 
+class ModelProveRunningEarlier(_Frozen):
+    """What the change's own workflow, started by an earlier batch, stands at: its status and, once it ended, its result."""
+
+    workflow_id: str
+    status: str = Field(min_length=1)
+    result: ModelProveRunningResult | None = None
+
+
+class ModelProveRunningLinePayload(_Frozen):
+    """A NOT RUNNING line whose result row the batch writes itself: it was started before, never became a start, or its
+    own workflow failed."""
+
+    case: EnumProveRunningLineCase
+    key: str = Field(min_length=1)
+    target: str = Field(min_length=1)
+    owner: str = ""
+    next_step: str = ""
+    workflow_id: str = ""
+    merge_sha: str = ""
+    earlier: ModelProveRunningEarlier | None = None
+    detail: str = ""
+
+
+class ModelProveRunningLineWritten(_Frozen):
+    """What the line-row write step answers: the row it appended and its kind."""
+
+    written: bool
+    row: str
+    result: EnumProveRunningResultKind
+
+
+class ModelProveRunningLineRowRequest(ModelProveRunningLinePayload):
+    """The payload with what the row needs from the node's declaration and the caller's clock."""
+
+    step_key: str = Field(min_length=1)
+    lane: str = Field(min_length=1, pattern=r"^[a-z0-9][a-z0-9-]*$")
+    ticket: str = Field(pattern=r"^OMN-\d+$")
+    written_at: str = Field(min_length=1)
+    batch_id: str = ""
+
+
 class ModelProveRunningStartRequest(_Frozen):
-    """The starter's input: one integration pass's readings and how many NOT RUNNING lines to start."""
+    """The starter's input: one integration pass's readings. Every NOT RUNNING line is started; there is no cap."""
 
     batch: ModelIntegrationReadingBatch
-    limit: int = Field(gt=0, le=50)
+
+
+class ModelProveRunningUnresolvedLine(_Frozen):
+    """A NOT RUNNING line that could not become a start (its merge sha is unread), with what its result row carries."""
+
+    repository: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    number: int = Field(gt=0)
+    target: str = Field(min_length=1)
+    owner: str = ""
+    next_step: str = ""
+    reason: str = Field(min_length=1)
+
+    @property
+    def key(self) -> str:
+        return f"{self.repository}#{self.number}"
 
 
 class ModelProveRunningStartBatch(_Frozen):
-    """One start per NOT RUNNING line, oldest first, and the lines that could not be started with the reason."""
+    """One start per NOT RUNNING line, oldest first, the lines that could not be started with the reason, and how many
+    lines were read: ``lines_read`` equals ``len(changes) + len(unresolved)``."""
 
     changes: tuple[ModelProveRunningChange, ...]
     skipped: tuple[str, ...] = ()
+    unresolved: tuple[ModelProveRunningUnresolvedLine, ...] = ()
+    lines_read: int = Field(default=0, ge=0)
 
 
 class ModelProveRunningBatchSteps(_Frozen):
@@ -144,15 +222,23 @@ class ModelProveRunningBatchSteps(_Frozen):
 
     read_not_running: tuple[str, ...] = Field(min_length=1)
     group_by_host: tuple[str, ...] = Field(min_length=1)
+    write_line_result: tuple[str, ...] = Field(min_length=1)
 
 
 class ModelProveRunningBatchPlan(_Frozen):
-    """The scheduled workflow input and its activity limits."""
+    """The scheduled workflow input and its activity limits. A schedule created before the cap was removed still
+    carries ``limit``; it is dropped on read, so an old schedule input never caps the lines read."""
 
     steps: ModelProveRunningBatchSteps
-    limit: int = Field(ge=1, le=50)
     step_timeout_seconds: int = Field(gt=0)
     step_max_attempts: int = Field(gt=0, le=20)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_legacy_limit(cls, data: object) -> object:
+        if isinstance(data, dict) and "limit" in data:
+            return {k: v for k, v in data.items() if k != "limit"}
+        return data
 
 
 class ModelProveRunningBatchStepInput(_Frozen):
@@ -161,7 +247,6 @@ class ModelProveRunningBatchStepInput(_Frozen):
     step: str = Field(min_length=1)
     step_key: str = Field(min_length=1)
     batch_id: str = Field(min_length=1)
-    limit: int = Field(ge=1, le=50)
     payload: str = ""
 
 
@@ -180,7 +265,8 @@ class ModelProveRunningHostGroups(_Frozen):
 
 
 class ModelProveRunningBatchResult(_Frozen):
-    """Counts and outcomes from one scheduled workflow run."""
+    """Counts and outcomes from one scheduled workflow run: ``lines_read`` NOT RUNNING lines read, ``results_written``
+    result rows written (one per line), ``results`` the kind of each (proven, blocked or next-step)."""
 
     batch_id: str
     read_changes: int
@@ -188,6 +274,9 @@ class ModelProveRunningBatchResult(_Frozen):
     started: tuple[str, ...]
     already_proven_or_running: tuple[str, ...]
     outcomes: dict[str, str]
+    lines_read: int = 0
+    results_written: int = 0
+    results: dict[str, str] = Field(default_factory=dict)
 
 
 class ModelProveRunningHostsOverlay(_Frozen):

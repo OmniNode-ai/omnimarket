@@ -9,8 +9,9 @@ Verbs:
   one workflow per NOT RUNNING line, id ``<repo>#<n>@<sha>``; a second start of a running change joins it and a start
   of a finished one is refused.
 * ``schedule``: create or update the hourly batch schedule, with an optional immediate trigger.
-* ``read-not-running`` and ``group-by-host``: batch step commands. The first reads the integration pass's typed batch from its snapshot topic (the
-  floor reader's overlay declares the topic and the bound; no ledger file); the second builds child plans per host.
+* ``read-not-running``, ``group-by-host`` and ``write-line-row``: batch step commands. The first reads the integration pass's typed batch
+  from its snapshot topic (no ledger file) and selects every NOT RUNNING line; the second builds child plans per host; the third
+  writes the result row of a line that has no workflow of its own in this batch.
 * ``read``: a step command. Reads the step input on stdin, reads the change through
   ``node_merged_change_reading_effect`` (its declared CLI) and answers one ``ModelProveRunningAnswer`` line.
 * ``install``: a step command. The declared installer of the change's target, from the contract's ``installers``.
@@ -60,6 +61,12 @@ from omnimarket.nodes.node_prove_running_workflow.handlers.handler_integration_p
 )
 from omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_hosts import (
     group_by_host,
+)
+from omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_line_rows import (
+    write_line_row,
+)
+from omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_merge_sha import (
+    CliMergeShaResolver,
 )
 from omnimarket.nodes.node_prove_running_workflow.models.model_prove_running import (
     EnumProveRunningOutcome,
@@ -130,7 +137,6 @@ def build_batch_plan(cfg: dict[str, Any]) -> ModelProveRunningBatchPlan:
     steps = {name: _argv(list(argv)) for name, argv in batch["steps"].items()}
     return ModelProveRunningBatchPlan(
         steps=ModelProveRunningBatchSteps(**steps),
-        limit=int(batch["limit"]),
         step_timeout_seconds=int(batch["step_timeout_seconds"]),
         step_max_attempts=int(batch["step_max_attempts"]),
     )
@@ -288,51 +294,17 @@ def cmd_write_row(cfg: dict[str, Any], outcome: str) -> int:
     return 0
 
 
-def _is_sha(token: object) -> bool:
-    return (
-        isinstance(token, str)
-        and len(token) == 40
-        and all(c in "0123456789abcdef" for c in token)
+def cmd_write_line_row(cfg: dict[str, Any]) -> int:
+    lane = os.environ.get("ONEX_PROVE_RUNNING_LANE", cfg["lane"])
+    code, text = write_line_row(
+        sys.stdin.read(),
+        lane=lane,
+        ticket=cfg["ticket"],
+        written_at=_now(),
+        append=_append_row,
     )
-
-
-def parse_merge_sha(stdout: str) -> str | None:
-    """The merge sha in ``onex scm pr-merge-commit`` output: the verb's JSON line (``result.merge_commit_sha``), or a
-    bare 40-hex token on an older verb that printed one."""
-    for line in reversed(stdout.splitlines()):
-        try:
-            doc = json.loads(line)
-        except ValueError:
-            continue
-        result = doc.get("result") if isinstance(doc, dict) else None
-        sha = result.get("merge_commit_sha") if isinstance(result, dict) else None
-        if _is_sha(sha):
-            return str(sha)
-    for token in reversed(stdout.split()):
-        if _is_sha(token):
-            return token
-    return None
-
-
-class CliMergeShaResolver:
-    """The merge sha through ``onex scm pr-merge-commit`` (the PR watcher state and the clones, never GitHub)."""
-
-    def __init__(self, owner: str, override_argv: tuple[str, ...] = ()) -> None:
-        self._owner = owner
-        self._override_argv = override_argv
-
-    def merge_sha(self, repository: str, number: int) -> str | None:
-        change_key = f"{repository}#{number}"
-        argv = (
-            [*self._override_argv, change_key]
-            if self._override_argv
-            else ["onex", "scm", "pr-merge-commit", f"{self._owner}/{change_key}"]
-        )
-        proc = subprocess.run(argv, capture_output=True, text=True, check=False)
-        if self._override_argv:
-            lines = proc.stdout.strip().splitlines()
-            return lines[-1].strip() if proc.returncode == 0 and lines else None
-        return parse_merge_sha(proc.stdout)
+    (sys.stdout if code == 0 else sys.stderr).write(text + "\n")
+    return code
 
 
 def _merge_sha_resolver(cfg: dict[str, Any], owner: str) -> CliMergeShaResolver:
@@ -387,7 +359,7 @@ def snapshot_source(
 
 def cmd_read_not_running(cfg: dict[str, Any]) -> int:
     """Select the NOT RUNNING lines of the integration pass's newest typed batch, read from its snapshot topic."""
-    step = ModelProveRunningBatchStepInput.model_validate_json(sys.stdin.read())
+    ModelProveRunningBatchStepInput.model_validate_json(sys.stdin.read())
     declared = cfg["batch"]["input"]
     env = os.environ
     try:
@@ -417,9 +389,9 @@ def cmd_read_not_running(cfg: dict[str, Any]) -> int:
         sys.stderr.write(f"refused: {exc}\n")
         return EXIT_REFUSED
     resolver = _merge_sha_resolver(cfg, cfg["scm_owner"])
-    selected = HandlerProveRunningStarter(resolver).handle(
-        ModelProveRunningStartRequest(batch=batch, limit=step.limit)
-    )
+    selected = HandlerProveRunningStarter(
+        resolver, workers=int(cfg["batch"]["resolve_workers"])
+    ).handle(ModelProveRunningStartRequest(batch=batch))
     sys.stdout.write(selected.model_dump_json() + "\n")
     return 0
 
@@ -539,6 +511,7 @@ async def run_worker(target_host: str, namespace: str, task_queue: str) -> None:
     from omnimarket.nodes.node_prove_running_workflow.handlers.temporal_prove_running_batch import (
         ProveRunningBatchWorkflow,
         prove_running_batch_step,
+        prove_running_earlier,
     )
 
     client = await _connect(target_host, namespace)
@@ -546,7 +519,11 @@ async def run_worker(target_host: str, namespace: str, task_queue: str) -> None:
         client,
         task_queue=task_queue,
         workflows=[ProveRunningWorkflow, ProveRunningBatchWorkflow],
-        activities=[prove_running_step, prove_running_batch_step],
+        activities=[
+            prove_running_step,
+            prove_running_batch_step,
+            prove_running_earlier,
+        ],
     ).run()
 
 
@@ -562,7 +539,6 @@ def main(argv: list[str] | None = None) -> int:
     sub.choices["start"].add_argument(
         "--batch", required=True, help="ModelIntegrationReadingBatch JSON file"
     )
-    sub.choices["start"].add_argument("--limit", type=int, default=3)
     sub.choices["start"].add_argument("--owner", default=cfg["scm_owner"])
     sub.choices["start"].add_argument(
         "--wait", action="store_true", help="wait for each result"
@@ -575,6 +551,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub.add_parser("read-not-running")
     sub.add_parser("group-by-host")
+    sub.add_parser("write-line-row")
     sub.add_parser("read")
     sub.add_parser("install")
     w = sub.add_parser("write-row")
@@ -593,6 +570,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_read_not_running(cfg)
     if args.verb == "group-by-host":
         return cmd_group_by_host(cfg)
+    if args.verb == "write-line-row":
+        return cmd_write_line_row(cfg)
     if args.verb == "worker":
         asyncio.run(run_worker(args.target_host, args.namespace, args.task_queue))
         return 0
@@ -612,7 +591,7 @@ def main(argv: list[str] | None = None) -> int:
         Path(args.batch).read_text()
     )
     selected = HandlerProveRunningStarter(_merge_sha_resolver(cfg, args.owner)).handle(
-        ModelProveRunningStartRequest(batch=batch, limit=args.limit)
+        ModelProveRunningStartRequest(batch=batch)
     )
 
     async def _start() -> list[dict[str, str]]:
