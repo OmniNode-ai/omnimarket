@@ -1078,6 +1078,7 @@ node_on_vs_off_experiment_compute = "omnimarket.nodes.node_on_vs_off_experiment_
 node_onboarding = "omnimarket.nodes.node_onboarding"
 node_onboarding_clean_vm_walk_effect = "omnimarket.nodes.node_onboarding_clean_vm_walk_effect"
 node_oneoff_register_compute = "omnimarket.nodes.node_oneoff_register_compute"
+node_onex_installer_render_compute = "omnimarket.nodes.node_onex_installer_render_compute"
 node_onex_ledger_admission_compute = "omnimarket.nodes.node_onex_ledger_admission_compute"
 node_onex_pillar_owner_compute = "omnimarket.nodes.node_onex_pillar_owner_compute"
 node_onex_setup_effect = "omnimarket.nodes.node_onex_setup_effect"
