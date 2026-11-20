@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_down_compute
+version: 1.0.0
+description: Read each lab host's down state for one evaluation tick from its probe result and prior failed run. A host is
+  DOWN once its probes have failed for at least the request's down bound seconds with no capacity advertisement since
+  (down_since anchors the outage at the failed run's start), SUSPECT before the bound or when the host advertised capacity
+  within it, UP on an answered probe, and UNKNOWN when the probe could not run or the observer sees no host answer at all.
+  Every bound arrives in the request; the node owns no clock, no I/O, and no literal bound.
+pack: distributed_validation
+node_role: compute
+display_name: Host Down Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_host_down_compute: omnimarket.nodes.node_host_down_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- host-down-compute
+- OMN-19998

@@ -1,0 +1,23 @@
+name: node_review_gate_context_compute
+version: "0.1.0"
+description: "Review-gate context: the pure verdict of a required review check for one pull request head"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_review_gate_context_compute: "omnimarket.nodes.node_review_gate_context_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "review-gate", "pure"]
+pack: "pr_lifecycle"
+display_name: "Review Gate Context"
+node_role: "compute"
+ticket: "OMN-24614"

@@ -35,7 +35,10 @@ _OPERATIONS = {
     "lane_drift",
     "container_unhealthy",
     "lab_pass_receipt",
+    "loaded_code_sha",
     "stale_indeterminate",
+    "alarm_digest",
+    "container_restarts",
 }
 _BOOT_INJECTABLE = {"event_bus", "container", "ownership_query"}
 

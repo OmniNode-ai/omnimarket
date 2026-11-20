@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Session Stall Alarm Effect (OMN-25405)
+#
+# One tick, run every 300 s by the host installer's session-stall-alarm launchd unit on the operator Mac: read the newest
+# session transcript, judge it (node_session_stall_alarm_compute), deliver a stall through node_lab_alarm_deliver_effect.
+name: node_session_stall_alarm_effect
+contract_name: node_session_stall_alarm_effect
+node_name: node_session_stall_alarm_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Reads the queue-operation rows of the orchestrating session's newest transcript and has the session stall judge decide
+  whether the oldest enqueue has had no dequeue for 15 minutes or, while a recurring tick is declared, no scheduled task
+  fired for 45 minutes. A stall is delivered once through the lab alarm delivery (one channel post and one ledger row per
+  episode) and not again until a tick reads the session healthy. A transcript that cannot be read is INDETERMINATE: it
+  neither starts nor ends an episode. The transcript's content is never kept, logged or printed. The transcript's place,
+  the bars and the tick declaration are the overlay's.
+
+handler:
+  module: omnimarket.nodes.node_session_stall_alarm_effect.handlers.handler_session_stall_alarm
+  class: HandlerSessionStallAlarm
+  input_model: omnimarket.models.session_stall.ModelSessionStallTickRequest
+  output_model: omnimarket.models.session_stall.ModelSessionStallTickResult
+
+# HandlerSessionStallAlarm takes the overlay, the transcript reader, the judge, the delivery handler and the clock as
+# constructor parameters, so it is built by the tick module (runtime_session_stall_tick) and declares no handler_routing.
+
+input_model:
+  name: ModelSessionStallTickRequest
+  module: omnimarket.models.session_stall
+output_model:
+  name: ModelSessionStallTickResult
+  module: omnimarket.models.session_stall
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  side_effects: [transcript-read, alert-channel-post, ledger-append, state-file-write]
+  # The unit's run_timeout_s is this value in seconds; under the 300 s interval, so a hung read ends before the next tick.
+  timeout_ms: 120000
+  runtime_profiles: [effects]
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+overlay:
+  node: node_session_stall_alarm_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  ticket: OMN-25405

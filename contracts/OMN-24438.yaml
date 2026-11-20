@@ -1,0 +1,46 @@
+schema_version: 1.0.0
+ticket_id: OMN-24438
+title: Dev runtime rolls once per window and joins its command nodes in time
+summary: node_dev_roll_window_gate_effect holds each dev deploy command the deploy effect forwards (envelope on onex.cmd.omnimarket.dev-roll-hold.v1) in a durable store and releases every held command together,
+  oldest first, once node_dev_roll_request_compute's batching decision (live mode) says roll now, at most once per overlay interval and never while the previous roll has no completion. Every value is an
+  overlay value. The integrated reading is the dev roll count over two hours and the six command node groups' join time after one roll, read from the running dev runtime.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- public_api
+requirements:
+- id: req-omn24438-gate
+  statement: Dev deploy commands wait for one roll window and are released together.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: golden chain, error chain, join and seam tests run on the in-memory bus and on the real broker and each fails against a named injected break -- falsifier: renaming a field the gate reads from the deploy command, the facts or the completion event leaves a seam test green'
+evidence_requirements:
+- kind: tests
+  description: The real-broker seam tests at the pushed head.
+  command: uv run --frozen pytest tests/integration/node_dev_roll_window_gate_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24438-ac4-real-broker
+  description: "The golden chain, error chain, join and seam tests on the integration lane's real broker, each seam break beside a positive control. Where the broker is not reachable the tests skip. The second check reads the test file's entry in the durations record (config/test_file_durations.d/), which this PR adds, so at the merge base that check fails (no such file) while the new test file and this contract are overlaid there. The in-memory half merged in omnimarket#6201."
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/integration/node_dev_roll_window_gate_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: command
+    check_value: python3 -c "import json; p='tests/integration/node_dev_roll_window_gate_effect/test_dev_roll_window_gate_redpanda.py'; d=json.load(open('config/test_file_durations.d/tests__integration__node_dev_roll_window_gate_effect__test_dev_roll_window_gate_redpanda.json')); assert d[p] > 0, d"
+    cwd: .
+- id: dod-omn24438-integration-proof
+  description: 'The factory floor overlay model accepts the ledger_projection block the overlays main document carries (Overlay Main Load red at this PR head); the test runs on a lab host at the pushed head'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24438 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_ledger_projection_overlay_block.py -q --no-cov -p no:randomly
+    cwd: .

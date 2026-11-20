@@ -30,7 +30,7 @@ def catalog_only_writes(monkeypatch: pytest.MonkeyPatch) -> None:
     # credential row write here so its first and repeated versions are exact.
     monkeypatch.setattr(
         handler_tenant_credentials_store,
-        "resolve_byok_provider_backend",
+        "registered_endpoint_backend",
         lambda *_args, **_kwargs: None,
     )
 
