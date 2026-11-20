@@ -16,10 +16,16 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.handlers.bus_binding import (
+    declared_broker_publisher as publisher_module,
+)
 from omnimarket.nodes.node_host_job_claim_compute import (
     runtime_host_job_claim_tick as tick,
 )
-from omnimarket.nodes.node_host_job_claim_compute.models import ModelInstalledUnit
+from omnimarket.nodes.node_host_job_claim_compute.models import (
+    ModelHostJobClaimResult,
+    ModelInstalledUnit,
+)
 from omnimarket.nodes.node_host_job_claim_compute.runtime_host_job_claim import (
     read_claim,
 )
@@ -85,7 +91,7 @@ def wired(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def _install(
     monkeypatch: pytest.MonkeyPatch, units: tuple[ModelInstalledUnit, ...]
 ) -> None:
-    def read(host: str, correlation_id: str):  # type: ignore[no-untyped-def]
+    def read(host: str, correlation_id: str) -> ModelHostJobClaimResult | None:
         return read_claim(host, correlation_id, Units(units))
 
     monkeypatch.setattr(tick, "read_claim", read)
@@ -263,7 +269,7 @@ def test_the_declared_broker_publisher_sends_the_envelope_on_the_declared_broker
 
     monkeypatch.setattr(aiokafka, "AIOKafkaProducer", Producer)
     monkeypatch.setattr(
-        tick,
+        publisher_module,
         "resolve_dialable_broker",
         lambda _node: ModelNodeBroker(
             kind="kafka", lane="dev", bootstrap_servers="broker.invalid:9092"
