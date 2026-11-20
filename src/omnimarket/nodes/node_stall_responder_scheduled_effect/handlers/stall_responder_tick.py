@@ -16,6 +16,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
+from omnimarket.models.model_stall_responder import (
+    ModelStallResponderRequest,
+    ModelStallResponderResult,
+)
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,
     build_row_source,
@@ -26,10 +30,6 @@ from omnimarket.nodes.node_reading_writer_effect.protocols import (
 )
 from omnimarket.nodes.node_stall_responder_compute.handlers.handler_stall_cause_responder import (
     HandlerStallCauseResponder,
-)
-from omnimarket.nodes.node_stall_responder_compute.models import (
-    ModelStallResponderRequest,
-    ModelStallResponderResult,
 )
 from omnimarket.nodes.node_stall_responder_scheduled_effect.models import (
     ModelStallResponderScheduleOverlay,
