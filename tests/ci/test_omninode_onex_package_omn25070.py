@@ -31,7 +31,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_DIR = REPO_ROOT / "packages" / "omninode-onex"
 PYPROJECT = PACKAGE_DIR / "pyproject.toml"
 CUSTOMER_LAUNCHERS = {"onex", "omni-agent"}
-PINNED_DISTRIBUTIONS = {"omnibase-core", "omnibase-infra", "omnimarket"}
+# Every first-party distribution a customer install contains, so a later
+# release of any of them cannot change what a customer gets.
+PINNED_DISTRIBUTIONS = {
+    "omnibase-core",
+    "omnibase-infra",
+    "omnibase-spi",
+    "omnimarket",
+    "omninode-memory",
+}
+FIRST_PARTY_PREFIXES = ("omnibase-", "omninode-")
 
 
 def _project() -> dict[str, object]:
@@ -83,6 +92,33 @@ def test_every_dependency_is_pinned_exactly() -> None:
         assert specifiers[0].operator == "==", requirement
         assert not requirement.extras, requirement
         assert requirement.marker is None, requirement
+
+
+@pytest.mark.unit
+def test_pins_cover_and_satisfy_omnimarkets_first_party_ranges() -> None:
+    # A first-party dependency omnimarket declares but the customer package
+    # leaves unpinned floats to whatever is newest on PyPI at install time.
+    with (REPO_ROOT / "pyproject.toml").open("rb") as stream:
+        declared = tomllib.load(stream)["project"]["dependencies"]
+    ranges = {
+        r.name: r
+        for r in (Requirement(str(item)) for item in declared)
+        if r.name.startswith(FIRST_PARTY_PREFIXES)
+    }
+    dependencies = _project()["dependencies"]
+    assert isinstance(dependencies, list)
+    pins = {
+        r.name: Version(next(iter(r.specifier)).version)
+        for r in (Requirement(str(item)) for item in dependencies)
+    }
+    unpinned = sorted(set(ranges) - set(pins))
+    assert not unpinned, f"first-party dependencies left unpinned: {unpinned}"
+    outside = {
+        name: (str(pins[name]), str(r.specifier))
+        for name, r in ranges.items()
+        if not r.specifier.contains(pins[name], prereleases=True)
+    }
+    assert not outside, f"pins outside omnimarket's declared ranges: {outside}"
 
 
 @pytest.mark.unit

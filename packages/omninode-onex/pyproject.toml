@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "omninode-onex"
 version = "0.0.1.post1"
-description = "Installs the onex command line for customers, pinning omnibase-core, omnibase-infra and omnimarket exactly."
+description = "Installs the onex command line for customers, pinning every OmniNode distribution it installs exactly."
 readme = { text = "The OmniNode onex command line for customers. Install it with `uv tool install --python 3.12 omninode-onex`; it carries no code of its own, installs omnibase-core, omnibase-infra and omnimarket at exactly the versions it pins, and puts two commands on your PATH: onex and omni-agent.", content-type = "text/markdown" }
 authors = [{ name = "OmniNode.ai", email = "contact@omninode.ai" }]
 license = { text = "MIT" }
@@ -17,11 +17,13 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 # Each distribution is pinned with == so a customer install resolves exactly the
-# reviewed set; a release bumps all three together.
+# reviewed set; a release bumps them together.
 dependencies = [
     "omnibase-core==0.47.75",
     "omnibase-infra==0.38.77",
+    "omnibase-spi==0.23.16",
     "omnimarket==0.4.322",
+    "omninode-memory==0.18.16",
 ]
 
 # The customer launchers. `uv tool install omninode-onex` links only these two.

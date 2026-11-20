@@ -5,7 +5,7 @@ title: The customer package omninode-onex declares the customer launchers and pi
 summary: >-
   omnimarket now holds the customer package omninode-onex under packages/omninode-onex. It carries
   no code, declares onex and omni-agent with omnibase_core's CLI as their target, and pins
-  omnibase-core, omnibase-infra and omnimarket with ==. A customer runs uv tool install
+  omnibase-core, omnibase-infra, omnibase-spi, omnimarket and omninode-memory with ==. A customer runs uv tool install
   omninode-onex, which links only the named package's launchers, so exactly onex and omni-agent
   land on PATH. During the testing phase omnibase-core keeps declaring the same two launchers.
 is_seam_ticket: false
@@ -19,7 +19,7 @@ requirements:
       - id: AC2
         statement: >-
           AC2 (testing-phase form, package part): the package declares exactly onex and omni-agent with
-          omnibase_core's target, pins omnibase-core, omnibase-infra and omnimarket with ==, pins
+          omnibase_core's target, pins omnibase-core, omnibase-infra, omnibase-spi, omnimarket and omninode-memory with ==, pins
           omnimarket no newer than this repository's version, and its built wheel holds only its dist-info --
           falsifier: uv run pytest tests/ci/test_omninode_onex_package_omn25070.py fails on omnimarket
           dev, where packages/omninode-onex does not exist. The install part (uv tool install puts
