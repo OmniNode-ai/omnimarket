@@ -18,6 +18,14 @@ Idempotency, by construction:
   result is the fold of the SET stored and not of the order the messages came;
 * the per-goal row is an upsert of the fold's trace, never an increment.
 
+A hook event that names no goal, in a session that holds no goal-bearing row
+and no row that is not a hook, cannot change the attachment of any other row:
+there is no binding to join and nothing to order. That event takes the narrow
+path (OMN-26152): one guard read, one idempotent write of its own
+``unassigned`` row, no scope read and no fold. Without it a session of tens of
+thousands of such hook events re-read and re-folded the whole session for every
+new one, and held the runtime's GIL for seconds per message.
+
 The scope read grows to a fixpoint: the session's rows, then every row of each
 goal those rows reach, until no new goal appears. A binding that arrives after
 the hooks of its agent therefore re-attaches them, and a claim that arrives
@@ -98,6 +106,34 @@ _SELECT_SCOPE = f"""
     WHERE ($1::text IS NOT NULL AND session_id = $1)
        OR goal_id = ANY($2::uuid[])
        OR raw_goal_id = ANY($2::uuid[])
+"""
+
+# True when the session holds nothing a new goal-less hook event could join or
+# reorder (no goal-bearing row, no row that is not a hook) and no other digest of
+# the event's id exists (the fold would flag an id conflict on both rows).
+_SELECT_GOAL_FREE_SESSION = f"""
+    SELECT (
+        NOT EXISTS (
+            SELECT 1 FROM {TABLE_EVENTS}
+            WHERE session_id = $1
+              AND (raw_goal_id IS NOT NULL OR goal_id IS NOT NULL OR kind <> 'hook')
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM {TABLE_EVENTS}
+            WHERE event_id = $2 AND body_digest <> $3
+        )
+    ) AS goal_free
+"""
+
+# What the fold writes for a row that joins nothing, only where it differs.
+_MARK_UNASSIGNED = f"""
+    UPDATE {TABLE_EVENTS}
+    SET goal_id = NULL, seq = NULL, assignment = 'unassigned',
+        id_conflict = FALSE, updated_at = NOW()
+    WHERE event_id = $1 AND body_digest = $2
+      AND (goal_id IS NOT NULL OR seq IS NOT NULL
+           OR assignment IS DISTINCT FROM 'unassigned' OR id_conflict)
+    RETURNING event_id
 """
 
 _UPDATE_ROW = f"""
@@ -300,6 +336,22 @@ class GoalTraceProjectionWriter(BaseProjectionRunner):
             return f"{event.session_id}:{span['parent_agent_id']}"
         return None
 
+    async def _is_goal_free_hook(self, db: Any, event: ModelGoalTraceEvent) -> bool:
+        """True when the event is a goal-less hook of a session with no goal to join."""
+        if (
+            event.kind is not EnumGoalTraceEventKind.HOOK
+            or event.goal_id is not None
+            or event.session_id is None
+        ):
+            return False
+        found = await db.execute(
+            _SELECT_GOAL_FREE_SESSION,
+            event.session_id,
+            event.event_id,
+            event.body_digest,
+        )
+        return bool(found and found[0]["goal_free"])
+
     async def _load_scope(
         self, db: Any, session_id: str | None, goals: set[UUID]
     ) -> dict[tuple[str, str], dict[str, Any]]:
@@ -340,6 +392,21 @@ class GoalTraceProjectionWriter(BaseProjectionRunner):
         parent_key = await self._parent_agent_key(db, event)
         inserted = await db.execute(_INSERT_EVENT, *_event_params(event, parent_key))
         event_inserted = bool(inserted and inserted[0].get("event_inserted", True))
+
+        if await self._is_goal_free_hook(db, event):
+            rewritten = len(
+                await db.execute(_MARK_UNASSIGNED, event.event_id, event.body_digest)
+            )
+            return {
+                "rows_upserted": int(event_inserted) + rewritten,
+                "event_inserted": event_inserted,
+                "event_id": event.event_id,
+                "kind": event.kind.value,
+                "goal_id": None,
+                "rewritten_rows": rewritten,
+                "goal_rows_written": 0,
+                "scope_skipped": True,
+            }
 
         goals = {event.goal_id} if event.goal_id is not None else set()
         scope = await self._load_scope(db, event.session_id, goals)
