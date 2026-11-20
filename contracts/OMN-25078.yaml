@@ -1,0 +1,73 @@
+schema_version: 1.0.0
+ticket_id: OMN-25078
+title: 'Review findings 1 to 5 on omnimarket PR 6326 at head 5adc9fde4db0 are fixed or argued: the AC2 contract check greps its real item id, closure of OMN-24831 is ruled out, the lab check names its command and contexts, and the skip scan reads every test'
+summary: Follow-up on dev after the nightly runner change merged. The lab-comment checks of three contracts now match the suite command, exit 0 and a non-empty all-success contexts list, and test the red and pending keys present before comparing their length; the skip scan walks the suite recursively and parses every file, this test file included, by AST; an absent terminal_ok key is reported as absent. Findings 2 and 3 name a pull request head that no longer exists (the pull request is merged) and are argued in the pull request comment.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25078-review-findings-6326
+  statement: The review findings that still hold on dev after the merge of the nightly runner change are fixed with a test red then green for each, and the others are argued with evidence.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the contract check for the AC2 item greps `dod-omn24831-ac2-fix-at-the-source` in contracts/OMN-24831.yaml and exits 0, the text that calls it bound to a local Done gate check is corrected, and a PR comment states whether the hosted gate is red or does not run command checks -- falsifier: `grep -n ''AC2\$'' contracts/OMN-24986.yaml` still matches the AC2 check, or `uv run pytest tests/delegation_golden -m "not e2e" -q -p no:cacheprovider` exits non-zero at the new head'
+  - id: AC4
+    statement: 'AC4: each lab check matches the suite command and exit 0, requires a non-empty required-context list that is all success, and tests the key present before it compares the red length, with a test that fails for the contracts that carry no lab check -- falsifier: `uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py -q -p no:cacheprovider` passes with `contexts=` empty or the red key absent in a contract check'
+  - id: AC5
+    statement: 'AC5: the skip scan walks the directory recursively and parses every file, the test file included, by AST for `importorskip` and a bare `mark.skip`, with a test -- falsifier: `uv run pytest tests/delegation_golden -m "not e2e" -q -p no:cacheprovider` passes while a test using `pytest.importorskip` or a bare `mark.skip` is added to a subdirectory or to the runner test file'
+  - id: AC6
+    statement: 'AC6: findings 6 to 8 are fixed in the push or argued with evidence in a PR comment: ids named in the AC7 check, the diff checks pin the PR head sha, and an absent terminal_ok key is reported as absent -- falsifier: `grep -nE ''(rev-parse HEAD|diff .*[ ]HEAD)'' contracts/OMN-24831.yaml contracts/OMN-24851.yaml contracts/OMN-24902.yaml contracts/OMN-24925.yaml` still matches a Done-gate check, or `uv run pytest tests/delegation_golden -m "not e2e" -q -p no:cacheprovider` passes with the consumer tests deleted'
+evidence_requirements:
+- kind: tests
+  description: The runner tests of the change and the golden layer tests beside them.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/delegation_golden -q --no-cov -n 0 -p no:randomly -m "not e2e"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25078-ac1-ac2-check-greps-its-real-item
+  description: The contract check for the AC2 item greps the real item id and exits 0, the AC2 pattern of the old check no longer appears in the contract, and the delegation golden suite passes.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: grep -n dod-omn24831-ac2-fix-at-the-source contracts/OMN-24831.yaml
+    cwd: .
+  - check_type: command
+    check_value: bash -c '! grep -n "AC2[$]" contracts/OMN-24986.yaml'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/delegation_golden -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -m "not e2e"
+    cwd: .
+- id: dod-omn25078-ac4-lab-checks
+  description: Each lab-comment check matches the suite command, exit 0 and a non-empty all-success contexts list, tests the red and pending keys present before comparing their length, and a test fails for a contract that carries no lab check.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestLabChecksPinTheHeadAndTheCommand::test_the_contract_carries_a_lab_check[contracts/OMN-24851.yaml] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestLabChecksPinTheHeadAndTheCommand::test_the_contract_carries_a_lab_check[contracts/OMN-24925.yaml] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestLabChecksPinTheHeadAndTheCommand::test_the_contract_carries_a_lab_check[contracts/OMN-24986.yaml] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestLabChecksPinTheHeadAndTheCommand::test_the_lab_line_pattern_accepts_the_suite_run_and_nothing_weaker[contracts/OMN-24851.yaml] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestLabChecksPinTheHeadAndTheCommand::test_the_lab_line_pattern_accepts_the_suite_run_and_nothing_weaker[contracts/OMN-24925.yaml] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestLabChecksPinTheHeadAndTheCommand::test_the_lab_line_pattern_accepts_the_suite_run_and_nothing_weaker[contracts/OMN-24986.yaml] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestLabChecksPinTheHeadAndTheCommand::test_the_red_key_is_tested_present_before_its_length_is_compared[contracts/OMN-24851.yaml] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestLabChecksPinTheHeadAndTheCommand::test_the_red_key_is_tested_present_before_its_length_is_compared[contracts/OMN-24925.yaml] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestLabChecksPinTheHeadAndTheCommand::test_the_red_key_is_tested_present_before_its_length_is_compared[contracts/OMN-24986.yaml] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestLabChecksPinTheHeadAndTheCommand::test_a_contract_without_a_lab_check_is_seen_as_one tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestLabChecksPinTheHeadAndTheCommand::test_the_checks_jq_expression_judges_a_red_key_that_is_absent[contracts/OMN-24851.yaml-red-absent] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestLabChecksPinTheHeadAndTheCommand::test_the_checks_jq_expression_judges_a_red_key_that_is_absent[contracts/OMN-24851.yaml-red-null] -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn25078-ac5-skip-scan
+  description: The skip scan walks tests/delegation_golden recursively, parses every file including the runner test file by AST, and flags each vector with a positive control, in a subdirectory and in the runner test file.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoSkipVectorInTheDelegationGoldenTests::test_no_file_in_the_suite_carries_one tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoSkipVectorInTheDelegationGoldenTests::test_the_scan_reads_this_file_and_the_subdirectories tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoSkipVectorInTheDelegationGoldenTests::test_a_vector_in_a_subdirectory_is_found[bare-marker] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoSkipVectorInTheDelegationGoldenTests::test_a_vector_in_a_subdirectory_is_found[module-level] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoSkipVectorInTheDelegationGoldenTests::test_a_vector_added_to_this_test_file_is_found -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn25078-ac6-absent-terminal-ok
+  description: An absent terminal_ok key is reported as absent and a NULL value as NULL; no diff or head check of the four earlier contracts reads rev-parse HEAD or a diff against HEAD.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_an_absent_terminal_ok_key_is_reported_as_absent tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I9] -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+  - check_type: command
+    check_value: bash -c '! grep -nE "(rev-parse HEAD|diff .*[ ]HEAD)" contracts/OMN-24831.yaml contracts/OMN-24851.yaml contracts/OMN-24902.yaml contracts/OMN-24925.yaml'
+    cwd: .
