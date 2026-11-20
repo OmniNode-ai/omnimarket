@@ -1,0 +1,66 @@
+schema_version: "1.0.0"
+ticket_id: OMN-24686
+title: "Lane briefs require an EXEMPLAR step and a GRAPH step for code lanes, and the lane closeout marks a code lane partial without an exemplar and graph cell"
+summary: >
+  node_remote_lane_close_compute marks a code lane (its brief's CLAIM names a repo and its task writes code) that declared done or handed-off
+  partial with the problem no exemplar or graph cell unless its TERMINAL or LANE_RESULT carries exemplar=<path> and graph=<query -> answer>;
+  graph=unreachable:<why> is accepted and kept in the result's findings. A lane that writes no code, a brief naming no repo and a request with
+  no brief close as before. The close request carries the lane brief (the start orchestrator and the runner send it); a code lane is a brief
+  that carries an EXEMPLAR or GRAPH step, the definition the lane-brief check enforces in the private plugin repository; exemplar=none:<reason> is accepted
+  and kept as a finding; both cells ride in ledger_cells.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
+requirements:
+  - id: req-omn24686-exemplar-graph
+    statement: "A code lane copies an exemplar and queries the code graph, and the brief check and the closeout hold it to both."
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: the remote-lane closeout marks a code lane's outcome partial with problem "no exemplar or graph cell" unless its TERMINAL carries exemplar=<path> and graph=<query -> answer>, and records graph=unreachable:<why> as a finding while still accepting it -- falsifier: uv run pytest -q -k exemplar_graph_cell in the repo that owns node_remote_lane_close_compute
+      - id: "AC3"
+        statement: |-
+          AC3: each new test fails on the base revision and passes on the change (red then green), and a brief or TERMINAL for a lane that writes no code is not refused -- falsifier: uv run pytest -q -k "exemplar_graph" run at the base and at the head, plus the no-code case passing in both
+evidence_requirements:
+  - kind: tests
+    description: "the exemplar and graph tests at the pushed head"
+    command: "uv run pytest tests/nodes/node_remote_lane_close_compute/test_exemplar_graph_cell_omn24686.py -q -k exemplar_graph_cell"
+  - kind: manual
+    description: "Deploy validation for the deploy gate: the committed exemplar graph cell module read at the checkout commit, starting nothing."
+    command: "deploy: grep exemplar_graph_cell handler in node_remote_lane_close_compute at HEAD"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn24686-ac2
+    description: "AC2: the exemplar_graph_cell tests pass on the head; at the base they fail (recorded reading in the PR body)"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: 'uv run pytest tests/nodes/node_remote_lane_close_compute/test_exemplar_graph_cell_omn24686.py -q -k exemplar_graph_cell'
+    binds_ac: ["AC2"]
+  - id: dod-omn24686-ac3
+    description: "AC3: red then green for the new tests; the no-code case passes at the base and at the head"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: 'uv run pytest tests/nodes/node_remote_lane_close_compute/test_exemplar_graph_cell_omn24686.py -q -k exemplar_graph_cell'
+    binds_ac: ["AC3"]
+  - id: "dod-omn24686-integration-proof"
+    description: "The pushed head is run on a lab host through the lab work node before hand-off: the close node's test directory, which holds the exemplar_graph_cell tests."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane exgraph-req-0320 --kind test -- uv run --frozen pytest tests/nodes/node_remote_lane_close_compute -q --no-cov -n 0"
+        cwd: "."
+  - id: dod-omn24686-deploy-probe-handler-surface
+    description: "Deploy check: the close node's committed handler wires the exemplar graph cell and the module carries the partial problem text. Reads the committed module through gh api; the jq expression raises when the text is absent so gh exits non-zero, and the shell command has no pipe, so no SIGPIPE exit 141. Runs on a hosted runner with no container daemon."
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: "gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_remote_lane_close_compute/handlers/exemplar_graph_cell.py?ref=omn-24686-exemplar-graph-cell' --jq 'if (.content | @base64d | contains(\"no exemplar or graph cell\")) then \"present\" else error(\"absent\") end'"
+        cwd: "."
