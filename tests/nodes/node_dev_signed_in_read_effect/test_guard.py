@@ -130,6 +130,25 @@ async def test_dev_signed_in_read_guard_missing_overlay_returns_a_typed_failed_r
     assert "overlay" in result.detail
 
 
+async def test_dev_signed_in_read_failed_result_carries_the_cause_for_the_failed_topic(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A failed outcome carries ``terminal_failure_cause`` so the runtime publishes it on the declared failed topic."""
+    monkeypatch.setenv(OVERLAY_ROOTS_ENV, str(tmp_path / "missing"))
+    _fail_on_construct(monkeypatch)
+    contract = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
+
+    result = await HandlerDevSignedInRead().handle(
+        ModelDevSignedInReadCommand(lane="dev", write=True)
+    )
+
+    assert (
+        contract["runtime_dispatch"]["terminal_events"]["failure"]
+        == "onex.evt.omnimarket.dev-signed-in-read-failed.v1"
+    )
+    assert result.terminal_failure_cause == "overlay_unavailable"
+
+
 async def test_dev_signed_in_read_guard_invalid_overlay_returns_a_typed_failed_result(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

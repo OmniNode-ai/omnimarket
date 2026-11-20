@@ -51,6 +51,8 @@ class ModelDevSignedInReadResult(BaseModel):
     http_status: int | None = None
     data_state: str | None = None
     expected_secret: str | None = None
+    # The runtime's failure-terminal guard publishes a result carrying a cause on the contract's failed topic.
+    terminal_failure_cause: str | None = None
 
 
 __all__ = [

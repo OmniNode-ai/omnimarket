@@ -132,6 +132,7 @@ class HandlerDevSignedInRead:
             http_status=http_status,
             data_state=data_state,
             expected_secret=expected_secret,
+            terminal_failure_cause=None if ok else outcome.value,
         )
 
     def _dev_guard(
