@@ -124,7 +124,7 @@
   "relation_counts": {
     "extension": 1,
     "function": 15,
-    "sequence": 48,
+    "sequence": 44,
     "table": 152,
     "view": 11
   },
@@ -1617,182 +1617,6 @@
       "writers": [
         "node_projection_dod_verdict",
         "service:omnimarket_projection_migration_runner"
-      ]
-    },
-    {
-      "accessor_nodes": [
-        "node_projection_eval_results"
-      ],
-      "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_eval_results/migrations/0000_create_eval_results_tables.sql"
-      ],
-      "blocked_reasons": [],
-      "classification_evidence": "implicit BIGSERIAL sequence for eval_item_scores",
-      "classification_status": "classified",
-      "constraints": [],
-      "contract_sources": [
-        "src/omnimarket/nodes/node_projection_eval_results/contract.yaml"
-      ],
-      "current_schema": [
-        "public"
-      ],
-      "dependencies": [
-        "eval_item_scores"
-      ],
-      "dependent_objects": [
-        "table:eval_item_scores"
-      ],
-      "domain": "TENANT",
-      "dsn_consumers": [
-        "OMNIDASH_ANALYTICS_DB_URL"
-      ],
-      "foreign_keys": [],
-      "grants": [],
-      "indexes": [],
-      "keys": [],
-      "kind": "sequence",
-      "migration_root": "src/omnimarket/nodes",
-      "migration_stream": "node:node_projection_eval_results",
-      "name": "eval_item_scores_projection_cursor_seq",
-      "owner_declaration": "node_projection_eval_results",
-      "partitioning": [],
-      "producer": "node_projection_eval_results",
-      "readers": [],
-      "target_schema": "public",
-      "writers": [
-        "node_projection_eval_results"
-      ]
-    },
-    {
-      "accessor_nodes": [
-        "node_projection_eval_results"
-      ],
-      "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_eval_results/migrations/0000_create_eval_results_tables.sql"
-      ],
-      "blocked_reasons": [],
-      "classification_evidence": "implicit BIGSERIAL sequence for eval_item_traces",
-      "classification_status": "classified",
-      "constraints": [],
-      "contract_sources": [
-        "src/omnimarket/nodes/node_projection_eval_results/contract.yaml"
-      ],
-      "current_schema": [
-        "public"
-      ],
-      "dependencies": [
-        "eval_item_traces"
-      ],
-      "dependent_objects": [
-        "table:eval_item_traces"
-      ],
-      "domain": "TENANT",
-      "dsn_consumers": [
-        "OMNIDASH_ANALYTICS_DB_URL"
-      ],
-      "foreign_keys": [],
-      "grants": [],
-      "indexes": [],
-      "keys": [],
-      "kind": "sequence",
-      "migration_root": "src/omnimarket/nodes",
-      "migration_stream": "node:node_projection_eval_results",
-      "name": "eval_item_traces_projection_cursor_seq",
-      "owner_declaration": "node_projection_eval_results",
-      "partitioning": [],
-      "producer": "node_projection_eval_results",
-      "readers": [],
-      "target_schema": "public",
-      "writers": [
-        "node_projection_eval_results"
-      ]
-    },
-    {
-      "accessor_nodes": [
-        "node_projection_eval_results"
-      ],
-      "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_eval_results/migrations/0000_create_eval_results_tables.sql"
-      ],
-      "blocked_reasons": [],
-      "classification_evidence": "implicit BIGSERIAL sequence for eval_run_closes",
-      "classification_status": "classified",
-      "constraints": [],
-      "contract_sources": [
-        "src/omnimarket/nodes/node_projection_eval_results/contract.yaml"
-      ],
-      "current_schema": [
-        "public"
-      ],
-      "dependencies": [
-        "eval_run_closes"
-      ],
-      "dependent_objects": [
-        "table:eval_run_closes"
-      ],
-      "domain": "TENANT",
-      "dsn_consumers": [
-        "OMNIDASH_ANALYTICS_DB_URL"
-      ],
-      "foreign_keys": [],
-      "grants": [],
-      "indexes": [],
-      "keys": [],
-      "kind": "sequence",
-      "migration_root": "src/omnimarket/nodes",
-      "migration_stream": "node:node_projection_eval_results",
-      "name": "eval_run_closes_projection_cursor_seq",
-      "owner_declaration": "node_projection_eval_results",
-      "partitioning": [],
-      "producer": "node_projection_eval_results",
-      "readers": [],
-      "target_schema": "public",
-      "writers": [
-        "node_projection_eval_results"
-      ]
-    },
-    {
-      "accessor_nodes": [
-        "node_projection_eval_results"
-      ],
-      "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_eval_results/migrations/0000_create_eval_results_tables.sql"
-      ],
-      "blocked_reasons": [],
-      "classification_evidence": "implicit BIGSERIAL sequence for eval_run_rates",
-      "classification_status": "classified",
-      "constraints": [],
-      "contract_sources": [
-        "src/omnimarket/nodes/node_projection_eval_results/contract.yaml"
-      ],
-      "current_schema": [
-        "public"
-      ],
-      "dependencies": [
-        "eval_run_rates"
-      ],
-      "dependent_objects": [
-        "table:eval_run_rates"
-      ],
-      "domain": "TENANT",
-      "dsn_consumers": [
-        "OMNIDASH_ANALYTICS_DB_URL"
-      ],
-      "foreign_keys": [],
-      "grants": [],
-      "indexes": [],
-      "keys": [],
-      "kind": "sequence",
-      "migration_root": "src/omnimarket/nodes",
-      "migration_stream": "node:node_projection_eval_results",
-      "name": "eval_run_rates_projection_cursor_seq",
-      "owner_declaration": "node_projection_eval_results",
-      "partitioning": [],
-      "producer": "node_projection_eval_results",
-      "readers": [],
-      "target_schema": "public",
-      "writers": [
-        "node_projection_eval_results"
       ]
     },
     {
@@ -6083,9 +5907,7 @@
         "public"
       ],
       "dependencies": [],
-      "dependent_objects": [
-        "sequence:eval_item_scores_projection_cursor_seq"
-      ],
+      "dependent_objects": [],
       "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
@@ -6134,17 +5956,14 @@
         "public"
       ],
       "dependencies": [],
-      "dependent_objects": [
-        "sequence:eval_item_traces_projection_cursor_seq"
-      ],
+      "dependent_objects": [],
       "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
       "grants": [
-        "SELECT TO app_dashboard",
-        "SELECT, INSERT, DELETE TO tenant_projection_writer"
+        "SELECT TO app_dashboard"
       ],
       "indexes": [
         "eval_item_traces_scoring_idx"
@@ -6186,9 +6005,7 @@
         "public"
       ],
       "dependencies": [],
-      "dependent_objects": [
-        "sequence:eval_run_closes_projection_cursor_seq"
-      ],
+      "dependent_objects": [],
       "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
@@ -6235,16 +6052,13 @@
         "public"
       ],
       "dependencies": [],
-      "dependent_objects": [
-        "sequence:eval_run_rates_projection_cursor_seq"
-      ],
+      "dependent_objects": [],
       "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
       "grants": [
-        "DELETE TO tenant_projection_writer",
         "SELECT TO app_dashboard"
       ],
       "indexes": [],
