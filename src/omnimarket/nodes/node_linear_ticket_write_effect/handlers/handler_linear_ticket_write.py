@@ -57,11 +57,11 @@ def _handler(lane: str) -> HandlerCreateTicket:
     return HandlerCreateTicket(lane_id=lane, require_description_stamp=True)
 
 
-def _written_event(
+def publish_written_event(
     draft_id: UUID, result: ModelCreateTicketResult
 ) -> ModelTicketContractWritten:
     if (
-        result.route != "draft"
+        result.contract is None
         or result.fingerprint is None
         or result.updated_at is None
     ):
@@ -204,7 +204,7 @@ class HandlerLinearTicketWriteEffect:
             completed = ModelTicketWriteCompleted(**identity, result=result)
             if request.draft_id is not None and not request.dry_run:
                 # The contract-routed dispatch awaits each publish in order.
-                return _written_event(request.draft_id, result), completed
+                return publish_written_event(request.draft_id, result), completed
             if cacheable:
                 self._done[key] = (fingerprint, completed)
                 while len(self._done) > _RECORD_LIMIT:

@@ -48,8 +48,8 @@ dod_evidence:
         cwd: .
       - check_type: command
         check_value: >-
-          gh api "repos/${GITHUB_REPOSITORY}/contents/src/omnimarket/nodes/node_linear_ticket_write_effect/contract.yaml?ref=${GITHUB_SHA}"
-          --jq .content | base64 --decode | grep -Fx '    - onex.evt.omnimarket.ticket-contract-written.v1'
+          grep -Fx '    - onex.evt.omnimarket.ticket-contract-written.v1'
+          src/omnimarket/nodes/node_linear_ticket_write_effect/contract.yaml
         cwd: .
   - id: dod-draft-live-linear-integration-proof
     description: AC4 remains open. The orchestrator must arrange a session with Linear write access to create one real draft on dev, read it back, parse its contract block, measure the Markdown round trip, and attach the output to the pull request before closing the ticket.
