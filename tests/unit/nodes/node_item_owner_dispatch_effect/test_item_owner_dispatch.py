@@ -444,3 +444,20 @@ def test_never_admits_or_refuses_any_lane_ruling_or_plan_step() -> None:
     assert {item.item_id for item in result.items} == {
         p.item_id for p in result.placed
     } | {item for item, _ in result.skipped}
+
+
+def test_contract_terminal_event_is_the_dispatch_completed_topic_the_broker_acl_may_write() -> (
+    None
+):
+    contract = yaml.safe_load((NODE / "contract.yaml").read_text(encoding="utf-8"))
+    completed = "onex.evt.omnimarket.item-owner-dispatch-completed.v1"
+    assert contract["terminal_event"] == completed
+    assert contract["topics"]["dispatch_completed"] == completed
+    assert completed in contract["externally_consumed_topics"]
+    writes = {
+        grant["name"]
+        for acl in contract["broker_acl_grants"]
+        for grant in acl["grants"]
+        if grant["operation"] == "WRITE"
+    }
+    assert completed in writes
