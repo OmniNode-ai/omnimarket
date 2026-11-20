@@ -53,14 +53,32 @@ handler_routing:
       handler:
         name: "HandlerPrLandingLedgerFacts"
         module: "omnimarket.nodes.node_pr_landing_ledger_facts_compute.handlers.handler_pr_landing_ledger_facts"
-# Addressable the way the other directly-invoked compute nodes are; the topics are
-# declared here and no caller publishes the command until the controller switches.
+terminal_event: "onex.evt.omnimarket.pr-landing-ledger-facts-completed.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.pr-landing-ledger-facts-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.pr-landing-ledger-facts-completed.v1"
     failure: "onex.evt.omnimarket.pr-landing-ledger-facts-failed.v1"
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.pr-landing-ledger-facts-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.pr-landing-ledger-facts-completed.v1"
+externally_consumed_topics:
+  - "onex.evt.omnimarket.pr-landing-ledger-facts-completed.v1"
+  - "onex.evt.omnimarket.pr-landing-ledger-facts-failed.v1"
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.cmd.omnimarket.pr-landing-ledger-facts-requested.v1", operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.cmd.omnimarket.pr-landing-ledger-facts-requested.v1", operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.pr-landing-ledger-facts-completed.v1", operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.pr-landing-ledger-facts-completed.v1", operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.pr-landing-ledger-facts-failed.v1", operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.pr-landing-ledger-facts-failed.v1", operation: DESCRIBE}
+
 descriptor:
+  runtime_profiles: [main]
   node_archetype: compute
   purity: pure
   idempotent: true
@@ -68,6 +86,7 @@ descriptor:
 replay:
   deterministic: true
 metadata:
+  transport_type: kafka
   description: "Row-only ledger facts of one landing tick."
   author: "OmniNode Team"
   license: "MIT"

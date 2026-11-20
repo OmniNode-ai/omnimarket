@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
 from omnimarket.nodes.node_host_job_claim_compute.models import ModelHostRoleBaseline
 
 NODE_NAME = "node_host_job_claim_compute"
@@ -36,6 +37,10 @@ class ModelHostJobClaimOverlay(BaseModel):
     hosts: tuple[ModelHostRoleAssignment, ...] = Field(min_length=1)
     unit_dirs: tuple[str, ...] = Field(min_length=1)
     unit_suffix: str = Field(min_length=1)
+    # The bus the host tick publishes its run record on: the lane id only, read by the bus overlay reader behind
+    # resolve_dialable_broker (the broker address stays in the lane declaration). Optional here because the manual
+    # command and the claim read use no bus; the tick refuses a run without it.
+    event_bus: ModelNodeEventBus | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelHostJobClaimOverlay:

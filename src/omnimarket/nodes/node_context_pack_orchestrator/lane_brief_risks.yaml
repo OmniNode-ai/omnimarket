@@ -1,0 +1,28 @@
+# The risks tier of the lane-brief context profile: the refusals earlier lanes met. Each entry carries the
+# live text or row it comes from (a standing-rules sentence, a ledger row stamp, a merged commit), and a
+# risk with no source is refused when the pack is built.
+risks:
+  - risk_class: frozen-repo-growth
+    rule: >-
+      The registry root repository no longer grows: adding a file to it, or leaving scratch output in its
+      tree, is refused by its freeze-gate check. Put new files in the repository that owns them.
+    source: "ledger 2026-09-26T14:02:19Z RULING (the registry root repository no longer grows); the standing lane rules paragraph on the registry root growing"
+  - risk_class: branch-name-refusal
+    rule: >-
+      A pull request branch is named omn-<n>-<slug> with the hyphen after omn, and its body ends with the
+      closes line: the closes-ref gate reads that, and a body edit after the first push cancels CI. The base
+      is read from the canonical clone, never typed; a pull request opened on the wrong base fails the
+      main-target guard.
+    source: "ledger 2026-09-29T06:34:17Z RULING (landing); section 3a.3 'PR creation' of every lane brief"
+  - risk_class: install-refusal
+    rule: >-
+      A plugin change is installed on the lab through the declared installer. The install-tree path refuses
+      to overwrite an install record it does not own (record-clobber), so a lane that edits the plugin cache
+      or a host by hand is refused, and a lane that meets the refusal reports installed=none observed=none.
+    source: "ledger 2026-11-15T23:20:51Z TERMINAL lane=fix1943-2225 (install-tree record-clobber refusal); section 3a.11 of every lane brief"
+  - risk_class: suite-timeout
+    rule: >-
+      A whole-tree scan gate can outrun its timeout when it reads several repositories: the direct model
+      call gate had to be given timeout room over its seven repository scans. Run a suite beyond one focused
+      file through lab-run, and put no whole-tree scan inside a unit test.
+    source: "git commit 5dd1c45621 (give the direct model call gate timeout room over its seven repository scans); ledger 2026-11-15T20:04:09Z TERMINAL lane=omnimarket-red-1928"

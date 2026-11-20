@@ -5,6 +5,14 @@ summary: 'The local delegation.savings.v1 view served each session''s local_cost
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn24224-ac3-accepted-20261116t0345z:
+    - label: AC3
+      criterion_hash: 9b7a1ef063bb23ffc1745e3dce9217942810fd4cda643c391e696bc4047f3584
+      proposed_by: lane=dod-closeout-bind-2026-11-16T0345Z-c0
+      accepted_by: lane=dod-closeout-accept-2026-11-16T0345Z-c0
+      accepted_at: '2026-11-16T04:13:07Z'
 requirements:
 - id: req-omn24224-null-session-cost
   statement: A run with no stored cost is served with a null session cost on the local savings exposure and shown as Not measured on the Runs page.
@@ -52,3 +60,15 @@ dod_evidence:
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24224 --kind test -- env PYTHONDONTWRITEBYTECODE=1
       uv run --frozen pytest tests/unit/projection/test_omn24224_sqlite_savings_null_cost.py tests/unit/projection/test_sqlite_delegation_savings_view_omn20008.py tests/unit/projection/test_omn21206_sqlite_savings_population.py -q --no-cov
     cwd: .
+- id: dod-omn24224-ac3-accepted-20261116t0345z
+  description: 'AC3 binding (accepted 2026-11-16T0345Z, proposed by lane=dod-closeout-bind-2026-11-16T0345Z-c0,
+    accepted by lane=dod-closeout-accept-2026-11-16T0345Z-c0). A run stored with no cost is served with a null
+    local_cost_usd, a measured 0 and a priced run keep their cost, and the measured totals are unchanged. Re-run
+    on a lab host at omnimarket origin/dev 96519706b0 passed (4 passed); with the product paths of 4f0d8dc5de
+    reverted at that head, 2 failed (the unmeasured run and the previous-step store).'
+  source: manual
+  binds_ac: [AC3]
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24224_sqlite_savings_null_cost.py -k savings_view_null_cost -q -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
