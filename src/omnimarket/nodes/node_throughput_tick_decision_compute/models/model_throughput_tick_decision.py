@@ -232,10 +232,11 @@ class ModelLabHeadroomFacts(BaseModel):
 
 
 class ModelDispatchedLane(BaseModel):
-    """A lane the ledger records as dispatched, with the placement facts the caller read for it (OMN-20851).
+    """A lane the ledger records as dispatched, with the CLAIM facts the caller read for it (OMN-20851, OMN-26216).
 
-    A lane counts as running only with a CLAIM that carries `host=` and a run id; a lane recorded as
-    dispatched whose runner wrote no placement receipt is unplaced.
+    A lane is placed only when a CLAIM carrying `host=` and `run=` appears within the placement window of
+    its dispatch. A TERMINAL, whatever its outcome (`outcome=completed` included), and a runner's placement
+    receipt are not placement: a lane whose only trace is one of those is unplaced.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -250,10 +251,31 @@ class ModelDispatchedLane(BaseModel):
     claim_run_id: str | None = Field(
         default=None, description="The `run=` cell of the lane's CLAIM row, if any."
     )
-    placement_receipt: bool = Field(
-        default=False,
-        description="Whether the runner wrote a placement receipt for this lane.",
+    claim_at: str | None = Field(
+        default=None,
+        pattern=_TS,
+        description="The timestamp of that CLAIM row; without it the CLAIM cannot be placed in the window.",
     )
+    terminal_outcome: str | None = Field(
+        default=None,
+        description=(
+            "The `outcome=` cell of the lane's TERMINAL, if any. Named in the unplaced row and never "
+            "read as placement."
+        ),
+    )
+
+
+class ModelTickMessage(BaseModel):
+    """One MSG the tick wrote to an addressee, with whether any ACK names it (OMN-26216)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str = Field(min_length=1, description="The MSG row's id cell.")
+    to: str = Field(
+        min_length=1, description="The MSG row's `to=` cell: a lane, or a comma list."
+    )
+    sent_at: str = Field(pattern=_TS)
+    acked: bool = Field(description="Whether an ACK row names this MSG's id in `re=`.")
 
 
 class ModelVenvDivergence(BaseModel):
@@ -468,6 +490,31 @@ class ModelThroughputTickRequest(BaseModel):
         description="Points older than this belong to another session and are not a trend.",
     )
 
+    tick_messages: list[ModelTickMessage] | None = Field(
+        default=None,
+        description=(
+            "The tick's own MSG rows still inside the read window, with whether each is ACKed; None skips "
+            "the addressee findings (OMN-26216)."
+        ),
+    )
+    live_lanes: list[str] | None = Field(
+        default=None,
+        description=(
+            "The names of the lanes live now (an open CLAIM, no TERMINAL). A tick MSG whose addressee is "
+            "not among them is an ALARM; None skips the addressee findings (OMN-26216)."
+        ),
+    )
+    tick_interval_minutes: float = Field(
+        default=11.0,
+        gt=0,
+        description="The cadence the tick runs at; an MSG unACKed after `tick_unacked_after_ticks` of these is an ALARM.",
+    )
+    tick_unacked_after_ticks: int = Field(default=2, ge=1)
+    placement_claim_window_minutes: int = Field(
+        default=5,
+        ge=0,
+        description="A dispatched lane is placed only when its CLAIM (host= and run=) is at most this many minutes after the dispatch.",
+    )
     dispatched_lanes: list[ModelDispatchedLane] | None = Field(
         default=None,
         description=(
@@ -478,7 +525,7 @@ class ModelThroughputTickRequest(BaseModel):
     unplaced_lane_alarm_minutes: int = Field(
         default=10,
         ge=0,
-        description="A dispatched lane with no placement receipt for longer than this is an ALARM.",
+        description="A dispatched lane still unplaced (no CLAIM with host= and run= in the window) after this many minutes is an ALARM.",
     )
     venv_divergences: list[ModelVenvDivergence] | None = Field(
         default=None,
@@ -551,6 +598,14 @@ class ModelThroughputTickResult(BaseModel):
         description=(
             "Every ALARM verdict, for the caller to print, write into the tick's evidence file and exit "
             "non-zero on (OMN-20851); an ALARM is never also listed in `missing` or `unknown`."
+        ),
+    )
+    status_rows: list[str] = Field(
+        default_factory=list,
+        exclude_if=lambda value: not value,
+        description=(
+            "One STATUS row (state=unplaced) per dispatched lane with no CLAIM carrying host= and run= inside "
+            "the placement window, for the caller to append to the ledger (OMN-26216). Absent when empty."
         ),
     )
     exit_code: int = Field(ge=0, le=1)

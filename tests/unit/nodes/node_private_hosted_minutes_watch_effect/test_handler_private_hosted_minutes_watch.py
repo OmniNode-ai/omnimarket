@@ -14,12 +14,19 @@ from omnimarket.nodes.node_private_hosted_minutes_watch_effect.handlers import (
     handler_private_hosted_minutes_watch as module,
 )
 from omnimarket.nodes.node_private_hosted_minutes_watch_effect.models import (
+    ModelHostedMinutesOverlay,
     ModelHostedMinutesWatchRequest,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
 DAY = date(2026, 10, 18)
 NOW = datetime(2026, 10, 19, 12, tzinfo=UTC)
+# A small overlay: the threshold is 25 minutes, so the fixture's private month (38.75) alerts.
+OVERLAY = ModelHostedMinutesOverlay(included_minutes=50, alert_fraction=0.5)
+
+
+def fixture_visibility(_org, repository):
+    return "private" if repository.startswith("private-") else "public"
 
 
 def request(tmp_path):
@@ -37,6 +44,8 @@ def make_handler(fixture="billing_usage_month.json", **overrides):
         "ledger_appender": appender,
         "alert_sender": sender,
         "clock": lambda: NOW,
+        "visibility_reader": fixture_visibility,
+        "overlay_loader": lambda: OVERLAY,
     }
     options.update(overrides)
     return module.HandlerPrivateHostedMinutesWatch(**options), reader, appender, sender
@@ -84,6 +93,8 @@ def test_handle_reads_once_alerts_before_append_and_persists(tmp_path):
         "alert": "sent",
         "ledger_written": True,
         "items_read": 8,
+        "private_month_minutes": 38.75,
+        "uncounted": [],
     }
 
 
