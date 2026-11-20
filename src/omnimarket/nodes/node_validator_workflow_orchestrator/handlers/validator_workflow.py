@@ -64,7 +64,7 @@ def _outcome(choice: ModelValidatorChoice, report: object) -> ModelValidatorOutc
     )
 
 
-class HandlerValidatorWorkflow:
+class ValidatorWorkflowPipeline:
     def __init__(
         self,
         *,
