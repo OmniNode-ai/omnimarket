@@ -42,8 +42,8 @@ from omnimarket.nodes.node_validator_workflow_orchestrator.adapters.effects impo
 from omnimarket.nodes.node_validator_workflow_orchestrator.adapters.verdict_store import (
     store_from_overlay,
 )
-from omnimarket.nodes.node_validator_workflow_orchestrator.handlers.handler_validator_workflow import (
-    HandlerValidatorWorkflow,
+from omnimarket.nodes.node_validator_workflow_orchestrator.handlers.validator_workflow import (
+    ValidatorWorkflowPipeline,
 )
 from omnimarket.nodes.node_validator_workflow_orchestrator.models.model_validator_workflow import (
     ModelValidatorWorkflowRequest,
@@ -67,7 +67,7 @@ REPO = "example/repo"
 class ValidatorWorkflow:
     """A built workflow and the effects a test reads back."""
 
-    handler: HandlerValidatorWorkflow
+    handler: ValidatorWorkflowPipeline
     emitter: InMemoryTraceEmitter | FileTraceEmitter
     gate: InMemoryCheckGate | FileCheckGate
     reducer: HandlerValidatorVerdictReducer
@@ -116,7 +116,7 @@ def build_workflow(
         if store is not None
         else store_from_overlay(reducer_overlay, environ),
     )
-    handler = HandlerValidatorWorkflow(
+    handler = ValidatorWorkflowPipeline(
         overlay=overlay,
         reader=reader,
         contracts=contracts or PackageContractSource(),

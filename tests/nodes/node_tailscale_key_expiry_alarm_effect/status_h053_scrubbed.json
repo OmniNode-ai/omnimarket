@@ -1,0 +1,75 @@
+{
+  "BackendState": "Running",
+  "Self": {
+    "Online": true,
+    "HostName": "watching-host",
+    "DNSName": "watching-host.example.test."
+  },
+  "Peer": {
+    "peer-1": {
+      "KeyExpiry": "2027-04-16T14:29:06Z",
+      "Online": true,
+      "HostName": "peer-1",
+      "DNSName": "peer-1.example.test."
+    },
+    "peer-2": {
+      "Online": true,
+      "HostName": "peer-2",
+      "DNSName": "peer-2.example.test."
+    },
+    "peer-3": {
+      "Online": true,
+      "HostName": "peer-3",
+      "DNSName": "peer-3.example.test."
+    },
+    "peer-4": {
+      "KeyExpiry": "2027-03-02T16:35:00Z",
+      "Online": true,
+      "HostName": "peer-4",
+      "DNSName": "peer-4.example.test."
+    },
+    "peer-5": {
+      "Online": true,
+      "HostName": "peer-5",
+      "DNSName": "peer-5.example.test."
+    },
+    "peer-6": {
+      "Online": true,
+      "HostName": "peer-6",
+      "DNSName": "peer-6.example.test."
+    },
+    "peer-7": {
+      "Online": true,
+      "HostName": "peer-7",
+      "DNSName": "peer-7.example.test."
+    },
+    "peer-8": {
+      "KeyExpiry": "2027-02-21T13:10:43Z",
+      "Online": true,
+      "HostName": "peer-8",
+      "DNSName": "peer-8.example.test."
+    },
+    "peer-9": {
+      "KeyExpiry": "2026-12-06T20:32:53Z",
+      "Online": false,
+      "HostName": "peer-9",
+      "DNSName": "peer-9.example.test."
+    },
+    "peer-10": {
+      "Online": true,
+      "HostName": "peer-10",
+      "DNSName": "peer-10.example.test."
+    },
+    "peer-11": {
+      "Online": true,
+      "HostName": "peer-11",
+      "DNSName": "peer-11.example.test."
+    },
+    "peer-12": {
+      "KeyExpiry": "2027-03-27T22:41:46Z",
+      "Online": true,
+      "HostName": "peer-12",
+      "DNSName": "peer-12.example.test."
+    }
+  }
+}

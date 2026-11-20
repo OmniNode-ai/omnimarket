@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_worktree_prune_temporal_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The worktree prune run as a Temporal workflow. For each host of the plan one activity runs the host's declared
+  pruner node (the worktree reconcile node's tick, which removes only merged work) and one activity runs this node's
+  report command, which turns the pruner's counts and a fresh disk reading into one row, with a disk alarm when the
+  host's use is past its bar. A pruner that fails after every attempt gives a failed row and the run goes on to the
+  next host. The workflow id is the change: worktree-prune-ticket-<ticket> for a closed ticket, the schedule's own id
+  plus its start time for the timer. Every step is an activity that runs a node command as a process; the workflow
+  body holds no other logic.
+input_model:
+  name: ModelPruneReportRequest
+  module: omnimarket.nodes.node_worktree_prune_temporal_effect.models.model_worktree_prune_temporal
+  description: The report step's input, one host's pruner output (or failure) and the disk bar.
+output_model:
+  name: ModelPruneHostRow
+  module: omnimarket.nodes.node_worktree_prune_temporal_effect.models.model_worktree_prune_temporal
+  description: One host's row, its counts, disk reading and alarm, or its failure.
+handler:
+  module: omnimarket.nodes.node_worktree_prune_temporal_effect.handlers.handler_prune_report
+  class: HandlerPruneReport
+  input_model: omnimarket.nodes.node_worktree_prune_temporal_effect.models.model_worktree_prune_temporal.ModelPruneReportRequest
+  output_model: omnimarket.nodes.node_worktree_prune_temporal_effect.models.model_worktree_prune_temporal.ModelPruneHostRow
+dependencies:
+  - name: omnimarket.nodes.node_worktree_reconcile_effect
+    dependency_type: internal
+    description: "the host's pruner, run as a process (python -m omnimarket.nodes.node_worktree_reconcile_effect tick)."
+    required: true
+  - name: temporalio
+    dependency_type: library
+    description: "the workflow, the activity, the worker and the schedule."
+    required: true
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_worktree_prune_temporal_effect.handlers.handler_prune_report:HandlerPruneReport
+  handlers:
+    - operation: report
+      handler:
+        name: HandlerPruneReport
+        module: omnimarket.nodes.node_worktree_prune_temporal_effect.handlers.handler_prune_report
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: >-
+    python -m omnimarket.nodes.node_worktree_prune_temporal_effect worker runs the worker on the task queue below
+    against the shared Temporal server; schedule creates the recurring schedule; ticket-closed --ticket OMN-n starts
+    one run for a closed ticket; report is the report step.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 1800000
+metadata:
+  transport_type: local
+  description: Prune merged worktrees per host on a schedule, one durable activity per step, a disk alarm past the bar.
+  author: OmniNode Team
+  created: '2026-11-18'
+worktree_prune:
+  target_host: 127.0.0.1:7233
+  task_queue: onex-worktree-prune
+  schedule_id: worktree-prune-every-6h
+  interval_hours: 6
+  disk_bar_percent: 85
+  max_attempts: 3
+  retry_initial_seconds: 10
+  activity_timeout_seconds: 1800

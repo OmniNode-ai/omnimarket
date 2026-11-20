@@ -11,7 +11,7 @@ resolution-markers = [
 [manifest]
 overrides = [
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261113013358-a09066caf945" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261113053642-6cea249fb8cf" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261119055404-a679b44e2cfe" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108170744-52946639a23a" },
 ]
 
@@ -3076,7 +3076,7 @@ dependencies = [
 [[package]]
 name = "omnibase-infra"
 version = "0.38.77"
-source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261113053642-6cea249fb8cf#6cea249fb8cf7723c845db9fcb51680e6400cdf3" }
+source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261119055404-a679b44e2cfe#a679b44e2cfe2d6148a201273415ba96401f29ed" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "aiofiles" },
@@ -3196,6 +3196,7 @@ dev = [
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
     { name = "ruff" },
+    { name = "temporalio" },
     { name = "types-jsonschema" },
     { name = "types-pyyaml" },
 ]
@@ -3219,7 +3220,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", specifier = ">=4.18.0" },
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261113013358-a09066caf945" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261113053642-6cea249fb8cf" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261119055404-a679b44e2cfe" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108170744-52946639a23a" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261118033152-967ddaf9eed2" },
     { name = "packaging", specifier = ">=24.0" },
@@ -3251,6 +3252,7 @@ dev = [
     { name = "pytest-timeout", specifier = ">=2.3.0,<3.0.0" },
     { name = "pytest-xdist", specifier = ">=3.5.0,<4.0.0" },
     { name = "ruff", specifier = ">=0.14.13,<0.16.0" },
+    { name = "temporalio", specifier = ">=1.35.0,<2.0.0" },
     { name = "types-jsonschema", specifier = ">=4.25.1.20251222" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20250822" },
 ]
