@@ -18,15 +18,13 @@ from omnimarket.events.worktree_reconcile import (
 from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy,
 )
-from omnimarket.nodes.node_worktree_prune_workflow_effect.handlers.handler_disk_alarm import (
-    disk_alarm,
-)
 from omnimarket.nodes.node_worktree_prune_workflow_effect.handlers.handler_prune_eligibility import (
     HandlerWorktreePruneEligibility,
     removable_paths,
 )
 from omnimarket.nodes.node_worktree_prune_workflow_effect.handlers.handler_worktree_prune_run import (
     HandlerWorktreePruneRun,
+    disk_alarm,
 )
 from omnimarket.nodes.node_worktree_prune_workflow_effect.models.model_worktree_prune_workflow import (
     ModelHostPruneReportRow,
@@ -233,3 +231,8 @@ def test_contract_declares_the_daily_schedule_the_close_trigger_and_the_alarm_to
         in contract["event_bus"]["publish_topics"]
     )
     assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
+    for topic in (
+        "onex.evt.omnimarket.worktree-prune-host-reported.v1",
+        "onex.evt.omnimarket.worktree-prune-run-completed.v1",
+    ):
+        assert topic in contract["event_bus"]["publish_topics"]

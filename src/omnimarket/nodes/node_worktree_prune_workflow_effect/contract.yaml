@@ -33,6 +33,12 @@ handler_routing:
     event_model:
       name: ModelWorktreePrunePlan
       module: omnimarket.nodes.node_worktree_prune_workflow_effect.models.model_worktree_prune_workflow
+  - handler:
+      name: HandlerWorktreePruneEligibility
+      module: omnimarket.nodes.node_worktree_prune_workflow_effect.handlers.handler_prune_eligibility
+    event_model:
+      name: ModelWorktreeReconcileRequest
+      module: omnimarket.events.worktree_reconcile
 descriptor:
   node_archetype: effect
   purity: side_effect

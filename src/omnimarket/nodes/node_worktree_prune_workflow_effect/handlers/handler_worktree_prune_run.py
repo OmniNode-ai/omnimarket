@@ -14,10 +14,8 @@ from __future__ import annotations
 from collections.abc import MutableMapping
 from typing import Protocol
 
-from omnimarket.nodes.node_worktree_prune_workflow_effect.handlers.handler_disk_alarm import (
-    disk_alarm,
-)
 from omnimarket.nodes.node_worktree_prune_workflow_effect.models.model_worktree_prune_workflow import (
+    ModelDiskAlarm,
     ModelHostPruneReportRow,
     ModelHostPruneResult,
     ModelPruneHostTarget,
@@ -32,6 +30,25 @@ class ProtocolHostPruneActivity(Protocol):
     ) -> ModelHostPruneResult: ...
 
 
+def disk_alarm(
+    target: ModelPruneHostTarget, used_percent: float
+) -> ModelDiskAlarm | None:
+    """An alarm when the use is past the bar, none at or below it."""
+    if used_percent > target.disk_bar_percent:
+        return ModelDiskAlarm(
+            host=target.host,
+            used_percent=used_percent,
+            bar_percent=target.disk_bar_percent,
+        )
+    return None
+
+
+def _unconfigured_activity(
+    target: ModelPruneHostTarget, step_key: str, attempt: int
+) -> ModelHostPruneResult:
+    raise RuntimeError("no host prune activity is configured for this runtime")
+
+
 def step_key(plan: ModelWorktreePrunePlan, host: str) -> str:
     return f"{plan.run_id}/{host}"
 
@@ -39,7 +56,7 @@ def step_key(plan: ModelWorktreePrunePlan, host: str) -> str:
 class HandlerWorktreePruneRun:
     def __init__(
         self,
-        activity: ProtocolHostPruneActivity,
+        activity: ProtocolHostPruneActivity = _unconfigured_activity,
         journal: MutableMapping[str, ModelHostPruneReportRow] | None = None,
     ) -> None:
         self._activity = activity
@@ -91,4 +108,9 @@ class HandlerWorktreePruneRun:
         )
 
 
-__all__ = ["HandlerWorktreePruneRun", "ProtocolHostPruneActivity", "step_key"]
+__all__ = [
+    "HandlerWorktreePruneRun",
+    "ProtocolHostPruneActivity",
+    "disk_alarm",
+    "step_key",
+]
