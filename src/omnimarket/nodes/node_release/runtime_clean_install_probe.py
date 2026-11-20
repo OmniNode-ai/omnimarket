@@ -40,13 +40,13 @@ failures = []
 for top in sorted({(f.parts[0]) for f in dist.files or () if f.suffix == ".py" and len(f.parts) > 1 and f.parts[0].isidentifier()}):
     try:
         importlib.import_module(top)
-    except Exception as exc:  # noqa: BLE001 - every failure is the finding
+    except Exception as exc:
         failures.append(f"import {top}: {type(exc).__name__}: {exc}")
 entry_points = [ep for ep in dist.entry_points if ep.group == sys.argv[2]]
 for ep in entry_points:
     try:
         ep.load()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         failures.append(f"entry point {ep.name} = {ep.value}: {type(exc).__name__}: {exc}")
 for line in failures:
     print(line, file=sys.stderr)
@@ -119,5 +119,5 @@ def main(argv: list[str] | None = None) -> int:
     return probe(args.dist, uv=args.uv)
 
 
-if __name__ == "__main__":  # pragma: no cover - CLI entrypoint
+if __name__ == "__main__":
     raise SystemExit(main())
