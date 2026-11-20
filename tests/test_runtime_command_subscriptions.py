@@ -22,6 +22,9 @@ pytestmark = pytest.mark.unit
 
 NODES = Path(__file__).resolve().parents[1] / "src" / "omnimarket" / "nodes"
 YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+# Nodes answered only by their own per-host serve process: the shared runtime must
+# wire nothing from them, so their contracts declare no subscribe_topics on purpose.
+SERVE_ONLY_NODES = frozenset({"node_ci_checkout_effect"})
 
 
 def test_typed_runtime_commands_are_subscribed() -> None:
@@ -34,6 +37,8 @@ def test_typed_runtime_commands_are_subscribed() -> None:
         routing = contract.get("handler_routing") or {}
         command_topic = dispatch.get("command_topic")
         if routing.get("routing_strategy") != "payload_type_match" or not command_topic:
+            continue
+        if path.parent.name in SERVE_ONLY_NODES:
             continue
         checked += 1
         subscriptions = (contract.get("event_bus") or {}).get("subscribe_topics") or []
