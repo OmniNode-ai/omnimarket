@@ -35,6 +35,7 @@ dod_evidence:
     check_value: |
       uv run --frozen python -c "import json; j=json.load(open('tests/nodes/node_delegation_scenario_r8_effect/fixtures/ready_unavailable_20261119.json'))['journal']; assert sum('02:34:45' in l and 'status=1/FAILURE' in l for l in j)==2; print('AC1_FIXTURE_JOURNAL_EXITS=2')"
       grep -qE 'wait_seconds: 850$' src/omnimarket/nodes/node_delegation_scenario_r8_effect/contract.yaml
+      uv run pytest tests/nodes/node_delegation_scenario_r8_effect/test_dev_readiness.py -q
     cwd: .
 - id: dod-omn25878-ac2-regression
   description: The fixture contains the paired 02:34:45Z journal exits with simulated unavailability. The real scheduled entry points return a typed skipped result before either product check.
@@ -76,10 +77,10 @@ dod_evidence:
   source: manual
   binds_ac: [AC4]
   checks:
-  - check_type: test_passes
+  - check_type: command
     check_value: |
       test "$(grep -c 'run_timeout_s: 1800$' src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml)" = 2 &&
-      uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_scenario_r3_r5_r8_units.py -q
+      uv run pytest tests/nodes/node_host_installer_registry_units/test_scenario_r3_r5_r8_units.py -q
     cwd: .
 - id: dod-omn25878-ac5-hosted-proxy
   description: Hosted proxy for AC5. This contract cites the comment on the idle-converge ticket by its comment id, and the check fails where the r9 scenario contract declares no readiness wait.
@@ -89,7 +90,8 @@ dod_evidence:
   - check_type: command
     check_value: |
       grep -q 'ca7f5c2c-1388-4d6b-9b9a-6f7459ce0efe' contracts/OMN-25878.yaml &&
-      grep -qE 'wait_seconds: 850$' src/omnimarket/nodes/node_delegation_scenario_r9_effect/contract.yaml
+      grep -qE 'wait_seconds: 850$' src/omnimarket/nodes/node_delegation_scenario_r9_effect/contract.yaml &&
+      uv run pytest tests/nodes/node_delegation_scenario_r8_effect/test_dev_readiness.py -q
     cwd: .
 - id: dod-omn25878-hosted-deploy
   description: The hosted runner checks the exact PR revision's scenario contracts for a declared readiness wait, then exercises the packaged scheduled entry points with the fixture.
