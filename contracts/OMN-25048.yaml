@@ -1,0 +1,58 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-25048"
+title: "The lane report relay node's request and result are pydantic models so the dev runtime can dispatch a demand to it"
+summary: >-
+  node_lane_report_relay_effect was subscribed on the dev runtime but its handler
+  was never reached with a typed request: the request and result were plain
+  dataclasses, so the runtime's handler wiring resolved no input model from the
+  handle() annotation and handed the handler a raw dict. The request and result are
+  now pydantic models, so a bus demand is validated into the request and the result
+  is a model the runtime can publish.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-relay-demand-dispatchable"
+    statement: "A bus demand to node_lane_report_relay_effect is validated into its request model and handled."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: a wire dict validates into the relay handler's declared request
+          model, the handler returns a pydantic result, and the final message is
+          kept under the reports directory when the host is unreachable --
+          falsifier: the focused relay test posts a wire dict through
+          model_validate and handle and asserts the result type and the written
+          report file; at the merge base the request has no model_validate
+evidence_requirements:
+  - kind: "tests"
+    description: "The relay node's unit tests, including the wire-dict validation test."
+    command: "uv run pytest tests/nodes/node_lane_report_relay_effect -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn25048-ac1-relay-demand-validates"
+    description: "AC1: the wire dict validates into ModelLaneReportRelayRequest, handle returns a pydantic result with the relayed final message written under the reports directory. At the merge base the request is a dataclass with no model_validate and the test fails."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_report_relay_effect/test_report_relay.py::test_a_bus_demand_validates_into_the_handlers_declared_request -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn25048-regressions"
+    description: "The relay node's other unit tests still pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_report_relay_effect -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25048-integration-proof"
+    description: "The relay node's unit tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25048 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lane_report_relay_effect -q --no-cov'
+        cwd: "${OMNI_HOME}/omnimarket"
