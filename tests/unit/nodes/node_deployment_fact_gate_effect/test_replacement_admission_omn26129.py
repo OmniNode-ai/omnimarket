@@ -116,3 +116,13 @@ def test_the_successor_is_admitted_once_only() -> None:
     twin["backend_id"] = "openrouter-nemotron-3-5-super-twin"
     head[_BIFROST]["backends"].append(twin)
     assert _NEW_MODEL in _new_values(_judge(_with_old_rung(), head))
+
+
+def test_the_successor_is_refused_when_the_replaced_value_was_never_in_the_base() -> (
+    None
+):
+    base = copy.deepcopy(_tree())
+    base[_BIFROST]["backends"] = [
+        b for b in base[_BIFROST]["backends"] if b["backend_id"] != _NEW_ID
+    ]
+    assert {_NEW_ID, _NEW_MODEL} <= _new_values(_judge(base, _tree()))
