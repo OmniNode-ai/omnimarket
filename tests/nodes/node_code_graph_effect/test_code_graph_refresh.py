@@ -825,12 +825,17 @@ def _status_row_check(ledger: Path) -> int:
     command = _dod(_contract(), "dod-omn24642-ac1-status-rows")["checks"][0][
         "check_value"
     ]
-    # the variable the check reads the ledger path from is the one its own text names
-    variable = re.search(r"\$\{(\w+):-", command)
-    assert variable is not None
+    # the check globs the rolling ledgers under $OMNI_HOME/docs/tracking
+    assert "$OMNI_HOME/docs/tracking/ROLLING_WORK_*.md" in command
+    home = ledger.parent / "workspace"
+    tracking = home / "docs" / "tracking"
+    tracking.mkdir(parents=True)
+    (tracking / "ROLLING_WORK_2026.md").write_text(
+        ledger.read_text(encoding="utf-8"), encoding="utf-8"
+    )
     done = subprocess.run(
         ["sh", "-c", command],
-        env={variable.group(1): str(ledger), "PATH": os.environ["PATH"]},
+        env={"OMNI_HOME": str(home), "PATH": os.environ["PATH"]},
         capture_output=True,
         text=True,
         check=False,
