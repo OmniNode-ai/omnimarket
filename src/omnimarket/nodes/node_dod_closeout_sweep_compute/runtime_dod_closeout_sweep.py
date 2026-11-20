@@ -10,6 +10,13 @@
 
     python -m omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep zero-flip \\
         --summary RUN.json --stamp 2026-11-08T22:00:00Z [--rows-file ROWS.txt]
+    python -m omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep check-bundle \\
+        --bundle B.json --run 2026-11-08T2145Z [--stderr E.txt] [--exit-code N]
+
+``check-bundle`` validates the bundle command's output against the schema the workflow script
+reads. It prints the bundle unchanged (exit 0), or writes a readable error file under
+``$ONEX_STATE_DIR/closeout-sweep/errors/`` and prints ``BUNDLE_FAILED: <problem>; error_file=<path>``
+(exit 2).
 
 ``zero-flip`` prints the typed reading of a run that flipped nothing and writes its alarm row;
 it exits 0 for a zero-flip run (OMN-20718), 2 only for an unreadable summary.
@@ -41,6 +48,9 @@ from pathlib import Path
 from omnimarket.handlers.closeout_boundary_reads import (
     read_text_file,
     registry_root_from_environment,
+)
+from omnimarket.handlers.closeout_bundle_check import (
+    check,
 )
 from omnimarket.handlers.closeout_examined_memory import (
     read_examined_memory,
@@ -207,7 +217,21 @@ def main(argv: list[str] | None = None) -> int:
         "--stamp", required=True, help="ledger stamp YYYY-MM-DDTHH:MM:SSZ"
     )
     zero.add_argument("--rows-file", type=Path)
+    check_bundle = sub.add_parser(
+        "check-bundle",
+        help="validate the bundle command's output before the workflow reads it",
+    )
+    check_bundle.add_argument("--bundle", type=Path, required=True)
+    check_bundle.add_argument("--stderr", type=Path)
+    check_bundle.add_argument("--exit-code", type=int, default=0)
+    check_bundle.add_argument("--run", required=True)
     args = parser.parse_args(argv)
+    if args.mode == "check-bundle":
+        code, line = check(args.bundle, args.stderr, args.exit_code, args.run)
+        sys.stdout.write(line + "\n")
+        if code:
+            sys.stderr.write(line + "\n")
+        return code
     if args.mode == "zero-flip":
         if not STAMP_PATTERN.match(args.stamp):
             parser.error("--stamp must be a zero-padded ledger stamp")

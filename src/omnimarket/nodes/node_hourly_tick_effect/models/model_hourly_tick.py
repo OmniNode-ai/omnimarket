@@ -34,6 +34,38 @@ class ModelTickState(BaseModel):
         return self
 
 
+class ModelHeldHandoff(BaseModel):
+    """One held human ask: what the operator needs to answer it without opening the sweep report."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+    ticket: str
+    comment_id: str
+    comment_url: str = ""
+    author_role: str = ""
+    question: str
+    why_held: str
+    suggested_reply: str
+
+
+class ModelHandoffPush(BaseModel):
+    """A handoff the tick must push to the operator, with the exact texts to use."""
+
+    model_config = ConfigDict(frozen=True)
+    comment_id: str
+    push_text: str
+    ledger_detail: str
+
+
+class ModelHandoffReport(BaseModel):
+    """What record wrote for held asks. pending_push is empty once each has been pushed."""
+
+    model_config = ConfigDict(frozen=True)
+    drafts_file: str
+    written: int
+    already_handed_off: int
+    pending_push: list[ModelHandoffPush]
+
+
 class ModelSweepResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="allow")
     __pydantic_extra__: dict[str, JsonType] = Field(init=False)
@@ -42,6 +74,7 @@ class ModelSweepResult(BaseModel):
     accepted: int | None = Field(default=None, ge=0)
     held: int | None = Field(default=None, ge=0)
     held_by_class: dict[str, int] | None = None
+    held_items: list[ModelHeldHandoff] = Field(default_factory=list)
     linear_file: str | None = None
     failed: bool = False
     error_class: str | None = None
@@ -134,6 +167,7 @@ class ModelHourlyTickResult(BaseModel):
         "in the sweep report, and any lane the TERMINAL roster shows as stalled"
     )
     readbacks: dict[str, str | None]
+    handoffs: ModelHandoffReport | None = None
 
 
 class ModelPreparedTick(BaseModel):

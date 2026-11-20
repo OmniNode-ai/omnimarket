@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
@@ -17,6 +18,9 @@ from omnibase_core.runtime.runtime_local import RuntimeLocal
 from omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick import (
     build_record_request,
     prepared_result_path,
+)
+from omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick_handoff import (
+    mark_pushed,
 )
 from omnimarket.nodes.node_hourly_tick_effect.models.model_hourly_tick import (
     ModelHourlyTickRequest,
@@ -102,7 +106,20 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="With --record: print the request, dispatch none",
     )
+    parser.add_argument(
+        "--mark-pushed",
+        help="Comma-separated comment ids whose handoff push went out; touches nothing else",
+    )
     args = parser.parse_args(argv)
+    if args.mark_pushed:
+        marked = mark_pushed(
+            [c for c in args.mark_pushed.split(",") if c],
+            datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+        sys.stdout.write(
+            json.dumps({"marked_pushed": marked}, separators=(",", ":")) + "\n"
+        )
+        return 0
     if args.input and args.request_json:
         parser.error("choose --input or --request-json")
     if args.record and (

@@ -40,7 +40,7 @@ descriptor:
   node_archetype: effect
   purity: effectful
   idempotent: false
-  side_effects: [checkpoint append, sweep pointer rotation, prepared snapshot write, fire result write]
+  side_effects: [checkpoint append, sweep pointer rotation, prepared snapshot write, fire result write, held-ask handoff drafts file write]
 env_dependencies:
   OMNI_HOME:
     required: true
