@@ -20,6 +20,11 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_approved_work_file import (
+    ApprovedWorkFileError,
+    parse_approved_work_file,
+)
+
 from ..handlers.helpers_lab_fill_enumerate import (
     attached_prs,
     declared_repository,
@@ -45,22 +50,19 @@ class LocalApprovedRows:
     """The declared approved-work file's rows exactly as declared; a file that is not a version-1 list refuses."""
 
     def __call__(self, path: str) -> Sequence[object]:
+        file = Path(os.path.expandvars(path))
         try:
-            value = json.loads(
-                Path(os.path.expandvars(path)).read_text(encoding="utf-8")
+            return list(
+                parse_approved_work_file(
+                    file.read_text(encoding="utf-8"), file=str(file)
+                ).rows
             )
-        except (OSError, ValueError) as exc:
+        except OSError as exc:
             raise LabFillPortError(
                 f"unreadable: {(str(exc).splitlines() or [type(exc).__name__])[0]}"
             ) from exc
-        if (
-            not isinstance(value, dict)
-            or value.get("version") != 1
-            or not isinstance(value.get("rows"), list)
-        ):
-            raise LabFillPortError("invalid approved-list version/rows")
-        rows: list[object] = value["rows"]
-        return rows
+        except ApprovedWorkFileError as exc:
+            raise LabFillPortError(str(exc)) from exc
 
 
 def fresh_watcher_state(
