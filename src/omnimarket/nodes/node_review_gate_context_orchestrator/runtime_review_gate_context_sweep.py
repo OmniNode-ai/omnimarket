@@ -23,6 +23,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from omnibase_infra.cli.delegate_lane import (
+    DelegateLaneSelectionError,
+    resolve_lane_selection_at,
+)
 from pydantic import ValidationError
 
 from omnimarket.handlers.delegation_scenario_runtime import write_atomic
@@ -184,6 +188,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--state-dir", type=Path, help="Directory for the scheduled run receipt"
     )
+    parser.add_argument(
+        "--check-ledger-route",
+        action="store_true",
+        help="Check the installed ledger lane declaration before loading the unit",
+    )
     args = parser.parse_args(argv)
     if (args.registry_root is None) != (args.state_dir is None) or (
         args.verb is None and args.state_dir is None
@@ -191,9 +200,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("supply a verb or both registry unit arguments")
     if args.verb is not None and args.state_dir is not None:
         parser.error("the registry unit takes its mode from the overlay schedule")
+    if args.check_ledger_route and args.verb is not None:
+        parser.error("--check-ledger-route requires the registry unit arguments")
     try:
+        if args.check_ledger_route:
+            # The installer sets OMNIBASE_PATH to its registry root. Resolve the
+            # declaration as ledger query does, without opening a bus connection.
+            resolve_lane_selection_at("dev", args.registry_root)
+            return 0
         return _run(args)
     except (
+        DelegateLaneSelectionError,
         NodeOverlayError,
         LedgerRouteError,
         ReviewGateSourceError,

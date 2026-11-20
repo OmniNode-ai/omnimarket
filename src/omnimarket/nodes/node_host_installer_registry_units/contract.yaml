@@ -1287,6 +1287,7 @@ units:
       - /usr/local/bin/python3.13
     module: omnimarket.nodes.node_review_gate_context_orchestrator.runtime_review_gate_context_sweep
     entry_file: src/omnimarket/nodes/node_review_gate_context_orchestrator/runtime_review_gate_context_sweep.py
+    probe_argv: ["--check-ledger-route"]
     project_path_override:
       request_field: project_path
       requires: clean git checkout that carries entry_file
@@ -1299,6 +1300,7 @@ units:
       ONEX_PR_WATCHER_STATE: "{registry_root}/.claude_scratch/pr-watcher/state.json"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/.onex-dispatch-venv/bin/onex ledger query --stdin"
+      # The workspace config root owns the lane declaration that the read command resolves.
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/review-gate-context-probe/last-run.json
     state_directory: .onex_state/review-gate-context-probe
