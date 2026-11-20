@@ -241,3 +241,11 @@ def test_condition_schedule_seam_every_scheduled_verb_is_a_verb_and_an_operation
     operations = {entry["operation"] for entry in contract["cli_handlers"]}
     assert verb.replace("-", "_") in operations
     assert verb in SCHEDULABLE_VERBS
+
+
+@pytest.mark.parametrize("verb", ["container-restarts"])
+def test_condition_schedule_names_the_container_restarts_verb_as_schedulable(
+    verb: str,
+) -> None:
+    assert verb in SCHEDULABLE_VERBS
+    assert verb in (_overlay().condition_schedules or {})
