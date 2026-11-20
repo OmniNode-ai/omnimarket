@@ -42,8 +42,7 @@ CONNECTION_TIMEOUT_SECONDS = 5.0
 _NODE_LABELS = ("CgSymbol", "CgShape", "CgExemplar", "CgModule", "CgRevision")
 _INDEXES = (
     *(f"CREATE INDEX ON :{label}(rev)" for label in _NODE_LABELS),
-    "CREATE INDEX ON :CgRevision(key)",
-    "CREATE INDEX ON :CgModule(key)",
+    *(f"CREATE INDEX ON :{label}(key)" for label in _NODE_LABELS),
     "CREATE INDEX ON :CgRevision(repo)",
 )
 
