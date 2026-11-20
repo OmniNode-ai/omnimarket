@@ -58,7 +58,7 @@ ARCHIVE_BLOCK = {
     "ledger_path_env": "TEST_LEDGER_PATH",
     "ledger_record_env": "TEST_LEDGER_RECORD",
     "archive_subdir": "archive",
-    "archive_glob": "ROLLING_WORK_LEDGER_*-split.md",
+    "archive_glob": "FLOOR_TEST_LEDGER_*-split.md",
     "archive_date_pattern": r"\d{4}-\d{2}-\d{2}",
 }
 
@@ -109,14 +109,14 @@ def _cold_cycle(
         encoding="utf-8",
     )
     tmp = world["tmp"]
-    live = tmp / "ledger" / "ROLLING_WORK_LEDGER.md"
+    live = tmp / "ledger" / "FLOOR_TEST_LEDGER.md"
     live.parent.mkdir()
     live.write_text("", encoding="utf-8")
     (live.parent / "archive").mkdir()
     first = (NOW - timedelta(days=13)).replace(hour=0, minute=0, second=0)
     for n in range(ARCHIVE_COUNT):
         day = (first + timedelta(days=n)).strftime("%Y-%m-%d")
-        (live.parent / "archive" / f"ROLLING_WORK_LEDGER_{day}-split.md").write_text(
+        (live.parent / "archive" / f"FLOOR_TEST_LEDGER_{day}-split.md").write_text(
             "", encoding="utf-8"
         )
     log = tmp / "reads.jsonl"

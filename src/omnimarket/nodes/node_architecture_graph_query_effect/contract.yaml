@@ -50,9 +50,11 @@ config_fields:
   bolt_uri:
     default: "${env.ARCH_GRAPH_BOLT_URI}"
     description: >
-      Bolt protocol URI for the Memgraph instance. Overlay-resolved via
-      ${env.ARCH_GRAPH_BOLT_URI} through the sanctioned overlay boundary;
-      bound per-lane (dev/stability/prod). Never read from os.environ directly.
+      Bolt protocol URI for the Memgraph instance. Two sources, in order:
+      ${env.ARCH_GRAPH_BOLT_URI} through the sanctioned overlay boundary, bound
+      per-lane (dev/stability/prod); then, when the variable is unset, this host's
+      row in the arch_graph_bolt host overlay (<overlay root>/arch_graph_bolt/overlay.yaml,
+      read through resolve_arch_graph_bolt_uri). Never read from os.environ directly.
   timeout_seconds:
     default: 30
     description: "Query timeout in seconds"
