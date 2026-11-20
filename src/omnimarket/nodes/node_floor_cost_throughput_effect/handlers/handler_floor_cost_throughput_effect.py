@@ -27,7 +27,7 @@ from omnimarket.models.floor_cost_throughput import (
     ModelSourceDocument,
 )
 from omnimarket.nodes.node_floor_cost_throughput_compute.handlers.handler_floor_cost_throughput import (
-    HandlerFloorCostThroughput as PanelFold,
+    HandlerFloorCostThroughput,
 )
 from omnimarket.nodes.node_floor_cost_throughput_effect.models.model_floor_cost_throughput_effect import (
     ModelCostThroughputRuntime,
@@ -123,7 +123,7 @@ class HandlerFloorCostThroughputEffect:
             except ValueError:
                 report = None
 
-        panel = PanelFold().handle(
+        panel = HandlerFloorCostThroughput().handle(
             ModelCostThroughputRequest(
                 generated_at=now.strftime(_STAMP),
                 floor_simple=floor_simple,
