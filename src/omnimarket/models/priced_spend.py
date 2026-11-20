@@ -12,12 +12,38 @@ rewritten (D1).
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
 
 from omnimarket.pricing import _load_table
 
-__all__ = ["priced_spend"]
+__all__ = ["historical_unpriced_zero", "priced_spend"]
+
+
+def historical_unpriced_zero(amount: object, source: object, history: object) -> bool:
+    """Use the attempts' own price evidence for a legacy zero. Never reprice it."""
+    if source not in (None, "", "no_cost_model") or history is None:
+        return False
+    try:
+        if Decimal(str(amount)) != 0 or not isinstance(history, str | bytes):
+            return False
+        attempts = json.loads(history)
+    except (ValueError, InvalidOperation, RecursionError):
+        return False
+    return (
+        isinstance(attempts, list)
+        and bool(attempts)
+        and all(
+            isinstance(attempt, dict)
+            and attempt.get("usage_source") == "unknown"
+            and attempt.get("price_source") in (None, "unknown")
+            and attempt.get("cost_basis") in (None, "unknown")
+            and not isinstance(attempt.get("cost_usd"), bool)
+            and attempt.get("cost_usd") == 0
+            for attempt in attempts
+        )
+    )
 
 
 def priced_spend(row: Mapping[str, object]) -> Decimal | None:

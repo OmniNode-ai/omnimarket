@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from omnimarket.models.priced_spend import historical_unpriced_zero
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.table_reader import (
     RETAINED_WINDOW_FACTOR,
@@ -54,6 +55,34 @@ from omnimarket.projection.tenant_registry_resolution import (
 )
 
 
+def _local_select_list(cfg: ProjectionTableConfig, available: tuple[str, ...]) -> str:
+    if cfg.table != "delegation_events" or not {"cost_usd", "attempt_history"} <= set(
+        available
+    ):
+        return select_list(cfg)
+    # This older terminal shape stored zero even when no attempt could price
+    # the run. Use its own evidence without returning private attempt records
+    # or changing the raw ledger. The amount and its saving sort as served.
+    source = (
+        '"cost_measurement_source"'
+        if "cost_measurement_source" in available
+        else "NULL"
+    )
+    unpriced = f'onex_historical_unpriced_zero("cost_usd", {source}, "attempt_history")'
+    replacement = {
+        "cost_usd": "NULL",
+        "modelled_savings_usd": "NULL",
+        "savings_measurement": "'unknown_spend'",
+    }
+    columns = available if cfg.columns == ("*",) else cfg.columns
+    return ", ".join(
+        f"CASE WHEN {unpriced} THEN {replacement[column]} ELSE {quote_identifier(column)} END AS {quote_identifier(column)}"
+        if column in replacement
+        else quote_identifier(column)
+        for column in columns
+    )
+
+
 def build_sqlite_window_query(
     cfg: ProjectionTableConfig,
     *,
@@ -62,6 +91,7 @@ def build_sqlite_window_query(
     since: str | None = None,
     correlation_id: str | None = None,
     selection: str = "newest",
+    available_columns: tuple[str, ...] = (),
 ) -> WindowQuery:
     """The SQLite SQL for one exposure's served window.
 
@@ -115,7 +145,7 @@ def build_sqlite_window_query(
     where_sql = f" WHERE {' AND '.join(where)}" if where else ""
     inner_order = f" ORDER BY {window_order}" if window_order else ""
     inner = (
-        f"SELECT {select_list(cfg)} FROM {relation}{where_sql}{inner_order} "
+        f"SELECT {_local_select_list(cfg, available_columns)} FROM {relation}{where_sql}{inner_order} "
         f"LIMIT {retain}"
     )
     outer_order = order_clause(order_spec)
@@ -149,19 +179,19 @@ def _require_relation(
     conn: sqlite3.Connection,
     cfg: ProjectionTableConfig,
     order_spec: tuple[tuple[str, str, str | None], ...],
-) -> None:
+) -> tuple[str, ...]:
     """Refuse by name unless the table and every column the read names exist.
 
     SQLite reads a double-quoted identifier that names no column as a string
     literal, so a missing column would not fail the query: every row would
     carry the column's own name as its value. The catalogue is checked first.
     """
-    present = {
+    present = tuple(
         str(row[1])
         for row in conn.execute(
             "SELECT * FROM pragma_table_info(?)", (cfg.table.strip('"'),)
         )
-    }
+    )
     if not present:
         raise ProjectionReadError(
             "projection_table_missing",
@@ -185,6 +215,7 @@ def _require_relation(
             "projection_column_missing",
             f"{cfg.table!r} lacks a column the exposure's contract declares",
         )
+    return present
 
 
 class _ReadOnlyRegistryQuery:
@@ -252,11 +283,29 @@ class SqliteTableRowSource:
         self,
         cfg: ProjectionTableConfig,
         order_spec: tuple[tuple[str, str, str | None], ...],
-        query: WindowQuery,
+        tenant_id: str | None,
+        since: str | None,
+        correlation_id: str | None,
+        selection: str,
     ) -> list[dict[str, Any]]:
         conn = self._connect()
         try:
-            _require_relation(conn, cfg, order_spec)
+            columns = _require_relation(conn, cfg, order_spec)
+            conn.create_function(
+                "onex_historical_unpriced_zero",
+                3,
+                historical_unpriced_zero,
+                deterministic=True,
+            )
+            query = build_sqlite_window_query(
+                cfg,
+                order_spec=order_spec,
+                tenant_id=tenant_id,
+                since=since,
+                correlation_id=correlation_id,
+                selection=selection,
+                available_columns=columns,
+            )
             records = conn.execute(query.sql, query.params).fetchall()
         except sqlite3.Error as exc:
             raise _driver_refusal(cfg, exc) from exc
@@ -304,15 +353,15 @@ class SqliteTableRowSource:
         selection: str = "newest",
     ) -> list[dict[str, Any]]:
         """The exposure's served window, ordered by ``order_spec``."""
-        query = build_sqlite_window_query(
+        return await asyncio.to_thread(
+            self._fetch,
             cfg,
-            order_spec=order_spec,
-            tenant_id=tenant_id,
-            since=since,
-            correlation_id=correlation_id,
-            selection=selection,
+            order_spec,
+            tenant_id,
+            since,
+            correlation_id,
+            selection,
         )
-        return await asyncio.to_thread(self._fetch, cfg, order_spec, query)
 
     def _smallest_cursor(
         self, cfg: ProjectionTableConfig, cursor_column: str, tenant_id: str | None
