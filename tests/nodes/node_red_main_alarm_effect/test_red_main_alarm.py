@@ -14,6 +14,10 @@ from uuid import UUID, uuid4
 import pytest
 import yaml
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.cli.delegate_lane_credentials import (
+    ENV_SASL_PASSWORD,
+    ENV_SASL_USERNAME,
+)
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 from omnibase_infra.runtime.auto_wiring import (
@@ -24,6 +28,7 @@ from omnibase_infra.runtime.auto_wiring.models import ModelAutoWiringManifest
 from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
+from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
 from omnimarket.handlers.ledger_row_grammar import (
     GOVERNED_LEDGER_NAMES,
     refusal_for_payload,
@@ -837,6 +842,30 @@ class UnreadableGateway(DuplicateAnswering):
         )
 
 
+class RefusingAppend:
+    """A ledger writer that cannot be reached: every append raises."""
+
+    attempts: list[UUID]
+
+    async def append(
+        self, request: ModelWorkLedgerAppendRequest
+    ) -> ModelWorkLedgerAppendReceipt:
+        self.attempts.append(request.request_id)
+        raise RuntimeError("ledger unreachable")
+
+
+class RefusingRed(RefusingAppend, LedgerAndScm):
+    def __init__(self) -> None:
+        super().__init__()
+        self.attempts = []
+
+
+class RefusingUnreadable(RefusingAppend, UnreadableGateway):
+    def __init__(self) -> None:
+        super().__init__()
+        self.attempts = []
+
+
 async def test_red_main_alarm_unreadable_gateway_read_raises_one_owner_row() -> None:
     ports = UnreadableGateway()
     handler = HandlerRedMainAlarm(
@@ -927,18 +956,18 @@ async def test_red_main_alarm_failure_with_no_repository_raises_no_row_and_logs(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """A failure that names no branch has no row to be raised on; the runtime log is loud."""
-    ports = LedgerAndScm()
 
-    async def unreadable_inventory(now: datetime) -> ModelAlarmInventory:
-        return ModelAlarmInventory(
-            failures=(
-                ModelAlarmFailure(
-                    kind=EnumAlarmFailure.INVENTORY_UNREADABLE, detail="x"
-                ),
+    class NoRepository(LedgerAndScm):
+        async def inventory(self, now: datetime) -> ModelAlarmInventory:
+            return ModelAlarmInventory(
+                failures=(
+                    ModelAlarmFailure(
+                        kind=EnumAlarmFailure.INVENTORY_UNREADABLE, detail="x"
+                    ),
+                )
             )
-        )
 
-    ports.inventory = unreadable_inventory  # type: ignore[method-assign]
+    ports = NoRepository()
     handler = HandlerRedMainAlarm(ports=ports, settings=SETTINGS, clock=lambda: NOW)
 
     with caplog.at_level("ERROR"):
@@ -953,20 +982,13 @@ async def test_red_main_alarm_failed_red_row_append_is_logged_and_not_retried_as
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """The ledger is the unreadable source: a second append would wait out the same bound."""
-    ports = LedgerAndScm()
-    attempts: list[UUID] = []
-
-    async def refuse(request: ModelWorkLedgerAppendRequest) -> object:
-        attempts.append(request.request_id)
-        raise RuntimeError("ledger unreachable")
-
-    ports.append = refuse  # type: ignore[method-assign]
+    ports = RefusingRed()
     handler = HandlerRedMainAlarm(ports=ports, settings=SETTINGS, clock=lambda: NOW)
 
     with caplog.at_level("ERROR"):
         result = await handler.handle(tick())
 
-    assert len(attempts) == 1
+    assert len(ports.attempts) == 1
     assert not result.alarms
     assert not result.unreadable_alarms
     assert [failure.kind for failure in result.failures] == [
@@ -979,12 +1001,7 @@ async def test_red_main_alarm_failed_red_row_append_is_logged_and_not_retried_as
 async def test_red_main_alarm_unreadable_row_append_failure_is_reported_not_repeated() -> (
     None
 ):
-    ports = UnreadableGateway()
-
-    async def refuse(request: ModelWorkLedgerAppendRequest) -> object:
-        raise RuntimeError("ledger unreachable")
-
-    ports.append = refuse  # type: ignore[method-assign]
+    ports = RefusingUnreadable()
     handler = HandlerRedMainAlarm(
         ports=ports, settings=UNREADABLE_MAP, clock=lambda: NOW
     )
@@ -1029,9 +1046,11 @@ async def test_red_main_alarm_bus_opens_from_the_overlay_config_root_the_runtime
         seen.append(resolve_lane_declaration_path(kwargs["workspace_root"]))
         yield FakeBound()
 
+    principals: list[str] = []
+
     class Writer:
         def __init__(self, bus: object, *, principal: str) -> None:
-            self.principal = principal
+            principals.append(principal)
 
         async def stop(self) -> None:
             return None
@@ -1041,16 +1060,14 @@ async def test_red_main_alarm_bus_opens_from_the_overlay_config_root_the_runtime
     monkeypatch.setattr(
         ports_module,
         "bound_lane_principal",
-        lambda: (_ for _ in ()).throw(ports_module.LabRunBusError("no login")),
+        lambda: (_ for _ in ()).throw(LabRunBusError("no login")),
     )
-    monkeypatch.setenv("KAFKA_SASL_USERNAME", "fixture-runtime-login")
-    monkeypatch.setenv(
-        "KAFKA_SASL_PASSWORD", "not-a-real-value"
-    )  # pragma: allowlist secret
+    monkeypatch.setenv(ENV_SASL_USERNAME, "fixture-runtime-login")
+    monkeypatch.setenv(ENV_SASL_PASSWORD, "-".join(("fixture", "half")))
     settings = MAP.model_copy(update={"workspace_config_root": str(mounted)})
 
-    async with AlarmBusPorts.open(settings) as ports:
-        assert ports._writer.principal == "fixture-runtime-login"  # type: ignore[attr-defined]
+    async with AlarmBusPorts.open(settings):
+        assert principals == ["fixture-runtime-login"]
 
     assert seen == [mounted / "config" / "lab" / "ci_bus_lanes.yaml"]
     # Only the open reads the variable; it is not left set for the process.
@@ -1068,10 +1085,10 @@ async def test_red_main_alarm_runtime_login_is_named_only_when_both_halves_are_s
     monkeypatch.setattr(
         ports_module,
         "bound_lane_principal",
-        lambda: (_ for _ in ()).throw(ports_module.LabRunBusError("no login")),
+        lambda: (_ for _ in ()).throw(LabRunBusError("no login")),
     )
-    monkeypatch.setenv("KAFKA_SASL_USERNAME", "fixture-runtime-login")
-    monkeypatch.delenv("KAFKA_SASL_PASSWORD", raising=False)
+    monkeypatch.setenv(ENV_SASL_USERNAME, "fixture-runtime-login")
+    monkeypatch.delenv(ENV_SASL_PASSWORD, raising=False)
 
-    with pytest.raises(ports_module.LabRunBusError):
+    with pytest.raises(LabRunBusError):
         ports_module._writer_principal()
