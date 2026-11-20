@@ -51,7 +51,7 @@ requirements:
           AC5 (amended 2026-11-18): no infra change is required. The stack-shape baseline forbids re-commanding
           projection-api, so T1 removes no console script marked run_by_lane, proved by the existing stack-shape
           gate and a market-side run_by_lane_scripts_kept test -- falsifier: uv run pytest
-          tests/ci/test_run_by_lane_scripts_kept_omn25070.py fails when omnimarket-projection-api is removed from,
+          tests/ci/test_omninode_onex_package_omn25070.py -k run_by_lane fails when omnimarket-projection-api is removed from,
           or retargeted in, pyproject.toml [project.scripts], or declared by packages/omninode-onex.
 evidence_requirements:
   - kind: tests
@@ -88,7 +88,7 @@ dod_evidence:
     binds_ac: [AC5]
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest -q --no-cov tests/ci/test_run_by_lane_scripts_kept_omn25070.py
+        check_value: uv run --frozen pytest -q --no-cov tests/ci/test_omninode_onex_package_omn25070.py -k run_by_lane
         cwd: .
   - id: dod-omn25070-installer-integration-proof
     description: The render node and the rendered installer run on a lab host at the pushed head. Hosted CI runs
