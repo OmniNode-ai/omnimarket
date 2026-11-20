@@ -52,8 +52,16 @@ def _run_smoke(core_root: Path, *extra: str) -> subprocess.CompletedProcess[str]
     )
 
 
+def _assert_ci_runs_the_smoke() -> None:
+    """The smoke only guards a core removal when the required CI job runs it."""
+    ci = (REPO / ".github" / "workflows" / "ci.yml").read_text()
+    assert "latest-core-smoke:" in ci
+    assert "tests/ci/latest_core_smoke.py" in ci
+
+
 def test_synthetic_removal_makes_the_import_step_fail(tmp_path: Path) -> None:
     """A fake core build that lacks a symbol the node imports fails the smoke."""
+    _assert_ci_runs_the_smoke()
     core = _fake_core(tmp_path / "core", symbols=("some_other_helper",))
     result = _run_smoke(core)
     assert result.returncode == 1, result.stdout + result.stderr
@@ -72,6 +80,7 @@ def test_synthetic_removal_control_passes_when_symbol_is_present(
 
 
 def test_run_node_in_process_absent_is_named_and_exits_nonzero(tmp_path: Path) -> None:
+    _assert_ci_runs_the_smoke()
     core = _fake_core(tmp_path / "core", symbols=())
     result = _run_smoke(core)
     assert result.returncode != 0
