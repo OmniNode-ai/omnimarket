@@ -71,8 +71,6 @@ dod_evidence:
   description: Read from the ledger after the run, so only the local Done gate runs it. A STATUS row of lane svctopic-0630 carries installed=<host>:<revision> and observed=<what ran> for the topic provisioner.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: grep -E 'STATUS .*lane=svctopic-0630 .*installed=h201:[0-9a-f]{40} .*observed=' "${ONEX_LEDGER_PATH:?}"
@@ -81,11 +79,27 @@ dod_evidence:
   description: Read from the dev broker on h201 with the lane-aware admin client, so only the local Done gate runs it; it prints the name and the partition count.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC5
   checks:
   - check_type: command
     check_value: grep -E 'MSG .*to=orchestrator-31d9-swarm .*service writer topic present.*partitions=1' "${ONEX_LEDGER_PATH:?}"
+    cwd: .
+- id: dod-omn26147-ac4-hosted-code-path
+  description: The hosted-runnable part of AC4. The recorded-incident test drives the node's own plan and apply handlers, the code the installer puts on the dev lane, and fails on the unchanged base where those handlers do not exist. The install and run record itself is the unbound local Done gate item above.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_topic_provision_dry_run_effect/test_writer_topic_incident_regression.py -q --no-cov
+    cwd: .
+- id: dod-omn26147-ac5-hosted-one-partition
+  description: The hosted-runnable part of AC5. The apply creates the absent writer topic with 1 partition, asserted on the broker fake, and fails on the unchanged base. The read of the live dev broker is the unbound local Done gate item above.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_topic_provision_dry_run_effect/test_writer_topic_apply.py -q --no-cov -k one_partition
     cwd: .
 - id: dod-omn26147-integration-proof-lab-run
   description: Hosted CI holds no dev broker, so only the local Done gate runs this check, and it binds no criterion here (the hosted base control refuses a bound item it cannot run). On a lab host, at the change's own sha, the incident regression test plans and creates the writer topic from the recorded declarations through the node's own handlers.
