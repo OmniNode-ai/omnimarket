@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26166
+title: "The omnimarket release train relocks omnibase-infra, omnibase-core and omnibase-compat to their released index wheels in the release commit, so the stability pin can take the release"
+summary: The release job of release-cut.yml builds a release commit (parents dev head and main) whose uv.lock locks omnibase-infra, omnibase-core and omnibase-compat from the package index; dev and the reopen-dev commit keep their dev-tag locks, and the sibling-pin pair test refuses an index lock on every non-release commit.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26166-release-relock
+    statement: A release commit locks the three sibling packages from the index; every other commit locks them from a git dev tag (RULING 2026-11-20T11:37:47Z).
+    acceptance:
+      - id: AC1
+        statement: "AC1: the release train's cut step relocks every sibling of omnibase-infra, omnibase-core and omnibase-compat that uv.lock locks from a git dev tag to the released index wheel at the version the release declares, in the release pull request only, and the reopen-dev commit and dev keep their dev-tag locks -- falsifier: uv run pytest tests -k release_relock -q fails on a fixture release commit whose uv.lock still holds a git source for any of the three, and fails on a fixture reopen-dev commit that holds an index wheel"
+      - id: AC2
+        statement: "AC2: the sibling-pin pair test and the Internal Sibling Pins check accept an index wheel pin on a release commit and refuse it on every other commit with the existing finding codes unchanged for dev -- falsifier: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py -q fails on a non-release fixture that carries a registry source for a sibling, and passes the same fixture marked as a release commit"
+      - id: AC3
+        statement: "AC3: the new tests are red on omnimarket origin/dev before the change and green after it, both outputs pasted in the pull request body, and the change is one contract-driven pull request with contracts/OMN-<ticket>.yaml -- falsifier: uv run pytest tests -k \"release_relock or internal_sibling_pins\" -q run at origin/dev prints no failure for the new relock tests, meaning they were not written red first"
+      - id: AC4
+        statement: "AC4: integrated: the first omnimarket release the train cuts after this merges carries a uv.lock whose omnibase-infra, omnibase-core and omnibase-compat entries read source registry [pypi.org](<http://pypi.org>), read by the orchestrator session and cited in a STATUS row with read_at=<UTC> -- falsifier: git show <that release tag>:uv.lock | grep -A2 '^name = \"omnibase-infra\"$' | grep -c 'source = { git' prints 1 instead of 0"
+evidence_requirements:
+  - kind: tests
+    description: Focused tests for the relock decision functions, the release-cut wiring and the pair test.
+    command: uv run pytest tests/unit/scripts/test_release_relock.py tests/unit/workflows/test_internal_sibling_pins_omn21478.py tests/ci/test_release_cut_workflow.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26166-ac1
+    description: "A fixture release commit whose uv.lock holds a git source for any of the three siblings is refused, a fixture reopen-dev commit holding an index wheel is refused, and release-cut.yml builds the release commit in the release job between the pin gate and the tag."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests -k release_relock -q --no-cov
+  - id: dod-omn26166-ac2
+    description: "A non-release fixture with a registry source for a sibling is refused and the same fixture marked as a release commit passes; the dev finding codes are unchanged."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py -q --no-cov
+  - id: dod-omn26166-ac3
+    description: "The new relock and pair tests were red at origin/dev and are green on the branch; the red and green runs are in the pull request body."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/scripts/test_release_relock.py tests/unit/workflows/test_internal_sibling_pins_omn21478.py tests/ci/test_release_cut_workflow.py -q --no-cov
+  - id: dod-omn26166-ac4
+    description: "After the train cuts its first release carrying the relock, the orchestrator session reads that tag's uv.lock; this check is run by the orchestrator against the cut tag and is not run by the lane."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: command
+        check_value: >-
+          sh -c 'test -z "$RELEASE_TAG" || { git show "$RELEASE_TAG:uv.lock" | grep -A2 "^name = \"omnibase-infra\"$" | grep -c "source = { git" | grep -qx 0; }'
+        cwd: .
