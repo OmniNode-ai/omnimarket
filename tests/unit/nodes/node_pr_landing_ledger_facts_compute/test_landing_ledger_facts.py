@@ -371,3 +371,136 @@ def test_a_naive_clock_and_a_malformed_row_stamp_are_refused() -> None:
 def test_the_same_rows_give_the_same_facts() -> None:
     assert _request().model_dump_json() == _request().model_dump_json()
     assert _facts() == _facts()
+
+
+# ------------------------------------------------------------------------- review findings (OMN-25531)
+#
+# The finding cell grammar of a reviewer STATUS row: the repeatable pipe cell ``finding=<kind>:<value>``.
+#   finding=check:<name>              a failing check by its name            (blocking)
+#   finding=line:<file>:<n>:<defect>  a cited code line, n >= 1, with defect (blocking)
+#   finding=other:<text>              anything else, e.g. a request for installed= or observed= proof (advisory)
+# A defect or text holds no pipe (it would end the cell). A cell that does not parse reads as no finding, and a row
+# with any unparseable finding cell carries no findings at all, so its CHANGES_NEEDED verdict keeps holding.
+
+REVIEW_PR = "omnimarket#9001"
+REVIEW_HEAD = "7265930bafc673e66ced5bb67b9464bc460f1d77"
+
+
+def _review_row(*cells: str, verdict: str = "CHANGES_NEEDED") -> ModelLandingLedgerRow:
+    text = " | ".join(
+        [
+            "2026-10-09T09:50:00Z",
+            "STATUS",
+            "lane=orchestrator-31d9-swarm",
+            f"pr=OmniNode-ai/{REVIEW_PR}",
+            "work_kind=new_work",
+            f"head={REVIEW_HEAD}",
+            f"verdict={verdict}",
+            "review=fable",
+            *cells,
+        ]
+    )
+    return _row("2026-10-09T09:50:00Z", "STATUS", "orchestrator-31d9-swarm", text)
+
+
+def _findings(*cells: str, verdict: str = "CHANGES_NEEDED") -> list[Any]:
+    facts = HandlerPrLandingLedgerFacts().handle(
+        _request(rows=[_review_row(*cells, verdict=verdict)])
+    )
+    (row,) = facts.review[REVIEW_PR].verdicts
+    return list(row.findings)
+
+
+def test_finding_cells_carry_each_kind_onto_the_verdict_row() -> None:
+    found = _findings(
+        "finding=check:lab-tests / run",
+        "finding=line:src/omnimarket/x.py:47:the slice drops the last row",
+        "finding=other:no installed= read of the change",
+    )
+    assert [(f.failing_check, f.file, f.line, f.defect) for f in found] == [
+        ("lab-tests / run", None, None, None),
+        (None, "src/omnimarket/x.py", 47, "the slice drops the last row"),
+        (None, None, None, None),
+    ]
+    assert found[2].summary == "no installed= read of the change"
+
+
+def test_finding_cells_keep_a_colon_inside_the_defect() -> None:
+    (found,) = _findings("finding=line:a/b.py:12:raises KeyError: no default")
+    assert (found.file, found.line, found.defect) == (
+        "a/b.py",
+        12,
+        "raises KeyError: no default",
+    )
+
+
+def test_finding_a_row_with_no_finding_cell_carries_none() -> None:
+    assert _findings() == []
+
+
+def test_finding_a_clean_verdict_row_may_carry_findings_unread_by_the_gate() -> None:
+    assert len(_findings("finding=other:nit", verdict="CLEAN")) == 1
+
+
+@pytest.mark.parametrize(
+    "cell",
+    [
+        "finding=",
+        "finding=nonsense",
+        "finding=check:",
+        "finding=other:",
+        "finding=line:a.py:0:defect",
+        "finding=line:a.py:x:defect",
+        "finding=line:a.py:12:",
+        "finding=line::12:defect",
+        "finding=blocker:a.py:12:defect",
+    ],
+)
+def test_finding_a_malformed_cell_reads_as_no_finding(cell: str) -> None:
+    assert _findings(cell) == []
+
+
+def test_finding_a_malformed_cell_drops_every_finding_of_the_row() -> None:
+    """Fail closed: a dropped blocking cell must not leave the row's advisory findings to pass the head."""
+    assert _findings("finding=other:nit", "finding=line:a.py:nope:defect") == []
+
+
+def test_finding_the_gate_reads_a_malformed_status_row_as_changes_needed() -> None:
+    from omnimarket.models.model_landing_review import EnumReviewGateVerdict
+    from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
+        ModelLandingPolicy,
+        ModelLandingPrFacts,
+    )
+    from omnimarket.nodes.node_pr_landing_decision_compute.review_gate import (
+        read_review_gate,
+    )
+
+    facts = HandlerPrLandingLedgerFacts().handle(
+        _request(rows=[_review_row("finding=line:a.py:nope:defect")])
+    )
+    pr = ModelLandingPrFacts.model_validate(
+        {
+            "pr": f"OmniNode-ai/{REVIEW_PR}",
+            "head_sha": REVIEW_HEAD,
+            "state": "open",
+            "ci": "green",
+            "merge_state": "clean",
+            "created_at": "2026-10-09T08:00:00Z",
+            "review": facts.review[REVIEW_PR].model_dump(mode="json"),
+        }
+    )
+    reading = read_review_gate(pr, ModelLandingPolicy())
+    assert reading is not None
+    assert reading.verdict is EnumReviewGateVerdict.CHANGES_NEEDED
+
+
+def test_finding_a_status_row_of_an_unaccepted_lane_carries_no_finding() -> None:
+    row = _review_row("finding=check:lab-tests / run")
+    other = _row(
+        row.ts,
+        "STATUS",
+        "build-lane-1",
+        row.text.replace("orchestrator-31d9-swarm", "build-lane-1"),
+    )
+    facts = HandlerPrLandingLedgerFacts().handle(_request(rows=[other]))
+    assert facts.review[REVIEW_PR].verdicts == ()

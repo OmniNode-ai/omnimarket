@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_work_ledger_host_mirror_effect
+version: "0.1.0"
+description: "Effect: append the rows of the ledger of record that a lab host has not yet seen to the host's own ledger mirror file, read over the bus from the work ledger read node, and write a receipt that names how far behind the mirror is. Hosted by one systemd user timer tick per lab host, never by a shared runtime."
+pack: operator_tooling
+node_role: effect
+display_name: "Work Ledger Host Mirror Effect (per host)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_work_ledger_host_mirror_effect: "omnimarket.nodes.node_work_ledger_host_mirror_effect"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "pydantic>=2.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "lab", "ledger"]

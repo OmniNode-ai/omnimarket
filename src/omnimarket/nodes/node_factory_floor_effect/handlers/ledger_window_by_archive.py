@@ -7,8 +7,9 @@ archive and 3.9 s parsing. An archive never changes once rolled, so its parsed r
 again only when either changes; the live ledger, the only file that moves between cycles, is read every cycle. The rows returned equal the
 combined ``--archives`` read of the same files: the archives are read from the first day of the window, the rows before the window's exact
 start are dropped, and the per-lane reduction runs once over the union. The cache-missing archives are read at most ``read_workers`` at a
-time (one at a time when the overlay names no count) and each is kept for ``cache_ttl_seconds`` (the source read cache's own backstop when
-the overlay names none).
+time (``default_read_workers`` when the overlay names no count: the factory floor's contract declares it, a bare call reads one at a time) and
+each is kept for ``cache_ttl_seconds`` (``default_cache_ttl_seconds`` when the overlay names none, and the source read cache's own backstop
+when that is absent too).
 """
 
 from __future__ import annotations
@@ -117,6 +118,8 @@ def read_ledger_rows_by_archive(
     kinds: frozenset[str],
     cache: CachedSourceReader,
     run: ArchiveReaderRunner,
+    default_read_workers: int = 1,
+    default_cache_ttl_seconds: int | None = None,
 ) -> tuple[ModelFloorLedgerRow, ...]:
     """The window's rows: the in-window archives through the cache (the cache-missing ones at most ``archive.read_workers`` at a time), the live ledger every time, reduced once."""
     since_exact = now.astimezone(UTC) - timedelta(days=window_days)
@@ -160,8 +163,8 @@ def read_ledger_rows_by_archive(
         reads,
         encode_rows,
         decode_rows,
-        max_workers=archive.read_workers or 1,
-        ttl_seconds=archive.cache_ttl_seconds,
+        max_workers=archive.read_workers or default_read_workers,
+        ttl_seconds=archive.cache_ttl_seconds or default_cache_ttl_seconds,
     )
     for rows in batches:
         merged.extend(row for row in rows if row.ts >= since_exact)
@@ -191,6 +194,8 @@ def read_ledger_window(
     environ: Mapping[str, str],
     now: datetime,
     archive_runner: ArchiveReaderRunner | None = None,
+    default_read_workers: int = 1,
+    default_cache_ttl_seconds: int | None = None,
 ) -> tuple[ModelFloorLedgerRow, ...]:
     """The window read: by archive through the cache when the ledger record is the file and a cache is given, else as ``read_ledger_rows``."""
     live = environ.get(archive.ledger_path_env, "").strip() if archive else ""
@@ -219,6 +224,8 @@ def read_ledger_window(
             cache=archive_cache,
             run=archive_runner
             or subprocess_archive_runner(plugin_root / "scripts" / "onex_ledger.py"),
+            default_read_workers=default_read_workers,
+            default_cache_ttl_seconds=default_cache_ttl_seconds,
         )
     return read_ledger_rows(
         window_days=window_days,

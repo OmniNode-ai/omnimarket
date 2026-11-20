@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_host_thermal_hold_report_effect/overlay.yaml under a root
+# named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+#
+# trip_text fields: host, hottest_c, cpu_c, gpu_c, tripped_at, latch_path, operator_next.
+# release_text fields: host, hottest_c (the guard's last reading), cpu_c, gpu_c, tripped_at, released_at, latch_path, operator_next.
+host_env: ONEX_HOST_NAME
+hosts:
+  - name: lab-a
+    guard_state_dir: .local/state/example/guard
+    hold_lane: example-thermal-hold-lab-a
+latch_file: cap.json
+last_file: last.json
+outbox_file: status-outbox.rows
+refused_file: status-outbox.refused.rows
+claim_suffix: .claimed
+episode_file: thermal-hold-episode.json
+to_lane: example-orchestrator
+ticket: OMN-00000
+ledger_append:
+  command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+  host_env: ONEX_LEDGER_HOST_NAME
+  timeout_seconds: 60
+max_outbox_rows_per_run: 50
+operator_next: "Operator next: check the CPU cooler and case airflow, then remove the latch file; the guard's thresholds, power caps and fans are not changed by this alarm."
+trip_text: "{host} thermal guard closed the lab-run folder at {hottest_c:.1f} C (cpu {cpu_c:.1f} C, gpu {gpu_c}) at {tripped_at}; no lab run is placed there until the latch file {latch_path} is removed. {operator_next}"
+release_text: "{host} thermal guard released at {released_at}: the latch file {latch_path} is gone and the lab-run folder is open again (last reading {hottest_c:.1f} C; tripped {tripped_at})."

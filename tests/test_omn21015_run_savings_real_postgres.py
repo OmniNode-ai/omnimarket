@@ -223,7 +223,7 @@ async def test_two_writers_keep_the_saving_paired_with_concurrent_inputs(
                 "created_at": datetime(2026, 10, 13, 12, tzinfo=UTC),
                 "timestamp": datetime(2026, 10, 13, 12, tzinfo=UTC),
                 "task_type": "document",
-                "delegated_to": "fixture-serving-model",
+                "delegated_to": "gpt-4o-mini",
             }
             terminal = {
                 **common,

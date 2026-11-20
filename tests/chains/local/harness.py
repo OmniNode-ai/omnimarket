@@ -576,7 +576,7 @@ def store_model_credential(
     """
     from omnimarket.inference import local_byok_credential_adapter as credentials
 
-    conn = credentials._connect(db_path)
+    conn = credentials.open_local_credentials(db_path)
     try:
         conn.execute(
             f"INSERT OR REPLACE INTO {credentials.LOCAL_CREDENTIAL_TABLE} "
