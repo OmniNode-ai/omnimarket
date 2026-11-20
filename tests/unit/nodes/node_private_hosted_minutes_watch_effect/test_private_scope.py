@@ -213,3 +213,11 @@ def test_no_threshold_literals_or_repository_lists_in_node_source():
     for path in NODE.rglob("*"):
         if path.suffix in {".py", ".yaml"} and path.name != "overlay.example.yaml":
             assert not literal.search(path.read_text(encoding="utf-8")), path
+
+
+def test_large_uncounted_minutes_are_plain_decimals(tmp_path):
+    handler, _ = build(usage(private_repo_a=10, public_repo_b=4_666_870))
+    result = handler.handle(req(tmp_path))
+    assert "uncounted=4666870 |" in result.status_row
+    assert "public-repo-b:4666870:public" in result.status_row
+    assert "e+" not in result.status_row

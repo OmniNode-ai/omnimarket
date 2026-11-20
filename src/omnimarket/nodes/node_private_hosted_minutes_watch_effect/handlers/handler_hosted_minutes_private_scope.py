@@ -19,8 +19,12 @@ def _safe(value: str) -> str:
     return value.replace("|", "/").replace("\r", " ").replace("\n", " ")
 
 
-def _minutes(value: float) -> str:
-    return f"{round(value, 2):g}"
+def format_minutes(value: float) -> str:
+    """Plain decimal with at most two places, never scientific notation."""
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+_minutes = format_minutes
 
 
 def alert_threshold(overlay: ModelHostedMinutesOverlay) -> Decimal:
@@ -82,7 +86,7 @@ def render_private_alert(
     return (
         f"GitHub-hosted Actions minutes on private repositories, month to {day} UTC: "
         f"{_minutes(private_month)} of {overlay.included_minutes} included minutes used "
-        f"({percent_used(private_month, overlay):g} percent). "
+        f"({format_minutes(percent_used(private_month, overlay))} percent). "
         f"Private repositories by minutes: {repos or 'none'}. Org {_safe(org)}."
     )
 
@@ -122,7 +126,7 @@ def render_private_status_row(
         f"actor=launchd:private-hosted-minutes-watch | day={day} | "
         f"hosted_minutes={_minutes(total_day_minutes)} | repos={repos} | alert={_safe(alert)} | "
         f"private_month_minutes={_minutes(private_month)} | included={overlay.included_minutes} | "
-        f"percent_used={percent_used(private_month, overlay):g} | "
+        f"percent_used={format_minutes(percent_used(private_month, overlay))} | "
         f"uncounted={_minutes(uncounted_total)} | "
         f"private-repository GitHub-hosted Actions minutes for {day} UTC from one billing "
         f"usage read ({items_read} usage items); private month to date by repository: {month}; "

@@ -14,6 +14,7 @@ from pathlib import Path
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 
 from .container import container_private_hosted_minutes_watch_effect
+from .handlers.handler_hosted_minutes_private_scope import format_minutes
 from .models import ModelHostedMinutesWatchRequest
 
 
@@ -55,11 +56,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     sys.stdout.write(
         f"private-hosted-minutes-watch: day={result.day} "
-        f"hosted_minutes={round(result.total_day_minutes, 2):g} "
+        f"hosted_minutes={format_minutes(result.total_day_minutes)} "
         f"repos={len(result.day_minutes)} alert={result.alert} "
-        f"private_month_minutes={round(result.private_month_minutes, 2):g} "
-        f"included={result.included_minutes} percent_used={result.percent_used:g} "
-        f"uncounted={round(sum(u.minutes for u in result.uncounted), 2):g} "
+        f"private_month_minutes={format_minutes(result.private_month_minutes)} "
+        f"included={result.included_minutes} percent_used={format_minutes(result.percent_used)} "
+        f"uncounted={format_minutes(sum(u.minutes for u in result.uncounted))} "
         f"ledger_written={result.ledger_written}\n"
     )
     for row in result.day_minutes:
