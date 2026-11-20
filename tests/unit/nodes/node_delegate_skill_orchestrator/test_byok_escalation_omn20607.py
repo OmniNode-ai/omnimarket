@@ -165,8 +165,9 @@ def test_unpinned_planning_reaches_a_registered_key(
     responders = Responders(quality_failure=quality_failure)
     result = dispatch(tmp_path, responders)
     assert result["status"] == "completed", result
-    tiers = list(dict.fromkeys(call.model_tier for call in responders.calls))
-    assert tiers == ["local", "cheap_cloud", "customer_keys"]
+    # OMN-23413 AC22: the registered key is the developer's selection, so it
+    # answers directly; the built-in local and house cloud rungs are passed over.
+    assert {call.provider for call in responders.calls} == {"byok-openrouter"}
     assert responders.calls[-1].provider == "byok-openrouter"
     assert responders.calls[-1].model_id == "openrouter-tested-model"
 
@@ -317,10 +318,10 @@ def test_planning_uses_the_registered_key_over_real_http_unpinned(
         # Assert only the boolean: never include a credential in failure output.
         credential_matches = provider.presented_credential == "synthetic-lab-test-value"
         assert credential_matches
-        assert list(
-            dict.fromkeys(attempt["tier"] for attempt in payload["attempts"])
-        ) == ["local", "cheap_cloud", "customer_keys"]
-        assert payload["attempts"][-1]["backend_id"] == "byok-openrouter"
+        # OMN-23413 AC22: only the selected key is tried; no built-in rung.
+        assert {attempt["backend_id"] for attempt in payload["attempts"]} == {
+            "byok-openrouter"
+        }
         credential_absent_from_result = "synthetic-lab-test-value" not in str(payload)
         assert credential_absent_from_result
     finally:
@@ -368,6 +369,7 @@ def test_registered_keys_respect_routing_policy(
             frozenset(),
             task_type="planning",
             byok_backends=routes,
+            prompt="",
         )
         is None
     )
@@ -377,7 +379,9 @@ def test_deployed_resolver_never_reads_a_host_local_key(profile):
     add_key("openrouter")
     # The bus call has no local route snapshot even on a machine with keys.
     assert (
-        routing.next_eligible_tier("cheap_cloud", frozenset(), task_type="planning")
+        routing.next_eligible_tier(
+            "cheap_cloud", frozenset(), task_type="planning", prompt=""
+        )
         is None
     )
 

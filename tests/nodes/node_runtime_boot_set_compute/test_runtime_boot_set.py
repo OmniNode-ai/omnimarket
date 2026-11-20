@@ -137,11 +137,15 @@ def test_the_selection_value_is_the_one_the_runtime_parses_back_to_the_declared_
     assert not selection.admits("node_fixture_0001")
 
 
-def test_the_contract_declares_its_topics_and_wires_none_at_boot() -> None:
+def test_the_contract_declares_its_topics_and_subscribes_only_the_judge_command() -> (
+    None
+):
     contract = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
     topics = contract["topics"]
     assert len(set(topics.values())) == len(topics)
-    assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
+    assert contract["event_bus"]["subscribe_topics"] == [
+        topics["boot_set_judge_requested"]
+    ]
 
 
 def test_ac2_a_boot_missing_one_declared_node_reads_not_working_naming_it() -> None:

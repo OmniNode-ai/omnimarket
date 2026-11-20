@@ -89,3 +89,44 @@ dod_evidence:
       - check_type: "command"
         check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"node_flow_measures_compute = \" > /dev/null'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21441-ac1-five-measures-accepted"
+    description: "AC1: each of the five measures prints with its read time and basis. Re-run by the accepting lane at omnimarket dev 88079458e41e: 1 passed in 1.15s. The test file is absent at 94f785dae3^1, the parent of the implementing merge."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest -q --no-cov -p no:randomly -n 0 tests/nodes/node_flow_measures_compute/test_flow_measures.py::test_each_of_the_five_measures_prints_with_its_read_time_and_basis"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21441-ac2-prints-unread-accepted"
+    description: "AC2: a repository with no data, and a source nobody read, print unread rather than 0. Re-run by the accepting lane at omnimarket dev 88079458e41e: 2 passed in 1.05s. The test file is absent at 94f785dae3^1."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest -q --no-cov -p no:randomly -n 0 tests/nodes/node_flow_measures_compute/test_flow_measures.py::test_a_repository_with_no_data_prints_unread_not_zero tests/nodes/node_flow_measures_compute/test_flow_measures.py::test_a_source_nobody_read_prints_unread_for_every_subject"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21441-ac3-trailing-window-accepted"
+    description: "AC3: the trailing window is config.wip_gate.trailing_days read through the loader; merges per hour changes when the fixture window moves from 7 to 3 days, and a contract without the key fails closed. Re-run by the accepting lane at omnimarket dev 88079458e41e: 3 passed in 1.11s. The test file is absent at 94f785dae3^1."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest -q --no-cov -p no:randomly -n 0 tests/nodes/node_flow_measures_compute/test_flow_measures.py::test_the_trailing_window_is_config_wip_gate_trailing_days tests/nodes/node_flow_measures_compute/test_flow_measures.py::test_the_default_window_is_read_from_the_contract_through_the_loader tests/nodes/node_flow_measures_compute/test_flow_measures.py::test_a_contract_without_the_window_fails_closed"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+context:
+  ac_binding_provenance:
+    dod-omn21441-ac1-five-measures-accepted:
+      - label: "AC1"
+        criterion_hash: "bfbfff9087ff2356c50808c35047223ec4eeb48cae4194a5923c24bd55b6c792"
+        proposed_by: "lane=dod-closeout-bind-2026-11-18T0945Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-11-18T0945Z-c3"
+    dod-omn21441-ac2-prints-unread-accepted:
+      - label: "AC2"
+        criterion_hash: "c332519d1bd58937aeade3039e5b5047722409c2f6fe5f78ca339efe36628aca"
+        proposed_by: "lane=dod-closeout-bind-2026-11-18T0945Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-11-18T0945Z-c3"
+    dod-omn21441-ac3-trailing-window-accepted:
+      - label: "AC3"
+        criterion_hash: "44995afa3cb6855347164d4dc75bcec9cee44406a23bfd761ab056b7ccf14167"
+        proposed_by: "lane=dod-closeout-bind-2026-11-18T0945Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-11-18T0945Z-c3"

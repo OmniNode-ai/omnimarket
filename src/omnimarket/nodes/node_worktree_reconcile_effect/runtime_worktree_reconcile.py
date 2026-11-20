@@ -12,9 +12,9 @@ from uuid import uuid4
 
 from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileCommand,
-    ModelWorktreeReconcileRunResult,
 )
 from omnimarket.nodes.node_worktree_reconcile_effect.container.container_worktree_reconcile_effect import (
+    create_handler_core_worktree_repair,
     create_handler_worktree_reconcile,
     create_handler_worktree_schedule,
 )
@@ -23,6 +23,10 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands i
     CommandWorktreeDecider,
     CommandWorktreePinner,
     SystemClock,
+)
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_core_worktree import (
+    CommandStatusRowWriter,
+    GitConfigFileCoreWorktree,
 )
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts import (
     GitWorktreeFactsProbe,
@@ -40,6 +44,12 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_remover im
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_units import (
     SystemdUnitRootReader,
 )
+from omnimarket.nodes.node_worktree_reconcile_effect.models.model_core_worktree_repair import (
+    ModelCoreWorktreeRepairRequest,
+)
+from omnimarket.nodes.node_worktree_reconcile_effect.models.model_worktree_reconcile_report import (
+    ModelWorktreeReconcileRunReport,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -56,6 +66,8 @@ def main(argv: list[str] | None = None) -> int:
         schedule_result = create_handler_worktree_schedule().handle(request)
         sys.stdout.write(schedule_result.model_dump_json() + "\n")
         return schedule_result.exit_code
+    if arguments and arguments[0] == "repair-core-worktree":
+        return repair_core_worktree(arguments[1:])
     if arguments and arguments[0] == "tick":
         return scheduled_tick(arguments[1:])
     parser = argparse.ArgumentParser()
@@ -71,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def run_command(
     command: ModelWorktreeReconcileCommand,
-) -> ModelWorktreeReconcileRunResult:
+) -> ModelWorktreeReconcileRunReport:
     decided, completed = publish_topics()
     handler = create_handler_worktree_reconcile(
         probe=GitWorktreeFactsProbe(
@@ -93,6 +105,48 @@ def run_command(
         completed_topic=completed,
     )
     return handler.handle(command)
+
+
+def repair_core_worktree(argv: list[str]) -> int:
+    """Unset every canonical clone's core.worktree that names a missing directory; dry unless --execute."""
+    parser = argparse.ArgumentParser(prog="repair-core-worktree")
+    parser.add_argument("--host", required=True)
+    parser.add_argument(
+        "--registry",
+        action="append",
+        required=True,
+        help="directory whose immediate children are canonical clones; repeatable",
+    )
+    parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--lane", default="worktree-reconcile")
+    parser.add_argument(
+        "--ledger-append-command",
+        nargs=argparse.REMAINDER,
+        help=(
+            "argv that appends one ledger row; the token {row} is replaced by the STATUS row. "
+            "It takes every argument after it, dash-led ones included, so it goes last."
+        ),
+    )
+    args = parser.parse_args(argv)
+    result = create_handler_core_worktree_repair(
+        config=GitConfigFileCoreWorktree(),
+        writer=(
+            CommandStatusRowWriter(args.ledger_append_command)
+            if args.ledger_append_command
+            else None
+        ),
+        clock=SystemClock(),
+    ).handle(
+        ModelCoreWorktreeRepairRequest(
+            host=args.host,
+            registries=tuple(args.registry),
+            execute=args.execute,
+            lane=args.lane,
+            correlation_id=uuid4(),
+        )
+    )
+    sys.stdout.write(result.model_dump_json() + "\n")
+    return 1 if result.failures else 0
 
 
 def scheduled_tick(argv: list[str]) -> int:

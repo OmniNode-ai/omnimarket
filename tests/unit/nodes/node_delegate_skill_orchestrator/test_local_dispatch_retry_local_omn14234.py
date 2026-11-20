@@ -111,6 +111,7 @@ def _install_ladder(
         roi_overlay=None,
         excluded_backend_refs=frozenset(),
         correlation_id=None,
+        **_kw,
     ):
         try:
             idx = _LADDER.index(current)
@@ -142,7 +143,7 @@ def _install_ladder(
     monkeypatch.setattr(
         port_mod,
         "sibling_backend_available_in_tier",
-        lambda _tier, _task_type, _excluded: None,
+        lambda *_a, **_k: None,
     )
     monkeypatch.setattr(
         port_mod,

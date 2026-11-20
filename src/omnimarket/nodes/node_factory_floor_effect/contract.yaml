@@ -104,6 +104,14 @@ runtime:
   ledger_cut_chars: 1200
   # The reader returns 14 days (57 MB) in 8 s in the foreground and 69 s as the Background-class module tick runs it on a Mac at load 56.
   ledger_timeout_seconds: 480
+  # The archive block's tuning values when the deployment overlay names none (an overlay value wins). The window read keeps each split
+  # archive's parsed rows by its size and modification time, but a launchd cycle starts a process with an empty cache, and a Valkey entry
+  # ends at its time-to-live, so a cold cycle reads every archive in the window, one reader subprocess each. Measured on lab host h051
+  # 2026-11-16 (15 archives in the window, 185,739 rows, the file source): 38.5 s one archive at a time, 20.2 s four at a time (24.0 s at
+  # eight: the readers compete for the host), against the publisher's 45 s step limit, which the Mac's err log recorded as exceeded. An
+  # archive never changes once rolled, so a day's time-to-live keeps one for the cycles after it and only bounds an entry nobody reads.
+  ledger_archive_read_workers: 4
+  ledger_archive_cache_ttl_seconds: 172800
   # The kinds kept from the window. The first five were read before OMN-22368; RULING, MSG, ACK, CORRECTION and FRICTION
   # rows are forwarded whole so the line board can map a ruling to its line and a stop to its cause.
   ledger_kinds: [CLAIM, TERMINAL, HOLD, RELEASE, STATUS, RULING, MSG, ACK, CORRECTION, FRICTION]

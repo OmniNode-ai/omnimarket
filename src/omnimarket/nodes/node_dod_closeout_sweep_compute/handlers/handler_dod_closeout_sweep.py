@@ -11,7 +11,6 @@ returns the decision. It reads nothing, has no clock and writes nothing.
 
 from __future__ import annotations
 
-import json
 import re
 from collections import Counter
 from datetime import datetime, timedelta
@@ -75,6 +74,9 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_ticket_rul
     read_dod_verify,
     select_candidates,
     tick_comment,
+)
+from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_scope_bundle import (
+    parse_scope_bundle,
 )
 
 LANE = "dod-closeout-sweep"
@@ -902,9 +904,11 @@ def bundle_scope(
             request.scope_now,
         )
     )
+    # The producer's own contract (OMN-26223): a bundle the model refuses is never returned.
+    checked = parse_scope_bundle(text, file="the scope bundle this handler produced")
     return ModelDodCloseoutDecisionResult(
         kind=EnumCloseoutDecisionKind.SCOPE_BUNDLE,
-        scope_bundle=json.loads(text),
+        scope_bundle=checked.model_dump(mode="json"),
         scope_examined_next=examined_next,
     )
 

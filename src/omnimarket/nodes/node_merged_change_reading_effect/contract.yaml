@@ -47,7 +47,7 @@ event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
-  external_trigger: python -m omnimarket.nodes.node_merged_change_reading_effect --change <repo>#<number> ..., from a lab host with an ssh path to the runtime host, by hand or from the hourly proving pass.
+  external_trigger: the node's own hourly systemd user timer on the lab hosts its overlay names (schedule install --host <name>), which runs python -m omnimarket.nodes.node_merged_change_reading_effect read --all-runners; the same entry also takes --change <repo>#<number> ... by hand.
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -56,6 +56,7 @@ descriptor:
   timeout_ms: 120000
 metadata:
   transport_type: local
+  execution_locus: host-local
   description: Read merged changes against the running dev system and call the compute node.
   author: OmniNode Team
   created: '2026-11-14'
@@ -74,13 +75,14 @@ runtime:
     kind: deployed
     source_template: "build provenance {repo}@{ref}"
     git_timeout_seconds: 60
-  # How the runtime's log and systemd show a node loaded, a consumer joined and an event published. The three
-  # patterns were read from the dev runtime's log on 2026-11-14 (omnimarket 0.4.321).
+  # How the runtime's log and systemd show a node loaded, consumers joined or holding topics, and an event published.
+  # Patterns were read from the dev runtime's logs on 2026-11-14 and 2026-11-17.
   log:
-    filter_regex: 'Discovered contract: |Setting newly assigned partitions|Published output event to |Runtime health check: '
+    filter_regex: 'Discovered contract: |Setting newly assigned partitions|Updating subscribed topics to: |Published output event to |Runtime health check: '
     time_format: '%Y-%m-%d %H:%M:%S'
     loaded_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] omnibase_infra\.runtime\.auto_wiring\.discovery: Discovered contract: (?P<node>\S+) '
     subscribed_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] aiokafka\.consumer\.group_coordinator: Setting newly assigned partitions \{TopicPartition\(topic=''(?P<topic>[^'']+)''.*for group local\.omnimarket\.(?P<node>[a-z0-9_]+)\.consume'
+    subscription_state_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] aiokafka\.consumer\.subscription_state: Updating subscribed topics to: frozenset\(\{(?P<topics>[^}]*)\}\)'
     published_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] \S+: Published output event to (?P<topic>\S+) '
     health_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] \S+: Runtime health check: status=(?P<status>\w+) '
     healthy_status: HEALTHY
@@ -89,6 +91,8 @@ runtime:
     ssh_attempts: 3
     manifest_contracts_key: contracts
     manifest_name_keys: [name, entry_point_name]
+    manifest_event_bus_key: event_bus
+    manifest_subscribe_topics_key: subscribe_topics
     manifest_fetch_options: -fsS --max-time 30
     unit_show_options: --user --timestamp=utc
     unit_show_properties: ExecMainExitTimestamp,ExecMainStatus,Result
@@ -100,3 +104,21 @@ runtime:
     git_timeout_seconds: 30
     store_source: overlay store checkout
 # The default rule config is the compute node's own contract block (merged_change_reading); an overlay supplies another.
+# The node owns its schedule. The hosts that run it, and the environment their unit carries, are the node overlay
+# (<root>/node_merged_change_reading_effect/overlay.yaml, schedule_hosts:); the package names no host. The unit reads every
+# change the merged_change_runners overlay declares, once an hour, and keeps the readings in its output log. A lab host
+# gets a systemd user timer: `python -m omnimarket.nodes.node_merged_change_reading_effect schedule install --host <name>`;
+# `schedule uninstall` is the rollback.
+schedule:
+  unit_name: onex-merged-change-reading-hourly
+  state_directory: .onex_state/merged-change-reading
+  timeout_seconds: 600
+  cadence:
+    on_calendar: "*-*-* *:40:00"
+    randomized_delay: 60s
+    persistent: true
+    description: hourly, forty minutes past
+overlay:
+  node: node_merged_change_reading_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.nodes.node_merged_change_reading_effect.overlay.ModelMcrScheduleOverlay

@@ -236,7 +236,9 @@ _LOCAL_RESEARCH_BACKEND_ORDER: tuple[str, ...] = (
 )
 
 
-def _fake_sibling(tier: str, task_type: str, excluded: frozenset[str]) -> str | None:
+def _fake_sibling(
+    tier: str, task_type: str, excluded: frozenset[str], prompt: str = ""
+) -> str | None:
     if tier != "local" or task_type != "research":
         return None
     for backend in _LOCAL_RESEARCH_BACKEND_ORDER:
@@ -458,7 +460,7 @@ class TestSiblingFallbackFsmMechanics:
         monkeypatch.setattr(
             hw,
             "sibling_backend_available_in_tier",
-            lambda _tier, _task_type, _excluded: None,
+            lambda *_a, **_k: None,
         )
 
         handler = HandlerDelegationWorkflow(workflows={})
@@ -531,7 +533,7 @@ class TestSiblingFallbackFsmMechanics:
         sentinel_calls: list[tuple[str, str, frozenset[str]]] = []
 
         def _tracking_sibling(
-            tier: str, task_type: str, excluded: frozenset[str]
+            tier: str, task_type: str, excluded: frozenset[str], prompt: str = ""
         ) -> str | None:
             sentinel_calls.append((tier, task_type, excluded))
             return None

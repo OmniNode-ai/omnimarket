@@ -284,3 +284,28 @@ def test_the_contract_names_the_node_and_its_handler():
     assert contract["handler"]["module"] == handler.__name__
     assert contract["handler"]["class"] == "HandlerLaneReportRelay"
     assert contract["entrypoint"]["module"] == PKG
+
+
+def test_a_bus_demand_validates_into_the_handlers_declared_request(tmp_path):
+    """The runtime wiring reads the request model from handle()'s annotation and validates the wire dict into it."""
+    import typing
+
+    from pydantic import BaseModel
+
+    hints = typing.get_type_hints(handler.HandlerLaneReportRelay.handle)
+    assert hints["request"] is ModelLaneReportRelayRequest
+    assert issubclass(ModelLaneReportRelayRequest, BaseModel)
+    wire = {
+        "target": "unreachable-host",
+        "lane": LANE,
+        "local_registry_root": str(tmp_path / "local"),
+        "host_name": "lab-a",
+        "result_text": "the only copy",
+    }
+    request = ModelLaneReportRelayRequest.model_validate(wire)
+    assert "run" not in request.model_dump()
+    result = handler.HandlerLaneReportRelay().handle(request)
+    assert isinstance(result, BaseModel)
+    assert result.error
+    assert result.from_result is not None
+    assert (local_reports(tmp_path) / result.from_result).is_file()

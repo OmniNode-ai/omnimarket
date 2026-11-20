@@ -1,0 +1,13 @@
+# Overlay of node_lab_state_alarm_scheduled_effect (omnimarket, OMN-24029): the lab state alarm on the runtime's tick.
+# Read by the node itself, found under ONEX_SKILL_OVERLAY_ROOTS at <root>/node_lab_state_alarm_scheduled_effect/overlay.yaml. The
+# schema is omnimarket's ModelLabStateAlarmScheduleOverlay; no key has a default.
+#
+# job_id: the name the run event and the schedule verdict know this job by.
+# run_interval_seconds: 300, the readback bound of the alarm's own overlay (readback_s 300) and well inside its 900 second
+#   heartbeat bound (heartbeat_max_age_s 900).
+# grace_seconds: 300, so interval plus grace (600 seconds) stays inside that 900 second heartbeat bound.
+# alarm_overlay_id: the alarm's own overlay document, node_lab_state_alarm_effect.
+job_id: lab_state_alarm
+run_interval_seconds: 300
+grace_seconds: 300
+alarm_overlay_id: node_lab_state_alarm_effect
