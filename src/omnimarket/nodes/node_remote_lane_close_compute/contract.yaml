@@ -23,6 +23,12 @@ description: >
   message stamp from the declaration into withdrawn_by and ledger_cells for
   the runner's receipt and TERMINAL. Missing or invalid citations remain absent
   so S8 can flag the withdrawn outcome rather than lose it as unknown.
+  A code lane, one whose brief carries an EXEMPLAR or GRAPH step (the definition the
+  brief check enforces; an open-ended lane is exempt), that declares done or handed-off
+  closes partial with the problem "no exemplar or graph cell" unless its LANE_RESULT or
+  TERMINAL line (or JSON report) carries exemplar=<path or none:<reason>> and
+  graph=<query -> answer or unreachable:<why>>. Both cells ride in ledger_cells and an
+  accepted none or unreachable cell is kept in findings. The check proves reporting only.
 handler_routing:
   routing_strategy: operation_match
   handlers:

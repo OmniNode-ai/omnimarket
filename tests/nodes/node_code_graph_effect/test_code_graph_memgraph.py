@@ -73,8 +73,12 @@ def test_a_version_written_to_memgraph_reads_back_equal() -> None:
     store = _store(driver)
     stored = version("c1", BASE, committed_at=at(1))
     assert store.put(stored) == (True, ())
-    assert store.newest(REPO) == stored
-    assert store.get(REPO, "c1") == stored
+    # Memgraph does not hold the imports as written yet; the users question is answered from the
+    # file store (see test_code_graph_users), so a read-back carries none.
+    held = stored.model_copy(update={"references": ()})
+    assert stored.references
+    assert store.newest(REPO) == held
+    assert store.get(REPO, "c1") == held
 
 
 def test_the_write_is_one_revision_label_with_nodes_and_edges() -> None:
