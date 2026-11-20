@@ -61,3 +61,16 @@ def test_a_renamed_decided_topic_does_not_match_the_contract_grants() -> None:
         {**grant, "name": grant["name"].replace("decided", "done")} for grant in grants
     ]
     assert renamed != grants
+
+
+def test_the_grants_cover_the_subscribed_and_published_topics() -> None:
+    """Each subscribed topic is granted READ and each published topic WRITE."""
+    document = contract()
+    bus = document["event_bus"]
+    granted = {
+        (grant["name"], grant["operation"])
+        for entry in document["broker_acl_grants"]
+        for grant in entry["grants"]
+    }
+    assert {(topic, "READ") for topic in bus["subscribe_topics"]} <= granted
+    assert {(topic, "WRITE") for topic in bus["publish_topics"]} <= granted

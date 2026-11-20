@@ -12,7 +12,7 @@ requirements:
   - id: AC1
     statement: 'AC1: the contract declares READ and DESCRIBE on onex.cmd.omnimarket.pr-handoff-install-proof-requested.v1 and WRITE and DESCRIBE on onex.evt.omnimarket.pr-handoff-install-proof-decided.v1 for the runtime principal, and no other grant -- falsifier: uv run pytest tests/nodes/node_pr_handoff_install_proof_compute/test_contract_broker_grants.py -q fails'
   - id: AC2
-    statement: 'AC2: the contract still subscribes to the command topic, publishes the decided topic and names it as its terminal event -- falsifier: the same test file fails on test_the_contract_subscribes_to_the_command_and_publishes_the_decided_event'
+    statement: 'AC2: the contract still subscribes to the command topic, publishes the decided topic and names it as its terminal event, and its grants cover each subscribed topic with READ and each published topic with WRITE -- falsifier: the same test file fails on test_the_grants_cover_the_subscribed_and_published_topics'
 evidence_requirements:
 - kind: tests
   description: The focused contract grant tests.
@@ -32,13 +32,13 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_pr_handoff_install_proof_compute/test_contract_broker_grants.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25266-ac2-topics
-  description: The contract's command topic, decided topic and terminal event are unchanged.
+  description: The contract's grants cover its subscribed and published topics.
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_pr_handoff_install_proof_compute/test_contract_broker_grants.py -q --no-cov -n 0 -p no:randomly -k subscribes_to_the_command
+    check_value: uv run pytest tests/nodes/node_pr_handoff_install_proof_compute/test_contract_broker_grants.py -q --no-cov -n 0 -p no:randomly -k grants_cover_the_subscribed
     cwd: .
 - id: dod-omn25266-integration-proof
   description: Hosted CI cannot reach the dev runtime, so only the local Done gate runs this unbound check. It sends one install proof demand with onex run-node on a lab login and exits non-zero while the runtime answers "Kafka topic metadata unavailable" (the state before the grants are applied).
