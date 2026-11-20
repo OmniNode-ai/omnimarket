@@ -5,9 +5,11 @@ schema_version: "1.0.0"
 ticket_id: OMN-26092
 title: The job-log reader probe and the red-main alarm are installed, scheduled and each fires one drill alarm row with a named owner
 summary: >-
-  The red-main alarm writes the src=alarm alarm=main-red row the ledger grep names, carries an
-  owner cell, and marks a drill with drill=yes. The overlay that lets it load settings is declared
-  in the overlays repository.
+  The red-main alarm fires on its own declared 15-minute schedule on the runtime tick, reads each
+  default branch the overlay declares (omnimarket dev, overlays main and the private internal base's main)
+  through the SCM gateway with no PR watcher snapshot, takes each row's owner from the registry or the
+  overlay's repository map (never owner_source=none for those three), raises one alarm per red head,
+  and writes the src=alarm alarm=main-red row the ledger grep names, with drill=yes on a drill.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -19,11 +21,13 @@ requirements:
         statement: "AC1: for each of the two alarms the lane TERMINAL names where it is declared (node, contract, schedule, overlay), whether it is installed and scheduled on its host, and its last run time with the row or log line read -- falsifier: the TERMINAL or ticket comment omits any of the four facts for either alarm"
       - id: AC2
         statement: "AC2: the red-main alarm writes one alarm row per red head from the node itself with an owner cell and the cause of the earlier silence is fixed at its source -- falsifier: a row written by the node does not match src=alarm.*alarm=main-red with an owner cell"
+      - id: AC4
+        statement: "AC4: the red-main alarm is scheduled through its declared schedule (the node contract's config.red_main_alarm.schedule on the runtime tick, no new script and no hand-written unit) and read running on h201 as installed=<host>:<revision> with observed=<what ran> -- falsifier: the ledger shows no installed= and observed= STATUS for the alarm"
       - id: AC5
         statement: "AC5: a regression test built from the recorded cause of the missing alarm rows fails on the broken code and passes on the fix -- falsifier: `uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov` passes at the unfixed base or fails at the fixed head"
 evidence_requirements:
   - kind: tests
-    description: The red-main alarm row shape and the drill mark.
+    description: The alarm schedule, the declared owner map, the head read through the gateway and one alarm per red head.
     command: uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov
 emergency_bypass:
   enabled: false
@@ -37,7 +41,7 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: >-
-          bash -o pipefail -c 'grep -Ec "^overlay:|file_env: ONEX_RED_MAIN_ALARM_OVERLAY|^terminal_event: onex.evt.omnimarket.red-main-alarm-completed.v1" src/omnimarket/nodes/node_red_main_alarm_effect/contract.yaml | grep -Fx 3'
+          bash -o pipefail -c 'grep -Ec "^overlay:|file_env: ONEX_RED_MAIN_ALARM_OVERLAY|^terminal_event: onex.evt.omnimarket.red-main-alarm-completed.v1|^      interval_seconds: 900" src/omnimarket/nodes/node_red_main_alarm_effect/contract.yaml | grep -Fx 4'
         cwd: .
   - id: dod-omn26092-ac2-row-shape
     description: The row the node appends matches the alarm grep and carries an owner cell.
@@ -47,13 +51,29 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov -k 'matches_the_ledger_alarm_grep or drill_scans_only_named_repositories'
         cwd: .
+  - id: dod-omn26092-ac2-one-per-head
+    description: Two consecutive 15-minute windows over one red head write one alarm pair, a new red head one more, and overlays main (red, no required context in the watcher's settings) is read through the declared map with its owner from the map.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov -k 'one_alarm_per_red_head or overlays_main_with_no_watcher_snapshot'
+        cwd: .
+  - id: dod-omn26092-ac4-schedule
+    description: The node contract declares the 15-minute runtime-tick schedule and subscribes to the runtime tick; the node's tests wire it through the dispatch engine.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov -k 'own_fifteen_minute_schedule or runtime_tick_to_the_handler'
+        cwd: .
   - id: dod-omn26092-ac5-regression
-    description: The alarm row shape tests fail at the base and pass at the head.
+    description: The tests built from the recorded cause (no PR watcher snapshot in the runtime, overlays main with no required context in the watcher's settings) fail at the base and pass at the head.
     source: manual
     binds_ac: [AC5]
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov
+        check_value: uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov -k 'overlays_main_with_no_watcher_snapshot or one_alarm_per_red_head or own_fifteen_minute_schedule'
         cwd: .
   - id: dod-omn26092-ac2-integration-proof
     description: A lab runner at the checked-out revision runs the red-main alarm row tests, which build the rows the ledger writer's pair check reads.

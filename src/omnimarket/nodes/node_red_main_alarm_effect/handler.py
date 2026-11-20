@@ -8,17 +8,25 @@ import asyncio
 from collections import OrderedDict
 from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import lru_cache
+from pathlib import Path
 from typing import Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+import yaml
 from omnibase_infra.errors import InfraConnectionError
+from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.handlers.rules_cause_claim import canonical_check, cause_cells
 from omnimarket.models.model_github_gateway_io import (
     ModelCheckRun,
     ModelCommitCheckRunsResult,
 )
-from omnimarket.models.model_runtime_tick_schedule import ModelScheduledFire
+from omnimarket.models.model_runtime_tick_schedule import (
+    ModelRuntimeTickScheduleConfig,
+    ModelScheduledFire,
+    scheduled_fire,
+)
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
@@ -35,12 +43,12 @@ from omnimarket.nodes.node_red_main_alarm_effect.models import (
     ModelAlarmTarget,
     ModelRedMainAlarm,
     ModelRedMainAlarmResult,
-    ModelThroughputDecidedRecord,
 )
 
 _ACTOR = "red-main-alarm"
 _NODE = "node_red_main_alarm_effect"
-_WORKFLOW = "throughput-tick"
+_WORKFLOW = "red-main-alarm"
+_CONTRACT = Path(__file__).with_name("contract.yaml")
 _GREEN = frozenset({"success", "skipped", "neutral"})
 _RED = frozenset(
     {"failure", "action_required", "cancelled", "timed_out", "stale", "startup_failure"}
@@ -48,7 +56,7 @@ _RED = frozenset(
 
 
 class ProtocolRedMainAlarmPorts(Protocol):
-    def inventory(self, now: datetime) -> ModelAlarmInventory: ...
+    async def inventory(self, now: datetime) -> ModelAlarmInventory: ...
     async def check_runs(
         self, target: ModelAlarmTarget
     ) -> ModelCommitCheckRunsResult: ...
@@ -137,6 +145,9 @@ def _make_alarm(
     elif target.owner is not None:
         owner = target.owner
         owner_source = "registry"
+    elif target.declared_owner is not None:
+        owner = target.declared_owner
+        owner_source = "declared"
 
     assert check.conclusion is not None
     return ModelRedMainAlarm(
@@ -228,8 +239,8 @@ class HandlerRedMainAlarm:
     ) -> ModelRedMainAlarmResult:
         now = self._clock()
         try:
-            inventory = ports.inventory(now)
-        except (OSError, ValueError) as exc:
+            inventory = await ports.inventory(now)
+        except (OSError, RuntimeError, ValueError, InfraConnectionError) as exc:
             return ModelRedMainAlarmResult(
                 fire_id=request.fire_id,
                 failures=(
@@ -325,16 +336,35 @@ class HandlerRedMainAlarm:
         raise RuntimeError(f"ledger append {receipt.status}: {receipt.message}")
 
 
+@lru_cache(maxsize=1)
+def schedule_config() -> ModelRuntimeTickScheduleConfig:
+    """The node's own schedule: ``config.red_main_alarm.schedule`` of its contract."""
+    data = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
+    return ModelRuntimeTickScheduleConfig.model_validate(
+        data["config"]["red_main_alarm"]["schedule"]
+    )
+
+
 class HandlerRedMainAlarmScheduled:
-    """Ignore ordinary throughput decisions on the shared terminal topic."""
+    """The runtime tick opens one scan per schedule window; every other tick answers nothing."""
 
-    def __init__(self, alarm: HandlerRedMainAlarm | None = None) -> None:
+    def __init__(
+        self,
+        alarm: HandlerRedMainAlarm | None = None,
+        config: ModelRuntimeTickScheduleConfig | None = None,
+    ) -> None:
         self._alarm = alarm or HandlerRedMainAlarm()
+        self._config = config or schedule_config()
 
-    async def handle(
-        self, request: ModelThroughputDecidedRecord
-    ) -> ModelRedMainAlarmResult | None:
-        fire = request.as_fire()
-        if fire is None or fire.workflow != _WORKFLOW:
+    async def handle(self, request: ModelRuntimeTick) -> ModelRedMainAlarmResult | None:
+        fire = scheduled_fire(
+            self._config,
+            now=request.now,
+            scheduled_at=request.scheduled_at,
+            tick_interval_ms=request.tick_interval_ms,
+            tick_id=request.tick_id,
+            scheduler_id=request.scheduler_id,
+        )
+        if fire is None:
             return None
         return await self._alarm.handle(fire)

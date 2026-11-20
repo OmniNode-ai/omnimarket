@@ -30,6 +30,10 @@ from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
     ModelCommitCheckRunsResult,
     ModelGithubGatewayRequest,
+    ModelWorkflowRunsResult,
+)
+from omnimarket.models.overlay_documents.model_registry_documents import (
+    ModelRepositoryRegistryOverlay,
 )
 from omnimarket.models.scm import EnumScmNode
 from omnimarket.models.work_ledger_append import (
@@ -44,13 +48,18 @@ from omnimarket.models.work_ledger_query.model_work_ledger_query import (
 )
 from omnimarket.nodes.node_red_main_alarm_effect.inventory import read_inventory
 from omnimarket.nodes.node_red_main_alarm_effect.models import (
+    EnumAlarmFailure,
+    ModelAlarmFailure,
     ModelAlarmInventory,
+    ModelAlarmRepository,
     ModelAlarmSettings,
     ModelAlarmTarget,
 )
 from omnimarket.work_ledger_bus.bus import WorkLedgerAppendCaller
 
 _TIMEOUT_SECONDS = 25.0
+# The newest push runs on a default branch; the newest names the head the scan reads.
+_HEAD_RUNS = 5
 # A request ID is stable over a head's lifetime, including a return to an old head.
 _QUERY_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 # Match the throughput cause-claim read's one-day working window and
@@ -71,7 +80,7 @@ def load_alarm_settings() -> ModelAlarmSettings:
 class AlarmBusPorts:
     def __init__(
         self,
-        watcher: Path,
+        watcher: Path | None,
         settings: ModelAlarmSettings,
         bus: ProtocolLabRunBus,
         writer: WorkLedgerAppendCaller,
@@ -88,8 +97,10 @@ class AlarmBusPorts:
     @classmethod
     @asynccontextmanager
     async def open(cls, settings: ModelAlarmSettings) -> AsyncIterator[Self]:
-        watcher = default_watcher_state_path()
-        if watcher is None:
+        # A declared repository map reads heads through the SCM gateway; only a scan with
+        # no map needs the PR watcher snapshot.
+        watcher = None if settings.repositories else default_watcher_state_path()
+        if watcher is None and not settings.repositories:
             raise ValueError("ONEX_PR_WATCHER_STATE does not name the PR watcher state")
         try:
             workspace = os.environ.get("OMNIBASE_PATH") or os.environ.get("OMNI_HOME")
@@ -118,8 +129,69 @@ class AlarmBusPorts:
         except InfraConnectionError as exc:
             raise RuntimeError("could not connect to the declared alarm bus") from exc
 
-    def inventory(self, now: datetime) -> ModelAlarmInventory:
-        return read_inventory(self._watcher, now, scm_owner=self._settings.scm_owner)
+    async def inventory(self, now: datetime) -> ModelAlarmInventory:
+        if self._watcher is not None:
+            return read_inventory(
+                self._watcher, now, scm_owner=self._settings.scm_owner
+            )
+        registry = load_structured_overlay(
+            "repos_registry", ModelRepositoryRegistryOverlay
+        )
+        registered = {row.repo.casefold(): row.owner for row in registry.repositories}
+        rows = await asyncio.gather(
+            *(
+                self._declared_target(entry, registered.get(entry.repo.casefold()))
+                for entry in self._settings.repositories
+            )
+        )
+        return ModelAlarmInventory(
+            targets=tuple(row for row in rows if isinstance(row, ModelAlarmTarget)),
+            failures=tuple(row for row in rows if isinstance(row, ModelAlarmFailure)),
+        )
+
+    async def _declared_target(
+        self, entry: ModelAlarmRepository, registry_owner: str | None
+    ) -> ModelAlarmTarget | ModelAlarmFailure:
+        """The head of one declared branch: the newest push run's commit, read over the bus."""
+        try:
+            request = ModelGithubGatewayRequest(
+                operation=EnumGithubGatewayOperation.WORKFLOW_RUNS,
+                repo=entry.repo,
+                branch=entry.branch,
+                event="push",
+                limit=_HEAD_RUNS,
+            )
+            terminal = await self._calls.call(
+                node=EnumScmNode.GATEWAY,
+                request=request,
+                correlation_id=request.correlation_id,
+                timeout_s=_TIMEOUT_SECONDS,
+            )
+            if terminal.failed or terminal.payload.get("status") == "failed":
+                raise RuntimeError("SCM gateway refused the workflow-run request")
+            answer = ModelWorkflowRunsResult.model_validate(
+                terminal.payload.get("result")
+            )
+            if answer.repo.casefold() != entry.repo.casefold():
+                raise RuntimeError("SCM gateway answered a different repository")
+            pushed = [run for run in answer.runs if run.head_branch == entry.branch]
+            if not pushed:
+                raise ValueError(f"no push run is on {entry.branch}")
+            head = max(pushed, key=lambda run: run.created_at).head_sha
+            return ModelAlarmTarget(
+                repo=entry.repo,
+                branch=entry.branch,
+                head_sha=head,
+                required_checks=entry.required_checks,
+                owner=registry_owner,
+                declared_owner=entry.owner,
+            )
+        except (OSError, RuntimeError, ValueError, InfraConnectionError) as exc:
+            return ModelAlarmFailure(
+                kind=EnumAlarmFailure.INVENTORY_UNREADABLE,
+                repo=entry.repo,
+                detail=str(exc),
+            )
 
     async def check_runs(self, target: ModelAlarmTarget) -> ModelCommitCheckRunsResult:
         if len(target.required_checks) == 1:

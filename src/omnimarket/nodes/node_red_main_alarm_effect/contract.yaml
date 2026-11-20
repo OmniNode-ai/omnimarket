@@ -7,34 +7,44 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 runtime_profiles: [effects]
 description: >-
-  Consume the existing ten-minute throughput fire. Read default-branch heads and required
-  contexts from the PR watcher and registered owners from the repository registry.
+  Scan on the runtime tick every 900 seconds (config.red_main_alarm.schedule). Read each default branch
+  the deployment overlay declares (omnimarket dev, overlays main and the private internal base's main) through the SCM
+  gateway: the head is the newest push run's commit and the required contexts are the overlay's, so no
+  PR watcher snapshot is read; an overlay with no repository map falls back to that snapshot.
   Confirm required check conclusions through the SCM gateway. For each red head, append
-  one STATUS alarm and one inbox MSG as a single idempotent work-ledger request.
-  The owner is a matching live CLAIM, the registry owner, or the parent in the deployment overlay.
+  one STATUS alarm and one inbox MSG as a single idempotent work-ledger request keyed on repository,
+  branch and head, so a head already alarmed raises no second row.
+  The owner is a matching live CLAIM, the repository registry owner, the owner the overlay's repository map
+  declares, or the parent lane (owner_source none, which the overlay's map exists to prevent).
   The handler returns typed failures for unreadable facts and writes no alarm for that reading.
+config:
+  red_main_alarm:
+    schedule:
+      workflow: red-main-alarm
+      interval_seconds: 900
+      offset_seconds: 0
 input_model:
-  name: ModelThroughputDecidedRecord
-  module: omnimarket.nodes.node_red_main_alarm_effect.models
+  name: ModelRuntimeTick
+  module: omnibase_infra.runtime.models.model_runtime_tick
 output_model:
   name: ModelRedMainAlarmResult
   module: omnimarket.nodes.node_red_main_alarm_effect.models
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - operation: scan_red_main_alarm
-      topic: onex.evt.omnimarket.throughput-tick-decision-completed.v1
+    - operation: red_main_alarm.scheduled_run
+      topic: onex.intent.platform.runtime-tick.v1
       handler:
         name: HandlerRedMainAlarmScheduled
         module: omnimarket.nodes.node_red_main_alarm_effect.handler
-      event_type: omnimarket.throughput-tick-decision-completed
-      event_model: omnimarket.nodes.node_red_main_alarm_effect.models.ModelThroughputDecidedRecord
+      event_type: platform.runtime-tick
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
       output_model: omnimarket.nodes.node_red_main_alarm_effect.models.ModelRedMainAlarmResult
 input_subscriptions:
-  - topic: onex.evt.omnimarket.throughput-tick-decision-completed.v1
-    operation: scan_red_main_alarm
+  - topic: onex.intent.platform.runtime-tick.v1
+    operation: red_main_alarm.scheduled_run
 event_bus:
-  subscribe_topics: [onex.evt.omnimarket.throughput-tick-decision-completed.v1]
+  subscribe_topics: [onex.intent.platform.runtime-tick.v1]
   publish_topics: [onex.evt.omnimarket.red-main-alarm-completed.v1]
 terminal_event: onex.evt.omnimarket.red-main-alarm-completed.v1
 externally_consumed_topics:
@@ -48,7 +58,7 @@ descriptor:
   purity: effectful
   idempotent: true
   timeout_ms: 300000
-  side_effects: [read PR watcher and registry, read SCM check runs, read open ledger claims, append typed ledger rows]
+  side_effects: [read SCM workflow runs and check runs, read repository registry, read PR watcher when the overlay has no repository map, read open ledger claims, append typed ledger rows]
 overlay:
   id: node_red_main_alarm_effect
   file_env: ONEX_RED_MAIN_ALARM_OVERLAY
@@ -58,13 +68,15 @@ env_dependencies:
     required: true
     description: Workspace root used to resolve the broker lane declaration.
   ONEX_PR_WATCHER_STATE:
-    required: true
-    description: Runtime-visible path of the PR watcher's current snapshot.
+    required: false
+    description: >-
+      Path of the PR watcher's current snapshot. Read only when the overlay declares no repository map;
+      a runtime that is not the operator's laptop holds no copy, so its overlay declares the map.
 broker_acl_grants:
   - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
     grants:
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.throughput-tick-decision-completed.v1, operation: READ}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.throughput-tick-decision-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.red-main-alarm-completed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.red-main-alarm-completed.v1, operation: DESCRIBE}
 metadata:

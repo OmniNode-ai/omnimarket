@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Exercise a throughput tick with recorded SCM results and aliased repository names."""
+"""Exercise the red-main alarm on the runtime tick with recorded SCM results and the declared owner map."""
 
 import asyncio
 import json
@@ -26,7 +26,11 @@ from omnimarket.handlers.ledger_row_grammar import (
     GOVERNED_LEDGER_NAMES,
     refusal_for_payload,
 )
-from omnimarket.models.model_github_gateway_io import ModelCommitCheckRunsResult
+from omnimarket.models.model_github_gateway_io import (
+    EnumGithubGatewayOperation,
+    ModelCommitCheckRunsResult,
+    ModelGithubGatewayRequest,
+)
 from omnimarket.models.model_runtime_tick_schedule import ModelScheduledFire
 from omnimarket.models.overlay_documents.model_registry_documents import (
     ModelRepositoryRegistryOverlay,
@@ -41,15 +45,22 @@ from omnimarket.models.work_ledger_query.model_work_ledger_query import (
     ModelWorkLedgerOpenClaim,
     ModelWorkLedgerRowRecord,
 )
-from omnimarket.nodes.node_red_main_alarm_effect.handler import HandlerRedMainAlarm
+from omnimarket.nodes.node_red_main_alarm_effect import ports as ports_module
+from omnimarket.nodes.node_red_main_alarm_effect.handler import (
+    HandlerRedMainAlarm,
+    HandlerRedMainAlarmScheduled,
+    schedule_config,
+)
 from omnimarket.nodes.node_red_main_alarm_effect.inventory import read_inventory
 from omnimarket.nodes.node_red_main_alarm_effect.models import (
     EnumAlarmFailure,
     ModelAlarmInventory,
+    ModelAlarmRepository,
     ModelAlarmSettings,
     ModelAlarmTarget,
     ModelRedMainAlarmResult,
 )
+from omnimarket.nodes.node_red_main_alarm_effect.ports import AlarmBusPorts
 from omnimarket.nodes.node_work_ledger_append_effect import (
     HandlerWorkLedgerAppendEffect,
 )
@@ -62,6 +73,8 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import LocalLedge
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 NOW = datetime(2026, 11, 19, 3, 40, tzinfo=UTC)
 PARENT = "orchestrator-31d9-swarm"
+# An epoch-aligned 15-minute window start: the runtime tick that opens it carries the scan.
+WINDOW = datetime(2026, 11, 19, 3, 45, tzinfo=UTC)
 SETTINGS = ModelAlarmSettings(parent_lane=PARENT, host="h053")
 FIXTURES = Path(__file__).with_name("fixtures")
 
@@ -73,10 +86,10 @@ def recorded(name: str) -> ModelCommitCheckRunsResult:
 
 def tick(now: datetime = NOW) -> ModelScheduledFire:
     return ModelScheduledFire(
-        workflow="throughput-tick",
-        fire_id=f"throughput-tick-{now:%Y%m%dT%H%M%SZ}",
+        workflow="red-main-alarm",
+        fire_id=f"red-main-alarm-{now:%Y%m%dT%H%M%SZ}",
         window_start=now,
-        interval_seconds=600,
+        interval_seconds=900,
         tick_id=uuid4(),
         tick_now=now,
         scheduler_id="test",
@@ -125,7 +138,7 @@ class LedgerAndScm:
         self.answer = recorded(answer)
         self.target = self.target.model_copy(update={"head_sha": self.answer.head_sha})
 
-    def inventory(self, now: datetime) -> ModelAlarmInventory:
+    async def inventory(self, now: datetime) -> ModelAlarmInventory:
         return ModelAlarmInventory(targets=(self.target,))
 
     async def check_runs(self, target: ModelAlarmTarget) -> ModelCommitCheckRunsResult:
@@ -198,14 +211,24 @@ async def test_red_main_alarm_uses_live_claim(
 
 
 @pytest.mark.parametrize(
-    ("declared_owner", "expected_owner", "source"),
-    [(None, PARENT, "none"), ("repo-owner", "repo-owner", "registry")],
+    ("registry_owner", "mapped_owner", "expected_owner", "source"),
+    [
+        (None, None, PARENT, "none"),
+        ("repo-owner", None, "repo-owner", "registry"),
+        (None, "mapped-owner", "mapped-owner", "declared"),
+        ("repo-owner", "mapped-owner", "repo-owner", "registry"),
+    ],
 )
 async def test_red_main_alarm_falls_back_to_named_owner(
-    declared_owner: str | None, expected_owner: str, source: str
+    registry_owner: str | None,
+    mapped_owner: str | None,
+    expected_owner: str,
+    source: str,
 ) -> None:
     ports = LedgerAndScm()
-    ports.target = ports.target.model_copy(update={"owner": declared_owner})
+    ports.target = ports.target.model_copy(
+        update={"owner": registry_owner, "declared_owner": mapped_owner}
+    )
     ports.claims = (claim("cause=unrelated:ci"),)
     handler = HandlerRedMainAlarm(ports=ports, settings=SETTINGS, clock=lambda: NOW)
 
@@ -288,7 +311,7 @@ async def test_red_main_alarm_stays_quiet_on_green(answer: str) -> None:
     assert not ports.requests
 
 
-async def test_red_main_alarm_red_green_red_new_head() -> None:
+async def test_red_main_alarm_red_green_other_red() -> None:
     ports = LedgerAndScm()
     handler = HandlerRedMainAlarm(ports=ports, settings=SETTINGS, clock=lambda: NOW)
 
@@ -322,25 +345,24 @@ async def test_red_main_alarm_check_read_failure_is_typed_and_quiet() -> None:
     assert "gateway unavailable" in failure.detail
 
 
-async def test_red_main_alarm_contract_routes_existing_throughput_fire() -> None:
+async def test_red_main_alarm_contract_declares_its_own_fifteen_minute_schedule() -> (
+    None
+):
     node_root = Path(__file__).parents[3] / "src/omnimarket/nodes"
     alarm = yaml.safe_load(
         (node_root / "node_red_main_alarm_effect/contract.yaml").read_text()
     )
-    tick_contract = yaml.safe_load(
-        (node_root / "node_throughput_tick_decision_compute/contract.yaml").read_text()
-    )
     [subscription] = alarm["input_subscriptions"]
-    route = alarm["handler_routing"]["handlers"][0]
-    assert subscription["topic"] in tick_contract["event_bus"]["publish_topics"]
+    [route] = alarm["handler_routing"]["handlers"]
+    assert subscription == {
+        "topic": "onex.intent.platform.runtime-tick.v1",
+        "operation": "red_main_alarm.scheduled_run",
+    }
     assert subscription == {"topic": route["topic"], "operation": route["operation"]}
-    assert route["event_model"].endswith(".ModelThroughputDecidedRecord")
-    assert (
-        tick_contract["config"]["throughput_tick_decision"]["schedule"][
-            "interval_seconds"
-        ]
-        < 3600
-    )
+    assert route["event_model"].endswith(".ModelRuntimeTick")
+    assert alarm["event_bus"]["subscribe_topics"] == [subscription["topic"]]
+    config = schedule_config()
+    assert (config.workflow, config.interval_seconds) == ("red-main-alarm", 900)
 
 
 async def test_red_main_alarm_inventory_uses_declared_default_branches() -> None:
@@ -454,15 +476,12 @@ async def test_red_main_alarm_retry_keeps_the_first_red_read() -> None:
     assert retried.alarms[0].first_red_at == NOW
 
 
-async def test_red_main_alarm_bus_carries_a_scheduled_fire_to_the_handler(
+async def test_red_main_alarm_bus_carries_the_runtime_tick_to_the_handler(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     node_root = Path(__file__).parents[3] / "src/omnimarket/nodes"
-    producer_contract = (
-        node_root / "node_throughput_tick_decision_compute/contract.yaml"
-    )
     alarm_contract = node_root / "node_red_main_alarm_effect/contract.yaml"
-    manifest = discover_contracts_from_paths([producer_contract, alarm_contract])
+    manifest = discover_contracts_from_paths([alarm_contract])
     assert not manifest.errors
     alarm = yaml.safe_load(alarm_contract.read_text())
     alarm_topic = alarm["terminal_event"]
@@ -471,9 +490,7 @@ async def test_red_main_alarm_bus_carries_a_scheduled_fire_to_the_handler(
     assert alarm_topic == "onex.evt.omnimarket.red-main-alarm-completed.v1"
     assert alarm_topic in alarm["event_bus"]["publish_topics"]
     assert alarm_topic in alarm["externally_consumed_topics"]
-    producer = yaml.safe_load(producer_contract.read_text())
-    tick_topic = producer["input_subscriptions"][0]["topic"]
-    fire_topic = producer["terminal_event"]
+    tick_topic = alarm["input_subscriptions"][0]["topic"]
     ports = LedgerAndScm()
     handler = HandlerRedMainAlarm(ports=ports, settings=SETTINGS, clock=lambda: NOW)
     monkeypatch.setattr(
@@ -498,38 +515,226 @@ async def test_red_main_alarm_bus_carries_a_scheduled_fire_to_the_handler(
             environment="local",
         )
         assert report.total_failed == 0
-        assert report.total_wired == 2
+        assert report.total_wired == 1
         engine.freeze()
 
-        # The producer's terminal also carries ordinary decisions. The subscriber
-        # ignores those and waits for a schedule fire without rejecting the topic.
-        decision = ModelEventEnvelope[dict[str, object]](
-            payload={"status_line": "THROUGHPUT OK"},
-            event_type="omnimarket.throughput-tick-decision-completed",
-            correlation_id=uuid4(),
-        )
-        await bus.publish(fire_topic, None, decision.model_dump_json().encode(), None)
-        platform_tick = ModelRuntimeTick(
-            now=NOW,
-            tick_id=uuid4(),
-            sequence_number=1,
-            scheduled_at=NOW,
-            correlation_id=uuid4(),
-            scheduler_id="test",
-            tick_interval_ms=1000,
-        )
-        envelope = ModelEventEnvelope[ModelRuntimeTick](
-            payload=platform_tick,
-            event_type="platform.runtime-tick",
-            correlation_id=platform_tick.correlation_id,
-        )
-        await bus.publish(tick_topic, None, envelope.model_dump_json().encode(), None)
+        # A tick inside a window the scan already took opens nothing; the tick that
+        # opens the 15-minute window carries the scan.
+        for index, at in enumerate((WINDOW + timedelta(minutes=5), WINDOW), start=1):
+            platform_tick = ModelRuntimeTick(
+                now=at,
+                tick_id=uuid4(),
+                sequence_number=index,
+                scheduled_at=at,
+                correlation_id=uuid4(),
+                scheduler_id="test",
+                tick_interval_ms=1000,
+            )
+            envelope = ModelEventEnvelope[ModelRuntimeTick](
+                payload=platform_tick,
+                event_type="platform.runtime-tick",
+                correlation_id=platform_tick.correlation_id,
+            )
+            await bus.publish(
+                tick_topic, None, envelope.model_dump_json().encode(), None
+            )
         result = await asyncio.wait_for(results.get(), timeout=8)
     finally:
         await bus.close()
 
     assert results.empty()
-    assert result.fire_id == tick().fire_id
+    assert result.fire_id == "red-main-alarm-20261119T034500Z"
     assert not result.failures
     assert len(result.alarms) == 1
     assert len(ports.requests) == 1
+
+
+def runtime_tick(at: datetime) -> ModelRuntimeTick:
+    return ModelRuntimeTick(
+        now=at,
+        tick_id=uuid4(),
+        sequence_number=1,
+        scheduled_at=at,
+        correlation_id=uuid4(),
+        scheduler_id="test",
+        tick_interval_ms=1000,
+    )
+
+
+async def test_red_main_alarm_raises_one_alarm_per_red_head_over_two_ticks() -> None:
+    """Two consecutive 15-minute windows over one red head write one pair; a new red head writes one more."""
+    ports = LedgerAndScm()
+    scheduled = HandlerRedMainAlarmScheduled(
+        HandlerRedMainAlarm(ports=ports, settings=SETTINGS, clock=lambda: WINDOW)
+    )
+
+    first = await scheduled.handle(runtime_tick(WINDOW))
+    between = await scheduled.handle(runtime_tick(WINDOW + timedelta(minutes=5)))
+    second = await scheduled.handle(runtime_tick(WINDOW + timedelta(minutes=15)))
+
+    assert first is not None
+    assert len(first.alarms) == 1
+    assert between is None
+    assert second is not None
+    assert second.fire_id == "red-main-alarm-20261119T040000Z"
+    assert not second.alarms
+    assert not second.failures
+    assert len(ports.requests) == 1
+
+    ports.move_to("other_red")
+    third = await scheduled.handle(runtime_tick(WINDOW + timedelta(minutes=30)))
+    assert third is not None
+    assert len(third.alarms) == 1
+    assert len(ports.requests) == 2
+
+
+class RecordedGateway:
+    """The SCM gateway as the overlays main read recorded it: one workflow-run answer."""
+
+    def __init__(self, recorded_answer: dict[str, object]) -> None:
+        self.recorded_answer = recorded_answer
+        self.requests: list[ModelGithubGatewayRequest] = []
+
+    async def call(
+        self,
+        *,
+        node: object,
+        request: ModelGithubGatewayRequest,
+        correlation_id: UUID,
+        timeout_s: float,
+    ) -> object:
+        self.requests.append(request)
+        assert request.operation == EnumGithubGatewayOperation.WORKFLOW_RUNS
+        payload = {"status": "completed", "result": self.recorded_answer}
+        return type("Terminal", (), {"failed": False, "payload": payload})()
+
+
+def overlays_main_fixture() -> dict[str, object]:
+    return dict(json.loads((FIXTURES / "overlays_main_red.json").read_text()))
+
+
+MAP = ModelAlarmSettings(
+    parent_lane=PARENT,
+    host="h201",
+    repositories=(
+        ModelAlarmRepository(
+            repo="OmniNode-ai/overlays",
+            branch="main",
+            owner=PARENT,
+            required_checks=("ci",),
+        ),
+    ),
+)
+
+
+async def test_red_main_alarm_reads_overlays_main_with_no_watcher_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The earlier silence, recorded: the runtime held no PR watcher snapshot and the
+    snapshot's settings read of overlays main named no required context, so the scan
+    skipped it. With the repository map the head and the context are declared."""
+    recorded_fixture = overlays_main_fixture()
+    settings_read = {
+        "schema": 1,
+        "last_tick": NOW.isoformat(),
+        "repos": {"overlays": {"default_branch": "main"}},
+        "branches": {},
+        "settings": recorded_fixture["watcher_settings"],
+    }
+    assert settings_read["settings"]["overlays"]["branches"]["main"]["contexts"] == []  # type: ignore[index]
+
+    gateway = RecordedGateway(recorded_fixture["workflow_runs"])  # type: ignore[arg-type]
+    ports = AlarmBusPorts(
+        None,
+        MAP,
+        EventBusInmemory(environment="test", group="test"),
+        object(),  # type: ignore[arg-type]
+    )
+    ports._calls = gateway  # type: ignore[assignment]
+    registry = ModelRepositoryRegistryOverlay.model_validate(
+        {
+            "repositories": [
+                {
+                    "name": "omnimarket",
+                    "repo": "OmniNode-ai/omnimarket",
+                    "type": "python",
+                    "description": "market nodes",
+                }
+            ]
+        }
+    )
+    monkeypatch.setattr(
+        ports_module, "load_structured_overlay", lambda *_a, **_k: registry
+    )
+    inventory = await ports.inventory(NOW)
+
+    assert not inventory.failures
+    (target,) = inventory.targets
+    assert target.repo == "OmniNode-ai/overlays"
+    assert target.head_sha == "24186de77a07413b4ab75aaa55fd103996afd2fa"
+    assert target.required_checks == ("ci",)
+    assert target.owner is None
+    assert target.declared_owner == PARENT
+    (request,) = gateway.requests
+    assert (request.branch, request.event) == ("main", "push")
+
+    scm = LedgerAndScm()
+    scm.answer = ModelCommitCheckRunsResult.model_validate(
+        recorded_fixture["check_runs"]
+    )
+    scm.target = target
+    result = await HandlerRedMainAlarm(
+        ports=scm, settings=MAP, clock=lambda: NOW
+    ).handle(tick())
+
+    assert not result.failures
+    (alarm,) = result.alarms
+    assert (alarm.owner, alarm.owner_source) == (PARENT, "declared")
+    (row,) = scm.requests.values()
+    status = row.rows.splitlines()[0]
+    assert re.search(r"src=alarm.*alarm=main-red.*OmniNode-ai/overlays", status)
+    assert f" | owner={PARENT} | owner_source=declared | " in status
+    assert " | drill=yes" not in status
+
+
+async def test_red_main_alarm_gateway_head_failure_is_typed_per_repository(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = RecordedGateway(
+        {
+            "operation": "workflow_runs",
+            "repo": "OmniNode-ai/overlays",
+            "total_count": 0,
+            "truncated": False,
+            "runs": [],
+        }
+    )
+    ports = AlarmBusPorts(
+        None,
+        MAP,
+        EventBusInmemory(environment="test", group="test"),
+        object(),  # type: ignore[arg-type]
+    )
+    ports._calls = gateway  # type: ignore[assignment]
+    registry = ModelRepositoryRegistryOverlay.model_validate(
+        {
+            "repositories": [
+                {
+                    "name": "x",
+                    "repo": "OmniNode-ai/x",
+                    "type": "other",
+                    "description": "x",
+                }
+            ]
+        }
+    )
+    monkeypatch.setattr(
+        ports_module, "load_structured_overlay", lambda *_a, **_k: registry
+    )
+
+    inventory = await ports.inventory(NOW)
+
+    assert not inventory.targets
+    (failure,) = inventory.failures
+    assert failure.kind == EnumAlarmFailure.INVENTORY_UNREADABLE
+    assert failure.repo == "OmniNode-ai/overlays"

@@ -1,6 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# Runtime placement also binds ONEX_PR_WATCHER_STATE to the current watcher snapshot.
+# A repository map (below, in the deployment overlay) replaces the PR watcher snapshot.
 parent_lane: example-goal-parent
 host: example-alarm-runtime
 bus_lane: dev
+repositories:
+  - repo: example-org/example-repo
+    branch: main
+    owner: example-owner
+    required_checks: [ci]
