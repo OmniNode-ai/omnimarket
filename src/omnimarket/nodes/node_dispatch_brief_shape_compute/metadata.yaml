@@ -6,7 +6,8 @@ description: Refuse a remote lane before placement when its brief asks a lab lan
   to mint a ticket, pastes the standing rules block with no task of its own, or names
   a pf-drive driver lane with no PR target. Also refuses code destinations in frozen
   repositories using the brief_destinations overlay and exposes check_destinations
-  through the declared bus route for brief-check callers.
+  through the declared bus route for brief-check callers. Exposes check_context_pack,
+  which refuses a code brief whose CONTEXT PACK block, body hash or orchestrator approval is missing or wrong.
 pack: distributed_validation
 node_role: compute
 display_name: Dispatch Brief Shape Compute

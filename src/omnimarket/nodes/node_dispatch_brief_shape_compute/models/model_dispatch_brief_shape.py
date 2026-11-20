@@ -49,3 +49,33 @@ class ModelDispatchBriefShapeResult:
     refusals: tuple[
         tuple[str, str], ...
     ]  # (receipt status, REMOTE-LANE-* line); the first one refuses the lane
+
+
+class ModelContextPackCheckRequest(BaseModel):
+    """A brief and the facts the context pack check judges it from."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    brief: str
+    prose: (
+        str  # the brief's own prose, with fenced blocks and the pasted rules left out
+    )
+    # Ledger rows that may confirm the approval stamp. None: no reader was given.
+    ledger_rows: tuple[str, ...] | None = None
+    # The reader's own failure, if any; a read that failed is a refusal, never a pass.
+    ledger_error: str = ""
+    # Words in a lane name that make its brief open-ended (no code work, so no pack is asked).
+    open_ended_words: tuple[str, ...] = (
+        "diagnose",
+        "diagnosis",
+        "cause",
+        "plan",
+        "investigate",
+        "investigation",
+    )
+
+
+class ModelContextPackCheckResult(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    problems: tuple[str, ...]
