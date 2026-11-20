@@ -11,8 +11,11 @@ limit yields a failed row and the run goes on to the next host.
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping
-from typing import Protocol
+from collections.abc import Callable, MutableMapping
+from pathlib import Path
+from typing import Any, Protocol
+
+import yaml
 
 from omnimarket.nodes.node_worktree_prune_workflow_effect.models.model_worktree_prune_workflow import (
     ModelDiskAlarm,
@@ -22,6 +25,17 @@ from omnimarket.nodes.node_worktree_prune_workflow_effect.models.model_worktree_
     ModelWorktreePrunePlan,
     ModelWorktreePruneRunReport,
 )
+
+_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
+_HOST_REPORTED_INDEX = 0
+_DISK_ALARM_INDEX = 1
+
+
+def _declared_topics() -> tuple[str, str]:
+    """The host-reported and disk-alarm topics, read from this node's contract.yaml publish list."""
+    raw = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
+    topics = raw["event_bus"]["publish_topics"]
+    return str(topics[_HOST_REPORTED_INDEX]), str(topics[_DISK_ALARM_INDEX])
 
 
 class ProtocolHostPruneActivity(Protocol):
@@ -58,8 +72,10 @@ class HandlerWorktreePruneRun:
         self,
         activity: ProtocolHostPruneActivity = _unconfigured_activity,
         journal: MutableMapping[str, ModelHostPruneReportRow] | None = None,
+        publish: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> None:
         self._activity = activity
+        self._publish = publish
         self.journal: MutableMapping[str, ModelHostPruneReportRow] = (
             journal if journal is not None else {}
         )
@@ -94,6 +110,22 @@ class HandlerWorktreePruneRun:
             error=error,
         )
 
+    def _publish_row(
+        self, plan: ModelWorktreePrunePlan, row: ModelHostPruneReportRow
+    ) -> None:
+        """Publish the host's report row, and its disk alarm when it has one, through the injected publisher."""
+        if self._publish is None:
+            return
+        host_reported, disk_alarm_topic = _declared_topics()
+        self._publish(
+            host_reported, {"run_id": plan.run_id, **row.model_dump(mode="json")}
+        )
+        if row.alarm is not None:
+            self._publish(
+                disk_alarm_topic,
+                {"run_id": plan.run_id, **row.alarm.model_dump(mode="json")},
+            )
+
     def handle(self, request: ModelWorktreePrunePlan) -> ModelWorktreePruneRunReport:
         rows = []
         for target in request.hosts:
@@ -102,6 +134,7 @@ class HandlerWorktreePruneRun:
             if done is None or done.status != "ok":
                 done = self._run_host(request, target)
                 self.journal[key] = done
+                self._publish_row(request, done)
             rows.append(done)
         return ModelWorktreePruneRunReport(
             run_id=request.run_id, trigger=request.trigger, rows=tuple(rows)

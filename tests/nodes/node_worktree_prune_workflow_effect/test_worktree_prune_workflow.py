@@ -223,7 +223,7 @@ def test_contract_declares_the_daily_schedule_the_close_trigger_and_the_alarm_to
     contract = yaml.safe_load((NODE / "contract.yaml").read_text(encoding="utf-8"))
     assert contract["schedule"]["cron"] == "17 6 * * *"
     assert (
-        "onex.evt.omnimarket.ticket-closer-result.v1"
+        "onex.cmd.omnimarket.worktree-prune-run.v1"
         in contract["event_bus"]["subscribe_topics"]
     )
     assert (
@@ -236,3 +236,22 @@ def test_contract_declares_the_daily_schedule_the_close_trigger_and_the_alarm_to
         "onex.evt.omnimarket.worktree-prune-run-completed.v1",
     ):
         assert topic in contract["event_bus"]["publish_topics"]
+
+
+def test_a_host_row_and_its_alarm_are_published_on_the_declared_topics() -> None:
+    published: list[tuple[str, dict[str, object]]] = []
+
+    class _Full(_Activity):  # type: ignore[misc,valid-type]
+        def __call__(
+            self, target: ModelPruneHostTarget, step_key: str, attempt: int
+        ) -> ModelHostPruneResult:
+            result = super().__call__(target, step_key, attempt)
+            return result.model_copy(update={"disk_used_percent_after": 99.0})
+
+    HandlerWorktreePruneRun(
+        _Full(), publish=lambda topic, payload: published.append((topic, payload))
+    ).handle(_plan("h105"))
+    assert [topic for topic, _ in published] == [
+        "onex.evt.omnimarket.worktree-prune-host-reported.v1",
+        "onex.evt.omnimarket.worktree-prune-disk-alarm.v1",
+    ]

@@ -17,7 +17,7 @@ description: >
   before and after, the trees removed with the space freed and the trees kept with their reason, and a disk alarm
   for each host whose use after the run is past its bar. A tree is removable only under the merged-only rule of the
   shared worktree reconcile classifier: clean, no work off the remote, merged, and no live process, claim or unit.
-  A run starts from the daily schedule declared below or from a ticket-closer result.
+  A run starts from the daily schedule declared below or from the run command.
 input_model: omnimarket.nodes.node_worktree_prune_workflow_effect.models.model_worktree_prune_workflow.ModelWorktreePrunePlan
 output_model: omnimarket.nodes.node_worktree_prune_workflow_effect.models.model_worktree_prune_workflow.ModelWorktreePruneRunReport
 handler:
@@ -27,7 +27,8 @@ handler:
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
-  - handler:
+  - topic: onex.cmd.omnimarket.worktree-prune-run.v1
+    handler:
       name: HandlerWorktreePruneRun
       module: omnimarket.nodes.node_worktree_prune_workflow_effect.handlers.handler_worktree_prune_run
     event_model:
@@ -47,7 +48,7 @@ descriptor:
   runtime_profiles:
   - effects
 schedule:
-  # The daily run. The ticket-closer result subscription below is the run when a ticket closes.
+  # The daily run.
   cron: "17 6 * * *"
   timezone: UTC
   trigger: schedule
@@ -55,7 +56,6 @@ terminal_event: onex.evt.omnimarket.worktree-prune-run-completed.v1
 event_bus:
   subscribe_topics:
   - onex.cmd.omnimarket.worktree-prune-run.v1
-  - onex.evt.omnimarket.ticket-closer-result.v1
   publish_topics:
   - onex.evt.omnimarket.worktree-prune-host-reported.v1
   - onex.evt.omnimarket.worktree-prune-disk-alarm.v1
@@ -63,6 +63,7 @@ event_bus:
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.worktree-prune-run.v1
 externally_consumed_topics:
+- onex.evt.omnimarket.worktree-prune-host-reported.v1
 - onex.evt.omnimarket.worktree-prune-disk-alarm.v1
 - onex.evt.omnimarket.worktree-prune-run-completed.v1
 broker_acl_grants:
@@ -70,8 +71,6 @@ broker_acl_grants:
   grants:
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.worktree-prune-run.v1, operation: READ}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.worktree-prune-run.v1, operation: DESCRIBE}
-  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ticket-closer-result.v1, operation: READ}
-  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ticket-closer-result.v1, operation: DESCRIBE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.worktree-prune-host-reported.v1, operation: WRITE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.worktree-prune-host-reported.v1, operation: DESCRIBE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.worktree-prune-disk-alarm.v1, operation: WRITE}
