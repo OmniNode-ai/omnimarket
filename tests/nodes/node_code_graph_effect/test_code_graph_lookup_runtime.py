@@ -107,3 +107,39 @@ def test_a_repository_the_overlay_does_not_declare_is_a_typed_failure(
     )
     assert result.status == "failed"
     assert result.reason == "the overlay does not declare elsewhere"
+
+
+def test_a_lookup_with_no_bolt_address_falls_back_to_the_files_with_a_typed_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.models.model_code_graph_lookup import (
+        EnumLookupFallbackReason,
+        EnumLookupServedFrom,
+    )
+
+    _install(tmp_path, monkeypatch)
+    result = HandlerCodeGraphLookupRequested().handle(
+        ask(EnumCodeGraphQuestion.DEFINITION, repo="example_core", symbol="Thing")
+    )
+    assert result.status == "found"
+    assert result.served_from is EnumLookupServedFrom.FILE_STORE
+    assert result.fallback_reason is EnumLookupFallbackReason.BOLT_URI_UNRESOLVED
+
+
+def test_a_lookup_with_a_refused_bolt_port_falls_back_with_connection_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import socket
+
+    from omnimarket.models.model_code_graph_lookup import EnumLookupFallbackReason
+
+    _install(tmp_path, monkeypatch)
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    monkeypatch.setenv("ARCH_GRAPH_BOLT_URI", f"bolt://127.0.0.1:{port}")
+    result = HandlerCodeGraphLookupRequested().handle(
+        ask(EnumCodeGraphQuestion.DEFINITION, repo="example_core", symbol="Thing")
+    )
+    assert result.status == "found"
+    assert result.fallback_reason is EnumLookupFallbackReason.CONNECTION_REFUSED

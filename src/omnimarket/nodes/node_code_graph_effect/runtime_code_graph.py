@@ -30,6 +30,9 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from omnimarket.handlers.arch_graph_bolt_host_overlay import (
+    resolve_arch_graph_bolt_uri,
+)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_overlay
 from omnimarket.handlers.node_overlay_resolved_roots import (
     REGISTRY_ROOT_ENVS,
@@ -51,6 +54,12 @@ from omnimarket.models.model_code_graph_lookup import (
     ModelCodeGraphLookupCommand,
     ModelCodeGraphLookupResult,
 )
+from omnimarket.nodes.node_code_graph_effect.adapters.memgraph_version_store import (
+    DEFAULT_RETENTION_VERSIONS,
+    MemgraphUnreachableError,
+    MemgraphVersionStore,
+    open_memgraph_store,
+)
 from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources import (
     WatcherStatePullRequestSource,
 )
@@ -63,6 +72,9 @@ from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_index import (
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_lookup import (
     CodeGraphLookup,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_lookup_routed import (
+    MemgraphFirstLookup,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
     CodeGraphRun,
@@ -124,6 +136,19 @@ _VERSIONS: dict[int, InMemoryVersionStore] = {}
 
 
 def answer_lookup(command: ModelCodeGraphLookupCommand) -> ModelCodeGraphLookupResult:
+    """Answer a lookup from Memgraph by Cypher; from the file store only when Memgraph is unreachable.
+
+    The fallback answer carries the typed reason (``EnumLookupFallbackReason``) it fell back for.
+    """
+    return MemgraphFirstLookup(
+        open_store=lambda: _open_memgraph_store(None),
+        fallback=answer_lookup_from_files,
+    ).handle(command)
+
+
+def answer_lookup_from_files(
+    command: ModelCodeGraphLookupCommand,
+) -> ModelCodeGraphLookupResult:
     """Answer a lookup from the overlay's versions, building the head version of a repository on first ask.
 
     A lookup for a repository the overlay does not declare, or an overlay with no lookup block, or a
@@ -188,16 +213,41 @@ def build_handler(write: bool) -> tuple[CodeGraphRun, str]:
         raise ValueError(
             f"{overlay.ledger_append.host_env} is not set; the overlay names it as this host"
         )
+    source = _source(overlay)
     handler = CodeGraphRun(
         overlay=overlay,
         host=host,
-        source=_source(overlay),
+        source=source,
         appender=build_appender(overlay.ledger_append, overlay.publish.lane)
         if write
         else None,
         clock=lambda: datetime.now(UTC),
+        version_writer=_memgraph_writer(overlay) if write else None,
+        commit_clock=source,
     )
     return handler, host
+
+
+def _open_memgraph_store(overlay: ModelCodeGraphOverlay | None) -> MemgraphVersionStore:
+    retention = (
+        overlay.lookup.retention_versions
+        if overlay is not None and overlay.lookup is not None
+        else DEFAULT_RETENTION_VERSIONS
+    )
+    return open_memgraph_store(
+        resolve_uri=resolve_arch_graph_bolt_uri, retention_versions=retention
+    )
+
+
+def _memgraph_writer(overlay: ModelCodeGraphOverlay) -> MemgraphVersionStore | None:
+    """The nightly's Memgraph writer, or none where no Bolt address resolves (the file reading still runs)."""
+    try:
+        return _open_memgraph_store(overlay)
+    except MemgraphUnreachableError as exc:
+        sys.stderr.write(
+            f"CODE-GRAPH-MEMGRAPH-SKIPPED {exc.reason.value}: {exc.detail}\n"
+        )
+        return None
 
 
 def _run(arguments: argparse.Namespace, write: bool) -> int:
@@ -223,7 +273,8 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         f"outcome={result.outcome.value} fault={result.fault.value} "
         f"sample={f'{sample.agree}/{sample.total}' if sample else 'none'} "
         f"controls={f'{sample.controls_reached}/{sample.controls_total}' if sample else 'none'} "
-        f"ledger={result.ledger} key={result.row_key} reason={','.join(result.reasons[:8])}\n"
+        f"ledger={result.ledger} key={result.row_key} memgraph={result.memgraph} "
+        f"reason={','.join(result.reasons[:8])}\n"
     )
     if result.failure:
         sys.stderr.write(f"CODE-GRAPH-FAILED {result.failure}\n")
@@ -350,7 +401,9 @@ def _lookup(arguments: argparse.Namespace) -> int:
     sys.stdout.write(
         f"LOOKUP question={result.question.value} repo={result.repo} status={result.status} "
         f"answered_from={(result.answered_from or 'none')[:12]} matches={len(result.matches)} "
-        f"nearest={nearest} reason={result.reason or 'none'}\n"
+        f"nearest={nearest} served_from={result.served_from.value} "
+        f"fallback_reason={result.fallback_reason.value if result.fallback_reason else 'none'} "
+        f"reason={result.reason or 'none'}\n"
     )
     return 1 if result.status == "failed" else 0
 
