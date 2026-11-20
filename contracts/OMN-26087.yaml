@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26087
+title: "port the omnimarket release cut tick into omnimarket as node_release_cut_tick_effect"
+summary: The nightly omnimarket release cut tick is a canonical effect node with a handler, typed request and result models, a contract, metadata and ported tests, and runs as python -m omnimarket.nodes.node_release_cut_tick_effect with the argparse surface of the module it replaces.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26087-release-cut-tick-node
+    statement: The release cut tick exists in omnimarket as node_release_cut_tick_effect and its ported tests pass.
+    acceptance:
+      - id: AC1
+        statement: "AC1: the node and its ported tests exist and pass, and ruff and mypy --strict are clean on the touched files -- falsifier: the focused pytest run fails, or ruff check or mypy --strict on the node directory reports a finding"
+evidence_requirements:
+  - kind: tests
+    description: Focused tests of the release cut tick node.
+    command: uv run pytest tests/nodes/node_release_cut_tick_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26087-ac1-tests
+    description: "The node's ported tests pass."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_release_cut_tick_effect -q --no-cov
+  - id: dod-omn26087-ac1-lint
+    description: "ruff check is clean on the node directory and its tests."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: command
+        check_value: >-
+          uv run ruff check src/omnimarket/nodes/node_release_cut_tick_effect tests/nodes/node_release_cut_tick_effect
+        cwd: .
+  - id: dod-omn26087-ac1-types
+    description: "mypy --strict is clean on the node directory."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: command
+        check_value: >-
+          uv run mypy src/omnimarket/nodes/node_release_cut_tick_effect --strict
+        cwd: .
+  - id: dod-omn26087-integration-proof
+    description: "Run the focused release cut tick tests on a lab host at the pushed head; the local Done gate runs this unbound check."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26087 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_release_cut_tick_effect -q --no-cov
+        cwd: .

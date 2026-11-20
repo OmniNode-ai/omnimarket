@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_release_cut_tick_effect
+version: "1.0.0"
+description: One release cut tick - reads the release train's decision for omnimarket, dispatches the release-cut workflow when it says CUT, and blocks by name, with a ledger row and a notification, when it does not
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_release_cut_tick_effect: omnimarket.nodes.node_release_cut_tick_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  side_effect_class: external_write
+dependencies:
+  - pydantic>=2.11.0
+  - pyyaml>=6.0.2
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, release, ledger, scheduled]
+node_role: effect
+pack: "release"
+display_name: "Release Cut Tick Effect"

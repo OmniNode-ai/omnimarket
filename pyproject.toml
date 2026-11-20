@@ -1303,6 +1303,7 @@ node_regression_test_orchestrator = "omnimarket.nodes.node_regression_test_orche
 node_reject_skip_token_compute = "omnimarket.nodes.node_reject_skip_token_compute"
 node_release = "omnimarket.nodes.node_release"
 node_release_candidate_verify_effect = "omnimarket.nodes.node_release_candidate_verify_effect"
+node_release_cut_tick_effect = "omnimarket.nodes.node_release_cut_tick_effect"
 node_release_pin_guard_compute = "omnimarket.nodes.node_release_pin_guard_compute"
 node_release_sibling_premise_compute = "omnimarket.nodes.node_release_sibling_premise_compute"
 node_release_sibling_premise_effect = "omnimarket.nodes.node_release_sibling_premise_effect"

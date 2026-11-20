@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_release_cut_tick_effect
+node_type: effect
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  One nightly release cut tick for omnimarket. Materialises the release train from the omnibase_infra
+  origin/dev, runs its plan against a copy of the policy with omnimarket's mode set to cut, and acts on
+  the train's row: nothing to cut, dispatch release-cut.yml (only when no release-cut run is queued or
+  in progress), or a named block (the train's own reason, edge-triggered on reason and candidate sha and
+  raised once more past the escalation age) that is appended to the ledger and raised as a notification.
+  A release-cut run dispatched by an earlier tick that did not conclude success is a block too. Every
+  run is recorded in last-run.json under the state directory. This node is the timer that cuts one
+  repository's release; node_release is the org-wide release pipeline and does not overlap it.
+  Exit codes: 0 the tick ran (blocked included), 2 usage.
+input_model:
+  name: ModelReleaseCutTickRequest
+  module: omnimarket.nodes.node_release_cut_tick_effect.models.model_release_cut_tick
+output_model:
+  name: ModelReleaseCutTickResult
+  module: omnimarket.nodes.node_release_cut_tick_effect.models.model_release_cut_tick
+handler:
+  module: omnimarket.nodes.node_release_cut_tick_effect.handlers.handler_release_cut_tick
+  class: HandlerReleaseCutTick
+  input_model: omnimarket.nodes.node_release_cut_tick_effect.models.model_release_cut_tick.ModelReleaseCutTickRequest
+  output_model: omnimarket.nodes.node_release_cut_tick_effect.models.model_release_cut_tick.ModelReleaseCutTickResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_release_cut_tick_effect.handlers.handler_release_cut_tick:HandlerReleaseCutTick
+  handlers:
+    - operation: run_release_cut_tick
+      handler:
+        name: HandlerReleaseCutTick
+        module: omnimarket.nodes.node_release_cut_tick_effect.handlers.handler_release_cut_tick
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 600000
+  runtime_profiles:
+    - effects
+inputs:
+  registry_root: {type: str, required: true, description: Root that holds the omnimarket, omnibase_infra and omniclaude clones.}
+  ledger_path: {type: str, required: true, description: The rolling work ledger a status row is appended to.}
+  ledger_lock: {type: str, required: false, description: A script run as python script ledger --append row instead of the ledger command.}
+  ledger_command: {type: list, required: false, description: The onex-ledger command line.}
+  state_dir: {type: str, required: false, description: Where state.json and last-run.json are written.}
+  python: {type: str, required: false, description: Interpreter that runs the train and the lock.}
+  osascript: {type: str, required: false, description: The notification command.}
+  now: {type: str, required: false, description: UTC timestamp used instead of the clock.}
+  dry_run: {type: bool, required: false, description: Decide and report; dispatch and write nothing.}
+  ticket: {type: str, required: false, description: Ticket cell of the status row.}
+outputs:
+  status: {type: str}
+  exit_code: {type: int}
+  outcome: {type: dict}
+  raised: {type: bool}
+  dry_run: {type: bool}
+  status_row: {type: str}
+  ledger_append: {type: str}
+  notified: {type: bool}
+  log_line: {type: str}
+  error_message: {type: str}
+terminal_event: onex.evt.omnimarket.release-cut-tick-completed.v1
+# Declares runtime_dispatch and no event_bus block: a scheduled unit runs this node, so no shared runtime attaches it and no broker grant is needed.
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.release-cut-tick-requested.v1
+metadata:
+  transport_type: inmemory
+  description: Nightly omnimarket release cut tick
+  author: OmniNode Team
+  created: "2026-11-20"
