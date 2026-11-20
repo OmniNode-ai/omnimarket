@@ -13,6 +13,7 @@ one home.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -48,8 +49,16 @@ class ModelReviewGateSweepSettings(BaseModel):
     review_engines: tuple[str, ...] = Field(min_length=1)
 
 
+class ModelReviewGateSweepSchedule(BaseModel):
+    """The unattended invocation is a read-only probe."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    mode: Literal["probe"]
+
+
 class ModelReviewGateSweepOverlay(BaseModel):
-    """The overlay of the review-gate context sweep: the settings and the ledger read route."""
+    """The sources and optional scheduled trigger of the review-gate sweep."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -57,6 +66,7 @@ class ModelReviewGateSweepOverlay(BaseModel):
     ledger_read: ModelFileLedgerReadRoute | ModelCommandLedgerReadRoute = Field(
         discriminator="route"
     )
+    schedule: ModelReviewGateSweepSchedule | None = None
 
 
 def load_overlay(

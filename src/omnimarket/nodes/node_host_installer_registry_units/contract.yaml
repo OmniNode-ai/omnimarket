@@ -1230,6 +1230,39 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/job-log-filler/last-run.json
     state_directory: .onex_state/job-log-filler
+  # The host owning the PR watcher and the rolling ledger runs the review-gate probe.
+  review-gate-context-probe:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.review-gate-context-probe
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 300
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    run_timeout_s: 120
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_review_gate_context_orchestrator.runtime_review_gate_context_sweep
+    entry_file: src/omnimarket/nodes/node_review_gate_context_orchestrator/runtime_review_gate_context_sweep.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+      - ONEX_PR_WATCHER_STATE
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      ONEX_PR_WATCHER_STATE: "{registry_root}/.claude_scratch/pr-watcher/state.json"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/.onex-dispatch-venv/bin/onex ledger query --stdin"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/review-gate-context-probe/last-run.json
+    state_directory: .onex_state/review-gate-context-probe
   # The hourly work-ledger parity receipt writer (OMN-23258, node_work_ledger_parity_receipt_effect of OMN-23251). It runs on the
   # host that holds both the parity DSN and the current ledger file (h200). The schedule host, interval and settings are the
   # node's overlay in the overlays repository; the host-specific paths below are overridable at install (the ledger command
