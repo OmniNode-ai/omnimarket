@@ -27,9 +27,9 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
   - id: dod-omn26154-ac1-readonly-root
-    description: Hosted regression for AC1. A check run with the lock path unwritable (Errno 30) returns exit 0 in sync and exit 2 behind, never exit 3.
+    description: Hosted regression for AC1, and the hosted-runnable part of AC2 and AC4 (the shipped handler returns the verdict on a read-only root; installation on h051 and h053 is proven by the unbound local Done gate items below). A check run with the lock path unwritable (Errno 30) returns exit 0 in sync and exit 2 behind, never exit 3.
     source: manual
-    binds_ac: [AC1]
+    binds_ac: [AC1, AC2, AC4]
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest -q --no-cov -n 0 -p no:randomly tests/test_host_reconcile_readonly_root.py
@@ -43,10 +43,9 @@ dod_evidence:
         check_value: uv run --frozen pytest -q --no-cov -n 0 -p no:randomly tests/test_host_reconcile_readonly_root.py tests/test_host_reconcile_effect.py tests/test_retired_repository_reconcile.py
         cwd: .
   - id: dod-omn26154-ac2-ac4-installed-status
-    description: A STATUS row of the lane carries installed=<host>:<revision> and observed= for each of h051 and h053, or names the cause and the actor that must act.
+    description: Unbound, run only by the local Done gate because hosted CI cannot reach the lab. A STATUS row of the lane carries installed=<host>:<revision> and observed= for each of h051 and h053, or names the cause and the actor that must act.
     source: manual
     execution_scope: local_done_gate
-    binds_ac: [AC2, AC4]
     checks:
       - check_type: command
         check_value: >-
@@ -61,10 +60,9 @@ dod_evidence:
           '"'"''
         cwd: .
   - id: dod-omn26154-integration-proof-check-run
-    description: Run the host reconcile node in check mode against the live registry root of the lab host and require a verdict, never exit 3 with Errno 30.
+    description: Unbound, run only by the local Done gate. Run the host reconcile node in check mode against the live registry root of the lab host and require a verdict, never exit 3 with Errno 30.
     source: manual
     execution_scope: local_done_gate
-    binds_ac: [AC2]
     checks:
       - check_type: command
         check_value: >-
