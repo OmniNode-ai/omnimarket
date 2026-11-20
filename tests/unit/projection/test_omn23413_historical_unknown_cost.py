@@ -1,6 +1,14 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""A legacy unpriced zero is served as unknown without modifying the recorded charge."""
+"""A stored zero that no price stood behind is served as unknown, never as $0.
+
+An older terminal shape stored cost_usd 0 for every run it could not price. On an
+operator store (2026-11-20, 4,600 zero-cost runs) the attempt records carry no price
+evidence at all: price_source and cost_basis are empty everywhere, and usage_source
+reads "measured" both for unpriced Beam runs and for free local runs. What does tell
+them apart is what makes a run free: a local tier, a ":free" model id, or a price the
+pricing manifest declares (zero included). A zero with none of those is unknown.
+"""
 
 import asyncio
 import json
@@ -27,59 +35,72 @@ from tests.unit.projection.test_sqlite_delegation_savings_view_omn20008 import (
 
 pytestmark = pytest.mark.unit
 
+_MEASURED = [{"usage_source": "measured", "cost_usd": 0.0}]
+_UNKNOWN = [{"usage_source": "unknown", "cost_usd": 0.0}]
+_SAVED = "0.045068"
 
-def test_serve_only_a_zero_known_to_have_been_unpriced_as_unknown(
-    tmp_path: Path,
-) -> None:
-    # The historical unpriced call and today's measured local/declared-free call
-    # both used zero as their numeric amount. Neither today's catalog nor the
-    # provider/model name can tell which amount was known at call time.
-    unknown = {"usage_source": "unknown", "cost_usd": 0.0}
-    measured = {"usage_source": "measured", "cost_usd": 0.0}
-    examples = {
-        "unpriced": ([unknown], 0.0, None),
-        "declared-free": ([measured], 0.0, None),
-        "mixed": ([unknown, measured], 0.0, None),
-        "old-no-provenance": ([{}], 0.0, None),
-        "incomplete": ([unknown, {}], 0.0, None),
-        "attempt-recorded-charge": ([{**unknown, "cost_usd": 0.04}], 0.0, None),
-        "unrecognized-shape": (["unknown"], 0.0, None),
-        "malformed-zero": ([{**unknown, "cost_usd": False}], 0.0, None),
-        "damaged-history": ("invalid JSON", 0.0, None),
-        "deeply-nested-history": ("[" * 2000 + "]" * 2000, 0.0, None),
-        "explicit-attempt-price": (
-            [{**unknown, "price_source": "models.dev"}],
-            0.0,
-            None,
-        ),
-        "explicit-free-basis": (
-            [{**unknown, "cost_basis": "zero_marginal_api_cost"}],
-            0.0,
-            None,
-        ),
-        "no-attempts": ([], 0.0, None),
-        "charged": ([unknown], 1.5, None),
-        "recorded-free-local": ([unknown], 0.0, "free_local"),
-    }
-    path = _store(
-        tmp_path,
-        tuple(_delegation(key, cost_tier_name="cheap_cloud") for key in examples),
-    )
-    with sqlite3.connect(path) as db:
-        db.execute("ALTER TABLE delegation_events ADD COLUMN attempt_history")
-        db.execute("ALTER TABLE delegation_events ADD COLUMN cost_measurement_source")
-        for key, (attempts, cost, source) in examples.items():
-            db.execute(
-                "UPDATE delegation_events SET attempt_history=?, cost_usd=?, "
-                "cost_measurement_source=?, modelled_savings_usd='0.045068', "
-                "savings_measurement='measured' WHERE correlation_id=?",
-                (
-                    attempts if isinstance(attempts, str) else json.dumps(attempts),
-                    cost,
-                    source,
-                    key,
-                ),
-            )
+# key: (tier, model, stored cost, recorded cost source, attempts, served as unknown?)
+_CASES: dict[
+    str,
+    tuple[
+        str | None, str | None, float | None, str | None, list[dict[str, object]], bool
+    ],
+] = {
+    # Unpriced cloud model; usage was measured, the price never was.
+    "beam-measured-usage": (
+        "cheap_cloud",
+        "Beam-1.0-501B-A23B",
+        0.0,
+        None,
+        _MEASURED,
+        True,
+    ),
+    "beam-unknown-usage": (
+        "cheap_cloud",
+        "Beam-1.0-501B-A23B",
+        0.0,
+        None,
+        _UNKNOWN,
+        True,
+    ),
+    "frontier-unpriced": (
+        "cheap_frontier",
+        "gemini-3.5-flash-lite",
+        0.0,
+        None,
+        _MEASURED,
+        True,
+    ),
+    # Free: a local tier, whatever its attempts say.
+    "local-tier": ("local", "qwen3.5:0.8b", 0.0, None, _UNKNOWN, False),
+    # Free: a ":free" model id on a cloud tier.
+    "free-id": (
+        "cheap_frontier",
+        "thinkingmachines/inkling:free",
+        0.0,
+        None,
+        _UNKNOWN,
+        False,
+    ),
+    # Free: the manifest declares a zero price (no tier recorded).
+    "declared-zero-price": (None, "Qwen3.8-27B", 0.0, None, _UNKNOWN, False),
+    # Charged runs and explicitly recorded sources are served as stored.
+    "charged": ("cheap_cloud", "Beam-1.0-501B-A23B", 1.5, None, _MEASURED, False),
+    "recorded-source": (
+        "cheap_cloud",
+        "Beam-1.0-501B-A23B",
+        0.0,
+        "free_local",
+        _UNKNOWN,
+        False,
+    ),
+    # Nothing names the model: nothing to decide on, served as stored.
+    "no-model": ("cheap_cloud", None, 0.0, None, _UNKNOWN, False),
+    "no-amount": ("cheap_cloud", "Beam-1.0-501B-A23B", None, None, _UNKNOWN, False),
+}
+
+
+def _read(path: Path) -> list[dict[str, object]]:
     topic = "onex.snapshot.projection.delegation.decisions.v1"
     result = asyncio.run(
         HandlerProjectionRead(
@@ -87,23 +108,56 @@ def test_serve_only_a_zero_known_to_have_been_unpriced_as_unknown(
         ).handle(ModelProjectionReadRequest(topic=topic, tenant_id=_TENANT))
     )
     assert result.ok, result.response
-    assert all("attempt_history" not in row for row in result.rows)
-    rows = {
-        r["correlation_id"]: (
+    return list(result.rows)
+
+
+def test_a_zero_is_unknown_only_when_nothing_made_the_run_free_or_priced(
+    tmp_path: Path,
+) -> None:
+    path = _store(
+        tmp_path,
+        tuple(_delegation(key, cost_tier_name="cheap_cloud") for key in _CASES),
+    )
+    with sqlite3.connect(path) as db:
+        db.execute("ALTER TABLE delegation_events ADD COLUMN attempt_history")
+        db.execute("ALTER TABLE delegation_events ADD COLUMN cost_measurement_source")
+        for key, (tier, model, cost, source, attempts, _) in _CASES.items():
+            db.execute(
+                "UPDATE delegation_events SET cost_tier_name=?, model_name=?, delegated_to=?, "
+                "cost_usd=?, cost_measurement_source=?, attempt_history=?, "
+                "modelled_savings_usd=?, savings_measurement='measured' WHERE correlation_id=?",
+                (tier, model, model, cost, source, json.dumps(attempts), _SAVED, key),
+            )
+
+    rows = _read(path)
+
+    assert all("attempt_history" not in row for row in rows)
+    served = {
+        str(r["correlation_id"]): (
             r["cost_usd"],
             r["modelled_savings_usd"],
             r["savings_measurement"],
         )
-        for r in result.rows
+        for r in rows
     }
-    assert rows.pop("unpriced") == (None, None, "unknown_spend")
-    assert rows == {
-        key: (cost, "0.045068", "measured")
-        for key, (_, cost, _) in examples.items()
-        if key != "unpriced"
+    expected = {
+        key: (None, None, "unknown_spend") if unknown else (cost, _SAVED, "measured")
+        for key, (_, _, cost, _, _, unknown) in _CASES.items()
     }
+    assert served == expected
     with sqlite3.connect(path) as db:
         assert db.execute(
             "SELECT cost_usd, modelled_savings_usd, savings_measurement "
-            "FROM delegation_events WHERE correlation_id='unpriced'"
-        ).fetchone() == (0.0, "0.045068", "measured")
+            "FROM delegation_events WHERE correlation_id='beam-measured-usage'"
+        ).fetchone() == (0.0, _SAVED, "measured")
+
+
+def test_a_store_without_tier_or_source_columns_is_served_as_stored(
+    tmp_path: Path,
+) -> None:
+    # The oldest stores predate cost_measurement_source and attempt_history; a store
+    # without the columns the decision reads must still serve every row, unchanged.
+    path = _store(tmp_path, (_delegation("old", cost_tier_name="local"),))
+    rows = _read(path)
+    assert [str(r["correlation_id"]) for r in rows] == ["old"]
+    assert rows[0]["cost_usd"] == 0.0

@@ -545,11 +545,11 @@ dod_evidence:
       tests/unit/nodes/node_onex_setup_effect/test_onex_tui_hook_switches.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23413-ac28-historical-unknown-read
-  description: 'The local SQLite read serves a legacy row stored as cost 0, whose every attempt was unpriced,
-    as unknown spend with no measured saving, and leaves the stored row unchanged. Fourteen look-alike
-    rows (declared free, recorded free local, mixed, charged, damaged or explicitly priced history) are
-    served unchanged, and attempt history is never served. This binds only the historical-row read; the
-    writer, omnidash, delegate-summary and browser proofs of AC28 are separate evidence.'
+  description: 'The local SQLite read serves a stored zero that no price stood behind
+    (not a local tier, not a :free model id, no pricing-manifest entry) as unknown spend with no measured
+    saving, and leaves the stored row unchanged. Local, :free, manifest-priced, charged and recorded-source
+    runs are served as stored, and attempt history is never served. This binds only the historical-row
+    read; the writer, omnidash, delegate-summary and browser proofs of AC28 are separate evidence.'
   source: manual
   execution_scope: hosted_and_local
   binds_ac:

@@ -56,19 +56,24 @@ from omnimarket.projection.tenant_registry_resolution import (
 
 
 def _local_select_list(cfg: ProjectionTableConfig, available: tuple[str, ...]) -> str:
-    if cfg.table != "delegation_events" or not {"cost_usd", "attempt_history"} <= set(
-        available
-    ):
+    if cfg.table != "delegation_events" or "cost_usd" not in available:
         return select_list(cfg)
-    # This older terminal shape stored zero even when no attempt could price
-    # the run. Use its own evidence without returning private attempt records
-    # or changing the raw ledger. The amount and its saving sort as served.
-    source = (
-        '"cost_measurement_source"'
-        if "cost_measurement_source" in available
-        else "NULL"
+    # An older terminal shape stored zero for every run it could not price. A
+    # zero no price stood behind is served as unknown with no saving, decided
+    # from the row's own tier and model; the stored record is never changed.
+    # A column an older store lacks is passed as NULL.
+    arguments = ", ".join(
+        quote_identifier(column) if column in available else "NULL"
+        for column in (
+            "cost_usd",
+            "cost_measurement_source",
+            "cost_tier_name",
+            "model_name",
+            "delegated_to",
+            "routed_model",
+        )
     )
-    unpriced = f'onex_historical_unpriced_zero("cost_usd", {source}, "attempt_history")'
+    unpriced = f"onex_historical_unpriced_zero({arguments})"
     replacement = {
         "cost_usd": "NULL",
         "modelled_savings_usd": "NULL",
@@ -293,7 +298,7 @@ class SqliteTableRowSource:
             columns = _require_relation(conn, cfg, order_spec)
             conn.create_function(
                 "onex_historical_unpriced_zero",
-                3,
+                6,
                 historical_unpriced_zero,
                 deterministic=True,
             )

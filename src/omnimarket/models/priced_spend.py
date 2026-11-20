@@ -12,7 +12,6 @@ rewritten (D1).
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
 
@@ -21,29 +20,32 @@ from omnimarket.pricing import _load_table
 __all__ = ["historical_unpriced_zero", "priced_spend"]
 
 
-def historical_unpriced_zero(amount: object, source: object, history: object) -> bool:
-    """Use the attempts' own price evidence for a legacy zero. Never reprice it."""
-    if source not in (None, "", "no_cost_model") or history is None:
+def historical_unpriced_zero(
+    amount: object, source: object, tier: object, *models: object
+) -> bool:
+    """True for a stored zero that no price stood behind. Never reprices a run.
+
+    A run is free when its tier is local, its model id ends in ":free", or the
+    pricing manifest prices its model (a declared zero included). A charged
+    amount or a recorded cost source is served as stored, and so is a row that
+    names no model. Only a zero with none of those is unknown.
+    """
+    if source not in (None, "", "no_cost_model") or tier == "local":
+        return False
+    if amount is None or isinstance(amount, bool):
         return False
     try:
-        if Decimal(str(amount)) != 0 or not isinstance(history, str | bytes):
+        if Decimal(str(amount)) != 0:
             return False
-        attempts = json.loads(history)
-    except (ValueError, InvalidOperation, RecursionError):
+    except (InvalidOperation, ValueError):
         return False
-    return (
-        isinstance(attempts, list)
-        and bool(attempts)
-        and all(
-            isinstance(attempt, dict)
-            and attempt.get("usage_source") == "unknown"
-            and attempt.get("price_source") in (None, "unknown")
-            and attempt.get("cost_basis") in (None, "unknown")
-            and not isinstance(attempt.get("cost_usd"), bool)
-            and attempt.get("cost_usd") == 0
-            for attempt in attempts
-        )
+    name = next(
+        (str(m).strip() for m in models if m is not None and str(m).strip()), ""
     )
+    if not name or name.endswith(":free"):
+        return False
+    table = _load_table()
+    return table.get_entry(name) is None and table.get_entry(name.lower()) is None
 
 
 def priced_spend(row: Mapping[str, object]) -> Decimal | None:
