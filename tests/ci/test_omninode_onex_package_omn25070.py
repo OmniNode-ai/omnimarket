@@ -222,8 +222,8 @@ RUN_BY_LANE = "run_by_lane"
 
 # Mirrors omnibase_infra dev config/validation/stack_shape.yaml, console_scripts
 # -> omnimarket -> omnimarket-projection-api (status: run_by_lane), read
-# 2026-11-20. When a sibling checkout exists,
-# test_run_by_lane_literal_matches_infra_stack_shape fails if this drifts.
+# 2026-11-20. When a sibling checkout exists, test_run_by_lane_scripts_kept
+# fails if this drifts.
 RUN_BY_LANE_LITERAL: dict[str, str] = {
     "omnimarket-projection-api": "omnimarket.projection.api_server:main",
 }
@@ -293,17 +293,15 @@ def check_customer_package_scripts(pyproject: Path, expected: dict[str, str]) ->
 
 @pytest.mark.unit
 def test_run_by_lane_scripts_kept() -> None:
-    check_run_by_lane_scripts_kept(MARKET_PYPROJECT, _expected_run_by_lane())
-
-
-@pytest.mark.unit
-def test_run_by_lane_literal_matches_infra_stack_shape() -> None:
+    # Runs everywhere, never skips: hosted CI has no omnibase_infra checkout and
+    # checks the literal list; where a sibling checkout exists, the literal list
+    # must also still mirror the infra stack shape.
     stack_shape = _find_infra_stack_shape()
-    if stack_shape is None:
-        pytest.skip("no sibling omnibase_infra checkout; the literal list stands alone")
-    assert _derive_run_by_lane(stack_shape) == RUN_BY_LANE_LITERAL, (
-        f"update RUN_BY_LANE_LITERAL to mirror {stack_shape}"
-    )
+    if stack_shape is not None:
+        assert _derive_run_by_lane(stack_shape) == RUN_BY_LANE_LITERAL, (
+            f"update RUN_BY_LANE_LITERAL to mirror {stack_shape}"
+        )
+    check_run_by_lane_scripts_kept(MARKET_PYPROJECT, RUN_BY_LANE_LITERAL)
 
 
 @pytest.mark.unit
