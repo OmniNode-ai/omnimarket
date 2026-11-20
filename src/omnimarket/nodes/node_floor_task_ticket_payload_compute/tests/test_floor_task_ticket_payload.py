@@ -51,7 +51,7 @@ def test_payload_carries_parent_title_key_and_verbatim_criteria() -> None:
         in payload.description
     )
     assert (
-        "- [ ] AC2: The same input twice is byte-identical -- falsifier: run twice, compare `model_dump_json`."
+        "- [ ] AC2: integrated: the node run twice on the lab host returns identical bytes -- falsifier: run it twice on the lab host, compare `model_dump_json`."
         in payload.description
     )
 
@@ -131,7 +131,8 @@ def test_a_dotted_child_heading_is_not_the_section_of_its_parent_task() -> None:
 
 def test_an_empty_falsifier_marker_is_a_missing_falsifier() -> None:
     empty = GOOD_TASK.replace(
-        "-- falsifier: run twice, compare `model_dump_json`.", "-- falsifier:"
+        "-- falsifier: run it twice on the lab host, compare `model_dump_json`.",
+        "-- falsifier:",
     )
     assert empty != GOOD_TASK
     result = HandlerFloorTaskTicketPayload().handle(
@@ -141,7 +142,8 @@ def test_an_empty_falsifier_marker_is_a_missing_falsifier() -> None:
     assert result.missing == ("falsifier:2",)
     assert result.payload is None
     empty_by = GOOD_TASK.replace(
-        "-- falsifier: run twice, compare `model_dump_json`.", "-- falsified by"
+        "-- falsifier: run it twice on the lab host, compare `model_dump_json`.",
+        "-- falsified by",
     )
     by = HandlerFloorTaskTicketPayload().handle(
         request("T1", HEADER + "\n## 4. Tasks\n\n" + empty_by)

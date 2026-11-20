@@ -17,6 +17,8 @@ from omnimarket.nodes.node_baseline_cluster_ticket_effect.models.model_baseline_
     ModelBaselineClusterReportRequest,
 )
 
+# The cluster's own tests are the whole proof: the ticket-creation gate's code-only proof class (no running-system criterion).
+PROOF_CLASS_LINE = "proof_class: code-only"
 ACCEPTANCE_HEADER = "## Acceptance criteria"
 AC1_TEMPLATE = (
     "- [ ] AC1: the tests of cluster {cluster} in {repo} pass on dev"
@@ -49,6 +51,8 @@ def ticket_description(
         ACCEPTANCE_HEADER,
         "",
         AC1_TEMPLATE.format(cluster=request.cluster, repo=request.repo),
+        "",
+        PROOF_CLASS_LINE,
     ]
     return "\n".join(lines) + "\n"
 

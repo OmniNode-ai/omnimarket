@@ -63,7 +63,7 @@ def test_mint_payload_passes_gate() -> None:
         in description
     )
     assert (
-        "- [ ] AC2: The same input twice is byte-identical -- falsifier: run twice, compare `model_dump_json`."
+        "- [ ] AC2: integrated: the node run twice on the lab host returns identical bytes -- falsifier: run it twice on the lab host, compare `model_dump_json`."
         in description
     )
     assert "## Definition of done" in description

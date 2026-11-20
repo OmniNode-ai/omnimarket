@@ -37,6 +37,8 @@ INCIDENT_INFRA_PIN = FIXTURES / "omnibase_infra_44542e2a0_core_pin.toml"
 # incident ran against; 291f2f747 is omnibase_infra dev when this was recorded;
 # d20586c7d (omnibase_infra#5110) pins 0.47.48, which admits the 0.47.47 floor.
 # d86ef8c30 (omnibase_infra#5575) locks core 0.47.62, which admits the 0.47.60 floor.
+# b6f277475 (omnibase_infra#6063, tag dev-20261119220033-b6f27747506c) locks core dev-20261118065911-e9f061dc9b4c,
+# the 0.47.75 line (uv.lock names 0.47.75.dev1), which admits the 0.47.74 floor (OMN-26115).
 INFRA_CORE_PINS: tuple[tuple[str, str], ...] = (
     ("44542e2a0", "0.47.44"),
     ("291f2f747", "0.47.46"),
@@ -44,6 +46,7 @@ INFRA_CORE_PINS: tuple[tuple[str, str], ...] = (
     ("fb8f8f650", "0.47.50"),
     ("615bdd013", "0.47.53"),
     ("d86ef8c30", "0.47.62"),
+    ("b6f277475", "0.47.75"),
 )
 
 _SPEC = re.compile(r"^\s*omnibase[-_]core\s*(?P<op>==|>=)\s*(?P<version>\d+(?:\.\d+)*)")
