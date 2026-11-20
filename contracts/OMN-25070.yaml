@@ -1,0 +1,62 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-25070
+title: onex setup loads on every omnibase-core a customer install can resolve
+summary: >-
+  omnibase_core#2335 moved run_node_in_process to ModelRunNodeHosted.run. A customer install
+  resolves the newest omnibase-core, where the setup command failed to import, so onex --help
+  exited 1 and the installed onex did not run. The setup command now takes the new home first and
+  the old one only when the new module itself is absent; any other import failure is raised.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn25070-setup-loads-on-customer-core
+    statement: The onex setup command imports on an omnibase-core with only the new hosted-run home,
+      on one with only the old home, and raises a real import failure inside the new home.
+    acceptance:
+      - id: AC1
+        statement: >-
+          AC1 (this repository's part, the installed onex runs): the setup entry point loads on a core
+          without run_node_in_process and on a core without ModelRunNodeHosted, and a broken import
+          inside the new home is raised rather than hidden -- falsifier: uv run pytest
+          tests/unit/nodes/node_onex_setup_effect/test_hosted_run_import_omn25070.py fails on omnimarket
+          dev 62ba6381480713ebc593a92af42061b8b2cd18f6, where cli.py imports run_node_in_process by name.
+evidence_requirements:
+  - kind: tests
+    description: The hosted-run import tests and the rest of the setup node's unit tests.
+    command: uv run --frozen pytest tests/unit/nodes/node_onex_setup_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn25070-setup-loads-on-customer-core
+    description: The setup command loads on old and new omnibase-core and never hides a real import
+      failure. The bound test fails on dev, where cli.py imports run_node_in_process by name.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_onex_setup_effect/test_hosted_run_import_omn25070.py
+          -q --no-cov
+        cwd: .
+  - id: dod-omn25070-setup-integration-proof
+    description: The installed onex CLI loads every command, setup included, through its real entry points
+      at the pushed head. Before the fix, onex --help exited 1 on omnibase-core 0.47.75 because the setup
+      entry point failed to import.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run --frozen onex --help && uv run --frozen onex setup --help
+        cwd: .
+  - id: dod-omn25070-setup-hosted-deploy-smoke
+    description: The onex command installed from the pull request head starts, lists its commands and
+      loads setup. The falsifier for the import fix itself is the bound unit test, which fails on a core
+      without run_node_in_process.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: uv sync --frozen --quiet && .venv/bin/onex --help && .venv/bin/onex setup --help
+        cwd: .
