@@ -34,7 +34,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_onex_setup_effect -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn26115-ac2
-  description: The setup cli module imports in the environment built from the lock of the pushed head, and no Python source file under src or tests names the removed function (the search reads source text only, so a compiled file under __pycache__ never matches).
+  description: The setup cli module imports in the environment built from the lock of the pushed head, and no Python source file under src names the removed function (the search reads source text only, so a compiled file under __pycache__ never matches; tests may name it, because the code graph users test freezes the broken cli head as a regression fixture).
   source: manual
   binds_ac:
   - AC2
@@ -43,7 +43,7 @@ dod_evidence:
     check_value: uv run --frozen python -c "import omnimarket.nodes.node_onex_setup_effect.cli"
     cwd: .
   - check_type: command
-    check_value: sh -c '! grep -rIn --include="*.py" run_node_in_process src tests'
+    check_value: sh -c '! grep -rIn --include="*.py" run_node_in_process src'
     cwd: .
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_onex_setup_effect/test_setup_cli_core_entry_point.py -q --no-cov -n 0 -p no:randomly
