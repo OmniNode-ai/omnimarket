@@ -1,0 +1,275 @@
+{
+  "chart1": {
+    "above": "The shaded band shows how sure we are of each test's own result, not whether a change between two tests is real.",
+    "below": "A change of 10 percentage points or more between two tests in a row (for example 60% to 70%), or any change across a marker, is worth a look.",
+    "series": [
+      {
+        "markers": [
+          {
+            "at": "2026-11-16T03:00:00Z",
+            "kind": "model_version",
+            "label": "new model version",
+            "point_index": 2
+          }
+        ],
+        "model_label": "Local coding model (Qwen)",
+        "note": "",
+        "points": [
+          {
+            "hollow": false,
+            "rate": {
+              "likely_high": 70,
+              "likely_low": 56,
+              "n": 178,
+              "passed": 112,
+              "percent": 63,
+              "text": "passed 112 of 178 tasks (63%, likely 56 to 70%)",
+              "too_few": false
+            },
+            "tested_at": "2026-11-02T03:00:00Z"
+          },
+          {
+            "hollow": false,
+            "rate": {
+              "likely_high": 73,
+              "likely_low": 59,
+              "n": 178,
+              "passed": 118,
+              "percent": 66,
+              "text": "passed 118 of 178 tasks (66%, likely 59 to 73%)",
+              "too_few": false
+            },
+            "tested_at": "2026-11-09T03:00:00Z"
+          },
+          {
+            "hollow": false,
+            "rate": {
+              "likely_high": 76,
+              "likely_low": 63,
+              "n": 178,
+              "passed": 124,
+              "percent": 70,
+              "text": "passed 124 of 178 tasks (70%, likely 63 to 76%)",
+              "too_few": false
+            },
+            "tested_at": "2026-11-16T03:00:00Z"
+          }
+        ]
+      },
+      {
+        "markers": [
+          {
+            "at": "2026-11-30T03:00:00Z",
+            "kind": "task_set",
+            "label": "new set of test tasks",
+            "point_index": 0
+          }
+        ],
+        "model_label": "Local coding model (Qwen)",
+        "note": "",
+        "points": [
+          {
+            "hollow": false,
+            "rate": {
+              "likely_high": 86,
+              "likely_low": 75,
+              "n": 218,
+              "passed": 177,
+              "percent": 81,
+              "text": "passed 177 of 218 tasks (81%, likely 75 to 86%)",
+              "too_few": false
+            },
+            "tested_at": "2026-11-30T03:00:00Z"
+          }
+        ]
+      },
+      {
+        "markers": [],
+        "model_label": "Hosted coding model",
+        "note": "The provider can change this model without a marker.",
+        "points": [
+          {
+            "hollow": true,
+            "rate": {
+              "likely_high": null,
+              "likely_low": null,
+              "n": 9,
+              "passed": 7,
+              "percent": null,
+              "text": "passed 7 of 9 tasks, too few tasks to read",
+              "too_few": true
+            },
+            "tested_at": "2026-11-30T03:00:00Z"
+          }
+        ]
+      }
+    ],
+    "title": "Are the models getting better?"
+  },
+  "chart3": {
+    "above": "Each cell is the latest fixed test's result for tasks of that size.",
+    "below": "A size turning reliable is a suggestion to send tasks of that size to this model by default; nothing changes until the operator approves it.",
+    "rows": [
+      {
+        "cells": [
+          {
+            "rate": {
+              "likely_high": 99,
+              "likely_low": 92,
+              "n": 89,
+              "passed": 87,
+              "percent": 98,
+              "text": "passed 87 of 89 tasks (98%, likely 92 to 99%)",
+              "too_few": false
+            },
+            "reliable": true,
+            "size": "small",
+            "verdict": "MET"
+          },
+          {
+            "rate": {
+              "likely_high": 86,
+              "likely_low": 69,
+              "n": 89,
+              "passed": 70,
+              "percent": 79,
+              "text": "passed 70 of 89 tasks (79%, likely 69 to 86%)",
+              "too_few": false
+            },
+            "reliable": false,
+            "size": "medium",
+            "verdict": "MISSED"
+          },
+          {
+            "rate": {
+              "likely_high": 65,
+              "likely_low": 35,
+              "n": 40,
+              "passed": 20,
+              "percent": 50,
+              "text": "passed 20 of 40 tasks (50%, likely 35 to 65%)",
+              "too_few": false
+            },
+            "reliable": false,
+            "size": "large",
+            "verdict": "REFUSED"
+          }
+        ],
+        "model_label": "Local coding model (Qwen)",
+        "reliable_text": "reliable up to small: small tasks cleared 90%",
+        "reliable_up_to": "small",
+        "short_band_notes": [
+          "not enough large tasks yet (40 of 89)"
+        ],
+        "tested_at": "2026-11-30T03:00:00Z"
+      },
+      {
+        "cells": [
+          {
+            "rate": {
+              "likely_high": null,
+              "likely_low": null,
+              "n": 9,
+              "passed": 7,
+              "percent": null,
+              "text": "passed 7 of 9 tasks, too few tasks to read",
+              "too_few": true
+            },
+            "reliable": false,
+            "size": "small",
+            "verdict": "REFUSED"
+          },
+          {
+            "rate": null,
+            "reliable": false,
+            "size": "medium",
+            "verdict": null
+          },
+          {
+            "rate": null,
+            "reliable": false,
+            "size": "large",
+            "verdict": null
+          }
+        ],
+        "model_label": "Hosted coding model",
+        "reliable_text": "no size is reliable yet",
+        "reliable_up_to": null,
+        "short_band_notes": [],
+        "tested_at": "2026-11-30T03:00:00Z"
+      }
+    ],
+    "title": "How big a task can each model handle?"
+  },
+  "footer": {
+    "checks_text": "Fixed tests are checked by running each task's tests; live work is checked by a reviewer model.",
+    "last_tested": [
+      {
+        "model_label": "Local coding model (Qwen)",
+        "tested_at": "2026-11-30T03:00:00Z",
+        "text": "Local coding model (Qwen) last tested 2026-11-30."
+      },
+      {
+        "model_label": "Hosted coding model",
+        "tested_at": "2026-11-30T03:00:00Z",
+        "text": "Hosted coding model last tested 2026-11-30."
+      }
+    ],
+    "published_at": "2026-11-14T16:50:00Z",
+    "published_text": "Page data published 2026-11-14 16:50 UTC.",
+    "void_notes": [
+      "Local coding model (Qwen)'s test on 2026-11-23 was not counted: registration mismatch."
+    ]
+  },
+  "glossary": [
+    {
+      "definition": "One past change from our own repositories, given to the model as the ticket described it.",
+      "term": "task"
+    },
+    {
+      "definition": "Every check that ticket required passes once the model's change is applied.",
+      "term": "pass"
+    },
+    {
+      "definition": "Small, medium and large are measured from what the model is given.",
+      "term": "size"
+    },
+    {
+      "definition": "The 95 percent range of rates that fit the result.",
+      "term": "likely range"
+    }
+  ],
+  "headline": "In the latest weekly test, Local coding model (Qwen) passed 177 of 218 tasks (81%, likely 75 to 86%); Hosted coding model passed 7 of 9 tasks, too few tasks to read.",
+  "live_work": {
+    "above": "This is the work models were actually sent that week, checked by a reviewer model; the mix of work changes, so a rise does not by itself mean a better model, and each model gets different work, so do not compare one model with another here.",
+    "rows": [
+      {
+        "model_label": "Local coding model (Qwen)",
+        "rate": {
+          "likely_high": 88,
+          "likely_low": 66,
+          "n": 52,
+          "passed": 41,
+          "percent": 79,
+          "text": "passed 41 of 52 tasks (79%, likely 66 to 88%)",
+          "too_few": false
+        },
+        "week": "2026-10-26"
+      },
+      {
+        "model_label": "Local coding model (Qwen)",
+        "rate": {
+          "likely_high": null,
+          "likely_low": null,
+          "n": 9,
+          "passed": 4,
+          "percent": null,
+          "text": "passed 4 of 9 tasks, too few tasks to read",
+          "too_few": true
+        },
+        "week": "2026-11-02"
+      }
+    ],
+    "title": "How did the models do on the work they were actually sent?"
+  }
+}

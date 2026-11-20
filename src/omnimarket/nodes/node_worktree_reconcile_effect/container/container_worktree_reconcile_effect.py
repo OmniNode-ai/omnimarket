@@ -4,6 +4,11 @@
 
 from __future__ import annotations
 
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_core_worktree_repair import (
+    HandlerCoreWorktreeRepair,
+    ProtocolCoreWorktreeConfig,
+    ProtocolStatusRowWriter,
+)
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_reconcile import (
     HandlerWorktreeReconcile,
 )
@@ -44,9 +49,23 @@ def create_handler_worktree_reconcile(
     )
 
 
+def create_handler_core_worktree_repair(
+    *,
+    config: ProtocolCoreWorktreeConfig,
+    writer: ProtocolStatusRowWriter | None,
+    clock: ProtocolClock,
+) -> HandlerCoreWorktreeRepair:
+    """Bind the core.worktree repair to its config adapter and its STATUS row writer."""
+    return HandlerCoreWorktreeRepair(config=config, writer=writer, clock=clock)
+
+
 def create_handler_worktree_schedule() -> HandlerWorktreeSchedule:
     """Bind the host scheduler at the node's handler construction site."""
     return HandlerWorktreeSchedule()
 
 
-__all__ = ["create_handler_worktree_reconcile", "create_handler_worktree_schedule"]
+__all__ = [
+    "create_handler_core_worktree_repair",
+    "create_handler_worktree_reconcile",
+    "create_handler_worktree_schedule",
+]
