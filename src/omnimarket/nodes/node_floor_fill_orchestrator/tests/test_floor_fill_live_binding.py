@@ -343,3 +343,55 @@ def test_integrating_item_is_not_startable() -> None:
     record["lines"][0]["stations"][0]["items"][0]["state"] = "integrating"
     parsed = ModelFloorRecordRead.model_validate_json(json.dumps(record))
     assert parsed.lines[0].stations[0].items[0].state == "integrating"
+
+
+def test_settings_accept_store_dsn_env_file(tmp_path: Path) -> None:
+    settings = load_floor_fill_live_settings(
+        live_section(tmp_path, store_dsn_env_file=str(tmp_path / "fill.env"))
+    )
+    assert settings.store_dsn_env_file == str(tmp_path / "fill.env")
+
+
+def test_live_profile_reads_dsn_variable_from_env_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("EXAMPLE_FLOOR_FILL_DSN", raising=False)
+    env_file = tmp_path / "fill.env"
+    env_file.write_text("OTHER=1\nEXAMPLE_FLOOR_FILL_DSN=postgresql://x\n")
+    overlay = full_overlay(tmp_path, store_dsn_env_file=str(env_file))
+    main(
+        [
+            "--overlay-json",
+            json.dumps(overlay),
+            "--this-host",
+            "fill-host",
+            "--profile",
+            "live",
+            "tick",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert "overlay:" not in out
+    assert "store-dsn-unset" not in out
+
+
+def test_live_profile_env_file_without_variable_names_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("EXAMPLE_FLOOR_FILL_DSN", raising=False)
+    env_file = tmp_path / "fill.env"
+    env_file.write_text("OTHER=1\n")
+    overlay = full_overlay(tmp_path, store_dsn_env_file=str(env_file))
+    code = main(
+        [
+            "--overlay-json",
+            json.dumps(overlay),
+            "--this-host",
+            "fill-host",
+            "--profile",
+            "live",
+            "tick",
+        ]
+    )
+    assert code == FAILED
+    assert "store-dsn-unset:EXAMPLE_FLOOR_FILL_DSN" in capsys.readouterr().out

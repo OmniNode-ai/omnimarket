@@ -1,0 +1,83 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-26129"
+title: "OpenRouter dropped cohere/north-mini-code:free, cheap_frontier's only rung, so Routing Tier Bindability fails on every omnimarket PR; a smoked free model takes the rung"
+summary: "OpenRouter stopped listing cohere/north-mini-code:free, cheap_frontier's only rung, so the provider-catalogue step of Routing Tier Bindability failed on every omnimarket pull request. The rung moves to nvidia/nemotron-3.5-super-vl:free with north-mini-code's placement unchanged, after the tier's 10-task smoke accepted it 10 of 10. The tier stays free: paid OpenRouter models reach it only through the code eval (RULING 2026-11-11T12:33:37Z, OMN-23751)."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26129-listed-free-rung"
+    statement: |-
+      cheap_frontier's rung is a free OpenRouter model the provider lists, smoked at or above the bar, and nothing packaged names the withdrawn model.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the cheap_frontier rung serves a free OpenRouter model that the provider catalogue lists and whose recorded smoke accepted 7 or more of 10, and no packaged backend declares a model OpenRouter no longer lists -- falsifier: uv run python -m omnimarket.nodes.node_provider_model_catalogue_effect exits non-zero, or uv run pytest tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py -q fails
+      - id: "AC2"
+        statement: |-
+          AC2: no packaged routing, placement or judge configuration names cohere/north-mini-code:free or openrouter-north-mini-code as a live backend, and the tests that pinned it name the new rung -- falsifier: uv run pytest tests/unit/routing tests/unit/delegation tests/validators/test_provider_model_catalogue.py -q fails
+      - id: "AC5"
+        statement: |-
+          AC5: the smoke is recorded: each candidate's 2026-11-20 row in the cheap_frontier smoke receipts with its model, accepted count and p50, the ten task prompts stored beside them -- falsifier: the receipts have no 2026-11-20 rows, or the placed model's row accepted fewer than 7
+  - id: "req-omn26129-tier-stays-free"
+    statement: |-
+      cheap_frontier stays free; paid models reach it only through the code eval.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: DeepSeek V4 Flash 0731 and Qwen 3.8 are not placed on the cheap_frontier ladder by this change; they join through the code eval as pinned-only arms (OMN-23751) -- falsifier: bifrost_delegation.yaml or routing_tiers.yaml places a deepseek or qwen3.8 OpenRouter backend on cheap_frontier
+      - id: "AC4"
+        statement: |-
+          AC4: cheap_frontier stays declared free (cost_type free_local, 0.0) and its rung is priced 0/0 in the provider catalogue, and the routing-completeness and free-before-paid ladder tests pass -- falsifier: the rung's catalogue price is above zero, or uv run pytest tests/unit/routing tests/unit/delegation tests/validators -q fails
+evidence_requirements:
+  - kind: "tests"
+    description: "The catalogue, smoke-evidence, withdrawal and free-tier tests."
+    command: "uv run pytest tests/validators/test_provider_model_catalogue.py tests/nodes/node_provider_model_catalogue_effect tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py tests/unit/routing/test_cheap_frontier_stays_free_omn26129.py tests/unit/routing/test_north_mini_spread_omn17427.py -q -n 0 --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26129-ac1-ac5-listed-and-smoked"
+    description: "The provider-catalogue tests read the 2026-11-20 capture, which lists the new rung and not north-mini-code; the smoke-evidence tests read every dated smoke, including the 2026-11-20 receipt with the ten prompts and Nemotron 3.5 Super's 10 of 10. Fails at the merge base, whose contract still declares north-mini-code."
+    source: "manual"
+    binds_ac: ["AC1", "AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validators/test_provider_model_catalogue.py tests/nodes/node_provider_model_catalogue_effect tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-ac2-withdrawn-and-renamed"
+    description: "No backend, routing rule, default or tier names north-mini-code, and the tests that pinned the free tier's rung name Nemotron 3.5 Super. Fails at the merge base, where north-mini-code is still declared."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validators/test_provider_model_catalogue.py::test_north_mini_code_is_withdrawn_once_the_provider_stops_listing_it tests/unit/routing/test_north_mini_spread_omn17427.py tests/unit/routing/test_nemotron_ultra_withdrawn_omn20376.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-ac3-ac4-tier-stays-free"
+    description: "cheap_frontier is declared free_local at 0.0, every rung on it is listed at 0/0 in the 2026-11-20 capture, and no deepseek or qwen3.8 model is placed on it. Fails at the merge base, whose rung the capture does not list."
+    source: "manual"
+    binds_ac: ["AC3", "AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_stays_free_omn26129.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-integration-proof"
+    description: >-
+      Run the provider-catalogue check, the routing-completeness and tier-order coverage tests and the free-tier
+      test on a lab host at the pushed revision. This local completion proof carries no hosted AC bindings.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-26129 --kind test --
+          env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+          tests/unit/delegation/test_routing_completeness_omn15630.py
+          tests/unit/delegation/test_tier_order_backend_coverage_omn17427.py
+          tests/unit/routing/test_cheap_frontier_stays_free_omn26129.py
+          -q -n 0 --no-cov --refuse-skips
+        cwd: "."

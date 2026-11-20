@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_red_main_alarm_effect
+version: "1.0.0"
+description: "Read required checks on default-branch heads and append one typed owner alarm and message."
+pack: operator_tooling
+node_role: effect
+display_name: "Red Main Alarm"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_red_main_alarm_effect: "omnimarket.nodes.node_red_main_alarm_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: stateful
+dependencies:
+  - omnibase-infra>=0.38.69,<0.39.0
+  - pydantic>=2.0
+license: MIT
+authors: ["OmniNode Team"]
+tags: ["effect", "throughput", "ledger"]

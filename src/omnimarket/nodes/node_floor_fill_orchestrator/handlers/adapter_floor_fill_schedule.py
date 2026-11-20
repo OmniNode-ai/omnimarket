@@ -101,7 +101,7 @@ def overlay_json(
         "lab_hosts": rows,
     }
     if live is not None:
-        document[LIVE_OVERLAY_SECTION] = live.model_dump(mode="json")
+        document[LIVE_OVERLAY_SECTION] = live.model_dump(mode="json", exclude_none=True)
     if alarm is not None:
         document[ALARM_OVERLAY_SECTION] = dict(alarm)
     return json.dumps(document, sort_keys=True, separators=(",", ":"))

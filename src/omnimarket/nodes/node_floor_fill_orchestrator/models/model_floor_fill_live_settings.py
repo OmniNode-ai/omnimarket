@@ -42,12 +42,19 @@ class ModelFloorFillLiveSettings(BaseModel):
     pool_record_suffix: str = Field(min_length=1)
     pool_snapshot_max_age_seconds: int = Field(gt=0)
     pool_engine: str = Field(min_length=1)
+    # The env file the secret store writes the DSN variable into; optional, because the unit's own
+    # EnvironmentFile may already carry the variable.
+    store_dsn_env_file: str | None = None
 
     @model_validator(mode="before")
     @classmethod
     def _keys_are_supplied(cls, data: Any) -> Any:
         if isinstance(data, dict):
-            missing = [name for name in cls.model_fields if data.get(name) is None]
+            missing = [
+                name
+                for name in cls.model_fields
+                if name != "store_dsn_env_file" and data.get(name) is None
+            ]
             if missing:
                 keys = tuple(f"{_PREFIX}{name}" for name in missing)
                 raise ValueError("no overlay supplies " + ", ".join(keys))

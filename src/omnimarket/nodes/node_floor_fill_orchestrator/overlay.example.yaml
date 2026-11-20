@@ -58,6 +58,8 @@ floor_fill:
 floor_fill_live:
   # The NAME of the environment variable that holds the state store DSN (the DSN itself is never in an overlay).
   store_dsn_env: EXAMPLE_FLOOR_FILL_DSN
+  # The env file the secret store writes that variable into (optional; the unit's EnvironmentFile may carry it instead).
+  store_dsn_env_file: /srv/example/floor-fill.env
   store_schema_name: public
   store_table_name: floor_fill_state
   store_connect_timeout_seconds: 5
