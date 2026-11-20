@@ -52,3 +52,11 @@ def test_the_answered_topic_is_the_terminal_event() -> None:
     topics = contract["topics"]
     assert isinstance(topics, dict)
     assert contract["terminal_event"] == topics["code_graph_lookup_answered"]
+
+
+def test_the_answered_topic_literal_is_the_terminal_event() -> None:
+    contract = _contract()
+    assert (
+        contract["terminal_event"]
+        == "onex.evt.omnimarket.code-graph-lookup-answered.v1"
+    )
