@@ -9,12 +9,19 @@ input the schedule hands the read step.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
+import os
+import subprocess
 import sys
+import types
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
 
 import pytest
+from temporalio.testing import WorkflowEnvironment
 
 from omnimarket.handlers.floor_projection import InMemorySnapshotSource
 from omnimarket.models.floor_projection import (
@@ -33,10 +40,32 @@ from omnimarket.nodes.node_integration_projection_compute.handlers.handler_integ
 from omnimarket.nodes.node_prove_running_workflow import (
     runtime_prove_running as runtime,
 )
+from omnimarket.nodes.node_prove_running_workflow.handlers import (
+    HandlerProveRunningLineRows,
+    HandlerProveRunningRows,
+)
 from omnimarket.nodes.node_prove_running_workflow.models import (
+    EnumProveRunningLineCase,
+    EnumProveRunningOutcome,
+    ModelProveRunningAnswer,
+    ModelProveRunningChange,
+    ModelProveRunningEarlier,
+    ModelProveRunningLineRowRequest,
+    ModelProveRunningResult,
+    ModelProveRunningRowRequest,
     ModelProveRunningStartBatch,
 )
+from tests.nodes.node_prove_running_workflow.test_prove_running_batch import (
+    _run_batch,
+    _worker,
+)
 from tests.nodes.node_prove_running_workflow.test_prove_running_workflow import FAKE
+from tests.nodes.node_prove_running_workflow.test_prove_running_workflow import (
+    env as env,
+)
+from tests.nodes.node_prove_running_workflow.test_prove_running_workflow import (
+    files as files,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -127,7 +156,7 @@ def schedule_step_input() -> str:
         "batch_id": "batch",
     }
     if "limit" in type(plan).model_fields:
-        step["limit"] = plan.limit
+        step["limit"] = plan.model_dump()["limit"]
     return json.dumps(step)
 
 
@@ -149,39 +178,6 @@ def test_the_read_step_reads_every_not_running_line(
 
 
 # --- one result row per line, in each of the three kinds, and no agent --------------------------------------------
-
-import asyncio  # noqa: E402
-import os  # noqa: E402
-import subprocess  # noqa: E402
-import types  # noqa: E402
-from pathlib import Path  # noqa: E402
-
-from temporalio.testing import WorkflowEnvironment  # noqa: E402
-
-from omnimarket.nodes.node_prove_running_workflow.handlers import (  # noqa: E402
-    HandlerProveRunningLineRows,
-    HandlerProveRunningRows,
-)
-from omnimarket.nodes.node_prove_running_workflow.models import (  # noqa: E402
-    EnumProveRunningLineCase,
-    EnumProveRunningOutcome,
-    ModelProveRunningAnswer,
-    ModelProveRunningChange,
-    ModelProveRunningEarlier,
-    ModelProveRunningLineRowRequest,
-    ModelProveRunningResult,
-    ModelProveRunningRowRequest,
-)
-from tests.nodes.node_prove_running_workflow.test_prove_running_batch import (  # noqa: E402
-    _run_batch,
-    _worker,
-)
-from tests.nodes.node_prove_running_workflow.test_prove_running_workflow import (  # noqa: E402
-    env as env,
-)
-from tests.nodes.node_prove_running_workflow.test_prove_running_workflow import (  # noqa: E402
-    files as files,
-)
 
 KINDS = ("proven", "blocked", "next-step")
 LINES = 7  # above 3, in both layer groups: indexes 0, 2, 4, 6 are layer 0 (no owner); 1, 3, 5 are above (an owner)
@@ -361,7 +357,7 @@ CHANGE = ModelProveRunningChange(
 
 
 def _line(
-    case: EnumProveRunningLineCase, **cells: object
+    case: EnumProveRunningLineCase, **cells: Any
 ) -> ModelProveRunningLineRowRequest:
     return ModelProveRunningLineRowRequest(
         case=case,
@@ -372,7 +368,7 @@ def _line(
         lane="prove-running",
         ticket="OMN-24901",
         written_at="2026-11-20T02:00:00Z",
-        **cells,  # type: ignore[arg-type]
+        **cells,
     )
 
 
@@ -475,11 +471,9 @@ def spawns(monkeypatch: pytest.MonkeyPatch) -> list[tuple[object, ...]]:
     real_popen_init = subprocess.Popen.__init__
     real_system = os.system
 
-    def popen_init(
-        self: subprocess.Popen[bytes], args: object, *a: object, **k: object
-    ) -> None:
-        seen.append(tuple(args) if isinstance(args, (list, tuple)) else (args,))  # type: ignore[arg-type]
-        real_popen_init(self, args, *a, **k)  # type: ignore[call-overload]
+    def popen_init(self: subprocess.Popen[bytes], args: Any, *a: Any, **k: Any) -> None:
+        seen.append(tuple(args) if isinstance(args, (list, tuple)) else (args,))
+        real_popen_init(self, args, *a, **k)
 
     def system(command: str) -> int:
         seen.append((command,))
@@ -487,9 +481,9 @@ def spawns(monkeypatch: pytest.MonkeyPatch) -> list[tuple[object, ...]]:
 
     real_exec = asyncio.create_subprocess_exec
 
-    async def exec_wrapper(*args: object, **kwargs: object) -> object:
+    async def exec_wrapper(*args: Any, **kwargs: Any) -> Any:
         seen.append(tuple(args))
-        return await real_exec(*args, **kwargs)  # type: ignore[arg-type]
+        return await real_exec(*args, **kwargs)
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", exec_wrapper)
     monkeypatch.setattr(subprocess.Popen, "__init__", popen_init)
@@ -503,7 +497,7 @@ def spawns(monkeypatch: pytest.MonkeyPatch) -> list[tuple[object, ...]]:
     for name in ("query", "ClaudeSDKClient", "Agent"):
         setattr(sdk, name, entry)
     monkeypatch.setitem(sys.modules, "claude_agent_sdk", sdk)
-    seen.append(("agent-calls", agent_calls))  # type: ignore[arg-type]
+    seen.append(("agent-calls", agent_calls))
     return seen
 
 
