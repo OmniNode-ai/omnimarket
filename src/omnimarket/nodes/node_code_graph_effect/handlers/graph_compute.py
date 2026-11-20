@@ -46,6 +46,10 @@ Entity = tuple[str, str]
 _DOTTED = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
 _PYPROJECT = "pyproject.toml"
 _IMPORT_CALLS = frozenset({"import_module", "__import__"})
+#: The file that makes a directory a node, and the files beside it that belong to the same node.
+CONTRACT_FILE = "contract.yaml"
+NODE_COMPANION_FILES = ("metadata.yaml", "overlay.yaml", "overlay.example.yaml")
+
 _MODULE_FLAG = re.compile(
     r"(?:^|\s)-m\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)"
 )
@@ -94,6 +98,16 @@ class GraphRules:
             or path == _PYPROJECT
             or _matches(path, self.roots.contract_globs)
             or _matches(path, self.roots.command_globs)
+            or _matches(path, self.companion_globs())
+        )
+
+    def companion_globs(self) -> tuple[str, ...]:
+        """The globs of a node's own non-contract files: each contract glob with its file name swapped (OMN-26202)."""
+        return tuple(
+            f"{glob[: -len(CONTRACT_FILE)]}{name}"
+            for glob in self.roots.contract_globs
+            if glob.endswith(f"/{CONTRACT_FILE}") or glob == CONTRACT_FILE
+            for name in NODE_COMPANION_FILES
         )
 
     def is_test(self, path: str) -> bool:
@@ -246,13 +260,13 @@ def _contract_modules(text: str, keys: Sequence[str]) -> Iterator[str]:
             stack.extend(item)
 
 
-def _command_modules(text: str) -> Iterator[str]:
+def command_modules(text: str) -> Iterator[str]:
     """``-m <module>`` in a command file (a workflow, a hook config, a unit, a shell script)."""
     for match in _MODULE_FLAG.finditer(text):
         yield match.group(1)
 
 
-def _command_paths(text: str) -> Iterator[str]:
+def command_paths(text: str) -> Iterator[str]:
     """Repository-relative ``.py`` paths a command file runs."""
     for match in _PY_PATH.finditer(text):
         yield match.group(1).removeprefix("./")
@@ -360,9 +374,9 @@ def build_graph(snapshots: Sequence[ModelRepoSnapshot], rules: GraphRules) -> Gr
                     ):
                         links.update(index.resolve(module, repo))
             if _matches(path, rules.roots.command_globs):
-                for module in _command_modules(text):
+                for module in command_modules(text):
                     roots.update(index.resolve(module, repo))
-                for named in _command_paths(text):
+                for named in command_paths(text):
                     if (repo, named) in index.name_of:
                         roots.add((repo, named))
 
