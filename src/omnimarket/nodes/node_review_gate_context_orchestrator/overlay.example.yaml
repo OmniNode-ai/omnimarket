@@ -15,8 +15,9 @@ settings:
   review_engines:
     - fable
 ledger_read:
-  route: file
-  path_env: EXAMPLE_LEDGER_PATH
-  archive_subdir: archive
+  route: command
+  command_env: ONEX_LEDGER_BUS_READ_COMMAND
   timeout_seconds: 60
   row_limit: 5000
+schedule:
+  mode: probe
