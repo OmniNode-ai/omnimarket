@@ -1015,9 +1015,8 @@ jobs:
           esac
 
   # OMN-20497: dev's repo-evidence ruleset requires this context. Its caller
-  # (call-repo-evidence-gate.yml) runs on pull_request_target and its reusable
-  # refuses any other event, so no queue commit carries the context and an entry
-  # waits until the queue's check timeout. Same read as the jobs above, with two
+  # (call-repo-evidence-gate.yml) runs on pull_request, so queue commits read
+  # their verdict from the PR head. The lookup here has two
   # differences (OMN-20073 AC2): it reads only GitHub Actions' runs (app 15368,
   # the producer the ruleset requires), so a run of the same name written by any
   # other App is never the verdict, and it passes only on success. A neutral or

@@ -16,7 +16,7 @@ overlay's bound ends in the typed failed event, and nothing is written.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -82,8 +82,27 @@ def _table(state: object) -> tuple[datetime, Mapping[str, object]]:
     return _stamp(state.get("last_tick")), state["prs"]
 
 
+_PASSED = frozenset({"success", "skipped", "neutral"})
+
+
+def _passed_checks(ci: Mapping[str, object]) -> tuple[str, ...]:
+    """Names of the head's check-runs whose newest copy passed, from the watcher's run rows."""
+    runs = ci.get("runs")
+    names = {
+        str(row[0])
+        for row in (runs if isinstance(runs, list) else [])
+        if isinstance(row, list)
+        and len(row) > 2
+        and row[1] == "completed"
+        and row[2] in _PASSED
+    }
+    return tuple(sorted(names))
+
+
 def _pr_facts(
-    entry: Mapping[str, object], overlay: ModelWatcherFactsOverlay
+    entry: Mapping[str, object],
+    overlay: ModelWatcherFactsOverlay,
+    required: Mapping[str, Sequence[str]] | None = None,
 ) -> ModelLandingPrFacts | None:
     facts = entry.get("facts")
     if not isinstance(facts, dict):
@@ -107,6 +126,7 @@ def _pr_facts(
     merge_state = _MERGE_STATE.get(str(merge_raw), EnumLandingMergeState.UNKNOWN)
     red = verdict is EnumLandingCi.RED
     node_id = facts.get("node_id")
+    contexts = None if required is None else required.get(f"{repo}:{facts.get('base')}")
     return ModelLandingPrFacts(
         pr=f"{overlay.owner}/{repo}#{facts.get('number')}",
         head_sha=head,
@@ -115,6 +135,8 @@ def _pr_facts(
         red_class=overlay.unclassified_red_class if red else None,
         red_checks=tuple(str(c) for c in ci.get("red") or ()) if red else (),
         cancelled_checks=tuple(str(c) for c in ci.get("cancelled") or ()),
+        required_contexts=None if contexts is None else tuple(contexts),
+        passed_checks=_passed_checks(ci),
         merge_state=merge_state,
         suspensions=(EnumLandingSuspension.DRAFT,) if facts.get("draft") else (),
         merge_queue=bool(entry.get("queued")),
@@ -125,17 +147,22 @@ def _pr_facts(
 
 
 def map_watcher_state(
-    state: object, overlay: ModelWatcherFactsOverlay
+    state: object,
+    overlay: ModelWatcherFactsOverlay,
+    required: Mapping[str, Sequence[str]] | None = None,
 ) -> ModelLandingFacts:
     """The watcher state's open pull requests of the overlay's repositories, as one tick of landing facts.
 
     The tick is the watcher's last_tick in epoch seconds, so the same state gives the same tick.
+    ``required`` maps ``repo:base`` to the contexts that base branch requires, as the snapshot
+    reader read them from branch protection and rulesets; a base it does not name is unread.
     """
     at, table = _table(state)
     prs = [
         pr
         for entry in table.values()
-        if isinstance(entry, dict) and (pr := _pr_facts(entry, overlay)) is not None
+        if isinstance(entry, dict)
+        and (pr := _pr_facts(entry, overlay, required)) is not None
     ]
     return ModelLandingFacts(
         tick=int(at.timestamp()),
@@ -166,7 +193,9 @@ class HandlerPrLandingWatcherFacts:
         sink: ProtocolLandingFactsSink | None = None,
         publisher: ProtocolWatcherFactsPublisher | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        required_contexts: Mapping[str, Sequence[str]] | None = None,
     ) -> None:
+        self._required = required_contexts
         self._overlay = default_overlay() if overlay is None else overlay
         self._source = state_source or InMemoryWatcherStateSource({})
         self._sink = sink or InMemoryLandingFactsSink()
@@ -209,7 +238,7 @@ class HandlerPrLandingWatcherFacts:
                 f"{self._overlay.watcher_max_age_seconds}s",
             )
         try:
-            facts = map_watcher_state(state, self._overlay)
+            facts = map_watcher_state(state, self._overlay, self._required)
             where = self._sink.write(facts)
         except (OSError, WatcherFactsSourceError) as exc:
             return self._fail(

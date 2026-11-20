@@ -20,7 +20,9 @@ description: >
   publishes and compares it with the check value of its own signing key (OMN-24396, OMN-24413). A published command is
   status published; a missing signing key, a signing key that differs from the agent's (typed refusal naming both check
   values) and a key check value the node did not serve are each refused before anything is published; a publish error is
-  failed with the error class as detail. The
+  failed with the error class as detail. The request's form picks the command's shape (OMN-19998): the default pr form is
+  today's command built around a pull request number, while the explicit tag_departure form carries sibling_tags, the
+  sibling repos' dev tags the departure pins, instead of a pull request number. The
   detail is cut to the overlay bound.
 
 handler_routing:

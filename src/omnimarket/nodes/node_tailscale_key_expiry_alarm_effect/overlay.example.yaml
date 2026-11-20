@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Install as node_tailscale_key_expiry_alarm_effect/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS.
+owner: lab-host-pool-owner
+watching_host: watching-host
+channel_library: /example/alert-channel.sh
+host_aliases: {}

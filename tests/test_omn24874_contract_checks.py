@@ -898,7 +898,7 @@ def _prose_outside_quoted_criteria(path: Path) -> str:
         return text
     document = yaml.safe_load(text)
     document.pop("requirements", None)
-    return yaml.safe_dump(document, sort_keys=True)
+    return yaml.safe_dump(document, sort_keys=True, width=float("inf"))
 
 
 @pytest.mark.unit
@@ -928,23 +928,23 @@ def test_omn24874_contract_omn25186_ac2_falsifier_is_the_linear_wording() -> Non
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("phrase", _STALE_TIER_RULE_TEXT)
 def test_omn24874_contract_stale_tier_rule_text_check_sees_the_old_text(
     tmp_path: Path,
+    phrase: str,
 ) -> None:
-    # Positive control (review finding 5, OMN-25411): the scan reads a real contract file,
-    # not a literal of its own; the OMN-25186 contract with one stale prose line put back
-    # into an item description is caught, and the unchanged file is not.
     source = _CONTRACTS / "OMN-25186.yaml"
     document = yaml.safe_load(source.read_text(encoding="utf-8"))
-    assert not [
-        s for s in _STALE_TIER_RULE_TEXT if s in _prose_outside_quoted_criteria(source)
-    ]
-    document["dod_evidence"][0]["description"] += (
-        " The ceiling budget readers skip the tenant_overlay tier by their own rule."
+    assert phrase not in _prose_outside_quoted_criteria(source)
+
+    # The prefix puts the first word of each phrase at column 81 in the dump.
+    document["dod_evidence"][0]["description"] = (
+        "The evidence description records the legacy delegation policy as "
+        f"{phrase} in this runtime check."
     )
-    stale = tmp_path / "OMN-25186.yaml"
-    stale.write_text(yaml.safe_dump(document), encoding="utf-8")
-    assert "by their own rule" in _prose_outside_quoted_criteria(stale)
+    stale = tmp_path / source.name
+    stale.write_text(yaml.safe_dump(document, width=120), encoding="utf-8")
+    assert phrase in _prose_outside_quoted_criteria(stale)
 
 
 def _contract(ticket: str) -> dict[str, Any]:

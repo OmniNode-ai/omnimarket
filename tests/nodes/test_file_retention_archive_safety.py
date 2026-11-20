@@ -181,8 +181,9 @@ def test_launching_host_outputs_archive_at_seven_days_and_never_plain_delete(
     root = tmp_path / ".local/state/omni/remote-lanes"
     output = old(root / "finished/lane.out")
     receipt = old(root / "finished/lane.json", b"{}")
+    # The contract lists both disabled (node_host_retention_effect owns the folder, OMN-24543); the rule they archive under is what this tests.
     entries = [
-        entry
+        entry.model_copy(update={"enabled": True})
         for entry in mod.load_file_policy().entries
         if entry.name in {"remote-lane-receipts", "remote-lane-outputs"}
     ]

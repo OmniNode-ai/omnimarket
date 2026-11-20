@@ -103,6 +103,15 @@ config:
     # OMN-17427: tenants and days only; the writer reads the runs. A shared
     # lane's tenant does not fit one bus message as a snapshot.
     store_refresh_command_topic: onex.cmd.omnimarket.metering-summary-refresh-requested.v1
+    # OMN-24492: every store refresh refolds every stored run of its tenant, and one
+    # delegation terminal asks for one. The writer runs at most one day refresh per
+    # tenant per min_interval_seconds and carries the held-back days into the next run;
+    # a held-back refresh is counted in the result (refresh_coalesced_total) and logged,
+    # never dropped silently. The spacing is an overlay value, <root>/node_projection_metering_summary/overlay.yaml
+    # field min_interval_seconds (ModelMeteringRefreshCoalesceOverlay); a deployment with
+    # no overlay runs at this default, 0, which is every refresh as before.
+    refresh_coalesce:
+      default_min_interval_seconds: 0
 # metering-summary.v1: the stored rows, served per tenant. The day rows are the
 # daily series and the all row the headline, from one fold, so they add up.
 projection_api:

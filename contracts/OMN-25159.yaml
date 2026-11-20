@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-25159
+title: The host installer declares a daily systemd tick for node_host_table_copies_drift_compute so the drift read runs unattended on a Linux lab host
+summary: node_host_table_copies_drift_compute (omnimarket#5260) had no caller. The installer runs a unit's module with the arguments --omni-home and --state-dir and no verb, while the node's own main takes only a positional verb (daily or probe), so no unit could run it, and the dev runtime container holds neither the overlays clone nor the overlay store projection the node's overlay names. This change adds the tick module the installer can run (with a --probe that loads the overlay and reads nothing) and the registry unit host-table-copies-drift-systemd (every 86400 s, ledger host name required). Not in this change - the node's handler, its overlay, the hourly host reading probe, and any other unit.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25159-copies-drift-unit
+  statement: The registry units installer declares a daily systemd unit that runs the host table copies drift read, and the unit refuses to install without the ledger host name its row needs.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the unit host-table-copies-drift-systemd is declared with a daily interval, the tick module as its module, --probe as its probe, and the ledger host name required; a dry run renders the timer, the ledger append route and the workspace config root with no placeholder left -- falsifier: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_host_table_copies_drift_unit.py -q --no-cov fails on the unchanged declaration (no such unit, no tick module)"
+  - id: AC2
+    statement: "AC2: the tick module with --probe exits 3 and names INDETERMINATE when the node's overlay cannot be found, exits 0 and prints PROBE ok when it can, and without --probe runs the node's daily verb -- falsifier: the probe and delegation tests of the same file"
+  - id: AC3
+    statement: "AC3: installed on h201 from this change through the host installer, the unit's timer is active and one run of the service reads the copies and appends the reading row -- falsifier: the unit's journal and the ledger hold no READING line of node_host_table_copies_drift_compute after the install"
+evidence_requirements:
+- kind: tests
+  description: The unit and tick module tests at the pushed head; they fail against the declaration before this change.
+  command: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_host_table_copies_drift_unit.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25159-unit-tests
+  description: 'AC1 and AC2: the unit declaration, render, refusal and tick module tests pass with the change; against the declaration before it the test file cannot import the tick module.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_host_table_copies_drift_unit.py -q --no-cov
+    cwd: .
+- id: dod-omn25159-integration-proof
+  description: 'AC3 lab proof: the installer dry run and the install on h201 and the first service run are read in the pull request Lab line; hosted CI cannot reach the lab host, so only the local Done gate runs this check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25159 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_host_table_copies_drift_unit.py -q --no-cov
+    cwd: .
+- id: dod-omn25159-ac3-hosted-proxy
+  description: 'hosted proxy for AC3: the golden dry-run test renders the daily timer and the ledger environment for the unit.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_host_table_copies_drift_unit.py -q --no-cov -k dry_run
+    cwd: .

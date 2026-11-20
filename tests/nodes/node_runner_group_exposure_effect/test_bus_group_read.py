@@ -172,7 +172,7 @@ def _group_body(**over: object) -> dict[str, Any]:
         "id": GROUP,
         "name": "example-group",
         "allows_public_repositories": False,
-        "restricted_to_selected_workflows": True,
+        "restricted_to_workflows": True,
         "selected_workflows": [IDENTITY],
         **over,
     }
