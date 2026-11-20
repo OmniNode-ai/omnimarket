@@ -105,7 +105,8 @@ def test_rows_adapter_reads_declared_rows_and_refuses_a_bad_file(
     path.write_text(json.dumps({"version": 1, "rows": [{"id": "a"}, "junk"]}))
     assert LocalApprovedRows()(str(path)) == [{"id": "a"}, "junk"]
     path.write_text(json.dumps({"version": 2, "rows": []}))
-    with pytest.raises(LabFillPortError, match="invalid approved-list"):
+    # the typed error names the file and the field (OMN-26223)
+    with pytest.raises(LabFillPortError, match=r"approved\.json: version: .*"):
         LocalApprovedRows()(str(path))
     with pytest.raises(LabFillPortError, match="unreadable"):
         LocalApprovedRows()(str(tmp_path / "missing.json"))
