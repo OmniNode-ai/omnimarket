@@ -135,14 +135,16 @@ def test_prefix_does_not_own_a_ledger_cut_lane_that_names_nothing() -> None:
 
 def test_prefix_does_not_own_a_rule_cannot_carry_lane_prefixes() -> None:
     with pytest.raises(ValidationError, match="lane_prefixes"):
-        ModelPlanOwnerRule(  # type: ignore[call-arg]
-            finding=FINDING,
-            lane_prefixes=("ledger-cut",),
-            tickets=(PLAN_TICKET,),
-            live_window_minutes=60,
-            why="w",
-            fix="f",
-            unknown_fix="u",
+        ModelPlanOwnerRule.model_validate(
+            {
+                "finding": FINDING,
+                "lane_prefixes": ("ledger-cut",),
+                "tickets": (PLAN_TICKET,),
+                "live_window_minutes": 60,
+                "why": "w",
+                "fix": "f",
+                "unknown_fix": "u",
+            }
         )
 
 
