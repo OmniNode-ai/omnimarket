@@ -44,6 +44,73 @@ class ModelRepoSnapshot(BaseModel):
     files: dict[str, str]
 
 
+class EnumWrittenImportKind(StrEnum):
+    """The spelling of one written import."""
+
+    #: ``import a.b`` or ``import a.b as m``.
+    IMPORT = "import"
+    #: ``from a.b import name`` (a relative one is stored qualified by the importing file's package).
+    FROM = "from"
+    #: ``from a.b import *``.
+    STAR = "star"
+    #: A literal ``importlib.import_module("a.b")`` or ``__import__("a.b")`` call.
+    IMPORT_MODULE = "import-module"
+
+
+class ModelWrittenImport(BaseModel):
+    """One import as the file wrote it, kept whether or not it resolves to a file."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The dotted module, qualified by the importing file's package for a relative import.
+    module: str = Field(min_length=1)
+    #: The imported name of a ``from`` import (``*`` for a star import); absent for the other kinds.
+    name: str | None = None
+    alias: str | None = None
+    line: int = Field(ge=1)
+    kind: EnumWrittenImportKind
+    #: Written under ``if TYPE_CHECKING``.
+    typing_only: bool = False
+
+
+class ModelAttributeUse(BaseModel):
+    """An attribute chain read through a name an import bound, resolved to the dotted name it reaches."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The full dotted name, ``a.mod.f`` for ``m.f`` after ``import a.mod as m``.
+    dotted: str = Field(min_length=1)
+    line: int = Field(ge=1)
+    #: ``module`` (an ``import`` binding), ``from-name`` (a name a ``from`` import bound, which may be
+    #: a submodule) or ``import-module`` (a name a literal ``import_module`` call was assigned to).
+    via: Literal["module", "from-name", "import-module"]
+    #: The dotted name the binding stands for; the use is of what lies below it.
+    anchor: str = Field(min_length=1)
+
+
+class ModelNameUse(BaseModel):
+    """A bare name the file reads and binds nowhere itself: what a star import may have supplied."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    line: int = Field(ge=1)
+
+
+class ModelFileReferences(BaseModel):
+    """What one file writes about other modules: imports as written, attribute uses, free names."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    path: str = Field(min_length=1)
+    imports: tuple[ModelWrittenImport, ...] = ()
+    attribute_uses: tuple[ModelAttributeUse, ...] = ()
+    #: Kept only for a file with a star import.
+    free_uses: tuple[ModelNameUse, ...] = ()
+    #: The names of the file's module-level literal ``__all__``.
+    all_names: tuple[str, ...] = ()
+
+
 class ModelRepoGraph(BaseModel):
     """What the graph found in one repository."""
 
@@ -101,6 +168,8 @@ class ModelCodeGraphResult(BaseModel):
     row: str | None = None
     #: Why the run failed: a repository that could not be read, or an append that did not land.
     failure: str | None = None
+    #: What the Memgraph version write did: ``not-configured``, ``skipped:<reason>``, ``written:<n>`` or ``failed:<reason>``.
+    memgraph: str = "not-configured"
 
 
 class ModelGraphCheckResult(BaseModel):

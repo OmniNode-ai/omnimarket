@@ -98,6 +98,9 @@ GATEWAY_SCM = frozenset(
         "pr-merged",
     }
 )
+#: A gateway read that is cache_only by construction: a miss makes no GitHub call, so no unit is
+#: spent and the read is recorded as a cache read (OMN-25538).
+CACHE_ONLY_SCM = frozenset({"job-log-cached"})
 SAFE = re.compile(r"[^A-Za-z0-9._/:@+=, -]")
 TOKEN = re.compile(r"(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+")
 
@@ -200,6 +203,17 @@ class HandlerLaneGithubBudget:
                 stderr=f"REFUSED lane={lane}: check runs come from pr_state_local.py, never per-lane REST pagination.\n",
             )
             self.record(policy, "scm commit-check-runs", "GET", "-", 78, "refused")
+            return result
+        if len(args) >= 2 and args[0] == "scm" and args[1] in CACHE_ONLY_SCM:
+            result = self.execute(request, capture=False)
+            self.record(
+                policy,
+                f"scm {args[1]}",
+                "GET",
+                "/".join(args[2:3]),
+                result.code,
+                "cache",
+            )
             return result
         if len(args) < 2 or args[0] != "scm" or args[1] not in GATEWAY_SCM:
             return self.execute(request, capture=False)

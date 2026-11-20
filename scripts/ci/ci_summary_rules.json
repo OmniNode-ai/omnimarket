@@ -244,6 +244,13 @@
           ]
         },
         {
+          "name": "Effect Bypass Ratchet (OMN-24432)",
+          "note": [
+            "OMN-24432: calls that skip an effect node only fall; baseline only shrinks.",
+            "Unconditional in ci.yml, so skipped/cancelled conclusions fail closed here."
+          ]
+        },
+        {
           "name": "Wire Compatibility Gate",
           "note": [
             "OMN-18868: the wire-compatibility gate — replays every changed wire",
@@ -464,6 +471,14 @@
             "the class built for precisely this shape: present + completed +",
             "success OR skipped, real failure still fails closed.",
             "merge-test-durations"
+          ]
+        },
+        {
+          "name": "Release Proof (OMN-23413)",
+          "note": [
+            "OMN-23413: runs the release_proof-marked tests the Tests splits deselect;",
+            "gated on needs.zone-filter.outputs.docs_only != 'true', so a docs-only PR",
+            "legitimately skips it."
           ]
         }
       ]

@@ -45,6 +45,13 @@ repos:
         files: ^(src/omnimarket/nodes/node_(plan_list|usage_privileges)/.*|src/omnimarket/models/model_catalog_postgres_pool\.py|tests/nodes/node_(plan_list|usage_privileges)/.*)$
         pass_filenames: false
         stages: [pre-commit]
+      - id: workflow-gateway-http
+        name: Workflow gateway runtime HTTP mount (submit, status, receipt, contracts)
+        entry: uv run --frozen pytest tests/nodes/node_workflow_gateway_effect -q --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_workflow_gateway_effect/.*|tests/nodes/node_workflow_gateway_effect/.*)$
+        pass_filenames: false
+        stages: [pre-commit]
       - id: envelope-example-route-nodes
         name: Example-envelope route nodes (runtime HTTP mount)
         entry: uv run --frozen pytest tests/nodes/node_envelope_example_post_effect/test_http_ingress.py tests/nodes/node_envelope_example_post_effect/test_overlay_fail_closed.py tests/nodes/node_envelope_example_get_effect/test_http_ingress.py tests/nodes/node_envelope_example_get_effect/test_overlay_fail_closed.py -q --no-cov
@@ -840,6 +847,18 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-24432: effect-node bypass ratchet (RULING 2026-11-14T11:59:02Z). Counts the outside-world calls
+      # (gh, GitHub API, git remotes, Slack, Linear, ssh to lab hosts, docker and kafka admin) that skip their
+      # effect node and refuses a rise against .onex_ratchets/effect_bypass_ceiling.yaml. Shrink-only baseline;
+      # CI twin: ci.yml job 'effect-bypass-ratchet', which also holds the merge base's copy.
+      - id: effect-bypass-ratchet
+        name: No new bypass of an effect node (OMN-24432)
+        language: system
+        entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_effect_bypass_scan_effect check --repository omnimarket --root . --baseline .onex_ratchets/effect_bypass_ceiling.yaml
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
       # OMN-18013: a burned-down baseline may not come back, and a baseline still held
       # open for another lane may not grow past that lane's rows. Pure filesystem
       # assertion — no scan, no derivation, nothing to soften.
@@ -1383,6 +1402,14 @@ repos:
         language: system
         entry: uv run python scripts/ci/run_runtime_profiles_validator.py
         files: ^src/omnimarket/nodes/node_.*/contract\.yaml$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: typed-runtime-command-subscriptions
+        name: Validate typed runtime command subscriptions
+        language: system
+        entry: uv run --frozen pytest tests/test_runtime_command_subscriptions.py -q -n 0 --no-cov -k typed_runtime_commands_are_subscribed
+        files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|tests/test_runtime_command_subscriptions\.py)$
         pass_filenames: false
         stages: [pre-commit]
 

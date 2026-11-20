@@ -17,8 +17,9 @@ import json
 import os
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import BinaryIO, Literal, cast
+from typing import IO, BinaryIO, Literal, cast
 from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
@@ -49,7 +50,11 @@ from omnimarket.models.model_github_gateway_io import (
     ModelJobLogFillResult,
     ModelJobLogTailResult,
 )
-from omnimarket.models.model_job_log_cache_miss import JOB_LOG_CACHE_MISS
+from omnimarket.models.model_job_log_cache_miss import (
+    JOB_LOG_BUSY,
+    JOB_LOG_CACHE_MISS,
+    JOB_LOG_FILL_TIMEOUT,
+)
 from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.handlers.miss_fill_budget import (
     MissFillBudget,
@@ -72,6 +77,7 @@ from omnimarket.nodes.node_github_repo_gateway_effect.transport import (
 )
 
 _HANDLER_ID = "node_github_repo_gateway_effect"
+_LOCK_POLL_SECONDS = 0.05
 _JOB_LOG_OPERATIONS = frozenset(
     {EnumGithubGatewayOperation.JOB_LOG_TAIL, EnumGithubGatewayOperation.JOB_LOG_FILL}
 )
@@ -117,12 +123,25 @@ def cache_policy() -> ModelJobLogCachePolicy:
 class _SpoolWindow(JobLogWindow):
     """The existing streaming transport feeds a private file instead of a RAM buffer."""
 
-    def __init__(self, stream: BinaryIO) -> None:
+    def __init__(
+        self,
+        stream: BinaryIO,
+        *,
+        expires_at: float | None = None,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         super().__init__(start=0, length=MAX_LOG_READ_BYTES)
         self.stream = stream
         self.digest = hashlib.sha256()
+        self.expires_at = expires_at
+        self.clock = clock
 
     def feed(self, chunk: bytes) -> None:
+        if self.expires_at is not None and self.clock() > self.expires_at:
+            raise GitHubTransportError(
+                f"{JOB_LOG_FILL_TIMEOUT}: the log download outlasted its declared "
+                f"deadline; nothing was cached for this job and a retry starts over"
+            )
         self.stream.write(chunk)
         self.digest.update(chunk)
 
@@ -140,9 +159,15 @@ class JobLogCacheTransport:
         *,
         ttl_seconds: int = 86400,
         miss_budget: MissFillBudget | None = None,
+        lock_wait_seconds: float = 30.0,
+        download_deadline_seconds: float = 45.0,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.root, self.transport, self.ttl_seconds = root, transport, ttl_seconds
         self.miss_budget = miss_budget
+        self.lock_wait_seconds = lock_wait_seconds
+        self.download_deadline_seconds = download_deadline_seconds
+        self.clock = clock
         self._miss_spent = False
 
     def handle(
@@ -169,7 +194,7 @@ class JobLogCacheTransport:
         self.meta = self.root / f"{key}.meta.json"
         self.job = self.root / f"{key}.job.json"
         with (self.root / f"{key}.lock").open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            self._take_lock(lock)
             # The read function applies the same tail, offset and timestamp step
             # semantics to local bytes as it does to a live transport.
             read = (
@@ -178,6 +203,27 @@ class JobLogCacheTransport:
                 else read_job_log_tail
             )
             return read(cast(GitHubReadTransportProtocol, self), request)
+
+    def _take_lock(self, lock: IO[str]) -> None:
+        """Take the per-job lock, or refuse JOB-LOG-BUSY once the declared wait is spent.
+
+        A blocking lock left a request with no terminal reply for as long as another
+        request or the filler held the job's lock.
+        """
+        expires_at = self.clock() + self.lock_wait_seconds
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return
+            except BlockingIOError:
+                if self.clock() >= expires_at:
+                    raise GitHubTransportError(
+                        f"{JOB_LOG_BUSY}: job {self.request.job_id} of "
+                        f"{self.request.repo} is being read or filled by another request "
+                        f"and its lock was not free within {self.lock_wait_seconds:g} s; "
+                        f"retry the read"
+                    ) from None
+                time.sleep(_LOCK_POLL_SECONDS)
 
     def _legacy_view(
         self, request: ModelGithubGatewayRequest
@@ -297,7 +343,11 @@ class JobLogCacheTransport:
         temporary = Path(name)
         try:
             with os.fdopen(fd, "wb") as stream:
-                window = _SpoolWindow(stream)
+                window = _SpoolWindow(
+                    stream,
+                    expires_at=self.clock() + self.download_deadline_seconds,
+                    clock=self.clock,
+                )
                 response = transport.send_bytes_window_sync(request, window=window)
                 if response.status != 200 or response.over_limit:
                     raise GitHubTransportError(
@@ -436,6 +486,8 @@ class HandlerGithubRepoGatewayEffect:
                     transport,
                     ttl_seconds=policy.ttl_seconds,
                     miss_budget=miss_budget,
+                    lock_wait_seconds=policy.lock_wait_seconds,
+                    download_deadline_seconds=policy.download_deadline_seconds,
                 ).handle,
                 request,
             )

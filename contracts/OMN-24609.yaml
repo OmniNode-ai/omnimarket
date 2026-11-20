@@ -1,0 +1,83 @@
+schema_version: 1.0.0
+ticket_id: OMN-24609
+title: Two Mac upkeep checks separate a declared reading and a kept lock file from a fault
+summary: 'The lab SLI collector counted every launchd unit with a nonzero last exit as a scheduled job failure, including ai.omninode.throughput-tick and ai.omninode.queue-status-tick whose script exit
+  1 is a verdict reading; its contract now declares those reading exits per label. The host reconcile node printed the clone refusal script''s stale ref lock line for the clone sync''s persistent flock
+  file by age alone; its contract now declares the persistent flock file names and the node judges a declared file by its lock state (free: not printed, held: reported held, unreadable: not judged). Not
+  in this change: the launchd drift observer (in a frozen repository; its session tick runner already ends 0 on a pushed verdict), the baselined clone refusal script, and the Mac install.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24609-reading-vs-fault
+  statement: A declared reading exit and a declared persistent flock file are told apart from a fault by the check that used to count or print them by exit code or file age alone.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a scheduled job whose last result is in the contract''s declared reading results for its label is listed as a reading and not counted in scheduled_job_failures, while the same result
+      on an undeclared label and any other result on a declared label are still counted -- falsifier: uv run pytest tests/test_lab_sli_collect_reading_exit.py -q -k "reading or undeclared"'
+  - id: AC2
+    statement: 'AC2: a lock file named in the contract''s persistent_flock_files that no process holds is not printed as a stale lock, and an undeclared old lock file is still printed -- falsifier: uv run
+      pytest tests/test_host_reconcile_clone_lock_state.py -q -k "free_declared or undeclared"'
+  - id: AC3
+    statement: 'AC3: a declared lock file that a live process holds is reported as held and not stale, and one that cannot be read is reported as unreadable -- falsifier: uv run pytest tests/test_host_reconcile_clone_lock_state.py
+      -q -k "held or unreadable"'
+  - id: AC4
+    statement: 'AC4: integrated: read in the running runtime on the launching Mac after the install: the next lab sli collect reading names neither ai.omninode.throughput-tick nor ai.omninode.queue-status-tick
+      under "nonzero last exit" while launchctl list shows their status 1, and the next host reconcile run prints no "stale ref lock" line for onex-canonical-clone-sync.lock -- falsifier: in the running
+      Mac runtime, launchctl list | grep -E "throughput-tick|queue-status-tick" shows status 1 and the sli reading detail still lists them as nonzero last exit, or grep "stale ref lock" on the reconcile
+      output names onex-canonical-clone-sync.lock'
+evidence_requirements:
+- kind: tests
+  description: The focused tests at the pushed head; each fails against the code or declaration before this change.
+  command: uv run pytest tests/test_lab_sli_collect_reading_exit.py tests/test_host_reconcile_clone_lock_state.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24609-ac1
+  description: 'AC1: a scheduled job whose last result is in the contract''s declared reading results for its label is listed as a reading and not counted in scheduled_job_failures, while the same result
+    on an undeclared label and any other result on a declared label are still counted'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_lab_sli_collect_reading_exit.py -q --no-cov -p no:randomly -k "reading or undeclared"
+    cwd: .
+- id: dod-omn24609-ac2
+  description: 'AC2: a lock file named in the contract''s persistent_flock_files that no process holds is not printed as a stale lock, and an undeclared old lock file is still printed'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_host_reconcile_clone_lock_state.py -q --no-cov -p no:randomly -k "free_declared or undeclared"
+    cwd: .
+- id: dod-omn24609-ac3
+  description: 'AC3: a declared lock file that a live process holds is reported as held and not stale, and one that cannot be read is reported as unreadable'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_host_reconcile_clone_lock_state.py -q --no-cov -p no:randomly -k "held or unreadable"
+    cwd: .
+- id: dod-omn24609-ac4-proxy
+  description: 'AC4 hosted proxy: the focused tests run both checks on fixtures that carry the Mac''s recorded shapes (the two ticks at status 1 and the clone sync flock file); the live read on the Mac
+    is run by the orchestrator after the install and is not claimed by this check.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_lab_sli_collect_reading_exit.py tests/test_host_reconcile_clone_lock_state.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24609-integration-proof
+  description: 'Integration proof run on a lab host at the pushed head: both focused test files run through lab-work. The real clone refusal script output (index.lock and both onex-canonical-clone-sync.lock files, aged) was passed through the node''s lock judge on h051: the two flock files were dropped and index.lock kept; the Mac reads (launchctl list status, the next reconcile run output) are the orchestrator''s after the install and are not claimed by this check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24609 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_lab_sli_collect_reading_exit.py tests/test_host_reconcile_clone_lock_state.py -q --no-cov -p no:randomly
+    cwd: .

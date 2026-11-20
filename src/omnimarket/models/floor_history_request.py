@@ -89,7 +89,11 @@ class ModelAttemptCounts(_Frozen):
     attempts: int = Field(ge=0)
     accepted: int = Field(ge=0)
     timeouts: int = Field(ge=0)
-    cost_usd: float = Field(ge=0)
+    cost_usd: float | None = Field(
+        default=None,
+        ge=0,
+        description="None when no attempt of the group recorded a cost",
+    )
 
 
 class ModelLatencyRead(_Frozen):
