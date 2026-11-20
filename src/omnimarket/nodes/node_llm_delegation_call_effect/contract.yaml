@@ -342,6 +342,8 @@ externally_consumed_topics:
 externally_produced_topics:
   - topic: "onex.cmd.omnimarket.delegation-target-execute.v1"
     producer: "Typed runtime ingress callers carrying ModelDelegationTargetRequest in ModelEventEnvelope v1."
+  - topic: "onex.cmd.omnimarket.delegation-harness-execute.v1"
+    producer: "Typed runtime ingress callers carrying ModelHarnessBackendCallRequest in ModelEventEnvelope v1; the handler refuses a non-house tenant or a non-internal surface."
 
 handler_routing:
   routing_strategy: "payload_type_match"
@@ -558,3 +560,21 @@ claude_credential_probe:
   max_timeout_seconds: 300
   terminate_grace_seconds: 5
   output_chars: 600
+
+# OMN-26219: the three collaborators HandlerHarnessDelegation calls in-process for each harness call. They hold no
+# subscribed topic or event_type, so they are not in handler_routing; each `handler` entry binds the module to this
+# node's contract.
+harness_backend_call_handler:
+  handler:
+    name: "HandlerHarnessBackendCall"
+    module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_harness_backend_call"
+
+harness_answer_gate:
+  handler:
+    name: "HandlerHarnessAnswerGate"
+    module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_harness_answer_gate"
+
+harness_process_runner:
+  handler:
+    name: "HandlerHarnessProcessRunner"
+    module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_harness_process_runner"
