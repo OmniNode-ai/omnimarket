@@ -69,13 +69,18 @@ def test_detail_expiry_removes_old_uncited_and_keeps_old_cited_including_in_a_ro
     cited_live = _old(detail / "query.BBBBBB", "cited live\n", days=9)
     cited_rolled = _old(detail / "query.CCCCCC", "cited in a roll\n", days=9)
     young = _old(detail / "query.DDDDDD", "young\n", days=1)
-    tracking = omni / "docs/tracking"
-    tracking.mkdir(parents=True)
-    (tracking / "ROLLING_WORK_LEDGER.md").write_text(
+    # The reference files come from the entry's own declared reference_paths: the live ledger is
+    # the one path with no glob, a roll is the declared archive glob with its star filled in.
+    declared = [Path(os.path.expandvars(p)) for p in _entry().reference_paths]
+    live_ref = next(p for p in declared if "*" not in p.name and "tracking" in p.parts)
+    roll_glob = next(p for p in declared if "archive" in p.parts and "*" in p.name)
+    roll_ref = roll_glob.with_name(roll_glob.name.replace("*", "2026-11-14-split"))
+    live_ref.parent.mkdir(parents=True)
+    live_ref.write_text(
         f"2026-11-19T00:00:00Z | STATUS | detail={cited_live}\n", encoding="utf-8"
     )
-    (tracking / "archive").mkdir()
-    (tracking / "archive/ROLLING_WORK_LEDGER_2026-11-14-split.md").write_text(
+    roll_ref.parent.mkdir(parents=True)
+    roll_ref.write_text(
         f"2026-11-14T00:00:00Z | STATUS | detail={cited_rolled}\n", encoding="utf-8"
     )
     archive = tmp_path / "archive-root"

@@ -63,7 +63,7 @@ externally_consumed_topics:
   - onex.evt.omnimarket.work-ledger-reader-answered.v1
   - onex.evt.omnimarket.work-ledger-reader-refused.v1
 
-# The entrypoint detail capture bound (handlers/handler_detail_capture.py): a capture past max_bytes
+# The entrypoint detail capture bound (handlers/detail_capture_bound.py): a capture past max_bytes
 # ends as its first head_lines, its last tail_lines and one line stating the dropped line count.
 detail_capture:
   max_bytes: 4194304

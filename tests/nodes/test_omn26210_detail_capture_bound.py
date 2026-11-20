@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.nodes.node_work_ledger_reader_effect.handlers.handler_detail_capture import (
+from omnimarket.nodes.node_work_ledger_reader_effect.handlers.detail_capture_bound import (
     bound_capture,
     load_detail_capture_settings,
 )
