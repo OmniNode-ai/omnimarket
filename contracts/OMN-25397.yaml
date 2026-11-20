@@ -70,8 +70,6 @@ dod_evidence:
   description: The contract's own command (no marker filter) is run on the lab at the pushed head and its output, with the golden test ids, is the PR's Lab comment. Hosted CI cannot read the lab, so only the local Done gate runs it. The broker-backed golden test is kafka-marked and skips without a lab broker, so the refuse-skips run deselects that marker.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC5
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25397 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_ci_checkout_effect -q --no-cov -m "not kafka" --refuse-skips

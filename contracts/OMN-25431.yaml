@@ -59,8 +59,6 @@ dod_evidence:
   description: The golden selection with the redpanda test runs against a broker named in CI_CHECKOUT_REDPANDA_BOOTSTRAP and refuses a skip. Hosted CI has no broker, so only the local Done gate runs it.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: bash -o pipefail -c 'test -n "$CI_CHECKOUT_REDPANDA_BOOTSTRAP" && uv run --frozen pytest tests/nodes/node_ci_checkout_effect -k ci_checkout_golden --refuse-skips -q -p no:cacheprovider --no-cov'
@@ -87,8 +85,6 @@ dod_evidence:
   description: The PR's head as the watcher reads it is the pushed head.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC5
   checks:
   - check_type: command
     check_value: bash -o pipefail -c 'onex scm pr-view OmniNode-ai/omnimarket#6373 | grep -F "\"head_sha\":\"$(git rev-parse HEAD)\""'
