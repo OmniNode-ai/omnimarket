@@ -80,7 +80,7 @@ from omnimarket.models.secret_store.model_secret_resolution_error import (
     SecretResolutionError,
 )
 from omnimarket.nodes.contract_topics import contract_secret_ref
-from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket_draft import (
+from omnimarket.nodes.node_create_ticket.handlers.core_ticket_draft import (
     DraftIssueCreateRefusedError,
     DraftTicketCreate,
     ModelLinearDraftIssue,
