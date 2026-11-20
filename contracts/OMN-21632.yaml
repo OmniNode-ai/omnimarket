@@ -86,3 +86,19 @@ dod_evidence:
           print("Plan-audit container readback: missing=FAIL linked=PASS empty=FAIL older=PASS")
           '
         cwd: "."
+  - id: "dod-omn21632-ac1-accepted-20261119t1345z"
+    description: "AC1: a 2026-10-31 catalogue plan with no companion fails with a failed companion_readable check, the same plan with a linked companion that has an H1 passes, and an empty companion fails. With the product change of omnimarket#4650 reverted, all three cases fail."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env -u PYTHONPATH uv run pytest src/omnimarket/nodes/node_plan_audit_compute/tests/test_handler_plan_audit_compute.py::test_companion_missing_fails_planted_fixture src/omnimarket/nodes/node_plan_audit_compute/tests/test_handler_plan_audit_compute.py::test_companion_linked_and_present_passes src/omnimarket/nodes/node_plan_audit_compute/tests/test_handler_plan_audit_compute.py::test_companion_empty_fails -q --no-cov -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+context:
+  ac_binding_provenance:
+    dod-omn21632-ac1-accepted-20261119t1345z:
+    - label: AC1
+      criterion_hash: 7888cc7c55c6613caf68100b9fa685c527b4ff07302fbd9c793fc1da0935544c
+      proposed_by: lane=dod-closeout-bind-2026-11-19T1345Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-19T1345Z-c1
+      accepted_at: '2026-11-19T14:14:26Z'
