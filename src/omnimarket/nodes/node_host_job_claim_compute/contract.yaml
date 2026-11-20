@@ -64,10 +64,10 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-job-claim-run-completed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-job-claim-run-completed.v1, operation: DESCRIBE}
 
+# Local invocation: the node declares no bus topics here; the tick's publish is declared by terminal_event, topics and broker_acl_grants.
 event_bus:
   subscribe_topics: []
-  publish_topics:
-    - onex.evt.omnimarket.host-job-claim-run-completed.v1
+  publish_topics: []
 
 dependency_ownership:
   overlay: "Supplied by the node's own command line, which loads the overlay and constructs the handler in process with the host and the installed-unit port."

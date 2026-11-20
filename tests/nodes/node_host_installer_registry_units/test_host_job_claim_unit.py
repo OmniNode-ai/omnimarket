@@ -85,9 +85,15 @@ def test_the_unit_runs_the_nodes_tick_and_reads_its_contract() -> None:
     assert unit["entry_file"] == ENTRY
     assert unit["probe_argv"] == ["--probe"]
     assert unit["required_environment_inputs"] == ["ONEX_LEDGER_HOST_NAME"]
-    # The tick publishes the run-completed topic; the contract declares it as a publish topic and its terminal event.
+    # The tick publishes the run-completed topic; the contract declares it as its terminal event and grants the principal WRITE on it.
+    # A local-transport node declares empty event_bus topics, so the publish is read from the ACL grants.
     topic = contract["topics"]["host_job_claim_run_completed"]
-    assert topic in contract["event_bus"]["publish_topics"]
+    assert contract["event_bus"]["publish_topics"] == []
+    assert any(
+        grant["name"] == topic and grant["operation"] == "WRITE"
+        for entry in contract["broker_acl_grants"]
+        for grant in entry["grants"]
+    )
     assert contract["terminal_event"] == topic
     node_dir = base.ROOT / "src/omnimarket/nodes/node_host_installer_registry_units"
     assert (node_dir / str(unit["template"])).is_file()
