@@ -5,17 +5,18 @@ summary: >-
   The census counted 187 files at origin/dev 3c2a974be5 against a ratchet of 186.
   Against the census at the merge of the ratchet (bf4163f91a, 186 files) four files
   were added (contracts/OMN-24829.yaml, contracts/OMN-25860.yaml, the review key credit
-  probe handler and a factory floor cold archive test) and three were dropped. This branch
-  moves three of the four off the ledger file's name and path variable: two contract checks
-  and falsifiers now read through the ledger query node, and the floor test names its own
-  fixture file. The credit probe handler is a writer the reader node does not serve and is
-  named, not moved. The ratchet file and the hook are byte-identical to dev.
+  probe handler and a factory floor cold archive test) and three were dropped. Two of the
+  four are moved by this branch: the contracts/OMN-24829.yaml check now reads through the
+  ledger query node, and the floor test names its own fixture file. contracts/OMN-25860.yaml
+  was already moved on dev (0fd01a8c5a) and this branch's copy equals dev's. The credit
+  probe handler is a writer the reader node does not serve and is named, not moved; it still
+  holds an executable read. The ratchet file and the hook are byte-identical to dev.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
 - id: req-omn26055-census-back-at-ratchet
-  statement: The census counts 186 files or fewer on omnimarket dev and the files that took it past the ratchet no longer hold an executable read or write of the ledger file.
+  statement: The census counts 186 files or fewer on omnimarket dev and the files this branch moves (contracts/OMN-24829.yaml and the factory floor cold archive test) no longer hold an executable read or write of the ledger file; the review key credit probe handler is a writer the reader node does not serve, still holds one, and is not moved here.
   acceptance:
   - id: AC1
     statement: 'AC1: the census run `env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=.` exits 0 and counts 186 files or fewer on omnimarket dev after the fix merges -- falsifier: the same command on a clean checkout of origin/dev exits nonzero or prints a count above 186'
@@ -33,7 +34,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn26055-ac1
-  description: AC1 the census run of the hook's own entry exits 0 and the live census test counts 186 files or fewer with the moved files out of the count on the branch, where origin/dev counts 187.
+  description: AC1 the census run of the hook's own entry exits 0 and the live census test counts 186 files or fewer with the moved files out of the count on the branch (184 files at the reviewed head), where origin/dev 3c2a974be5 counted 187 and origin/dev 0fd01a8c5a counts 186.
   source: manual
   binds_ac:
   - AC1
@@ -45,7 +46,7 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_incident_dev_187.py::test_live_census_is_within_the_ratchet_and_drops_the_moved_files -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn26055-ac2
-  description: AC2 the regression test built from the recorded census output of origin/dev 3c2a974be5 (tests/unit/nodes/node_work_ledger_file_census_effect/fixtures/incident_census_187.txt) fails while a moved file holds an executable read of the ledger file (origin/dev) and passes on the branch.
+  description: AC2 the regression test built from the recorded census output of origin/dev 3c2a974be5 (tests/unit/nodes/node_work_ledger_file_census_effect/fixtures/incident_census_187.txt) fails while a moved file holds an executable read of the ledger file (the live-file cases, against origin/dev 3c2a974be5) and passes on the branch. The cases that read only the recorded fixture and the constants of the module (test_recorded_dev_is_over_the_ratchet and test_moved_file_is_on_the_recorded_dev_list) pass on origin/dev too and are not evidence of the fix.
   source: manual
   binds_ac:
   - AC2
@@ -54,7 +55,7 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn26055-ac3
-  description: AC3 the ratchet file and the hook entry are byte-identical to origin/dev, and the ratchet test holds the count under the unchanged ratchet of 186 only with the moved files out of it.
+  description: AC3 the ratchet file and the hook entry are byte-identical to origin/dev, and the ratchet test bounds the ratchet row at 186 from above. In the control against origin/dev the ratchet and hook assertions of that test pass at base; the test fails there only through the live-census assertions it repeats from the AC1 case.
   source: manual
   binds_ac:
   - AC3

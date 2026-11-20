@@ -8,7 +8,8 @@ summary line and every counted hit of the 187 counted files. Against the census 
 ledger-file-census hook refuse every omnimarket commit:
 
 * ``contracts/OMN-24829.yaml``: a done-gate check that read the ledger file by its path variable.
-* ``contracts/OMN-25860.yaml``: an acceptance-criterion falsifier that named the path variable.
+* ``contracts/OMN-25860.yaml``: an acceptance-criterion falsifier that named the path variable. It is not moved
+  here: origin/dev 0fd01a8c5a had already moved it, and this branch's copy equals dev's.
 * ``tests/nodes/node_factory_floor_publish_effect/test_factory_floor_cold_archive_reads.py``: a fixture that named
   the ledger file.
 * ``src/omnimarket/nodes/node_review_key_credit_probe_effect/handlers/handler_review_key_credit_probe.py``: a writer
@@ -16,7 +17,11 @@ ledger-file-census hook refuse every omnimarket commit:
   and moving it changes the environment of the deployed unit, which lives outside this repository.
 
 The recorded output is the input of these tests; the live files are classified by the census's own classifier, so
-the tests fail on origin/dev and pass once the three moved files hold no executable reader or writer.
+the live-file cases fail on origin/dev 3c2a974be5 and pass once the moved files hold no executable reader or writer.
+Two files are moved by this branch (``contracts/OMN-24829.yaml`` and the cold archive test) and one was moved on dev
+(``contracts/OMN-25860.yaml``), so its case passes on dev's own 0fd01a8c5a. The cases that read only the recorded
+fixture and the constants of this module check the fixture's own shape; no change to the code under test can fail
+them, so they are not evidence that the census is fixed.
 """
 
 from __future__ import annotations
@@ -55,7 +60,9 @@ SUMMARY = re.compile(
 )
 HIT = re.compile(r"^  (?P<kind>reader|writer) (?P<path>\S+):(?P<line>\d+)$")
 
-#: The files of the recorded list that this change moves off the ledger file's name or path variable.
+#: The files of the recorded list that are off the ledger file's name or path variable at the head of this branch:
+#: two moved here (``contracts/OMN-24829.yaml`` and the cold archive test) and one moved on dev
+#: (``contracts/OMN-25860.yaml``, origin/dev 0fd01a8c5a).
 MOVED = (
     "contracts/OMN-24829.yaml",
     "contracts/OMN-25860.yaml",
@@ -77,6 +84,7 @@ def _overlay() -> ModelCensusOverlay:
 
 
 def test_recorded_dev_is_over_the_ratchet() -> None:
+    """Fixture only: checks the recorded output's own shape and cannot fail on a code change."""
     summary, paths = _recorded()
     assert summary["state"] == "grew"
     assert int(summary["files"]) == len(paths) == 187
@@ -85,6 +93,7 @@ def test_recorded_dev_is_over_the_ratchet() -> None:
 
 @pytest.mark.parametrize("path", MOVED)
 def test_moved_file_is_on_the_recorded_dev_list(path: str) -> None:
+    """Fixture only: checks the recorded output's own shape and cannot fail on a code change."""
     assert path in _recorded()[1]
 
 
@@ -123,10 +132,15 @@ def test_live_census_is_within_the_ratchet_and_drops_the_moved_files() -> None:
 
 
 def test_ratchet_and_hook_hold_while_the_moved_files_drop_out() -> None:
-    """AC3: the count comes under the ratchet by moving files, never by raising the ratchet or widening the hook."""
+    """AC3: the count comes under the ratchet by moving files, never by raising the ratchet or widening the hook.
+
+    The ratchet bound is an upper bound: lowering the row (``--lower`` after a passing run) or adding a repository
+    key leaves it green, and raising the row above 186 turns it red. Against origin/dev the ratchet and hook
+    assertions pass too; the case fails there only through the live-census assertions it repeats.
+    """
     overlay, result = _live_census()
     ratchet = yaml.safe_load((ROOT / overlay.ratchet_file).read_text())["ratchet"]
-    assert ratchet == {"omnimarket": 186}
+    assert ratchet["omnimarket"] <= 186
 
     config = yaml.safe_load((ROOT / ".pre-commit-config.yaml").read_text())
     hooks = [

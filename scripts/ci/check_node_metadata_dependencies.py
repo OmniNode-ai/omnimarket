@@ -169,10 +169,8 @@ def check_node_dependency_scope(
 def format_findings(findings: Sequence[NodeDependencyFinding]) -> str:
     """Format dependency-scope findings for CI output."""
 
-    lines = ["ONCP node metadata dependency scope violations:"]
-    for finding in findings:
-        lines.append(f"- {finding.node_name}: {finding.message}")
-    return "\n".join(lines)
+    header = "ONCP node metadata dependency scope violations:"
+    return "\n".join([header, *(f"- {f.node_name}: {f.message}" for f in findings)])
 
 
 def main() -> int:
