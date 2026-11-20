@@ -63,5 +63,6 @@ class TestBoltUriOverlayResolution:
     ) -> None:
         """Unset overlay binding fails closed instead of defaulting to localhost."""
         monkeypatch.delenv("ARCH_GRAPH_BOLT_URI", raising=False)
+        monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
         with pytest.raises(ValueError, match="ARCH_GRAPH_BOLT_URI is not bound"):
             ModelArchitectureGraphPopulateConfig()
