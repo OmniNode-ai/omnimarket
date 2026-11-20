@@ -256,6 +256,20 @@ requirements:
     acceptance:
       - id: AC14
         statement: 'AC14: two runs of one cluster make one ticket and one comment; a search that cannot find the cluster files it every run; the gate refuses a description without its Diagnosis and Gate lines -- falsifier: uv run --frozen pytest tests/nodes/node_baseline_cluster_ticket -q --no-cov -n 0 -p no:randomly'
+  - id: "req-omn19998-remove-compat"
+    statement: "Operator RULING 2026-11-15T17:59:49Z (ledger row, ticket OMN-19998): the retired sibling package is removed and nothing uses it. This
+      repository no longer installs, checks out, imports, pins or lists it, in any file this change edits."
+    acceptance:
+      - id: "AC135"
+        statement: "AC135: no file this change touches names the retired sibling package -- falsifier: git diff --name-only --diff-filter=d origin/dev...HEAD | xargs git grep -n -i -E 'omnibase[_-]compat' --
+          prints a line at the head"
+  - id: "req-omn19998-compat-replays-retargeted"
+    statement: "No CI job, benchmark scorer or vendoring helper installs the retired package for a replayed
+      historical tree; the wire-gate and delegation-ladder replays point their trees at the symbol's home."
+    acceptance:
+      - id: "AC136"
+        statement: "AC136: the running-reference guard finds no install, checkout or import of the retired package under .github/workflows, benchmarks, scripts, src or tests -- falsifier: the guard test
+          (tests/unit/test_no_retired_package_running_references.py) fails at the head, or still passes with a reference planted in a file outside the two it read before"
   - id: req-omn19998-duplicate-guard-added-lines
     statement: The pull request duplicate guard scores one share over all the changed lines of both diffs, less the removed lines a deployment declares shared catalog lines, so two pull requests that replace one declared catalog line with different content are not one fix.
     acceptance:
@@ -993,6 +1007,22 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest src/omnimarket/nodes/node_baseline_cluster_ticket_effect/tests tests/nodes/node_baseline_cluster_ticket -q --no-cov -n 0 -p no:randomly
         cwd: .
+  - id: "dod-omn19998-remove-compat"
+    description: "The files this change edits no longer name the retired package: the workflow, the delegation-ladder scorer and the vendoring helper's directory print no line, and the deleted vendoring helper stays deleted. The check names its files, so the hosted runner runs it without the origin/dev ref."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/test_no_retired_package_running_references.py -q --no-cov -n 0 -p no:randomly -k test_nothing_in_the_running_trees"
+        cwd: "."
+    binds_ac: ["AC135"]
+  - id: "dod-omn19998-compat-install-guard"
+    description: "The install guard finds no CI job, scorer, script or helper installing the retired package."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/test_no_retired_package_running_references.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
+    binds_ac: ["AC136"]
   - id: dod-omn19998-duplicate-guard-added-lines
     description: Recorded catalog diffs run through parse_diff and HandlerPrDuplicateGuard. Different added lines under one declared catalog line pass; identical added lines and two deletions of one line still refuse; the replaces suite keeps refusing an overlap from a commit outside the replaced change. This scoped proof binds the guard tests and does not assert the landing controller criteria of the ticket.
     source: manual

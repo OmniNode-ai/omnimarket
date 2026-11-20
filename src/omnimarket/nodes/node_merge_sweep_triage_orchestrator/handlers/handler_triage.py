@@ -89,7 +89,8 @@ FAILED_CHECK_CONCLUSIONS = {
 }
 
 # Default routing policy for Phase 2 LLM commands. It must match
-# omnibase_compat.routing.model_routing_policy.ModelRoutingPolicy because effect
+# ModelRoutingPolicy in omnibase_core
+# (src/omnibase_core/models/routing/model_routing_policy.py) because effect
 # handlers fail-loud on malformed command routing.
 _DEFAULT_ROUTING_POLICY: dict[str, Any] = model_binding_section("triage_routing_policy")
 

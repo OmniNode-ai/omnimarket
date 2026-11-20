@@ -76,7 +76,7 @@ def _graph(
     """Build a graph over an empty-but-resolvable root for every GRAPH_PACKAGES
     entry. build_graph() fails closed if a package root is UNRESOLVABLE (the
     census-completeness invariant), but an empty root is a legitimate state --
-    omnibase_compat really does ship zero contract.yaml files in the real
+    a package can really ship zero contract.yaml files in the real
     corpus. Tests only ever write fixtures into omnibase_infra/omnimarket, so
     every other package here always resolves empty.
     """

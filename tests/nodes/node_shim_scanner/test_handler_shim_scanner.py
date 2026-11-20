@@ -179,7 +179,7 @@ from omnibase_core.decorators import shim
     ticket_id="OMN-99",
     expires_on=datetime.date(2026, 5, 15),
     reason="field check",
-    replacement="omnibase_compat.NewDto",
+    replacement="omnibase_core.NewDto",
 )
 def check_me():
     pass
@@ -190,7 +190,7 @@ def check_me():
         finding = result.findings[0]
         assert finding.ticket_id == "OMN-99"
         assert finding.reason == "field check"
-        assert finding.replacement == "omnibase_compat.NewDto"
+        assert finding.replacement == "omnibase_core.NewDto"
         assert finding.expires_on == datetime.date(2026, 5, 15)
         assert finding.line_number > 0
         assert finding.file_path == str(f)

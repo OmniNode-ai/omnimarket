@@ -48,6 +48,7 @@ import os
 import re
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -66,15 +67,22 @@ from check_wire_compatibility import (
     OUTCOME_REFUSED,
     OUTCOME_RELEASE_UNREADABLE,
     OUTCOME_RELEASE_UNRESOLVABLE,
+    PINNED_CONSUMERS,
     WIRE_MODEL_ROOTS,
+    GateError,
+    _run_probe,
     main,
+    materialise_release,
 )
 from ci_summary_gate import STRICT_GATE_JOBS
 
 from omnimarket.handlers.handler_wire_consumer_pin import (
     OUTCOME_PIN_REFUSED,
     OUTCOME_PIN_UNRESOLVABLE,
+    HandlerWireConsumerPin,
+    consumer_files,
 )
+from omnimarket.models.model_wire_consumer_pin import ModelWireConsumerPinRequest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -84,6 +92,25 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PRE_PUBLISHED_AT_RELEASE = "v0.4.133"
 
 WIRE_MODULE = "src/omnimarket/models/delegation/wire/model_delegate_skill_request.py"
+
+#: ``ReadinessState`` moved into this repository after ``v0.4.133`` was cut
+#: (OMN-14108), and the package the release tree imported it from is retired.
+#: The release's wire module reaches it through ``omnimarket.events``, so the
+#: real-history controls replay the release tree with that one import pointed
+#: at the type's home here and the home's file added beside it; every other
+#: byte of the released tree, ``ModelDelegateSkillRequest`` included, is the
+#: release's own.
+READINESS_HOME = "src/omnimarket/models/evidence_pipeline/wire/types.py"
+#: The home's file is read from this commit, never from the checkout under test:
+#: a baseline copied from head would carry every later edit to the type into the
+#: tree the gate compares head against, so a change to it could never be refused.
+READINESS_HOME_COMMIT = "ebb006955dd0301ecbd29974fa321682c359f5f8"
+#: Where the CI gate step reads each consumer's own pin files from, per consumer.
+CONSUMER_PIN_URL = "https://raw.githubusercontent.com/OmniNode-ai/{consumer}/dev/{name}"
+WIRE_MODULE_DOTTED = "omnimarket.models.delegation.wire.model_delegate_skill_request"
+READINESS_HOME_MODULE = "omnimarket.models.evidence_pipeline.wire.types"
+READINESS_IMPORTER = "src/omnimarket/events/runtime_deployment.py"
+_READINESS_IMPORT_RE = re.compile(r"^from \S+ import ReadinessState$", re.MULTILINE)
 
 #: Where a reader of a skipped real-history control is sent. A skip whose
 #: reason does not say where the assertion DOES run is indistinguishable from
@@ -133,14 +160,29 @@ def _model_source(*, fields: str, extra: str) -> str:
     )
 
 
+GATE_TEST_NAME = "wire compatibility gate test"
+GATE_TEST_EMAIL = "gate@omninode.ai"
+GATE_TEST_IDENTITY = f"{GATE_TEST_NAME} <{GATE_TEST_EMAIL}>"
+
+
+#: A machine's own ``GIT_AUTHOR_*`` or ``GIT_COMMITTER_*`` would win over ``-c user.*``,
+#: so the identity is stated in both places and the asserted one is the one used.
+GATE_IDENTITY_ENV = {
+    "GIT_AUTHOR_NAME": GATE_TEST_NAME,
+    "GIT_AUTHOR_EMAIL": GATE_TEST_EMAIL,
+    "GIT_COMMITTER_NAME": GATE_TEST_NAME,
+    "GIT_COMMITTER_EMAIL": GATE_TEST_EMAIL,
+}
+
+
 def _git(repo: Path, *args: str) -> str:
     result = subprocess.run(
         [
             "git",
             "-c",
-            "user.email=gate@omninode.ai",
+            f"user.email={GATE_TEST_EMAIL}",
             "-c",
-            "user.name=wire compatibility gate test",
+            f"user.name={GATE_TEST_NAME}",
             "-c",
             "commit.gpgsign=false",
             *args,
@@ -151,7 +193,7 @@ def _git(repo: Path, *args: str) -> str:
         # this scrub a fixture run under a pre-push hook would build its
         # "release" commits in the REAL invoking worktree rather than in
         # tmp_path (OMN-14891 / OMN-18434).
-        env=scrub_git_location_env(os.environ),
+        env=scrub_git_location_env({**os.environ, **GATE_IDENTITY_ENV}),
         capture_output=True,
         check=True,
     )
@@ -162,6 +204,66 @@ def _write(repo: Path, relative: str, body: str) -> None:
     target = repo / relative
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(body, encoding="utf-8")
+
+
+def _retargeted_release_clone(
+    tmp_path: Path,
+    *,
+    source: Path = REPO_ROOT,
+    release: str = PRE_PUBLISHED_AT_RELEASE,
+    home_commit: str = READINESS_HOME_COMMIT,
+) -> tuple[Path, str]:
+    """Clone ``source`` and move the ``release`` tag onto its retargeted tree.
+
+    Returns the clone and the commit the moved tag now names: a child of the real
+    release commit whose only change is the ``ReadinessState`` import pointed at
+    :data:`READINESS_HOME_MODULE`, with the home's file, as ``home_commit`` holds it,
+    added. The real-history controls use this repository, its release tag and
+    ``READINESS_HOME_COMMIT``; the controls of the helper itself use a scratch
+    repository of the same shape, so they need no tags and run in every checkout.
+    """
+    clone = tmp_path / "clone"
+    subprocess.run(
+        ["git", "clone", "--quiet", str(source), str(clone)],
+        env=scrub_git_location_env({**os.environ, **GATE_IDENTITY_ENV}),
+        capture_output=True,
+        check=True,
+    )
+    released = _git(clone, "rev-parse", f"{release}^{{commit}}")
+    tree = tmp_path / "released"
+    _git(clone, "worktree", "add", "--quiet", "--detach", str(tree), released)
+    importer = tree / READINESS_IMPORTER
+    source = importer.read_text(encoding="utf-8")
+    retargeted, count = _READINESS_IMPORT_RE.subn(
+        f"from {READINESS_HOME_MODULE} import ReadinessState", source
+    )
+    assert count == 1, (
+        f"{READINESS_IMPORTER} at {released} no longer imports ReadinessState once"
+    )
+    importer.write_text(retargeted, encoding="utf-8")
+    _write(
+        tree,
+        READINESS_HOME,
+        subprocess.run(
+            ["git", "show", f"{home_commit}:{READINESS_HOME}"],
+            cwd=str(clone),
+            env=scrub_git_location_env({**os.environ, **GATE_IDENTITY_ENV}),
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout,
+    )
+    _git(tree, "add", READINESS_IMPORTER, READINESS_HOME)
+    _git(
+        tree,
+        "commit",
+        "-q",
+        "-m",
+        f"{release} with ReadinessState from its home",
+    )
+    retargeted_sha = _git(tree, "rev-parse", "HEAD")
+    _git(clone, "tag", "-f", release, retargeted_sha)
+    return clone, retargeted_sha
 
 
 @pytest.fixture
@@ -304,7 +406,9 @@ def test_release_is_resolved_from_the_release_never_from_the_tree(
 
 
 @pytest.mark.integration
-def test_real_published_at_replay_against_the_release_that_predates_it() -> None:
+def test_real_published_at_replay_against_the_release_that_predates_it(
+    tmp_path: Path,
+) -> None:
     """AC1/AC2: the actual incident, replayed against the actual release.
 
     ``omnimarket#2692`` put ``published_at`` on the delegate-skill request. The
@@ -316,13 +420,14 @@ def test_real_published_at_replay_against_the_release_that_predates_it() -> None
     measured refusing.
     """
     _require_tag(PRE_PUBLISHED_AT_RELEASE)
+    clone, _ = _retargeted_release_clone(tmp_path)
 
     completed = subprocess.run(
         [
             sys.executable,
             str(REPO_ROOT / "scripts" / "ci" / "check_wire_compatibility.py"),
             "--repo-root",
-            str(REPO_ROOT),
+            str(clone),
             "--grade-release-tag",
             "--tag-anchor",
             PRE_PUBLISHED_AT_RELEASE,
@@ -451,14 +556,7 @@ def test_real_published_at_replay_through_a_dev_merge_tag_pin(tmp_path: Path) ->
     refusing.
     """
     _require_tag(PRE_PUBLISHED_AT_RELEASE)
-    clone = tmp_path / "clone"
-    subprocess.run(
-        ["git", "clone", "--quiet", str(REPO_ROOT), str(clone)],
-        env=scrub_git_location_env(os.environ),
-        capture_output=True,
-        check=True,
-    )
-    pre = _git(clone, "rev-parse", f"{PRE_PUBLISHED_AT_RELEASE}^{{commit}}")
+    clone, pre = _retargeted_release_clone(tmp_path)
     tag = f"dev-20260920000000-{pre[:12]}"
     _git(clone, "tag", tag, pre)
 
@@ -489,6 +587,8 @@ def test_real_published_at_replay_through_a_dev_merge_tag_pin(tmp_path: Path) ->
     assert f"pin-verdict REFUSED: {tag} (pinned by incident-consumer)" in stderr
     assert "published_at" in stderr
     assert "Extra inputs are not permitted" in stderr
+
+    _assert_every_required_consumers_pinned_tag_imports(tmp_path)
 
 
 # --------------------------------------------------------------------------
@@ -1233,3 +1333,144 @@ def test_oldest_pin_two_consumers_on_one_tag_are_graded_once(
     out = capsys.readouterr().out
     assert out.count("pin-verdict PASS") == 1
     assert "pinned by a, b" in out
+
+
+def _readiness_fixture(tmp_path: Path) -> tuple[Path, str, str]:
+    """A scratch repository shaped like the real one: a home commit, a release, a later head edit.
+
+    Returns the repository, the commit that holds the type's home file as the baseline
+    must carry it, and the release tag. The release's importer reaches ``ReadinessState``
+    from a module the retargeting rewrites; the head commit edits the home file after it.
+    """
+    repo = tmp_path / "fixture-source"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "dev")
+    _write(repo, READINESS_HOME, "READINESS_AT_HOME_COMMIT = True\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "home commit")
+    home_commit = _git(repo, "rev-parse", "HEAD")
+    _write(repo, READINESS_IMPORTER, "from gone_package import ReadinessState\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "release")
+    _git(repo, "tag", "v-fixture-release")
+    _write(repo, READINESS_HOME, "READINESS_EDITED_AT_HEAD = True\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "head edit to the type's home")
+    return repo, home_commit, "v-fixture-release"
+
+
+@pytest.mark.unit
+def test_the_replayed_release_carries_the_pinned_baseline_not_heads_copy(
+    tmp_path: Path,
+) -> None:
+    """A head edit to the type's home must not reach the baseline it is graded against."""
+    source, home_commit, release = _readiness_fixture(tmp_path)
+    clone, retargeted = _retargeted_release_clone(
+        tmp_path / "replay", source=source, release=release, home_commit=home_commit
+    )
+    pinned = _git(source, "rev-parse", f"{home_commit}:{READINESS_HOME}")
+    heads = _git(source, "rev-parse", f"HEAD:{READINESS_HOME}")
+    assert pinned != heads
+    assert _git(clone, "rev-parse", f"{retargeted}:{READINESS_HOME}") == pinned
+    importer = _git(clone, "show", f"{retargeted}:{READINESS_IMPORTER}")
+    assert importer == f"from {READINESS_HOME_MODULE} import ReadinessState"
+
+
+@pytest.mark.unit
+def test_the_replay_clone_commits_under_its_own_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The retargeting commit needs no identity from the machine running it.
+
+    The machine's own identity variables are set to a different person first, so
+    the assertion fails if the helper ever lets the machine's identity through.
+    """
+    source, home_commit, release = _readiness_fixture(tmp_path)
+    for name in ("GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"):
+        monkeypatch.setenv(name, "someone else")
+    for name in ("GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL", "EMAIL"):
+        monkeypatch.setenv(name, "someone.else@example.invalid")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    clone, retargeted = _retargeted_release_clone(
+        tmp_path / "replay", source=source, release=release, home_commit=home_commit
+    )
+    assert (
+        _git(clone, "log", "-1", "--format=%an <%ae>", retargeted) == GATE_TEST_IDENTITY
+    )
+    assert (
+        _git(clone, "log", "-1", "--format=%cn <%ce>", retargeted) == GATE_TEST_IDENTITY
+    )
+
+
+def _fetch_consumer_pin_files(consumer: str, into: Path) -> tuple[Path, Path]:
+    """The consumer's own pin files, read the way the CI gate step reads them."""
+    paths: list[Path] = []
+    for name in ("pyproject.toml", "uv.lock"):
+        target = into / f"{consumer}.{name}"
+        url = CONSUMER_PIN_URL.format(consumer=consumer, name=name)
+        with urllib.request.urlopen(url, timeout=60) as response:
+            target.write_bytes(response.read())
+        paths.append(target)
+    return paths[0], paths[1]
+
+
+def _assert_every_required_consumers_pinned_tag_imports(
+    tmp_path: Path,
+) -> None:
+    """The gate probes a baseline tree that imports, for every consumer it requires.
+
+    The tags are resolved by the gate's own resolver (``HandlerWireConsumerPin``) from
+    each consumer in ``PINNED_CONSUMERS``, reading the consumer's own pin files; nothing
+    here names a tag. Each resolved tag's wire module must import under this environment,
+    or the gate reads ``WIRE_COMPAT_PROBE_FAILED`` while every test above passes on a
+    doctored release. The released ``v0.4.133`` tree, unretargeted, is the control: it
+    imports a package this repository no longer installs, and the probe says so.
+
+    Called by ``test_real_published_at_replay_through_a_dev_merge_tag_pin``, which
+    executes in the ``Wire Compatibility Gate`` job, which has the tags and the network;
+    the shard job has neither and records that test as skipped.
+    """
+    pyprojects: list[str] = []
+    locks: list[str] = []
+    for consumer in PINNED_CONSUMERS:
+        pyproject, lock = _fetch_consumer_pin_files(consumer, tmp_path)
+        pyprojects.append(f"{consumer}={pyproject}")
+        locks.append(f"{consumer}={lock}")
+    baselines = (
+        HandlerWireConsumerPin()
+        .handle(
+            ModelWireConsumerPinRequest(
+                repo_root=str(REPO_ROOT),
+                consumers=consumer_files(pyprojects, locks),
+                required=tuple(PINNED_CONSUMERS),
+            )
+        )
+        .baselines
+    )
+    assert baselines
+    assert {name for item in baselines for name in item.consumers} == set(
+        PINNED_CONSUMERS
+    )
+    for baseline in baselines:
+        pinned = materialise_release(
+            REPO_ROOT, baseline.tag, tmp_path / f"pinned-{baseline.commit[:12]}"
+        )
+        answer = _run_probe(
+            src_root=pinned,
+            module=WIRE_MODULE_DOTTED,
+            mode="describe",
+            workdir=tmp_path,
+        )
+        assert answer, f"{baseline.tag} (pinned by {baseline.consumers}) did not import"
+    released = materialise_release(
+        REPO_ROOT, PRE_PUBLISHED_AT_RELEASE, tmp_path / "released"
+    )
+    with pytest.raises(GateError) as refusal:
+        _run_probe(
+            src_root=released,
+            module=WIRE_MODULE_DOTTED,
+            mode="describe",
+            workdir=tmp_path,
+        )
+    assert refusal.value.outcome == OUTCOME_PROBE_FAILED

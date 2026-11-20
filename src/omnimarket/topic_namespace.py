@@ -31,10 +31,10 @@ both, which is fine: a test process is not the projection-api process.
 
 **This is the second copy of the transform and there should eventually be
 none.** The gateway API carries a third for an unrelated reason (it ships no
-shared wheel at all). The real home is ``omnibase_compat``, which exists for
-exactly this — cross-repo primitives with zero upstream runtime deps — and
-which every one of the three can import without pulling a driver. Tracked as
-a follow-up; until then the parity test is what keeps the copies honest.
+shared wheel at all). The canonical copy today is
+``omnibase_infra.topics.topic_namespace``; the eventual home is a cross-repo
+primitive package with no runtime deps. Tracked as a follow-up; until then
+the parity test is what keeps the copies honest.
 """
 
 from __future__ import annotations

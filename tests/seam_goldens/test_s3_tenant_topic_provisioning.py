@@ -12,7 +12,7 @@ topics can exist on the wire at all.
 **Reachability limit, stated plainly.** The provisioner's own symbol
 (``DEFAULT_TENANT_CANONICAL_TOPICS``) is NOT importable from this repo's
 dependency closure — it is not present anywhere in the pinned
-``omnibase_core`` / ``omnibase_infra`` / ``omnibase_spi`` / ``omnibase_compat``
+``omnibase_core`` / ``omnibase_infra`` / ``omnibase_spi``
 packages. The frozen slice manifest records this as
 ``producer_symbol_reachable: false`` rather than burying it in a docstring, and
 the edge is NOT claimed as traversed.

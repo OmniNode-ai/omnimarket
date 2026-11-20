@@ -1,7 +1,7 @@
 """Smoke test: HandlerOvernight dispatches tonight's real contract in dry_run.
 
 Loads a real overnight contract YAML, strips unsupported shim fields
-(``dispatch_items`` — omnibase_compat#37 not yet merged), forces dry_run,
+(``dispatch_items``, which the contract model does not carry), forces dry_run,
 and asserts the dispatch_phases=True path runs end-to-end.
 
 Marked ``slow`` because it imports the full build-loop orchestrator graph.

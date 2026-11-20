@@ -44,7 +44,7 @@ class ModelSuiteEvaluationRequest(BaseModel):
         ...,
         pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
         max_length=140,
-        description="Repo slug (owner/name), e.g. 'OmniNode-ai/omnibase_compat'.",
+        description="Repo slug (owner/name), e.g. 'OmniNode-ai/omnibase_core'.",
     )
     commit_sha: str = Field(
         ...,
