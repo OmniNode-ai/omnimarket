@@ -77,6 +77,11 @@ class ModelSourceCacheTally(BaseModel):
     unavailable: int = 0
     source_reads: int = 0
     source_seconds: float = 0.0
+    # Reads answered from the previous slot's cached read, marked pending, while the current slot's run was unfinished (no source read).
+    pending_served: int = 0
+    # The missing-workflow lookups, kept apart from hits and misses so that ``misses`` counts only the reads that went to the source.
+    absent_lookups: int = 0
+    absent_hits: int = 0
     backend: str = ""
     disabled_reason: str = ""
 

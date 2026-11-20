@@ -164,6 +164,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         for cache_line in result.source_cache_lines:
             sys.stdout.write(f"{cache_line}\n")
+        for red_row in result.cache_red_rows:
+            sys.stderr.write(f"factory-floor-publish: RED source-cache: {red_row}\n")
     publish_seconds = time.monotonic() - publish_start
 
     def record_tick(reports_seconds: float) -> None:

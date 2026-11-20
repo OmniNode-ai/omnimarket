@@ -60,11 +60,21 @@ class CachedSourceReader:
         decode: Callable[[str], T],
         *,
         usable: Callable[[T], bool] = lambda _value: True,
+        absent: bool = False,
+        count_hit: bool = True,
+        count_miss: bool = True,
     ) -> T | None:
-        """The cached value for ``key`` when the cache holds one the caller still accepts, else ``None`` (counted as a hit, miss or bypass)."""
+        """The cached value for ``key`` when the cache holds one the caller still accepts, else ``None`` (counted as a hit, miss or bypass).
+
+        ``absent`` marks the lookup of a remembered missing-workflow answer: it is counted in ``absent_lookups`` and ``absent_hits`` and
+        never in ``hits`` or ``misses``, so ``misses`` counts the reads that went to the source. ``count_hit=False`` and ``count_miss=False``
+        leave a hit or a miss uncounted for a caller that counts the outcome itself (``note_miss``, ``note_pending_served``).
+        """
         if self._handler is None:
             self.tally.bypassed += 1
             return None
+        if absent:
+            self.tally.absent_lookups += 1
         looked = self._handler.handle(
             ModelSourceCacheRequest(operation="lookup", key=key)
         )
@@ -75,13 +85,38 @@ class CachedSourceReader:
             try:
                 cached = decode(looked.payload)
             except (ValueError, ValidationError):
-                self.tally.misses += 1
+                self._count_miss(absent, count_miss)
                 return None
             if usable(cached):
-                self.tally.hits += 1
+                if absent:
+                    self.tally.absent_hits += 1
+                elif count_hit:
+                    self.tally.hits += 1
                 return cached
-        self.tally.misses += 1
+        self._count_miss(absent, count_miss)
         return None
+
+    def _count_miss(self, absent: bool, count_miss: bool) -> None:
+        if count_miss and not absent:
+            self.tally.misses += 1
+
+    def note_miss(self) -> None:
+        """Count one miss for a caller that looked with ``count_miss=False`` and then read the source."""
+        self.tally.misses += 1
+
+    def note_pending_served(self) -> None:
+        """Count one read answered from a cached read marked pending (counted in ``hits`` too: the source was not read)."""
+        self.tally.hits += 1
+        self.tally.pending_served += 1
+
+    def fetch_source[T](self, fetch: Callable[[], T]) -> T:
+        """Read the source for a caller that keeps its own keys, counting the read and its seconds."""
+        return self._fetch(fetch)
+
+    @property
+    def enabled(self) -> bool:
+        """True when a handler is bound; without one every read goes to the source and is counted as a bypass."""
+        return self._handler is not None
 
     def store[T](
         self,

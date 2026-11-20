@@ -79,6 +79,9 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_fleet_obser
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload import (
     ModelProcessHealthPayloadRequest,
 )
+from omnimarket.nodes.node_source_read_cache_effect.handlers.tally_history import (
+    fold_cache_tally,
+)
 from omnimarket.nodes.node_source_read_cache_effect.handlers.tally_receipt_lines import (
     read_tally_lines,
 )
@@ -518,7 +521,9 @@ class HandlerFactoryFloorPublish:
             )
         delegation = self._read_delegation(home / rt.delegation_relpath)
         phases["delegation"] = self._clock() - delegation_start
+        cache_tally = fold_cache_tally(home, now)
         status_document: dict[str, Any] = {
+            "cache_tally": cache_tally.model_dump(mode="json"),
             "cycle_seconds_before_copy": round(self._clock() - cycle_start, 3),
             "cycle_bound_seconds": rt.bound(),
             "phase_seconds": {k: round(v, 3) for k, v in phases.items()},
@@ -650,6 +655,7 @@ class HandlerFactoryFloorPublish:
             cycle_seconds=timing["cycle_seconds"],
             phase_seconds={k: round(v, 3) for k, v in phases.items()},
             source_cache_lines=tuple(read_tally_lines(home, now)),
+            cache_red_rows=tuple(row.detail for row in cache_tally.red_rows),
             after_publish=tuple(after),
             process_health_published=health is not None,
             delegation_published=delegation is not None,

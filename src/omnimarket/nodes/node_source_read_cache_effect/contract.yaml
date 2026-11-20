@@ -58,6 +58,14 @@ runtime:
   # Each step that reads through the cache writes what the cache did in its cycle (hits, misses, source reads, why the cache was
   # off) to <registry home>/<this directory>/<step name>.json, so a cycle's source reads are countable after it ends.
   receipt_dir_relpath: .onex_state/source-cache
+  # While a scheduled source's current-slot run is unfinished, a step serves the newest cached read (marked pending, with its read time)
+  # and goes back to the source at most once per this many minutes.
+  pending_recheck_interval_minutes: 15
+  # The consecutive publish cycles in which a step stored nothing and read its source before the publish status carries a red row for it.
+  tally_red_after_cycles: 3
+  # Where the publish keeps each step's running count of those cycles, under the registry home (outside the receipt directory, whose files
+  # are all read as receipts).
+  tally_streak_relpath: .onex_state/source-cache-streaks/streaks.json
 
 metadata:
   ticket: OMN-19998

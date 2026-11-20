@@ -51,7 +51,8 @@ def _tally_line(step: str, tally: ModelSourceCacheTally) -> str:
         f"{LINE_PREFIX} step={step} backend={tally.backend} hits={tally.hits}"
         f" misses={tally.misses} stores={tally.stores} bypassed={tally.bypassed}"
         f" unavailable={tally.unavailable} source_reads={tally.source_reads}"
-        f" source_seconds={tally.source_seconds} off={off}"
+        f" source_seconds={tally.source_seconds} pending_served={tally.pending_served}"
+        f" absent_lookups={tally.absent_lookups} absent_hits={tally.absent_hits} off={off}"
     )
 
 

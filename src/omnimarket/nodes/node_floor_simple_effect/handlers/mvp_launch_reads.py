@@ -28,19 +28,15 @@ from omnimarket.models.floor_17a.model_mvp_launch_reads import (
     ModelMvpReads,
     ModelMvpSourceRead,
 )
-from omnimarket.models.model_source_read_cache import (
-    EnumSourceCacheOutcome,
-    ModelSourceCacheKey,
-)
 from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader import (
     CachedSourceReader,
 )
 from omnimarket.nodes.node_source_read_cache_effect.handlers.repo_revision import (
     cached_repo_head,
 )
-from omnimarket.nodes.node_source_read_cache_effect.handlers.schedule_revision import (
-    SLOT_STAMP,
-    schedule_slot,
+from omnimarket.nodes.node_source_read_cache_effect.handlers.slot_read import (
+    SlotReadPlan,
+    read_slot_through_cache,
 )
 
 # Runs a command and returns (exit code, stdout, stderr). The tests replace it.
@@ -273,61 +269,31 @@ def refresh(
                 clock(),
             )
 
-        head = cached_repo_head(cache, home, repo, revision_run)
-        absent_key = (
-            ModelSourceCacheKey(
-                source_id=f"mvp-runs-absent:{repo}:{workflow}",
-                params_digest=ModelSourceCacheKey.digest({"workflow": workflow}),
-                revision=head,
-            )
-            if cache is not None and head is not None
-            else None
-        )
-        if cache is not None and absent_key is not None:
-            remembered = cache.lookup(
-                absent_key,
-                ModelMvpSourceRead.model_validate_json,
-                usable=is_missing_workflow,
-            )
-            if remembered is not None:
-                result[key] = remembered.model_copy(update={"read_at": clock()})
-                continue
-        slot = schedule_slot(schedules.get(key, ()), clock())
-        if cache is None or slot is None:
+        if cache is None:
             result[key] = fetch()
-            if (
-                cache is not None
-                and absent_key is not None
-                and is_missing_workflow(result[key])
-            ):
-                cache.store(absent_key, result[key], _encode_read)
             continue
-
-        def current(read: ModelMvpSourceRead, slot: datetime = slot) -> bool:
-            return list_is_current(read, slot)
-
-        listed, outcome = cache.read(
-            ModelSourceCacheKey(
+        result[key] = read_slot_through_cache(
+            cache,
+            SlotReadPlan[ModelMvpSourceRead](
                 source_id=f"mvp-runs:{repo}:{workflow}",
-                params_digest=ModelSourceCacheKey.digest(
-                    {"limit": limit, "events": list(events)}
+                params={"limit": limit, "events": list(events)},
+                crons=schedules.get(key, ()),
+                absent_source_id=f"mvp-runs-absent:{repo}:{workflow}",
+                workflow=workflow,
+                head=cached_repo_head(cache, home, repo, revision_run),
+                fetch=fetch,
+                encode=_encode_read,
+                decode=ModelMvpSourceRead.model_validate_json,
+                is_current=list_is_current,
+                is_readable=lambda read: read.error is None,
+                is_missing=is_missing_workflow,
+                with_read_at=lambda read, at: read.model_copy(update={"read_at": at}),
+                with_pending=lambda read, slot: read.model_copy(
+                    update={"pending_since": slot}
                 ),
-                revision=slot.strftime(SLOT_STAMP),
             ),
-            fetch,
-            _encode_read,
-            ModelMvpSourceRead.model_validate_json,
-            usable=current,
-            store_if=current,
+            clock(),
         )
-        # A hit is current by its key (the same slot, nothing running, the slot's run seen): it carries this cycle's read time.
-        result[key] = (
-            listed.model_copy(update={"read_at": clock()})
-            if outcome == EnumSourceCacheOutcome.HIT
-            else listed
-        )
-        if cache is not None and absent_key is not None and is_missing_workflow(listed):
-            cache.store(absent_key, listed, _encode_read)
     record = ModelMvpReads(
         updated_at=clock(), reads=tuple(result[k] for k in sources if k in result)
     )

@@ -41,7 +41,7 @@ def test_golden_a_receipt_becomes_one_line_naming_the_cache(tmp_path: Path) -> N
     write_tally_receipt(reader, tmp_path, "factory_floor", now=LATER)
     assert read_tally_lines(tmp_path, CYCLE_START) == [
         "source-cache: step=factory_floor backend=none hits=2 misses=1 stores=0"
-        " bypassed=0 unavailable=0 source_reads=0 source_seconds=0.0 off=none"
+        " bypassed=0 unavailable=0 source_reads=0 source_seconds=0.0 pending_served=0 absent_lookups=0 absent_hits=0 off=none"
     ]
 
 
@@ -82,5 +82,5 @@ def test_failing_control_only_receipts_at_or_after_since(tmp_path: Path) -> None
     write_tally_receipt(later, tmp_path, "factory_floor", now=LATER)
     assert read_tally_lines(tmp_path, CYCLE_START) == [
         "source-cache: step=factory_floor backend=none hits=0 misses=1 stores=0"
-        " bypassed=0 unavailable=0 source_reads=0 source_seconds=0.0 off=none"
+        " bypassed=0 unavailable=0 source_reads=0 source_seconds=0.0 pending_served=0 absent_lookups=0 absent_hits=0 off=none"
     ]

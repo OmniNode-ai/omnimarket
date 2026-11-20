@@ -1,0 +1,12 @@
+# The tally lines of the factory dashboard publish (launchd ai.omninode.factory-floor-publish, every 300 s) as the ticket text quotes them on 2026-11-20:
+#   beta_board        misses=5 stores=0 source_reads=2 source_seconds=50
+#   mvp_launch_reads  misses=7 stores=0 source_reads=3 source_seconds=75
+#   factory_floor     hits 15/15
+#   the cycle         about 142 s
+# The out log itself is not held here. The fields the ticket does not quote are written as neutral values: backend=valkey (the operator's
+# question named the valkey cache), hits=0 for the two steps that read their source, misses=0 for factory_floor, and bypassed, unavailable,
+# pending_served, absent_lookups and absent_hits as 0, which the code before the fix did not count.
+source-cache: step=beta_board backend=valkey hits=0 misses=5 stores=0 bypassed=0 unavailable=0 source_reads=2 source_seconds=50.0 off=none
+source-cache: step=factory_floor backend=valkey hits=15 misses=0 stores=0 bypassed=0 unavailable=0 source_reads=0 source_seconds=0.0 off=none
+source-cache: step=mvp_launch_reads backend=valkey hits=0 misses=7 stores=0 bypassed=0 unavailable=0 source_reads=3 source_seconds=75.0 off=none
+cycle_seconds=142

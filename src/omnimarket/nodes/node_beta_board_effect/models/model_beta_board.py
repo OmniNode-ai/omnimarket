@@ -211,6 +211,8 @@ class ModelSourceRead(BaseModel):
     read_at: datetime
     reason: str = ""
     points: tuple[ModelReadingPoint, ...] = ()
+    # Set when the slot's run had not finished and this is the newest cached read; the board shows it as pending since this moment, read at ``read_at``.
+    pending_since: datetime | None = None
 
     @field_validator("points")
     @classmethod

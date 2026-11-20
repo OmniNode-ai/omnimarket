@@ -28,6 +28,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.mvp_launch_reads import 
 from omnimarket.nodes.node_floor_simple_effect.runtime_floor_simple import (
     run_mvp_reads,
 )
+from omnimarket.nodes.node_source_read_cache_effect.handlers import slot_read
 from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader import (
     CachedSourceReader,
 )
@@ -36,6 +37,9 @@ from omnimarket.nodes.node_source_read_cache_effect.handlers.handler_source_read
 )
 from omnimarket.nodes.node_source_read_cache_effect.handlers.schedule_revision import (
     schedule_slot,
+)
+from omnimarket.nodes.node_source_read_cache_effect.handlers.slot_read import (
+    pending_recheck_interval,
 )
 from tests.nodes.node_floor_simple_effect.mvp_support import MVP_NOW
 from tests.nodes.node_floor_simple_effect.support import build_home
@@ -146,15 +150,26 @@ def test_a_new_schedule_slot_is_a_miss_and_is_read_again(tmp_path: Path) -> None
     assert len(runner.calls) == after + after
 
 
-def test_a_run_still_in_flight_is_read_again_every_cycle(tmp_path: Path) -> None:
+def test_a_run_still_in_flight_is_served_pending_and_read_again_after_the_interval(
+    tmp_path: Path,
+) -> None:
     home = build_home(tmp_path)
-    cache, backend = memory_reader()
+    cache, _ = memory_reader()
     runner = Runner(status="in_progress")
     _refresh(home, runner, BASE, cache)
     after = len(runner.calls)
-    _refresh(home, runner, _past_interval(BASE), cache)
+    inside = _past_interval(BASE)
+    assert inside - BASE < pending_recheck_interval()
+    served = _refresh(home, runner, inside, cache)
+    assert len(runner.calls) == after, (
+        "an unfinished run was read again inside the interval"
+    )
+    assert all(r["pending_since"] is not None for r in served["reads"])
+    assert all(datetime.fromisoformat(r["read_at"]) == BASE for r in served["reads"])
+    _refresh(
+        home, runner, BASE + pending_recheck_interval() + timedelta(seconds=1), cache
+    )
     assert len(runner.calls) == 2 * after
-    assert backend.keys == []
 
 
 def test_error_chain_a_failed_read_is_never_cached(tmp_path: Path) -> None:
@@ -224,7 +239,7 @@ def test_named_injected_break_a_slot_that_changes_every_call_reads_again(
         base = schedule_slot(crons, now)
         return base - timedelta(minutes=counter["n"]) if base else None
 
-    monkeypatch.setattr(mvp_launch_reads, "schedule_slot", drifting)
+    monkeypatch.setattr(slot_read, "schedule_slot", drifting)
     _refresh(home, runner, _past_interval(BASE), cache)
     assert len(runner.calls) > after
 

@@ -673,6 +673,8 @@ class ModelFactoryFloorPublishResult(BaseModel):
     phase_seconds: dict[str, float] = Field(default_factory=dict)
     # The ``source-cache:`` lines of the receipts the input steps wrote in this run (hits, misses, source reads, why the cache was off).
     source_cache_lines: tuple[str, ...] = ()
+    # One line for each board step that stored nothing and read its source for the contract's number of cycles in a row.
+    cache_red_rows: tuple[str, ...] = ()
 
 
 class ModelReportsPublishRequest(BaseModel):

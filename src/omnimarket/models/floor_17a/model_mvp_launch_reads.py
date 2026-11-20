@@ -27,6 +27,8 @@ class ModelMvpSourceRead(_Frozen):
     read_at: datetime
     runs: tuple[ModelMvpRun, ...] = ()
     error: str | None = None
+    # Set when the slot's run had not finished and this is the newest cached read; the block shows it as pending since this moment, read at ``read_at``.
+    pending_since: datetime | None = None
 
 
 class ModelMvpReads(_Frozen):

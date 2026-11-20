@@ -13,10 +13,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from omnimarket.models.model_source_read_cache import (
-    EnumSourceCacheOutcome,
-    ModelSourceCacheKey,
-)
 from omnimarket.nodes.node_beta_board_effect.models.model_beta_board import (
     ModelBetaBoardRuntime,
     ModelBetaLedgerReading,
@@ -36,9 +32,9 @@ from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reade
 from omnimarket.nodes.node_source_read_cache_effect.handlers.repo_revision import (
     cached_repo_head,
 )
-from omnimarket.nodes.node_source_read_cache_effect.handlers.schedule_revision import (
-    SLOT_STAMP,
-    schedule_slot,
+from omnimarket.nodes.node_source_read_cache_effect.handlers.slot_read import (
+    SlotReadPlan,
+    read_slot_through_cache,
 )
 
 CommandRunner = Callable[[Sequence[str], int], tuple[int, str, str]]
@@ -273,60 +269,31 @@ def _read_probe_through_cache(
     home: Path,
     revision_run: CommandRunner | None = None,
 ) -> ModelSourceRead:
-    """One probe's read: from the cache when it holds the read for the probe's current schedule slot, or the missing-workflow answer for the
-    repository's current default branch commit, else from the source."""
+    """One probe's read, through the shared slot read of the source read cache node (its slot, pending and missing-workflow rules)."""
     if cache is None:
         return read_probe(probe, rt, onex, run, clock())
-    head = cached_repo_head(cache, home, probe.repository, revision_run)
-    absent_key = (
-        ModelSourceCacheKey(
-            source_id=f"beta-probe-absent:{probe.repository}:{probe.workflow}",
-            params_digest=ModelSourceCacheKey.digest({"workflow": probe.workflow}),
-            revision=head,
-        )
-        if head is not None
-        else None
-    )
-    if absent_key is not None:
-        remembered = cache.lookup(
-            absent_key, ModelSourceRead.model_validate_json, usable=probe_is_missing
-        )
-        if remembered is not None:
-            return remembered.model_copy(update={"read_at": clock()})
-    slot = schedule_slot([probe.cron], clock()) if probe.cron is not None else None
-
-    def fetch() -> ModelSourceRead:
-        return read_probe(probe, rt, onex, run, clock())
-
-    if slot is None:
-        fresh = fetch()
-        if absent_key is not None and probe_is_missing(fresh):
-            cache.store(absent_key, fresh, _encode_probe_read)
-        return fresh
-
-    def current(value: ModelSourceRead) -> bool:
-        return probe_read_is_current(value, slot)
-
-    read, outcome = cache.read(
-        ModelSourceCacheKey(
+    return read_slot_through_cache(
+        cache,
+        SlotReadPlan[ModelSourceRead](
             source_id=f"beta-probe:{probe.repository}:{probe.workflow}",
-            params_digest=ModelSourceCacheKey.digest(
-                {"limit": rt.probe_run_limit, "events": list(probe.events)}
+            params={"limit": rt.probe_run_limit, "events": list(probe.events)},
+            crons=(probe.cron,) if probe.cron is not None else (),
+            absent_source_id=f"beta-probe-absent:{probe.repository}:{probe.workflow}",
+            workflow=probe.workflow,
+            head=cached_repo_head(cache, home, probe.repository, revision_run),
+            fetch=lambda: read_probe(probe, rt, onex, run, clock()),
+            encode=_encode_probe_read,
+            decode=ModelSourceRead.model_validate_json,
+            is_current=probe_read_is_current,
+            is_readable=lambda value: value.read == "read",
+            is_missing=probe_is_missing,
+            with_read_at=lambda value, at: value.model_copy(update={"read_at": at}),
+            with_pending=lambda value, slot: value.model_copy(
+                update={"pending_since": slot}
             ),
-            revision=slot.strftime(SLOT_STAMP),
         ),
-        fetch,
-        _encode_probe_read,
-        ModelSourceRead.model_validate_json,
-        usable=current,
-        store_if=current,
+        clock(),
     )
-    # A hit is current by its key (the same slot, the slot's run finished): it carries this cycle's read time.
-    if outcome == EnumSourceCacheOutcome.HIT:
-        return read.model_copy(update={"read_at": clock()})
-    if absent_key is not None and probe_is_missing(read):
-        cache.store(absent_key, read, _encode_probe_read)
-    return read
 
 
 def refresh_probes(

@@ -19,7 +19,6 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_beta_board_effect.handlers import adapter_beta_board_sources
 from omnimarket.nodes.node_beta_board_effect.handlers.adapter_beta_board_sources import (
     refresh_probes,
 )
@@ -34,6 +33,7 @@ from omnimarket.nodes.node_beta_board_effect.models.model_beta_board import (
     ModelBetaBoardRuntime,
     ModelSourceReads,
 )
+from omnimarket.nodes.node_source_read_cache_effect.handlers import slot_read
 from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader import (
     CachedSourceReader,
 )
@@ -42,6 +42,9 @@ from omnimarket.nodes.node_source_read_cache_effect.handlers.handler_source_read
 )
 from omnimarket.nodes.node_source_read_cache_effect.handlers.schedule_revision import (
     schedule_slot,
+)
+from omnimarket.nodes.node_source_read_cache_effect.handlers.slot_read import (
+    pending_recheck_interval,
 )
 from tests.nodes.node_beta_board_effect.support import NOW, OVERLAY, run_list_answer
 from tests.nodes.node_source_read_cache_effect.support import (
@@ -151,16 +154,21 @@ def test_a_new_schedule_slot_is_a_miss_and_is_read_again(tmp_path: Path) -> None
     assert runner.calls.count("local.yml") == 2
 
 
-def test_a_slot_whose_run_has_not_finished_is_read_again_every_cycle(
+def test_a_slot_whose_run_has_not_finished_is_served_pending_inside_the_interval(
     tmp_path: Path,
 ) -> None:
-    cache, backend = memory_reader()
+    cache, _ = memory_reader()
     runner = Runner(status="in_progress")
     at = NOW + timedelta(minutes=2)
     _refresh(tmp_path, runner, at, cache)
-    _refresh(tmp_path, runner, _past_interval(at), cache)
+    reads = _refresh(tmp_path, runner, _past_interval(at), cache)
+    assert runner.calls.count("local.yml") == 1
+    local = next(r for r in reads.reads if r.source_id == "probe-local")
+    assert local.pending_since == at.replace(minute=0, second=0, microsecond=0)
+    assert local.read_at == at
+    after = at + pending_recheck_interval() + timedelta(seconds=1)
+    _refresh(tmp_path, runner, after, cache)
     assert runner.calls.count("local.yml") == 2
-    assert backend.keys == []
 
 
 def test_a_probe_with_no_schedule_is_read_every_cycle(tmp_path: Path) -> None:
@@ -220,7 +228,7 @@ def test_named_injected_break_a_slot_that_changes_every_call_reads_again(
         base = real(crons, now)
         return base - timedelta(minutes=counter["n"]) if base else None
 
-    monkeypatch.setattr(adapter_beta_board_sources, "schedule_slot", drifting)
+    monkeypatch.setattr(slot_read, "schedule_slot", drifting)
     _refresh(tmp_path, runner, _past_interval(at), cache)
     assert runner.calls.count("local.yml") == 2
 
@@ -243,7 +251,8 @@ def test_the_build_stage_writes_the_cache_tally_receipt(tmp_path: Path) -> None:
         )
     )
     assert receipt["backend"] == "memory"
-    assert receipt["source_reads"] == 1
+    # The probe with a cron read once; the probe with no cron is counted too now (its read cost seconds the tally must hold).
+    assert receipt["source_reads"] == 2
 
 
 MISSING_REASON = (
