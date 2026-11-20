@@ -159,6 +159,10 @@ def test_workflow_error_chain_events_an_unreadable_change_fails_the_gate() -> No
         topics["workflow_started"],
         topics["workflow_failed"],
     ]
+    assert (
+        built.emitter.events[-1].topic
+        == "onex.evt.omnimarket.validator-workflow-failed.v1"
+    )
     assert [d.conclusion for d in built.gate.decisions] == [EnumGateConclusion.FAILURE]
 
 
