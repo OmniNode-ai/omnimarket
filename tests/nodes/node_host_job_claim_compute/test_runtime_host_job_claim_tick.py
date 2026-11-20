@@ -236,11 +236,10 @@ def test_the_declared_broker_publisher_names_no_broker_setting_in_the_unit_env(
     # An overlay with no event_bus names no broker, and a KAFKA_BOOTSTRAP_SERVERS in the environment does not stand in for it.
     monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "ignored.invalid:9092")
     monkeypatch.setenv("OMNI_HOME", str(wired.parent))
-    # The shared default overlay declares no broker either, so the node's own refusal stands.
-    (wired.parent / "overlays" / "run_node_default").mkdir(parents=True, exist_ok=True)
-    (wired.parent / "overlays" / "run_node_default" / "overlay.yaml").write_text(
-        "node: run_node_default\n", encoding="utf-8"
-    )
+    lanes = wired.parent / "config" / "lab"
+    lanes.mkdir(parents=True)
+    (lanes / "ci_bus_lanes.yaml").write_text("lanes: {}\n", encoding="utf-8")
+    monkeypatch.setenv("ONEX_WORKSPACE_CONFIG_ROOT", str(wired.parent))
     accepted = tick.DeclaredBrokerPublisher().publish(
         topic="onex.evt.omnimarket.host-job-claim-run-completed.v1",
         event_type=tick.EVENT_TYPE,
