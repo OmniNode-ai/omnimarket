@@ -19,6 +19,7 @@ from uuid import uuid4
 
 import pytest
 import yaml
+from pydantic import BaseModel
 
 from omnimarket.models.landing_controller_carry import decisions_of
 from omnimarket.models.landing_decision import EnumLivenessRead
@@ -45,6 +46,7 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_liveness i
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports import (
     InMemoryTickPublisher,
     InMemoryTickWriter,
+    ProtocolTickPublisher,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator import (
     EnumTickMode,
@@ -122,7 +124,7 @@ def _liveness_overlay() -> ModelLivenessReadOverlay:
 
 
 def _node_reader(
-    publisher: InMemoryTickPublisher,
+    publisher: ProtocolTickPublisher,
     found: dict[tuple[str, str], tuple[str, ...]],
     unreadable: dict[tuple[str, str], str] | None = None,
 ) -> NodeLivenessTickReader:
@@ -235,10 +237,10 @@ def test_error_chain_a_publisher_that_raises_keeps_the_fact_and_names_the_error(
     None
 ):
     class _Down:
-        def publish(self, topic: str, event: object) -> None:
+        def publish(self, topic: str, event: BaseModel) -> None:
             raise ConnectionError("broker down")
 
-    reader = _node_reader(_Down(), {(REPO, HEAD_A): ()})  # type: ignore[arg-type]
+    reader = _node_reader(_Down(), {(REPO, HEAD_A): ()})
     read = reader.read(PR_A, HEAD_A)
     assert read.read is EnumLivenessRead.READ
     assert read.publish_error == "ConnectionError"
