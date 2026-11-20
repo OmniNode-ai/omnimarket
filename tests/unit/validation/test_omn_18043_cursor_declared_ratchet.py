@@ -453,6 +453,9 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         # `latest_projection_updated_at` from its first commit.
         "node_projection_delegation::delegation_events#2",
         "node_projection_delegation::projection_delegation_daily#12",
+        # OMN-24286: experiment_arm_results declares `cursor_column:
+        # projection_cursor` from its first commit.
+        "node_projection_experiment_result::experiment_arm_results#0",
     }
 )
 # 65 as of OMN-18769: runner_fleet_liveness (OMN-18768) and lab_lane_health
@@ -489,7 +492,9 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
 # baseline, the first entry the backlog has lost.
 # 84 as of OMN-19986: local_identity declares its BIGSERIAL cursor in the same
 # change as the exposure, so the measured backlog is unmoved.
-_AC3_TOTAL_EXPOSURES = 84
+# 85 as of OMN-24286: experiment_arm_results declares its IDENTITY cursor in
+# the same change as the exposure, so the measured backlog is unmoved.
+_AC3_TOTAL_EXPOSURES = 85
 _AC3_MEASURED_GAP = 54
 
 

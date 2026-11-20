@@ -1030,7 +1030,9 @@ class TestOmn15800ExposureParity:
         # row per tenant per UTC day of runs and tokens, with no row cap.
         # 84 after OMN-19986: onex.snapshot.projection.local-identity.v1, the
         # install's tenant identity and its mint time for the API Keys page.
-        assert len(topic_map) == 84
+        # 85 after OMN-24286: onex.snapshot.projection.eval.experiment-results.v1,
+        # the scored experiment arm rows for the evals dashboard.
+        assert len(topic_map) == 85
         for liveness_topic in (
             "onex.snapshot.projection.automation-liveness.v1",
             "onex.snapshot.projection.automation-liveness-runs.v1",

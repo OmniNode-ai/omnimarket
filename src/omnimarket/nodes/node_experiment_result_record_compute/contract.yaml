@@ -1,0 +1,72 @@
+name: node_experiment_result_record_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure check of one experiment-arm result against cross-field rules the wire model does not check:
+  correct must not exceed n, the carried Wilson interval must match the recomputed one within the
+  policy tolerance, p50 must not exceed p90, and the engine must not be on the refused list.
+  Ends in a typed completed or failed terminal. Reads no file, clock or network except its policy,
+  which comes from the packaged contract config section or a deployment overlay.
+
+handler:
+  module: omnimarket.nodes.node_experiment_result_record_compute.handlers.handler_experiment_result_record
+  class: HandlerExperimentResultRecord
+  input_model: omnimarket.nodes.node_experiment_result_record_compute.models.model_experiment_result_record_request.ModelExperimentResultRecordRequest
+  output_model: omnimarket.nodes.node_experiment_result_record_compute.models.model_experiment_result_record_result.ModelExperimentResultRecordResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: experiment_result_record
+      handler:
+        name: HandlerExperimentResultRecord
+        module: omnimarket.nodes.node_experiment_result_record_compute.handlers.handler_experiment_result_record
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 10000
+  runtime_profiles: [main]
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.experiment-result-record-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.experiment-arm-result-recorded.v1
+    failure: onex.evt.omnimarket.experiment-arm-result-refused.v1
+  default_timeout_ms: 30000
+  max_timeout_ms: 30000
+
+terminal_event: onex.evt.omnimarket.experiment-arm-result-recorded.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.experiment-result-record-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.experiment-arm-result-recorded.v1
+    - onex.evt.omnimarket.experiment-arm-result-refused.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.experiment-arm-result-refused.v1
+
+metadata:
+  transport_type: kafka
+
+config:
+  interval_tolerance: 0.001
+  confidence_z: 1.959963984540054
+  refused_engines: [claude, codex]
+
+# The dev runtime's own rows (OMN-24286): the topics this node reads and writes, as the broker coverage gate reads them.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.experiment-result-record-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.experiment-result-record-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.experiment-arm-result-recorded.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.experiment-arm-result-recorded.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.experiment-arm-result-refused.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.experiment-arm-result-refused.v1, operation: DESCRIBE}
+      - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_experiment_result_record_compute.consume.v1., operation: READ}
+      - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_experiment_result_record_compute.consume.v1., operation: DESCRIBE}

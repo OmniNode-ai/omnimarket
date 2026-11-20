@@ -1,0 +1,73 @@
+schema_version: 1.0.0
+ticket_id: OMN-24286
+title: Record experiment results as typed events and show them on the evals projection
+summary: Adds a typed experiment-arm result event, a record node that refuses a result whose counts, interval, latency order or engine break a rule, and a projection node that keeps one row per arm and measurement time on a tenant table and serves it on a bus-backed snapshot topic for the evals dashboard. Routing and every existing projection are unchanged.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- events
+- topics
+requirements:
+- id: req-omn24286-experiment-result-event
+  statement: An experiment arm's result is recorded as one typed event, refused with a named reason when it breaks a rule, and kept as a projection row the evals dashboard can read.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a result whose counts, interval, latency order or engine break a rule is refused with a named reason and a good one is accepted -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_experiment_result_record_compute/test_record.py -q -n 0 in omnimarket'
+  - id: AC2
+    statement: 'AC2: an accepted result becomes one projection row per arm and measurement time, a redelivery adds none, and the row columns match the table and the snapshot exposure -- falsifier: env -u PYTHONPATH uv run pytest tests/test_golden_chain_projection_experiment_result.py -q -n 0 in omnimarket'
+  - id: AC3
+    statement: 'AC3: the recorded-result event the record node publishes is accepted by the projection and a one-field change on either side turns the seam test red, on the in-memory bus -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_projection_experiment_result/test_seam_record_to_projection.py -q -n 0 in omnimarket'
+  - id: AC4
+    statement: 'AC4: integrated: the thinking-budget result, recorded on the dev bus from the branch, is read back from the experiment results projection snapshot on the dev runtime -- falsifier: read the snapshot topic onex.snapshot.projection.eval.experiment-results.v1 on the dev lane and find no row for experiment thinking-budget-6751'
+evidence_requirements:
+- kind: tests
+  description: The record node, projection node and seam tests pass at the pushed head.
+  command: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_experiment_result_record_compute/test_record.py tests/test_golden_chain_projection_experiment_result.py tests/unit/nodes/node_projection_experiment_result/test_seam_record_to_projection.py -q -n 0
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24286-ac1
+  description: 'AC1: the focused tests pass at the head; the node and its tests do not exist at the merge base.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_experiment_result_record_compute/test_record.py -q -n 0
+    cwd: .
+- id: dod-omn24286-ac2
+  description: 'AC2: the focused tests pass at the head; the node and its tests do not exist at the merge base.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_projection_experiment_result.py -q -n 0
+    cwd: .
+- id: dod-omn24286-ac3
+  description: 'AC3: the focused tests pass at the head; the node and its tests do not exist at the merge base.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_experiment_result/test_seam_record_to_projection.py -q -n 0
+    cwd: .
+- id: dod-omn24286-ac4
+  description: 'hosted proxy for AC4: the seam tests pass here; the dev-runtime readback of the thinking-budget result from the snapshot topic is not done at this head and is named as the step left in the pull request.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_experiment_result/test_seam_record_to_projection.py -q -n 0
+    cwd: .
+- id: dod-omn24286-integration-proof
+  description: AC4 runs on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24286 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_experiment_result_record_compute/test_record.py tests/test_golden_chain_projection_experiment_result.py tests/unit/nodes/node_projection_experiment_result/test_seam_record_to_projection.py --no-cov -p no:randomly
