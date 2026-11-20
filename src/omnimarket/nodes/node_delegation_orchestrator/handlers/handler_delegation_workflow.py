@@ -2521,6 +2521,20 @@ class DelegationWorkflowState:
     tenant_id: str | None = None
 
 
+def _routing_prompt(workflow: DelegationWorkflowState) -> str:
+    """The prompt every tier and sibling resolution of ``workflow`` routes on.
+
+    One rule for a workflow with no request: it has no prompt to bound, so
+    routing it is refused rather than run on an empty prompt that every local
+    member's input bound would admit.
+    """
+    if workflow.request is None:
+        raise ValueError(
+            f"workflow {workflow.correlation_id} has no request: no prompt to route on"
+        )
+    return workflow.request.prompt
+
+
 def _pinned_backend_ref(workflow: DelegationWorkflowState) -> str | None:
     """The backend the caller pinned this run to, or ``None`` (OMN-20844)."""
     if workflow.request is None:
@@ -2771,6 +2785,7 @@ class HandlerDelegationWorkflow:
                 task_type=task_type,
                 excluded_backend_refs=skip_refs,
                 correlation_id=workflow.correlation_id,
+                prompt=_routing_prompt(workflow),
             )
             if next_tier is None:
                 no_higher_tier_reason = (
@@ -4857,7 +4872,10 @@ class HandlerDelegationWorkflow:
 
         excluded = frozenset(workflow.transport_failed_backend_refs)
         sibling = sibling_backend_available_in_tier(
-            tier, task_type, excluded | self._quota_blocked_refs(workflow)
+            tier,
+            task_type,
+            excluded | self._quota_blocked_refs(workflow),
+            _routing_prompt(workflow),
         )
         if sibling is None:
             return None

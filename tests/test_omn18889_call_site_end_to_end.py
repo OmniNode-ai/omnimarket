@@ -134,7 +134,7 @@ def _install_ladder(monkeypatch: pytest.MonkeyPatch, *, max_escalations: int) ->
         port_mod, "tier_for_backend", lambda backend_id: _BACKEND_TIER.get(backend_id)
     )
     monkeypatch.setattr(
-        port_mod, "sibling_backend_available_in_tier", lambda _t, _tt, _x: None
+        port_mod, "sibling_backend_available_in_tier", lambda *_a, **_k: None
     )
     monkeypatch.setattr(
         port_mod, "resolve_task_class_max_escalations", lambda _t: max_escalations
