@@ -44,7 +44,7 @@ def test_every_declared_placement_survives_rendering(
     carrier = next(
         backend
         for backend in source["backends"]
-        if backend["backend_id"] == "openrouter-north-mini-code"
+        if backend["backend_id"] == "openrouter-nemotron-3-5-super"
     )
     carrier["placement"] = {
         "tier": "cheap_frontier",

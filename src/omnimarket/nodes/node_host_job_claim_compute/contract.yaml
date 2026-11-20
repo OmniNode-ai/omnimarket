@@ -47,7 +47,7 @@ output_model:
 terminal_event: onex.evt.omnimarket.host-job-claim-run-completed.v1
 
 runtime_dispatch:
-  external_trigger: python -m omnimarket.nodes.node_host_job_claim_compute from a host timer, with the overlay and the installed-unit port supplied by its own command line.
+  external_trigger: the host installer's host-job-claim-systemd unit (a systemd timer, hourly) runs python -m omnimarket.nodes.node_host_job_claim_compute.runtime_host_job_claim_tick on each lab host and puts the run record on the run-completed topic; python -m omnimarket.nodes.node_host_job_claim_compute --host <name> is the manual form.
 
 # The topics by role; the handler's event mapping reads these and holds no topic string.
 topics:
@@ -56,6 +56,15 @@ topics:
   host_job_claim_run_completed: onex.evt.omnimarket.host-job-claim-run-completed.v1
   host_job_claim_run_failed: onex.evt.omnimarket.host-job-claim-run-failed.v1
 
+# The host tick publishes the run record as the host reconciler principal (the host's own machine identity, the one the host
+# install nodes use): it writes the run-completed topic and nothing else.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-job-claim-run-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-job-claim-run-completed.v1, operation: DESCRIBE}
+
+# Local invocation: the node declares no bus topics here; the tick's publish is declared by terminal_event, topics and broker_acl_grants.
 event_bus:
   subscribe_topics: []
   publish_topics: []

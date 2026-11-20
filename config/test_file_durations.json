@@ -1192,6 +1192,8 @@
   "tests/nodes/node_delegation_scenario_r8_effect/test_store_overlay.py": 3.54,
   "tests/nodes/node_delegation_seam_measure_compute/test_workflow_registry.py": 2.95,
   "tests/nodes/node_delegation_seam_orchestrator/test_plan_seam_reads.py": 0.5,
+  "tests/nodes/node_delegation_second_arm_scheduled_effect/test_contract_topics.py": 2.5,
+  "tests/nodes/node_delegation_second_arm_scheduled_effect/test_golden_chain_second_arm_scheduled.py": 2.5,
   "tests/nodes/node_delegation_size_band_compute/test_delegation_size_band.py": 14.86,
   "tests/nodes/node_delegation_size_band_compute/test_golden_chain_delegation_size_band_compute.py": 0.6,
   "tests/nodes/node_delegation_split_compute/test_delegation_split.py": 0.13,

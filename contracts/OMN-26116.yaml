@@ -1,0 +1,57 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-26116"
+title: "certifi 2026.7.22 in omnimarket uv.lock turns Dependency Security Scan red on every omnimarket PR, and CI Summary fails closed on it"
+summary: "Safety advisory SFTY-20261020-58773 (certifi >=2019.3.9,<2026.10.18, insufficient verification of data authenticity) turned the Safety step of Dependency Security Scan red on every omnimarket pull request, and CI Summary's external sweep fails closed on it. uv.lock moves certifi from 2026.7.22 to 2026.10.23 and nothing else, the work-contract uv.lock pins follow the new lock, and a test asserts the lock floor."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26116-lock-floor"
+    statement: |-
+      omnimarket's uv.lock pins certifi 2026.10.18 or later, with no other package moved, and every work-contract uv.lock pin matches the new lock.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: omnimarket dev uv.lock pins certifi 2026.10.18 or later, with no other package moved, and every work-contract uv.lock sha256 pin matches the new uv.lock -- falsifier: git show origin/dev:uv.lock | grep -A1 'name = "certifi"' prints a version below 2026.10.18
+  - id: "req-omn26116-scan-clean"
+    statement: |-
+      The Safety step reports no certifi vulnerability on a pull request opened after the bump.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: the Safety step of Dependency Security Scan reports no certifi vulnerability on a pull request opened after the bump -- falsifier: uv run --with safety safety check --file <(uv export --frozen --no-hashes) reports SFTY-20261020-58773
+evidence_requirements:
+  - kind: "tests"
+    description: "The lock-floor test reads uv.lock and fails while certifi is below 2026.10.18; the work-contract pin test fails while any pin names another lock hash."
+    command: "uv run pytest tests/ci/test_omn26116_certifi_lock_floor.py tests/nodes/test_work_contract_pins_current.py -q -n 0 --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26116-ac1-lock-floor"
+    description: "The lock-floor test parses uv.lock and asserts every certifi entry is 2026.10.18 or later. Fails at the merge base, whose lock pins 2026.7.22."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn26116_certifi_lock_floor.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26116-integration-proof"
+    description: >-
+      Run the certifi lock-floor test and the work-contract pin test on a lab host at the pushed
+      revision, against the synced environment of that lock. This local completion proof carries
+      no hosted AC bindings.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-26116 --kind test --
+          env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+          tests/ci/test_omn26116_certifi_lock_floor.py tests/nodes/test_work_contract_pins_current.py
+          -q -n 0 --no-cov --refuse-skips
+        cwd: "."
