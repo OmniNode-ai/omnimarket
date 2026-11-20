@@ -152,8 +152,7 @@ def test_ratchet_and_hook_hold_while_the_moved_files_drop_out() -> None:
     assert len(hooks) == 1
     assert hooks[0]["stages"] == ["pre-commit"]
     assert hooks[0]["entry"].endswith(
-        "--repos omnimarket --directory omnimarket=. --baseline-file "
-        "src/omnimarket/nodes/node_work_ledger_file_census_effect/file_baseline.yaml"
+        "--repos omnimarket --directory omnimarket=. --per-file"
     )
 
     (count,) = result.counts

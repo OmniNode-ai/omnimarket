@@ -44,12 +44,9 @@ _RED = ("ratchet-grew", "new-file-reader")
 _HEADER = (
     "# Shrink-only ratchet: executable readers and writers of the ledger file's name or path variable,\n"
     "# counted in files per repository. A count above its row fails; `--lower` only ever lowers a row.\n"
-)
-_BASELINE_HEADER = (
-    "# Shrink-only per-file baseline: the files that hold an executable reader or writer of the ledger\n"
-    "# file's name or path variable, with their line counts. A file not listed here, or a listed file\n"
-    "# holding more lines than its row, fails the census (new code opening the ledger file). `--lower`\n"
-    "# only ever lowers a row or drops a cleared file; it never adds a file.\n"
+    "# The `files` table holds, for each repository, the files that hold such a reader or writer with their\n"
+    "# line counts (run with --per-file): a file with no row, or with more lines than its row, fails the\n"
+    "# census (new code opening the ledger file). `--lower` drops a cleared file and never adds one.\n"
 )
 
 
@@ -75,10 +72,10 @@ def main(
         help="where this repository's ratchet file is, in place of the overlay's ratchet_file",
     )
     parser.add_argument(
-        "--baseline-file",
-        default=None,
-        metavar="PATH",
-        help="where this repository's per-file baseline is, in place of the overlay's baseline_file",
+        "--per-file",
+        action="store_true",
+        help="also hold the per-file rows of the ratchet file's `files` table: a file with no row, or "
+        "more reader or writer lines than its row, fails",
     )
     parser.add_argument(
         "--register",
@@ -124,8 +121,11 @@ def main(
     store = YamlRatchetStore(
         Path(args.ratchet_file) if args.ratchet_file else Path(overlay.ratchet_file)
     )
-    baseline_path: str | None = args.baseline_file or overlay.baseline_file
-    baseline = YamlFileBaselineStore(Path(baseline_path)) if baseline_path else None
+    baseline = (
+        YamlFileBaselineStore(Path(args.ratchet_file or overlay.ratchet_file))
+        if args.per_file or overlay.per_file
+        else None
+    )
     result = HandlerFileCensus(
         overlay,
         GitRepositorySource(
@@ -181,7 +181,7 @@ def main(
     if result.passed and args.lower:
         store.write(result.lowered_ratchet, _HEADER)
         if baseline is not None:
-            baseline.write(result.lowered_baseline, _BASELINE_HEADER)
+            baseline.write(result.lowered_baseline, _HEADER)
     if result.passed:
         return 0
     return 1 if result.failure_code in _RED else 69

@@ -22,6 +22,7 @@ from omnimarket.nodes.node_work_ledger_file_census_effect.adapters import (
     InMemoryRatchetStore,
     InMemoryRepositorySource,
     YamlFileBaselineStore,
+    YamlRatchetStore,
 )
 from omnimarket.nodes.node_work_ledger_file_census_effect.handlers import (
     HandlerFileCensus,
@@ -135,17 +136,33 @@ def test_without_a_baseline_only_the_count_is_held() -> None:
 
 
 def test_yaml_baseline_lower_never_raises_a_row_or_adds_a_file(tmp_path: Path) -> None:
-    path = tmp_path / "baseline.yaml"
-    path.write_text(yaml.safe_dump({"baseline": {"alpha": {"a.py": 2, "b.py": 1}}}))
+    path = tmp_path / "ratchet.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {"ratchet": {"alpha": 4}, "files": {"alpha": {"a.py": 2, "b.py": 1}}}
+        )
+    )
     store = YamlFileBaselineStore(path)
     store.write({"alpha": {"a.py": 5, "c.py": 1}}, "# header\n")
     assert store.read() == {"alpha": {"a.py": 2}}
+    assert yaml.safe_load(path.read_text())["ratchet"] == {"alpha": 4}
 
 
-def test_shipped_baseline_reads_and_the_packaged_overlay_does_not_require_one() -> None:
+def test_count_lowering_keeps_the_per_file_rows(tmp_path: Path) -> None:
+    path = tmp_path / "ratchet.yaml"
+    path.write_text(
+        yaml.safe_dump({"ratchet": {"alpha": 4}, "files": {"alpha": {"a.py": 2}}})
+    )
+    YamlRatchetStore(path).write({"alpha": 3}, "# header\n")
+    data = yaml.safe_load(path.read_text())
+    assert data["ratchet"] == {"alpha": 3}
+    assert data["files"] == {"alpha": {"a.py": 2}}
+
+
+def test_shipped_ratchet_file_holds_the_per_file_table() -> None:
     data = yaml.safe_load((PACKAGE / "overlay.example.yaml").read_text())
-    assert "baseline_file" not in data
-    rows = YamlFileBaselineStore(PACKAGE / "file_baseline.yaml").read()
+    assert "per_file" not in data
+    rows = YamlFileBaselineStore(PACKAGE / "ratchet.yaml").read()
     assert set(rows) == {"omnimarket"}
     assert all(hits > 0 for hits in rows["omnimarket"].values())
 
@@ -175,10 +192,13 @@ def test_cli_exits_red_on_a_new_reader_and_green_without_it(
     git("init", "-q")
     (repo / "old_reader.py").write_text(READER)
     ratchet = tmp_path / "ratchet.yaml"
-    ratchet.write_text(yaml.safe_dump({"ratchet": {"omnimarket": 5}}))
-    baseline = tmp_path / "baseline.yaml"
-    baseline.write_text(
-        yaml.safe_dump({"baseline": {"omnimarket": {"old_reader.py": 1}}})
+    ratchet.write_text(
+        yaml.safe_dump(
+            {
+                "ratchet": {"omnimarket": 5},
+                "files": {"omnimarket": {"old_reader.py": 1}},
+            }
+        )
     )
     git("add", "-A")
     argv = [
@@ -189,8 +209,7 @@ def test_cli_exits_red_on_a_new_reader_and_green_without_it(
         f"omnimarket={repo}",
         "--ratchet-file",
         str(ratchet),
-        "--baseline-file",
-        str(baseline),
+        "--per-file",
     ]
     env = {"ONEX_LEDGER_CENSUS_ROOT": str(tmp_path)}
     assert runtime_file_census.main(argv, environ=env) == 0

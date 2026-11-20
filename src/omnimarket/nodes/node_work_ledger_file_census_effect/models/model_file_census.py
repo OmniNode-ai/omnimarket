@@ -60,12 +60,11 @@ class ModelCensusOverlay(_Frozen):
         min_length=1,
         description="Path of the shrink-only ratchet file, relative to the working directory.",
     )
-    baseline_file: str | None = Field(
-        default=None,
-        description="Path of the shrink-only per-file baseline, relative to the working directory. "
-        "When set, a file that is not in the baseline and holds an executable reader or writer, or a "
-        "baselined file that holds more of them than its row, fails the run (new code opening the "
-        "ledger file). Unset: only the per-repository file count is held.",
+    per_file: bool = Field(
+        default=False,
+        description="Hold the per-file rows (the ``files`` table of the ratchet file) as well as the count. "
+        "A file with no row that holds an executable reader or writer, or a file that holds more of "
+        "them than its row, fails the run (new code opening the ledger file).",
     )
 
     @field_validator("names", "path_variables")
