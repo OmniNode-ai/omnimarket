@@ -39,7 +39,13 @@ from omnimarket.nodes.node_lab_alarm.adapters.restart_adapters import (
     SshDockerRestartReader,
     YamlLaneManifestBounds,
 )
+from omnimarket.nodes.node_lab_alarm.adapters.routed_delivery_adapters import (
+    build_routed_delivery,
+)
 from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import FileRunRecords
+from omnimarket.nodes.node_lab_alarm.handlers.alarm_route import (
+    HandlerAlarmSeverityRoute,
+)
 from omnimarket.nodes.node_lab_alarm.handlers.handler_container_restarts import (
     HandlerContainerRestarts,
 )
@@ -122,14 +128,8 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     ProtocolRestartBoundSource,
     RunRecordUnwritableError,
 )
-from omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver import (
-    HandlerLabAlarmDeliver,
-)
 from omnimarket.nodes.node_lab_alarm_deliver_effect.overlay import (
     load_overlay as load_delivery_overlay,
-)
-from omnimarket.nodes.node_lab_alarm_deliver_effect.runtime_lab_alarm_deliver import (
-    build_handler as build_delivery_handler,
 )
 
 __all__ = [
@@ -155,11 +155,11 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 
-def _delivery_for(overlay: ModelLabAlarmOverlay) -> HandlerLabAlarmDeliver | None:
+def _delivery_for(overlay: ModelLabAlarmOverlay) -> HandlerAlarmSeverityRoute | None:
     """Return the delivery handler when the overlay declares and enables it."""
     if overlay.alarm_delivery is None or not overlay.alarm_delivery.enabled:
         return None
-    return build_delivery_handler(load_delivery_overlay())
+    return build_routed_delivery(load_delivery_overlay(), alarm_overlay=overlay)
 
 
 def _inmemory_records(

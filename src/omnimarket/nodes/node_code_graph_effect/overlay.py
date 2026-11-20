@@ -18,6 +18,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.node_overlay_resolved_roots import resolved_overlay_environ
 from omnimarket.models.model_code_graph_lookup import ModelCodeGraphLookupSettings
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppendRoute
 
@@ -308,4 +309,7 @@ class ModelCodeGraphOverlay(BaseModel):
 
 
 def load_overlay(environ: Mapping[str, str] | None = None) -> ModelCodeGraphOverlay:
-    return load_structured_overlay(NODE_NAME, ModelCodeGraphOverlay, environ)
+    """The node's overlay, found under the roots the overlay root resolver orders."""
+    return load_structured_overlay(
+        NODE_NAME, ModelCodeGraphOverlay, resolved_overlay_environ(environ)
+    )
