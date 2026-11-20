@@ -245,3 +245,92 @@ def test_error_store_host_unreachable_reads_the_repository_unread(
     )
     assert facts == ()
     assert unread == ("overlays",)
+
+
+def _built_as_source(
+    runtime: _StoreRuntime, tmp_path: Path, built_as: str = "overlays#173"
+) -> SourceMergedChangeReading:
+    return SourceMergedChangeReading(
+        runners=ModelMcrRunnerOverlay(
+            runners=(
+                ModelMcrRunner(
+                    repo="elsewhere", number=9, kind="route", built_as=built_as
+                ),
+            ),
+            store_checkouts=(
+                ModelMcrStoreCheckout(repo="overlays", path="/srv/store/overlays"),
+            ),
+        ),
+        provenance=None,
+        provenance_repos=(),
+        runtime=runtime,
+        labels=labels(),
+        home=tmp_path,
+    )
+
+
+def _make_clone(tmp_path: Path, repo: str, subject: str) -> str:
+    clone = tmp_path / repo
+    clone.mkdir()
+    _git(clone, "init", "-q")
+    _git(clone, "config", "user.email", "t@example.invalid")
+    _git(clone, "config", "user.name", "t")
+    _git(clone, "commit", "--allow-empty", "-q", "-m", subject)
+    _git(clone, "update-ref", "refs/remotes/origin/dev", "HEAD")
+    return _git(clone, "rev-parse", "HEAD")
+
+
+def test_built_as_reads_the_change_in_the_build_through_the_change_it_moved_to(
+    tmp_path: Path,
+) -> None:
+    moved = _make_clone(tmp_path, "overlays", "OMN-1 moved here (#173)")
+    runtime = _StoreRuntime({moved: True})
+    facts, unread, _ = _built_as_source(runtime, tmp_path).read_build(
+        [ModelMcrChange(repo="elsewhere", number=9, merge_sha="f" * 40)]
+    )
+    # the fact is keyed to the original change, and the ancestry question was asked of the moved change's merge
+    assert [(f.repo, f.number, f.in_build, f.source) for f in facts] == [
+        ("elsewhere", 9, True, "overlay store checkout")
+    ]
+    assert unread == ()
+    assert runtime.asked == [("/srv/store/overlays", [moved])]
+
+
+def test_built_as_not_in_the_store_reads_not_in_build(tmp_path: Path) -> None:
+    moved = _make_clone(tmp_path, "overlays", "OMN-1 moved here (#173)")
+    facts, unread, _ = _built_as_source(
+        _StoreRuntime({moved: False}), tmp_path
+    ).read_build([ModelMcrChange(repo="elsewhere", number=9, merge_sha="f" * 40)])
+    assert [(f.repo, f.number, f.in_build) for f in facts] == [("elsewhere", 9, False)]
+    assert unread == ()
+
+
+def test_error_built_as_target_unresolved_reads_the_original_change_unread(
+    tmp_path: Path,
+) -> None:
+    # no clone holds the moved change's merge: the original must read unread, never not in the build
+    facts, unread, _ = _built_as_source(_StoreRuntime({}), tmp_path).read_build(
+        [ModelMcrChange(repo="elsewhere", number=9, merge_sha="f" * 40)]
+    )
+    assert facts == ()
+    assert unread == ("elsewhere#9",)
+
+
+def test_error_built_as_store_host_unreachable_reads_the_original_change_unread(
+    tmp_path: Path,
+) -> None:
+    _make_clone(tmp_path, "overlays", "OMN-1 moved here (#173)")
+    facts, unread, _ = _built_as_source(
+        _StoreRuntime({}, fail=True), tmp_path
+    ).read_build([ModelMcrChange(repo="elsewhere", number=9, merge_sha="f" * 40)])
+    assert facts == ()
+    assert unread == ("elsewhere#9",)
+
+
+def test_a_change_without_built_as_is_read_as_before(tmp_path: Path) -> None:
+    runtime = _StoreRuntime({"c" * 40: True})
+    facts, unread, _ = _built_as_source(runtime, tmp_path).read_build(
+        [ModelMcrChange(repo="overlays", number=1, merge_sha="c" * 40)]
+    )
+    assert [(f.repo, f.number, f.in_build) for f in facts] == [("overlays", 1, True)]
+    assert unread == ()

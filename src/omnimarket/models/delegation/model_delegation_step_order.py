@@ -16,15 +16,18 @@ class ModelDelegationStepOrder(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     choice: str
-    order_source: Literal["flag", "routing_order_node", "default"]
+    order_source: Literal["flag", "routing_order_node", "overlay", "default"]
     routing_order: tuple[str, ...] | None = None
     order_fallback: str | None = None
+    engines_absent: tuple[str, ...] | None = None
 
     def receipt_fields(self) -> dict[str, object]:
-        """The fields the step writes onto each receipt: the source, and the order or why the default stood."""
+        """The fields the step writes onto each receipt: the source, the order, and why the default stood."""
         fields: dict[str, object] = {"order_source": self.order_source}
         if self.routing_order is not None:
             fields["routing_order"] = list(self.routing_order)
         if self.order_fallback is not None:
             fields["order_fallback"] = self.order_fallback
+        if self.engines_absent is not None:
+            fields["engines_absent"] = list(self.engines_absent)
         return fields

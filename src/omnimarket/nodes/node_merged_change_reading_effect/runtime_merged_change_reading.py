@@ -4,6 +4,9 @@
 
 A thin entry: it binds the real sources the contract's ``runtime`` block declares into a container and calls the
 handler. Nothing is written.
+
+``read --all-runners``  read every change the runner overlay declares (what the hourly unit runs).
+``schedule``            install | uninstall | status | run-now, for a host in the node overlay's schedule_hosts.
 """
 
 from __future__ import annotations
@@ -11,7 +14,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -20,6 +23,7 @@ import yaml
 
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
+    find_node_overlay,
     load_structured_overlay,
 )
 from omnimarket.models.model_merged_change_reading import ModelMcrChange, ModelMcrConfig
@@ -27,10 +31,18 @@ from omnimarket.models.model_runtime_host_reads import ModelRuntimeHostReadOverl
 from omnimarket.nodes.node_merged_change_reading_effect.handlers.handler_merged_change_reading_effect import (
     HandlerMergedChangeReadingEffect,
 )
+from omnimarket.nodes.node_merged_change_reading_effect.handlers.schedule import (
+    MergedChangeScheduler,
+    load_schedule,
+)
 from omnimarket.nodes.node_merged_change_reading_effect.models.model_merged_change_reading_run import (
     ModelMcrLogLabels,
     ModelMcrRunnerOverlay,
     ModelMcrRunRequest,
+)
+from omnimarket.nodes.node_merged_change_reading_effect.overlay import (
+    NODE_NAME,
+    load_overlay,
 )
 from omnimarket.nodes.node_merged_change_reading_effect.sources.source_merged_change_reading import (
     SourceMergedChangeReading,
@@ -147,17 +159,71 @@ def parse_change(text: str) -> ModelMcrChange:
     )
 
 
-def main(argv: list[str] | None = None) -> int:
+def _schedule(arguments: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(prog="schedule")
+    verbs = parser.add_subparsers(dest="verb", required=True)
+    for verb in ("install", "uninstall", "status", "run-now"):
+        sub = verbs.add_parser(verb)
+        sub.add_argument("--host", required=True, help="the host's name in the overlay")
+        if verb == "install":
+            sub.add_argument(
+                "--workspace-root",
+                dest="workspace_root",
+                default=os.environ.get("OMNI_HOME", ""),
+            )
+            sub.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args(list(arguments))
+    scheduler = MergedChangeScheduler(
+        schedule=load_schedule(), overlay=load_overlay(), home=Path.home()
+    )
+    if args.verb == "install":
+        if not args.workspace_root:
+            raise ValueError("OMNI_HOME is not set and --workspace-root was not passed")
+        found = find_node_overlay(NODE_NAME)
+        if found is None:
+            raise NodeOverlayError(
+                "the overlay file cannot be found to pin its root in the unit"
+            )
+        result = scheduler.install(
+            args.host,
+            omni_root=Path(args.workspace_root),
+            overlay_root=found.parent.parent,
+            dry_run=args.dry_run,
+        )
+    elif args.verb == "uninstall":
+        result = scheduler.uninstall(args.host)
+    elif args.verb == "status":
+        result = scheduler.status(args.host)
+    else:
+        result = scheduler.run_now(args.host)
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    return result.exit_code
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == "schedule":
+        return _schedule(arguments[1:])
+    if arguments and arguments[0] == "read":
+        arguments = arguments[1:]
     ap = argparse.ArgumentParser(prog="merged_change_reading")
     ap.add_argument(
         "--change",
         action="append",
-        required=True,
+        default=[],
         help="repo#number, or repo#number=merge sha",
+    )
+    ap.add_argument(
+        "--all-runners",
+        action="store_true",
+        help="read every change the runner overlay declares",
     )
     ap.add_argument("--now", help="override the clock, UTC ISO (tests and replays)")
     ap.add_argument("--overlay", help="a YAML file holding a full ModelMcrConfig")
-    args = ap.parse_args(argv)
+    args = ap.parse_args(arguments)
+    if not args.change and not args.all_runners:
+        ap.error("pass --change repo#number (repeatable) or --all-runners")
     now = (
         datetime.fromisoformat(args.now.replace("Z", "+00:00")).astimezone(UTC)
         if args.now
@@ -168,11 +234,18 @@ def main(argv: list[str] | None = None) -> int:
         if args.overlay
         else load_contract_config()
     )
-    container: Any = _LocalContainer(build_sources(os.environ, now))
-    result = HandlerMergedChangeReadingEffect(container, config).handle(
-        ModelMcrRunRequest(
-            changes=tuple(parse_change(c) for c in args.change), now=now, config=config
+    sources = build_sources(os.environ, now)
+    changes = [parse_change(c) for c in args.change]
+    if args.all_runners:
+        declared = {(c.repo, c.number) for c in changes}
+        changes.extend(
+            ModelMcrChange(repo=r.repo, number=r.number)
+            for r in sources.read_runners()
+            if (r.repo, r.number) not in declared
         )
+    container: Any = _LocalContainer(sources)
+    result = HandlerMergedChangeReadingEffect(container, config).handle(
+        ModelMcrRunRequest(changes=tuple(changes), now=now, config=config)
     )
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
     return 0

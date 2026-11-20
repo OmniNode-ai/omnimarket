@@ -1,0 +1,14 @@
+{
+  "overlay_source": "psql: SELECT endpoint_url,model_name FROM delegation_routing_tenant_overlay WHERE tenant_id=<R8 probe tenant>",
+  "terminal_source": "rpk topic consume onex.evt.omnibase-infra.delegation-completed.v1; filter the R8 probe tenant",
+  "overlay": {
+    "endpoint_url": "https://api.z.ai/api/paas/v4/chat/completions",
+    "model_name": "glm-5.3-flash"
+  },
+  "terminal": {
+    "correlation_id": "cdee0cf7-683e-4b67-8e6c-d981b8fd1422",
+    "endpoint_url": "https://api.z.ai/api/paas/v4/chat/completions",
+    "model_used": "glm-5.3-flash"
+  },
+  "recorded_at": "2026-11-16T22:26:29.771954+00:00"
+}

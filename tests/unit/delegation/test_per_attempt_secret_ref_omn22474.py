@@ -105,6 +105,7 @@ def test_per_attempt_secret_ref_on_the_local_rung_entry() -> None:
     result = SimpleNamespace(
         actual_cost_usd=0.0,
         usage_source=SimpleNamespace(value="measured"),
+        cost_usage_source=SimpleNamespace(value="measured"),
         latency_ms=5,
         http_status=500,
         provider_code=None,
