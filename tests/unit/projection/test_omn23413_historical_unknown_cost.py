@@ -93,6 +93,8 @@ _CASES: dict[
         _UNKNOWN,
         False,
     ),
+    # No tier recorded: nothing shows the run was cloud-priced, so it is served as stored.
+    "no-tier-unpriced-model": (None, "Beam-1.0-501B-A23B", 0.0, None, _MEASURED, False),
     "declared-zero-price": (None, "Qwen3.8-27B", 0.0, None, _UNKNOWN, False),
     # Charged runs and explicitly recorded sources are served as stored.
     "charged": ("cheap_cloud", "Beam-1.0-501B-A23B", 1.5, None, _MEASURED, False),

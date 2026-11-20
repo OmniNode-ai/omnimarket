@@ -28,12 +28,11 @@ def historical_unpriced_zero(
     A run is free when its tier is local, its model id ends in ":free", or the
     pricing manifest prices its model (a declared zero included). A charged
     amount or a recorded cost source is served as stored, and so is a row that
-    names no model. Only a zero with none of those is unknown.
+    records no tier or names no model, since nothing in it shows a priced cloud
+    call. Only a zero on a recorded non-local tier with none of those is unknown.
     """
-    if (
-        source not in (None, "", "no_cost_model")
-        or str(tier or "").strip().casefold() == "local"
-    ):
+    tier_name = str(tier or "").strip().casefold()
+    if source not in (None, "", "no_cost_model") or tier_name in ("", "local"):
         return False
     if amount is None or isinstance(amount, bool):
         return False
