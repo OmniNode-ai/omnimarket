@@ -578,6 +578,36 @@ units:
     evidence_file: .local/state/omni/session-stall-alarm/last-run.json
     state_directory: .onex_state/session-stall-alarm
     log_directory: .local/state/omni/session-stall-alarm
+  tailscale-key-expiry-alarm:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.tailscale-key-expiry-alarm
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 21600
+      run_at_load: true
+      description: every six hours and at load
+    registry_project: omnimarket
+    run_timeout_s: 360
+    tick_no_sync: true
+    probe_argv: [--probe]
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_tailscale_key_expiry_alarm_effect.runtime_key_expiry_tick
+    entry_file: src/omnimarket/nodes/node_tailscale_key_expiry_alarm_effect/runtime_key_expiry_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      TAILSCALE_BE_CLI: "1"
+    evidence_file: .local/state/omni/tailscale-key-expiry-alarm/last-run.json
+    state_directory: .onex_state/tailscale-key-expiry-alarm
+    log_directory: .local/state/omni/tailscale-key-expiry-alarm
   capture-silence-watch:
     platform: systemd
     kind: registry_module_tick
