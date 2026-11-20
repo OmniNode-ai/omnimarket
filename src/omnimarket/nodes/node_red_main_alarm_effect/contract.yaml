@@ -16,7 +16,12 @@ description: >-
   branch and head, so a head already alarmed raises no second row.
   The owner is a matching live CLAIM, the repository registry owner, the owner the overlay's repository map
   declares, or the parent lane (owner_source none, which the overlay's map exists to prevent).
-  The handler returns typed failures for unreadable facts and writes no alarm for that reading.
+  The handler returns typed failures for unreadable facts and writes no red-head alarm for that reading. A failure
+  that names a repository and a branch raises one src=alarm alarm=main-unreadable STATUS and owner MSG pair, owned by
+  the overlay map's owner for that branch, keyed on repository, branch, failure kind and clock hour so a failure that
+  repeats on every tick raises one pair an hour; the row names the kind and never the failure's text. A recovered read
+  raises none. The runtime that mounts config/lab/ci_bus_lanes.yaml without exporting ONEX_WORKSPACE_CONFIG_ROOT names
+  the mount in the overlay's workspace_config_root, which the bus open reads when the environment names none.
 config:
   red_main_alarm:
     schedule:
@@ -58,7 +63,7 @@ descriptor:
   purity: effectful
   idempotent: true
   timeout_ms: 300000
-  side_effects: [read SCM workflow runs and check runs, read repository registry, read PR watcher when the overlay has no repository map, read open ledger claims, append typed ledger rows]
+  side_effects: [read SCM workflow runs and check runs, read repository registry, read PR watcher when the overlay has no repository map, read open ledger claims, append typed ledger rows, log an unreadable source at error]
 overlay:
   id: node_red_main_alarm_effect
   file_env: ONEX_RED_MAIN_ALARM_OVERLAY

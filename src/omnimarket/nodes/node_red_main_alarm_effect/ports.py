@@ -5,18 +5,24 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Self
 from uuid import UUID, uuid4
 
+from omnibase_infra.cli.delegate_lane_credentials import (
+    ENV_SASL_PASSWORD,
+    ENV_SASL_USERNAME,
+)
 from omnibase_infra.errors import InfraConnectionError
 
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
 from omnimarket.delegated_test_loop.lane_bus import (
+    LabRunBusError,
     bound_lane_principal,
     open_lab_run_bus,
 )
@@ -58,6 +64,11 @@ from omnimarket.nodes.node_red_main_alarm_effect.models import (
 from omnimarket.work_ledger_bus.bus import WorkLedgerAppendCaller
 
 _TIMEOUT_SECONDS = 25.0
+# The work-ledger query and append answer through the ledger host: the open-claims page
+# and the alarm lookup were read at 25 s over the dev runtime's login, which is the
+# whole gateway bound, so a ledger call has its own.
+_LEDGER_TIMEOUT_SECONDS = 90.0
+_CONFIG_ROOT_ENV = "ONEX_WORKSPACE_CONFIG_ROOT"
 # The newest push runs on a default branch; the newest names the head the scan reads.
 _HEAD_RUNS = 5
 # A request ID is stable over a head's lifetime, including a return to an old head.
@@ -75,6 +86,43 @@ def load_alarm_settings() -> ModelAlarmSettings:
         ModelAlarmSettings,
         file_env="ONEX_RED_MAIN_ALARM_OVERLAY",
     )
+
+
+@contextlib.contextmanager
+def _config_root_declared(settings: ModelAlarmSettings) -> Iterator[None]:
+    """Name the overlay's mounted config root for the bus lane resolver while the lane binds.
+
+    The dev runtime mounts the lane declaration but exports no ONEX_WORKSPACE_CONFIG_ROOT, so the
+    resolver found no ci_bus_lanes.yaml and every fire answered a configuration failure before
+    any gateway call. A root the environment already names wins; the variable is put back as it
+    was once the bus is open, because only the open reads it.
+    """
+    declared = settings.workspace_config_root
+    if declared is None or os.environ.get(_CONFIG_ROOT_ENV, "").strip():
+        yield
+        return
+    os.environ[_CONFIG_ROOT_ENV] = declared
+    try:
+        yield
+    finally:
+        os.environ.pop(_CONFIG_ROOT_ENV, None)
+
+
+def _writer_principal() -> str:
+    """The broker login the ledger writer is named by.
+
+    A lane that stores its login binds it with the lane transport. The runtime
+    authenticates from KAFKA_SASL_USERNAME and KAFKA_SASL_PASSWORD, the construction path
+    the lane resolver steps aside for, so nothing is bound there and the login is
+    that variable.
+    """
+    try:
+        return bound_lane_principal()
+    except LabRunBusError:
+        username = os.environ.get(ENV_SASL_USERNAME, "").strip()
+        if not username or not os.environ.get(ENV_SASL_PASSWORD, "").strip():
+            raise
+        return username
 
 
 class AlarmBusPorts:
@@ -108,19 +156,23 @@ class AlarmBusPorts:
                 raise ValueError(
                     "OMNIBASE_PATH does not name the workspace for the bus lane"
                 )
-            async with open_bound_bus(
-                open_bus=positional_opener(open_lab_run_bus),
-                bus="kafka",
-                lane=settings.bus_lane,
-                kafka_bootstrap=None,
-                workspace_root=Path(workspace),
-            ) as bound:
+            async with contextlib.AsyncExitStack() as stack:
+                with _config_root_declared(settings):
+                    bound = await stack.enter_async_context(
+                        open_bound_bus(
+                            open_bus=positional_opener(open_lab_run_bus),
+                            bus="kafka",
+                            lane=settings.bus_lane,
+                            kafka_bootstrap=None,
+                            workspace_root=Path(workspace),
+                        )
+                    )
                 if bound.decision.degraded:
                     raise RuntimeError(
                         f"alarm bus binding is {bound.decision.state.value}"
                     )
                 writer = WorkLedgerAppendCaller(
-                    bound.bus, principal=bound_lane_principal()
+                    bound.bus, principal=_writer_principal()
                 )
                 try:
                     yield cls(watcher, settings, bound.bus, writer)
@@ -190,6 +242,7 @@ class AlarmBusPorts:
             return ModelAlarmFailure(
                 kind=EnumAlarmFailure.INVENTORY_UNREADABLE,
                 repo=entry.repo,
+                branch=entry.branch,
                 detail=str(exc),
             )
 
@@ -248,7 +301,7 @@ class AlarmBusPorts:
             topics=work_ledger_query_topics(),
             request=request,
             correlation_id=request.correlation_id,
-            timeout_s=_TIMEOUT_SECONDS,
+            timeout_s=_LEDGER_TIMEOUT_SECONDS,
         )
         if terminal.failed or terminal.payload.get("status") == "failed":
             raise RuntimeError("work-ledger query failed")
@@ -344,4 +397,4 @@ class AlarmBusPorts:
         # Caller.start subscribes once and must finish before another append
         # can reuse its terminal subscriptions.
         async with self._append_lock:
-            return await self._writer.append(request, timeout_s=_TIMEOUT_SECONDS)
+            return await self._writer.append(request, timeout_s=_LEDGER_TIMEOUT_SECONDS)

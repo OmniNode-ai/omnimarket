@@ -4,6 +4,7 @@
 
 import asyncio
 import json
+import os
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -56,6 +57,7 @@ from omnimarket.nodes.node_red_main_alarm_effect.handler import (
 from omnimarket.nodes.node_red_main_alarm_effect.inventory import read_inventory
 from omnimarket.nodes.node_red_main_alarm_effect.models import (
     EnumAlarmFailure,
+    ModelAlarmFailure,
     ModelAlarmInventory,
     ModelAlarmRepository,
     ModelAlarmSettings,
@@ -332,7 +334,9 @@ async def test_red_main_alarm_red_green_other_red() -> None:
     assert len(ports.requests) == 2
 
 
-async def test_red_main_alarm_check_read_failure_is_typed_and_quiet() -> None:
+async def test_red_main_alarm_check_read_failure_is_typed_and_raises_an_unreadable_row() -> (
+    None
+):
     ports = LedgerAndScm()
     ports.fail_check = True
     handler = HandlerRedMainAlarm(ports=ports, settings=SETTINGS, clock=lambda: NOW)
@@ -340,11 +344,15 @@ async def test_red_main_alarm_check_read_failure_is_typed_and_quiet() -> None:
     result = await handler.handle(tick())
 
     assert not result.alarms
-    assert not ports.requests
     (failure,) = result.failures
     assert failure.kind == EnumAlarmFailure.CHECK_RUNS_UNREADABLE
     assert failure.repo == ports.target.repo
     assert "gateway unavailable" in failure.detail
+    (unreadable,) = result.unreadable_alarms
+    assert (unreadable.repo, unreadable.branch) == (ports.target.repo, "main")
+    assert unreadable.failure == EnumAlarmFailure.CHECK_RUNS_UNREADABLE
+    (request,) = ports.requests.values()
+    assert " | alarm=main-unreadable | " in request.rows.splitlines()[0]
 
 
 async def test_red_main_alarm_contract_declares_its_own_fifteen_minute_schedule() -> (
@@ -469,12 +477,18 @@ async def test_red_main_alarm_retry_keeps_the_first_red_read() -> None:
 
     failed = await handler.handle(tick(now))
     assert failed.failures[0].kind == EnumAlarmFailure.CLAIMS_UNREADABLE
-    assert not ports.requests
+    # No red-head row for a head whose owner could not be read; the unreadable source is the row.
+    assert not failed.alarms
+    (unreadable,) = (
+        request.rows.splitlines()[0] for request in ports.requests.values()
+    )
+    assert " | alarm=main-unreadable | " in unreadable
 
     ports.available = True
     now += timedelta(minutes=10)
     retried = await handler.handle(tick(now))
     assert not retried.failures
+    assert not retried.unreadable_alarms
     assert retried.alarms[0].first_red_at == NOW
 
 
@@ -758,3 +772,279 @@ async def test_red_main_alarm_gateway_head_failure_is_typed_per_repository(
     (failure,) = inventory.failures
     assert failure.kind == EnumAlarmFailure.INVENTORY_UNREADABLE
     assert failure.repo == "OmniNode-ai/overlays"
+
+
+class DuplicateAnswering(LedgerAndScm):
+    """The ledger writer as it answers a replay: the same bytes under one ID are a duplicate."""
+
+    async def append(
+        self, request: ModelWorkLedgerAppendRequest
+    ) -> ModelWorkLedgerAppendReceipt:
+        seen = self.requests.get(request.request_id)
+        if seen is None:
+            return await super().append(request)
+        assert seen.rows == request.rows
+        return ModelWorkLedgerAppendReceipt(
+            request_id=request.request_id,
+            status=EnumWorkLedgerAppendStatus.DUPLICATE,
+            exit_code=0,
+            message="",
+            ledger_lines=[],
+            ledger_host="test",
+            duration_ms=0,
+        )
+
+
+# What the runtime's own log and the lane declaration resolver recorded at the 03:15Z fire of
+# 2026-11-20: the lane declaration the bus opens from was not found, with a secret name beside it
+# in the same log, and the fire carried a configuration failure and no row.
+RECORDED_CAUSE = (
+    "the lane declaration config/lab/ci_bus_lanes.yaml does not exist (with no workspace "
+    "config root declared, set ONEX_WORKSPACE_CONFIG_ROOT). Secret resolution failed "
+    "(configuration issue): GITHUB_TOKEN"
+)
+UNREADABLE_MAP = ModelAlarmSettings(
+    parent_lane=PARENT,
+    host="h201",
+    repositories=(
+        ModelAlarmRepository(
+            repo="OmniNode-ai/overlays",
+            branch="main",
+            owner="overlays-owner",
+            required_checks=("ci",),
+        ),
+    ),
+)
+
+
+class UnreadableGateway(DuplicateAnswering):
+    def __init__(self) -> None:
+        super().__init__()
+        self.readable = False
+
+    async def inventory(self, now: datetime) -> ModelAlarmInventory:
+        if self.readable:
+            return ModelAlarmInventory(targets=(self.target,))
+        return ModelAlarmInventory(
+            failures=(
+                ModelAlarmFailure(
+                    kind=EnumAlarmFailure.INVENTORY_UNREADABLE,
+                    repo="OmniNode-ai/overlays",
+                    branch="main",
+                    detail=RECORDED_CAUSE,
+                ),
+            )
+        )
+
+
+async def test_red_main_alarm_unreadable_gateway_read_raises_one_owner_row() -> None:
+    ports = UnreadableGateway()
+    handler = HandlerRedMainAlarm(
+        ports=ports, settings=UNREADABLE_MAP, clock=lambda: NOW
+    )
+
+    result = await handler.handle(tick())
+
+    (unreadable,) = result.unreadable_alarms
+    assert (unreadable.owner, unreadable.owner_source) == (
+        "overlays-owner",
+        "declared",
+    )
+    (request,) = ports.requests.values()
+    status, message = request.rows.splitlines()
+    assert re.search(
+        r"src=alarm \| alarm=main-unreadable \| repo=OmniNode-ai/overlays \| branch=main"
+        r" \| failure=inventory_unreadable",
+        status,
+    )
+    assert " | owner=overlays-owner | owner_source=declared | " in status
+    assert " | owner_source=none" not in status
+    assert " | drill=yes" not in status
+    assert " | to=overlays-owner | id=" in message
+    # The row is the kind and the place; the failure's own text can name a secret.
+    assert "GITHUB_TOKEN" not in request.rows
+    assert "ci_bus_lanes" not in request.rows
+    assert refusal_for_payload(request.rows, sorted(GOVERNED_LEDGER_NAMES)[0]) is None
+    # The cells the ledger grep reads for a live row.
+    assert re.search(r"src=alarm.*alarm=main-(red|unreadable)", status)
+
+
+async def test_red_main_alarm_repeating_failure_raises_one_row_per_hour() -> None:
+    ports = UnreadableGateway()
+    clock_at = [NOW]
+    handler = HandlerRedMainAlarm(
+        ports=ports, settings=UNREADABLE_MAP, clock=lambda: clock_at[0]
+    )
+
+    first = await handler.handle(tick())
+    clock_at[0] = NOW + timedelta(minutes=15)
+    second = await handler.handle(tick(clock_at[0]))
+    clock_at[0] = NOW + timedelta(minutes=19)
+    third = await handler.handle(tick(clock_at[0]))
+
+    assert len(first.unreadable_alarms) == 1
+    assert not second.unreadable_alarms
+    assert not third.unreadable_alarms
+    assert len(ports.requests) == 1
+    # The failure is still reported in the fire's own result on every tick.
+    assert len(second.failures) == len(third.failures) == 1
+
+    clock_at[0] = NOW + timedelta(hours=1)
+    later = await handler.handle(tick(clock_at[0]))
+    assert len(later.unreadable_alarms) == 1
+    assert len(ports.requests) == 2
+
+
+async def test_red_main_alarm_recovered_read_raises_no_unreadable_row() -> None:
+    ports = UnreadableGateway()
+    ports.readable = True
+    ports.move_to("green")
+    handler = HandlerRedMainAlarm(
+        ports=ports, settings=UNREADABLE_MAP, clock=lambda: NOW
+    )
+
+    result = await handler.handle(tick())
+
+    assert not result.failures
+    assert not result.unreadable_alarms
+    assert not ports.requests
+
+
+async def test_red_main_alarm_unreadable_row_in_a_drill_is_marked_and_scoped() -> None:
+    ports = UnreadableGateway()
+    settings = UNREADABLE_MAP.model_copy(
+        update={"drill_repos": ("OmniNode-ai/overlays",)}
+    )
+    handler = HandlerRedMainAlarm(ports=ports, settings=settings, clock=lambda: NOW)
+
+    await handler.handle(tick())
+
+    (request,) = ports.requests.values()
+    assert request.rows.count(" | drill=yes") == 2
+
+
+async def test_red_main_alarm_failure_with_no_repository_raises_no_row_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A failure that names no branch has no row to be raised on; the runtime log is loud."""
+    ports = LedgerAndScm()
+
+    async def unreadable_inventory(now: datetime) -> ModelAlarmInventory:
+        return ModelAlarmInventory(
+            failures=(
+                ModelAlarmFailure(
+                    kind=EnumAlarmFailure.INVENTORY_UNREADABLE, detail="x"
+                ),
+            )
+        )
+
+    ports.inventory = unreadable_inventory  # type: ignore[method-assign]
+    handler = HandlerRedMainAlarm(ports=ports, settings=SETTINGS, clock=lambda: NOW)
+
+    with caplog.at_level("ERROR"):
+        result = await handler.handle(tick())
+
+    assert not ports.requests
+    assert len(result.failures) == 1
+    assert "red-main alarm source unreadable" in caplog.text
+
+
+async def test_red_main_alarm_unreadable_row_append_failure_is_reported_not_repeated() -> (
+    None
+):
+    ports = UnreadableGateway()
+
+    async def refuse(request: ModelWorkLedgerAppendRequest) -> object:
+        raise RuntimeError("ledger unreachable")
+
+    ports.append = refuse  # type: ignore[method-assign]
+    handler = HandlerRedMainAlarm(
+        ports=ports, settings=UNREADABLE_MAP, clock=lambda: NOW
+    )
+
+    result = await handler.handle(tick())
+
+    assert not result.unreadable_alarms
+    kinds = [failure.kind for failure in result.failures]
+    assert kinds == [
+        EnumAlarmFailure.INVENTORY_UNREADABLE,
+        EnumAlarmFailure.APPEND_FAILED,
+    ]
+
+
+class FakeBound:
+    def __init__(self) -> None:
+        self.decision = type("Decision", (), {"degraded": False, "state": "healthy"})()
+        self.bus = EventBusInmemory(environment="test", group="test")
+
+
+async def test_red_main_alarm_bus_opens_from_the_overlay_config_root_the_runtime_does_not_export(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The recorded cause: the dev runtime mounts config/lab/ci_bus_lanes.yaml and exports no
+    ONEX_WORKSPACE_CONFIG_ROOT, so the real lane resolver found no declaration and the fire
+    answered a configuration failure before any gateway call."""
+    from contextlib import asynccontextmanager
+
+    from omnibase_infra.cli.delegate_lane import resolve_lane_declaration_path
+
+    mounted = tmp_path / "mounted"
+    (mounted / "config" / "lab").mkdir(parents=True)
+    (mounted / "config" / "lab" / "ci_bus_lanes.yaml").write_text("lanes: {}\n")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.delenv("ONEX_WORKSPACE_CONFIG_ROOT", raising=False)
+    monkeypatch.setenv("OMNIBASE_PATH", str(workspace))
+    seen: list[Path] = []
+
+    @asynccontextmanager
+    async def opener(**kwargs: Any) -> Any:
+        seen.append(resolve_lane_declaration_path(kwargs["workspace_root"]))
+        yield FakeBound()
+
+    class Writer:
+        def __init__(self, bus: object, *, principal: str) -> None:
+            self.principal = principal
+
+        async def stop(self) -> None:
+            return None
+
+    monkeypatch.setattr(ports_module, "open_bound_bus", opener)
+    monkeypatch.setattr(ports_module, "WorkLedgerAppendCaller", Writer)
+    monkeypatch.setattr(
+        ports_module,
+        "bound_lane_principal",
+        lambda: (_ for _ in ()).throw(ports_module.LabRunBusError("no login")),
+    )
+    monkeypatch.setenv("KAFKA_SASL_USERNAME", "fixture-runtime-login")
+    monkeypatch.setenv(
+        "KAFKA_SASL_PASSWORD", "not-a-real-value"
+    )  # pragma: allowlist secret
+    settings = MAP.model_copy(update={"workspace_config_root": str(mounted)})
+
+    async with AlarmBusPorts.open(settings) as ports:
+        assert ports._writer.principal == "fixture-runtime-login"  # type: ignore[attr-defined]
+
+    assert seen == [mounted / "config" / "lab" / "ci_bus_lanes.yaml"]
+    # Only the open reads the variable; it is not left set for the process.
+    assert "ONEX_WORKSPACE_CONFIG_ROOT" not in os.environ
+
+    unset = MAP
+    with pytest.raises(Exception, match="lane declaration"):
+        async with AlarmBusPorts.open(unset):
+            pass
+
+
+async def test_red_main_alarm_runtime_login_is_named_only_when_both_halves_are_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ports_module,
+        "bound_lane_principal",
+        lambda: (_ for _ in ()).throw(ports_module.LabRunBusError("no login")),
+    )
+    monkeypatch.setenv("KAFKA_SASL_USERNAME", "fixture-runtime-login")
+    monkeypatch.delenv("KAFKA_SASL_PASSWORD", raising=False)
+
+    with pytest.raises(ports_module.LabRunBusError):
+        ports_module._writer_principal()

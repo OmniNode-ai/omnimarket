@@ -4,6 +4,9 @@
 parent_lane: example-goal-parent
 host: example-alarm-runtime
 bus_lane: dev
+# The directory that holds config/lab/ci_bus_lanes.yaml in the runtime; set only when the runtime
+# mounts it and exports no ONEX_WORKSPACE_CONFIG_ROOT.
+workspace_config_root: /etc/example/workspace-config
 repositories:
   - repo: example-org/example-repo
     branch: main

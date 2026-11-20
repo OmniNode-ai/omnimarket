@@ -14,6 +14,7 @@ Repository = Annotated[str, Field(pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")]
 Branch = Literal["main", "dev"]
 Commit = Annotated[str, Field(pattern=r"^[0-9a-f]{40}$")]
 CheckName = Annotated[str, Field(min_length=1, pattern=r"^[^|\r\n]+$")]
+ConfigRoot = Annotated[str, Field(pattern=r"^/[A-Za-z0-9._/-]*$")]
 
 
 class _Frozen(BaseModel):
@@ -53,6 +54,11 @@ class ModelAlarmSettings(_Frozen):
     # The declared owner map. When it names repositories the scan reads exactly these, through
     # the SCM gateway; when it is empty the scan reads the PR watcher snapshot, as before.
     repositories: tuple[ModelAlarmRepository, ...] = ()
+    # The directory holding config/lab/ci_bus_lanes.yaml in the runtime that runs the node. A runtime
+    # that mounts it but exports no ONEX_WORKSPACE_CONFIG_ROOT cannot resolve the bus lane, and the node's
+    # scan then answers a configuration failure every fire. The overlay declares the mount; a root the
+    # environment already names wins.
+    workspace_config_root: ConfigRoot | None = None
 
 
 class ModelAlarmTarget(_Frozen):
@@ -72,6 +78,7 @@ class ModelAlarmFailure(_Frozen):
     kind: EnumAlarmFailure
     detail: str
     repo: Repository | None = None
+    branch: Branch | None = None
 
 
 class ModelAlarmInventory(_Frozen):
@@ -90,7 +97,19 @@ class ModelRedMainAlarm(_Frozen):
     owner_source: Literal["claim", "registry", "declared", "none"]
 
 
+class ModelUnreadableAlarm(_Frozen):
+    """A default branch the scan could not read, raised as an alarm row with an owner."""
+
+    repo: Repository
+    branch: Branch
+    failure: EnumAlarmFailure
+    first_seen_at: Annotated[datetime, AwareDatetime]
+    owner: Owner
+    owner_source: Literal["declared", "parent"]
+
+
 class ModelRedMainAlarmResult(_Frozen):
     fire_id: str
     alarms: tuple[ModelRedMainAlarm, ...] = ()
+    unreadable_alarms: tuple[ModelUnreadableAlarm, ...] = ()
     failures: tuple[ModelAlarmFailure, ...] = ()

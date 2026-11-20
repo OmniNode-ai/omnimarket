@@ -9,7 +9,12 @@ summary: >-
   default branch the overlay declares (omnimarket dev, overlays main and the private internal base's main)
   through the SCM gateway with no PR watcher snapshot, takes each row's owner from the registry or the
   overlay's repository map (never owner_source=none for those three), raises one alarm per red head,
-  and writes the src=alarm alarm=main-red row the ledger grep names, with drill=yes on a drill.
+  and writes the src=alarm alarm=main-red row the ledger grep names, with drill=yes on a drill. A source it cannot
+  read (the gateway answers no head or no check runs, the ledger gives no claims) raises one
+  src=alarm alarm=main-unreadable row naming the repository, branch and failure kind with the overlay map's owner,
+  one an hour for a failure that repeats. The runtime opens its bus lane from the overlay's declared config root and
+  names its writer by its own broker login, which the first live fire of 2026-11-20T03:15Z could not (the lane
+  declaration was not found, so no gateway call was made and no row was written).
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -74,6 +79,22 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov -k 'overlays_main_with_no_watcher_snapshot or one_alarm_per_red_head or own_fifteen_minute_schedule'
+        cwd: .
+  - id: dod-omn26092-ac2-unreadable-row
+    description: A source the scan cannot read raises one owner-named alarm=main-unreadable pair an hour, a recovered read raises none, and the row names no secret.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov -k 'unreadable or repeating_failure or recovered_read'
+        cwd: .
+  - id: dod-omn26092-ac5-recorded-cause-config-root
+    description: The test built from the 2026-11-20T03:15Z fire (the lane declaration not found in the runtime, the runtime login unnamed) fails at the base and passes at the head.
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov -k 'overlay_config_root or runtime_login_is_named'
         cwd: .
   - id: dod-omn26092-lab-integration-proof
     description: The runtime-tick route and the one-alarm-per-red-head pair run on a lab host at the pushed revision.

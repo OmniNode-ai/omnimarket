@@ -5,12 +5,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections import OrderedDict
 from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 import yaml
@@ -43,7 +44,10 @@ from omnimarket.nodes.node_red_main_alarm_effect.models import (
     ModelAlarmTarget,
     ModelRedMainAlarm,
     ModelRedMainAlarmResult,
+    ModelUnreadableAlarm,
 )
+
+logger = logging.getLogger(__name__)
 
 _ACTOR = "red-main-alarm"
 _NODE = "node_red_main_alarm_effect"
@@ -194,6 +198,74 @@ def _append_request(
     )
 
 
+def _unreadable_owner(
+    settings: ModelAlarmSettings, repo: str, branch: str
+) -> tuple[str, Literal["declared", "parent"]]:
+    """The owner the overlay's repository map declares for the branch, else the parent lane."""
+    for entry in settings.repositories:
+        if entry.repo.casefold() == repo.casefold() and entry.branch == branch:
+            return entry.owner, "declared"
+    return settings.parent_lane, "parent"
+
+
+def _unreadable_request(
+    alarm: ModelUnreadableAlarm, settings: ModelAlarmSettings, request_id: UUID
+) -> ModelWorkLedgerAppendRequest:
+    """One STATUS and one owner MSG, the same pair a red head raises.
+
+    The row names the failure kind only: a failure's detail can carry a secret name or a
+    deployment address, and the owner needs the kind, the repository and the branch.
+    """
+    at = alarm.first_seen_at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    location = f"repo={alarm.repo} | branch={alarm.branch}"
+    drill = " | drill=yes" if settings.drill_repos else ""
+    status = (
+        f"{at} | STATUS | lane={_ACTOR} | actor=node:{_NODE} | model=none"
+        f" | src=alarm | alarm=main-unreadable | {location}"
+        f" | failure={alarm.failure.value} | first_seen_at={at}"
+        f" | owner={alarm.owner} | owner_source={alarm.owner_source}"
+        f" | host={settings.host}{drill} | req={request_id}"
+        " | Default-branch source is unreadable, so its required checks were not read"
+    )
+    message = (
+        f"{at} | MSG | from={_ACTOR} | to={alarm.owner} | id={at}-{_ACTOR}"
+        f" | {location}{drill} | req={request_id}"
+        f" | {alarm.owner}: {alarm.repo} {alarm.branch} could not be read ({alarm.failure.value})"
+    )
+    return ModelWorkLedgerAppendRequest(
+        request_id=request_id,
+        rows=f"{status}\n{message}",
+        requested_by_lane=_ACTOR,
+        requesting_host=settings.host,
+        requested_at=alarm.first_seen_at,
+    )
+
+
+async def _deliver(
+    ports: ProtocolRedMainAlarmPorts, request: ModelWorkLedgerAppendRequest
+) -> bool:
+    """Append the pair; True when this call wrote it, False when it was already there."""
+    request_id = request.request_id
+    try:
+        receipt = await ports.append(request)
+    except TimeoutError:
+        if await ports.recorded(request_id):
+            return False
+        raise
+    if receipt.request_id != request_id:
+        raise RuntimeError("ledger answered another alarm request")
+    if receipt.status == EnumWorkLedgerAppendStatus.ACCEPTED:
+        return True
+    if receipt.status == EnumWorkLedgerAppendStatus.DUPLICATE:
+        return False
+    # A simultaneous fire can pick an updated owner or observation time.
+    # The writer refuses the changed body under the same ID. Only readback
+    # of the complete pair lets us classify that refusal as a duplicate.
+    if await ports.recorded(request_id):
+        return False
+    raise RuntimeError(f"ledger append {receipt.status}: {receipt.message}")
+
+
 class HandlerRedMainAlarm:
     """Confirm required check conclusions and deliver one owner alarm per branch head."""
 
@@ -224,6 +296,12 @@ class HandlerRedMainAlarm:
             async with AlarmBusPorts.open(settings) as ports:
                 return await self._scan(request, ports, settings)
         except (RuntimeError, ValueError, OSError) as exc:
+            # No repository is known here and the ledger may be the thing that did not open,
+            # so no row can be raised; the runtime log is the one place left to be loud in.
+            logger.error(
+                "red-main alarm could not scan: %s",
+                EnumAlarmFailure.CONFIGURATION_UNREADABLE,
+            )
             return ModelRedMainAlarmResult(
                 fire_id=request.fire_id,
                 failures=(
@@ -266,11 +344,89 @@ class HandlerRedMainAlarm:
             if not settings.drill_repos or target.repo in settings.drill_repos
         )
         results = await asyncio.gather(*(read(target) for target in targets))
+        failures = inventory.failures + tuple(
+            row for row in results if isinstance(row, ModelAlarmFailure)
+        )
+        unreadable, refused = await self._raise_unreadable(
+            ports, settings, failures, now
+        )
         return ModelRedMainAlarmResult(
             fire_id=request.fire_id,
             alarms=tuple(row for row in results if isinstance(row, ModelRedMainAlarm)),
-            failures=inventory.failures
-            + tuple(row for row in results if isinstance(row, ModelAlarmFailure)),
+            unreadable_alarms=unreadable,
+            failures=failures + refused,
+        )
+
+    async def _raise_unreadable(
+        self,
+        ports: ProtocolRedMainAlarmPorts,
+        settings: ModelAlarmSettings,
+        failures: tuple[ModelAlarmFailure, ...],
+        now: datetime,
+    ) -> tuple[tuple[ModelUnreadableAlarm, ...], tuple[ModelAlarmFailure, ...]]:
+        """One alarm row per repository, branch and failure kind in each clock hour.
+
+        The request ID is that key, and the row's own time is the hour's start, so a failure
+        that repeats on every tick sends the same bytes under the same ID and the ledger
+        answers a duplicate. A failure of the row's own append is reported, never raised again.
+        """
+        hour = now.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
+        keyed: dict[tuple[str, str, EnumAlarmFailure], ModelAlarmFailure] = {}
+        for failure in failures:
+            if failure.repo is None or failure.branch is None:
+                logger.error("red-main alarm source unreadable: %s", failure.kind)
+                continue
+            if settings.drill_repos and failure.repo not in settings.drill_repos:
+                continue
+            keyed.setdefault(
+                (failure.repo.casefold(), failure.branch, failure.kind), failure
+            )
+        semaphore = asyncio.Semaphore(4)
+
+        async def raise_one(
+            failure: ModelAlarmFailure,
+        ) -> ModelUnreadableAlarm | ModelAlarmFailure | None:
+            repo, branch = failure.repo, failure.branch
+            if repo is None or branch is None:
+                return None
+            owner, source = _unreadable_owner(settings, repo, branch)
+            alarm = ModelUnreadableAlarm(
+                repo=repo,
+                branch=branch,
+                failure=failure.kind,
+                first_seen_at=hour,
+                owner=owner,
+                owner_source=source,
+            )
+            request_id = uuid5(
+                NAMESPACE_URL,
+                f"onex:main-unreadable:{repo.casefold()}:{branch}"
+                f":{failure.kind.value}:{hour:%Y-%m-%dT%H}",
+            )
+            logger.error(
+                "red-main alarm source unreadable: repo=%s branch=%s failure=%s",
+                repo,
+                branch,
+                failure.kind.value,
+            )
+            async with semaphore:
+                try:
+                    delivered = await _deliver(
+                        ports, _unreadable_request(alarm, settings, request_id)
+                    )
+                except (OSError, RuntimeError, ValueError, InfraConnectionError) as exc:
+                    return ModelAlarmFailure(
+                        kind=EnumAlarmFailure.APPEND_FAILED,
+                        repo=repo,
+                        branch=branch,
+                        detail=str(exc),
+                    )
+            return alarm if delivered else None
+
+        results = await asyncio.gather(*(raise_one(row) for row in keyed.values()))
+        return (
+            tuple(row for row in results if isinstance(row, ModelUnreadableAlarm)),
+            tuple(row for row in results if isinstance(row, ModelAlarmFailure)),
         )
 
     async def _inspect(
@@ -309,7 +465,9 @@ class HandlerRedMainAlarm:
             self._first_red.pop(request_id, None)
             return appended
         except (OSError, RuntimeError, ValueError, InfraConnectionError) as exc:
-            return ModelAlarmFailure(kind=kind, repo=target.repo, detail=str(exc))
+            return ModelAlarmFailure(
+                kind=kind, repo=target.repo, branch=target.branch, detail=str(exc)
+            )
 
     @staticmethod
     async def _append(
@@ -318,24 +476,8 @@ class HandlerRedMainAlarm:
         settings: ModelAlarmSettings,
         request_id: UUID,
     ) -> ModelRedMainAlarm | None:
-        try:
-            receipt = await ports.append(_append_request(alarm, settings, request_id))
-        except TimeoutError:
-            if await ports.recorded(request_id):
-                return None
-            raise
-        if receipt.request_id != request_id:
-            raise RuntimeError("ledger answered another alarm request")
-        if receipt.status == EnumWorkLedgerAppendStatus.ACCEPTED:
-            return alarm
-        if receipt.status == EnumWorkLedgerAppendStatus.DUPLICATE:
-            return None
-        # A simultaneous fire can pick an updated owner or observation time.
-        # The writer refuses the changed body under the same ID. Only readback
-        # of the complete pair lets us classify that refusal as a duplicate.
-        if await ports.recorded(request_id):
-            return None
-        raise RuntimeError(f"ledger append {receipt.status}: {receipt.message}")
+        delivered = await _deliver(ports, _append_request(alarm, settings, request_id))
+        return alarm if delivered else None
 
 
 @lru_cache(maxsize=1)
