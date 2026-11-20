@@ -664,7 +664,7 @@ def test_a_provider_error_on_a_platform_route_still_escalates(
         system_prompt="s",
         rationale="platform route",
     )
-    next_tier = next_eligible_tier("local", frozenset(), task_type="test")
+    next_tier = next_eligible_tier("local", frozenset(), task_type="test", prompt="")
     assert next_tier is not None
     handler.handle_delegation_request(request)
     handler.handle_routing_decision(route)
