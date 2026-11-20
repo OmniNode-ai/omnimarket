@@ -171,6 +171,7 @@ def test_scheduled_job_contract_valid_inputs_produce_a_bundle_the_reader_accepts
 ) -> None:
     assert runtime.main(_write_inputs(tmp_path)) == 0
     printed = capsys.readouterr().out
+    assert json.loads(printed)["schema_version"] == "scope_bundle.v1"
     bundle_file = tmp_path / "bundle.json"
     bundle_file.write_text(printed)
     assert runtime.main(["read-bundle", "--bundle", str(bundle_file)]) == 0

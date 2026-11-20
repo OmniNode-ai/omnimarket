@@ -13,7 +13,7 @@ with the model before it writes anything; every reader parses with the same mode
 from __future__ import annotations
 
 import json
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -95,6 +95,9 @@ class ModelScopeBundle(BaseModel):
     """The bounded scope the closer selects from: what ``bundle`` prints and ``read-bundle`` reads."""
 
     model_config = _STRICT
+    # The marker the workflow script checks: the bundle it was handed is the node's own output,
+    # not text an agent typed. The script holds no field check beyond this one.
+    schema_version: Literal["scope_bundle.v1"] = "scope_bundle.v1"
     candidates: list[ModelScopeCandidateRow]
     pr_state: list[ModelScopePrStateRow]
     text_state: list[ModelScopeTextStateRow]

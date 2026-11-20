@@ -11,7 +11,6 @@ returns the decision. It reads nothing, has no clock and writes nothing.
 
 from __future__ import annotations
 
-import json
 import re
 from collections import Counter
 from datetime import datetime, timedelta
@@ -906,10 +905,10 @@ def bundle_scope(
         )
     )
     # The producer's own contract (OMN-26223): a bundle the model refuses is never returned.
-    parse_scope_bundle(text, file="the scope bundle this handler produced")
+    checked = parse_scope_bundle(text, file="the scope bundle this handler produced")
     return ModelDodCloseoutDecisionResult(
         kind=EnumCloseoutDecisionKind.SCOPE_BUNDLE,
-        scope_bundle=json.loads(text),
+        scope_bundle=checked.model_dump(mode="json"),
         scope_examined_next=examined_next,
     )
 
