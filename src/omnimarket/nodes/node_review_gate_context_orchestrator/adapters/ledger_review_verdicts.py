@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """The recorded review verdicts of the sweep, read from the rolling ledger.
 
-``LedgerReviewVerdicts`` queries the STATUS rows of the overlay's lookback window through the
+``LedgerReviewVerdicts`` queries review STATUS rows in the overlay's lookback window through the
 configured row source and hands them to the landing ledger facts node's own ``review_facts``:
 the same rule the landing decision reads verdicts by, so the check and the landing gate can
 never disagree about what the ledger says. A read that answers an error instead of rows raises
@@ -32,7 +32,7 @@ from omnimarket.nodes.node_review_gate_context_orchestrator.protocols.protocol_r
 
 
 class LedgerReviewVerdicts:
-    """The review facts of the ledger's STATUS rows over the overlay's lookback window."""
+    """The exact-head review facts in the overlay's lookback window."""
 
     def __init__(
         self, source: ProtocolLedgerRowSource, settings: ModelReviewGateSweepSettings
@@ -48,6 +48,7 @@ class LedgerReviewVerdicts:
                 since=since,
                 until=now + timedelta(days=1),
                 row_type="STATUS",
+                term="review=",
             )
         )
         if read.error is not None:
