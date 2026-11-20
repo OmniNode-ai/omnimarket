@@ -1,0 +1,23 @@
+name: node_onex_installer_render_compute
+version: "0.1.0"
+description: "Renders the omninode-onex customer installer from a release's pinned values"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_onex_installer_render_compute: "omnimarket.nodes.node_onex_installer_render_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "release", "installer", "OMN-25070"]
+pack: "pipeline"
+display_name: "onex Installer Render"
+node_role: "compute"
