@@ -33,7 +33,7 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: |-
-      grep -E '[|] STATUS [|].*ticket=OMN-24642 .*graph=code-graph' "${ONEX_LEDGER_PATH:-$OMNI_HOME/docs/tracking/ROLLING_WORK_LEDGER.md}" | grep -E 'graph_built=[0-9]{4}-[0-9]{2}-[0-9]{2}T' | grep -E 'revisions=[^ |]*[0-9a-f]{7}' | grep -Eq 'stale=(true|false)( |$)'
+      grep -E '[|] STATUS [|].*ticket=OMN-24642 .*graph=code-graph' $OMNI_HOME/docs/tracking/ROLLING_WORK_*.md | grep -E 'graph_built=[0-9]{4}-[0-9]{2}-[0-9]{2}T' | grep -E 'revisions=[^ |]*[0-9a-f]{7}' | grep -Eq 'stale=(true|false)( |$)'
     cwd: .
 - id: dod-omn24642-ac2-stated-not-met
   description: AC2 is NOT MET and the contract says so. This hosted check binds the criterion to the test that reads the contract's own statement of it (the ticket's wording and the NOT MET mark); the importers query itself is checked only by the local Done gate item dod-omn24642-ac2-query-recorded.

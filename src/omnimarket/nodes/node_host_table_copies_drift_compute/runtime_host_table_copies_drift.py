@@ -24,14 +24,14 @@ from datetime import UTC, datetime
 from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.models.model_host_table_copies_drift import (
+    ModelHostTableDriftCommand,
+)
 from omnimarket.nodes.node_host_table_copies_drift_compute.adapters.copy_source import (
     LocalCopySource,
 )
 from omnimarket.nodes.node_host_table_copies_drift_compute.handlers.handler_host_table_copies_drift import (
     HandlerHostTableCopiesDrift,
-)
-from omnimarket.nodes.node_host_table_copies_drift_compute.models import (
-    ModelHostTableDriftCommand,
 )
 from omnimarket.nodes.node_host_table_copies_drift_compute.overlay import (
     NODE_NAME,

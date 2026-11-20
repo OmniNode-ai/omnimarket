@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-25461
+title: The lab state alarm's scheduled run binds a lab verdict source in the runtime
+summary: node_lab_state_alarm_scheduled_effect built a verdict source that read nothing, so every scheduled run of lab_state_alarm ended failed with "no lab verdict source is bound in the runtime". The node now binds RuntimeLabVerdictSource, which reads the sources the runtime can reach (the dev deploy agent over HTTP, at the address the floor's lab-state overlay names), judges them with the lab-state compute, and names the sources it cannot read in the run event.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25461-bound-source
+  statement: A scheduled run of lab_state_alarm on the real overlays ends completed, not failed.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the schedules of the listed changes whose source is not bound in the dev runtime are listed with the unbound source of each, read from the overlays and the runtime at the merged head -- falsifier: a grep of the list for 5323, 5344, 5340, lab_alarm or lab_state_alarm finds a name with no row or a row naming no source'
+  - id: AC2
+    statement: 'AC2: the schedule source is bound by a declared change, and a test built from the real overlay of one listed schedule fails before the change and passes after it -- falsifier: uv run pytest on the new test at the merge base exits non-zero'
+  - id: AC3
+    statement: 'AC3: the change is installed on the dev runtime on h201 through the declared dev install and one schedule run is read completing there, with a STATUS row carrying pr=, installed=<host>:<revision>, observed= and read_at= -- falsifier: a grep of the dev runtime log on h201 for the schedule name finds no completed run after the install time'
+evidence_requirements:
+- kind: tests
+  description: The real-overlay test of the lab state alarm's scheduled run.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_lab_state_alarm_scheduled_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25461-ac1-unbound-list
+  description: The run event names the declared lab sources the runtime does not read, so the list of unbound sources is in the run record; the test asserts the names.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_state_alarm_scheduled_effect/test_runtime_lab_verdict_source.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25461-ac2-real-overlay-test
+  description: The real-overlay test passes at the head; at the merge base the completed-run test fails because the default source reads nothing.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_state_alarm_scheduled_effect/test_runtime_lab_verdict_source.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25461-ac3-completed-run-test
+  description: The scheduled run of lab_state_alarm on the real overlays ends completed at the head; the dev runtime read itself is the local Done gate item below.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_state_alarm_scheduled_effect/test_runtime_lab_verdict_source.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25461-integration-proof
+  description: Hosted CI cannot reach the dev runtime on a lab host, so only the local Done gate runs this unbound check; it fails while no completed lab_state_alarm run is on the dev runtime log.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-omn25461-ac3 --kind test -- sh -c 'docker logs omninode-runtime 2>&1 | grep -q lab_state_alarm'
+    cwd: .

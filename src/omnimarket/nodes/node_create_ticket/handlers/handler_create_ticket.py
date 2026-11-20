@@ -45,7 +45,7 @@ import sys
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 import yaml
 from omnibase_infra.adapters.project_tracker.linear_graphql_project_tracker_adapter import (
@@ -135,6 +135,17 @@ _BACKLOG_STATE_QUERY = """
 query GetBacklogState($teamId: ID!) {
   workflowStates(filter: { team: { id: { eq: $teamId } }, name: { eq: "Backlog" } }) {
     nodes { id }
+  }
+}
+"""
+
+_PROJECT_OPEN_ISSUES_QUERY = """
+query($id: String!, $after: String) {
+  project(id: $id) {
+    issues(first: 100, after: $after, filter: {state: {type: {nin: ["completed", "canceled"]}}}) {
+      pageInfo { hasNextPage endCursor }
+      nodes { identifier }
+    }
   }
 }
 """
@@ -381,6 +392,12 @@ class TicketTrackerProtocol(Protocol):
 
 
 @runtime_checkable
+class OpenIssueListerProtocol(Protocol):
+    """Lists a project's open ticket identifiers (list_open)."""
+
+    def open_issue_ids(self, project_id: str) -> list[str]: ...
+
+
 class TicketStateResolverProtocol(Protocol):
     """Resolves a workflow state name to its Linear id for one ticket's team."""
 
@@ -574,6 +591,21 @@ class LinearTicketHttpGateway:
         """The project gateway over this client's own GraphQL transport."""
         return LinearTicketProjectGateway(self._post)
 
+    def open_issue_ids(self, project_id: str) -> list[str]:
+        """Identifiers of the project's tickets whose state is not completed or canceled, every page."""
+        out: list[str] = []
+        after: str | None = None
+        while True:
+            data = self._post(
+                _PROJECT_OPEN_ISSUES_QUERY, {"id": project_id, "after": after}
+            )
+            issues = (data.get("data", {}).get("project") or {}).get("issues") or {}
+            out += [str(n["identifier"]) for n in issues.get("nodes", [])]
+            page = issues.get("pageInfo") or {}
+            if not page.get("hasNextPage"):
+                return sorted(out)
+            after = str(page["endCursor"])
+
     def resolve_state_id(self, ticket_id: str, state: str) -> str:
         """Return the id of workflow state ``state`` on ``ticket_id``'s own team."""
         data = self._post(
@@ -661,6 +693,13 @@ class HandlerCreateTicket:
             return self._injectable_tracker
         return AdapterLinearGraphQLProjectTracker(api_key=self._linear_api_key())
 
+    def _get_open_lister(self) -> OpenIssueListerProtocol:
+        if self._injectable_client is not None and hasattr(
+            self._injectable_client, "open_issue_ids"
+        ):
+            return cast(OpenIssueListerProtocol, self._injectable_client)
+        return LinearTicketHttpGateway(self._linear_api_key())
+
     def _get_state_resolver(self) -> TicketStateResolverProtocol:
         if self._injectable_state_resolver is not None:
             return self._injectable_state_resolver
@@ -716,6 +755,8 @@ class HandlerCreateTicket:
             return self._read(request)
         if request.operation is EnumTicketOperation.COMMENT:
             return self._comment(request)
+        if request.operation is EnumTicketOperation.LIST_OPEN:
+            return self._list_open(request)
         if request.operation is EnumTicketOperation.TRANSITION:
             return self._transition(request)
         if request.operation in (
@@ -803,7 +844,18 @@ class HandlerCreateTicket:
             title=str(issue.title),
             team=request.team,
             ticket_status=str(issue.state),
+            assignee=str(getattr(issue, "assignee", "") or ""),
             description_body=str(issue.description or ""),
+        )
+
+    def _list_open(self, request: ModelCreateTicketRequest) -> ModelCreateTicketResult:
+        """The identifiers of a project's tickets that are not completed or canceled, sorted."""
+        ids = self._get_open_lister().open_issue_ids(request.project.strip())
+        return ModelCreateTicketResult(
+            status="listed",
+            operation=EnumTicketOperation.LIST_OPEN,
+            team=request.team,
+            candidate_ids=sorted(ids),
         )
 
     def _comment(self, request: ModelCreateTicketRequest) -> ModelCreateTicketResult:

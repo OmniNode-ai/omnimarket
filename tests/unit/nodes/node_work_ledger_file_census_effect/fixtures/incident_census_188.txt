@@ -1,0 +1,5 @@
+CENSUS omnimarket counted state=grew files=188 readers=454 writers=31 ratchet=186
+  reader contracts/OMN-24791.yaml:17
+  reader src/omnimarket/nodes/node_temporal_health_alarm_effect/runtime_temporal_health_alarm.py:55
+  reader src/omnimarket/nodes/node_temporal_health_alarm_effect/runtime_temporal_health_alarm.py:60
+CENSUS total=188 passed=no failure=ratchet-grew omnimarket=188>186

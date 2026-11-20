@@ -102,6 +102,8 @@ class ModelCodeGraphResult(BaseModel):
     row: str | None = None
     #: Why the run failed: a repository that could not be read, or an append that did not land.
     failure: str | None = None
+    #: What the Memgraph version write did: ``not-configured``, ``skipped:<reason>``, ``written:<n>`` or ``failed:<reason>``.
+    memgraph: str = "not-configured"
 
 
 class EnumRefreshOutcome(StrEnum):

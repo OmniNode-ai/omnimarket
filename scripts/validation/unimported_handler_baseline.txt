@@ -5,13 +5,9 @@ src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/handler_auto_rebase.p
 src/omnimarket/nodes/node_ticket_pipeline/handlers/handler_report_poster.py:HandlerReportPoster # contract-wired (node_ticket_pipeline/contract.yaml handler_routing), no Python importer. Surfaced when B2 deleted node_pr_review_bot's same-named handler that coincidentally cross-referenced the name.
 src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/handler_comment_resolution.py:HandlerCommentResolution # Legacy PR lifecycle review-thread helper; not in contract routing yet.
 src/omnimarket/nodes/node_generation_consumer/handlers/handler_generated_executor.py:HandlerGeneratedExecutor # Dynamic generated-node executor pending explicit contract routing.
-src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_convergence_reducer.py:HandlerConvergenceReducer # Hostile-reviewer internal helper pending explicit contract routing.
 src/omnimarket/nodes/node_overseer_verifier/handlers/handler_overseer_verifier_consumer.py:HandlerOverseerVerifierConsumer # Standalone consumer shim pending explicit contract routing.
 src/omnimarket/nodes/node_nightly_loop_controller/handlers/handler_projection_nightly_loop.py:HandlerProjectionNightlyLoop # Projection helper pending explicit contract routing.
-src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_response_parser.py:HandlerResponseParser # Hostile-reviewer internal helper pending explicit contract routing.
-src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_review_orchestrator.py:HandlerReviewOrchestrator # Hostile-reviewer orchestration helper pending explicit contract routing.
 src/omnimarket/nodes/node_knowledge_context_assembler_orchestrator/handlers/handler_knowledge_context_assembler_orchestrator.py:HandlerKnowledgeContextAssemblerOrchestrator # Knowledge context assembler orchestrator pending explicit contract routing wiring.
-src/omnimarket/nodes/node_generate_node_effect/handlers/handler_generate_node.py:HandlerGenerateNode # contract-first codegen node; handler routing intentionally deferred.
 src/omnimarket/nodes/node_ab_compare_reducer/handlers/handler_ab_compare_reducer.py:HandlerAbCompareReducer # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_ab_inference_effect/handlers/handler_ab_inference_effect.py:HandlerAbInferenceEffect # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_adversarial_pipeline_orchestrator/handlers/handler_adversarial_pipeline_orchestrator.py:HandlerAdversarialPipelineOrchestrator # Legacy dormant handler; no external Python import yet.
@@ -59,12 +55,10 @@ src/omnimarket/nodes/node_omnigate_receipt_verifier/handlers/handler_receipt_ver
 src/omnimarket/nodes/node_review_thread_reconciler/handlers/handler_review_thread_reconciler.py:HandlerReviewThreadReconciler # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_routing_intent.py:HandlerRoutingIntent # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_runner_orchestrator/handlers/handler_runner_orchestrator.py:HandlerRunnerOrchestrator # Legacy dormant handler; no external Python import yet.
-src/omnimarket/nodes/node_self_healing_dispatch_orchestrator/handlers/handler_self_healing_dispatch_orchestrator.py:HandlerSelfHealingDispatchOrchestrator # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_shim_scanner/handlers/handler_shim_scanner.py:HandlerShimScanner # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_worker_stall_recovery/handlers/handler_stall_recovery.py:HandlerStallRecovery # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_tech_debt_sweep_orchestrator/handlers/handler_tech_debt_sweep_orchestrator.py:HandlerTechDebtSweepOrchestrator # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_thread_reply_effect/handlers/handler_thread_reply.py:HandlerThreadReply # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_ticket_query/handlers/handler_ticket_query.py:HandlerTicketQuery # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_two_strike_arbiter/handlers/handler_two_strike_arbiter.py:HandlerTwoStrikeArbiter # Legacy dormant handler; no external Python import yet.
-src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_workflow_runner.py:HandlerWorkflowRunner # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_demo_fanout_orchestrator/handlers/handler_fanout.py:HandlerDemoFanoutOrchestrator # contract-wired (node_demo_fanout_orchestrator/contract.yaml handler.module/class), no Python importer. OMN-15639: previously "satisfied" this checker only because a test file lived INSIDE src/ at node_demo_fanout_orchestrator/tests/test_golden_chain.py -- src-resident test imports are indistinguishable from wiring to a src-only scanner, so that was false evidence, not wiring. Moving the test to the CI-collected tests/ tree removed the illusion; the dormancy is pre-existing and unchanged. Same class as the HandlerReportPoster entry above.
