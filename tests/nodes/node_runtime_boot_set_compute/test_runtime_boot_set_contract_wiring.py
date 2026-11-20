@@ -11,6 +11,7 @@ the published topic must all be the ones that map names.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -23,7 +24,7 @@ CONTRACT = (
 )
 
 
-def _contract() -> dict[str, object]:
+def _contract() -> dict[str, Any]:
     loaded = yaml.safe_load(CONTRACT.read_text())
     assert isinstance(loaded, dict)
     return loaded
@@ -31,19 +32,19 @@ def _contract() -> dict[str, object]:
 
 def test_the_judge_requested_command_is_subscribed_and_routed_to_the_handler() -> None:
     contract = _contract()
-    command = contract["topics"]["boot_set_judge_requested"]  # type: ignore[index]
+    command = contract["topics"]["boot_set_judge_requested"]
 
-    assert contract["event_bus"]["subscribe_topics"] == [command]  # type: ignore[index]
-    assert contract["runtime_dispatch"]["command_topic"] == command  # type: ignore[index]
-    routed = contract["handler_routing"]["handlers"]  # type: ignore[index]
+    assert contract["event_bus"]["subscribe_topics"] == [command]
+    assert contract["runtime_dispatch"]["command_topic"] == command
+    routed = contract["handler_routing"]["handlers"]
     assert [item["topic"] for item in routed] == [command]
 
 
 def test_the_judged_event_is_the_terminal_and_the_published_topic() -> None:
     contract = _contract()
-    judged = contract["topics"]["boot_set_judged"]  # type: ignore[index]
+    judged = contract["topics"]["boot_set_judged"]
 
-    assert contract["event_bus"]["publish_topics"] == [judged]  # type: ignore[index]
+    assert contract["event_bus"]["publish_topics"] == [judged]
     assert contract["terminal_event"] == judged
 
 
@@ -54,12 +55,12 @@ def test_the_runtime_principal_may_read_the_command_and_write_the_judged_event()
     topics = contract["topics"]
     grants = {
         (grant["name"], grant["operation"])
-        for entry in contract["broker_acl_grants"]  # type: ignore[union-attr]
+        for entry in contract["broker_acl_grants"]
         for grant in entry["grants"]
     }
 
-    assert (topics["boot_set_judge_requested"], "READ") in grants  # type: ignore[index]
-    assert (topics["boot_set_judged"], "WRITE") in grants  # type: ignore[index]
+    assert (topics["boot_set_judge_requested"], "READ") in grants
+    assert (topics["boot_set_judged"], "WRITE") in grants
 
 
 def test_a_contract_with_an_empty_event_bus_fails_the_subscription_check() -> None:
@@ -67,4 +68,4 @@ def test_a_contract_with_an_empty_event_bus_fails_the_subscription_check() -> No
     contract = _contract()
     contract["event_bus"] = {"subscribe_topics": [], "publish_topics": []}
 
-    assert not contract["event_bus"]["subscribe_topics"]  # type: ignore[index]
+    assert not contract["event_bus"]["subscribe_topics"]
