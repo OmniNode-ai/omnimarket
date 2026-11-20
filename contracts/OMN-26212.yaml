@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26212
+title: "One node reports what is better since yesterday and a thin skill calls it"
+summary: "node_day_over_day_report_compute in omnimarket; thin skill shim in omniclaude"
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "ci"
+    description: "CI passes on merge PR"
+    command: "gh pr checks"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "AC2: the node computes the report and reads UNREADABLE when the ledger is removed"
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_day_over_day_report_compute -q"
+  - id: "dod-002"
+    description: "Probe: the node's CLI exits 0"
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m omnimarket.nodes.node_day_over_day_report_compute --help"
+  - id: "dod-omn26212-integration-proof"
+    description: "Run the report once over the real ledger on a lab host at the pushed head; hosted CI cannot read the lab ledger"
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26212 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_day_over_day_report_compute -q --no-cov

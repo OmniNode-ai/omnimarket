@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Day-over-day report compute (OMN-26212)
+#
+# What is better since yesterday: working functionality newly seen running, beta board changes, throughput, cost trend and
+# regressions, from two typed day windows. The handler is pure; `python -m omnimarket.nodes.node_day_over_day_report_compute`
+# reads the ledger and the board data from files and prints the report.
+name: node_day_over_day_report_compute
+contract_name: node_day_over_day_report_compute
+node_name: node_day_over_day_report_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Folds two day windows (ledger STATUS rows with installed= and observed= cells, the integration pass's RUNNING and NOT
+  RUNNING readings, the beta board's green or red per check, engine call counts) into one typed report. Every figure carries
+  its source and a read time and reads UNREADABLE when its source is missing, never 0 and never blank. No clock, no state, no
+  I/O in the handler.
+
+handler:
+  module: omnimarket.nodes.node_day_over_day_report_compute.handlers.handler_day_over_day_report
+  class: HandlerDayOverDayReport
+  input_model: omnimarket.models.model_day_over_day_report.ModelDayOverDayRequest
+  output_model: omnimarket.models.model_day_over_day_report.ModelDayOverDayReport
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: compute_day_over_day_report
+      handler:
+        name: HandlerDayOverDayReport
+        module: omnimarket.nodes.node_day_over_day_report_compute.handlers.handler_day_over_day_report
+      input_model: omnimarket.models.model_day_over_day_report.ModelDayOverDayRequest
+      output_model: omnimarket.models.model_day_over_day_report.ModelDayOverDayReport
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+
+input_model:
+  name: ModelDayOverDayRequest
+  module: omnimarket.models.model_day_over_day_report
+  description: The two day windows and the read time.
+output_model:
+  name: ModelDayOverDayReport
+  module: omnimarket.models.model_day_over_day_report
+  description: Newly running, board changes, throughput, cost trend, regressions and one row per day.
+
+terminal_event: onex.evt.omnimarket.day-over-day-report-computed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.day-over-day-report-compute-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.day-over-day-report-compute-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.day-over-day-report-computed.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.cmd.omnimarket.day-over-day-report-compute-requested.v1", operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.cmd.omnimarket.day-over-day-report-compute-requested.v1", operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.day-over-day-report-computed.v1", operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.day-over-day-report-computed.v1", operation: DESCRIBE}
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.day-over-day-report-computed.v1
+
+metadata:
+  ticket: OMN-26212
+  transport_type: kafka

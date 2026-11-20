@@ -19,7 +19,7 @@ from omnimarket.nodes.node_day_over_day_report_compute.handlers.handler_day_over
 )
 
 T = datetime(2026, 11, 20, 14, 0, tzinfo=UTC)
-LEDGER = "ledger:ROLLING_WORK_LEDGER.md"
+LEDGER = "fixture rows"
 
 
 def _run(change: str, host: str, state: str = "running") -> ModelRunningReading:
@@ -115,3 +115,45 @@ def test_one_missing_day_makes_the_diff_unreadable_only_for_that_part() -> None:
     assert report.board_changes.reading == UNREADABLE
     assert report.newly_running.reading == "read"
     assert [e.change for e in report.newly_running.entries] == ["omnimarket#9"]
+
+
+def test_ledger_reader_folds_rows_into_cumulative_day_states() -> None:
+    from omnimarket.nodes.node_day_over_day_report_compute.handlers.ledger_readings import (
+        read_day,
+    )
+
+    text = "\n".join(
+        [
+            "2026-11-19T10:00:00Z | STATUS | lane=a | pr=omnimarket#1 installed=h201:abc observed=ran",
+            "2026-11-19T11:00:00Z | STATUS | lane=a | crit=C11 verdict=green read_at=2026-11-19T11:00:00Z",
+            "2026-11-19T12:00:00Z | TERMINAL | lane=a | model=codex | delegated=2 runs=x",
+            "2026-11-20T10:00:00Z | STATUS | lane=b | pr=omnimarket#1 installed=none:refused observed=none",
+            "2026-11-20T10:01:00Z | STATUS | lane=b | pr=omnimarket#9 installed=h053:def observed=ran",
+            "2026-11-20T11:00:00Z | STATUS | lane=b | crit=C11 verdict=red read_at=2026-11-20T11:00:00Z",
+            "2026-11-20T12:00:00Z | TERMINAL | lane=b | model=codex | delegated=3 runs=y",
+        ]
+    )
+    request = ModelDayOverDayRequest(
+        yesterday=read_day(text, "2026-11-19"),
+        today=read_day(text, "2026-11-20"),
+        as_of=T,
+    )
+    report = HandlerDayOverDayReport().handle(request)
+    assert [e.change for e in report.newly_running.entries] == ["omnimarket#9"]
+    assert [(r.kind, r.subject) for r in report.regressions.entries] == [
+        ("stopped_running", "omnimarket#1"),
+        ("board_red", "C11"),
+    ]
+    assert report.cost_trend.entries[0].calls_today.value == 3
+    assert report.cost_trend.entries[0].tokens_today.value == UNREADABLE
+
+
+def test_ledger_reader_reads_a_missing_ledger_or_empty_day_as_unreadable() -> None:
+    from omnimarket.nodes.node_day_over_day_report_compute.handlers.ledger_readings import (
+        read_day,
+    )
+
+    for day in (read_day(None, "2026-11-20"), read_day("", "2026-11-20")):
+        assert day.running is None
+        assert day.board is None
+        assert day.cost is None
