@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Run the dropped-work audit once from a shell: ``python -m omnimarket.nodes.node_dropped_work_audit_scheduled_effect --dry-run``.
+"""Run the dropped-work audit once from a shell: ``python -m omnimarket.nodes.node_dropped_work_audit_scheduled_effect.runtime_dropped_work_audit --dry-run``.
 
 A dry run reads the ledger, the pull request state and the admission refusals through the overlays and prints the count of
 items per kind, the number with no live owner, the events it would publish and the rows it would append. Nothing is
