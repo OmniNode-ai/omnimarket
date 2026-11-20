@@ -2186,7 +2186,7 @@ ignore = [
 "src/omnimarket/nodes/node_claude_pool_refill_effect/runtime_claude_pool_refill.py" = ["T201"]
 "src/omnimarket/nodes/node_lab_host_key_distribution_effect/runtime_lab_host_key_distribution.py" = ["T201"]
 # The reaper pass prints its decision lines to stdout for the timer journal.
-"src/omnimarket/nodes/node_lab_stack_reaper_effect/handlers/handler_lab_stack_reaper_cli.py" = ["T201"]
+"src/omnimarket/nodes/node_lab_stack_reaper_effect/handlers/lab_stack_reaper_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_read_only_principal_effect/runtime_read_only_principal.py" = ["T201"]
 "src/omnimarket/nodes/node_friction_synthesis_effect/runtime_friction_synthesis_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_host_drain_effect/runtime_host_drain.py" = ["T201"]

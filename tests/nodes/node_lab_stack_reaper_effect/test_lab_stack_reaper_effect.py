@@ -13,7 +13,6 @@ import subprocess
 import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -25,10 +24,10 @@ from omnimarket.nodes.node_lab_stack_reaper_effect.handlers import (
     handler_lab_stack_reaper as reaper,
 )
 from omnimarket.nodes.node_lab_stack_reaper_effect.handlers import (
-    handler_lab_stack_reaper_cli as cli,
+    lab_stack_reaper_cli as cli,
 )
 from omnimarket.nodes.node_lab_stack_reaper_effect.handlers import (
-    handler_lab_stack_reaper_leases as leases,
+    lab_stack_reaper_leases as leases,
 )
 from omnimarket.nodes.node_lab_stack_reaper_effect.handlers import (
     lab_stack_support as support,
@@ -144,7 +143,7 @@ class Env:
         raise AssertionError(f"unexpected subprocess: {argv}")
 
     def request(self, **overrides: Any) -> ModelLabStackReaperRequest:
-        return replace(
+        return (
             ModelLabStackReaperRequest(
                 "reap",
                 lease_dir=self.store.directory,
@@ -153,9 +152,8 @@ class Env:
                 now=NOW,
                 execute=True,
                 fence_wait_s=0,
-            ),
-            **overrides,
-        )
+            )
+        ).model_copy(update=overrides)
 
     def reap(self, **overrides: Any) -> ModelLabStackReaperResult:
         return HandlerLabStackReaper(self.run).handle(self.request(**overrides))
@@ -589,7 +587,7 @@ def test_cli_exit_codes_and_default_dry_run(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "omnimarket.nodes.node_lab_stack_reaper_effect.handlers.handler_lab_stack_reaper_cli.HandlerLabStackReaper",
+        "omnimarket.nodes.node_lab_stack_reaper_effect.handlers.lab_stack_reaper_cli.HandlerLabStackReaper",
         lambda: HandlerLabStackReaper(env.run),
     )
     # CLI uses wall time; keep its scratch ledger fresh.

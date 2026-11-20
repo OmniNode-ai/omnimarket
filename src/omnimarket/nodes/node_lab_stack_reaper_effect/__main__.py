@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_lab_stack_reaper_effect.handlers.handler_lab_stack_reaper_cli import (
+from omnimarket.nodes.node_lab_stack_reaper_effect.handlers.lab_stack_reaper_cli import (
     main,
 )
 

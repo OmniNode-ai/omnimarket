@@ -68,7 +68,7 @@ class LedgerWriterLock:
         self._ensure_directory()
         deadline = time.monotonic() + self.timeout
         while True:
-            fd = os.open(self.lock_file, os.O_RDWR | os.O_CREAT, 0o644)
+            fd = os.open(self.lock_file, os.O_RDWR | os.O_CREAT, 0o600)
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:

@@ -5,6 +5,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,8 +18,12 @@ class ProjectDecision:
     reason: str = ""
 
 
-@dataclass(frozen=True, slots=True)
-class ModelLabStackReaperResult:
+class ModelLabStackReaperResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    def __init__(self, verb: str, decision: str, /, **data: Any) -> None:
+        super().__init__(verb=verb, decision=decision, **data)
+
     verb: str
     decision: str
     projects: tuple[ProjectDecision, ...] = ()

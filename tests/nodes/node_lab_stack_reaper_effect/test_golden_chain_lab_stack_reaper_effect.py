@@ -77,10 +77,10 @@ def test_golden_chain_lab_stack_reaper_effect(tmp_path: Path) -> None:
 
 def test_the_contract_carries_no_bus_route_and_hardcodes_no_topic() -> None:
     contract = _contract()
-    assert "event_bus" not in contract
+    assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
     assert "terminal_event" not in contract
     source = files(f"omnimarket.nodes.{NAME}.handlers")
-    for handler in ("handler_lab_stack_reaper.py", "handler_lab_stack_reaper_cli.py"):
+    for handler in ("handler_lab_stack_reaper.py", "lab_stack_reaper_cli.py"):
         assert "onex.evt." not in source.joinpath(handler).read_text()
         assert "onex.cmd." not in source.joinpath(handler).read_text()
 

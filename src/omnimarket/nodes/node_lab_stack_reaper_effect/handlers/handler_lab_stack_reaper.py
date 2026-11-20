@@ -18,7 +18,6 @@ import tempfile
 import time
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -32,7 +31,7 @@ from ..models import (
     ModelLabStackReaperResult,
     ProjectDecision,
 )
-from .handler_lab_stack_reaper_leases import (
+from .lab_stack_reaper_leases import (
     LeaseRecord,
     LeaseStore,
     atomic_json,
@@ -428,11 +427,12 @@ class HandlerLabStackReaper:
                 if remaining <= 0:
                     raise ValueError("ledger snapshot exhausted the pass budget")
                 result = self._reap_snapshot(
-                    replace(
-                        request,
-                        cap_min=remaining,
-                        census=census,
-                        ticket_lane_entries=entries,
+                    request.model_copy(
+                        update={
+                            "cap_min": remaining,
+                            "census": census,
+                            "ticket_lane_entries": entries,
+                        }
                     ),
                     ledger,
                 )
@@ -451,7 +451,7 @@ class HandlerLabStackReaper:
     ) -> ModelLabStackReaperResult:
         handler = HandlerLabStackReaper(self._run, evidence_ledger=request.ledger)
         return handler.handle(
-            replace(request, ledger=ledger, ledger_snapshot_command=())
+            request.model_copy(update={"ledger": ledger, "ledger_snapshot_command": ()})
         )
 
     @staticmethod
@@ -962,8 +962,8 @@ class HandlerLabStackReaper:
         return ModelLabStackReaperResult(
             request.verb,
             decision,
-            tuple(projects),
-            tuple(alarms),
-            tuple(rows),
-            tuple(errors),
+            projects=tuple(projects),
+            alarms=tuple(alarms),
+            ledger_rows=tuple(rows),
+            errors=tuple(errors),
         )

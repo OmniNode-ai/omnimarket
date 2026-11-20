@@ -62,7 +62,7 @@ def _terminate(signum: int, frame: FrameType | None) -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     common = ModelLabStackReaperRequest(
-        verb=args.verb,
+        args.verb,
         lease_dir=args.lease_dir or default_lease_dir(),
         census=args.census,
         ledger=getattr(args, "ledger", None),

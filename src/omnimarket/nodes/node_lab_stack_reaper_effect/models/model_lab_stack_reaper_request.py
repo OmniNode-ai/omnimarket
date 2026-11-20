@@ -5,9 +5,11 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 def default_lease_dir() -> Path:
@@ -20,10 +22,14 @@ def default_lease_dir() -> Path:
     )
 
 
-@dataclass(frozen=True, slots=True)
-class ModelLabStackReaperRequest:
+class ModelLabStackReaperRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    def __init__(self, verb: str, /, **data: Any) -> None:
+        super().__init__(verb=verb, **data)
+
     verb: str
-    lease_dir: Path = field(default_factory=default_lease_dir)
+    lease_dir: Path = Field(default_factory=default_lease_dir)
     ledger: Path | None = None
     project: str = ""
     lane: str = ""

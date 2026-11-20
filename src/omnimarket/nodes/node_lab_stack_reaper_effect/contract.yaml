@@ -24,6 +24,19 @@ description: >
   containers and unlabelled containers are protected. A fresh inspection precedes removal and
   disappearance is confirmed afterwards.
 
+handler:
+  module: omnimarket.nodes.node_lab_stack_reaper_effect.handlers.handler_lab_stack_reaper
+  class: HandlerLabStackReaper
+  input_model: omnimarket.nodes.node_lab_stack_reaper_effect.models.model_lab_stack_reaper_request.ModelLabStackReaperRequest
+  output_model: omnimarket.nodes.node_lab_stack_reaper_effect.models.model_lab_stack_reaper_result.ModelLabStackReaperResult
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime_dispatch:
+  external_trigger: Scheduled local timer running python -m omnimarket.nodes.node_lab_stack_reaper_effect; no bus command topic.
+
 handler_routing:
   routing_strategy: operation_match
   handlers:
@@ -37,6 +50,7 @@ handler_routing:
 descriptor:
   node_archetype: effect
   purity: effectful
+  runtime_profiles: []
   idempotent: true
   side_effects:
     - atomic per-project lease and fence storage under a stable flock
@@ -47,4 +61,4 @@ descriptor:
     - atomic last-run.json timer evidence
 
 metadata:
-  transport_type: in_process
+  transport_type: local
