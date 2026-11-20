@@ -47,7 +47,7 @@ handler_routing:
         module: omnimarket.nodes.node_validator_workflow_orchestrator.handlers.handler_validator_workflow_runtime
 descriptor:
   node_archetype: orchestrator
-  runtime_profiles: [main]
+  runtime_profiles: [effects]
   purity: impure
   idempotent: true
   timeout_ms: 600000

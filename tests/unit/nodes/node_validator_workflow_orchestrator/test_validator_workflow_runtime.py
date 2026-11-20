@@ -112,7 +112,7 @@ def test_contract_routes_the_requested_topic_to_the_runtime_handler() -> None:
         topics["workflow_completed"],
         topics["workflow_failed"],
     }
-    assert contract["descriptor"]["runtime_profiles"] == ["main"]
+    assert contract["descriptor"]["runtime_profiles"] == ["effects"]
     (route,) = contract["handler_routing"]["handlers"]
     handler_cls = getattr(
         importlib.import_module(route["handler"]["module"]), route["handler"]["name"]
