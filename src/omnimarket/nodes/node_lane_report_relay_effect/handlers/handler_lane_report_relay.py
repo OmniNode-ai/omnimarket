@@ -215,7 +215,13 @@ class HandlerLaneReportRelay:
                     from_result = name
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
-        return ModelLaneReportRelayResult(copied, already, missing, from_result, error)
+        return ModelLaneReportRelayResult(
+            copied=copied,
+            already_local=already,
+            missing=missing,
+            from_result=from_result,
+            error=error,
+        )
 
 
 # Preservation guards shared by artifact archival and host working-tree closeout.

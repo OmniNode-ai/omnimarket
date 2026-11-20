@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_red_main_alarm_effect
+node_type: effect
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+runtime_profiles: [effects]
+description: >-
+  Consume the existing ten-minute throughput fire. Read default-branch heads and required
+  contexts from the PR watcher and registered owners from the repository registry.
+  Confirm required check conclusions through the SCM gateway. For each red head, append
+  one STATUS alarm and one inbox MSG as a single idempotent work-ledger request.
+  The owner is a matching live CLAIM, the registry owner, or the parent in the deployment overlay.
+  The handler returns typed failures for unreadable facts and writes no alarm for that reading.
+input_model:
+  name: ModelThroughputDecidedRecord
+  module: omnimarket.nodes.node_red_main_alarm_effect.models
+output_model:
+  name: ModelRedMainAlarmResult
+  module: omnimarket.nodes.node_red_main_alarm_effect.models
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: scan_red_main_alarm
+      topic: onex.evt.omnimarket.throughput-tick-decision-completed.v1
+      handler:
+        name: HandlerRedMainAlarmScheduled
+        module: omnimarket.nodes.node_red_main_alarm_effect.handler
+      event_type: omnimarket.throughput-tick-decision-completed
+      event_model: omnimarket.nodes.node_red_main_alarm_effect.models.ModelThroughputDecidedRecord
+      output_model: omnimarket.nodes.node_red_main_alarm_effect.models.ModelRedMainAlarmResult
+input_subscriptions:
+  - topic: onex.evt.omnimarket.throughput-tick-decision-completed.v1
+    operation: scan_red_main_alarm
+event_bus:
+  subscribe_topics: [onex.evt.omnimarket.throughput-tick-decision-completed.v1]
+  publish_topics: [onex.evt.omnimarket.red-main-alarm-completed.v1]
+terminal_event: onex.evt.omnimarket.red-main-alarm-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.red-main-alarm-completed.v1
+published_events:
+  - event_type: ModelRedMainAlarmResult
+    topic: onex.evt.omnimarket.red-main-alarm-completed.v1
+    description: The alarms accepted and the typed read or append failures in this fire.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 300000
+  side_effects: [read PR watcher and registry, read SCM check runs, read open ledger claims, append typed ledger rows]
+overlay:
+  id: node_red_main_alarm_effect
+  file_env: ONEX_RED_MAIN_ALARM_OVERLAY
+  example: overlay.example.yaml
+env_dependencies:
+  OMNIBASE_PATH:
+    required: true
+    description: Workspace root used to resolve the broker lane declaration.
+  ONEX_PR_WATCHER_STATE:
+    required: true
+    description: Runtime-visible path of the PR watcher's current snapshot.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.throughput-tick-decision-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.throughput-tick-decision-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.red-main-alarm-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.red-main-alarm-completed.v1, operation: DESCRIBE}
+metadata:
+  transport_type: kafka
+  ticket: OMN-25860

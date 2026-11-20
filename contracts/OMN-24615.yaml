@@ -51,6 +51,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/projection/test_omn24615_metering_unknown_usage.py -q -p no:randomly --no-cov -k saves_only_the_measured_run
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_savings_view_priced_spend.py -q -p no:randomly --no-cov -k no_call_record_reads_the_headline
+    cwd: .
 - id: dod-omn24615-ac2
   description: 'AC2: with pricing.baseline_model set in the ONEX home config the headline is priced against that model and names it; fails when the code default is used.'
   source: manual
@@ -68,6 +71,12 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/projection/test_omn24615_priced_spend.py -q -p no:randomly --no-cov -k only_named_prices_are_summed
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_savings_view_priced_spend.py -q -p no:randomly --no-cov -k flat_rate_on_a_model_with_no_price
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_routing_priced_spend.py -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn24615-ac5
   description: 'AC5: a measured run, an unknown-usage run, a run with no call record and a zero-token, no-cost call; metering and usage-by-model-day both read 313 in and 16 out and the zero-token call is unmeasured; fails when metering sums the no-call run or drops the unknown-usage run.'
@@ -87,6 +96,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_omn24615_failed_call_latency.py tests/unit/projection/test_omn24615_run_duration_definition.py -q -p no:randomly --no-cov
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_failed_run_duration.py tests/unit/projection/test_omn24615_failed_zero_duration_store_step.py -q -p no:randomly --no-cov
+    cwd: .
+# OMN-24615 AC9 (2026-11-19): #5813 (OMN-23413) brought the reflection provider to dev, so the check's
+# -k models_every_provider now also selects the falsifier as written, a reflection key registered in the
+# temporary ONEX home (test_models_every_provider_a_reflection_key_is_served_as_set_up). The binding below
+# is kept as merged so dod-verify carries it: its tests pass at the merge base by construction.
 - id: dod-omn24615-ac9
   description: 'AC9: a provider set up in the terminal outside the old four (Anthropic, on a temporary store) is served by GET /models as set up and passed, the served rows equal onex models list --json row for row, and no allow-list is left in the key module or the dashboard route; fails while the allow-list filters the rows. dev has no reflection provider (it is on the OMN-23413 branch), so the falsifier uses Anthropic; reflection is served the same way once that branch lands.'
   source: manual
@@ -106,13 +122,19 @@ dod_evidence:
     check_value: uv run pytest tests/unit/projection/test_omn24615_evaluated_runs_and_served_model.py -q -p no:randomly --no-cov -k "quality_gate_counts_only_evaluated_runs or summary_keeps_a_null_data_source_run or experiment_run_stays_out or three_views_serve_one_run_count"
     cwd: .
 - id: dod-omn24615-ac6
-  description: 'AC6: one model reached through a backend alias is one group in model-routing.v1; fails when the view groups by delegated_to.'
+  description: 'AC6: one model reached through a backend alias is one group in model-routing.v1 and in metering-summary.v1 by_model, and every per-model row of metering-summary, model-routing (by_model, the model-by-task rows, each tier''s models), summary byModel and quality-gate tokens_to_compliance_by_model serves its backends as its own field; fails when a view groups by delegated_to or a per-model row has no backends.'
   source: manual
   binds_ac:
   - AC6
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/projection/test_omn24615_evaluated_runs_and_served_model.py -q -p no:randomly --no-cov -k one_model_reached_through_a_backend_is_one_group
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_metering_groups_by_model_that_ran.py -q -p no:randomly --no-cov
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_backend_served_per_model.py -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn24615-ac7
   description: 'AC7: the daily view counts a never-evaluated run as unrecorded and a run without tokens as unmeasured; fails when it tests IS NULL on NOT NULL DEFAULT 0 columns.'

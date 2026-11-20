@@ -120,6 +120,11 @@ handler_routing:
 # controller calls it in process. OMN-23076; the entry arrived with OMN-22919.
 # Addressable the way the other directly-invoked compute nodes are; nothing
 # publishes the command yet (the controller calls the handler in process).
+# `onex run-node` resolves the topic it polls from this top-level key only
+# (omnibase_core dispatch_bus_client._resolve_terminal_topic); without it the
+# CLI refuses the node before any demand is sent. It names the same success
+# terminal as runtime_dispatch.terminal_events.success.
+terminal_event: "onex.evt.omnimarket.pr-landing-decision-completed.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.pr-landing-decision-requested.v1"
   terminal_events:
@@ -142,6 +147,13 @@ event_bus:
   publish_topics:
     - "onex.evt.omnimarket.pr-landing-decision-completed.v1"
     - "onex.evt.omnimarket.pr-landing-decision-failed.v1"
+# The broker grants the success terminal needs (coverage gate, OMN-24005): the runtime login writes the completed
+# event that `onex run-node` polls.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.pr-landing-decision-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.pr-landing-decision-completed.v1, operation: DESCRIBE}
 # main, beside the landing orchestrator and the GitHub effect: the runtime-profile
 # validator requires a profile on a contract that consumes a command.
 runtime_profiles:
