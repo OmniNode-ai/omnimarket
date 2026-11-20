@@ -6,7 +6,8 @@ A lookup is answered by Cypher from the Memgraph the architecture graph overlay 
 Memgraph is unreachable does it fall back to the file-backed lookup, and the fallback answer names
 the typed reason (``EnumLookupFallbackReason``) and the transport error behind it. A statement
 Memgraph refuses is a typed ``failed`` answer, never a fallback, and a repository Memgraph holds no
-version of is Memgraph's own ``not-found``.
+version of is Memgraph's own ``not-found``. The ``users`` question reads the imports as written,
+which Memgraph does not hold, so it is answered from the file store with its own typed reason.
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from omnimarket.models.model_code_graph_lookup import (
+    EnumCodeGraphQuestion,
+    EnumLookupFallbackReason,
     EnumLookupServedFrom,
     ModelCodeGraphLookupCommand,
     ModelCodeGraphLookupResult,
@@ -43,6 +46,15 @@ class MemgraphFirstLookup:
     def handle(
         self, command: ModelCodeGraphLookupCommand
     ) -> ModelCodeGraphLookupResult:
+        if command.question is EnumCodeGraphQuestion.USERS:
+            # Memgraph holds no written imports yet: its answer would be a clean negative.
+            return self._fallback(command).model_copy(
+                update={
+                    "served_from": EnumLookupServedFrom.FILE_STORE,
+                    "fallback_reason": EnumLookupFallbackReason.QUESTION_NOT_IN_MEMGRAPH,
+                    "fallback_detail": "the users question reads the imports as written",
+                }
+            )
         store: MemgraphVersionStore | None = None
         try:
             store = self._open_store()

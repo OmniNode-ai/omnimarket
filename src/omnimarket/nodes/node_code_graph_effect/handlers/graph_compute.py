@@ -31,10 +31,16 @@ import yaml
 
 from omnimarket.models.import_relations import ModelImportEdge
 from omnimarket.models.model_code_graph import (
+    ModelFileReferences,
     ModelGraphCheckResult,
     ModelRepoGraph,
     ModelRepoSnapshot,
     ModelSampleOutcome,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.written_imports import (
+    from_base,
+    is_type_checking,
+    scan_written,
 )
 from omnimarket.nodes.node_code_graph_effect.overlay import (
     ModelGraphRoots,
@@ -172,27 +178,12 @@ class _Scan:
 _NO_SCAN = _Scan()
 
 
-def _is_type_checking(test: ast.expr) -> bool:
-    return (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING") or (
-        isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
-    )
-
-
-def _from_base(node: ast.ImportFrom, package: Sequence[str]) -> str:
-    if not node.level:
-        return node.module or ""
-    keep = len(package) - (node.level - 1)
-    if keep < 0:
-        return ""
-    return ".".join([*package[:keep], *([node.module] if node.module else [])])
-
-
 def _scan(tree: ast.AST, package: Sequence[str]) -> _Scan:
     scan = _Scan()
     stack: list[tuple[ast.AST, bool]] = [(tree, False)]
     while stack:
         node, typing_only = stack.pop()
-        if isinstance(node, ast.If) and _is_type_checking(node.test):
+        if isinstance(node, ast.If) and is_type_checking(node.test):
             stack.extend((child, True) for child in node.body)
             stack.extend((child, typing_only) for child in node.orelse)
             continue
@@ -200,7 +191,7 @@ def _scan(tree: ast.AST, package: Sequence[str]) -> _Scan:
             if not typing_only:
                 scan.names.extend(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
-            base = _from_base(node, package)
+            base = from_base(node, package)
             if base:
                 for alias in node.names:
                     if alias.name == "*":
@@ -298,6 +289,9 @@ class Graph:
     heads: tuple[tuple[str, str], ...]
     #: Every file to the files it imports, across repositories; the relation report reads these.
     edges: Mapping[Entity, frozenset[Entity]]
+    #: Every file's imports as written, uses and free names, kept only when asked for: a written
+    #: import is kept whether or not it resolves, and no edge depends on it.
+    written: Mapping[Entity, ModelFileReferences] = field(default_factory=dict)
 
     def repo_graph(self, repo: str, head: str) -> ModelRepoGraph:
         mine = {entity for entity in self.modules if entity[0] == repo}
@@ -317,7 +311,12 @@ class Graph:
         )
 
 
-def build_graph(snapshots: Sequence[ModelRepoSnapshot], rules: GraphRules) -> Graph:
+def build_graph(
+    snapshots: Sequence[ModelRepoSnapshot],
+    rules: GraphRules,
+    *,
+    keep_written: bool = False,
+) -> Graph:
     index = _Index()
     tests: set[Entity] = set()
     for snapshot in snapshots:
@@ -331,6 +330,7 @@ def build_graph(snapshots: Sequence[ModelRepoSnapshot], rules: GraphRules) -> Gr
     edges: dict[Entity, set[Entity]] = {}
     roots: set[Entity] = set()
     scans: dict[Entity, _Scan] = {}
+    written: dict[Entity, ModelFileReferences] = {}
     for snapshot in snapshots:
         repo = snapshot.repo
         for path, text in snapshot.files.items():
@@ -355,6 +355,10 @@ def build_graph(snapshots: Sequence[ModelRepoSnapshot], rules: GraphRules) -> Gr
                     else name.split(".")[:-1]
                 )
                 scans[entity] = _scan(tree, package)
+                if keep_written:
+                    references = scan_written(tree, package, path)
+                    if references.imports or references.all_names:
+                        written[entity] = references
             elif path == _PYPROJECT and rules.entry_points and rules.roots.entry_points:
                 for module in _entry_point_modules(text):
                     roots.update(index.resolve(module, repo))
@@ -409,6 +413,7 @@ def build_graph(snapshots: Sequence[ModelRepoSnapshot], rules: GraphRules) -> Gr
         reached=frozenset(reached),
         heads=tuple((snapshot.repo, snapshot.head) for snapshot in snapshots),
         edges={entity: frozenset(targets) for entity, targets in edges.items()},
+        written=written,
     )
 
 
