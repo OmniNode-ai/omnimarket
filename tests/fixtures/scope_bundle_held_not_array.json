@@ -1,0 +1,489 @@
+{
+  "candidates": [
+    {
+      "id": "OMN-71",
+      "state": "in review ",
+      "sources": [
+        "started"
+      ],
+      "last_closeout_comment_at": "",
+      "title": "t"
+    },
+    {
+      "id": "OMN-74",
+      "state": "in review ",
+      "sources": [
+        "backlog"
+      ],
+      "last_closeout_comment_at": "",
+      "title": "t"
+    },
+    {
+      "id": "OMN-106",
+      "state": "Backlog",
+      "sources": [
+        "started",
+        "current"
+      ],
+      "last_closeout_comment_at": "2026-10-05T00:00:00.000Z",
+      "title": "t"
+    },
+    {
+      "id": "OMN-115",
+      "state": "In Progress",
+      "sources": [
+        "started"
+      ],
+      "last_closeout_comment_at": "2026-10-01T00:00:00.000Z",
+      "title": "t"
+    },
+    {
+      "id": "OMN-49",
+      "state": "Backlog",
+      "sources": [
+        "started"
+      ],
+      "last_closeout_comment_at": "",
+      "title": "t"
+    },
+    {
+      "id": "OMN-22",
+      "state": "In Review",
+      "sources": [
+        "started",
+        "current"
+      ],
+      "last_closeout_comment_at": "",
+      "title": "t"
+    },
+    {
+      "id": "OMN-54",
+      "state": "in review ",
+      "sources": [
+        "started",
+        "current"
+      ],
+      "last_closeout_comment_at": "",
+      "title": "t"
+    },
+    {
+      "id": "OMN-82",
+      "state": "in review ",
+      "sources": [
+        "started"
+      ],
+      "last_closeout_comment_at": "",
+      "title": "t"
+    },
+    {
+      "id": "OMN-12",
+      "state": "in review ",
+      "sources": [
+        "started"
+      ],
+      "last_closeout_comment_at": "2026-10-01T00:00:00.000Z",
+      "title": "t"
+    },
+    {
+      "id": "OMN-107",
+      "state": "in review ",
+      "sources": [
+        "backlog"
+      ],
+      "last_closeout_comment_at": "2026-10-09T00:00:00.000Z",
+      "title": "t"
+    },
+    {
+      "id": "OMN-14",
+      "state": "in review ",
+      "sources": [
+        "started",
+        "current"
+      ],
+      "last_closeout_comment_at": "2026-10-05T00:00:00.000Z",
+      "title": "t"
+    },
+    {
+      "id": "OMN-17",
+      "state": "in review ",
+      "sources": [
+        "backlog"
+      ],
+      "last_closeout_comment_at": "",
+      "title": "t"
+    }
+  ],
+  "pr_state": [
+    {
+      "id": "OMN-71",
+      "merged": [
+        "omnimarket#71"
+      ],
+      "open": [],
+      "error": ""
+    },
+    {
+      "id": "OMN-74",
+      "merged": [
+        "omnimarket#74"
+      ],
+      "open": [],
+      "error": ""
+    },
+    {
+      "id": "OMN-106",
+      "merged": [
+        "omnimarket#106"
+      ],
+      "open": [],
+      "error": ""
+    },
+    {
+      "id": "OMN-115",
+      "merged": [
+        "omnimarket#115"
+      ],
+      "open": [],
+      "error": ""
+    },
+    {
+      "id": "OMN-49",
+      "merged": [
+        "omnimarket#49"
+      ],
+      "open": [],
+      "error": ""
+    },
+    {
+      "id": "OMN-22",
+      "merged": [
+        "omnimarket#22"
+      ],
+      "open": [],
+      "error": ""
+    },
+    {
+      "id": "OMN-54",
+      "merged": [
+        "omnimarket#54"
+      ],
+      "open": [],
+      "error": ""
+    },
+    {
+      "id": "OMN-82",
+      "merged": [
+        "omnimarket#82"
+      ],
+      "open": [],
+      "error": ""
+    },
+    {
+      "id": "OMN-12",
+      "merged": [
+        "omnimarket#12"
+      ],
+      "open": [],
+      "error": ""
+    },
+    {
+      "id": "OMN-107",
+      "merged": [
+        "omnimarket#107"
+      ],
+      "open": [],
+      "error": ""
+    },
+    {
+      "id": "OMN-14",
+      "merged": [
+        "omnimarket#14"
+      ],
+      "open": [],
+      "error": ""
+    },
+    {
+      "id": "OMN-17",
+      "merged": [
+        "omnimarket#17"
+      ],
+      "open": [],
+      "error": ""
+    }
+  ],
+  "text_state": [
+    {
+      "id": "OMN-71",
+      "last_closeout_comment_at": "",
+      "text_sha": "",
+      "held_text_sha": "0123456789abcdef",
+      "waiting_on": [
+        "release cut"
+      ]
+    },
+    {
+      "id": "OMN-74",
+      "last_closeout_comment_at": "",
+      "text_sha": "0123456789abcdef",
+      "held_text_sha": "",
+      "waiting_on": [
+        "release cut"
+      ]
+    },
+    {
+      "id": "OMN-106",
+      "last_closeout_comment_at": "2026-10-02T00:00:00.000Z",
+      "text_sha": "0123456789abcdef",
+      "held_text_sha": "",
+      "waiting_on": [
+        "release cut"
+      ]
+    },
+    {
+      "id": "OMN-115",
+      "last_closeout_comment_at": "2026-10-07T00:00:00.000Z",
+      "text_sha": "",
+      "held_text_sha": "0123456789abcdef",
+      "waiting_on": [
+        "release cut"
+      ]
+    },
+    {
+      "id": "OMN-49",
+      "last_closeout_comment_at": "2026-10-07T00:00:00.000Z",
+      "text_sha": "",
+      "held_text_sha": "",
+      "waiting_on": [
+        "release cut"
+      ]
+    },
+    {
+      "id": "OMN-22",
+      "last_closeout_comment_at": "",
+      "text_sha": "",
+      "held_text_sha": "",
+      "waiting_on": []
+    },
+    {
+      "id": "OMN-54",
+      "last_closeout_comment_at": "",
+      "text_sha": "",
+      "held_text_sha": "",
+      "waiting_on": []
+    },
+    {
+      "id": "OMN-82",
+      "last_closeout_comment_at": "",
+      "text_sha": "",
+      "held_text_sha": "0123456789abcdef",
+      "waiting_on": []
+    },
+    {
+      "id": "OMN-12",
+      "last_closeout_comment_at": "",
+      "text_sha": "",
+      "held_text_sha": "0123456789abcdef",
+      "waiting_on": []
+    },
+    {
+      "id": "OMN-107",
+      "last_closeout_comment_at": "2026-10-02T00:00:00.000Z",
+      "text_sha": "",
+      "held_text_sha": "0123456789abcdef",
+      "waiting_on": []
+    },
+    {
+      "id": "OMN-14",
+      "last_closeout_comment_at": "2026-10-02T00:00:00.000Z",
+      "text_sha": "",
+      "held_text_sha": "0123456789abcdef",
+      "waiting_on": []
+    },
+    {
+      "id": "OMN-17",
+      "last_closeout_comment_at": "2026-10-02T00:00:00.000Z",
+      "text_sha": "",
+      "held_text_sha": "",
+      "waiting_on": []
+    }
+  ],
+  "held": "OMN-23",
+  "held_count": 1,
+  "waiting": [
+    {
+      "id": "OMN-101",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-103",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-104",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-105",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-108",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-111",
+      "reason": "no merged PR references it"
+    },
+    {
+      "id": "OMN-113",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-114",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-117",
+      "reason": "no merged PR references it"
+    },
+    {
+      "id": "OMN-118",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-13",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-18",
+      "reason": "no merged PR references it"
+    },
+    {
+      "id": "OMN-19",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-20",
+      "reason": "no merged PR references it"
+    },
+    {
+      "id": "OMN-21",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-25",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-26",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-27",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-29",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-3",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-30",
+      "reason": "no merged PR references it"
+    },
+    {
+      "id": "OMN-31",
+      "reason": "PR state unread: unread"
+    },
+    {
+      "id": "OMN-37",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-39",
+      "reason": "PR state unread: unread"
+    },
+    {
+      "id": "OMN-41",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-44",
+      "reason": "no merged PR references it"
+    },
+    {
+      "id": "OMN-47",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-48",
+      "reason": "no merged PR references it"
+    },
+    {
+      "id": "OMN-5",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-50",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-51",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-52",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-56",
+      "reason": "no merged PR references it"
+    },
+    {
+      "id": "OMN-57",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-58",
+      "reason": "no merged PR references it"
+    },
+    {
+      "id": "OMN-59",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-61",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-63",
+      "reason": "not started"
+    },
+    {
+      "id": "OMN-64",
+      "reason": "PR state unread: unread"
+    },
+    {
+      "id": "OMN-70",
+      "reason": "not started"
+    }
+  ],
+  "waiting_count": 54,
+  "waiting_by_reason": {
+    "PR state unread": 4,
+    "no merged PR references it": 14,
+    "not started": 36
+  },
+  "totals": {
+    "candidates": 120,
+    "eligible": 66,
+    "selected": 12,
+    "deferred": 46,
+    "held": 8,
+    "waiting": 54
+  },
+  "no_contract": []
+}
