@@ -221,7 +221,7 @@ def test_entry_tier_share_fraction_and_absent_control(
     assert abs(counts["entry-backend"] / len(_KEYS) - 0.25) <= 0.05, counts
     for key in _KEYS[:30]:
         assert (
-            routing.first_eligible_tier("document", correlation_id=key)
+            routing.first_eligible_tier("document", correlation_id=key, prompt="")
             == routing.delta(_request(key)).tier_name
         )
     _bind(tmp_path, monkeypatch, share=None)
@@ -245,9 +245,11 @@ def test_entry_tier_share_validation_refusals(
     with pytest.raises(ProtocolConfigurationError, match="OMN-20163"):
         routing.delta(_request(_UNDRAWN))
     with pytest.raises(ProtocolConfigurationError, match="OMN-20163"):
-        routing.first_eligible_tier("document")
+        routing.first_eligible_tier("document", prompt="")
     with pytest.raises(ProtocolConfigurationError, match="OMN-20163"):
-        routing.next_eligible_tier("local", frozenset(), task_type="document")
+        routing.next_eligible_tier(
+            "local", frozenset(), task_type="document", prompt=""
+        )
 
 
 def test_entry_tier_share_is_deterministic(
@@ -342,6 +344,7 @@ def test_entry_miss_retries_local_before_metered(
             frozenset({"cheap_frontier"}),
             task_type="document",
             correlation_id=_DRAWN,
+            prompt="",
         )
         == "local"
     )
@@ -351,6 +354,7 @@ def test_entry_miss_retries_local_before_metered(
             frozenset({"cheap_frontier", "local"}),
             task_type="document",
             correlation_id=_DRAWN,
+            prompt="",
         )
         == "cheap_cloud"
     )
@@ -370,6 +374,7 @@ def test_entry_miss_retries_local_before_metered(
             frozenset({"cheap_frontier", "local", "cheap_cloud"}),
             task_type="document",
             correlation_id=_DRAWN,
+            prompt="",
         )
         is None
     )
@@ -386,6 +391,7 @@ def test_entry_miss_retries_local_undrawn_control(
             frozenset({"cheap_frontier"}),
             task_type="document",
             correlation_id=correlation_id,
+            prompt="",
         )
         == "cheap_cloud"
     )
@@ -395,6 +401,7 @@ def test_entry_miss_retries_local_undrawn_control(
             frozenset({"local"}),
             task_type="document",
             correlation_id=correlation_id,
+            prompt="",
         )
         == "cheap_frontier"
     )
@@ -428,7 +435,7 @@ def test_entry_share_quota_bound_all_blocked_and_empty(
     assert _picks(blocked) == Counter({"local-backend": len(_KEYS)})
     assert (
         routing.first_eligible_tier(
-            "document", correlation_id=_DRAWN, quota_state=blocked
+            "document", correlation_id=_DRAWN, quota_state=blocked, prompt=""
         )
         == "local"
     )
@@ -438,7 +445,7 @@ def test_entry_share_quota_bound_all_blocked_and_empty(
     assert restored == _picks()
     assert (
         routing.first_eligible_tier(
-            "document", correlation_id=_DRAWN, quota_state=empty
+            "document", correlation_id=_DRAWN, quota_state=empty, prompt=""
         )
         == "cheap_frontier"
     )
@@ -545,15 +552,19 @@ def test_entry_miss_retries_local_port_threads_the_correlation_id(
     port = port_mod.LocalDelegationDispatchPort(
         evidence_db_path=tmp_path / "evidence.sqlite", effect_process_boundary=False
     )
-    port._resolve_initial_backend("document", spread_key="run-1", quota_state=None)
-    assert seen["first"]["correlation_id"] == "run-1"
-    assert (
-        port._resolve_next_backend(
-            current_tier="cheap_frontier",
-            task_type="document",
-            excluded_tiers=frozenset({"cheap_frontier"}),
-            spread_key="run-1",
+    prompt_token = port_mod._ACTIVE_PROMPT.set("")
+    try:
+        port._resolve_initial_backend("document", spread_key="run-1", quota_state=None)
+        assert seen["first"]["correlation_id"] == "run-1"
+        assert (
+            port._resolve_next_backend(
+                current_tier="cheap_frontier",
+                task_type="document",
+                excluded_tiers=frozenset({"cheap_frontier"}),
+                spread_key="run-1",
+            )
+            is None
         )
-        is None
-    )
+    finally:
+        port_mod._ACTIVE_PROMPT.reset(prompt_token)
     assert seen["next"]["correlation_id"] == "run-1"

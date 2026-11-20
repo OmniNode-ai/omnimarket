@@ -222,7 +222,7 @@ class TestSeaExecutorLadderParity:
         reached on failure). We assert the head has a real second rung -- i.e.
         the ladder is wired, not a single point.
         """
-        head_next = next_eligible_tier("local", frozenset())
+        head_next = next_eligible_tier("local", frozenset(), prompt="")
         assert head_next is not None, (
             "the canonical ladder must have a second rung after the local head, "
             "mirroring SEA's local -> next-tier escalation"
@@ -292,8 +292,8 @@ class TestSeaExecutorLadderParity:
         Canonical analogue #1: a tier named in ``excluded_tiers`` is skipped by
         ``next_eligible_tier`` -- the ladder advances past it to the next rung.
         """
-        skipped = next_eligible_tier("local", frozenset({"cheap_cloud"}))
-        not_skipped = next_eligible_tier("local", frozenset())
+        skipped = next_eligible_tier("local", frozenset({"cheap_cloud"}), prompt="")
+        not_skipped = next_eligible_tier("local", frozenset(), prompt="")
         assert skipped is not None
         assert skipped != "cheap_cloud"
         assert not_skipped == "cheap_cloud"
@@ -311,7 +311,9 @@ class TestSeaExecutorLadderParity:
         """
         _install_parity_bifrost(tmp_path, monkeypatch)
         try:
-            higher = next_eligible_tier("local", frozenset(), task_type="research")
+            higher = next_eligible_tier(
+                "local", frozenset(), task_type="research", prompt=""
+            )
             assert higher is None, (
                 "tiers whose backend secret/endpoint cannot be resolved must be "
                 "skipped, mirroring SEA's disabled-tier skip"
