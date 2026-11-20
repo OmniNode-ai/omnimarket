@@ -64,7 +64,7 @@ def test_unplaced_lane_alarm_not_running() -> None:
     result = run(dispatched_lanes=[lane("fix-a", 11)])
     [line] = alarm_lines(result)
     assert line.startswith(
-        "ALARM unplaced-lane:fix-a | dispatched 2026-10-10T03:19:00Z, 11 min ago with no placement receipt"
+        "ALARM unplaced-lane:fix-a | dispatched 2026-10-10T03:19:00Z, 11 min ago with no CLAIM with host= and run="
     ), line
     assert " | FIX: " in line
     assert "never report it as running" in line.split(" | FIX: ", 1)[1]
@@ -135,9 +135,9 @@ def test_a_placed_lane_is_no_finding_and_no_dispatched_facts_skip_the_finding() 
             lane(
                 "fix-a",
                 45,
-                placement_receipt=True,
                 claim_host="h201",
                 claim_run_id="rlane-fix-a-1",
+                claim_at="2026-10-10T02:46:00Z",
             )
         ]
     )

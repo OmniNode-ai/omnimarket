@@ -1,0 +1,82 @@
+schema_version: "1.0.0"
+ticket_id: OMN-24731
+title: "Fix the blocking review findings on omnimarket PR 6317 and its companion pull request for the exemplar and graph requirement"
+summary: "omnimarket half of the fix for the review of the exemplar and graph close rule: the contract binds no criterion on the local done gate item, the start orchestrator sends the brief, the close node reads a code lane from the brief's EXEMPLAR and GRAPH steps, accepts exemplar=none:<reason> and carries both cells in ledger_cells."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn24731-review-findings
+    statement: "The blocking review findings on the exemplar and graph change are fixed, each with a test that fails at the reviewed head and passes at the new head."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: contracts/OMN-24686.yaml in omnimarket carries no binds_ac on the local_done_gate item and tests/ci/test_repo_evidence_caller_workflow.py passes -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q"
+      - id: "AC2"
+        statement: "AC2: the remote-lane start orchestrator and the runner close_request both send the lane brief to the close node, and a code lane whose final message names no exemplar and graph cell closes partial -- falsifier: uv run pytest -q -k exemplar_graph_cell in omnimarket"
+      - id: "AC3"
+        statement: "AC3: the runner's final-message instruction tells a lane to put exemplar and graph cells on its LANE_RESULT or TERMINAL line, and exemplar=none:<reason> is accepted and kept as a finding -- falsifier: uv run pytest -q -k exemplar_graph_cell in both repositories"
+      - id: "AC4"
+        statement: "AC4: the close node and the brief check read one definition of a code lane, with the open-ended exemption, and a brief with a non-empty EXEMPLAR or GRAPH section is accepted as well as the line form -- falsifier: uv run pytest -q -k exemplar_graph in both repositories"
+      - id: "AC5"
+        statement: "AC5: the exemplar and graph cells ride in ledger_cells on the close result, not only in findings -- falsifier: uv run pytest -q -k exemplar_graph_cell in omnimarket"
+      - id: "AC7"
+        statement: "AC7: each new test fails on the base revision and passes on the new head of its PR (red then green), and a brief or TERMINAL for a lane that writes no code is not refused -- falsifier: uv run pytest -q -k exemplar_graph run at the PR base and at the PR head"
+evidence_requirements:
+  - kind: tests
+    description: "the exemplar and graph tests at the pushed head"
+    command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn24731-ac1
+    description: "AC1: the tests named by the criterion fail at the reviewed head and pass at the new head (readings in the PR comment that names the head)"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q"
+    binds_ac: ["AC1"]
+  - id: dod-omn24731-ac2
+    description: "AC2: the tests named by the criterion fail at the reviewed head and pass at the new head (readings in the PR comment that names the head)"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_remote_lane_close_compute tests/nodes/node_remote_lane_start_orchestrator -q -k exemplar_graph_cell"
+    binds_ac: ["AC2"]
+  - id: dod-omn24731-ac3
+    description: "AC3: the tests named by the criterion fail at the reviewed head and pass at the new head (readings in the PR comment that names the head)"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_remote_lane_close_compute -q -k exemplar_graph_cell"
+    binds_ac: ["AC3"]
+  - id: dod-omn24731-ac4
+    description: "AC4: the tests named by the criterion fail at the reviewed head and pass at the new head (readings in the PR comment that names the head)"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_remote_lane_close_compute -q -k exemplar_graph"
+    binds_ac: ["AC4"]
+  - id: dod-omn24731-ac5
+    description: "AC5: the tests named by the criterion fail at the reviewed head and pass at the new head (readings in the PR comment that names the head)"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_remote_lane_close_compute tests/nodes/node_remote_lane_start_orchestrator -q -k exemplar_graph_cell"
+    binds_ac: ["AC5"]
+  - id: dod-omn24731-ac7
+    description: "AC7: the tests named by the criterion fail at the reviewed head and pass at the new head (readings in the PR comment that names the head)"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_remote_lane_close_compute tests/nodes/node_remote_lane_start_orchestrator -q -k exemplar_graph"
+    binds_ac: ["AC7"]
+  - id: "dod-omn24731-integration-proof"
+    description: "The pushed head is run on a lab host through the lab work node before hand-off: the close node's and the start orchestrator's test directories, which hold the exemplar_graph_cell tests."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane fix6317-0700 --kind test -- uv run --frozen pytest tests/nodes/node_remote_lane_close_compute tests/nodes/node_remote_lane_start_orchestrator -q --no-cov -n 0"
+        cwd: "."
