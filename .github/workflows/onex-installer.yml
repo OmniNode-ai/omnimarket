@@ -16,8 +16,12 @@ name: onex installer
 #   macos-15-intel    Intel macOS, which is not supported yet: the rendered
 #                     installer must refuse it before installing anything.
 
+# It runs after a change to the installer lands on dev, and on demand. On a pull
+# request the installer's platform, checksum and conflict cases run in the Tests
+# job and are bound to the ticket's contract; a red run here turns dev red.
 on:
-  pull_request:
+  push:
+    branches: [dev]
     paths:
       - packages/omninode-onex/**
       - src/omnimarket/nodes/node_onex_installer_render_compute/**
@@ -29,9 +33,6 @@ permissions:
   contents: read
 
 jobs:
-  # The merge-gating installer evidence is the bound test set dod-verify runs; CI Summary's expected contexts
-  # must report on every pull request, which this path-filtered job cannot.
-  # advisory-ok: OMN-25070 per-platform real install of the customer package, path-filtered to installer changes
   linux-x86_64:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -58,9 +59,6 @@ jobs:
             uvx --python 3.12 --with pytest --with pydantic pytest -o addopts="" --noconftest \
             -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py
 
-  # The merge-gating installer evidence is the bound test set dod-verify runs; CI Summary's expected contexts
-  # must report on every pull request, which this path-filtered job cannot.
-  # advisory-ok: OMN-25070 per-platform real install of the customer package, path-filtered to installer changes
   linux-arm64:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
@@ -87,9 +85,6 @@ jobs:
             uvx --python 3.12 --with pytest --with pydantic pytest -o addopts="" --noconftest \
             -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py
 
-  # The merge-gating installer evidence is the bound test set dod-verify runs; CI Summary's expected contexts
-  # must report on every pull request, which this path-filtered job cannot.
-  # advisory-ok: OMN-25070 per-platform real install of the customer package, path-filtered to installer changes
   macos-arm64:
     runs-on: macos-latest
     timeout-minutes: 45

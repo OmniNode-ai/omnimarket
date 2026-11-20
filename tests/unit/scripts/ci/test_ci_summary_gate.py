@@ -887,26 +887,26 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "to fail on findings, this entry moves to EXPECTED_EXTERNAL_CONTEXTS "
         "in the same PR."
     ),
-    # The customer installer's real platform runs (OMN-25070). Its
-    # pull_request paths filter (packages/omninode-onex and its own test and
-    # workflow) makes each job legitimately absent on most PRs, so asserting
-    # it would wedge CI Summary; on every PR that changes the installer the
-    # four jobs run and show their result.
+    # The customer installer's real platform runs (OMN-25070). They run on a
+    # push to dev that changes the installer, and on demand, never on a pull
+    # request, so asserting them would wedge CI Summary; a red run turns dev
+    # red. The installer's platform, checksum and conflict cases run in the
+    # Tests job on every pull request.
     ("onex-installer.yml", "linux-x86_64"): (
-        "path-filtered installer run on Linux x86_64; absent on PRs that do "
-        "not touch the installer, so asserting it would wedge CI Summary."
+        "installer run on Linux x86_64 after a push to dev; never on a pull "
+        "request, so asserting it would wedge CI Summary."
     ),
     ("onex-installer.yml", "linux-arm64"): (
-        "path-filtered installer run on Linux arm64; absent on PRs that do "
-        "not touch the installer, so asserting it would wedge CI Summary."
+        "installer run on Linux arm64 after a push to dev; never on a pull "
+        "request, so asserting it would wedge CI Summary."
     ),
     ("onex-installer.yml", "macos-arm64"): (
-        "path-filtered installer run on Apple Silicon macOS; absent on PRs "
-        "that do not touch the installer, so asserting it would wedge CI Summary."
+        "installer run on Apple Silicon macOS after a push to dev; never on a pull "
+        "request, so asserting it would wedge CI Summary."
     ),
     ("onex-installer.yml", "macos-intel"): (
-        "path-filtered installer run on Intel macOS; absent on PRs that do "
-        "not touch the installer, so asserting it would wedge CI Summary."
+        "installer run on Intel macOS after a push to dev; never on a pull "
+        "request, so asserting it would wedge CI Summary."
     ),
     ("pr-merged-publisher.yml", "publish-pr-merged"): (
         "post-merge automation (if: pull_request.merged == true) — "
