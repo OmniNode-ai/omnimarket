@@ -110,22 +110,11 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC1"]
     checks:
-      - check_type: "command"
-        check_value: |-
-          uv run --frozen python - <<'PY'
-          from pathlib import Path
-          from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
-          names = ("audit_generated_rows.py", "candidates_meta.py", "gen_runner_inmemory.py", "gen_runner_persisted_path.py", "generation_summary.py", "make_local_only_contract.py", "make_local_only_routing.py", "make_local_overlays.py", "mem_to_content.py")
-          paths = [Path("benchmarks/delegation_false_pass_growth") / n for n in names]
-          assert all(p.is_file() for p in paths), "a slice module is missing"
-          v = ValidatorContractsAndDi()
-          assert any(r.rule_id == "literal_path" and r.enabled for r in v.contract.rules), "literal_path rule is not enabled"
-          res = v.validate(paths)
-          assert res.metadata is not None and res.metadata.files_processed == len(paths), "not every slice module was checked"
-          off = [str(i) for i in res.issues if i.rule_name in {"literal_path", "unparseable_file"}]
-          assert not off, "\n".join(off)
-          print(f"contracts_and_di: {res.metadata.files_processed} slice modules checked; no literal_path findings")
-          PY
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_literal_path_slice_omn21694.py -q --no-cov -k 'the_touched_module_holds_no_path_literal or the_scan_sees_a_path_literal'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_literal_path_slice_omn21694.py -q --no-cov -k path_literal"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/test_literal_path_slice_omn21694.py -q --no-cov -k path_literal"
