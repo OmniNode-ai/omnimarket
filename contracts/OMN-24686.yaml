@@ -57,10 +57,10 @@ dod_evidence:
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane exgraph-req-0320 --kind test -- uv run --frozen pytest tests/nodes/node_remote_lane_close_compute -q --no-cov -n 0"
         cwd: "."
   - id: dod-omn24686-deploy-probe-handler-surface
-    description: "Deploy check: the close node's committed handler wires the exemplar graph cell and the module carries the partial problem text. Fails when the text is absent (grep -c exits 1 on zero matches); no pipe, so no SIGPIPE exit 141. Runs on a hosted runner with no container daemon."
+    description: "Deploy check: the close node's committed handler wires the exemplar graph cell and the module carries the partial problem text. Reads the committed module through gh api; the jq expression raises when the text is absent so gh exits non-zero, and the shell command has no pipe, so no SIGPIPE exit 141. Runs on a hosted runner with no container daemon."
     source: manual
     execution_scope: hosted_and_local
     checks:
       - check_type: command
-        check_value: "grep -c 'no exemplar or graph cell' src/omnimarket/nodes/node_remote_lane_close_compute/handlers/exemplar_graph_cell.py"
+        check_value: "gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_remote_lane_close_compute/handlers/exemplar_graph_cell.py?ref=omn-24686-exemplar-graph-cell' --jq 'if (.content | @base64d | contains(\"no exemplar or graph cell\")) then \"present\" else error(\"absent\") end'"
         cwd: "."
