@@ -176,7 +176,7 @@ def handler(
 def test_source_db_verb_answers_from_projection_not_the_file(
     case: str, poison: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
+    ledger = tmp_path / "fixture-ledger.md"
     if poison == "poisoned":
         ledger.write_text(f"{SENTINEL}\nnot | a | row\n", encoding="utf-8")
     env = {
@@ -231,7 +231,7 @@ def test_source_db_verb_node_fault_is_unreadable_never_empty_or_clear(
 ) -> None:
     env = {
         "ONEX_LEDGER_READER_OVERLAY": str(overlay_file(tmp_path, (CASES[case][0],))),
-        LEDGER_ENV: str(tmp_path / "ROLLING_WORK_LEDGER.md"),
+        LEDGER_ENV: str(tmp_path / "fixture-ledger.md"),
     }
     read = FreshPointRead(FakeStateReader(error=WorkLedgerReadError("db down")))
     code = main(argv(case), environ=env, point_read=read)
@@ -246,7 +246,7 @@ def test_source_db_verb_node_fault_is_unreadable_never_empty_or_clear(
 def test_flip_rollback_file_reader_not_moved_asks_the_node_nothing(
     case: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
+    ledger = tmp_path / "fixture-ledger.md"
     ledger.write_text(f"{SENTINEL}\n", encoding="utf-8")
     reader = CASES[case][0]
     read = FreshPointRead(state(case))
