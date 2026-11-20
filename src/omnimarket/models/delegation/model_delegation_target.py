@@ -56,11 +56,21 @@ class ModelDelegationTargetRequest(BaseModel):
     generation: ModelDelegationGeneration = ModelDelegationGeneration()
     timeout_seconds: float | None = Field(default=None, gt=0, le=10800)
     agent_profile: str | None = None
+    # A caller-named directory, validated against the call site's allowed roots.
+    workspace_path: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def _session_checkout(self) -> Self:
-        if self.target != "model-call" and (not self.repo or not self.commit_sha):
-            raise ValueError("agent sessions require repo and an exact commit_sha")
+        checkout = bool(self.repo and self.commit_sha)
+        if self.target != "model-call" and self.workspace_path is not None:
+            if self.repo or self.commit_sha:
+                raise ValueError(
+                    "workspace_path excludes repo and commit_sha: name one or the other"
+                )
+        elif self.target != "model-call" and not checkout:
+            raise ValueError(
+                "agent sessions require repo and an exact commit_sha, or a workspace_path"
+            )
         if self.target != "model-call" and self.generation.model_dump(
             exclude_none=True
         ):

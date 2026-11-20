@@ -443,6 +443,9 @@ delegation_adapters:
     lab_job:
       targets: [codex, claude-code, claude-glm, antigravity]
       timeout_seconds: 4500
+      # A request's workspace_path must resolve strictly inside one of these roots (OMN-26221);
+      # the lane overlay names them, so none are accepted until a deployment declares some.
+      allowed_workspace_roots: []
       agents: {}
   model_registry: {}
 
