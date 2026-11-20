@@ -59,6 +59,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoSkipVectorInTheDelegationGoldenTests::test_no_file_in_the_suite_carries_one tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoSkipVectorInTheDelegationGoldenTests::test_the_scan_reads_this_file_and_the_subdirectories tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoSkipVectorInTheDelegationGoldenTests::test_a_vector_in_a_subdirectory_is_found[bare-marker] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoSkipVectorInTheDelegationGoldenTests::test_a_vector_in_a_subdirectory_is_found[module-level] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoSkipVectorInTheDelegationGoldenTests::test_a_vector_added_to_this_test_file_is_found -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
     cwd: .
+  - check_type: command
+    check_value: grep -q test_the_scan_reads_this_file_and_the_subdirectories contracts/OMN-24986.yaml
+    cwd: .
 - id: dod-omn25078-ac6-absent-terminal-ok
   description: An absent terminal_ok key is reported as absent and a NULL value as NULL; no diff or head check of the four earlier contracts reads rev-parse HEAD or a diff against HEAD.
   source: manual
@@ -70,4 +73,7 @@ dod_evidence:
     cwd: .
   - check_type: command
     check_value: bash -c '! grep -nE "(rev-parse HEAD|diff .*[ ]HEAD)" contracts/OMN-24831.yaml contracts/OMN-24851.yaml contracts/OMN-24902.yaml contracts/OMN-24925.yaml'
+    cwd: .
+  - check_type: command
+    check_value: grep -q test_a_vector_added_to_this_test_file_is_found contracts/OMN-24986.yaml
     cwd: .
