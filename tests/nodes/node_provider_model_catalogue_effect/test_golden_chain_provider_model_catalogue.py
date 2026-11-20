@@ -17,7 +17,7 @@ pytestmark = pytest.mark.unit
 
 
 def test_golden_chain_catalogue() -> None:
-    fixture = Path(__file__).parents[2] / "fixtures/openrouter_models_2026_10_25.json"
+    fixture = Path(__file__).parents[2] / "fixtures/openrouter_models_2026_11_20.json"
     result = HandlerProviderModelCatalogue().handle(
         ModelProviderModelCatalogueRequest(catalogue_json=fixture)
     )

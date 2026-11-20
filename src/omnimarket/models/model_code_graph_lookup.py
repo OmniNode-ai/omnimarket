@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class EnumCodeGraphQuestion(StrEnum):
-    """The five questions a lookup answers."""
+    """The six questions a lookup answers."""
 
     #: Where a symbol (class or function) is defined.
     DEFINITION = "definition"
@@ -31,6 +31,8 @@ class EnumCodeGraphQuestion(StrEnum):
     EXEMPLAR = "exemplar"
     #: Whether a model of the same field shape exists, whatever its name.
     SAME_SHAPE = "same-shape"
+    #: Where a node lives: its directory, contract, metadata, overlay and the workflows that name it.
+    LOCATE = "locate"
 
 
 class EnumLookupFault(StrEnum):
@@ -41,6 +43,49 @@ class EnumLookupFault(StrEnum):
     MATCH_SHAPES_BY_NAME = "match-shapes-by-name"
     #: Answer from the head when asked as of a commit.
     ANSWER_FROM_HEAD = "answer-from-head"
+
+
+class EnumLookupServedFrom(StrEnum):
+    """Which store a lookup was answered from."""
+
+    #: The Memgraph instance the architecture graph overlay names, queried by Cypher.
+    MEMGRAPH = "memgraph"
+    #: The file-backed store, built from the repository clones; only when Memgraph is unreachable.
+    FILE_STORE = "file-store"
+
+
+class EnumLookupFallbackReason(StrEnum):
+    """Why a lookup left Memgraph for the file store: the typed reason a fallback answer carries."""
+
+    #: ARCH_GRAPH_BOLT_URI is unset and no overlay row names this host's Bolt address.
+    BOLT_URI_UNRESOLVED = "bolt-uri-unresolved"
+    #: The Bolt port refused the connection.
+    CONNECTION_REFUSED = "connection-refused"
+    #: Memgraph accepted the connection and did not answer in time.
+    READ_TIMED_OUT = "read-timed-out"
+    #: Any other transport failure (no route, reset, protocol handshake lost).
+    UNREACHABLE = "unreachable"
+
+
+class EnumNodeFileKind(StrEnum):
+    """The kind of a file that belongs to a node (OMN-26202)."""
+
+    DIRECTORY = "directory"
+    CONTRACT = "contract"
+    METADATA = "metadata"
+    OVERLAY = "overlay"
+    WORKFLOW = "workflow"
+
+
+class ModelNodeFile(BaseModel):
+    """One canonical repository-relative path that belongs to one node."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The node's directory name (``node_code_graph_effect``).
+    node: str = Field(min_length=1)
+    kind: EnumNodeFileKind
+    path: str = Field(min_length=1)
 
 
 class ModelSymbolDefinition(BaseModel):
@@ -96,6 +141,8 @@ class ModelCodeGraphVersion(BaseModel):
     shapes: tuple[ModelShapeEntry, ...] = ()
     imports: tuple[ModelImportRelation, ...] = ()
     exemplars: tuple[ModelExemplarNode, ...] = ()
+    #: Where each node lives and which non-Python files belong to it (OMN-26202).
+    node_files: tuple[ModelNodeFile, ...] = ()
 
 
 class ModelCodeGraphLookupSettings(BaseModel):
@@ -124,6 +171,8 @@ class ModelCodeGraphLookupCommand(BaseModel):
     archetype: str | None = None
     #: EXEMPLAR: words that rank the nodes of the archetype (a node whose name holds one ranks first).
     hint: str | None = None
+    #: LOCATE: a node name, a contract path or a workflow path.
+    target: str | None = None
     #: The commit to answer as of; absent means the head, the newest stored version.
     as_of: str | None = None
     fault: EnumLookupFault = EnumLookupFault.NONE
@@ -136,6 +185,7 @@ class ModelCodeGraphLookupCommand(BaseModel):
             EnumCodeGraphQuestion.IMPORTERS: bool(self.path),
             EnumCodeGraphQuestion.REACH: bool(self.paths),
             EnumCodeGraphQuestion.EXEMPLAR: bool(self.archetype),
+            EnumCodeGraphQuestion.LOCATE: bool(self.target),
         }[self.question]
         if not needed:
             raise ValueError(f"the {self.question.value} question lacks its argument")
@@ -177,3 +227,9 @@ class ModelCodeGraphLookupResult(BaseModel):
     matches: tuple[ModelLookupMatch, ...] = ()
     nearest: ModelNearestVersion | None = None
     reason: str | None = None
+    #: The store that answered. A lookup that did not reach any store keeps the file-store default.
+    served_from: EnumLookupServedFrom = EnumLookupServedFrom.FILE_STORE
+    #: Set only on an answer served from the file store because Memgraph was unreachable.
+    fallback_reason: EnumLookupFallbackReason | None = None
+    #: The transport error text behind ``fallback_reason``.
+    fallback_detail: str | None = None

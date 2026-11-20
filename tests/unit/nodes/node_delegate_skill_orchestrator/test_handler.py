@@ -24,7 +24,7 @@ from omnibase_core.models.resolver.model_handler_resolver_context import (
     ModelHandlerResolverContext,
 )
 from omnibase_core.services.service_handler_resolver import ServiceHandlerResolver
-from omnibase_infra.runtime.service_delegation_dispatch_port import (
+from omnibase_infra.handlers.handler_delegation_dispatch_terminal import (
     _normalize_result_payload,
 )
 

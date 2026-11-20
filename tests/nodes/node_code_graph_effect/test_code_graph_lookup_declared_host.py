@@ -154,14 +154,14 @@ def _commit_at(
     return head
 
 
-def test_the_lane_overlay_root_alone_exits_3_without_the_overlay(
+def test_without_host_the_overlays_clone_beside_the_registry_root_answers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The unchanged behaviour: no ``--host``, so no flag of this change is passed."""
+    """No ``--host``: the roots resolver finds the overlays clone beside the registry root, as on dev."""
     _install(tmp_path, monkeypatch)
-    code, _, err = _lookup(capsys)
-    assert code == 3
-    assert "the overlay file is not configured" in err
+    code, out, err = _lookup(capsys)
+    assert code == 0, (out, err)
+    assert "LOOKUP question=importers repo=example_core status=found" in out
 
 
 def test_the_declared_host_clone_answers_with_the_newest_commit_time(
