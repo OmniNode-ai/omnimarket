@@ -6,9 +6,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 
+from omnimarket.nodes.node_host_retention_effect.handlers.handler_host_retention import (
+    HandlerHostRetention,
+)
 from omnimarket.nodes.node_host_retention_effect.models.model_host_retention import (
     ModelHostRetentionRequest,
     ModelHostRetentionResult,
@@ -30,6 +34,10 @@ class FakeHandler:
     def handle(self, request: ModelHostRetentionRequest) -> ModelHostRetentionResult:
         self.requests.append(request)
         return self.result
+
+
+def _as_handler(fake: FakeHandler) -> HandlerHostRetention:
+    return cast(HandlerHostRetention, fake)
 
 
 def _ok(host: str = "h-test", errors: tuple[str, ...] = ()) -> ModelHostRetentionResult:
@@ -57,7 +65,7 @@ def test_host_comes_from_the_environment_and_only_the_uv_cache_class_runs(
 ) -> None:
     monkeypatch.setenv("ONEX_HOST_NAME", "h-test")
     handler = FakeHandler(_ok())
-    assert main([], handler=handler) == 0  # type: ignore[arg-type]
+    assert main([], handler=_as_handler(handler)) == 0
     assert [(r.host_name, r.classes, r.dry_run) for r in handler.requests] == [
         ("h-test", ("uv_cache",), False)
     ]
@@ -72,7 +80,9 @@ def test_the_host_option_wins_and_dry_run_reaches_the_request(
 ) -> None:
     monkeypatch.setenv("ONEX_HOST_NAME", "from-env")
     handler = FakeHandler(_ok("from-option"))
-    assert main(["--host", "from-option", "--dry-run"], handler=handler) == 0  # type: ignore[arg-type]
+    assert (
+        main(["--host", "from-option", "--dry-run"], handler=_as_handler(handler)) == 0
+    )
     assert handler.requests[0].host_name == "from-option"
     assert handler.requests[0].dry_run is True
     assert _line(capsys)["host"] == "from-option"
@@ -83,7 +93,7 @@ def test_an_unnamed_host_exits_3_and_runs_nothing(
 ) -> None:
     monkeypatch.delenv("ONEX_HOST_NAME", raising=False)
     handler = FakeHandler(_ok())
-    assert main([], handler=handler) == 3  # type: ignore[arg-type]
+    assert main([], handler=_as_handler(handler)) == 3
     assert handler.requests == []
     assert _line(capsys)["status"] == "host_unnamed"
 
@@ -95,7 +105,7 @@ def test_a_refused_pass_exits_2_and_names_the_refusal(
     refused = ModelHostRetentionResult(
         host="h-test", dry_run=False, status="refused", refusals=("cap too low",)
     )
-    assert main([], handler=FakeHandler(refused)) == 2  # type: ignore[arg-type]
+    assert main([], handler=_as_handler(FakeHandler(refused))) == 2
     line = _line(capsys)
     assert line["status"] == "refused"
     assert line["refusals"] == ["cap too low"]
@@ -105,7 +115,7 @@ def test_a_pass_with_errors_exits_3(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setenv("ONEX_HOST_NAME", "h-test")
-    assert main([], handler=FakeHandler(_ok(errors=("boom",)))) == 3  # type: ignore[arg-type]
+    assert main([], handler=_as_handler(FakeHandler(_ok(errors=("boom",))))) == 3
     assert _line(capsys)["errors"] == ["boom"]
 
 
@@ -126,7 +136,9 @@ def test_the_heartbeat_records_the_exit_code_and_the_line(
 ) -> None:
     monkeypatch.setenv("ONEX_HOST_NAME", "h-test")
     state = tmp_path / "state"
-    assert main(["--state-dir", str(state)], handler=FakeHandler(_ok())) == 0  # type: ignore[arg-type]
+    assert (
+        main(["--state-dir", str(state)], handler=_as_handler(FakeHandler(_ok()))) == 0
+    )
     beat = json.loads(next(state.iterdir()).read_text(encoding="utf-8"))
     assert beat["exit_code"] == 0
     assert beat["result"]["host"] == "h-test"
