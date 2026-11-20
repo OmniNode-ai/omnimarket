@@ -949,6 +949,33 @@ async def test_red_main_alarm_failure_with_no_repository_raises_no_row_and_logs(
     assert "red-main alarm source unreadable" in caplog.text
 
 
+async def test_red_main_alarm_failed_red_row_append_is_logged_and_not_retried_as_a_row(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The ledger is the unreadable source: a second append would wait out the same bound."""
+    ports = LedgerAndScm()
+    attempts: list[UUID] = []
+
+    async def refuse(request: ModelWorkLedgerAppendRequest) -> object:
+        attempts.append(request.request_id)
+        raise RuntimeError("ledger unreachable")
+
+    ports.append = refuse  # type: ignore[method-assign]
+    handler = HandlerRedMainAlarm(ports=ports, settings=SETTINGS, clock=lambda: NOW)
+
+    with caplog.at_level("ERROR"):
+        result = await handler.handle(tick())
+
+    assert len(attempts) == 1
+    assert not result.alarms
+    assert not result.unreadable_alarms
+    assert [failure.kind for failure in result.failures] == [
+        EnumAlarmFailure.APPEND_FAILED
+    ]
+    assert "red-main alarm source unreadable" in caplog.text
+    assert "append_failed" in caplog.text
+
+
 async def test_red_main_alarm_unreadable_row_append_failure_is_reported_not_repeated() -> (
     None
 ):

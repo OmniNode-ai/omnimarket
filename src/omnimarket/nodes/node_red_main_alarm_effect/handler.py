@@ -53,6 +53,16 @@ _ACTOR = "red-main-alarm"
 _NODE = "node_red_main_alarm_effect"
 _WORKFLOW = "red-main-alarm"
 _CONTRACT = Path(__file__).with_name("contract.yaml")
+# A failure of these kinds leaves a branch's head, its checks or its owner unread, so the row
+# names the branch. A ledger failure is the row's own path: another append would wait out the same
+# bound, and the node's own timeout would end the fire before its result was returned.
+_ROW_FAILURES = frozenset(
+    {
+        EnumAlarmFailure.INVENTORY_UNREADABLE,
+        EnumAlarmFailure.CHECK_RUNS_UNREADABLE,
+        EnumAlarmFailure.CLAIMS_UNREADABLE,
+    }
+)
 _GREEN = frozenset({"success", "skipped", "neutral"})
 _RED = frozenset(
     {"failure", "action_required", "cancelled", "timed_out", "stale", "startup_failure"}
@@ -373,7 +383,11 @@ class HandlerRedMainAlarm:
         hour = now.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
         keyed: dict[tuple[str, str, EnumAlarmFailure], ModelAlarmFailure] = {}
         for failure in failures:
-            if failure.repo is None or failure.branch is None:
+            if (
+                failure.repo is None
+                or failure.branch is None
+                or failure.kind not in _ROW_FAILURES
+            ):
                 logger.error("red-main alarm source unreadable: %s", failure.kind)
                 continue
             if settings.drill_repos and failure.repo not in settings.drill_repos:
