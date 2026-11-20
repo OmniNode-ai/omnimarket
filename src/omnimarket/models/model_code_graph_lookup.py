@@ -35,6 +35,8 @@ class EnumCodeGraphQuestion(StrEnum):
     SAME_SHAPE = "same-shape"
     #: Which files still use a removed Python symbol or module, from the imports as written.
     USERS = "users"
+    #: Where a node lives: its directory, contract, metadata, overlay and the workflows that name it.
+    LOCATE = "locate"
 
 
 class EnumRemovalKind(StrEnum):
@@ -89,6 +91,27 @@ class EnumLookupFallbackReason(StrEnum):
     UNREACHABLE = "unreachable"
     #: The question reads the imports as written, which Memgraph does not hold yet.
     QUESTION_NOT_IN_MEMGRAPH = "question-not-in-memgraph"
+
+
+class EnumNodeFileKind(StrEnum):
+    """The kind of a file that belongs to a node (OMN-26202)."""
+
+    DIRECTORY = "directory"
+    CONTRACT = "contract"
+    METADATA = "metadata"
+    OVERLAY = "overlay"
+    WORKFLOW = "workflow"
+
+
+class ModelNodeFile(BaseModel):
+    """One canonical repository-relative path that belongs to one node."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The node's directory name (``node_code_graph_effect``).
+    node: str = Field(min_length=1)
+    kind: EnumNodeFileKind
+    path: str = Field(min_length=1)
 
 
 class ModelSymbolDefinition(BaseModel):
@@ -146,6 +169,8 @@ class ModelCodeGraphVersion(BaseModel):
     exemplars: tuple[ModelExemplarNode, ...] = ()
     #: Each file's imports as written, which a ``users`` lookup matches against a dotted identity.
     references: tuple[ModelFileReferences, ...] = ()
+    #: Where each node lives and which non-Python files belong to it (OMN-26202).
+    node_files: tuple[ModelNodeFile, ...] = ()
 
 
 class ModelCodeGraphLookupSettings(BaseModel):
@@ -186,6 +211,8 @@ class ModelCodeGraphLookupCommand(BaseModel):
     #: USERS: dotted submodules (``a.mod``) whose name the package binds to another object in the base
     #: or the head revision; ``from a import mod`` then does not reach the submodule.
     rebound_submodules: tuple[str, ...] = ()
+    #: LOCATE: a node name, a contract path or a workflow path.
+    target: str | None = None
     #: The commit to answer as of; absent means the head, the newest stored version.
     as_of: str | None = None
     fault: EnumLookupFault = EnumLookupFault.NONE
@@ -200,6 +227,7 @@ class ModelCodeGraphLookupCommand(BaseModel):
             EnumCodeGraphQuestion.EXEMPLAR: bool(self.archetype),
             EnumCodeGraphQuestion.USERS: bool(self.identity)
             and self.removal_kind is not None,
+            EnumCodeGraphQuestion.LOCATE: bool(self.target),
         }[self.question]
         if not needed:
             raise ValueError(f"the {self.question.value} question lacks its argument")

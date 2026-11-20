@@ -7,7 +7,7 @@
 ``index``    ``[--repo R ...]``: write the version of each named declared repository (every one by default) into Memgraph; no row, no verdict.
 ``check``    ``--repo R --base REF --head REF``: name the modules the head adds that no root reaches.
 ``shadow``   check every open pull request of the overlay's shadow repositories, append one row, hold nothing.
-``lookup``   ``--question Q --repo R`` and the question's argument: one MATCH row per answer, then a LOOKUP line.
+``lookup``   ``--question Q --repo R`` and the question's argument (locate: ``--target``, a node name, contract path or workflow path): one MATCH row per answer, then a LOOKUP line.
 ``schedule`` install | uninstall | status | run-now, for a host in the overlay; ``--unit shadow`` is the shadow's timer.
 
 ``--fault`` on nightly, probe or shadow injects a declared fault; the row then carries ``drill=yes``.
@@ -455,6 +455,7 @@ def _lookup(arguments: argparse.Namespace) -> int:
             ),
             head_all_lists_name=arguments.head_all_lists,
             rebound_submodules=tuple(arguments.rebound_submodule),
+            target=arguments.target,
             as_of=arguments.as_of,
         )
     )
@@ -609,6 +610,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             action="append",
             default=[],
             help="users: a dotted submodule whose name the package binds to another object",
+        )
+        lookup.add_argument(
+            "--target",
+            help="locate: a node name, a contract path or a workflow path",
         )
         lookup.add_argument(
             "--as-of",

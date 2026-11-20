@@ -6,7 +6,8 @@ Definitions are the module-level classes and functions of each Python file. A sh
 ``name: annotation`` fields of a class with annotated fields, hashed without the class name, so two
 models of different names and the same fields share a signature. Imports are the graph's own edges
 inside the repository, test files included (a change reaches the tests that import it). Exemplars
-are the nodes whose contract names an archetype. It reads no clock, file, network or environment.
+are the nodes whose contract names an archetype. Node files are the directory, contract, metadata,
+overlay and workflow paths of each node (OMN-26202). It reads no clock, file, network or environment.
 """
 
 from __future__ import annotations
@@ -24,6 +25,9 @@ from omnimarket.models.model_code_graph_lookup import (
     ModelImportRelation,
     ModelShapeEntry,
     ModelSymbolDefinition,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_locate import (
+    node_files_of,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import (
     GraphRules,
@@ -157,4 +161,5 @@ def build_version(
                 if entity[0] == snapshot.repo
             )
         ),
+        node_files=node_files_of(snapshot.files, rules),
     )
