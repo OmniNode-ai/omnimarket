@@ -135,7 +135,7 @@ def build_version(
             exemplar = _exemplar(path, text)
             if exemplar is not None:
                 exemplars.append(exemplar)
-    graph = build_graph([snapshot], rules)
+    graph = build_graph([snapshot], rules, keep_written=True)
     imports = sorted(
         (
             ModelImportRelation(importer_path=importer[1], imported_path=imported[1])
@@ -153,5 +153,13 @@ def build_version(
         shapes=tuple(shapes),
         imports=tuple(imports),
         exemplars=tuple(sorted(exemplars, key=lambda node: node.path)),
+        references=tuple(
+            references
+            for _, references in sorted(
+                (entity, references)
+                for entity, references in graph.written.items()
+                if entity[0] == snapshot.repo
+            )
+        ),
         node_files=node_files_of(snapshot.files, rules),
     )
