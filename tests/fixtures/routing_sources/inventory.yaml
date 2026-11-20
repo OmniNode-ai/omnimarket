@@ -208,8 +208,6 @@ not_routing_resolution_sites:
     reason: tells whether the landing_worker_engine overlay is present before it turns the Codex worker routes of a PR-landing worker off; it picks no backend, model or tier for delegated work
   - site: "src/omnimarket/handlers/execution_budget_overlay.py:find_node_overlay(EXECUTION_BUDGET_OVERLAY_ID)"
     reason: a site's per-class execution time limit; it bounds how long a delegation may run and chooses no backend, model or tier
-  - site: "src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/ruling_live_checks.py:find_node_overlay('node_review_voters_overlay_compute')"
-    reason: observes the currently declared required review voter identities to report ruling drift; it never invokes a voter, chooses an inference route or changes the roster
   - site: "src/omnimarket/delegation/content_grounding.py:resolve_path_config(_CONTRACT_PATH_CONFIG_KEY)"
     reason: reads the quality-gate section of the task-class contract; it judges an answer and selects no route
   - site: "src/omnimarket/delegation/identifier_grounding.py:resolve_path_config(_CONTRACT_PATH_CONFIG_KEY)"
@@ -262,8 +260,6 @@ not_routing_resolution_sites:
     reason: locates the lab host table whose ssh targets the Claude pool refill copies a token to; the hosts it reaches are the ones the table names and it selects no backend, model or tier for delegated work
   - site: "src/omnimarket/nodes/node_codex_sandbox_probe_compute/handlers/handler_codex_sandbox_probe.py:find_node_overlay('repos')"
     reason: names the overlay file in an error message when repos.private_data is not configured; the clone name supplies sandbox writable roots and selects no route for delegated work
-  - site: "src/omnimarket/nodes/node_idle_slot_fill_effect/overlay.py:find_node_overlay(overlay_id)"
-    reason: names the overlay file in an error message when an idle_slot_fill or repos key is not configured; the keys supply repository names, a cloud backlog declaration and experiment designs and select no route for delegated work
   - site: "src/omnimarket/nodes/node_install_superset_guard_effect/handlers/handler_install_superset_cli.py:resolve_setting(PLUGIN_INSTALL_OVERLAY)"
     reason: the ticket id the installer's superset check writes into each intentional-drop ledger row; a ledger cell, not a route for delegated work
   - site: "src/omnimarket/handlers/floor_fill_scheduled_tick.py:resolve_setting('node_floor_fill_scheduled_effect')"
@@ -292,8 +288,6 @@ not_routing_resolution_sites:
     reason: the served model id the route check expects a local walk to report, read from the node overlay (OMN-19184); it is the value a finished walk is compared against and selects no backend, model, tier or provider for a request
   - site: "src/omnimarket/nodes/node_ab_compare_orchestrator/handlers/handler_ab_compare_orchestrator.py:resolve_overlay_file(REGISTRY_OVERLAY_NODE)"
     reason: the registry of models an A/B compare calls side by side, from the node overlay or a pinned file (OMN-19184); the compare harness names its own subjects and selects no route for delegated work
-  - site: "src/omnimarket/nodes/node_lab_fill_effect/models/model_lab_fill_merged_history.py:find_node_overlay(NODE_NAME)"
-    reason: reads the extra_repos of the lab fill overlay, the private clone names the merged-history read also covers; it chooses no backend, model, tier or provider
   - site: "src/omnimarket/handlers/delegation_eval_read_binding.py:resolve_setting(OVERLAY_ID)"
     reason: the name of the environment variable that holds the read connection string for the delegation eval label and event tables; a database address for tenant-scoped reads, and it chooses no backend, model, tier or provider
 not_routing_configs:

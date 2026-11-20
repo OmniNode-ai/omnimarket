@@ -42,7 +42,6 @@ MEASURED_FILES: tuple[str, ...] = (
     "tests/nodes/node_host_installer_registry_units/test_landing_snapshot_unit.py",
     "tests/nodes/node_host_reading_effect/test_host_reading_overlay_venv.py",
     "tests/nodes/node_join_refusal_effect/test_join_j7_seam.py",
-    "tests/nodes/node_lab_fill_selection_compute/test_lab_fill_already_built.py",
     "tests/nodes/node_lab_idle_cost_compute/test_lab_idle_cost_contract.py",
     "tests/nodes/node_linear_snapshot_effect/test_ancestors.py",
     "tests/nodes/node_linear_snapshot_effect/test_parent_and_project_id.py",

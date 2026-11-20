@@ -23,9 +23,6 @@ from omnimarket.models.work_state_projection import ModelWorkStateResult
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     work_state_from_payload,
 )
-from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_adapters import (
-    LocalOwnerReader,
-)
 from omnimarket.nodes.node_work_state_projection_scheduled_effect.handlers.handler_work_state_projection_scheduled import (
     HandlerWorkStateProjectionScheduled,
 )
@@ -143,10 +140,8 @@ def test_golden_state_home_unset_validates() -> None:
     assert schedule().state_home is None
 
 
-def test_seam_the_fill_and_the_floor_read_what_the_state_home_run_wrote(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Seam with the lab fill (reads OMNI_HOME-relative) and the floor (validates the payload): a reader whose home is the state home finds the file."""
+def test_seam_the_floor_reads_what_the_state_home_run_wrote(tmp_path: Path) -> None:
+    """Seam with the floor (validates the payload): the file the state home run wrote is the projection the floor reads."""
     now = datetime.now(UTC).replace(microsecond=0)
     state_home = tmp_path / "state"
     _seed_watcher(state_home)
@@ -190,7 +185,3 @@ def test_seam_the_fill_and_the_floor_read_what_the_state_home_run_wrote(
         json.loads(written.read_text(encoding="utf-8"))
     )
     assert isinstance(projection, ModelWorkStateResult)
-    monkeypatch.setenv("OMNI_HOME", str(state_home))
-    monkeypatch.delenv("ONEX_WORK_STATE_PATH", raising=False)
-    owners = LocalOwnerReader().work_state_owners("", 1800.0)
-    assert owners == {"ZEP-7": ["seam-lane"]}

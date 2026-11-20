@@ -98,8 +98,6 @@ def test_to_build_nodes_are_not_built_yet_and_private_nodes_are_not_in_omnimarke
         else:
             assert (NODES / item["host_node"] / "contract.yaml").is_file()
     for node in workflow["private_nodes_to_move"]:
-        if node == "node_idle_slot_fill_effect":
-            continue  # the omnimarket node exists; only the private copy's scope reads move
         assert not (NODES / node).exists(), f"{node} already moved: list it as a step"
 
 

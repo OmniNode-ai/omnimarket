@@ -117,7 +117,6 @@ private_nodes_to_move:
   - node_landing_green_requeue_compute
   - node_cause_result_read_effect
   - node_landing_pool_capacity_compute
-  - node_idle_slot_fill_effect  # its repo-scope reads move into the omnimarket node of the same name
   - node_landing_push_refusal_effect
   - node_landing_worker_publish_effect
   - node_tick_read_budget_compute

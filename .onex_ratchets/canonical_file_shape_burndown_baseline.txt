@@ -111,7 +111,6 @@ src/omnimarket/nodes/node_hook_chain_probe_effect/__main__.py
 src/omnimarket/nodes/node_host_thermal_observe_effect/handlers/handler_host_thermal_report.py
 src/omnimarket/nodes/node_hostile_reviewer_orchestrator/handlers/handler_delegation_review_inference.py
 src/omnimarket/nodes/node_house_routing_overlay_effect/publish_house_overlay_command.py
-src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_ruling_recovery.py
 src/omnimarket/nodes/node_install_superset_guard_effect/handlers/handler_install_superset_cli.py
 src/omnimarket/nodes/node_integration_test_runner/cli.py
 src/omnimarket/nodes/node_intelligence_reducer/handlers/handler_pattern_lifecycle.py

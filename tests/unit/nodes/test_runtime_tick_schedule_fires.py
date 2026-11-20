@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-20867: lab-fill, the hourly tick and the merge-throughput tick run from the runtime tick.
+"""OMN-20867: the hourly tick and the merge-throughput tick run from the runtime tick.
 
 Each decision node routes platform.runtime-tick to a pure handler that gates on the interval
 its contract declares: the tick that opens a window publishes that window's fire on the node's
@@ -45,15 +45,6 @@ TICK_MS = 1000
 
 # node, contract config key, handler module, handler class, workflow, interval, offset
 SCHEDULED = (
-    (
-        "node_lab_fill_plan_compute",
-        "lab_fill_plan",
-        "handler_lab_fill_scheduled_fire",
-        "HandlerLabFillScheduledFire",
-        "lab-fill",
-        1200,
-        600,
-    ),
     (
         "node_hourly_tick_decision_compute",
         "hourly_tick_decision",
@@ -279,8 +270,8 @@ def _payload(raw: bytes) -> dict[str, Any]:
 async def test_runtime_tick_boot_publishes_one_fire_per_node_on_its_terminal_topic() -> (
     None
 ):
-    # 06:00:00Z opens the throughput window (offset 0) only; 06:10Z opens lab-fill (offset
-    # 600) and throughput; 06:15Z opens the hourly tick (offset 900).
+    # 06:00:00Z opens the throughput window (offset 0) only; 06:10Z opens throughput
+    # (offset 600); 06:15Z opens the hourly tick (offset 900).
     ticks = [
         _window(0),
         _window(1),
@@ -296,7 +287,6 @@ async def test_runtime_tick_boot_publishes_one_fire_per_node_on_its_terminal_top
     }
     fires = {node: sorted(p["fire_id"] for p in rows) for node, rows in by_node.items()}
     assert fires == {
-        "node_lab_fill_plan_compute": ["lab-fill-20261010T061000Z"],
         "node_hourly_tick_decision_compute": ["hourly-tick-20261010T061500Z"],
         "node_throughput_tick_decision_compute": [
             "throughput-tick-20261010T060000Z",

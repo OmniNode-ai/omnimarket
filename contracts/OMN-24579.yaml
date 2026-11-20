@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-24579
+title: Remove the unused copies of the factory job-filling step from the main code repository
+summary: 'This repository held three copies of the lab fill (node_lab_fill_effect, node_lab_fill_selection_compute, node_lab_fill_plan_compute) and a copy of the idle slot fill (node_idle_slot_fill_effect) that no live runner uses: the hourly throughput tick runs the internal idle slot fill. This change removes the four nodes with their tests, their pyproject entry points, their landing workflow inventory entry, their pre-commit file pattern, their routing source inventory sites and the declaration of the lab-fill-tick launchd unit (and its test) from node_host_installer_registry_units. Kept on purpose: node_floor_fill_orchestrator; node_lab_fill_orchestrator (the code eval trial orchestrator imports its host readings handler); node_lab_fill_launcher_effect and node_lab_fill_fire_outcome_compute (the host morning tick runs the launcher with python -m to judge a lab fill fire, and the launcher calls the fire outcome judge in process); the shared lab fill tickets rules handler (rules_lab_fill_tickets) and the shared lab_fill models.'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24579-one-fill-copy
+  statement: Exactly one copy of the job-filling step is run by an installed unit or a tick, the internal idle slot fill the hourly throughput tick imports; the unused copies in this repository are removed and nothing here declares a unit that runs them.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: no source, test, overlay key or unit declaration of the lab fill nodes (node_lab_fill_effect, node_lab_fill_selection_compute, node_lab_fill_plan_compute) and of the idle slot fill copy in this repository (node_idle_slot_fill_effect) remains in the repository -- falsifier: test ! -e src/omnimarket/nodes/node_lab_fill_effect fails while the directory exists'
+  - id: AC2
+    statement: 'AC2: integrated: the count of fill copies that an installed unit or tick runs reads one on the lab host holding the registry root -- falsifier: the count reads two, because a unit or tick still runs a second fill copy, or zero, because the internal fill the hourly tick imports no longer loads'
+evidence_requirements:
+- kind: tests
+  description: 'The tests of the surviving modules that referenced a removed node, the registry units tests and the shared lab fill rules tests at the pushed head; the removed directories are absent.'
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_installer_registry_units tests/unit/handlers/test_rules_lab_fill_tickets_criteria_unread.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24579-ac1-removed
+  description: 'The four removed node directories and the removed unit test are gone, the unit declaration is gone from the registry units contract, and the shared modules the live tick imports still import.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: test ! -e src/omnimarket/nodes/node_lab_fill_effect && test ! -e src/omnimarket/nodes/node_lab_fill_selection_compute && test ! -e src/omnimarket/nodes/node_lab_fill_plan_compute && test ! -e src/omnimarket/nodes/node_idle_slot_fill_effect && test ! -e tests/nodes/node_host_installer_registry_units/test_lab_fill_tick_unit.py && ! grep -q "lab-fill-tick" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml && env -u PYTHONPATH uv run --frozen python -c "import omnimarket.nodes.node_floor_fill_orchestrator, omnimarket.handlers.rules_lab_fill_tickets, omnimarket.models.lab_fill"
+    cwd: .
+- id: dod-omn24579-ac1-registry-units
+  description: 'The registry units tests pass, and the new test fails while the lab-fill-tick unit is declared or a removed fill node directory exists.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_no_lab_fill_tick_unit.py tests/nodes/node_host_installer_registry_units/test_registry_units.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24579-ac2-integration-proof
+  description: 'The registry units run on a lab host at the pushed head; hosted CI cannot reach the lab host holding the registry root, so only the local Done gate runs this unbound check. The hosted AC2 control is dod-omn24579-ac1-registry-units, which fails while a second fill unit is declared; the AC2 host reading is taken after the change deploys.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24579 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units -q --no-cov'
+    cwd: .

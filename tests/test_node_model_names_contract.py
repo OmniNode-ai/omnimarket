@@ -28,7 +28,6 @@ DECLARED: dict[str, dict[str, str]] = {
 }
 
 SLICE_FILES = (
-    "nodes/node_idle_slot_fill_effect/handlers/handler_idle_slot_fill.py",
     "nodes/node_lane_brief_parse_compute/handlers/handler_lane_brief_parse.py",
     "nodes/node_thread_reply_effect/handlers/handler_thread_reply.py",
 )

@@ -33,7 +33,6 @@ rows:
   - {node: node_work_ledger_query_effect, protocols: [BUS, LED, CLK]}
   - {node: node_dev_cause_lane_receiver_effect, protocols: [BUS, LED, HST, CLK]}
   - {node: node_remote_lane_effect, protocols: [CHG, CLK]}
-  - {node: node_idle_slot_fill_effect, protocols: [BKL, LED, CHG, HST, SRC, BUS, CLK]}
   - {node: node_lane_placement_recovery_effect, protocols: [HST, STO, SRC, LED, CLK]}
   - {node: node_adoption_recovery_effect, protocols: [LED, CHG, BUS, SRC, STO, HST, CLK]}
 concrete_bindings:

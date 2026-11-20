@@ -357,16 +357,14 @@ rows:
   lines: 1088-1094
   class: exists
   where: private
-  maps_to: repo-scope reads of the private node_idle_slot_fill_effect (move into the omnimarket node of the same name, which lacks them)
-  nodes:
-  - node_idle_slot_fill_effect
+  maps_to: repo-scope reads of the private node_idle_slot_fill_effect (they stay in the private node; the omnimarket copy was removed, OMN-24579)
+  nodes: []
 - function: Snapshot._apply_goal_scope
   lines: 1096-1098
   class: exists
   where: private
-  maps_to: repo-scope reads of the private node_idle_slot_fill_effect (move into the omnimarket node of the same name, which lacks them)
-  nodes:
-  - node_idle_slot_fill_effect
+  maps_to: repo-scope reads of the private node_idle_slot_fill_effect (they stay in the private node; the omnimarket copy was removed, OMN-24579)
+  nodes: []
 - function: Snapshot.node_fixer_hold
   lines: 1100-1105
   class: exists
@@ -764,9 +762,8 @@ rows:
   lines: 2492-2507
   class: exists
   where: private
-  maps_to: repo-scope reads of the private node_idle_slot_fill_effect (move into the omnimarket node of the same name, which lacks them)
-  nodes:
-  - node_idle_slot_fill_effect
+  maps_to: repo-scope reads of the private node_idle_slot_fill_effect (they stay in the private node; the omnimarket copy was removed, OMN-24579)
+  nodes: []
 - function: _raw_result
   lines: 2510-2515
   class: exists
