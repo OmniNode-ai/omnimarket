@@ -19,14 +19,14 @@ input_model:
   module: omnimarket.nodes.node_sprint_closer_effect.models.model_sprint_closer
   description: Everything the eligibility rule reads about one ticket.
 output_model:
-  name: ModelTicketDecision
+  name: ModelEligibility
   module: omnimarket.nodes.node_sprint_closer_effect.models.model_sprint_closer
-  description: The verdict, the action (set Done, evidence comment, missing comment, no change) and the comment.
+  description: The verdict for one ticket; the action and comment are rendered from it by HandlerSprintCloser.
 handler:
-  module: omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer
-  class: HandlerSprintCloser
+  module: omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer_eligibility
+  class: HandlerSprintCloserEligibility
   input_model: omnimarket.nodes.node_sprint_closer_effect.models.model_sprint_closer.ModelTicketEvidence
-  output_model: omnimarket.nodes.node_sprint_closer_effect.models.model_sprint_closer.ModelTicketDecision
+  output_model: omnimarket.nodes.node_sprint_closer_effect.models.model_sprint_closer.ModelEligibility
 dependencies:
   - name: omnimarket.nodes.node_dod_verify
     dependency_type: internal
