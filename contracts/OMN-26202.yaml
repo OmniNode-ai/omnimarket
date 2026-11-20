@@ -1,0 +1,49 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-26202"
+title: "The code graph answers where a node, its contract, overlay and workflows live"
+summary: "The code graph lookup gains a locate question. The index stores, per repository version, each node's directory, contract.yaml, metadata.yaml, overlay.yaml or overlay.example.yaml and the workflow files that name its package, through the overlay's existing contract_globs and command_globs. Memgraph and the file store answer it alike from the same stored version."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26202-locate"
+    statement: |-
+      The code graph answers where a named node, its contract, overlay and workflow files live, from the stored version.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the code graph answers where a named node, its contract.yaml, its overlay.yaml and the workflow files that name it live, from the stored version and not from a file read -- falsifier: uv run pytest on the new omnimarket lookup tests fails red on origin/main (no such question) and passes green on the branch
+evidence_requirements:
+  - kind: "tests"
+    description: "The locate tests: the answer by node name, contract path and workflow path, the not-indexed reason, the git-clone path and the Memgraph and file-store equality."
+    command: "uv run pytest tests/nodes/node_code_graph_effect/test_code_graph_locate.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26202-ac1-locate"
+    description: "The locate tests pass on the branch; at the merge base the question does not exist, so the file fails at its first locate command. The Memgraph and file-store answers are pinned equal per target."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_code_graph_effect/test_code_graph_locate.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26202-integration-proof"
+    description: >-
+      Run the locate tests on a lab host at the pushed revision. This local completion proof carries no hosted AC bindings.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-26202 --kind test --
+          env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+          tests/nodes/node_code_graph_effect/test_code_graph_locate.py
+          tests/nodes/node_code_graph_effect/test_code_graph_memgraph.py
+          -q -n 0 --no-cov --refuse-skips
+        cwd: "."
