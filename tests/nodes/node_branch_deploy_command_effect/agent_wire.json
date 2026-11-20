@@ -1,5 +1,5 @@
 {
- "source": "deploy_agent.events.ModelRebuildRequested and deploy_agent.auth.compute_signature of omnibase_infra dev d3d941b6ae9e; also reads omnibase_infra branch omn-24216-overlay-ref-nodes head 625d3168776e4c26a6ddcfc9c4981cb61588d8ef (events.py ModelRebuildRequested.overlay_ref)",
+ "source": "deploy_agent.events.ModelRebuildRequested and deploy_agent.auth.compute_signature of omnibase_infra dev d3d941b6ae9e; also reads omnibase_infra branch omn-24216-overlay-ref-nodes head 625d3168776e4c26a6ddcfc9c4981cb61588d8ef (events.py ModelRebuildRequested.overlay_ref); sibling_tags and its key and value patterns read from omnibase_infra dev 1f5f40f80b2d2cf5f60787b661b0ff27d81724e0 (events.py ModelRebuildRequested.sibling_tags, OMN-21485)",
  "rebuild_requested_fields": [
   "build_source",
   "correlation_id",
@@ -13,7 +13,8 @@
   "rollback",
   "runtime_lane",
   "scope",
-  "services"
+  "services",
+  "sibling_tags"
  ],
  "rollback_fields": [
   "actor",
@@ -27,6 +28,8 @@
  ],
  "open_pr_pattern": "^([a-z][a-z0-9_]*#[1-9][0-9]*@[0-9a-f]{40})?$",
  "overlay_ref_pattern": "^([0-9a-f]{40})?$",
+ "sibling_tags_key_pattern": "^[a-z][a-z0-9_]*$",
+ "sibling_tags_value_pattern": "^dev-[0-9]{14}-[0-9a-f]{12}$",
  "signature_vector": {
   "secret": "fixture-key",
   "envelope": {

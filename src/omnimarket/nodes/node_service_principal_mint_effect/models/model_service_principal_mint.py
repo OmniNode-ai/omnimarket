@@ -12,8 +12,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.models.broker_acl_reconcile import validate_superuser_env_file
 from omnimarket.models.secret_store.model_secret_store_overlay import (
     ModelSecretStoreOverlay,
 )
@@ -29,8 +30,15 @@ class ModelServicePrincipalBroker(BaseModel):
     compose_project: str = Field(min_length=1)
     broker_container: str = Field(min_length=1)
     superuser_source_container: str = Field(min_length=1)
+    #: Env file on the broker host the credential is read from; unset means the permission tool's default.
+    superuser_env_file: str | None = Field(default=None, min_length=1)
     ssh_target: str = Field(min_length=1)
     mechanism: str = Field(min_length=1)
+
+    @field_validator("superuser_env_file")
+    @classmethod
+    def _superuser_env_file_is_a_declarable_path(cls, value: str | None) -> str | None:
+        return None if value is None else validate_superuser_env_file(value)
 
 
 class ModelServicePrincipalDelivery(BaseModel):

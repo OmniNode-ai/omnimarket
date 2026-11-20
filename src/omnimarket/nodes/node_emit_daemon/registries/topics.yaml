@@ -1104,6 +1104,18 @@ events:
     partition_key_field: criterion
     required_fields: [run_id, verdict, conclusion, criterion]
 
+  # Host job claim run (OMN-25093): one record per run of node_host_job_claim_compute's host tick (hourly on each lab host). Carries
+  # the host, its role, the verdict, each finding (kind, job id, extra unit, owner unit) and the correlation id; unit names only,
+  # never a unit file's command text, an environment value or a credential.
+  host_job_claim.run_completed:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.host-job-claim-run-completed.v1"
+        tier: telemetry
+        description: "Host job claim run: host, role, verdict and each finding by unit name; no unit command text"
+    partition_key_field: host
+    required_fields: [host, verdict, correlation_id]
+
   # Lab proof judge use (OMN-23642): one record each time the judge applies its declared not-applicable class to a change, or refuses
   # a change that qualifies but has no substitute proof. Carries the repository, pull request, head, class, outcome, node names and
   # substitute receipt ids; no code, no log text, no credential.

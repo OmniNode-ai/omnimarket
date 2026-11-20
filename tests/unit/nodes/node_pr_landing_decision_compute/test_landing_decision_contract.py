@@ -127,3 +127,18 @@ def test_every_brief_class_has_fixed_text() -> None:
             push_rule="push however you like",
             **base,
         )
+
+
+@pytest.mark.unit
+def test_contract_declares_the_top_level_terminal_event_run_node_polls() -> None:
+    """`onex run-node` reads only the top-level `terminal_event`; it must name the
+    success terminal that `runtime_dispatch.terminal_events` declares."""
+    from omnibase_core.dispatch.dispatch_bus_client import load_dispatch_bus_route
+
+    contract_path = NODE_DIR / "contract.yaml"
+    contract = yaml.safe_load(contract_path.read_text())
+    dispatch = contract["runtime_dispatch"]
+    assert contract["terminal_event"] == dispatch["terminal_events"]["success"]
+    assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
+    route = load_dispatch_bus_route(contract_path)
+    assert route.terminal_topic == contract["terminal_event"]

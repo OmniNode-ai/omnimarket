@@ -92,3 +92,34 @@ async def test_failing_control_renamed_rollback_key_is_detected() -> None:
     renamed = dict(envelope)
     renamed["rollbak"] = renamed.pop("rollback")
     assert not _is_subset(renamed, wire["rebuild_requested_fields"])
+
+
+async def _published_tag_departure_envelope() -> dict[str, Any]:
+    """The envelope the handler publishes for a tag departure, straight off the fake bus."""
+    bus = FakeBus()
+    handler = HandlerBranchDeployCommand(event_bus=bus, overlay=overlay())
+    await handler.handle(
+        request(
+            form="tag_departure",
+            pr_number=None,
+            sibling_tags={"omnimarket": "dev-20261115093000-0123456789ab"},
+        )
+    )
+    return json.loads(bus.published[0][2])
+
+
+async def test_tag_departure_envelope_keys_are_in_rebuild_requested_fields() -> None:
+    """OMN-19998: sibling_tags rides in the agent's own field list with the agent's key and value shapes.
+
+    Failing control: drop sibling_tags from the fixture's field list (agent_wire.json) and this test is red.
+    """
+    wire = _wire()
+    envelope = await _published_tag_departure_envelope()
+    assert _is_subset(envelope, wire["rebuild_requested_fields"])
+    for field in wire["required_fields"]:
+        assert field in envelope
+    assert "open_pr" not in envelope
+    assert envelope["sibling_tags"]
+    for repo, tag in envelope["sibling_tags"].items():
+        assert re.fullmatch(wire["sibling_tags_key_pattern"], repo)
+        assert re.fullmatch(wire["sibling_tags_value_pattern"], tag)

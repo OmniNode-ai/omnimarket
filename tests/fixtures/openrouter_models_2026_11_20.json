@@ -1,0 +1,376 @@
+{
+  "captured_at": "2026-11-20T05:44:30.084164+00:00",
+  "http_status": 200,
+  "source": "https://openrouter.ai/api/v1/models",
+  "data": [
+    {
+      "id": "nvidia/nemotron-3.5-super-vl:free",
+      "canonical_slug": "nvidia/nemotron-3.5-super-vl-20261015",
+      "hugging_face_id": "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16",
+      "name": "NVIDIA: Nemotron 3.5 Super VL (free)",
+      "created": 1792076662,
+      "description": "NVIDIA Nemotron 3.5 Super VL is an open multimodal mixture-of-experts model from NVIDIA, with 12B active parameters out of 120B total. It takes text, images, documents, GUI screenshots, and video...",
+      "context_length": 1000000,
+      "architecture": {
+        "modality": "text+image+video->text",
+        "input_modalities": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 1000000,
+        "max_completion_tokens": 131072,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "response_format",
+        "seed",
+        "structured_outputs",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_p"
+      ],
+      "default_parameters": {},
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/nvidia/nemotron-3.5-super-vl-20261015/endpoints"
+      },
+      "endpoints": [
+        "/api/v1/chat/completions",
+        "/api/v1/completions",
+        "/api/v1/messages",
+        "/api/v1/responses"
+      ],
+      "benchmarks": {
+        "design_arena": [
+          {
+            "arena": "agents",
+            "category": "pdf",
+            "elo": 1002,
+            "win_rate": 30.4,
+            "rank": 43
+          },
+          {
+            "arena": "models",
+            "category": "3d",
+            "elo": 1103,
+            "win_rate": 29.8,
+            "rank": 89
+          },
+          {
+            "arena": "models",
+            "category": "codecategories",
+            "elo": 1132,
+            "win_rate": 32.1,
+            "rank": 96
+          },
+          {
+            "arena": "models",
+            "category": "dataviz",
+            "elo": 1081,
+            "win_rate": 25.8,
+            "rank": 111
+          },
+          {
+            "arena": "models",
+            "category": "gamedev",
+            "elo": 1075,
+            "win_rate": 27.6,
+            "rank": 107
+          },
+          {
+            "arena": "models",
+            "category": "uicomponent",
+            "elo": 1145,
+            "win_rate": 31.9,
+            "rank": 87
+          },
+          {
+            "arena": "models",
+            "category": "website",
+            "elo": 1152,
+            "win_rate": 34.4,
+            "rank": 95
+          }
+        ],
+        "artificial_analysis": {
+          "intelligence_index": 13.6,
+          "coding_index": null,
+          "agentic_index": null,
+          "finance_and_accounting_index": 26.7,
+          "strategy_and_ops_index": 21.8,
+          "legal_index": 25.3,
+          "healthcare_and_medical_index": 21,
+          "engineering_index": 23.5,
+          "economics_index": 26.1,
+          "cyber_index": null,
+          "openness_index": 83.3,
+          "multilingual_index": null,
+          "decision_index": null
+        }
+      },
+      "reasoning": {
+        "mandatory": false
+      }
+    },
+    {
+      "id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "canonical_slug": "nvidia/nemotron-3-ultra-550b-a55b-20260604",
+      "hugging_face_id": "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+      "name": "NVIDIA: Nemotron 3 Ultra (free)",
+      "created": 1780551208,
+      "description": "NVIDIA Nemotron 3 Ultra is an open frontier-reasoning and orchestration model from NVIDIA, with 55B active parameters out of 550B total (MoE). Built on a hybrid Transformer-Mamba mixture-of-experts architecture, it...",
+      "context_length": 1000000,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 1000000,
+        "max_completion_tokens": 65536,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "reasoning_effort",
+        "seed",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": null,
+        "frequency_penalty": null,
+        "presence_penalty": null,
+        "repetition_penalty": null
+      },
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/nvidia/nemotron-3-ultra-550b-a55b-20260604/endpoints"
+      },
+      "endpoints": [
+        "/api/v1/chat/completions",
+        "/api/v1/completions",
+        "/api/v1/messages",
+        "/api/v1/responses"
+      ],
+      "benchmarks": {
+        "design_arena": [
+          {
+            "arena": "agents",
+            "category": "pdf",
+            "elo": 1107,
+            "win_rate": 35.5,
+            "rank": 39
+          },
+          {
+            "arena": "models",
+            "category": "3d",
+            "elo": 1097,
+            "win_rate": 37.9,
+            "rank": 91
+          },
+          {
+            "arena": "models",
+            "category": "asciiart",
+            "elo": 1080,
+            "win_rate": 36.3,
+            "rank": 68
+          },
+          {
+            "arena": "models",
+            "category": "codecategories",
+            "elo": 1125,
+            "win_rate": 35.3,
+            "rank": 101
+          },
+          {
+            "arena": "models",
+            "category": "dataviz",
+            "elo": 1136,
+            "win_rate": 37.2,
+            "rank": 90
+          },
+          {
+            "arena": "models",
+            "category": "gamedev",
+            "elo": 1116,
+            "win_rate": 35.3,
+            "rank": 91
+          },
+          {
+            "arena": "models",
+            "category": "svg",
+            "elo": 1055,
+            "win_rate": 31.9,
+            "rank": 81
+          },
+          {
+            "arena": "models",
+            "category": "uicomponent",
+            "elo": 1120,
+            "win_rate": 35.1,
+            "rank": 98
+          },
+          {
+            "arena": "models",
+            "category": "website",
+            "elo": 1125,
+            "win_rate": 34.3,
+            "rank": 106
+          }
+        ],
+        "artificial_analysis": {
+          "intelligence_index": 11.8,
+          "coding_index": null,
+          "agentic_index": null,
+          "finance_and_accounting_index": 24.2,
+          "strategy_and_ops_index": 15.3,
+          "legal_index": 22.6,
+          "healthcare_and_medical_index": 18,
+          "engineering_index": 22.8,
+          "economics_index": 24.1,
+          "cyber_index": 13.1,
+          "openness_index": 83.3,
+          "multilingual_index": null,
+          "decision_index": null
+        }
+      },
+      "reasoning": {
+        "mandatory": false,
+        "default_enabled": true,
+        "supports_max_tokens": true,
+        "supported_efforts": [
+          "high",
+          "medium",
+          "none"
+        ],
+        "default_effort": "high"
+      }
+    },
+    {
+      "id": "google/gemma-4-31b-it:free",
+      "canonical_slug": "google/gemma-4-31b-it-20260402",
+      "hugging_face_id": "google/gemma-4-31B-it",
+      "name": "Google: Gemma 4 31B (free)",
+      "created": 1775148486,
+      "description": "Gemma 4 31B Instruct is Google DeepMind's 30.7B dense multimodal model supporting text and image input with text output. Features a 256K token context window, configurable thinking/reasoning mode, native function...",
+      "context_length": 262144,
+      "architecture": {
+        "modality": "text+image+video->text",
+        "input_modalities": [
+          "image",
+          "text",
+          "video"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Gemma",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 262144,
+        "max_completion_tokens": 32768,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "response_format",
+        "seed",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": 64,
+        "frequency_penalty": null,
+        "presence_penalty": null,
+        "repetition_penalty": null
+      },
+      "supported_voices": null,
+      "knowledge_cutoff": null,
+      "expiration_date": null,
+      "links": {
+        "details": "/api/v1/models/google/gemma-4-31b-it-20260402/endpoints"
+      },
+      "endpoints": [
+        "/api/v1/chat/completions",
+        "/api/v1/completions",
+        "/api/v1/messages",
+        "/api/v1/responses"
+      ],
+      "benchmarks": {
+        "design_arena": [],
+        "artificial_analysis": {
+          "intelligence_index": 4.4,
+          "coding_index": null,
+          "agentic_index": null,
+          "finance_and_accounting_index": 8.2,
+          "strategy_and_ops_index": 6.9,
+          "legal_index": 7.3,
+          "healthcare_and_medical_index": null,
+          "engineering_index": 11.9,
+          "economics_index": 9.5,
+          "cyber_index": null,
+          "openness_index": 38.9,
+          "multilingual_index": null,
+          "decision_index": null
+        }
+      },
+      "reasoning": {
+        "mandatory": false,
+        "default_enabled": false
+      }
+    }
+  ],
+  "captured_total_models": 477,
+  "selection": "Declared OpenRouter models and onboarding defaults; other rows omitted. cohere/north-mini-code:free and nvidia/nemotron-3-super-120b-a12b:free were absent from the full list (OMN-26129)."
+}

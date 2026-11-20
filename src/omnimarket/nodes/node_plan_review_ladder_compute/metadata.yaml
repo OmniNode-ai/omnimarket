@@ -7,8 +7,7 @@ entry_points:
     node_plan_review_ladder_compute: "omnimarket.nodes.node_plan_review_ladder_compute"
 capabilities:
   standalone: true
-  # false until a caller publishes the command: the decision runs in process.
-  full_runtime: false
+  full_runtime: true
   requires_network: false
   requires_repo: false
   requires_secrets: false

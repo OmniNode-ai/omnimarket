@@ -1,0 +1,97 @@
+schema_version: 1.0.0
+ticket_id: OMN-25531
+title: The landing review gate holds a head only for a finding that names a failing check or cites a code line, and passes the rest as post-merge follow-ups
+summary: The landing review gate read only the recorded verdict (CLEAN or CHANGES_NEEDED) of the exact head, so every finding held the head as review_changes_needed. A verdict row now carries typed findings. A pure classifier marks a finding blocking when it names a failing check or cites a file and line with a defect, and advisory otherwise. The shared read_head_review holds a CHANGES_NEEDED head for a blocking finding or for no listed finding at all, and passes a head whose findings are all advisory, carrying them for post-merge follow-up. The ledger facts deriver reads a finding cell of reviewer STATUS rows onto the verdict row. Running proof stays the done gate and is not touched. Not in this change - the verdict producers that write the finding cell, any workflow, any required-check list.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25531-finding-class
+  statement: A review finding holds a merge only when it names a failing check or cites a file and line with a defect; every other finding is a post-merge follow-up.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a pure classifier marks a review finding blocking only when it names a failing check or cites a file and line with a defect, and marks every other finding advisory, including one that asks for installed= or observed= proof -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_review_finding_class.py -q fails before the change and passes after"
+  - id: AC2
+    statement: "AC2: read_review_gate reads PASS for a head whose newest verdict is CHANGES_NEEDED with only advisory findings, CHANGES_NEEDED when any finding is blocking, and CHANGES_NEEDED when the verdict row lists no findings at all -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_review_gate.py -q -k finding_class fails before the change and passes after"
+  - id: AC3
+    statement: "AC3: the ledger facts carry the findings of a reviewer STATUS row into its verdict row, so the gate can classify them -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_ledger_facts_compute -q -k finding fails before the change and passes after"
+  - id: AC4
+    statement: "AC4: the reading of a passed head returns its advisory findings so each one can be filed as a post-merge follow-up, and nothing in the change makes running proof a merge gate or drops it as the done gate -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_review_gate.py -q -k advisory_followup fails before the change and passes after"
+  - id: AC5
+    statement: "AC5: no CI check is widened: the change edits no workflow and no required-check list -- falsifier: git diff --name-only origin/dev -- .github config | grep -c required prints 0"
+  - id: AC6
+    statement: "AC6: integrated: the landing decision on the running Mac install, given a new-work head whose only changes-needed findings are advisory, reads pass with the advisory count, and for a head with a blocking finding reads review_changes_needed -- falsifier: the controller decisions record shows review_changes_needed for a head whose findings are all advisory"
+evidence_requirements:
+- kind: tests
+  description: The classifier, the gate and the ledger facts tests at the pushed head; the finding tests fail against the source before this change.
+  command: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_review_finding_class.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_review_gate.py tests/unit/nodes/node_pr_landing_ledger_facts_compute -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25531-ac1-classifier
+  description: 'AC1: the classifier test file passes with the change; before it the module under test does not exist and the file fails to import.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_review_finding_class.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25531-ac2-gate
+  description: 'AC2: the gate reads PASS for all-advisory findings, CHANGES_NEEDED for any blocking finding and for no listed finding; the finding_class tests fail against the gate before the change.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_review_gate.py -q -n 0 --no-cov -p no:cacheprovider -k finding_class
+    cwd: .
+- id: dod-omn25531-ac3-ledger-facts
+  description: 'AC3: a reviewer STATUS row finding cell reaches its verdict row; a malformed cell reads as no finding.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_ledger_facts_compute -q -n 0 --no-cov -p no:cacheprovider -k finding
+    cwd: .
+- id: dod-omn25531-ac4-advisory-followup
+  description: 'AC4: a passed head returns its advisory findings; running proof is not read as a merge gate.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_review_gate.py -q -n 0 --no-cov -p no:cacheprovider -k advisory_followup
+    cwd: .
+- id: dod-omn25531-ac5-no-ci-widening
+  description: 'AC5: the diff against the base edits no workflow, no .github file and no required-check list; the grep count must read 0. The test file is the classifier test the change adds.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: test "$(git diff --name-only origin/dev...HEAD -- .github config | grep -c required)" = 0
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_review_finding_class.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25531-ac6-hosted-proxy
+  description: 'hosted proxy for AC6: decide_landing lands an all-advisory new-work head and holds a blocking one with review_changes_needed. The read on the running Mac install is the open item below.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_review_gate.py -q -n 0 --no-cov -p no:cacheprovider -k finding_class_the_decision
+    cwd: .
+- id: dod-omn25531-integration-proof
+  description: 'AC6 integrated read, OPEN after merge: the landing decision on the running Mac install, given a new-work head whose only changes-needed findings are advisory, reads pass with the advisory count, and for a head with a blocking finding reads review_changes_needed; the controller decisions record is read for it. This local check runs the decision tests on a lab host at the pushed head as a proxy and does not claim the Mac read.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25531 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_review_gate.py -q --no-cov -p no:randomly -k finding_class
+    cwd: .
