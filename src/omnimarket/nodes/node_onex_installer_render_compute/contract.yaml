@@ -12,7 +12,7 @@ contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 node_type: compute
 lifecycle: experimental
-runtime_profiles: [main]
+runtime_profiles: []
 
 description: >
   Renders the Bash installer for the customer package omninode-onex from the package name and version, the Python
@@ -24,6 +24,7 @@ handler:
   module: omnimarket.nodes.node_onex_installer_render_compute.handlers.handler_onex_installer_render
   class: HandlerOnexInstallerRender
   input_model: omnimarket.nodes.node_onex_installer_render_compute.models.model_onex_installer.ModelOnexInstallerRequest
+  output_model: omnimarket.nodes.node_onex_installer_render_compute.models.model_onex_installer.ModelOnexInstallerResult
 
 handler_routing:
   routing_strategy: operation_match
@@ -35,9 +36,17 @@ handler_routing:
       input_model: omnimarket.nodes.node_onex_installer_render_compute.models.model_onex_installer.ModelOnexInstallerRequest
       output_model: omnimarket.nodes.node_onex_installer_render_compute.models.model_onex_installer.ModelOnexInstallerResult
 
+# Called directly, never over the bus: the release workflow pipes installer.json into the runtime module.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: The release workflow pipes packages/omninode-onex/installer.json into runtime_onex_installer_render.
+
 descriptor:
   node_archetype: compute
   purity: pure
+  runtime_profiles: []
   idempotent: true
   timeout_ms: 2000
 
@@ -49,3 +58,8 @@ output_model:
   name: ModelOnexInstallerResult
   module: omnimarket.nodes.node_onex_installer_render_compute.models.model_onex_installer
   description: The installer script and its sha256.
+
+metadata:
+  transport_type: local
+  author: OmniNode Team
+  tags: [compute, onex-installer-render-compute]

@@ -4,8 +4,8 @@
 
 The request carries every value the customer installer pins: the customer
 package and its version, the Python it installs under, the launchers it must
-leave on PATH, and the uv release it bootstraps with the sha256 of each
-platform archive. Each field is checked here, so a malformed release input is
+leave on PATH, the uv release it bootstraps with the sha256 of each
+platform archive, and the download and support URLs. Each field is checked here, so a malformed release input is
 refused before any script text exists.
 """
 
@@ -28,6 +28,9 @@ _NUMERIC_VERSION = re.compile(r"^[0-9]+(\.[0-9]+)+$")
 _PYTHON = re.compile(r"^3\.[0-9]+$")
 _LAUNCHER = re.compile(r"^[a-z][a-z0-9-]*$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+# An https URL with no trailing slash, no quote, no space and no shell
+# expansion, so it can sit inside a double-quoted Bash assignment.
+_HTTPS_URL = re.compile(r"^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~-]+)*$")
 
 
 class ModelOnexInstallerRequest(BaseModel):
@@ -47,6 +50,12 @@ class ModelOnexInstallerRequest(BaseModel):
     )
     uv_sha256: dict[str, str] = Field(
         description="sha256 of uv-<target>.tar.gz for each supported target."
+    )
+    uv_download_base_url: str = Field(
+        description="Base of the uv release downloads, without a trailing slash."
+    )
+    support_url: str = Field(
+        description="Where the installer tells a customer to report a failure."
     )
 
     @field_validator("package")
@@ -84,6 +93,16 @@ class ModelOnexInstallerRequest(BaseModel):
     def _uv_version(cls, value: str) -> str:
         if not _NUMERIC_VERSION.match(value):
             raise ValueError(f"uv version {value!r} is not numeric")
+        return value
+
+    @field_validator("uv_download_base_url", "support_url")
+    @classmethod
+    def _https_url(cls, value: str) -> str:
+        if not _HTTPS_URL.match(value):
+            raise ValueError(
+                f"{value!r} is not an https URL without a trailing slash, quote,"
+                " space or shell expansion"
+            )
         return value
 
     @field_validator("uv_sha256")

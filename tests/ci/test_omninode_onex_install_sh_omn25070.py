@@ -325,6 +325,7 @@ def test_a_launcher_another_tool_owns_is_left_alone(tmp_path: Path) -> None:
 
 
 @pytest.mark.e2e
+@pytest.mark.release_proof
 def test_install_reinstall_and_upgrade_for_real(tmp_path: Path) -> None:
     """Real network: pinned uv from GitHub, packages from PyPI.
 

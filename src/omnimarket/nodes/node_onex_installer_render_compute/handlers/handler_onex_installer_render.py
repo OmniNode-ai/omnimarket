@@ -67,8 +67,8 @@ ONEX_PYTHON="@PYTHON@"
 ONEX_LAUNCHERS="@LAUNCHERS@"
 UV_VERSION="@UV_VERSION@"
 UV_MIN_VERSION="@UV_MIN_VERSION@"
-UV_DEFAULT_BASE_URL="https://github.com/astral-sh/uv/releases/download"
-SUPPORT_URL="https://omninode.ai"
+UV_DEFAULT_BASE_URL="@UV_DOWNLOAD_BASE_URL@"
+SUPPORT_URL="@SUPPORT_URL@"
 
 TMP_DIR=""
 
@@ -380,6 +380,8 @@ class HandlerOnexInstallerRender:
             "@LAUNCHERS@": " ".join(request.launchers),
             "@UV_VERSION@": request.uv_version,
             "@UV_MIN_VERSION@": request.uv_min_version,
+            "@UV_DOWNLOAD_BASE_URL@": request.uv_download_base_url,
+            "@SUPPORT_URL@": request.support_url,
             "@UV_SHA256_CASES@": cases,
         }
         script = _TEMPLATE

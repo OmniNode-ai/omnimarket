@@ -593,6 +593,7 @@ def test_dashboard_observation_rejects_changed_current_tenant(
         worker.join(timeout=5)
 
 
+@pytest.mark.release_proof
 def test_customer_launchers_only(tmp_path: Path) -> None:
     """AC2: `uv tool install omninode-onex` puts exactly onex and omni-agent on PATH.
 

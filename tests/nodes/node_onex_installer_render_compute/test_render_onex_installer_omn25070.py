@@ -57,6 +57,12 @@ def test_render_substitutes_every_pinned_value() -> None:
     assert f'ONEX_PACKAGE="{data["package"]}"' in script
     assert f'ONEX_LAUNCHERS="{" ".join(data["launchers"])}"' in script
     assert f'UV_VERSION="{data["uv_version"]}"' in script
+    # The URLs come from the request, never from a literal in the handler.
+    assert f'UV_DEFAULT_BASE_URL="{data["uv_download_base_url"]}"' in script
+    assert f'SUPPORT_URL="{data["support_url"]}"' in script
+    assert all(
+        f"@{name}@" not in script for name in ("UV_DOWNLOAD_BASE_URL", "SUPPORT_URL")
+    )
     for target in UV_TARGETS:
         assert f'{target}) echo "{data["uv_sha256"][target]}" ;;' in script
     assert result.sha256 == hashlib.sha256(script.encode("utf-8")).hexdigest()
@@ -75,6 +81,11 @@ def test_render_substitutes_every_pinned_value() -> None:
         ("launchers", ["onex", "onex"]),
         ("launchers", ["onex", "$(id)"]),
         ("uv_version", "latest"),
+        ("uv_download_base_url", "http://github.com/astral-sh/uv/releases/download"),
+        ("uv_download_base_url", 'https://github.com/x"; rm -rf ~; echo "'),
+        ("uv_download_base_url", "https://github.com/astral-sh/uv/releases/download/"),
+        ("support_url", "https://omninode.ai/$(id)"),
+        ("support_url", "omninode.ai"),
     ],
 )
 def test_a_malformed_value_is_refused(field: str, value: object) -> None:
