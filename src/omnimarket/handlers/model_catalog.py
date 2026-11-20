@@ -42,6 +42,7 @@ from omnimarket.models.model_catalog_entry import (
 from omnimarket.models.model_local_server_details import ModelLocalServerDetails
 
 _CONFIG_PATH = Path(__file__).resolve().parents[1] / "configs" / "model_catalog.yaml"
+_PRICE_LIST_DIR = Path(__file__).resolve().parents[1] / "data" / "model_prices"
 
 #: Reads a URL within a timeout and returns its body; raises on any failure.
 FetchBytes = Callable[[str, float], bytes]
@@ -176,7 +177,7 @@ def _onex_home() -> Path:
 def _shipped_price_list() -> Mapping[str, Any]:
     """The price list that ships inside the install (``model_price_list.v1.json``)."""
     name = str(catalog_config()["shipped_price_list"]["file"])
-    document = json.loads((_CONFIG_PATH.parent / name).read_text(encoding="utf-8"))
+    document = json.loads((_PRICE_LIST_DIR / name).read_text(encoding="utf-8"))
     if not isinstance(document, dict) or not isinstance(
         document.get("providers"), dict
     ):
