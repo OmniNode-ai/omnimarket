@@ -246,7 +246,9 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # run event, held byte-identical by the same assertion: 105 -> 106.
     # OMN-23642 registers the lab proof judge's lab-proof-judge-use-recorded
     # event, held byte-identical by the same assertion: 106 -> 107.
-    assert len(event_types) == 107, (
+    # OMN-25093 registers the host job claim run event, held byte-identical
+    # by the same assertion: 107 -> 108.
+    assert len(event_types) == 108, (
         f"registry drifted to {len(event_types)} event types; update the "
         "expected parity count deliberately, do not auto-follow it"
     )
@@ -289,7 +291,8 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # 107 -> 108: OMN-22016's additive.miss fans out to exactly one topic.
     # 108 -> 109: OMN-23213's c32.auth_boundary_probe.completed fans out to exactly one topic.
     # 109 -> 110: OMN-23642's lab-proof-judge-use-recorded fans out to exactly one topic.
-    assert total_old == total_new == 110
+    # 110 -> 111: OMN-25093's host_job_claim.run_completed fans out to exactly one topic.
+    assert total_old == total_new == 111
     enriched = sum(
         1
         for msgs in new_by_event.values()
@@ -300,7 +303,7 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     keyed = sum(1 for msgs in new_by_event.values() for m in msgs if m.key is not None)
     # 65 -> 70: every published record is unconditionally enriched, so this
     # count tracks total_new exactly (OMN-17019 C9 registry growth).
-    assert enriched == 110, f"only {enriched}/110 new-path messages were enriched"
+    assert enriched == 111, f"only {enriched}/111 new-path messages were enriched"
     # 2 of the 67 registered events declare no partition_key_field; the daemon
     # publishes those with a null key, so 68 is the correct non-null count.
     # All five OMN-17019 obligation kinds declare partition_key_field:
@@ -325,7 +328,8 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # 104 -> 105: OMN-22016's additive.miss declares partition_key_field profile.
     # 105 -> 106: OMN-23213's c32.auth_boundary_probe.completed declares partition_key_field criterion.
     # 106 -> 107: OMN-23642's lab-proof-judge-use-recorded is published keyed.
-    assert keyed == 107, f"only {keyed}/107 new-path messages carried a partition key"
+    # 107 -> 108: OMN-25093's host_job_claim.run_completed is published keyed (host).
+    assert keyed == 108, f"only {keyed}/108 new-path messages carried a partition key"
 
 
 # ---------------------------------------------------------------------------

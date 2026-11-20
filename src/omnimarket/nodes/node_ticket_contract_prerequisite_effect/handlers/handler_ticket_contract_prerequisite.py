@@ -16,6 +16,9 @@ from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
     cited_tickets,
     contract_prerequisite,
 )
+from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers.deploy_gate_probe_check import (
+    check_deploy_gate_probe,
+)
 from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers.handler_integration_proof import (
     check_integration_proof,
 )
@@ -334,13 +337,16 @@ def check(
             continue
         if changed is None:
             changed = _changed_paths(sha, base)
-        proof = check_integration_proof(
-            ModelIntegrationProofRequest(
-                ticket_id=ticket, contract_text=text, changed_paths=changed
-            )
+        proof_request = ModelIntegrationProofRequest(
+            ticket_id=ticket, contract_text=text, changed_paths=changed
         )
+        proof = check_integration_proof(proof_request)
         if proof.failure:
             failures.append(proof.failure)
+            continue
+        hosted = check_deploy_gate_probe(proof_request)
+        if hosted.failure:
+            failures.append(hosted.failure)
     if not failures:
         failures.extend(umbrella_appends(sha, base, body))
     return tuple(failures)

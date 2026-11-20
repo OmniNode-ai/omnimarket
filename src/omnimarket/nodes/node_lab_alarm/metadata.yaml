@@ -31,3 +31,5 @@ tags:
 - effect
 - alarm
 - broker-lag
+- severity-routing
+- daily-digest
