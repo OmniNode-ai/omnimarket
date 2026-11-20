@@ -41,9 +41,9 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_alarm_platform_units.py -q --no-cov -p no:randomly
         cwd: .
   - id: dod-omn25138-launchd-units-unchanged
-    description: The launchd registry units still render as they did, with the Mac platform pinned in the three tests that render the alarm unit.
+    description: The launchd registry units still render as they did, with the Mac platform pinned in the three tests that render the alarm unit. These tests pass at the merge base too, so the hosted base control cannot bind them; only the local Done gate runs them.
     source: manual
-    execution_scope: hosted_and_local
+    execution_scope: local_done_gate
     binds_ac: [AC2]
     checks:
       - check_type: test_passes
