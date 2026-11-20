@@ -68,43 +68,55 @@ def _resolve(argv: tuple[str, ...], root: Path) -> tuple[str, ...]:
     return tuple(part.replace(REGISTRY_ROOT_TOKEN, str(root)) for part in argv)
 
 
-def build_handlers(
+def _build_inmemory(
     overlay: ModelItemOwnerOverlay,
     *,
     root: Path,
     environ: Mapping[str, str],
-    clock: Callable[[], datetime] = _utc_now,
+    clock: Callable[[], datetime],
 ) -> tuple[HandlerItemOwnerDispatch, HandlerUnownedReading]:
-    """The owner step and the reading wired to the overlay's backend."""
     dispatch = overlay.dispatch
     runner_path = environ.get(dispatch.runner_env, "")
     claude_dir = (
         environ.get(dispatch.claude_dir_env, "") if dispatch.claude_dir_env else ""
     )
-    if overlay.backend == "inmemory":
-        ledger = InMemoryLedger()
-        plan_owner = InMemoryPlanOwner()
-        briefs = InMemoryBriefPreparer()
-        owner = HandlerItemOwnerDispatch(
-            overlay=overlay,
-            rows=ledger,
-            plan_owner=plan_owner,
-            reservation=InMemoryReservation(),
-            briefs=briefs,
-            runner=InMemoryLanePlacer(briefs),
-            appender=ledger,
-            runner_path=runner_path,
-            claude_dir=claude_dir,
-            clock=clock,
-        )
-        reading = HandlerUnownedReading(
-            overlay=overlay,
-            rows=ledger,
-            plan_owner=plan_owner,
-            appender=ledger,
-            clock=clock,
-        )
-        return owner, reading
+    ledger = InMemoryLedger()
+    plan_owner = InMemoryPlanOwner()
+    briefs = InMemoryBriefPreparer()
+    owner = HandlerItemOwnerDispatch(
+        overlay=overlay,
+        rows=ledger,
+        plan_owner=plan_owner,
+        reservation=InMemoryReservation(),
+        briefs=briefs,
+        runner=InMemoryLanePlacer(briefs),
+        appender=ledger,
+        runner_path=runner_path,
+        claude_dir=claude_dir,
+        clock=clock,
+    )
+    reading = HandlerUnownedReading(
+        overlay=overlay,
+        rows=ledger,
+        plan_owner=plan_owner,
+        appender=ledger,
+        clock=clock,
+    )
+    return owner, reading
+
+
+def _build_runtime(
+    overlay: ModelItemOwnerOverlay,
+    *,
+    root: Path,
+    environ: Mapping[str, str],
+    clock: Callable[[], datetime],
+) -> tuple[HandlerItemOwnerDispatch, HandlerUnownedReading]:
+    dispatch = overlay.dispatch
+    runner_path = environ.get(dispatch.runner_env, "")
+    claude_dir = (
+        environ.get(dispatch.claude_dir_env, "") if dispatch.claude_dir_env else ""
+    )
     if not runner_path:
         raise LedgerUnreadableError(
             f"{dispatch.runner_env} is not set: the unit's declaration names the remote-lane runner"
@@ -152,6 +164,25 @@ def build_handlers(
         clock=clock,
     )
     return owner, reading
+
+
+_BACKEND_BUILDERS = {
+    "inmemory": _build_inmemory,
+    "runtime": _build_runtime,
+}
+
+
+def build_handlers(
+    overlay: ModelItemOwnerOverlay,
+    *,
+    root: Path,
+    environ: Mapping[str, str],
+    clock: Callable[[], datetime] = _utc_now,
+) -> tuple[HandlerItemOwnerDispatch, HandlerUnownedReading]:
+    """The owner step and the reading wired to the overlay's backend."""
+    return _BACKEND_BUILDERS[overlay.backend](
+        overlay, root=root, environ=environ, clock=clock
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
