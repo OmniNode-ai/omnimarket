@@ -24,13 +24,17 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_overlay
+from omnimarket.handlers.node_overlay_resolved_roots import (
+    REGISTRY_ROOT_ENVS,
+    registry_root_from,
+)
 from omnimarket.handlers.rules_overlay_root_declared import (
     OverlayRootRefusedError,
     refuse_undeclared_overlay_root,
@@ -98,15 +102,19 @@ SCHEDULE_BLOCKS = {
 }
 
 
-def _source(overlay: ModelCodeGraphOverlay) -> GitRepoSource:
+def _source(
+    overlay: ModelCodeGraphOverlay, environ: Mapping[str, str] | None = None
+) -> GitRepoSource:
     if overlay.graph_backend != "git":
         raise ValueError(
             "graph_backend in_memory is the test backend; a deployment reads git"
         )
-    root = os.environ.get(overlay.repos_root_env, "").strip()
+    env = os.environ if environ is None else environ
+    root = env.get(overlay.repos_root_env, "").strip() or registry_root_from(env)
     if not root:
         raise ValueError(
-            f"{overlay.repos_root_env} is not set; the overlay names it as the clones' root"
+            f"{overlay.repos_root_env} is not set; the overlay names it as the clones' root, "
+            f"and neither {' nor '.join(REGISTRY_ROOT_ENVS)} names the registry root"
         )
     return GitRepoSource(Path(root), max_file_bytes=overlay.graph_roots.max_file_bytes)
 
