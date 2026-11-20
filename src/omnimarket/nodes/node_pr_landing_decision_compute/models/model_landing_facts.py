@@ -186,6 +186,22 @@ class ModelLandingPrFacts(BaseModel):
             "pending, a stale cancelled copy holds the merge: refresh once."
         ),
     )
+    required_contexts: tuple[str, ...] | None = Field(
+        default=None,
+        description=(
+            "The check contexts the PR's base branch requires, read from its branch protection "
+            "and rulesets by the snapshot reader. None is unread: the decision then cannot tell "
+            "a required red from any other and holds every red PR as before, naming why."
+        ),
+    )
+    passed_checks: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Names of the check-runs on the head whose newest copy passed (success, skipped or "
+            "neutral). With required_contexts read, a PR whose reds are all non-required merges "
+            "only when every required context is in this set."
+        ),
+    )
     merge_state: EnumLandingMergeState = EnumLandingMergeState.CLEAN
     lacks_base_head: bool = Field(
         default=False,
