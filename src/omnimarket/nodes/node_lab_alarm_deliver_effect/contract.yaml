@@ -115,6 +115,13 @@ secrets:
     description: "Slack channel id of the alerts channel the alarm is posted to."
     required: false
 
+# The delivery itself is built by the route handler above (and by node_lab_alarm's CLI) with its overlay, channel, ledger,
+# state store and clock, so it is bound here by module and has no handler_routing entry of its own.
+delivery_binding:
+  handler:
+    name: HandlerLabAlarmDeliver
+    module: omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver
+
 metadata:
   ticket: OMN-23906
   transport_type: kafka
