@@ -339,7 +339,8 @@ tiers:
     # named here. Its backend declaration stays in bifrost_delegation.yaml only
     # because the default quality-gate judge and an explicit pin still resolve it.
     #
-    # The tier's one rung, openrouter-north-mini-code, is declared by its own
+    # The tier's one rung, openrouter-nemotron-3-5-super (OMN-26129; it replaced the
+    # withdrawn openrouter-north-mini-code), is declared by its own
     # ``placement`` in bifrost_delegation.yaml (no ``fallback_for``), with the
     # whole use_for written out there, because the deployment-fact gate admits no
     # new vendor value in this packaged file. The routing authority appends it
