@@ -399,3 +399,16 @@ def test_install_reinstall_and_upgrade_for_real(tmp_path: Path) -> None:
     assert upgraded.returncode == 0, upgraded.stderr
     assert f"omninode-onex=={newer}" in upgraded.stderr
     assert {p.name for p in bin_dir.iterdir()} == {"onex", "omni-agent"}
+
+
+@pytest.mark.unit
+def test_the_last_line_sends_the_customer_to_the_tui() -> None:
+    """A customer lands in the TUI: bare `onex` in a terminal opens it, and /config sets up a model."""
+    last = [
+        line
+        for line in SCRIPT_TEXT.splitlines()
+        if line.strip().startswith('say "Done.')
+    ]
+    assert len(last) == 1, last
+    assert "Run 'onex' to open ONEX" in last[0]
+    assert "/config" in last[0]

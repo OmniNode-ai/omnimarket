@@ -358,7 +358,7 @@ EOF
             "Report it at $SUPPORT_URL; installing again will not fix it."
     say "Installed: $reported ($bin_dir/onex)"
     path_guidance "$bin_dir"
-    say "Done. Run 'onex --help' to get started."
+    say "Done. Run 'onex' to open ONEX: use /config to set up a model, then type a task to delegate it."
 }
 
 main "$@"
