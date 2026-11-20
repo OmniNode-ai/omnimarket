@@ -355,6 +355,11 @@ class ModelByokProviderBackend(BaseModel):
     limit_model: ModelByokLimitModel
     #: OMN-20154. Declared only when the model's price is not its tier's.
     pricing: ModelByokPricing | None = None
+    #: Further models this row prices, each true of its own model id. A row
+    #: resolves its model per key from the provider's list (OMN-20157), so a
+    #: key that resolves a model ``pricing`` does not name is priced from here
+    #: rather than left unpriced.
+    model_prices: tuple[ModelByokPricing, ...] = ()
     #: OMN-21215. The models onboarding offers as this key's "Default", in
     #: order, cheapest first. A recommendation the developer accepts or changes,
     #: never a model routed without their choice (``customer_chooses_model``).
@@ -362,6 +367,10 @@ class ModelByokProviderBackend(BaseModel):
     default_models: tuple[str, ...] = ()
     #: OMN-21215. The key a new developer adds first. Exactly one row sets it.
     first_key: bool = False
+    #: Onboarding guidance only; never a credential destination.
+    key_page: str | None = Field(default=None, pattern=r"^https://[^\s\x00-\x1f\x7f]+$")
+    #: Recognizable prefixes are hints, not a requirement on accepted keys.
+    key_prefixes: tuple[str, ...] = ()
     #: OMN-21263. ``true`` declares the generic OpenAI-compatible row: the
     #: developer names the endpoint's base URL when they register the key, and
     #: ``endpoint_url`` and ``models_url`` here are placeholders that never route
@@ -385,6 +394,20 @@ class ModelByokProviderBackend(BaseModel):
                     f"{model!r}, which no model_preference entry matches; a "
                     "recommended model must be one the row's preferences describe"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _model_prices_name_each_model_once(self) -> ModelByokProviderBackend:
+        named = [price.model_name for price in self.model_prices]
+        if self.pricing is not None:
+            named.append(self.pricing.model_name)
+        repeated = sorted({name for name in named if named.count(name) > 1})
+        if repeated:
+            raise ValueError(
+                f"model_prices of {self.provider!r} plan {self.plan!r} names "
+                f"{repeated} more than once (counting pricing.model_name); a "
+                "model has one declared price"
+            )
         return self
 
     @model_validator(mode="after")
@@ -867,6 +890,25 @@ def first_key_backend() -> ModelByokProviderBackend:
     )
 
 
+def key_provider_hint(value: str, for_provider: str | None = None) -> str | None:
+    """Longest declared prefix hint; unknown or ambiguous key shapes stay valid."""
+    catalog = load_byok_provider_catalog()
+    selected = catalog.get(for_provider) if for_provider is not None else None
+    if selected is not None and selected.endpoint_from_registration:
+        return None
+    matches = [
+        (len(prefix), row.provider)
+        for row in catalog.values()
+        for prefix in row.key_prefixes
+        if prefix and value.startswith(prefix)
+    ]
+    if not matches:
+        return None
+    longest = max(length for length, _ in matches)
+    providers = {provider for length, provider in matches if length == longest}
+    return next(iter(providers)) if len(providers) == 1 else None
+
+
 def customer_provider_catalogue() -> tuple[str, ...]:
     """The customer-facing provider catalogue: every provider id a customer
     may register a key for, sorted.
@@ -1095,15 +1137,14 @@ def byok_declared_price_per_1m(
     if not endpoint_url:
         return None
     for backend in load_byok_plan_catalog().values():
-        if (
-            backend.pricing is not None
-            and backend.endpoint_url == endpoint_url
-            and backend.pricing.model_name == model_name
-        ):
-            return (
-                backend.pricing.input_per_1m_usd,
-                backend.pricing.output_per_1m_usd,
-            )
+        if backend.endpoint_url != endpoint_url:
+            continue
+        declared = (
+            (backend.pricing,) if backend.pricing is not None else ()
+        ) + backend.model_prices
+        for price in declared:
+            if price.model_name == model_name:
+                return (price.input_per_1m_usd, price.output_per_1m_usd)
     return None
 
 
@@ -1122,13 +1163,19 @@ def byok_backend_provider(backend_id: str | None) -> str | None:
 
 
 def byok_model_price_per_1m(
-    backend_id: str | None, endpoint_url: str | None, model_name: str
+    backend_id: str | None,
+    endpoint_url: str | None,
+    model_name: str,
+    *,
+    supplemental: bool = True,
 ) -> tuple[Decimal, Decimal] | None:
     """The ``(input, output)`` USD per 1M tokens of a model on a customer's key.
 
     The catalogue's declared price for the endpoint and model first, then the
-    model registry's price for the same provider and model. ``None`` means the
-    model has no known price: the call is unpriced, never booked at a tier rate.
+    model registry's price for the same provider and model, then models.dev's
+    (OMN-23413 AC35). ``None`` means the model has no known price: the call is
+    unpriced, never booked at a tier rate. ``supplemental=False`` stops before
+    models.dev, for a caller that holds the provider's combined entry (AC34).
     """
     declared = byok_declared_price_per_1m(endpoint_url, model_name)
     if declared is not None:
@@ -1143,7 +1190,13 @@ def byok_model_price_per_1m(
     for profile in ModelLlmModelRegistryLoader().load().models.values():
         if profile.provider == provider and profile.model_name == model_name:
             return (profile.pricing_per_1m_input, profile.pricing_per_1m_output)
-    return None
+    if not supplemental:
+        return None
+    # OMN-23413 AC35: a model neither the catalogue nor the registry prices is
+    # priced from models.dev, read live; still None when models.dev states none.
+    from omnimarket.handlers.model_catalog import models_dev_price_per_1m
+
+    return models_dev_price_per_1m(provider, model_name)
 
 
 def byok_limit_counter_key(
@@ -1273,6 +1326,7 @@ __all__: list[str] = [
     "catalogue_prefers_model",
     "customer_provider_catalogue",
     "house_keyed_provider_slugs",
+    "key_provider_hint",
     "load_byok_not_offered_providers",
     "load_byok_plan_catalog",
     "load_byok_provider_catalog",

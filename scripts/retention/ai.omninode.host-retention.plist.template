@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  ai.omninode.host-retention - the launching host's lane results retention timer (OMN-22744). Once a day it runs
+  node_host_retention_effect for this host's `lane_results` classes: the remote-lane receipt store and the lab-run runs
+  folder. This node is the ONE owner of those two folders (node_retention_cleanup lists them as disabled entries, the rule and
+  consent they archive under). An entry is ARCHIVED into the archive root and removed only after the copy is read back and
+  compared, and only when nothing under it changed inside its keep window AND its lane finished: a TERMINAL on the rolling
+  work ledger old enough (read through the ledger rows loader the overlay names, never from a ledger file), or, for a lane the
+  ledger window does not hold, its own receipt files all final. What neither can say is kept and counted as unknown.
+  THIS UNIT RUNS IN DRY RUN MODE (the dry run flag ends its command): it lists and removes nothing. Take the first reading (the JSON in the log: items with bytes
+  and archive paths, kept entries with reasons, the unknown count per class), then remove the flag and reload the unit.
+  Every window, path and the loader command is a value of the node's overlay row for this host (overlays repository,
+  node_host_retention_effect), never of this file.
+  Replace __HOME__, __OMNI_HOME__, __OMNIMARKET_DIR__ (a clean omnimarket checkout on dev), __OVERLAY_ROOT__ (the
+  folder of the overlays clone that holds <node>/overlay.yaml), __WORKSPACE_CONFIG_ROOT__ (the checkout that holds
+  config/lab/ci_bus_lanes.yaml: the ledger rows loader reads the dev bus address from it, and without it answers
+  unreadable, so nothing is removed), __ARCHIVE_ROOT__ (the folder archive entries copy into, the
+  same ONEX_RETENTION_ARCHIVE_ROOT node_retention_cleanup uses; with none, an archive entry removes nothing) and
+  __HOST_NAME__ (this host's row name) before loading it. StartCalendarInterval fires a missed slot on wake. Each run prints
+  one JSON result: every entry removed with its bytes and archive path, every entry kept with its reason, the totals per
+  class and the disk before and after.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.omninode.host-retention</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>exec env -u PYTHONPATH uv run --frozen --project "__OMNIMARKET_DIR__" python -m omnimarket.nodes.node_host_retention_effect run --host __HOST_NAME__ --class lane_results --dry-run</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>50</integer></dict>
+
+  <key>StandardOutPath</key>
+  <string>__OMNI_HOME__/.onex_state/host-retention/run.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>__OMNI_HOME__/.onex_state/host-retention/run.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__HOME__/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <key>OMNI_HOME</key>
+    <string>__OMNI_HOME__</string>
+    <key>ONEX_SKILL_OVERLAY_ROOTS</key>
+    <string>__OVERLAY_ROOT__</string>
+    <key>ONEX_WORKSPACE_CONFIG_ROOT</key>
+    <string>__WORKSPACE_CONFIG_ROOT__</string>
+    <key>ONEX_RETENTION_ARCHIVE_ROOT</key>
+    <string>__ARCHIVE_ROOT__</string>
+  </dict>
+
+  <key>Nice</key>
+  <integer>10</integer>
+
+  <key>KeepAlive</key>
+  <false/>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

@@ -143,11 +143,13 @@ def run_error_chain_input_ceiling(tmp_path: Path) -> None:
     """Run the error chain: an unnamed pair is refused; a broken overlay raises."""
     handler = resolve_handler()()
 
-    # The overlay does not name (local-coder, test): refused, key named, no tokens.
-    result = handler.handle(build_request("input_ceiling", "test", "local-coder"))
+    # The overlay does not name (local-coder, unlisted_class): refused, key named, no tokens.
+    result = handler.handle(
+        build_request("input_ceiling", "unlisted_class", "local-coder")
+    )
     assert result.input_ceiling_tokens is None
     assert result.refusal is EnumCodeBudgetRefusal.UNNAMED_INPUT_CEILING
-    assert input_ceiling_overlay_key("local-coder", "test") in result.detail
+    assert input_ceiling_overlay_key("local-coder", "unlisted_class") in result.detail
 
     # No overlay roots at all (a clean install): no ceilings are declared, so none applies; the read does not invent one.
     assert (
@@ -180,7 +182,10 @@ def run_error_chain_input_ceiling(tmp_path: Path) -> None:
         measured_correct_ceiling("local-coder", "code_generation", environ=environ)
         == 8169
     )
-    assert measured_correct_ceiling("local-coder", "test", environ=environ) is None
+    assert (
+        measured_correct_ceiling("local-coder", "unlisted_class", environ=environ)
+        is None
+    )
 
 
 def test_golden_chain() -> None:

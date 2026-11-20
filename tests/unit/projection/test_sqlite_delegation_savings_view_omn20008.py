@@ -90,6 +90,13 @@ def _delegation(correlation_id: str, **fields: Any) -> dict[str, Any]:
         "created_at": "2026-10-10T18:13:00.608068+00:00",
     }
     row.update(fields)
+    # OMN-24615: the writer stores the metering compute's saving in both
+    # columns (on an operator store, 3154 measured runs agree to the cent), and
+    # the savings view now reads modelled_savings_usd, so a row that names only
+    # the legacy figure carries the same modelled one unless a test sets it.
+    if "modelled_savings_usd" not in fields:
+        legacy = row["cost_savings_usd"]
+        row["modelled_savings_usd"] = None if legacy is None else str(legacy)
     return row
 
 

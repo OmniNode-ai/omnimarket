@@ -168,6 +168,7 @@ SCHEDULABLE_VERBS = (
     "container-unhealthy",
     "lab-pass-receipt",
     "stale-indeterminate",
+    "alarm-digest",
 )
 
 
@@ -184,6 +185,21 @@ class ModelEscalationSettings(BaseModel):
     settle_seconds: float = Field(gt=0)
     #: Where the briefs and dispatch logs are kept.
     brief_dir: str = Field(min_length=1)
+
+
+class ModelContainerRestartsSettings(BaseModel):
+    """The container-restarts condition (OMN-23934): which lane's containers, whose bounds, reached how."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The lane manifest holding each container's ``restart_bound``; may name ``${ONEX_WORKSPACE_CONFIG_ROOT}``.
+    lane_manifest: str = Field(min_length=1)
+    #: The manifest lane whose services are read.
+    census_lane: str = Field(min_length=1)
+    #: The argv prefix that reaches docker on the lane's host.
+    docker_command: tuple[str, ...] = Field(min_length=1)
+    #: The bound on one ``docker inspect``, held here as data.
+    timeout_seconds: float = Field(gt=0)
 
 
 class ModelEffectsHeldSettings(BaseModel):
@@ -384,6 +400,8 @@ class ModelLabAlarmOverlay(BaseModel):
     #: Read by the work-ledger-projection-stale verbs alone; absent, the overlay still loads and the other verbs run.
     work_ledger_projection_stale: ModelWorkLedgerProjectionStaleSettings | None = None
     #: Read by the lane-drift and container-unhealthy verbs alone; absent, the overlay still loads and the other verbs run.
+    #: Read by the container-restarts verbs alone; absent, the other verbs run and these refuse it themselves.
+    container_restarts: ModelContainerRestartsSettings | None = None
     lane_census: ModelLaneCensusSettings | None = None
     #: Read by the lab-pass-receipt verbs alone; absent, the overlay still loads and the other verbs run.
     lab_pass_receipt: ModelLabPassReceiptSettings | None = None
@@ -429,6 +447,7 @@ __all__ = [
     "ModelAlarmDeliveryWiring",
     "ModelBrokerListenerSettings",
     "ModelConditionPersistence",
+    "ModelContainerRestartsSettings",
     "ModelDeclaredNode",
     "ModelDelegationChainCanarySettings",
     "ModelDevTagHeartbeatSettings",
