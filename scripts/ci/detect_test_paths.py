@@ -18,6 +18,7 @@ from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
     ModelPathResolutionRequest,
+    ModelPathResolutionResult,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector import (
     ModelSelectorRequest,
@@ -54,7 +55,8 @@ def resolve_test_paths(
         receives a non-existent test directory.
     """
     config = load_adjacency_map(adjacency_path)
-    return _resolve(changed_files, config, repo_root=repo_root or REPO_ROOT)
+    result = _resolve_result(changed_files, config, repo_root or REPO_ROOT)
+    return list(result.selected_paths)
 
 
 def _requires_unnarrowable_full_suite(changed_files: list[str]) -> bool:
@@ -85,19 +87,16 @@ def _requires_unnarrowable_full_suite(changed_files: list[str]) -> bool:
     return False
 
 
-def _resolve(
-    changed_files: list[str],
-    config: ModelAdjacencyMap,
-    repo_root: Path,
-) -> list[str]:
-    result = HandlerTestPathResolution().handle(
+def _resolve_result(
+    changed_files: list[str], config: ModelAdjacencyMap, repo_root: Path
+) -> ModelPathResolutionResult:
+    return HandlerTestPathResolution().handle(
         ModelPathResolutionRequest(
             changed_files=tuple(changed_files),
             adjacency=config,
             repo_root=str(repo_root),
         )
     )
-    return list(result.selected_paths)
 
 
 def compute_selection(
@@ -163,8 +162,8 @@ def compute_selection(
     if len(changed_modules) >= config.thresholds.modules_changed_for_full_suite:
         return _full_suite(EnumFullSuiteReason.THRESHOLD_MODULES)
 
-    selected = _resolve(changed_files, config, repo_root=root)
-    if not selected:
+    resolved = _resolve_result(changed_files, config, repo_root=root)
+    if not (selected := list(resolved.selected_paths)) and not resolved.data_only:
         # OMN-20305: nothing narrowed, so the whole tests/ tree runs. Take the
         # full-suite shard matrix; an is_full_suite=False selection of tests/
         # became one serial Split 1/1 job (63 minutes on omnimarket#3175).

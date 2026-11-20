@@ -15,7 +15,9 @@ description: >-
   injected (in-memory default, durations file as the real backend). scripts/ci/detect_test_paths.py
   calls this node. HandlerTestPathResolution (OMN-23719) maps a change's files to the test paths it can
   affect, by the import graph for the modules the adjacency map lists as node-scoped; scripts/ci/detect_test_paths.py
-  calls it as a library handler.
+  calls it as a library handler. A diff of only data files (the adjacency map's data_only_globs) selects the tests
+  that read them, found by a text index of the test files and the data_reader_overrides, when
+  data_only_selection_enabled is set (OMN-26270).
 input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorRequest
 output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorDecision
 handler:
@@ -61,4 +63,4 @@ externally_consumed_topics:
   - onex.evt.omnimarket.test-selection-select-failed.v1
 metadata:
   transport_type: kafka
-  related_tickets: [OMN-23296]
+  related_tickets: [OMN-23296, OMN-26270]
