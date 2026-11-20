@@ -28,8 +28,6 @@ dod_evidence:
   description: The STATUS row of the lane names the pull request, the installed host and revision and what ran. The ledger is on the launching host (LANE_LEDGER_FILE names its file there), so only the local Done gate runs this unbound check.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: 'grep -F "pr=omnimarket#5641" "${LANE_LEDGER_FILE:?set LANE_LEDGER_FILE to the rolling ledger file}" | grep -F "installed=" | grep -F "observed="'
@@ -47,6 +45,7 @@ dod_evidence:
   description: The unit is written by the node's own schedule install verb (dry run and rollback tested), never by hand.
   source: manual
   binds_ac:
+  - AC1
   - AC3
   checks:
   - check_type: test_passes
@@ -61,11 +60,11 @@ dod_evidence:
     check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25005 -- uv run --frozen pytest tests/nodes/node_broker_auth_refusal_reading_effect -q --no-cov -n 0 -p no:randomly'
     cwd: .
 - id: dod-omn25005-deploy-schedule-installer
-  description: The deploy surface of this change is the schedule installer in the node's schedule handler; the check reads the handler from the pushed branch through the GitHub contents API (a live read, runnable on the hosted runner), and fails when the systemd renderer is absent.
+  description: The deploy surface of this change is the schedule installer in the node's schedule handler; the check reads the handler at the checked-out commit through the GitHub contents API (a live read, runnable on the hosted runner), and fails when the systemd renderer is absent.
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: command
-    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_broker_auth_refusal_reading_effect/handlers/schedule.py?ref=omn-25005-broker-auth-refusal-schedule" --jq .content | base64 -d | grep -c 'def render_systemd' | grep -qv '^0$'
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_broker_auth_refusal_reading_effect/handlers/schedule.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c 'def render_systemd' | grep -qv '^0$'
     cwd: .
