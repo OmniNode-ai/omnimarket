@@ -62,6 +62,9 @@ dod_evidence:
         check_value: >-
           sh -c 'test -z "$RELEASE_TAG" || { git show "$RELEASE_TAG:uv.lock" | grep -A2 "^name = \"omnibase-infra\"$" | grep -c "source = { git" | grep -qx 0; }'
         cwd: .
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/scripts/test_release_relock.py -q --no-cov
   - id: dod-omn26166-integration-proof
     description: "Run the focused release relock tests on a lab host at the pushed head; the local Done gate runs this unbound check."
     source: manual
