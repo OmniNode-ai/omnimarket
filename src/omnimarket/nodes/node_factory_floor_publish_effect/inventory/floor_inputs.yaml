@@ -307,6 +307,16 @@ inputs:
     producer: node_floor_delegation_history_effect itself (kept between cycles; the previous file stays when the projection cannot be read)
     replacement: {node: node_floor_delegation_history_effect, topic: onex.snapshot.projection.delegation-history.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-delegation-history-projection
+  - id: cost_throughput_output
+    order: 20
+    class: own_state
+    where: .claude_scratch/factory-floor/cost-throughput.json
+    read_by: [node_factory_floor_publish_effect]
+    steps: [cost_throughput, publish]
+    producer: node_floor_cost_throughput_effect itself (kept between cycles; it also keeps dated readings of the integration record's seen-running count in cost-throughput-readings.json)
+    replacement: {node: node_floor_cost_throughput_effect, topic: onex.snapshot.projection.cost-throughput.v1, status: new}
+    ticket: NEED-CHILD-TICKET:floor-cost-throughput-projection
+    notes: The panel's figures are folded from floor-simple.json, delegation-history.json and the day-over-day report; a figure with no source reads UNREADABLE.
   - id: beta_board_reads
     order: 21
     class: file
