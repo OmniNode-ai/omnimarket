@@ -44,6 +44,9 @@ from omnimarket.nodes.node_work_ledger_reader_effect.models import (
     ModelPointQuery,
     ModelReaderRequest,
 )
+from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
+    ProtocolLedgerPointRead,
+)
 from omnimarket.nodes.node_work_ledger_reader_effect.runtime_work_ledger_reader import (
     main,
 )
@@ -157,12 +160,12 @@ def request(case: str) -> ModelReaderRequest:
 
 
 def handler(
-    case: str, read: object, clock: SteppedClock | None = None
+    case: str, read: ProtocolLedgerPointRead, clock: SteppedClock | None = None
 ) -> HandlerWorkLedgerReader:
     reader = CASES[case][0]
     return HandlerWorkLedgerReader(
         overlay(moved_readers=(reader,)),
-        read,  # type: ignore[arg-type]
+        read,
         InMemoryEventSink(),
         clock=clock or (lambda: NOW),
     )
@@ -186,6 +189,8 @@ def test_source_db_verb_answers_from_projection_not_the_file(
     assert code == 0
     assert "status=ok source=node" in out.err
     assert "file_read=no" in out.err
+    assert "elapsed_s=" in out.err
+    assert "elapsed_s=none" not in out.err
     assert SENTINEL not in out.out
     assert out.out.strip() != ""
     assert [r.query for r in read.requests] == [CASES[case][1]]
