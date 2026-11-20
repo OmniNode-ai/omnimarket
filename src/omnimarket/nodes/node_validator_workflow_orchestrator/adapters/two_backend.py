@@ -42,7 +42,7 @@ from omnimarket.nodes.node_validator_workflow_orchestrator.adapters.effects impo
 from omnimarket.nodes.node_validator_workflow_orchestrator.adapters.verdict_store import (
     store_from_overlay,
 )
-from omnimarket.nodes.node_validator_workflow_orchestrator.handlers.handler_validator_workflow import (
+from omnimarket.nodes.node_validator_workflow_orchestrator.handlers.validator_workflow import (
     HandlerValidatorWorkflow,
 )
 from omnimarket.nodes.node_validator_workflow_orchestrator.models.model_validator_workflow import (

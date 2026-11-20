@@ -21,12 +21,12 @@ from omnimarket.nodes.node_validator_workflow_orchestrator import (
     handlers as handlers_pkg,
 )
 from omnimarket.nodes.node_validator_workflow_orchestrator.adapters import two_backend
-from omnimarket.nodes.node_validator_workflow_orchestrator.handlers.handler_validator_workflow import (
-    CONTRACT,
-    load_topics,
-)
 from omnimarket.nodes.node_validator_workflow_orchestrator.handlers.handler_validator_workflow_runtime import (
     HandlerValidatorWorkflowRuntime,
+)
+from omnimarket.nodes.node_validator_workflow_orchestrator.handlers.validator_workflow import (
+    CONTRACT,
+    load_topics,
 )
 from omnimarket.nodes.node_validator_workflow_orchestrator.models.model_validator_workflow import (
     EnumGateConclusion,

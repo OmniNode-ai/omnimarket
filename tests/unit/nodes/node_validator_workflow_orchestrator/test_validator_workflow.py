@@ -26,7 +26,7 @@ from omnimarket.nodes.node_validator_workflow_orchestrator.adapters.change_reade
 from omnimarket.nodes.node_validator_workflow_orchestrator.adapters.effects import (
     PackageContractSource,
 )
-from omnimarket.nodes.node_validator_workflow_orchestrator.handlers.handler_validator_workflow import (
+from omnimarket.nodes.node_validator_workflow_orchestrator.handlers.validator_workflow import (
     load_topics,
 )
 from omnimarket.nodes.node_validator_workflow_orchestrator.models.model_validator_workflow import (
