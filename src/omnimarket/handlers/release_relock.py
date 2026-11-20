@@ -11,10 +11,10 @@ The ``release`` job of ``.github/workflows/release-cut.yml`` is the one step
 that builds a release commit (the tag names it, ``sync-main`` fast-forwards main
 to it). It runs, in order::
 
-    release_relock.py strip-sources   # drop the three [tool.uv.sources] pins
+    python3 src/omnimarket/handlers/release_relock.py strip-sources   # drop the three [tool.uv.sources] pins
     uv lock                           # resolve them from the index
     git checkout -- pyproject.toml    # restore the dev-tag pins byte for byte
-    release_relock.py verify          # the lock reads registry for all three
+    python3 src/omnimarket/handlers/release_relock.py verify          # the lock reads registry for all three
 
 and commits ``uv.lock`` plus the marker file, so ``pyproject.toml`` (the only
 file the Internal Sibling Pins check reads) is identical to dev and the check's
@@ -123,7 +123,7 @@ def _cmd_verify(root: Path) -> int:
     findings = check_lock((root / "uv.lock").read_text(), release_commit=release)
     kind = "release" if release else "non-release"
     for finding in findings:
-        print(f"{finding.code}: {finding.package} ({kind} commit)", file=sys.stderr)
+        sys.stderr.write(f"{finding.code}: {finding.package} ({kind} commit)\n")
     return 1 if findings else 0
 
 

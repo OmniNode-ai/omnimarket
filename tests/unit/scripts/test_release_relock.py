@@ -7,7 +7,7 @@ release commit carries a ``uv.lock`` whose omnibase-infra, omnibase-core and
 omnibase-compat entries read ``source = { registry = ... }``. Dev, the
 reopen-dev commit and every other commit keep their dev-tag git locks.
 
-``scripts/ci/release_relock.py`` holds the pure decision functions; the
+``src/omnimarket/handlers/release_relock.py`` holds the pure decision functions; the
 ``release`` job of ``.github/workflows/release-cut.yml`` is the one step that
 builds the release commit, and these tests pin where it sits.
 """
@@ -22,7 +22,7 @@ from typing import Any
 import pytest
 import yaml
 
-from scripts.ci import release_relock as rr
+from omnimarket.handlers import release_relock as rr
 
 pytestmark = pytest.mark.unit
 

@@ -21,7 +21,7 @@ pytestmark = pytest.mark.unit
 
 def _relock() -> ModuleType:
     """The release relock decision module (OMN-26166), imported where used."""
-    return importlib.import_module("scripts.ci.release_relock")
+    return importlib.import_module("omnimarket.handlers.release_relock")
 
 
 def test_workflow_calls_core_at_a_full_sha_and_is_required() -> None:
