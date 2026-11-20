@@ -165,7 +165,13 @@ def test_review_gate_context_probe_read(
     def run_probe(argv: list[str]) -> subprocess.CompletedProcess[str]:
         # Run the module and its declared check with the installer's environment.
         return subprocess.run(
-            [*argv[: argv.index("uv")], sys.executable, *argv[argv.index("-m") :]],
+            [
+                *argv[: argv.index("uv")],
+                # The module under test comes from this checkout, not an installed build.
+                f"PYTHONPATH={NODES.parents[1]}",
+                sys.executable,
+                *argv[argv.index("-m") :],
+            ],
             capture_output=True,
             text=True,
             check=False,
@@ -220,6 +226,12 @@ cli_ledger.ledger_group()
         assert "DelegateLaneSelectionError" in start.stderr
         assert "ONEX_WORKSPACE_CONFIG_ROOT" in start.stderr
         assert "ci_bus_lanes.yaml" in start.stderr
+
+
+def test_review_gate_context_probe_declares_ledger_route_check() -> None:
+    """The installed probe unit is started with the ledger route check, not a bare help request."""
+    unit = load_units()["review-gate-context-probe"]
+    assert HandlerRegistryUnits.probe_argv(unit) == ["--check-ledger-route"]
 
 
 def test_installer_tick_requires_an_overlay_schedule(
