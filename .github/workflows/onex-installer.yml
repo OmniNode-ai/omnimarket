@@ -1,0 +1,143 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: onex installer
+
+# Runs the customer installer (rendered by node_onex_installer_render_compute
+# from packages/omninode-onex/installer.json) for real on each launch platform:
+# a clean install with no uv on PATH (the script downloads and verifies its
+# pinned uv), a reinstall, and an upgrade, plus the platform, checksum and
+# conflict cases. The omninode-onex and omnimarket wheels are built from this
+# commit and found through ONEX_INSTALL_FIND_LINKS, so the pinned omnimarket need
+# not be released yet; every other package comes from PyPI.
+#
+#   ubuntu-latest     Linux x86_64
+#   ubuntu-24.04-arm  Linux arm64
+#   macos-latest      Apple Silicon macOS
+#   macos-15-intel    Intel macOS, which is not supported yet: the rendered
+#                     installer must refuse it before installing anything.
+
+# It runs after a change to the installer lands on dev, and on demand. On a pull
+# request the installer's platform, checksum and conflict cases run in the Tests
+# job and are bound to the ticket's contract; a red run here turns dev red.
+on:
+  push:
+    branches: [dev]
+    paths:
+      - packages/omninode-onex/**
+      - src/omnimarket/nodes/node_onex_installer_render_compute/**
+      - tests/ci/test_omninode_onex_install_sh_omn25070.py
+      - .github/workflows/onex-installer.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-x86_64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          python-version: '3.12'
+          enable-cache: false
+      - name: Build the omninode-onex and omnimarket wheels
+        shell: bash
+        run: |
+          uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" packages/omninode-onex
+          uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" .
+      - name: Run the installer tests
+        shell: bash
+        run: |
+          wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
+          PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest --with pydantic pytest -o addopts="" --noconftest \
+            -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py
+
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          python-version: '3.12'
+          enable-cache: false
+      - name: Build the omninode-onex and omnimarket wheels
+        shell: bash
+        run: |
+          uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" packages/omninode-onex
+          uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" .
+      - name: Run the installer tests
+        shell: bash
+        run: |
+          wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
+          PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest --with pydantic pytest -o addopts="" --noconftest \
+            -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py
+
+  macos-arm64:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          python-version: '3.12'
+          enable-cache: false
+      - name: Build the omninode-onex and omnimarket wheels
+        shell: bash
+        run: |
+          uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" packages/omninode-onex
+          uv build --wheel --out-dir "$RUNNER_TEMP/onex-wheel" .
+      - name: Run the installer tests
+        shell: bash
+        run: |
+          wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
+          PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest --with pydantic pytest -o addopts="" --noconftest \
+            -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py
+
+  macos-intel:
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          python-version: '3.12'
+          enable-cache: false
+      - name: The rendered installer refuses an Intel Mac
+        shell: bash
+        run: |
+          PYTHONPATH="$PWD/src" uv run --no-project --python 3.12 --with pydantic python -m \
+            omnimarket.nodes.node_onex_installer_render_compute.runtime_onex_installer_render \
+            < packages/omninode-onex/installer.json > "$RUNNER_TEMP/install.sh"
+          set +e
+          bash "$RUNNER_TEMP/install.sh" > "$RUNNER_TEMP/install.out" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/install.out"
+          test "$code" -ne 0
+          grep -q "Intel Macs are not supported yet" "$RUNNER_TEMP/install.out"
+          if [ -e "$HOME/.local/bin/onex" ]; then
+            echo "::error::the installer refused but left an onex behind"
+            exit 1
+          fi
