@@ -32,6 +32,7 @@ handler_routing:
   default_handler: omnimarket.nodes.node_floor_projection_read_effect.handlers.handler_floor_projection_snapshot_read:HandlerFloorProjectionSnapshotRead
   handlers:
     - operation: read_floor_projection_snapshot
+      message_category: event
       # onex-topic-allow: a projection snapshot topic has the projection's own name form.
       topic: onex.snapshot.projection.floor-integration.v1
       handler:
@@ -39,12 +40,6 @@ handler_routing:
         module: omnimarket.nodes.node_floor_projection_read_effect.handlers.handler_floor_projection_snapshot_read
       input_model: omnimarket.models.floor_projection.ModelFloorProjectionEnvelope
       output_model: omnimarket.models.floor_projection.ModelFloorProjectionEntry
-    - operation: read_floor_projections
-      handler:
-        name: HandlerFloorProjectionRead
-        module: omnimarket.nodes.node_floor_projection_read_effect.handlers.handler_floor_projection_read
-      input_model: omnimarket.models.floor_projection.ModelFloorProjectionBundle
-      output_model: omnimarket.models.floor_projection.ModelFloorProjectionBundle
 
 descriptor:
   node_archetype: effect

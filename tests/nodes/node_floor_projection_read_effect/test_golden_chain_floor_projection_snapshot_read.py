@@ -74,6 +74,7 @@ def test_the_contract_subscribes_the_reader_to_the_integration_snapshot_topic() 
     }
     assert routed == {TOPIC}
     assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
+    assert contract["terminal_event"] == "onex.evt.omnimarket.floor-projection-read.v1"
 
 
 def test_a_delivered_publication_reads_with_its_producers_time() -> None:

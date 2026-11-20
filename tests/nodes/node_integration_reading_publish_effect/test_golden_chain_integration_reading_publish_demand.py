@@ -83,6 +83,10 @@ def test_the_contract_declares_a_trigger_the_runtime_delivers() -> None:
         contract["runtime_dispatch"]["command_topic"]
     ]
     assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
+    assert (
+        contract["terminal_event"]
+        == "onex.evt.omnimarket.integration-reading-published.v1"
+    )
 
 
 def test_named_break_without_the_subscription_the_trigger_read_refuses() -> None:
