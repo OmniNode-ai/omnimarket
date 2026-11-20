@@ -32,8 +32,6 @@ dod_evidence:
   description: 'AC1: line 4 of the contract of OMN-24844 names the pull request comment that proposes the amended text and says the owner decision is open, and the pull request carries a comment whose first line begins Owner-decision request and names OMN-24844; this check fails if either is missing. Read at the local Done gate, because the comment is written after the push.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: |-
@@ -43,8 +41,6 @@ dod_evidence:
   description: 'AC2: the pull request carries the Lab comment of the pull request head with the --refuse-skips command and exit 0, and every required context reads success at that head; the check is the one of dod-omn24904-ac2-lab-comment, repeated here so this contract binds it. Read at the local Done gate, because the comment and the check-runs exist only after the push.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: |-
@@ -53,8 +49,6 @@ dod_evidence:
 - id: dod-omn24923-ac2-split-flags
   description: 'AC2: the flags of the :27 command that the CI split also uses (coverage on, 300 s thread timeout, not kafka) are present in the workflow file, and neither the workflow nor pyproject sets xdist or an import mode for the split; this check fails if the split drops one of them or gains -n, and at the merge base, which has no tests/refuse_skips.py.'
   source: manual
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: |-
@@ -63,8 +57,6 @@ dod_evidence:
 - id: dod-omn24923-ac3-refuse-skips
   description: 'AC3: tests/refuse_skips.py defines --refuse-skips, pytest-timeout is declared in the dev group of pyproject.toml, and the :27 command of the contract of OMN-24844 passes --refuse-skips; this check fails if one is missing. The whole-suite split does not pass it, which the pull request comment argues.'
   source: manual
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: |-
@@ -75,6 +67,9 @@ dod_evidence:
   source: manual
   binds_ac:
   - AC3
+  - AC1
+  - AC2
+  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_capture_item_identity_effect.py -q -k "calls_no_skip_xfail_or_importorskip or skip_reader or marker_added_by_conftest or item_marker_reader or eight_concurrent" --refuse-skips -o xfail_strict=true --cov=src --cov-report= --timeout=300 --timeout-method=thread -p no:cacheprovider
@@ -82,8 +77,6 @@ dod_evidence:
 - id: dod-omn24923-ac4-contract-checks
   description: 'AC4: the contract of OMN-24904 holds the red-at-old check and the argued-comment check for AC1, and a local_done_gate AC2 check that reads the command, exit 0 and the required check-runs; this check fails if either id is gone or the AC2 check no longer reads check-runs.'
   source: manual
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: |-
@@ -93,8 +86,6 @@ dod_evidence:
   description: 'AC4: the tests added in this round do not exist at head f7d10ded4f32 and exist at the new head, so none can pass at the old head; this check fails if one is already at f7d10ded4f32 or missing at the head. Read at the local Done gate, because git show needs the old commit, which a shallow hosted checkout does not hold.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: |-

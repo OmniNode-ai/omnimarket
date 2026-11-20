@@ -31,6 +31,7 @@ dod_evidence:
   source: manual
   binds_ac:
   - AC1
+  - AC2
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_capture_item_identity_effect.py -q --cov=src --cov-report= --timeout=300 --timeout-method=thread -p no:cacheprovider --refuse-skips -o xfail_strict=true
@@ -39,8 +40,6 @@ dod_evidence:
   description: 'AC1: the tests added for the blocking and non-blocking code findings do not exist at head b13188dd6eff, so none of them can pass there, and they exist at the new head; this check fails if one is already at b13188dd6eff or missing at the head. Findings 1, 2 and 4 are contract and evidence findings with no test of their own: they are argued in the pull request comments starting Owner-decision request: OMN-24844 and Review round: OMN-24923. Read at the local Done gate, because git show needs the old commit, which a shallow hosted checkout does not hold.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: |-
@@ -50,8 +49,6 @@ dod_evidence:
   description: 'AC1: the pull request carries the comment that argues the findings with no test of their own; this check fails when no comment starts Review round: OMN-24923. Read at the local Done gate, because the comment is written after the push.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: |-
@@ -61,8 +58,6 @@ dod_evidence:
   description: 'AC2: the pull request carries a comment starting Lab: head= with the pull request head sha that also names the --refuse-skips command and exit 0, and every required context reads success among the check-runs of that head (the contexts are read from the base branch protection plus repo-evidence / dod-verify); this check fails when the comment, the command, the exit 0 or a required success is missing. Read at the local Done gate, because the comment and the check-runs exist only after the push.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: |-
@@ -71,8 +66,6 @@ dod_evidence:
 - id: dod-omn24904-ac3-restated
   description: 'AC3: the contract of the implementation ticket carries the word restated and names tests/refuse_skips.py as where --refuse-skips is defined; this check fails if either line is gone.'
   source: manual
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: bash -o pipefail -c 'grep -F restated contracts/OMN-24844.yaml > /dev/null && grep -F "tests/refuse_skips.py" contracts/OMN-24844.yaml > /dev/null'
@@ -90,8 +83,6 @@ dod_evidence:
   description: 'AC4: the diff against the base removes no assert line from the test file; this check fails if a line starting with assert is removed, so an added assert cannot offset a removed one. Read at the local Done gate, because the base moves on the hosted runner.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: |-
@@ -110,8 +101,6 @@ dod_evidence:
   description: 'AC4: the change touches no workflow file, so the required-check list is unchanged; this check fails if the diff against the base touches .github. Read at the local Done gate, because the base moves on the hosted runner.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: bash -o pipefail -c 'test -z "$(git diff --name-only origin/dev...HEAD -- .github)"'

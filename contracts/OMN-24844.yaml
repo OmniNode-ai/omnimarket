@@ -55,6 +55,9 @@ dod_evidence:
   - check_type: command
     check_value: bash -o pipefail -c 'git show HEAD:tests/test_capture_item_identity_effect.py | grep -E "^    assert sorted\(issued\) == list\(range\(1, 1001\)\)$" && git show HEAD:tests/test_capture_item_identity_effect.py | grep -E "^    return multiprocessing\.get_context\(.spawn.\)$"'
     cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_capture_item_identity_effect.py -q -k eight_concurrent --refuse-skips -o xfail_strict=true --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn24844-ac3-regression
   description: 'AC3: the fresh-worker regression test passes on the fix, and the control test runs it with the writers context set to fork and fails if it then passes. The control tests run both the fresh-worker test and the eight-writer test with the context set to fork, under a spawn default start method, and fail if either then passes. The lab red run is in the pull request Lab comment.'
   source: manual
