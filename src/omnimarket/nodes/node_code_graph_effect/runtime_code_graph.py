@@ -7,7 +7,7 @@
 ``index``    ``[--repo R ...]``: write the version of each named declared repository (every one by default) into Memgraph; no row, no verdict.
 ``check``    ``--repo R --base REF --head REF``: name the modules the head adds that no root reaches.
 ``shadow``   check every open pull request of the overlay's shadow repositories, append one row, hold nothing.
-``lookup``   ``--question Q --repo R`` and the question's argument: one MATCH row per answer, then a LOOKUP line.
+``lookup``   ``--question Q --repo R`` and the question's argument (locate: ``--target``, a node name, contract path or workflow path): one MATCH row per answer, then a LOOKUP line.
 ``schedule`` install | uninstall | status | run-now, for a host in the overlay; ``--unit shadow`` is the shadow's timer.
 
 ``--fault`` on nightly, probe or shadow injects a declared fault; the row then carries ``drill=yes``.
@@ -447,6 +447,7 @@ def _lookup(arguments: argparse.Namespace) -> int:
             paths=tuple(arguments.paths),
             archetype=arguments.archetype,
             hint=arguments.hint,
+            target=arguments.target,
             as_of=arguments.as_of,
         )
     )
@@ -577,6 +578,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             "--archetype", help="exemplar: the archetype (effect, compute, ...)"
         )
         lookup.add_argument("--hint", help="exemplar: words that rank the nodes")
+        lookup.add_argument(
+            "--target",
+            help="locate: a node name, a contract path or a workflow path",
+        )
         lookup.add_argument(
             "--as-of",
             dest="as_of",

@@ -1,0 +1,123 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: 1.0.0
+ticket_id: OMN-26026
+title: A node reads each lab node's Tailscale key expiry and raises an ALARM with an owner 14 days ahead, delivered on a path that does not ride the bus it watches
+summary: The scheduled host unit checks Self and lab peers and uses the existing direct Slack push for owned expiry alarms. It keeps timestamped local status readings so an expiry can enter the warning window during a tailnet outage.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26026-ac1
+    statement: Read Tailscale key expiry and raise one owned alarm per host and expiry within 14 days.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a node reads `KeyExpiry` for every lab node from the tailnet status and raises one ALARM row with a named owner when a key expires within 14 days, and none at 15 days -- falsifier: `uv run pytest tests -q -k key_expiry_alarm` over status fixtures at 13 and 15 days'
+  - id: req-omn26026-ac2
+    statement: Deliver the alarm through the existing direct Slack push during bus refusal.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: the ALARM is delivered by the Slack push path and not over the event bus, so a bus that refuses every publish still delivers it -- falsifier: `uv run pytest tests -q -k key_expiry_delivery_without_bus` with the bus publisher stubbed to raise'
+  - id: req-omn26026-ac3
+    statement: Schedule the unit every six hours and observe a tick within two intervals.
+    acceptance:
+      - id: AC3
+        statement: "AC3: a scheduled unit runs the node on its own interval and its installed record shows a tick newer than twice the interval -- falsifier: the unit's log or `launchctl list` readback on the host shows no tick for more than twice the interval"
+  - id: req-omn26026-ac4
+    statement: Observe one Slack alarm during the 2026-11-26 watching-host daemon outage drill.
+    acceptance:
+      - id: AC4
+        statement: 'AC4: with tailscaled stopped on the watching host, the drill of 2026-11-26 still delivers one ALARM push for a node inside the 14 day window -- falsifier: the drill run raises no push within the interval after tailscaled is stopped'
+evidence_requirements:
+  - kind: tests
+    description: Focused warning-window, direct push, outage-cache and launchd render tests.
+    command: uv run --frozen pytest -q -n 0 --no-cov tests/nodes/node_tailscale_key_expiry_alarm_effect/test_key_expiry.py
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn26026-ac1
+    description: The scrubbed lab status shape covers Self, peers, expired flags, and the 13-, 14-, and 15-day boundaries. Live expiry coverage depends on the rows the watching host can read.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q -n 0 --no-cov tests/nodes/node_tailscale_key_expiry_alarm_effect/test_key_expiry.py -k key_expiry_alarm
+        cwd: .
+  - id: dod-omn26026-ac2
+    description: With the bus append stubbed to refuse, the scheduled process records one owned ALARM and invokes the local Slack sender seam once on repeated ticks.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q -n 0 --no-cov tests/nodes/node_tailscale_key_expiry_alarm_effect/test_key_expiry.py -k key_expiry_delivery_without_bus
+        cwd: .
+  - id: dod-omn26026-ac3
+    description: The hosted check renders the launchd job through the installer and verifies a 21600-second interval. The orchestrator measures Mac tick age after installation.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q -n 0 --no-cov tests/nodes/node_tailscale_key_expiry_alarm_effect/test_key_expiry.py -k key_expiry_unit
+        cwd: .
+  - id: dod-omn26026-ac4
+    description: The hosted check makes the status process fail after a live reading and observes one push from the fresh cache. Live Slack delivery on the 2026-11-26 stopped-daemon drill remains open.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q -n 0 --no-cov tests/nodes/node_tailscale_key_expiry_alarm_effect/test_key_expiry.py -k key_expiry_delivery_from_cache_when_status_command_fails
+        cwd: .
+  - id: dod-omn26026-deploy
+    description: The hosted runner checks that the PR head declares the exact launchd unit label. The check fails at the base without the declaration.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fx "    label: ai.omninode.tailscale-key-expiry-alarm"'
+        cwd: .
+  - id: dod-omn26026-integration-proof
+    description: Run the scheduled entry point in read-only probe mode at the pushed revision on h053. Require a live status result and an expiry reading for at least one lab host. The probe writes no alarm state and sends no push.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26026 --host h053 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python -c '
+          import io
+          import json
+          import os
+          import shutil
+          from contextlib import redirect_stdout
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+
+          from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+          from omnimarket.nodes.node_tailscale_key_expiry_alarm_effect.runtime_key_expiry_tick import main
+
+          registry = Path(os.environ["OMNIBASE_PATH"])
+          node = "node_tailscale_key_expiry_alarm_effect"
+          with TemporaryDirectory() as scratch:
+              root = Path(scratch)
+              overlay = root / node / "overlay.yaml"
+              overlay.parent.mkdir()
+              shutil.copyfile(Path("src/omnimarket/nodes") / node / "overlay.example.yaml", overlay)
+              roots = [scratch, str(registry / "overlays" / "overlays")]
+              existing_roots = os.environ.get("ONEX_SKILL_OVERLAY_ROOTS")
+              if existing_roots:
+                  roots.append(existing_roots)
+              os.environ["ONEX_SKILL_OVERLAY_ROOTS"] = os.pathsep.join(roots)
+              state = root / "state"
+              out = io.StringIO()
+              with redirect_stdout(out):
+                  code = main(["--omni-home", str(registry), "--state-dir", str(state), "--probe"])
+              print(out.getvalue(), end="")
+              assert code == 0, f"expiry probe exited {code}"
+              tick = json.loads(out.getvalue())
+              assert tick["source"] == "live", tick
+              lab_hosts = {row.name for row in resolve_lab_hosts_table().hosts}
+              assert lab_hosts.difference(tick["unread_hosts"]), tick
+              assert tick["raised"] == tick["delivered"] == 0 and not state.exists(), tick
+          '
+        cwd: .
