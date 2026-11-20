@@ -48,7 +48,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # b0b00a52dd57: omnibase_infra#5906 (OMN-23932) moves infra to core a85cb916d4c1, which carries ModelDevTagLineageFacts.version_derived the moved dev-tag lineage handler fills.
 # 2b0c3eacdf4d: omnibase_infra#5924 (OMN-24048) adds failed_phase to the dev roll incident; core is unchanged.
 # 6cea249fb8cf: omnibase_infra#5925 (OMN-24063) moves infra to core a09066caf945, which carries the task_type field of the inference intent (omnibase_core#2316).
-# b6f27747506c: omnibase_infra#6063 (OMN-25545) moves infra to core e9f061dc9b4c, which carries omnibase_core#2335 (ModelRunNodeHosted.run replaces run_node_in_process, OMN-26115).
+# b6f27747506c: omnibase_infra#6063 (OMN-25545) moves infra to core e9f061dc9b4c, which carries omnibase_core#2335 (ModelRunNodeHosted.run replaces the removed in-process hosting function of cli_run_node, OMN-26115).
 INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("091013fd7adb", "dev-20261030152335-66d35d2283c3"),
     ("4284f5bf5587", "dev-20261031000524-fc6159b98026"),

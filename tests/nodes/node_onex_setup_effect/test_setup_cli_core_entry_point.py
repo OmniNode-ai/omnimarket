@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """``onex setup`` loads on the installed omnibase_core and reaches the core's hosted run.
 
-omnibase_core removed ``cli_run_node.run_node_in_process`` and moved the in-process hosting
+omnibase_core removed the in-process hosting function of ``cli_run_node`` and moved the hosting
 to ``ModelRunNodeHosted.run`` (same four arguments, same returned dict). The setup CLI named
 the removed function, so a virtual environment built with the newest core could not load the
 ``onex`` CLI at all, while this repository's own lock, which pins an older core, hid it. These
