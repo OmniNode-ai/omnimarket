@@ -83,6 +83,16 @@ _CASES: dict[
         False,
     ),
     # Free: the manifest declares a zero price (no tier recorded).
+    # A tier or :free suffix written in another case or with spaces is still free.
+    "local-tier-spelling": (" Local ", "qwen3.5:0.8b", 0.0, None, _UNKNOWN, False),
+    "free-id-upper-case": (
+        "cheap_frontier",
+        "vendor/model:FREE",
+        0.0,
+        None,
+        _UNKNOWN,
+        False,
+    ),
     "declared-zero-price": (None, "Qwen3.8-27B", 0.0, None, _UNKNOWN, False),
     # Charged runs and explicitly recorded sources are served as stored.
     "charged": ("cheap_cloud", "Beam-1.0-501B-A23B", 1.5, None, _MEASURED, False),

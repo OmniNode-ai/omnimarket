@@ -30,7 +30,10 @@ def historical_unpriced_zero(
     amount or a recorded cost source is served as stored, and so is a row that
     names no model. Only a zero with none of those is unknown.
     """
-    if source not in (None, "", "no_cost_model") or tier == "local":
+    if (
+        source not in (None, "", "no_cost_model")
+        or str(tier or "").strip().casefold() == "local"
+    ):
         return False
     if amount is None or isinstance(amount, bool):
         return False
@@ -42,7 +45,7 @@ def historical_unpriced_zero(
     name = next(
         (str(m).strip() for m in models if m is not None and str(m).strip()), ""
     )
-    if not name or name.endswith(":free"):
+    if not name or name.casefold().endswith(":free"):
         return False
     table = _load_table()
     return table.get_entry(name) is None and table.get_entry(name.lower()) is None
