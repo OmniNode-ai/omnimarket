@@ -73,7 +73,7 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: grep -E 'STATUS .*lane=svctopic-0630 .*installed=h201:[0-9a-f]{40} .*observed=' "${ONEX_LEDGER_PATH:?}"
+    check_value: onex ledger query --query rows --lane svctopic-0630 | grep -E 'STATUS .*installed=h201:[0-9a-f]{40} .*observed='
     cwd: .
 - id: dod-omn26147-ac5-broker-read
   description: Read from the dev broker on h201 with the lane-aware admin client, so only the local Done gate runs it; it prints the name and the partition count.
@@ -81,7 +81,7 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: grep -E 'MSG .*to=orchestrator-31d9-swarm .*service writer topic present.*partitions=1' "${ONEX_LEDGER_PATH:?}"
+    check_value: onex ledger query --query rows | grep -E 'MSG .*to=orchestrator-31d9-swarm .*service writer topic present.*partitions=1'
     cwd: .
 - id: dod-omn26147-ac4-hosted-code-path
   description: The hosted-runnable part of AC4. The recorded-incident test drives the node's own plan and apply handlers, the code the installer puts on the dev lane, and fails on the unchanged base where those handlers do not exist. The install and run record itself is the unbound local Done gate item above.
