@@ -19,7 +19,7 @@ CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 NEW_CORE_REV = "031148215620031436cba30619bbae67c0bb38ad"
 OLD_CORE_REV = "7f20b97895f01996c5858dde385ba8991c06e708"
 # The canonical-file-shape hook has its own omnibase_core block, pinned to a dev-merge tag.
-FILE_SHAPE_HOOK_REV = "dev-20261029151319-6e0a5eee541a"
+FILE_SHAPE_HOOK_REV = "dev-20261120125912-49812ad40c20"
 CORE_REPO_SUFFIX = "omnibase_core"
 FILE_SHAPE_HOOK_ID = "canonical-file-shape"
 

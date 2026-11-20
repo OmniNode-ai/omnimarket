@@ -119,7 +119,7 @@ repos:
   # tag (ci.yml, delegation-regression-nightly.yml, precommit-fail-loud-gate.yml,
   # reject-leaked-literals.yml): keep those tags equal to this rev.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: dev-20261101023710-a66b5ff79cc0
+    rev: dev-20261120125912-49812ad40c20
     hooks:
       # OMN-22848 (stopped-line fill plan T15, Step 1 item 0): omnibase_core validators of the plan's
       # G-NODE point 2 that this config did not run, scoped by directory glob to the stopped-line fill
@@ -180,7 +180,7 @@ repos:
   # lab has a typed route packaged with this core, and the routes only shrink. CI twin:
   # the last steps of job public-runner-placement in .github/workflows/ci.yml read this rev.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: dev-20261105190003-87a6f5ddcbcc
+    rev: dev-20261120125912-49812ad40c20
     hooks:
       - id: check-public-lab-selection
         args: [--repo, omnimarket, --visibility, public]
@@ -305,7 +305,7 @@ repos:
   # The canonical-file-shape hook runs the node_canonical_file_shape_check_compute entry
   # (hook id unchanged), pinned to an omnibase_core dev-merge tag. Its own block below.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: dev-20261029151319-6e0a5eee541a
+    rev: dev-20261120125912-49812ad40c20
     hooks:
       - id: canonical-file-shape
         args: [--rules, file-shape]

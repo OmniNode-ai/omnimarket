@@ -1,0 +1,68 @@
+schema_version: 1.0.0
+ticket_id: OMN-26031
+title: The omnibase_core hook revs of the pre-commit config that sat at dev-20261029 and their CI twin literals read the newest dev-merge tag of omnibase_core
+summary: The three omnibase_core hook revs that run first_party_ref-era hooks (dev-20261101023710, dev-20261105190003, dev-20261029151319) and the seven workflow literals that must read the same tag move to dev-20261120125912-49812ad40c20. The check-action-pins block (rev dev-20261029044430) and its ACTION_PINS_CORE twin in ci.yml stay, because from dev-20261101023710 on core's check-action-pins is the first_party_ref check, which fails on 67 findings of this tree and no longer ships the console script the CI step calls; AC1 stays unmet until that migration is done.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26031-core-hook-revs
+  statement: No omnibase_core hook rev of this repository reads dev-20261029, every dev-merge rev and its workflow twin read one tag, and the tests that assert the revs pass at it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: no omnibase_core hook rev in .pre-commit-config.yaml of omnimarket reads dev-20261029 and every rev the check-dependency-pins hook names reads a dev-merge tag of omnibase_core that it resolves -- falsifier: git grep -c dev-20261029 -- .pre-commit-config.yaml prints a number above 0'
+  - id: AC2
+    statement: 'AC2: the check-dependency-pins hook reports no hook_rev_near_bound and no hook_rev_behind finding for omnimarket at the pull request head -- falsifier: the dependency pins checker module run over pyproject.toml uv.lock .pre-commit-config.yaml prints a finding that names a dev- rev'
+  - id: AC3
+    statement: 'AC3: the repository''s pre-commit hooks pass over all files at the pull request head and the pull request body names the reason and both ruling stamps 2026-11-19T13:04:50Z and 2026-11-09T21:54:25Z -- falsifier: uv run pre-commit run --all-files in the pull request worktree exits non-zero, or the body shows neither stamp'
+evidence_requirements:
+- kind: tests
+  description: The tests that assert the hook revs and the check-only commit hooks pass at the new tag
+  command: uv run --frozen pytest tests/ci/test_canonical_file_shape_pin_omn20460.py tests/ci/test_check_only_hooks_omn21496.py tests/ci/test_core_validator_hooks_omn21940.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26031-no-old-rev
+  description: Counts the dev-20261029 literals in the pre-commit config and the workflows and requires zero.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: test "$(git grep -c dev-20261029 -- .pre-commit-config.yaml .github | wc -l)" = 0
+    cwd: .
+- id: dod-omn26031-pin-parity-tests
+  description: Runs the focused tests that read the hook revs and the check-only hook tests, and the pin parity validator.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_canonical_file_shape_pin_omn20460.py tests/ci/test_check_only_hooks_omn21496.py tests/ci/test_core_validator_hooks_omn21940.py -q --no-cov
+    cwd: .
+  - check_type: command
+    check_value: uv run --frozen python scripts/validation/validate_precommit_pin_parity.py
+    cwd: .
+- id: dod-omn26031-pins-checker
+  description: Runs the dependency pins checker of omnibase_core at the chosen tag over the three files it reads and requires that no finding names a dev- rev. It reads release tags with git ls-remote, so only the local Done gate runs it.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: "! uv run --no-project --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261120125912-49812ad40c20' python -m omnibase_core.nodes.node_dependency_pins_check_effect.runtime_dependency_pins_check pyproject.toml uv.lock .pre-commit-config.yaml 2>&1 | grep -E 'rev dev-'"
+    cwd: .
+- id: dod-omn26031-precommit-all-files
+  description: Runs every pre-commit hook over all files at the pushed head on a lab host.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26031 --kind test -- uv run pre-commit run --all-files
+    cwd: .

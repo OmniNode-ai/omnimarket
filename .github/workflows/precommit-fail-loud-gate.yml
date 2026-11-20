@@ -83,7 +83,7 @@ jobs:
           # OMN-21940: omnibase_core's runtime, at the dev-merge tag the pre-commit
           # hook 'precommit-interpreter-resolution' pins.
           uv run --no-project \
-            --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261101023710-a66b5ff79cc0' \
+            --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261120125912-49812ad40c20' \
             python -m omnibase_core.nodes.node_precommit_interpreter_check_compute.runtime_precommit_interpreter_check
 
       - name: Pin-parity check (pre-commit rev vs CI-pinned SHA)
