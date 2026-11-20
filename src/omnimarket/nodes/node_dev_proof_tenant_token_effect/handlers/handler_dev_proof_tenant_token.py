@@ -92,10 +92,10 @@ class HandlerDevProofTenantToken:
             EnumDevProofTokenOutcome.READY,
         )
         logger.info(
-            "dev proof tenant token outcome=%s lane=%s tokens=%s",
+            "dev proof tenant token outcome=%s lane=%s token_statuses=%s",
             outcome.value,
             lane,
-            [(t.secret_name, t.status.value) for t in tokens or []],
+            [t.status.value for t in tokens or []],
         )
         return ModelDevProofTokenResult(
             ok=ok,
