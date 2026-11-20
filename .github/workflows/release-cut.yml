@@ -246,6 +246,16 @@ jobs:
           PYPI_PIN_RESOLVE_TIMEOUT_SECONDS: '900'
         run: python3 scripts/ci/verify_pypi_pin_resolvability.py dist/
 
+      # OMN-26025 — the clean-install probe, placed BEFORE the tag push like the
+      # pin gate above. The pin gate proves the wheel's pins resolve; it never
+      # imports the package. This step installs the built wheel into an empty
+      # venv outside the source tree and loads the package and every `onex.nodes`
+      # entry point, so a wheel that imports something its metadata does not
+      # declare fails here, before the tag exists. No continue-on-error: a failed
+      # step stops the job and the tag step is not reached.
+      - name: Clean-install probe of the built distribution (OMN-26025)
+        run: python3 src/omnimarket/handlers/release_clean_install_probe.py dist/
+
       - name: Create and push the release tag
         id: tag
         env:
@@ -401,6 +411,10 @@ jobs:
           if [ "$ACTION" = "bump" ]; then
             python3 scripts/ci/post_release_dev_bump.py --released "$RELEASED_VERSION" --apply
             uv lock
+            # OMN-26025: what pins the files just changed moves in the same commit.
+            # The work contracts pin uv.lock's sha256, and the pins test and the
+            # deploy probe carry a version floor that must fail at the merge base.
+            python3 src/omnimarket/handlers/work_contracts/repin.py --root . --target "$TARGET"
           fi
 
       - name: Push the reopen commit to dev, falling back to a PR
@@ -416,7 +430,12 @@ jobs:
           set -euo pipefail
           git config user.name "onexbot-occ-writer[bot]"
           git config user.email "onexbot-occ-writer[bot]@users.noreply.github.com"
-          git add pyproject.toml uv.lock
+          git add pyproject.toml uv.lock \
+            src/omnimarket/configs/work_contracts/contracts \
+            tests/nodes/test_work_contract_pins_current.py contracts/OMN-18010.yaml
+          # A file the job changed and did not stage would be left out of the bump
+          # commit and the bump pull request would be red (OMN-26025).
+          git diff --exit-code
           git commit -m "chore(release): open dev for v${TARGET}
 
           Disarms the OMN-16344 release-identity gate that publishing
