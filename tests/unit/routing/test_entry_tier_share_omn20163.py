@@ -552,15 +552,19 @@ def test_entry_miss_retries_local_port_threads_the_correlation_id(
     port = port_mod.LocalDelegationDispatchPort(
         evidence_db_path=tmp_path / "evidence.sqlite", effect_process_boundary=False
     )
-    port._resolve_initial_backend("document", spread_key="run-1", quota_state=None)
-    assert seen["first"]["correlation_id"] == "run-1"
-    assert (
-        port._resolve_next_backend(
-            current_tier="cheap_frontier",
-            task_type="document",
-            excluded_tiers=frozenset({"cheap_frontier"}),
-            spread_key="run-1",
+    prompt_token = port_mod._ACTIVE_PROMPT.set("")
+    try:
+        port._resolve_initial_backend("document", spread_key="run-1", quota_state=None)
+        assert seen["first"]["correlation_id"] == "run-1"
+        assert (
+            port._resolve_next_backend(
+                current_tier="cheap_frontier",
+                task_type="document",
+                excluded_tiers=frozenset({"cheap_frontier"}),
+                spread_key="run-1",
+            )
+            is None
         )
-        is None
-    )
+    finally:
+        port_mod._ACTIVE_PROMPT.reset(prompt_token)
     assert seen["next"]["correlation_id"] == "run-1"
