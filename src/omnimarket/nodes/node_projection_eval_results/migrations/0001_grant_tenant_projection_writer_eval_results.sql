@@ -18,5 +18,8 @@ GRANT SELECT, INSERT, UPDATE
     TO tenant_projection_writer;
 GRANT DELETE ON public.eval_item_traces, public.eval_run_rates TO tenant_projection_writer;
 SELECT 1 / (CASE WHEN count(*) = 4 THEN 1 ELSE 0 END) AS eval_results_insert_grant_assertion
-FROM unnest(ARRAY['eval_item_scores', 'eval_item_traces', 'eval_run_closes', 'eval_run_rates']) AS t(table_name)
-WHERE has_table_privilege('tenant_projection_writer', t.table_name, 'INSERT');
+FROM information_schema.role_table_grants
+WHERE table_schema = 'public'
+  AND table_name IN ('eval_item_scores', 'eval_item_traces', 'eval_run_closes', 'eval_run_rates')
+  AND grantee = 'tenant_projection_writer'
+  AND privilege_type = 'INSERT';
