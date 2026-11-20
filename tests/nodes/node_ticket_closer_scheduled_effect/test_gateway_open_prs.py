@@ -221,7 +221,7 @@ def test_seam_a_closer_with_no_watcher_state_file_builds_its_parts_on_the_gatewa
     )
     parts = bound_closer_parts(contract_schedule(), {"TEST_HOME": str(tmp_path)})
     candidate_source = parts.source
-    assert candidate_source._open_prs.__class__ is GatewayOpenPullRequests  # type: ignore[attr-defined]
+    assert vars(candidate_source)["_open_prs"].__class__ is GatewayOpenPullRequests
 
 
 @pytest.mark.parametrize("gateway_up", [True, False])
