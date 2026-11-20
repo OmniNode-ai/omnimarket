@@ -38,3 +38,20 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/ci/test_omn26116_certifi_lock_floor.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26116-integration-proof"
+    description: >-
+      Run the certifi lock-floor test and the work-contract pin test on a lab host at the pushed
+      revision, against the synced environment of that lock. This local completion proof carries
+      no hosted AC bindings.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-26116 --kind test --
+          env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+          tests/ci/test_omn26116_certifi_lock_floor.py tests/nodes/test_work_contract_pins_current.py
+          -q -n 0 --no-cov --refuse-skips
+        cwd: "."
