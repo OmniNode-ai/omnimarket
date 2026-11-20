@@ -53,12 +53,19 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/nodes/node_topic_provision_plan_compute/test_topic_provision_result_wiring.py::test_published_events_map_routes_the_returned_plan_to_the_completed_topic -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn25124-ac3-hosted-proxy
+  description: The ledger row of AC3 names what ran on the dev runtime; the hosted proxy is the test that the contract delivered to the runtime declares the completed topic as terminal_event, the input the runtime read when the STATUS row was written. It fails against the contract at origin/dev.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_topic_provision_plan_compute/test_topic_provision_result_wiring.py::test_terminal_event_is_the_completed_topic_under_runtime_dispatch -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn25124-ac3-status-row
   description: The STATUS row naming pr=omnimarket#6166 with installed= and observed= is on the work ledger. The ledger is not reachable from the hosted runner, so only the local Done gate runs this check.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: 'python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "pr=omnimarket#6166" | grep -F "installed=" | grep -F "observed=" | grep -F "lane=run6166-0147"'
