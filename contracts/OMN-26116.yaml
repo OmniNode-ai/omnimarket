@@ -1,0 +1,45 @@
+schema_version: 1.0.0
+ticket_id: OMN-26116
+title: 'uv.lock moves certifi from 2026.7.22 to 2026.10.23, past advisory SFTY-20261020-58773'
+summary: 'This change runs uv lock --upgrade-package certifi. Only the certifi entry of uv.lock moves (version, sdist and wheel urls and hashes). No workflow, check, ratchet or source file is touched. The work contracts hold no sha256 pin of uv.lock, so none needs updating.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26116-certifi-bump
+    statement: The omnimarket uv.lock pins certifi at a release that the Safety step of Dependency Security Scan does not flag.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: omnimarket dev uv.lock pins certifi 2026.10.18 or later, with no other package moved, and every work-contract uv.lock sha256 pin matches the new uv.lock -- falsifier: git show origin/dev:uv.lock | grep -A1 ''name = "certifi"'' prints a version below 2026.10.18'
+      - id: AC2
+        statement: 'AC2: the Safety step of Dependency Security Scan reports no certifi vulnerability on a pull request opened after the bump -- falsifier: uv run --with safety safety check --file <(uv export --frozen --no-hashes) reports SFTY-20261020-58773'
+evidence_requirements:
+  - kind: tests
+    description: uv.lock is consistent and pins certifi at 2026.10.18 or later.
+    command: uv lock --check
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn26116-ac1-certifi-pinned
+    description: AC1. uv.lock is consistent with pyproject.toml and its certifi entry is 2026.10.18 or later.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: command
+        check_value: uv lock --check
+        cwd: .
+      - check_type: command
+        check_value: python3 -c "import re,sys; t=open('uv.lock').read(); v=re.search(r'name = \"certifi\"\nversion = \"([0-9.]+)\"', t).group(1); sys.exit(0 if tuple(map(int,v.split('.')))>=(2026,10,18) else 1)"
+        cwd: .
+  - id: dod-omn26116-ac2-safety-clean
+    description: AC2. The Safety check of the exported lock, with the repository policy file, reports no certifi vulnerability.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: command
+        check_value: bash -c 'uv export --frozen --no-hashes --no-emit-project > "$RUNNER_TEMP/req.txt" && uv run --no-project --with safety==3.8.1 safety check --file "$RUNNER_TEMP/req.txt" --policy-file config/safety-policy.yml'
+        cwd: .
