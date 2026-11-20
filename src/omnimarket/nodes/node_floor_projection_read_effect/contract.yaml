@@ -39,6 +39,12 @@ handler_routing:
         module: omnimarket.nodes.node_floor_projection_read_effect.handlers.handler_floor_projection_snapshot_read
       input_model: omnimarket.models.floor_projection.ModelFloorProjectionEnvelope
       output_model: omnimarket.models.floor_projection.ModelFloorProjectionEntry
+    - operation: read_floor_projections
+      handler:
+        name: HandlerFloorProjectionRead
+        module: omnimarket.nodes.node_floor_projection_read_effect.handlers.handler_floor_projection_read
+      input_model: omnimarket.models.floor_projection.ModelFloorProjectionBundle
+      output_model: omnimarket.models.floor_projection.ModelFloorProjectionBundle
 
 descriptor:
   node_archetype: effect

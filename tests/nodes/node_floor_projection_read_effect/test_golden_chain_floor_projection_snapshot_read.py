@@ -69,7 +69,9 @@ def test_the_contract_subscribes_the_reader_to_the_integration_snapshot_topic() 
     contract = _contract()
     assert contract["event_bus"]["subscribe_topics"] == [TOPIC]
     assert TOPIC in contract["snapshot_reads"]
-    routed = {h["topic"] for h in contract["handler_routing"]["handlers"]}
+    routed = {
+        h["topic"] for h in contract["handler_routing"]["handlers"] if "topic" in h
+    }
     assert routed == {TOPIC}
     assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
 

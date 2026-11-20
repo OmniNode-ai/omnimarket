@@ -51,7 +51,9 @@ def _contract() -> dict[str, Any]:
 def _declares_a_trigger(contract: dict[str, Any]) -> bool:
     """The runtime delivers a demand only where a subscribe topic, a routed handler and a terminal event are declared."""
     subscribed = contract["event_bus"]["subscribe_topics"]
-    routed = {h["topic"] for h in contract["handler_routing"]["handlers"]}
+    routed = {
+        h["topic"] for h in contract["handler_routing"]["handlers"] if "topic" in h
+    }
     return (
         bool(subscribed)
         and set(subscribed) <= routed
