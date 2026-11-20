@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """The runtime-constructible entry of node_validator_workflow_orchestrator (OMN-25055).
 
-``WorkflowRunner`` takes its overlay, reader, contracts, reducer, emitter and gate as
+``ValidatorWorkflowPipeline`` takes its overlay, reader, contracts, reducer, emitter and gate as
 constructor parameters, so the runtime cannot build it. This handler takes none: on its first
 request it loads the two node overlays from ``ONEX_SKILL_OVERLAY_ROOTS`` (no key has a default,
 a missing overlay raises), wires the workflow through ``build_workflow`` and runs it. The
