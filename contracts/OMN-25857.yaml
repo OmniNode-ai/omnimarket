@@ -33,6 +33,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_bounded_terminal.py -q --no-cov -n 0 -p no:randomly -k recorded_miss_refusal
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_github_repo_gateway_effect/test_job_log_bounded_terminal.py -q --no-cov -n 0 -p no:randomly -k 'job_log_busy or fill_timeout'
+    cwd: .
 - id: dod-omn25857-integration-proof
   description: Hosted CI cannot reach a lab lane, so only the local Done gate runs this unbound check. On the dev lane, one job-log read of a failed omnimarket CI job returns exit 0 and a non-empty body.
   source: manual
