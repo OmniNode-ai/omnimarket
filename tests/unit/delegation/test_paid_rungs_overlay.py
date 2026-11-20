@@ -291,7 +291,7 @@ def test_switch_off_places_nothing_and_appends_nothing(bound) -> None:
     assert order == ("local", "cheap_frontier", "cheap_cloud", "claude")
     assert (
         routing.next_eligible_tier(
-            "cheap_cloud", frozenset(), task_type="code_generation"
+            "cheap_cloud", frozenset(), task_type="code_generation", prompt=""
         )
         == "claude"
     )
@@ -316,7 +316,7 @@ def test_switch_on_places_the_paid_tiers_after_cheap_cloud(bound) -> None:
     assert appended == {"paid-cheap-a", "paid-frontier-b"}
     assert (
         routing.next_eligible_tier(
-            "cheap_cloud", frozenset(), task_type="code_generation"
+            "cheap_cloud", frozenset(), task_type="code_generation", prompt=""
         )
         == "paid_cheap"
     )
@@ -355,7 +355,7 @@ def test_cap_reached_skips_the_paid_tiers_with_a_typed_reason_and_the_ladder_con
     assert routing._tier_exclusion_reason(tiers["claude"], entry) is None
     assert (
         routing.next_eligible_tier(
-            "cheap_cloud", frozenset(), task_type="code_generation"
+            "cheap_cloud", frozenset(), task_type="code_generation", prompt=""
         )
         == "claude"
     )
