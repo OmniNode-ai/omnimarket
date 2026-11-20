@@ -36,10 +36,8 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_code_graph_effect/test_code_graph_lookup_contract_wiring.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25354-lookup-runtime
-  description: The bound lookup handler still answers from a git clone through the overlay.
+  description: The lookup handler still answers from a git clone through the overlay. Unbound regression check, since PR 6159 already carries this behaviour and it passes at the merge base too.
   source: manual
-  binds_ac:
-  - AC1
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_code_graph_effect/test_code_graph_lookup_runtime.py -q --no-cov -n 0 -p no:randomly
