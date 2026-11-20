@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Read billing once, alert on any billed hosted minute and record the UTC day."""
+"""Read billing once, count private repositories against the overlay and record the day."""
 
 from __future__ import annotations
 
@@ -10,17 +10,28 @@ import shlex
 import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
 
-from ..models import ModelHostedMinutesWatchRequest, ModelHostedMinutesWatchResult
+from ..models import (
+    ModelHostedMinutesOverlay,
+    ModelHostedMinutesWatchRequest,
+    ModelHostedMinutesWatchResult,
+)
 from ..models.model_hosted_minutes_watch_result import AlertOutcome
+from ..overlay import load_overlay
+from .handler_hosted_minutes_private_scope import (
+    alert_threshold,
+    classify_repositories,
+    percent_used,
+    render_private_alert,
+    render_private_status_row,
+)
 from .handler_hosted_minutes_tally import (
     billable_hosted_minutes,
     daily_totals,
     month_by_repo,
-    render_alert,
-    render_status_row,
 )
 
 _ALERT_COMMAND = (
@@ -29,7 +40,7 @@ _ALERT_COMMAND = (
 )
 
 
-def read_billing_usage(org: str, year: int, month: int) -> dict[str, Any]:
+def _gh_get(endpoint: str, what: str, timeout: int) -> dict[str, Any]:
     """Make exactly one GitHub CLI API request, bypassing read routing."""
     try:
         done = subprocess.run(
@@ -40,16 +51,16 @@ def read_billing_usage(org: str, year: int, month: int) -> dict[str, Any]:
                 "Accept: application/vnd.github+json",
                 "-H",
                 "X-GitHub-Api-Version: 2022-11-28",
-                f"/organizations/{org}/settings/billing/usage?year={year}&month={month}",
+                endpoint,
             ],
             env={**os.environ, "ONEX_GH_READ_ROUTING": "0"},
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=timeout,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise RuntimeError(f"billing read did not run: {exc}") from exc
+        raise RuntimeError(f"{what} did not run: {exc}") from exc
     if done.returncode != 0:
         raise RuntimeError(f"gh api exit {done.returncode}: {done.stderr[-300:]}")
     try:
@@ -63,6 +74,25 @@ def read_billing_usage(org: str, year: int, month: int) -> dict[str, Any]:
             f"gh api returned a non-object response: {done.stderr[-300:]}"
         )
     return payload
+
+
+def read_billing_usage(org: str, year: int, month: int) -> dict[str, Any]:
+    """One billing usage read for the month."""
+    return _gh_get(
+        f"/organizations/{org}/settings/billing/usage?year={year}&month={month}",
+        "billing read",
+        120,
+    )
+
+
+def read_repository_visibility(org: str, repository: str) -> str:
+    """One read of a repository's visibility (private, public, internal)."""
+    visibility = _gh_get(f"/repos/{org}/{repository}", "visibility read", 60).get(
+        "visibility"
+    )
+    if isinstance(visibility, str) and visibility:
+        return visibility
+    raise RuntimeError("visibility read carried no visibility field")
 
 
 def append_ledger(ledger: Path, row: str) -> tuple[bool, str]:
@@ -127,11 +157,15 @@ class HandlerPrivateHostedMinutesWatch:
         ledger_appender: Callable[[Path, str], tuple[bool, str]] | None = None,
         alert_sender: Callable[[str], str] | None = None,
         clock: Callable[[], datetime] | None = None,
+        visibility_reader: Callable[[str, str], str] | None = None,
+        overlay_loader: Callable[[], ModelHostedMinutesOverlay] | None = None,
     ) -> None:
         self._billing_reader = billing_reader or read_billing_usage
         self._ledger_appender = ledger_appender or append_ledger
         self._alert_sender = alert_sender or send_alert
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._visibility_reader = visibility_reader or read_repository_visibility
+        self._overlay_loader = overlay_loader or load_overlay
 
     def handle(
         self, request: ModelHostedMinutesWatchRequest
@@ -146,6 +180,7 @@ class HandlerPrivateHostedMinutesWatch:
         stamp = self._clock().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         heartbeat = request.state_dir / "last-run.json"
         try:
+            overlay = self._overlay_loader()
             payload = self._billing_reader(request.org, day.year, day.month)
             items = payload.get("usageItems")
             if not isinstance(items, list):
@@ -156,28 +191,56 @@ class HandlerPrivateHostedMinutesWatch:
                 heartbeat, {"ran_at": stamp, "day": day.isoformat(), "error": str(exc)}
             )
             raise
+        to_date = [row for row in rows if row.day <= day]
+        month_all = month_by_repo(to_date)
+        private_set, uncounted = classify_repositories(
+            request.org, month_all, self._visibility_reader
+        )
         day_rows = tuple(
             sorted(
-                (row for row in rows if row.day == day and row.minutes > 0),
+                (
+                    row
+                    for row in to_date
+                    if row.day == day
+                    and row.minutes > 0
+                    and row.repository in private_set
+                ),
                 key=lambda row: (-row.minutes, row.repository),
             )
         )
         total = sum(row.minutes for row in day_rows)
-        month = month_by_repo(rows)
-        totals = daily_totals(rows)
+        month = {repo: m for repo, m in month_all.items() if repo in private_set}
+        private_month = round(sum(month.values()), 2)
+        totals = daily_totals(row for row in to_date if row.repository in private_set)
         record_path = request.state_dir / "days" / f"{day}.json"
         record = (
             json.loads(record_path.read_text(encoding="utf-8"))
             if record_path.exists()
             else {}
         )
-        alert_text = render_alert(request.org, day, day_rows) if total > 0 else ""
+        due = Decimal(str(private_month)) >= alert_threshold(overlay)
+        alert_text = (
+            render_private_alert(request.org, day, private_month, overlay, month)
+            if due
+            else ""
+        )
         alert: AlertOutcome = "none"
         if record.get("alert") in {"sent", "already-sent"}:
             alert = "already-sent"
-        elif total > 0:
+        elif due:
             alert = cast(AlertOutcome, self._alert_sender(alert_text))
-        row = render_status_row(stamp, day, day_rows, total, alert, len(items), month)
+        row = render_private_status_row(
+            stamp,
+            day,
+            day_rows,
+            total,
+            alert,
+            len(items),
+            month,
+            private_month,
+            overlay,
+            uncounted,
+        )
         if record.get("ledger_written") is True:
             ledger_written, ledger_detail = True, f"already written {day}"
         else:
@@ -200,6 +263,8 @@ class HandlerPrivateHostedMinutesWatch:
                 "alert": alert,
                 "ledger_written": ledger_written,
                 "items_read": len(items),
+                "private_month_minutes": private_month,
+                "uncounted": [item.repository for item in uncounted],
             },
         )
         return ModelHostedMinutesWatchResult(
@@ -210,6 +275,10 @@ class HandlerPrivateHostedMinutesWatch:
             month_minutes_by_repo=month,
             daily_totals=totals,
             total_day_minutes=total,
+            private_month_minutes=private_month,
+            included_minutes=overlay.included_minutes,
+            percent_used=percent_used(private_month, overlay),
+            uncounted=uncounted,
             status_row=row,
             ledger_written=ledger_written,
             ledger_detail=ledger_detail,

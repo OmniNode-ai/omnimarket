@@ -11,6 +11,8 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+
 from .container import container_private_hosted_minutes_watch_effect
 from .models import ModelHostedMinutesWatchRequest
 
@@ -45,6 +47,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ledger=args.ledger,
             )
         )
+    except NodeOverlayError as exc:
+        sys.stderr.write(f"private-hosted-minutes-watch: overlay refused: {exc}\n")
+        return 2
     except RuntimeError as exc:
         sys.stderr.write(f"private-hosted-minutes-watch: billing read failed: {exc}\n")
         return 2
@@ -52,6 +57,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"private-hosted-minutes-watch: day={result.day} "
         f"hosted_minutes={round(result.total_day_minutes, 2):g} "
         f"repos={len(result.day_minutes)} alert={result.alert} "
+        f"private_month_minutes={round(result.private_month_minutes, 2):g} "
+        f"included={result.included_minutes} percent_used={result.percent_used:g} "
+        f"uncounted={round(sum(u.minutes for u in result.uncounted), 2):g} "
         f"ledger_written={result.ledger_written}\n"
     )
     for row in result.day_minutes:
