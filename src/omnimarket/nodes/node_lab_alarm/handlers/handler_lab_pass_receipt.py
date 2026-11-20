@@ -24,12 +24,19 @@ from omnimarket.models.lab_alarm_delivery import (
     ModelLabAlarm,
     ModelLabAlarmDeliveryRequest,
 )
+from omnimarket.nodes.node_lab_alarm.handlers.handler_loaded_code_sha import (
+    HandlerLoadedCodeSha,
+)
 from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_lab_pass_receipt import (
     EnumLabPassReceiptFault,
     EnumLabPassReceiptOutcome,
     ModelLabPassReceipt,
     ModelLabPassReceiptCommand,
     ModelLabPassReceiptResult,
+)
+from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_loaded_code_sha import (
+    EnumLoadedCodeShaOutcome,
+    ModelLoadedCodeShaRequest,
 )
 from omnimarket.nodes.node_lab_alarm.overlay import ModelLabPassReceiptSettings
 from omnimarket.nodes.node_lab_alarm.protocols import (
@@ -41,7 +48,6 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     ReceiptMalformedError,
     ReceiptSurfaceUnreadableError,
     RunRecordUnwritableError,
-    ShaUnresolvedError,
 )
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -69,7 +75,7 @@ class HandlerLabPassReceipt:
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._settings = settings
-        self._sha_source = sha_source
+        self._loaded_code_sha = HandlerLoadedCodeSha(sha_source=sha_source)
         self._receipts = receipts
         self._delivery = delivery
         self._records = records
@@ -90,9 +96,14 @@ class HandlerLabPassReceipt:
                 ("injected: planted-fail",),
                 detail,
             )
-        try:
-            sha, surface = self._sha_source.read()
-        except ShaUnresolvedError as exc:
+        loaded = self._loaded_code_sha.handle(
+            ModelLoadedCodeShaRequest(correlation_id=request.correlation_id)
+        )
+        if (
+            loaded.outcome is EnumLoadedCodeShaOutcome.UNREAD
+            or loaded.sha is None
+            or loaded.surface is None
+        ):
             return self._finish(
                 request,
                 EnumLabPassReceiptOutcome.INDETERMINATE,
@@ -100,8 +111,9 @@ class HandlerLabPassReceipt:
                 "none",
                 (),
                 ("sha-unresolved",),
-                f"the lane's delivered sha could not be resolved, so no receipt could be looked up; an unresolved sha is not a passing lane: {exc}",
+                f"the lane's delivered sha could not be resolved, so no receipt could be looked up; an unresolved sha is not a passing lane: {loaded.error}",
             )
+        sha, surface = loaded.sha, loaded.surface
         try:
             document = self._receipts.read(sha)
         except ReceiptSurfaceUnreadableError as exc:

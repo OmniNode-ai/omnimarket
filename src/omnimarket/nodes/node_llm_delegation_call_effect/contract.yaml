@@ -38,7 +38,8 @@ description: |
 
   HandlerHarnessEvalProcess owns bounded operator fixture subprocesses, with
   commands and environments supplied by the offline test runner. It has no
-  customer bus route.
+  customer bus route. Callers may supply an isolated working directory; when
+  omitted, the child inherits the caller's directory without changing it.
 
   HandlerCodexHarnessAttempt runs a single Codex attempt through this existing
   effect's host dispatcher. It takes prompt, model and timeout_seconds and

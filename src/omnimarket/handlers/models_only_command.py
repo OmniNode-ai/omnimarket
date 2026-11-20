@@ -45,7 +45,7 @@ def only_models(rule: str | None, clear: bool) -> None:
     """Limit delegation to local models only, or to free models only.
 
     With RULE ``local``, every delegation on this machine skips a model that is
-    not one you run (a model added by URL, or Ollama). With ``free``, it skips a
+    not one you run (a Local Model, added by URL). With ``free``, it skips a
     model the provider catalogue does not declare free; local models count as
     free. Each skip is recorded with its reason and no attempt is made on it. When
     the rule leaves no model, the delegation is refused before any provider call.
