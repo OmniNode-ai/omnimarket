@@ -44,13 +44,13 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/nodes/node_integration_reading_publish_effect/test_golden_chain_integration_reading_publish_demand.py tests/nodes/node_floor_projection_read_effect/test_golden_chain_floor_projection_snapshot_read.py -q -n 0 -p no:randomly --no-cov -k "trigger or subscribes or named_break"
         cwd: .
   - id: dod-omn25036-ac3
-    description: AC3 is read from the dev branch install receipt of the lane; hosted CI checks that the change is contract and handler files only, with no host file, unit or plist in the diff.
+    description: AC3 is read from the dev branch install receipt of the lane; hosted CI runs the reader node's golden chain, which fails on the base commit where the reader has no snapshot handler and no subscribe topic; the diff holds contract and handler files only.
     source: manual
     binds_ac:
       - AC3
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_integration_reading_publish_effect/test_integration_nodes_registered.py -q -n 0 -p no:randomly --no-cov
+        check_value: uv run --frozen pytest tests/nodes/node_floor_projection_read_effect/test_golden_chain_floor_projection_snapshot_read.py -q -n 0 -p no:randomly --no-cov
         cwd: .
   - id: dod-omn25036-integration-proof-dev-runtime-demand
     description: The integration proof is one demand on the dev runtime, which only the local Done gate can reach; it sends one batch to node_integration_reading_publish_effect with onex run-node and asserts the terminal event reports the projection published.
