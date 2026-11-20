@@ -48,7 +48,7 @@ handler_routing:
 
 descriptor:
   node_archetype: effect
-  runtime_profiles: [main]
+  runtime_profiles: [effects]
   purity: impure
   idempotent: true
   side_effects: [alert-channel-post, ledger-append, state-file-write]
