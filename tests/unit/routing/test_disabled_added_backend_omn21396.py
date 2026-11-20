@@ -10,6 +10,7 @@ declared, but unreachable, exactly as for a dark base-declared backend.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -40,6 +41,20 @@ from tests.unit.routing.test_inprocess_spread_omn19432 import (
 from tests.unit.routing.test_same_model_spread_omn19215 import _bind, _reset
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _routing_prompt_set() -> Iterator[None]:
+    """These tests resolve backends outside a dispatch, so they set its prompt."""
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+        port_local_delegation_dispatch as _dispatch_port,
+    )
+
+    prompt_token = _dispatch_port._ACTIVE_PROMPT.set("route this short prompt")
+    try:
+        yield
+    finally:
+        _dispatch_port._ACTIVE_PROMPT.reset(prompt_token)
 
 
 def test_file_loaders_keep_a_complete_dark_backend_declared(tmp_path: Path) -> None:

@@ -898,27 +898,27 @@ class TestNextEligibleTier:
         OMN-13215: the shelled cli_agents tier was removed; declaration order is
         local -> cheap_cloud -> cheap_frontier -> claude.
         """
-        result = next_eligible_tier("cheap_cloud", frozenset())
+        result = next_eligible_tier("cheap_cloud", frozenset(), prompt="")
         assert result == "cheap_frontier"
 
     def test_next_eligible_tier_from_cheap_frontier(self) -> None:
         """next_eligible_tier('cheap_frontier', {}) -> 'claude' (HTTP ceiling)."""
-        result = next_eligible_tier("cheap_frontier", frozenset())
+        result = next_eligible_tier("cheap_frontier", frozenset(), prompt="")
         assert result == "claude"
 
     def test_next_eligible_tier_last_eligible_returns_none(self) -> None:
         """next_eligible_tier('claude', {}) -> None (claude is the ceiling)."""
-        result = next_eligible_tier("claude", frozenset())
+        result = next_eligible_tier("claude", frozenset(), prompt="")
         assert result is None
 
     def test_next_eligible_tier_from_local(self) -> None:
         """next_eligible_tier('local', {}) -> 'cheap_cloud'."""
-        result = next_eligible_tier("local", frozenset())
+        result = next_eligible_tier("local", frozenset(), prompt="")
         assert result == "cheap_cloud"
 
     def test_next_eligible_tier_unrecognized_returns_none(self) -> None:
         """Unrecognized tier name returns None."""
-        result = next_eligible_tier("nonexistent_tier", frozenset())
+        result = next_eligible_tier("nonexistent_tier", frozenset(), prompt="")
         assert result is None
 
 
@@ -963,6 +963,7 @@ class TestNextEligibleTierEndpointResolvability:
             "cheap_cloud",
             frozenset(),
             task_type="document",
+            prompt="",
         )
         assert result is None
 
@@ -983,12 +984,13 @@ class TestNextEligibleTierEndpointResolvability:
             "local",
             frozenset(),
             task_type="document",
+            prompt="",
         )
         assert result == "cheap_frontier"
 
     def test_task_unaware_call_preserves_declaration_order(self) -> None:
         # Backward-compat: omitting task_type preserves pure declaration order.
-        result = next_eligible_tier("cheap_cloud", frozenset())
+        result = next_eligible_tier("cheap_cloud", frozenset(), prompt="")
         assert result == "cheap_frontier"
 
     def test_task_unaware_call_does_not_apply_code_generation_tier_order(
@@ -1000,6 +1002,7 @@ class TestNextEligibleTierEndpointResolvability:
         result = next_eligible_tier(
             "cheap_cloud",
             frozenset({"cheap_frontier"}),
+            prompt="",
         )
         assert result == "claude"
 
@@ -1014,6 +1017,7 @@ class TestNextEligibleTierEndpointResolvability:
             "cheap_cloud",
             frozenset({"cheap_frontier"}),
             task_type="code_generation",
+            prompt="",
         )
         assert result == "claude"
 
@@ -1227,6 +1231,7 @@ class TestTestResearchTierPolicyVerified:
                 "cheap_cloud",
                 frozenset(),
                 task_type=task_type,
+                prompt="",
             )
             is None
         )
@@ -1249,16 +1254,19 @@ class TestTestResearchTierPolicyVerified:
         monkeypatch.setattr(routing, "_config", None)
         monkeypatch.setattr(routing, "_config_spread_peers", None)
         monkeypatch.setattr(routing, "_config_spread_weights", None)
-        before = next_eligible_tier("local", frozenset(), task_type="test")
+        before = next_eligible_tier("local", frozenset(), task_type="test", prompt="")
         register_local_secret("llm.openrouter.api_key", "test-openrouter-key")
         routing._load_bifrost_endpoints.cache_clear()
         try:
-            after = next_eligible_tier("local", frozenset(), task_type="test")
+            after = next_eligible_tier(
+                "local", frozenset(), task_type="test", prompt=""
+            )
             without_north_mini = next_eligible_tier(
                 "local",
                 frozenset(),
                 task_type="test",
                 excluded_backend_refs=frozenset({"openrouter-nemotron-3-5-super"}),
+                prompt="",
             )
         finally:
             routing._load_bifrost_endpoints.cache_clear()
@@ -1274,6 +1282,7 @@ class TestTestResearchTierPolicyVerified:
                 "claude",
                 frozenset(),
                 task_type=task_type,
+                prompt="",
             )
             is None
         )
@@ -1476,6 +1485,7 @@ class TestClosedSetTierOrderOMN13157:
             "local",
             frozenset(),
             task_type="code_generation",
+            prompt="",
         )
         assert result == "cheap_frontier", (
             "code_generation tier_order=[local, cheap_frontier, cheap_cloud, "
@@ -1498,6 +1508,7 @@ class TestClosedSetTierOrderOMN13157:
             "cheap_frontier",
             frozenset(),
             task_type="code_generation",
+            prompt="",
         )
         assert result == "cheap_cloud", (
             "code_generation tier_order=[local, cheap_frontier, cheap_cloud, "
@@ -1519,6 +1530,7 @@ class TestClosedSetTierOrderOMN13157:
             "cheap_cloud",
             frozenset(),
             task_type="code_generation",
+            prompt="",
         )
         assert result == "claude", (
             "code_generation ceiling is claude; escalating past cheap_cloud must "
@@ -1544,6 +1556,7 @@ class TestClosedSetTierOrderOMN13157:
             "cheap_cloud",
             frozenset(),
             task_type=None,
+            prompt="",
         )
         assert decl_result == "cheap_frontier"
 
@@ -1553,6 +1566,7 @@ class TestClosedSetTierOrderOMN13157:
             "local",
             frozenset(),
             task_type="code_generation",
+            prompt="",
         )
         assert contract_result == "cheap_frontier", (
             "cheap_frontier is an explicit member of code_generation's tier_order, "
@@ -1566,7 +1580,10 @@ class TestClosedSetTierOrderOMN13157:
         — it remains forward-only in routing_tiers.yaml order (local→cheap_cloud
         →cheap_frontier→claude). This is the backward-compat guarantee.
         """
-        assert next_eligible_tier("local", frozenset()) == "cheap_cloud"
-        assert next_eligible_tier("cheap_cloud", frozenset()) == "cheap_frontier"
-        assert next_eligible_tier("cheap_frontier", frozenset()) == "claude"
-        assert next_eligible_tier("claude", frozenset()) is None
+        assert next_eligible_tier("local", frozenset(), prompt="") == "cheap_cloud"
+        assert (
+            next_eligible_tier("cheap_cloud", frozenset(), prompt="")
+            == "cheap_frontier"
+        )
+        assert next_eligible_tier("cheap_frontier", frozenset(), prompt="") == "claude"
+        assert next_eligible_tier("claude", frozenset(), prompt="") is None

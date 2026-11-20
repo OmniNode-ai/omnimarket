@@ -1,0 +1,68 @@
+schema_version: 1.0.0
+ticket_id: OMN-26244
+title: Unblock omnimarket PR 6327 whose required checks CI Summary and CodeQL Security Analysis (python) read red at head 3455ee061368
+summary: At head 3455ee061368 every required check of omnimarket#6327 except CodeQL Security Analysis (python) completed success. CodeQL started at 14:25Z, its job log still read in progress at 14:32Z, and it concluded failure at 15:27Z with no code-scanning alert on the branch. CI Summary then failed at 15:48Z only because it names that one external context (the CI Summary log reads external sweep failures, red and named by nothing else - CodeQL Security Analysis (python)). The diff of the pull request is the writers test file and three contracts, so no source change can clear the red; this change merges the current dev into the pull request branch, which gives it a new head and a fresh set of check runs, and adds this contract. Not in this change - any workflow file, any required-contexts list, any baseline file, the test file, a rerun of the old head.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26244-unblock-6327
+  statement: The required checks of omnimarket#6327 read success at a new head that carries no loosened gate, and the new head has a Lab comment.
+  acceptance:
+  - id: AC1
+    statement: "AC1: omnimarket#6327 reads the required checks CI Summary and CodeQL Security Analysis (python) at success at its new head, read through the scm path after the push -- falsifier: onex scm pr-view OmniNode-ai/omnimarket#6327 shows either check red or missing at the new head"
+  - id: AC2
+    statement: "AC2: no check is widened, skipped or bypassed, so the diff from 3455ee061368 to the new head touches no workflow file, no required-contexts list and no baseline file to loosen a gate -- falsifier: git diff 3455ee061368 <new head> -- .github or a checker config shows a removed assertion, a new skip or a loosened threshold"
+  - id: AC3
+    statement: "AC3: the new head is on the PR as a comment starting Lab: head=<full sha> with a red-then-green lab run behind it, or a STATUS row names cause=<one line> shared=yes with its evidence when the cause is outside the PR -- falsifier: onex scm pr-view OmniNode-ai/omnimarket#6327 shows no comment with Lab: head= for the new head and the ledger holds no STATUS row with shared=yes for this ticket"
+evidence_requirements:
+- kind: tests
+  description: The capture item identity test file at the pushed head, run on a lab host with the flags the CI test split uses (coverage on, 300 s thread timeout, no xdist), with --refuse-skips and strict xfail.
+  command: uv run pytest tests/test_capture_item_identity_effect.py -v --tb=short -m "not kafka" --cov=src --cov-report= --timeout=300 --timeout-method=thread -p no:cacheprovider --refuse-skips -o xfail_strict=true
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26244-ac1-required-checks
+  description: 'AC1: the head of omnimarket#6327 carries a success run for CI Summary and for CodeQL Security Analysis (python); this check fails if either reads anything but success at the head. Read at the local Done gate, because the check runs exist only after the push.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'h=$(gh api repos/OmniNode-ai/omnimarket/pulls/6327 --jq .head.sha) && runs=$(gh api --paginate repos/OmniNode-ai/omnimarket/commits/$h/check-runs --jq ".check_runs[] | \"\(.name)|\(.conclusion)\"") && printf "%s\n" "$runs" | grep -x -F "CI Summary|success" > /dev/null && printf "%s\n" "$runs" | grep -x -F "CodeQL Security Analysis (python)|success" > /dev/null'
+    cwd: .
+- id: dod-omn26244-ac2-no-gate-change
+  description: 'AC2: the diff from 3455ee061368 to the head touches no workflow file and none of the required-contexts, skip-count, canonical-file-shape or dependency baselines; this check fails if any such path is in the diff. Read at the local Done gate, because git diff needs the old commit, which a shallow hosted checkout does not hold.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'test -z "$(git diff --name-only 3455ee0613686669fadba281c30e880f84d8f177 HEAD -- .github config/skip_count_baseline.yaml scripts/ci "*baseline*")"'
+    cwd: .
+- id: dod-omn26244-ac3-lab-comment
+  description: 'AC3: the pull request carries a comment that starts Lab: head=<the head sha> and names exit 0; this check fails if there is none. Read at the local Done gate, because the comment is written after the push.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'h=$(gh api repos/OmniNode-ai/omnimarket/pulls/6327 --jq .head.sha) && gh api --paginate repos/OmniNode-ai/omnimarket/issues/6327/comments --jq ".[] | select(.body | startswith(\"Lab: head=$h\")) | .body" | grep -E "exit 0" > /dev/null'
+    cwd: .
+- id: dod-omn26244-ac3-writers-test
+  description: 'AC3: the writers test file of the pull request, with the fresh-worker control test, runs green at the head under --refuse-skips; the control test does not exist at the merge base of dev, so this check fails there.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_capture_item_identity_effect.py -q -k "start_fresh or eight_concurrent" --refuse-skips -o xfail_strict=true --cov=src --cov-report= --timeout=300 --timeout-method=thread -p no:cacheprovider
+    cwd: .

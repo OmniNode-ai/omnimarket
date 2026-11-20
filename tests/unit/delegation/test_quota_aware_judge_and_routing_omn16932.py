@@ -465,7 +465,9 @@ class TestEscalationCannotTargetAQuotaDeadProvider:
         # Without this the post-cap assertion could pass vacuously on a ladder
         # that never offered ``cheap_cloud`` in the first place.
         assert (
-            next_eligible_tier("local", frozenset(), task_type="code_generation")
+            next_eligible_tier(
+                "local", frozenset(), task_type="code_generation", prompt=""
+            )
             == "cheap_cloud"
         )
 
@@ -482,6 +484,7 @@ class TestEscalationCannotTargetAQuotaDeadProvider:
                 frozenset(),
                 task_type="code_generation",
                 excluded_backend_refs=blocked,
+                prompt="",
             )
             is None
         )
@@ -491,6 +494,7 @@ class TestEscalationCannotTargetAQuotaDeadProvider:
                 frozenset(),
                 task_type="code_generation",
                 excluded_backend_refs=blocked,
+                prompt="",
             )
             is None
         )

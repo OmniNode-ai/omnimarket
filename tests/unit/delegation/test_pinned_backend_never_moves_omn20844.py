@@ -80,7 +80,9 @@ def frontier_ladder(monkeypatch: pytest.MonkeyPatch) -> None:
     """The pin's tier declares an untried sibling and a higher tier exists, so
     every move the unpinned run makes is available to the pinned one too."""
 
-    def _sibling(tier: str, _task_type: str, excluded: frozenset[str]) -> str | None:
+    def _sibling(
+        tier: str, _task_type: str, excluded: frozenset[str], *_a: object, **_k: object
+    ) -> str | None:
         if tier != _TIER:
             return None
         return next((b for b in (_PIN, _SIBLING) if b not in excluded), None)

@@ -369,6 +369,7 @@ def test_registered_keys_respect_routing_policy(
             frozenset(),
             task_type="planning",
             byok_backends=routes,
+            prompt="",
         )
         is None
     )
@@ -378,7 +379,9 @@ def test_deployed_resolver_never_reads_a_host_local_key(profile):
     add_key("openrouter")
     # The bus call has no local route snapshot even on a machine with keys.
     assert (
-        routing.next_eligible_tier("cheap_cloud", frozenset(), task_type="planning")
+        routing.next_eligible_tier(
+            "cheap_cloud", frozenset(), task_type="planning", prompt=""
+        )
         is None
     )
 
