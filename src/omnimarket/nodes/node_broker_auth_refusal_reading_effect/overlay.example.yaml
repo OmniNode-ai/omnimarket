@@ -8,6 +8,7 @@
 #   reading          the text a refusal line holds, the look-back window and how much of the first line a row keeps
 #   bars             the most refusals that are not the control, in the window, that still read WORKING (0: any is a finding)
 #   injected_fault   the fault injected on purpose that must turn the reading NOT WORKING
+#   schedule_hosts   hosts that install the hourly systemd user timer: the venv its unit runs and the environment it carries
 log_source:
   ssh_host_env: EXAMPLE_BROKER_SSH_HOST
   compose_project: example-project
@@ -35,3 +36,9 @@ publish:
   actor: node:node_broker_auth_refusal_reading_effect
   publish_max_age_seconds: 1800
 injected_fault: Connect a client to the SASL listener without authenticating, or point the needle at a line the broker logs
+schedule_hosts:
+- name: example-lab-host
+  venv: example-venv
+  environment:
+    EXAMPLE_HOST_NAME: example-lab-host
+    EXAMPLE_LEDGER_APPEND_COMMAND: /usr/local/bin/example-append --bus-lane example

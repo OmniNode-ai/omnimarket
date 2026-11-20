@@ -4,10 +4,12 @@
 
 ``read``   read the broker's authentication refusals and append the row.
 ``probe``  the same read, appending nothing.
+``schedule`` install | uninstall | status | run-now, for a host in the overlay's schedule_hosts.
 
 Exit codes: 0 the read ran and its row was written (NOT_WORKING is still 0: a reading changes nothing and
 refuses nothing); 1 the read or its row failed (an unreadable log, an append that did not land);
-3 a deployment fact is missing (INDETERMINATE).
+3 a deployment fact is missing (INDETERMINATE). Schedule verbs return 0 on success, 1 when a host is
+undeclared or a systemd operation fails, and 3 when schedule configuration is unavailable.
 """
 
 from __future__ import annotations
@@ -17,16 +19,21 @@ import os
 import sys
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 
 from pydantic import ValidationError
 
-from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_overlay
 from omnimarket.nodes.node_broker_auth_refusal_reading_effect.adapters.broker_log import (
     SshBrokerLog,
     SshControlRuns,
 )
 from omnimarket.nodes.node_broker_auth_refusal_reading_effect.handlers.handler_broker_auth_refusal import (
     HandlerBrokerAuthRefusal,
+)
+from omnimarket.nodes.node_broker_auth_refusal_reading_effect.handlers.schedule import (
+    BrokerAuthRefusalScheduler,
+    load_schedule,
 )
 from omnimarket.nodes.node_broker_auth_refusal_reading_effect.models.model_broker_auth_refusal import (
     ModelBrokerAuthRefusalCommand,
@@ -93,9 +100,53 @@ def _run(write: bool) -> int:
     return 1 if result.failed else 0
 
 
+def _schedule(arguments: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(prog="schedule")
+    verbs = parser.add_subparsers(dest="verb", required=True)
+    for verb in ("install", "uninstall", "status", "run-now"):
+        sub = verbs.add_parser(verb)
+        sub.add_argument("--host", required=True, help="the host's name in the overlay")
+        if verb == "install":
+            sub.add_argument(
+                "--workspace-root",
+                dest="workspace_root",
+                default=os.environ.get("OMNI_HOME", ""),
+            )
+            sub.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args(list(arguments))
+    scheduler = BrokerAuthRefusalScheduler(
+        schedule=load_schedule(), overlay=load_overlay(), home=Path.home()
+    )
+    if args.verb == "install":
+        if not args.workspace_root:
+            raise ValueError("OMNI_HOME is not set and --workspace-root was not passed")
+        found = find_node_overlay(NODE_NAME)
+        if found is None:
+            raise NodeOverlayError(
+                "the overlay file cannot be found to pin its root in the unit"
+            )
+        result = scheduler.install(
+            args.host,
+            omni_root=Path(args.workspace_root),
+            overlay_root=found.parent.parent,
+            dry_run=args.dry_run,
+        )
+    elif args.verb == "uninstall":
+        result = scheduler.uninstall(args.host)
+    elif args.verb == "status":
+        result = scheduler.status(args.host)
+    else:
+        result = scheduler.run_now(args.host)
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    return result.exit_code
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     try:
+        if arguments and arguments[0] == "schedule":
+            return _schedule(arguments[1:])
         parser = argparse.ArgumentParser(prog=NODE_NAME, description=__doc__)
         parser.add_argument("verb", choices=("read", "probe"))
         args = parser.parse_args(arguments)
