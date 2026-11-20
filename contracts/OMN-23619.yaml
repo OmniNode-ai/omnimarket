@@ -18,6 +18,13 @@ requirements:
     statement: 'AC3: the row the node writes is read by the reading writer''s piece 16 source rule and by the floor''s reading reader as the piece''s newest reading -- falsifier: `uv run --frozen pytest tests/nodes/node_pilot_measurement_effect/test_pilot_measurement_reading_seam.py -q --no-cov -p no:randomly`'
   - id: AC4
     statement: 'AC4: the node and the floor agree on the row in process: the seam and chain tests run the real producer, the real reading writer and the floor reader over the row, and a producer with a renamed lane or src reads NOT WORKING -- falsifier: `uv run --frozen pytest tests/nodes/node_pilot_measurement_effect/test_pilot_measurement_reading_seam.py -q --no-cov -p no:randomly`, red at the merge base; the lab-host run is the unbound local Done gate item'
+- id: req-omn23619-graphiti-candidate
+  statement: 'The memory pilot node builds Graphiti as a second candidate backend when the overlay names it, scores the frozen stage two question set, and never builds Graphiti for a Cognee overlay.'
+  acceptance:
+  - id: AC5
+    statement: 'AC5: the daily memory pilot run builds the Graphiti backend when the overlay names it, closes it after the run, and a Cognee overlay never builds Graphiti -- falsifier: `uv run --frozen pytest tests/nodes/node_memory_pilot_effect/test_stage2_graphiti_candidate.py -q --no-cov -p no:randomly`, red at the merge base (the Graphiti backend module does not exist there)'
+  - id: AC6
+    statement: 'AC6: the stage two question set is frozen (a changed question breaks the freeze) and its 12 known answers score right while wrong ones score wrong -- falsifier: `uv run --frozen pytest tests/nodes/node_memory_pilot_effect/test_stage2_graphiti_candidate.py -q --no-cov -p no:randomly`, red at the merge base'
 evidence_requirements:
 - kind: tests
   description: 'The node''s tests pass at the pushed head; at the merge base the node does not exist and they fail.'
@@ -50,6 +57,9 @@ dod_evidence:
 - id: dod-omn23619-memory-pilot-stage2-tests
   description: 'The memory pilot node tests at the pushed head: stage two ruling question set frozen (a changed question breaks the freeze), 12 questions with known answers that score right and wrong ones that score wrong, the daily run names Graphiti as its candidate from the overlay and closes it, and a Cognee overlay never builds Graphiti. At the merge base the stage two directory and the Graphiti selection do not exist, so the file fails there.'
   source: manual
+  binds_ac:
+  - AC5
+  - AC6
   checks:
   - check_type: test_passes
     check_value: 'uv run --frozen pytest tests/nodes/node_memory_pilot_effect -q --no-cov -p no:randomly'
