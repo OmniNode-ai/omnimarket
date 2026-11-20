@@ -34,7 +34,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: command
-    check_value: grep -F '"container-restarts",' src/omnimarket/nodes/node_lab_alarm/overlay.py
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_alarm/overlay.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "\"container-restarts\"," > /dev/null'
     cwd: .
 - id: dod-omn-26045-integration-proof
   description: The change is run on a lab host at the pushed head and the reading is named in the pull request.
