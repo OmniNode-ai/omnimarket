@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository
+# (overlays/node_projection_eval_results/overlay.yaml). The schema is ModelEvalResultsOverlay; no key has a default.
+display_names:            # evals.board.display_names: only these models reach the snapshot
+  example-local-model: Example local model
+max_models: 8             # evals.board.max_models
+snapshot_runs: 26         # evals.projection.snapshot_runs: each model's last tracking runs on the snapshot
+live_weeks: 26            # evals.projection.live_weeks: each model's last live-work weeks on the snapshot
+max_field_chars: 200      # evals.projection.max_field_chars: a longer text field refuses the snapshot
+snapshot_max_bytes: 900000   # evals.projection.snapshot_max_bytes: a larger snapshot is refused, never cut
+publish_interval_s: 600   # evals.projection.publish_interval_s: the tick republishes at most this often
+lane: dev                 # the lane stamped on every item: dev or stability
+host: example-host
+install_revision: example-revision

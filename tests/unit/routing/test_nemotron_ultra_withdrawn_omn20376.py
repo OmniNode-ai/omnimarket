@@ -33,7 +33,7 @@ pytestmark = pytest.mark.unit
 
 _CONFIGS = Path(__file__).resolve().parents[3] / "src" / "omnimarket" / "configs"
 _ULTRA = "openrouter-nemotron-ultra"
-_NORTH_MINI = "openrouter-north-mini-code"
+_NORTH_MINI = "openrouter-nemotron-3-5-super"
 _CEILING_TIER = "claude"
 
 # The classes the mirrored north-mini entry served before the withdrawal: the
@@ -122,7 +122,7 @@ def test_north_mini_owns_its_use_for_in_the_placed_free_tier() -> None:
     assert [m.backend_ref for m in free.models] == [_NORTH_MINI]
     (entry,) = free.models
     assert entry.use_for == _NORTH_MINI_SERVES
-    assert entry.id == "cohere/north-mini-code:free"
+    assert entry.id == "nvidia/nemotron-3.5-super-vl:free"
     assert entry.max_context_tokens == 256000
     assert entry.fast_path_threshold_tokens == 8192
 

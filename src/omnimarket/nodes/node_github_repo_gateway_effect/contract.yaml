@@ -25,6 +25,10 @@ job_log_cache:
   # the explicit job_log_fill verb is not counted.
   lane_miss_fill_max: 30
   lane_miss_fill_window_seconds: 3600
+  # A request that cannot get the per-job lock, or whose download does not finish, answers a
+  # typed refusal inside these bounds; it is never left without a terminal reply.
+  lock_wait_seconds: 30
+  download_deadline_seconds: 45
 
 cli_aliases:
   job-log-cached:

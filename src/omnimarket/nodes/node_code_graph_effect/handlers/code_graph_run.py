@@ -30,6 +30,13 @@ from omnimarket.models.model_code_graph import (
     ModelSampleOutcome,
 )
 from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
+from omnimarket.nodes.node_code_graph_effect.adapters.memgraph_version_store import (
+    MemgraphQueryError,
+    MemgraphUnreachableError,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_index import (
+    build_version,
+)
 from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import (
     GraphRules,
     build_graph,
@@ -37,6 +44,8 @@ from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import (
 )
 from omnimarket.nodes.node_code_graph_effect.overlay import ModelCodeGraphOverlay
 from omnimarket.nodes.node_code_graph_effect.protocols import (
+    ProtocolCodeGraphVersionStore,
+    ProtocolCommitClock,
     ProtocolRepoSource,
     RepoSourceError,
 )
@@ -83,7 +92,11 @@ class CodeGraphRun:
         source: ProtocolRepoSource,
         appender: ProtocolReadingAppender | None,
         clock: Callable[[], datetime],
+        version_writer: ProtocolCodeGraphVersionStore | None = None,
+        commit_clock: ProtocolCommitClock | None = None,
     ) -> None:
+        self._version_writer = version_writer
+        self._commit_clock = commit_clock
         self._overlay = overlay
         self._host = host
         self._source = source
@@ -145,6 +158,11 @@ class CodeGraphRun:
         graph = build_graph(snapshots, rules)
         sample = judge_sample(graph, self._overlay.sample)
         reasons = self._reasons(sample)
+        memgraph = (
+            self._write_versions(snapshots, rules)
+            if command.write
+            else "not-configured"
+        )
         return self._publish(
             command,
             now,
@@ -162,8 +180,40 @@ class CodeGraphRun:
                     for snapshot in snapshots
                 ),
                 sample=sample,
+                memgraph=memgraph,
             ),
         )
+
+    def _write_versions(
+        self, snapshots: list[ModelRepoSnapshot], rules: GraphRules
+    ) -> str:
+        """Write each repository's version into the version store, one revision per build.
+
+        A store that cannot be written never fails the reading: the outcome is named on the result.
+        """
+        if self._version_writer is None:
+            return "not-configured"
+        written = 0
+        already = 0
+        try:
+            for snapshot in snapshots:
+                committed_at = (
+                    self._commit_clock.committed_at(snapshot.repo, snapshot.head)
+                    if self._commit_clock is not None
+                    else None
+                )
+                stored, _pruned = self._version_writer.put(
+                    build_version(snapshot, rules, committed_at=committed_at)
+                )
+                if stored:
+                    written += 1
+                else:
+                    already += 1
+        except MemgraphUnreachableError as exc:
+            return f"failed:{exc.reason.value}"
+        except MemgraphQueryError as exc:
+            return f"failed:query-refused:{reason_token(str(exc))}"
+        return f"written:{written}-already-written:{already}"
 
     def _reasons(self, sample: ModelSampleOutcome) -> tuple[str, ...]:
         bar = self._overlay.sample.min_agree
