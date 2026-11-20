@@ -88,7 +88,7 @@ def test_the_checks_catch_a_paid_rung_and_an_unlisted_rung(tmp_path: Path) -> No
             {
                 "backend_id": "paid-rung",
                 "provider": "openrouter",
-                "model_name": "deepseek/deepseek-v4-flash-0731",
+                "model_name": "deepseek/deepseek-paid-example",
                 "tier": TIER,
                 "endpoint_url": "https://openrouter.ai/api/v1/chat/completions",
             },

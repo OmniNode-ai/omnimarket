@@ -593,8 +593,9 @@ backends:
   # of 2026-11-20 (tests/fixtures/receipts/cheap_frontier_smokes_2026_11_20.json) it
   # accepted 10 of 10 at p50 4.2 s through the delegate's own quality gate. It takes
   # north-mini-code's placement unchanged: the same use_for, code_review still off
-  # (withheld, task_class_contracts.v1.yaml code_review.routing_availability), the
-  # same window and output budget. Paid models stay off this free tier until the code
+  # (withheld, task_class_contracts.v1.yaml code_review.routing_availability), and
+  # the same 256,000-token placement cap and 64,000-token output budget, both
+  # below the model's own limits. Paid models stay off this free tier until the code
   # eval scores them (RULING 2026-11-11T12:33:37Z, OMN-23751). Free-tier reasoning
   # models are a POOR fit for terse, tightly-budgeted output (OMN-12717): do not
   # narrow max_tokens below.
