@@ -16,13 +16,24 @@ from omnimarket.nodes.node_provider_model_catalogue_effect.handlers import (
 )
 
 pytestmark = pytest.mark.unit
-FIXTURE = Path(__file__).parents[1] / "fixtures/openrouter_models_2026_10_25.json"
+# The current capture (OMN-26129, 2026-11-20); the 2026-10-25 capture still lists the
+# withdrawn Super model, so the Super checks below read it.
+FIXTURE = Path(__file__).parents[1] / "fixtures/openrouter_models_2026_11_20.json"
+FIXTURE_2026_10_25 = (
+    Path(__file__).parents[1] / "fixtures/openrouter_models_2026_10_25.json"
+)
 DEAD_BACKEND = "openrouter-nemotron-super"
 DEAD_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
+NORTH_MINI_BACKEND = "openrouter-north-mini-code"
+NORTH_MINI_MODEL = "cohere/north-mini-code:free"
 
 
 def _catalogue() -> dict[str, Any]:
     return json.loads(FIXTURE.read_text(encoding="utf-8"))
+
+
+def _catalogue_2026_10_25() -> dict[str, Any]:
+    return json.loads(FIXTURE_2026_10_25.read_text(encoding="utf-8"))
 
 
 @pytest.mark.parametrize("withdrawn_still_listed", [True, False])
@@ -38,7 +49,7 @@ def test_all_declared_models_and_defaults_are_listed(
 
 
 @pytest.mark.parametrize(
-    "backend_id", ["openrouter-nemotron-ultra", "openrouter-north-mini-code"]
+    "backend_id", ["openrouter-nemotron-ultra", "openrouter-nemotron-3-5-super"]
 )
 def test_a_model_removed_from_the_provider_catalogue_fails(backend_id: str) -> None:
     """Includes a placement peer: only checking direct tier references misses it."""
@@ -87,7 +98,7 @@ def test_empty_or_malformed_catalogue_fails_closed(payload: Any) -> None:
 
 def test_the_withdrawn_rung_is_unusable_and_not_recommended() -> None:
     """Fails on the old committed config, even though the stale list includes it."""
-    assert DEAD_MODEL in check.catalogue_model_ids(_catalogue())
+    assert DEAD_MODEL in check.catalogue_model_ids(_catalogue_2026_10_25())
     contract = yaml.safe_load(check.BIFROST_CONTRACT_PATH.read_text())
     assert DEAD_BACKEND not in check.declared_backends()
     for rule in contract["routing_rules"]:
@@ -143,11 +154,25 @@ def test_cli_returns_nonzero_for_an_unlisted_rung(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     payload = _catalogue()
-    model = "cohere/north-mini-code:free"
+    model = "nvidia/nemotron-3.5-super-vl:free"
     payload["data"] = [row for row in payload["data"] if row["id"] != model]
     monkeypatch.setattr(check, "get_models_json", lambda **_: payload)
     assert check.main([]) == 1
     assert model in capsys.readouterr().err
+
+
+def test_north_mini_code_is_withdrawn_once_the_provider_stops_listing_it() -> None:
+    """OMN-26129: the catalogue stopped listing it, so no backend, rule or tier names it."""
+    assert NORTH_MINI_MODEL in check.catalogue_model_ids(_catalogue_2026_10_25())
+    assert NORTH_MINI_MODEL not in check.catalogue_model_ids(_catalogue())
+    assert NORTH_MINI_BACKEND not in check.declared_backends()
+    contract = yaml.safe_load(check.BIFROST_CONTRACT_PATH.read_text())
+    for rule in contract["routing_rules"]:
+        assert NORTH_MINI_BACKEND not in rule["backend_ids"]
+    assert NORTH_MINI_BACKEND not in contract["default_backends"]
+    assert all(
+        backend["model_name"] != NORTH_MINI_MODEL for backend in contract["backends"]
+    )
 
 
 def test_the_parked_rung_cannot_be_pinned() -> None:

@@ -583,26 +583,25 @@ backends:
   # Super is withdrawn: the free slug returned HTTP 404 on 2026-10-25
   # and disappeared from the provider catalogue on 2026-10-27. Its parked
   # declaration and routing references are retired; historical receipts retain
-  # their original backend identity. Ultra and north-mini remain declared.
-  # OMN-19432: a third FREE OpenRouter model, cohere/north-mini-code:free, priced 0/0
-  # in the same 2026-09-30 catalog read, 256000-token window, 64000 output cap. On the
-  # delegate's own gate, judge off, over 29 of the 2026-09-30 delegated tasks it passed
-  # 25 at p50 17 s, all 10 document tasks, 4 of 5 review and 3 of 3 reasoning; it is
-  # weak on code_review (2 of 5), so the mirrored entry leaves that class off.
-  # OMN-20376: it was a spread peer mirrored from the ultra rung (OMN-17427: 0
-  # attempts in 7 days as a last fallback). Ultra is withdrawn from
-  # routing_tiers.yaml, so the placement names no rung to mirror and instead
-  # declares north-mini-code as the cheap_frontier tier's only rung, with its own
-  # use_for written out here, the classes the mirror served: code_review stays off
-  # (withheld, task_class_contracts.v1.yaml code_review.routing_availability) and
-  # the prose classes are OMN-13640's. Placed here rather than in routing_tiers.yaml
-  # because the deployment-fact gate admits no new vendor value in that file.
-  # Free-tier reasoning models are a POOR fit for terse, tightly-budgeted output
-  # (OMN-12717): do not narrow max_tokens below.
-  - backend_id: openrouter-north-mini-code
+  # their original backend identity. Ultra remains declared.
+  # OMN-26129: openrouter-north-mini-code (cohere/north-mini-code:free) is withdrawn:
+  # OpenRouter stopped listing it by 2026-11-20. Its historical receipts keep their
+  # backend identity. The tier's only rung is now another FREE OpenRouter model,
+  # nvidia/nemotron-3.5-super-vl:free (a different model from the Nemotron 3 Super
+  # 120B withdrawn above), priced 0/0 in the 2026-11-20 catalogue read with a
+  # 1,000,000-token window and a 131,072-token output cap. On the tier's 10-task smoke
+  # of 2026-11-20 (tests/fixtures/receipts/cheap_frontier_smokes_2026_11_20.json) it
+  # accepted 10 of 10 at p50 4.2 s through the delegate's own quality gate. It takes
+  # north-mini-code's placement unchanged: the same use_for, code_review still off
+  # (withheld, task_class_contracts.v1.yaml code_review.routing_availability), the
+  # same window and output budget. Paid models stay off this free tier until the code
+  # eval scores them (RULING 2026-11-11T12:33:37Z, OMN-23751). Free-tier reasoning
+  # models are a POOR fit for terse, tightly-budgeted output (OMN-12717): do not
+  # narrow max_tokens below.
+  - backend_id: openrouter-nemotron-3-5-super
     provider: openrouter
     endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
-    model_name: "cohere/north-mini-code:free"
+    model_name: "nvidia/nemotron-3.5-super-vl:free"
     secret_ref: llm.openrouter.api_key
     tier: cheap_frontier
     placement:
