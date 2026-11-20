@@ -11,13 +11,23 @@ import subprocess
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
+from uuid import uuid4
 
 import pytest
 import yaml
+from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
+from omnimarket.models.model_daily_line import (
+    ModelDailyLinePart,
+    ModelDailyLinePublication,
+)
 from omnimarket.models.schedule_trigger.model_schedule_trigger import (
     ModelScheduleRunEvent,
+)
+from omnimarket.nodes.node_daily_line_effect import HandlerDailyLineRun
+from omnimarket.nodes.node_daily_line_scheduled_effect.handlers.handler_daily_line_scheduled import (
+    HandlerDailyLineScheduled,
 )
 
 pytestmark = pytest.mark.unit
@@ -237,6 +247,52 @@ def test_ac3_read_passes_on_a_completed_daily_line_event_after_the_deploy(
     tmp_path: Path,
 ) -> None:
     result, _ = _run_read(tmp_path, [_event_json()])
+    assert result.returncode == 0, result.stderr
+
+
+def test_ac3_read_passes_on_the_event_the_real_node_returns(tmp_path: Path) -> None:
+    # The event is made by the node of this change, so the read is not proven against a hand-built stand-in alone.
+    overlays = tmp_path / "overlays" / "node_daily_line_scheduled_effect"
+    overlays.mkdir(parents=True)
+    (overlays / "overlay.yaml").write_text(
+        yaml.safe_dump(
+            {"job_id": "daily_line", "run_interval_seconds": 300, "grace_seconds": 60}
+        ),
+        encoding="utf-8",
+    )
+    fired = datetime(2026, 11, 17, 12, 30, tzinfo=UTC)
+
+    class _Runner:
+        def run(self) -> ModelDailyLinePublication:
+            return ModelDailyLinePublication(
+                generated_at=fired,
+                line="Daily line published.",
+                parts=(
+                    ModelDailyLinePart(name="piece1", text="read", read=True),
+                    ModelDailyLinePart(name="j1", text="read", read=True),
+                    ModelDailyLinePart(name="claims", text="read", read=True),
+                ),
+                unknown_parts=(),
+            )
+
+    handler = HandlerDailyLineScheduled(
+        environ={"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays")},
+        build_runner=lambda: cast(HandlerDailyLineRun, _Runner()),
+        clock=lambda: fired,
+    )
+    event = handler.handle(
+        ModelRuntimeTick(
+            now=fired,
+            tick_id=uuid4(),
+            sequence_number=1,
+            scheduled_at=fired,
+            correlation_id=uuid4(),
+            scheduler_id="runtime-fixture",
+            tick_interval_ms=1000,
+        )
+    )
+    assert event is not None
+    result, _ = _run_read(tmp_path, [event.model_dump_json()])
     assert result.returncode == 0, result.stderr
 
 
