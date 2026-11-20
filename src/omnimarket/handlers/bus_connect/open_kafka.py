@@ -74,11 +74,12 @@ def advertised_names_dialled_at(names: tuple[str, ...], address: str) -> Iterato
     async def remapped(name: Any, *args: Any, **kwargs: Any) -> Any:
         return await original(host if name in names else name, *args, **kwargs)
 
-    loop.getaddrinfo = remapped  # type: ignore[method-assign,assignment]
+    patch_attribute = setattr
+    patch_attribute(loop, "getaddrinfo", remapped)
     try:
         yield
     finally:
-        del loop.getaddrinfo
+        delattr(loop, "getaddrinfo")
 
 
 async def _start_within(
