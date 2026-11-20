@@ -10,7 +10,7 @@ requirements:
     statement: The ticket closer runs on the dev runtime on h201 and reads its candidates there without a PR watcher state file.
     acceptance:
       - id: AC1
-        statement: "AC1: a STATUS row on the rolling ledger reads kv pr=omnibase_core#2279 installed=<host>:<revision> observed=<what ran> read_at=<UTC>, written by the lane after it read one run on the dev runtime on h201 itself (a log line, a dispatch, a health read or a job record) -- falsifier: `grep -F 'pr=omnibase_core#2279' $ONEX_LEDGER_PATH | grep -F 'installed='` finds no row"
+        statement: "AC1: a STATUS row on the rolling ledger reads kv pr=omnibase_core#2279 installed=<host>:<revision> observed=<what ran> read_at=<UTC>, written by the lane after it read one run on the dev runtime on h201 itself (a log line, a dispatch, a health read or a job record) -- falsifier: reading the rolling ledger for rows carrying 'pr=omnibase_core#2279' finds none that also carries 'installed='"
       - id: AC2
         statement: "AC2: the ticket closer ran once on a done ticket on the dev runtime on h201 and its predicate verdict was read, or the STATUS row names the single measured cause that keeps it from running and who must act -- falsifier: the dev runtime log and job record on h201 show no run line for it and the STATUS row names no cause and no actor"
       - id: AC3
