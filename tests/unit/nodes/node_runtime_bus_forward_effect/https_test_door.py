@@ -156,8 +156,10 @@ def _tls_contexts(tmp_path: Path) -> tuple[ssl.SSLContext, ssl.SSLContext]:
         )
     )
     server = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    server.minimum_version = ssl.TLSVersion.TLSv1_2
     server.load_cert_chain(bundle)
     client = ssl.create_default_context(cadata=pem.decode("ascii"))
+    client.minimum_version = ssl.TLSVersion.TLSv1_2
     return server, client
 
 
