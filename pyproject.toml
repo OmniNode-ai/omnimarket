@@ -639,6 +639,7 @@ node_demo_rehearsal = "omnimarket.nodes.node_demo_rehearsal"
 node_demo_renderer_effect = "omnimarket.nodes.node_demo_renderer_effect"
 node_dep_cascade_dedup_orchestrator = "omnimarket.nodes.node_dep_cascade_dedup_orchestrator"
 node_dependency_health_sweep = "omnimarket.nodes.node_dependency_health_sweep"
+node_depends_on_overlay_check_effect = "omnimarket.nodes.node_depends_on_overlay_check_effect"
 node_deploy_agent_key_check_effect = "omnimarket.nodes.node_deploy_agent_key_check_effect"
 node_deployment_evidence_reducer = "omnimarket.nodes.node_deployment_evidence_reducer"
 node_deployment_fact_gate_effect = "omnimarket.nodes.node_deployment_fact_gate_effect"
@@ -1793,7 +1794,8 @@ omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:Nod
 # OMN-23865: infra#5901 (OMN-23896) grants the runtime account the two host disk tables in every shipped topology profile;
 # the core pin is unchanged.
 # OMN-23932: infra#5906 moves infra to core dev-20261111183916-a85cb916d4c1, the core tag below; the two tags move together.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261119055404-a679b44e2cfe" }
+# OMN-24537: infra#6063 moves infra to core dev-20261118065911-e9f061dc9b4c, which carries models.depends_on; the two tags move together.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261119220033-b6f27747506c" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
@@ -1801,8 +1803,8 @@ omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", ta
 # operator the condition model accepts). The version ranges in [project] stay
 # for external installs.
 # OMN-22472: core and infra move together; the ticket validator (omnibase_core#2281) the floor-task ticket nodes import came with core cd128b790ec6.
-# OMN-24079: this core tag is the one infra dev-20261119055404-a679b44e2cfe locks (omnibase_infra#5925); it carries the task_type field of the inference intent (omnibase_core#2316) the call ceiling reads (omnimarket#5968).
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261113013358-a09066caf945" }
+# OMN-24079: this core tag is the one infra dev-20261113053642-6cea249fb8cf locks (omnibase_infra#5925); it carries the task_type field of the inference intent (omnibase_core#2316) the call ceiling reads (omnimarket#5968).
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261118065911-e9f061dc9b4c" }
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261108170744-52946639a23a" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261118033152-967ddaf9eed2" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
