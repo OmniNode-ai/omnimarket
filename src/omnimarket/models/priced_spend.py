@@ -15,7 +15,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
 
-from omnimarket.pricing import _load_table
+from omnibase_core.enums.enum_tier_cost_type import EnumTierCostType
+
+from omnimarket.pricing import _load_table, resolve_tier_cost
 
 __all__ = ["historical_unpriced_zero", "priced_spend"]
 
@@ -25,14 +27,18 @@ def historical_unpriced_zero(
 ) -> bool:
     """True for a stored zero that no price stood behind. Never reprices a run.
 
-    A run is free when its tier is local, its model id ends in ":free", or the
-    pricing manifest prices its model (a declared zero included). A charged
-    amount or a recorded cost source is served as stored, and so is a row that
-    records no tier or names no model, since nothing in it shows a priced cloud
-    call. Only a zero on a recorded non-local tier with none of those is unknown.
+    A run is free when its tier is declared free_local by the routing registry,
+    its model id ends in ":free", or the pricing manifest prices its model (a
+    declared zero included). A charged amount or a recorded cost source is
+    served as stored, and so is a row that records no tier or names no model,
+    since nothing in it shows a priced cloud call. Only a zero on a recorded
+    non-free tier with none of those is unknown.
     """
     tier_name = str(tier or "").strip().casefold()
-    if source not in (None, "", "no_cost_model") or tier_name in ("", "local"):
+    if source not in (None, "", "no_cost_model") or not tier_name:
+        return False
+    cost = resolve_tier_cost(tier_name)
+    if cost is None or cost.cost_type is EnumTierCostType.FREE_LOCAL:
         return False
     if amount is None or isinstance(amount, bool):
         return False

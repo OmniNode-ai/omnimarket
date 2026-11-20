@@ -63,13 +63,23 @@ _CASES: dict[
         _UNKNOWN,
         True,
     ),
-    "frontier-unpriced": (
+    # The routing registry declares cheap_frontier free_local, so its zero is served as stored.
+    "free-tier-unpriced-model": (
         "cheap_frontier",
         "gemini-3.5-flash-lite",
         0.0,
         None,
         _MEASURED,
-        True,
+        False,
+    ),
+    # A tier the routing registry does not declare has no cost model: served as stored.
+    "unregistered-tier": (
+        "no_such_tier",
+        "Beam-1.0-501B-A23B",
+        0.0,
+        None,
+        _MEASURED,
+        False,
     ),
     # Free: a local tier, whatever its attempts say.
     "local-tier": ("local", "qwen3.5:0.8b", 0.0, None, _UNKNOWN, False),
