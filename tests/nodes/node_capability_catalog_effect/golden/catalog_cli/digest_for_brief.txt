@@ -1,0 +1,9 @@
+## 3a.10 Lab pool and delegate engines
+
+CAPABILITIES generated_at=2026-09-27T15:40:00Z
+HOSTS: lab-101=up, lab-105=up, lab-200=up, lab-201=up, lab-202=OUT OF SERVICE (RULING 2026-09-27T13:01:20Z: held out of the tier ladder)
+LANES: lab-200/dev-200=FREE, lab-200/dogfood=BUSY, lab-201/dev=UNKNOWN, lab-201/prepr-1=FREE
+ENGINES: Codex=ok, onex delegate=ok, GLM=down, Jev (TypeSafe)=unknown, crush=unknown, OpenRouter=unknown, Gemini=unknown
+SKILLS: omni:way-of-working, omni:session-start, omni:capabilities, omni:ledger-write, omni:ledger-msg, omni:pr-land, omni:merge-drain, omni:create-ticket, omni:lane-brief
+TICKS: ai.omninode.hourly-tick=loaded-ok, ai.omninode.planner-example=loaded-failing, ai.omninode.pr-status-sweep=dead
+LAG: omni 0.4.51->0.4.53

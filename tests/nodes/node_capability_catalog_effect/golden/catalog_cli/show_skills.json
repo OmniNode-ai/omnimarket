@@ -1,0 +1,14 @@
+[
+  {
+    "front_door": true,
+    "last_used_at": "2026-09-27T14:00:00Z",
+    "name": "omni:way-of-working",
+    "plugin": "omni"
+  },
+  {
+    "front_door": true,
+    "last_used_at": null,
+    "name": "omni:capabilities",
+    "plugin": "omni"
+  }
+]

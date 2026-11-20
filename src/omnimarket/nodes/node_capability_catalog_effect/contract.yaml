@@ -1,0 +1,123 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_capability_catalog_effect
+contract_name: node_capability_catalog_effect
+node_name: node_capability_catalog_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: []
+
+# The capability catalog: what the team has, collected read-only from the lab, rendered
+# byte-deterministically and published to the knowledge base. It reads lab hosts, lanes, model servers
+# and host-local tools; it does not project delegation capability (node_projection_delegation_capability_map),
+# renderer heartbeats (node_renderer_capability_projection) or workflow contracts
+# (node_workflow_contract_catalog_effect).
+description: >
+  Collects lab hosts, lanes, model servers and host-local tools read-only, renders the catalog views, and
+  publishes the full view to the knowledge base when the catalog's structure changes.
+
+handler:
+  module: omnimarket.nodes.node_capability_catalog_effect.handlers.handler_capability_catalog_collect_tools
+  class: HandlerCapabilityCatalogCollectTools
+  input_model: omnimarket.nodes.node_capability_catalog_effect.models.model_capability_catalog_collect_tools_request.ModelCapabilityCatalogCollectToolsRequest
+  output_model: omnimarket.nodes.node_capability_catalog_effect.models.model_capability_catalog_collect_tools_result.ModelCapabilityCatalogCollectToolsResult
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_capability_catalog_effect.handlers.handler_capability_catalog_collect_tools:HandlerCapabilityCatalogCollectTools
+  handlers:
+    - operation: collect_tools
+      subscribe_topic: onex.cmd.omnimarket.capability-tools-requested.v1
+      handler:
+        name: HandlerCapabilityCatalogCollectTools
+        module: omnimarket.nodes.node_capability_catalog_effect.handlers.handler_capability_catalog_collect_tools
+      input_model: omnimarket.nodes.node_capability_catalog_effect.models.model_capability_catalog_collect_tools_request.ModelCapabilityCatalogCollectToolsRequest
+      output_model: omnimarket.nodes.node_capability_catalog_effect.models.model_capability_catalog_collect_tools_result.ModelCapabilityCatalogCollectToolsResult
+    - operation: collect_lab
+      handler:
+        name: HandlerCapabilityCatalogCollectLab
+        module: omnimarket.nodes.node_capability_catalog_effect.handlers.handler_capability_catalog_collect_lab
+      input_model: omnimarket.nodes.node_capability_catalog_effect.models.model_capability_catalog_collect_request.ModelCapabilityCatalogCollectRequest
+      output_model: omnimarket.nodes.node_capability_catalog_effect.models.model_capability_catalog_collect_result.ModelCapabilityCatalogCollectResult
+    - operation: render
+      handler:
+        name: HandlerCapabilityCatalogRender
+        module: omnimarket.nodes.node_capability_catalog_effect.handlers.handler_capability_catalog_render
+      input_model: omnimarket.nodes.node_capability_catalog_effect.models.model_capability_catalog_render_request.ModelCapabilityCatalogRenderRequest
+      output_model: omnimarket.nodes.node_capability_catalog_effect.models.model_capability_catalog_render_result.ModelCapabilityCatalogRenderResult
+    - operation: publish
+      handler:
+        name: HandlerCapabilityCatalogPublish
+        module: omnimarket.nodes.node_capability_catalog_effect.handlers.handler_capability_catalog_publish
+      input_model: omnimarket.nodes.node_capability_catalog_effect.models.model_capability_catalog_publish_request.ModelCapabilityCatalogPublishRequest
+      output_model: omnimarket.nodes.node_capability_catalog_effect.models.model_capability_catalog_publish_result.ModelCapabilityCatalogPublishResult
+
+# Entry surfaces. Their names are the stable interface.
+entry_points:
+  onex.nodes:
+    node_capability_catalog_effect: omnimarket.nodes.node_capability_catalog_effect
+  console_scripts:
+    onex-capability-catalog: omnimarket.nodes.node_capability_catalog_effect.handlers.handler_capability_catalog_cli:main
+    onex-capability-catalog-publish: omnimarket.nodes.node_capability_catalog_effect.handlers.handler_capability_catalog_publish:main
+
+data_files:
+  sources: handlers/sources.yaml
+  static_facts: handlers/static_facts.yaml
+
+env_dependencies:
+  OMNI_HOME:
+    required: true
+    description: Registry root; read by collect and publish, no default.
+  ONEX_STATE_DIR:
+    required: true
+    description: State root for catalog.json, the rendered views and the structural hash.
+  ONEX_CAPABILITY_CATALOG_JSON:
+    required: false
+    description: catalog.json read by the digest, show and find verbs when --in is not given.
+  ONEX_CAPABILITY_CATALOG_PR_TICKET:
+    required: false
+    description: Ticket id placed in the knowledge-base pull request title when the repository's title gate requires one.
+  ONEX_LEDGER_PATH:
+    required: false
+    description: Explicit ledger source; otherwise collect_tools reads the registry ledger.
+  ONEX_DELEGATION_HEALTH_JSON:
+    required: false
+    description: Existing timestamped delegation-health verdict; never starts a second probe.
+  ONEX_LAB_SSH_USER:
+    required: false
+    description: ssh login name for the lab hosts; defaults to the local account name.
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  runtime_profiles: []
+  idempotent: true
+  side_effects:
+    - read-only ssh, docker ps and curl probes of lab hosts (collect_lab)
+    - files under $ONEX_STATE_DIR/capability/ (publish)
+    - one pull request on the knowledge base's bot/capability-catalog branch (publish)
+
+input_model:
+  name: ModelCapabilityCatalogCollectToolsRequest
+  module: omnimarket.nodes.node_capability_catalog_effect.models.model_capability_catalog_collect_tools_request
+  description: Host-local inputs to the tool collection.
+output_model:
+  name: ModelCapabilityCatalogCollectToolsResult
+  module: omnimarket.nodes.node_capability_catalog_effect.models.model_capability_catalog_collect_tools_result
+  description: The tool catalog collected on this host.
+
+terminal_event: onex.evt.omnimarket.capability-tools-collected.v1
+
+runtime_dispatch:
+  external_trigger: "onex-capability-catalog collect|render|digest|show|find, or onex-capability-catalog-publish run by the host timer on the orchestrator host"
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.capability-tools-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.capability-tools-collected.v1
+
+metadata:
+  transport_type: cli

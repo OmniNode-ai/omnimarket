@@ -1,0 +1,54 @@
+[
+  {
+    "credential_ref": null,
+    "display_name": "Codex",
+    "engine_id": "codex",
+    "invocation": "codex exec ...",
+    "probe": {
+      "exit_code": 0,
+      "probe": "codex --version",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "ok"
+    },
+    "state": "ok"
+  },
+  {
+    "credential_ref": null,
+    "display_name": "onex delegate",
+    "engine_id": "onex-delegate",
+    "invocation": "onex delegate ...",
+    "probe": {
+      "exit_code": 0,
+      "probe": "onex --help",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "ok"
+    },
+    "state": "ok"
+  },
+  {
+    "credential_ref": "llm.glm.api_key",
+    "display_name": "GLM",
+    "engine_id": "glm",
+    "invocation": "onex delegate --model-pin glm ...",
+    "probe": {
+      "exit_code": 7,
+      "probe": "curl model server",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "down"
+    },
+    "state": "down"
+  },
+  {
+    "credential_ref": "llm.typesafe.api_key",
+    "display_name": "Jev (TypeSafe)",
+    "engine_id": "jev",
+    "invocation": "https api.typesafe.ai/v1/systemone",
+    "probe": {
+      "exit_code": null,
+      "probe": "curl -m 5 api.typesafe.ai",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "unknown"
+    },
+    "state": "unknown"
+  }
+]

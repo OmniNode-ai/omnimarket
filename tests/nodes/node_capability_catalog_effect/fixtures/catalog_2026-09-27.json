@@ -1,0 +1,82 @@
+{
+  "schema": "omni.capability-catalog/1",
+  "generated_at": "2026-09-27T15:40:00Z",
+  "hosts": [
+    {
+      "host_id": "lab-101",
+      "display_name": "lab-101",
+      "state": "ok",
+      "probe": {"state": "ok", "probe": "ssh lab-101 hostname", "exit_code": 0, "read_at": "2026-09-27T15:39:00Z"},
+      "out_of_service_reason": null
+    },
+    {
+      "host_id": "lab-105",
+      "display_name": "lab-105",
+      "state": "ok",
+      "probe": {"state": "ok", "probe": "ssh lab-105 hostname", "exit_code": 0, "read_at": "2026-09-27T15:39:00Z"},
+      "out_of_service_reason": null
+    },
+    {
+      "host_id": "lab-200",
+      "display_name": "lab-200 (orchestrator host)",
+      "state": "ok",
+      "probe": {"state": "ok", "probe": "hostname", "exit_code": 0, "read_at": "2026-09-27T15:39:00Z"},
+      "out_of_service_reason": null
+    },
+    {
+      "host_id": "lab-201",
+      "display_name": "lab-201 (.201)",
+      "state": "ok",
+      "probe": {"state": "ok", "probe": "ssh lab-201 hostname", "exit_code": 0, "read_at": "2026-09-27T15:39:00Z"},
+      "out_of_service_reason": null
+    },
+    {
+      "host_id": "lab-202",
+      "display_name": "lab-202 (.202)",
+      "state": "unknown",
+      "probe": {"state": "unknown", "probe": "ssh lab-202 hostname", "exit_code": null, "read_at": "2026-09-27T15:39:00Z"},
+      "out_of_service_reason": "RULING 2026-09-27T13:01:20Z: held out of the tier ladder"
+    }
+  ],
+  "lanes": [
+    {"lane_id": "dev-200", "host_id": "lab-200", "compose_project": "omnibase-infra-dev-200", "status": "free", "probe": {"state": "ok", "probe": "docker ps -a", "exit_code": 0, "read_at": "2026-09-27T15:39:00Z"}, "note": "28 containers, 23 up"},
+    {"lane_id": "dogfood", "host_id": "lab-200", "compose_project": "omnibase-infra-dogfood", "status": "busy", "probe": {"state": "ok", "probe": "docker ps -a", "exit_code": 0, "read_at": "2026-09-27T15:39:00Z"}, "note": "10 containers"},
+    {"lane_id": "dev", "host_id": "lab-201", "compose_project": "omnibase-infra", "status": "unknown", "probe": {"state": "unknown", "probe": "ssh lab-201 docker ps -a", "exit_code": null, "read_at": "2026-09-27T15:39:00Z"}, "note": "ssh exit 124"},
+    {"lane_id": "prepr-1", "host_id": "lab-201", "compose_project": "omnibase-infra-prepr-1", "status": "free", "probe": {"state": "ok", "probe": "ssh lab-201 docker ps -a", "exit_code": 0, "read_at": "2026-09-27T15:39:00Z"}, "note": "ephemeral slot, idle"}
+  ],
+  "engines": [
+    {"engine_id": "codex", "display_name": "Codex", "invocation": "codex exec ...", "credential_ref": null, "state": "ok", "probe": {"state": "ok", "probe": "codex --version", "exit_code": 0, "read_at": "2026-09-27T15:39:00Z"}},
+    {"engine_id": "onex-delegate", "display_name": "onex delegate", "invocation": "onex delegate ...", "credential_ref": null, "state": "ok", "probe": {"state": "ok", "probe": "onex --help", "exit_code": 0, "read_at": "2026-09-27T15:39:00Z"}},
+    {"engine_id": "glm", "display_name": "GLM", "invocation": "onex delegate --model-pin glm ...", "credential_ref": "llm.glm.api_key", "state": "down", "probe": {"state": "down", "probe": "curl model server", "exit_code": 7, "read_at": "2026-09-27T15:39:00Z"}},
+    {"engine_id": "jev", "display_name": "Jev (TypeSafe)", "invocation": "https api.typesafe.ai/v1/systemone", "credential_ref": "llm.typesafe.api_key", "state": "unknown", "probe": {"state": "unknown", "probe": "curl -m 5 api.typesafe.ai", "exit_code": null, "read_at": "2026-09-27T15:39:00Z"}}
+  ],
+  "credential_refs": [
+    {"secret_ref": "llm.glm.api_key", "provider": "glm"},
+    {"secret_ref": "llm.typesafe.api_key", "provider": "typesafe"},
+    {"secret_ref": "llm.openrouter.api_key", "provider": "openrouter"},
+    {"secret_ref": "llm.gemini.api_key", "provider": "gemini"}
+  ],
+  "launchd_jobs": [
+    {"label": "ai.omninode.hourly-tick", "state": "loaded-ok", "last_exit_code": 0, "successor": null, "probe": {"state": "ok", "probe": "launchctl list", "exit_code": 0, "read_at": "2026-09-27T15:39:00Z"}},
+    {"label": "ai.omninode.planner-example", "state": "loaded-failing", "last_exit_code": -9, "successor": null, "probe": {"state": "down", "probe": "launchctl list", "exit_code": -9, "read_at": "2026-09-27T15:39:00Z"}},
+    {"label": "ai.omninode.pr-status-sweep", "state": "dead", "last_exit_code": null, "successor": "ai.omninode.pr-watcher", "probe": {"state": "unknown", "probe": "launchctl list", "exit_code": null, "read_at": "2026-09-27T15:39:00Z"}}
+  ],
+  "plugins": [
+    {"name": "omni", "installed_version": "0.4.51", "available_version": "0.4.53", "probe": {"state": "ok", "probe": "installed_plugins.json vs origin/main", "exit_code": 0, "read_at": "2026-09-27T15:39:00Z"}}
+  ],
+  "skills": [
+    {"name": "omni:way-of-working", "plugin": "omni", "front_door": true, "last_used_at": "2026-09-27T14:00:00Z"},
+    {"name": "omni:capabilities", "plugin": "omni", "front_door": true, "last_used_at": null}
+  ],
+  "clis": [
+    {"name": "onex", "probe": {"state": "ok", "probe": "onex --help", "exit_code": 0, "read_at": "2026-09-27T15:39:00Z"}},
+    {"name": "codex", "probe": {"state": "ok", "probe": "codex --version", "exit_code": 0, "read_at": "2026-09-27T15:39:00Z"}},
+    {"name": "crush", "probe": {"state": "unknown", "probe": "crush --version", "exit_code": null, "read_at": "2026-09-27T15:39:00Z"}}
+  ],
+  "mcp_servers": [
+    {"name": "github", "probe": {"state": "ok", "probe": "claude mcp list", "exit_code": 0, "read_at": "2026-09-27T15:39:00Z"}}
+  ],
+  "doc_references": [
+    {"title": "capability-catalog-awareness plan", "path": "beta/plans/2026-09-27-capability-catalog-awareness-plan.md"}
+  ]
+}

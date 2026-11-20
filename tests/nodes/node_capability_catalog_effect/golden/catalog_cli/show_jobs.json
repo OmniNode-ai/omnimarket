@@ -1,0 +1,38 @@
+[
+  {
+    "label": "ai.omninode.hourly-tick",
+    "last_exit_code": 0,
+    "probe": {
+      "exit_code": 0,
+      "probe": "launchctl list",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "ok"
+    },
+    "state": "loaded-ok",
+    "successor": null
+  },
+  {
+    "label": "ai.omninode.planner-example",
+    "last_exit_code": -9,
+    "probe": {
+      "exit_code": -9,
+      "probe": "launchctl list",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "down"
+    },
+    "state": "loaded-failing",
+    "successor": null
+  },
+  {
+    "label": "ai.omninode.pr-status-sweep",
+    "last_exit_code": null,
+    "probe": {
+      "exit_code": null,
+      "probe": "launchctl list",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "unknown"
+    },
+    "state": "dead",
+    "successor": "ai.omninode.pr-watcher"
+  }
+]

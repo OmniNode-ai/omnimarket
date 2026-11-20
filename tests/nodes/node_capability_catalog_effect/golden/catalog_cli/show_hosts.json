@@ -1,0 +1,62 @@
+[
+  {
+    "display_name": "lab-101",
+    "host_id": "lab-101",
+    "out_of_service_reason": null,
+    "probe": {
+      "exit_code": 0,
+      "probe": "ssh lab-101 hostname",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "ok"
+    },
+    "state": "ok"
+  },
+  {
+    "display_name": "lab-105",
+    "host_id": "lab-105",
+    "out_of_service_reason": null,
+    "probe": {
+      "exit_code": 0,
+      "probe": "ssh lab-105 hostname",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "ok"
+    },
+    "state": "ok"
+  },
+  {
+    "display_name": "lab-200 (orchestrator host)",
+    "host_id": "lab-200",
+    "out_of_service_reason": null,
+    "probe": {
+      "exit_code": 0,
+      "probe": "hostname",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "ok"
+    },
+    "state": "ok"
+  },
+  {
+    "display_name": "lab-201 (.201)",
+    "host_id": "lab-201",
+    "out_of_service_reason": null,
+    "probe": {
+      "exit_code": 0,
+      "probe": "ssh lab-201 hostname",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "ok"
+    },
+    "state": "ok"
+  },
+  {
+    "display_name": "lab-202 (.202)",
+    "host_id": "lab-202",
+    "out_of_service_reason": "RULING 2026-09-27T13:01:20Z: held out of the tier ladder",
+    "probe": {
+      "exit_code": null,
+      "probe": "ssh lab-202 hostname",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "unknown"
+    },
+    "state": "unknown"
+  }
+]

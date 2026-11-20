@@ -1,0 +1,5 @@
+[
+  0,
+  "engine GLM: onex delegate --task-type <class> --model-pin glm \"<prompt>\" credential_ref=llm.glm.api_key\ncredential_ref llm.glm.api_key (provider=glm)\n",
+  ""
+]

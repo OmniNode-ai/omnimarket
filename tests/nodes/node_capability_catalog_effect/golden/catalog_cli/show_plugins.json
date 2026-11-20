@@ -1,0 +1,13 @@
+[
+  {
+    "available_version": "0.4.53",
+    "installed_version": "0.4.51",
+    "name": "omni",
+    "probe": {
+      "exit_code": 0,
+      "probe": "installed_plugins.json vs origin/main",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "ok"
+    }
+  }
+]

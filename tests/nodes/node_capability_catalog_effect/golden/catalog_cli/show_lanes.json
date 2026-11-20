@@ -1,0 +1,54 @@
+[
+  {
+    "compose_project": "omnibase-infra-dev-200",
+    "host_id": "lab-200",
+    "lane_id": "dev-200",
+    "note": "28 containers, 23 up",
+    "probe": {
+      "exit_code": 0,
+      "probe": "docker ps -a",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "ok"
+    },
+    "status": "free"
+  },
+  {
+    "compose_project": "omnibase-infra-dogfood",
+    "host_id": "lab-200",
+    "lane_id": "dogfood",
+    "note": "10 containers",
+    "probe": {
+      "exit_code": 0,
+      "probe": "docker ps -a",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "ok"
+    },
+    "status": "busy"
+  },
+  {
+    "compose_project": "omnibase-infra",
+    "host_id": "lab-201",
+    "lane_id": "dev",
+    "note": "ssh exit 124",
+    "probe": {
+      "exit_code": null,
+      "probe": "ssh lab-201 docker ps -a",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "unknown"
+    },
+    "status": "unknown"
+  },
+  {
+    "compose_project": "omnibase-infra-prepr-1",
+    "host_id": "lab-201",
+    "lane_id": "prepr-1",
+    "note": "ephemeral slot, idle",
+    "probe": {
+      "exit_code": 0,
+      "probe": "ssh lab-201 docker ps -a",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "ok"
+    },
+    "status": "free"
+  }
+]

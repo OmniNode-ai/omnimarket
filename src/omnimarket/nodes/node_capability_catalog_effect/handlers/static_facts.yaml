@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Static facts for the capability catalog (schema omni.capability-catalog/1).
+#
+# These are facts no probe can read: how to invoke each engine, which tool a
+# newer one superseded, what "config store" means in each of its two senses,
+# the skills most sessions need, and which hosts are out of service and why.
+# Reviewed by a human on every edit; a collector never writes here.
+
+schema: omni.capability-catalog/1
+
+# Delegate engines and coding agents. `invocation` is the exact command text;
+# the renderer copies it byte for byte into every brief and lane rules block
+# so there is exactly one source for it. `credential_ref` names
+# the secret in the credential store (never a value — see the catalog model).
+engines:
+  - engine_id: codex
+    display_name: Codex
+    invocation: "codex exec --sandbox workspace-write -c model_reasoning_effort=\"high\" \"<prompt>\""
+    credential_ref: null
+  - engine_id: onex-delegate
+    display_name: onex delegate
+    invocation: >-
+      "$OMNI_HOME/omnibase_infra/scripts/onex" delegate "<prompt>" --task-type <class>
+      --ticket <ticket> --bus kafka --lane dev --locus deployed-lane
+      --state-root "$OMNI_HOME/.onex_state"
+    credential_ref: null
+    fallback_invocation: >-
+      "$OMNI_HOME/omnibase_infra/scripts/onex" delegate "<prompt>" --task-type <class>
+      --ticket <ticket> --bus inmemory --locus in-process
+      --state-root "$OMNI_HOME/.onex_state"
+  - engine_id: glm
+    display_name: GLM
+    invocation: "onex delegate --task-type <class> --model-pin glm \"<prompt>\""
+    credential_ref: llm.glm.api_key
+  - engine_id: jev
+    display_name: Jev (TypeSafe)
+    invocation: "https api.typesafe.ai/v1/systemone (typed decisions only)"
+    credential_ref: llm.typesafe.api_key
+  - engine_id: crush
+    display_name: crush
+    invocation: "crush \"<prompt>\""
+    credential_ref: null
+  - engine_id: openrouter
+    display_name: OpenRouter
+    invocation: "onex delegate --task-type <class> --provider openrouter \"<prompt>\""
+    credential_ref: llm.openrouter.api_key
+  - engine_id: gemini
+    display_name: Gemini
+    invocation: "onex delegate --task-type <class> --provider gemini \"<prompt>\""
+    credential_ref: llm.gemini.api_key
+
+# The front-door skills most sessions need, named so `/omni:capabilities` and
+# the digest can list them without a lane having to already know they exist
+# (gap G9). Not every installed skill — the short list a lane reaches for
+# first.
+front_door_skills:
+  - omni:way-of-working
+  - omni:session-start
+  - omni:capabilities
+  - omni:ledger-write
+  - omni:ledger-msg
+  - omni:pr-land
+  - omni:merge-drain
+  - omni:create-ticket
+  - omni:lane-brief
+
+# A tool that replaced an older one. The docs checker fails any
+# registry doc naming the `superseded` column outside a quoted-history line.
+superseded_tools:
+  - superseded: scripts/ledger_lock.py
+    by: "onex-ledger (via /omni:ledger-write)"
+  - superseded: generate_claude_lane_block.py
+    by: "onex-capability-catalog render --target claude-md"
+  - superseded: prepr_verify_lane.sh does not exist yet
+    by: "it exists; omnibase_infra/scripts/runtime_build/prepr_verify_lane.sh"
+
+# "Config store" is used for two different things in this codebase; find
+# and the digest disambiguate rather than assume which one a lane means.
+config_store_disambiguation:
+  - term: "credential store"
+    means: >-
+      the local sqlite database at ~/.omninode/delegation/delegation.sqlite,
+      table local_inference_credentials (secret_ref, provider, secret_value,
+      registered_at) — API keys and tokens for local delegation engines.
+  - term: "config store"
+    means: >-
+      the ONEX runtime config/secrets store read by nodes and handlers at
+      dispatch time — no
+      required env vars, secrets resolved from the store, never hardcoded.
+
+# Hosts the catalog renders OUT OF SERVICE regardless of what a probe says,
+# with the ruling that took them out. A probe result for one of these is not
+# collected; render.py renders the reason instead.
+#
+# Empty by design: the lab collector treats an empty list as "probe every declared host".
+out_of_service_hosts: []

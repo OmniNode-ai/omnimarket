@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Sources for the lab collector. One entry per lab host: how to reach it over ssh (or "local: true"
+# for the orchestrator host itself), the login-shell quirk each host needs, its compose projects
+# (lanes), and its model-server URLs. Reviewed by a human on every edit; the collector never
+# writes here.
+#
+# Host ids match the "hosts" registry declared in the lane census manifest named below, so an
+# envelope this collector builds resolves on the census planner without any manifest change.
+#
+# `ssh_target` below is a bare host (no user@): the collector resolves the ssh login name from
+# $ONEX_LAB_SSH_USER, falling back to the local account name at run time (never a literal name
+# committed here).
+
+schema: omni.capability-catalog.sources/1
+
+# The orchestrator host: the publish timer runs here. It runs no Docker engine (the operator removed it
+# on 2026-11-06), so it is not a host entry below and nothing here reads its docker.
+orchestrator_host: lab-200
+
+# The registry's own scripts this collector shells out to, resolved relative to
+# $OMNI_HOME so no absolute path is ever written here.
+lane_manifest_path: omnibase_infra/deploy/lane-census/lane-manifest.yaml
+census_planner_path: omnibase_infra/scripts/lane_census_plan.py
+
+# ssh timeout, seconds, for every remote read (docker, cat, kill -0). A
+# planner or curl call gets its own shorter bound below.
+ssh_timeout_s: 8
+curl_timeout_s: 5
+
+hosts:
+  lab-201:
+    display_name: ".201 (host-49-example, RTX 5090)"
+    ssh_target: "192.0.2.127"
+    login_shell_quirk: false
+    lanes:
+      - lane_id: dev
+        compose_project: omnibase-infra
+      - lane_id: stability-test
+        compose_project: omnibase-infra-stability-test
+      - lane_id: judge
+        compose_project: omnibase-infra-judge
+      - lane_id: <owner>
+        compose_project: omnibase-infra-<owner>
+      - lane_id: prepr-1
+        compose_project: omnibase-infra-prepr-1
+      - lane_id: prepr-2
+        compose_project: omnibase-infra-prepr-2
+    model_servers:
+      - name: qwen-3.8-27b
+        url: "http://192.0.2.127:8000/v1/models"
+      - name: embeddings
+        url: "http://192.0.2.127:8002/v1/models"
+    onex_lab_kubeconfig_probe: true
+
+  lab-202:
+    display_name: ".202 (host-54-example, RTX 4090)"
+    ssh_target: "192.0.2.128"
+    login_shell_quirk: false
+    lanes:
+      - lane_id: dev-202
+        compose_project: omnibase-infra-dev-202
+      - lane_id: sim-202
+        compose_project: omnibase-infra-sim-202
+    model_servers:
+      - name: qwen-3.8-27b
+        url: "http://192.0.2.128:8000/v1/models"
+      - name: embeddings
+        url: "http://192.0.2.128:8002/v1/models"
+
+  lab-101:
+    display_name: ".101 (host-64.example)"
+    ssh_target: "192.0.2.120"
+    login_shell_quirk: true
+    lanes:
+      - lane_id: local
+        compose_project: omnibase-infra-local
+      - lane_id: dogfood
+        compose_project: omnibase-infra-dogfood
+    model_servers: []
+
+  lab-105:
+    display_name: ".105 (omnibook)"
+    ssh_target: "192.0.2.122"
+    login_shell_quirk: true
+    lanes:
+      - lane_id: local
+        compose_project: omnibase-infra-local
+      - lane_id: dogfood
+        compose_project: omnibase-infra-dogfood
+    model_servers: []

@@ -1,0 +1,29 @@
+[
+  {
+    "name": "onex",
+    "probe": {
+      "exit_code": 0,
+      "probe": "onex --help",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "ok"
+    }
+  },
+  {
+    "name": "codex",
+    "probe": {
+      "exit_code": 0,
+      "probe": "codex --version",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "ok"
+    }
+  },
+  {
+    "name": "crush",
+    "probe": {
+      "exit_code": null,
+      "probe": "crush --version",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "unknown"
+    }
+  }
+]

@@ -1,0 +1,14 @@
+[
+  {
+    "label": "ai.omninode.pr-status-sweep",
+    "last_exit_code": null,
+    "probe": {
+      "exit_code": null,
+      "probe": "launchctl list",
+      "read_at": "2026-09-27T15:39:00Z",
+      "state": "unknown"
+    },
+    "state": "dead",
+    "successor": "ai.omninode.pr-watcher"
+  }
+]

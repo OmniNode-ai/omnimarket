@@ -1,0 +1,15 @@
+usage: onex-capability-catalog [-h] [--static-facts STATIC_FACTS]
+                               {collect,render,digest,show,find} ...
+
+positional arguments:
+  {collect,render,digest,show,find}
+    collect             collect live facts into catalog.json
+    render              render catalog.json into every view
+    digest              print the at-most-40-line digest
+    show                print one section as JSON
+    find                search the catalog and static facts for a term
+
+options:
+  -h, --help            show this help message and exit
+  --static-facts STATIC_FACTS
+                        override path to static_facts.yaml
