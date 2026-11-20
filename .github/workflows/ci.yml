@@ -1292,10 +1292,13 @@ jobs:
           echo "Changed files:"
           cat changed.txt
 
+      # The flag is the repository variable, not a literal: with it not true the selection is the
+      # full-suite matrix (the policy's full_split_count shards), so the shard plan and the pytest
+      # steps below read the same flag.
       - name: Resolve test selection
-        id: detect
+        id: resolve
         env:
-          FLAG: "on"
+          FLAG: ${{ vars.ENABLE_SMART_TESTS == 'true' && 'on' || 'off' }}
           # OMN-23296: the selector calls node_test_selection_selector_compute, which
           # imports only pydantic and pyyaml; src/ holds it without installing the package.
           PYTHONPATH: src
@@ -1308,11 +1311,66 @@ jobs:
             --feature-flag "$FLAG" \
             > selection.json
           cat selection.json
-          is_full=$(python -c "import json; d=json.load(open('selection.json')); print(str(d['is_full_suite']).lower())")
-          reason=$(python -c "import json; d=json.load(open('selection.json')); print(d['full_suite_reason'] or '')")
-          split_count=$(python -c "import json; d=json.load(open('selection.json')); print(d['split_count'])")
-          matrix=$(python -c "import json; d=json.load(open('selection.json')); print(json.dumps(d['matrix']))")
-          paths=$(python -c "import json; d=json.load(open('selection.json')); print(json.dumps(d['selected_paths']))")
+          # The stage entries are computed as if the flag were on, whatever the flag says.
+          python -m scripts.ci.detect_test_paths \
+            --changed-files-from changed.txt \
+            --ref-name "${{ github.ref_name }}" \
+            --event-name "${{ github.event_name }}" \
+            --feature-flag on \
+            > selection-stage-0.json
+
+      # The typed record of this run's selection: the executed selection and the selection of each
+      # stage, built by the selector node's build_selection_record operation.
+      - name: Build selection record
+        id: record
+        env:
+          FLAG: ${{ vars.ENABLE_SMART_TESTS == 'true' && 'on' || 'off' }}
+          PYTHONPATH: src
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
+        run: |
+          . .venv/bin/activate
+          pr_args=()
+          if [ -n "$PR_NUMBER" ]; then pr_args=(--pr-number "$PR_NUMBER"); fi
+          python -m omnimarket.nodes.node_test_selection_selector_compute.adapters.adapter_selection_record_cli \
+            --repo "$REPO" "${pr_args[@]}" \
+            --head-sha "$HEAD_SHA" \
+            --base-sha "$BASE_SHA" \
+            --checkout-sha "$(git rev-parse HEAD)" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --changed-files-from changed.txt \
+            --feature-flag "$FLAG" \
+            --stage-selection 0=selection-stage-0.json \
+            --out selection-record.json \
+            --github-output "$GITHUB_OUTPUT"
+          cat selection-record.json
+
+      # A rerun is a new attempt and so a new name; a repeated key is refused, never overwritten.
+      - name: Upload selection record
+        if: always() && steps.record.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: test-selection-${{ github.event.pull_request.number || 0 }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: selection-record.json
+          overwrite: false
+          if-no-files-found: error
+          retention-days: ${{ steps.record.outputs.retention_days }}
+
+      # The pytest shard matrix is built from the record's executed_selection and from no other entry.
+      - name: Expose the executed selection
+        id: detect
+        run: |
+          read_executed() {
+            python3 -c "import json; d=json.load(open('selection-record.json'))['executed_selection']; $1"
+          }
+          is_full=$(read_executed "print(str(d['kind'] == 'full_suite').lower())")
+          reason=$(read_executed "print(d['reason_code'] or '')")
+          split_count=$(read_executed "print(d['split_count'])")
+          matrix=$(read_executed "print(json.dumps(list(range(1, d['split_count'] + 1))))")
+          paths=$(read_executed "print(json.dumps(d['selected_paths']))")
           echo "is_full_suite=$is_full" >> "$GITHUB_OUTPUT"
           echo "full_suite_reason=$reason" >> "$GITHUB_OUTPUT"
           echo "split_count=$split_count" >> "$GITHUB_OUTPUT"
