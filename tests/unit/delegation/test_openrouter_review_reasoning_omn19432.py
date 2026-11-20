@@ -28,7 +28,7 @@ pytestmark = pytest.mark.unit
 
 _CONFIGS = Path(__file__).resolve().parents[3] / "src" / "omnimarket" / "configs"
 _CLASSES = ("review", "reasoning")
-_FREE_RUNG = "openrouter-north-mini-code"
+_FREE_RUNG = "openrouter-nemotron-3-5-super"
 
 
 def _task_classes() -> dict[str, Any]:
@@ -93,7 +93,7 @@ def test_the_withdrawn_siblings_are_absent_from_the_free_tier() -> None:
 
 
 def test_the_free_rung_leaves_out_the_class_it_measured_weak_on() -> None:
-    """north-mini-code passed 2 of 5 code_review tasks, so that class is not offered to it."""
+    """code_review is withheld from the free rung (north-mini-code passed 2 of 5; OMN-26129 kept it off its replacement)."""
     models = {m["backend_id"]: m for m in _tiers()["cheap_frontier"]["models"]}
     backend = _bifrost_backends()[_FREE_RUNG]
     assert backend["tier"] == "cheap_frontier"
