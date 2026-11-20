@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-SMOKE = REPO / "scripts" / "ci" / "latest_core_smoke.py"
+SMOKE = Path(__file__).resolve().parent / "latest_core_smoke.py"
 FIXTURES = Path(__file__).parent / "fixtures" / "latest_core_smoke"
 PACKAGE = "node_run_node_user"
 
@@ -129,4 +129,4 @@ def test_reusable_workflow_is_callable_from_a_core_pr() -> None:
     """AC4 precondition: the reusable workflow exists and is a workflow_call."""
     text = (WORKFLOWS / "latest-core-smoke-reusable.yml").read_text()
     assert "workflow_call" in text
-    assert "scripts/ci/latest_core_smoke.py" in text
+    assert "tests/ci/latest_core_smoke.py" in text

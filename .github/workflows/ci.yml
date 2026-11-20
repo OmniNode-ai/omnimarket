@@ -2746,7 +2746,7 @@ jobs:
         env:
           OMNI_HOME: ${{ github.workspace }}
         run: |
-          "$RUNNER_TEMP/smoke-venv/bin/python" scripts/ci/latest_core_smoke.py
+          "$RUNNER_TEMP/smoke-venv/bin/python" tests/ci/latest_core_smoke.py
 
   # ============================================================================
   # CUSTOMER CLEAN-INSTALL DELEGATE GATE (OMN-16200, M4 C13/C17)
