@@ -61,16 +61,15 @@ def test_contract_golden_chain() -> None:
         assert issubclass(result, BaseModel)
         return result
 
-    # Nothing consumes a result of this node and it declares no publish topic, so a declared output model
-    # would leave every dispatch with a result and no applier (the undeliverable-output path).
-    assert "output_model" not in contract
-    assert "output_model" not in binding
-    # The runtime route resolver still needs a terminal topic; it is not a publish topic.
+    # The result topic is published, so the contract declares the output model the runtime wires an applier for.
+    assert "output_model" in contract
     assert contract["runtime_dispatch"]["terminal_events"]["success"]
-    assert contract["event_bus"]["publish_topics"] == []
+    assert contract["event_bus"]["publish_topics"] == [
+        contract["runtime_dispatch"]["terminal_events"]["success"]
+    ]
     hints = get_type_hints(handler_class.handle)
     assert hints["request"] is model(binding["input_model"])
-    assert hints["return"] is type(None)
+    assert hints["return"] is model(binding["output_model"])
 
 
 def test_one_record_writes_one_key_holding_the_node_rows() -> None:
@@ -79,7 +78,13 @@ def test_one_record_writes_one_key_holding_the_node_rows() -> None:
         store=store, overlay=overlay(), clock=lambda: NOW
     )
     incoming = record(registry_document(*three_hosts()))
-    assert handler.handle(incoming) is None
+    result = handler.handle(incoming)
+    assert (result.outcome, result.key, result.hosts, result.admitted) == (
+        "written",
+        f"{PREFIX}:table",
+        3,
+        2,
+    )
     stored = store.get(f"{PREFIX}:table")
     assert stored is not None
     document = ModelHostTableKeysDocument.model_validate_json(stored)
