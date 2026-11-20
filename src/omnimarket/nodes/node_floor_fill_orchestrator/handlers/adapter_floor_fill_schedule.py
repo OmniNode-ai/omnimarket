@@ -29,6 +29,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
 from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_settings import (
     LIVE_OVERLAY_SECTION,
     ModelFloorFillLiveSettings,
+    unit_line_path_refusal,
 )
 
 NODE_NAME = "node_floor_fill_orchestrator"
@@ -37,7 +38,7 @@ NODE_MODULE = (
 )
 OVERLAY_SECTION = "floor_fill"
 PROFILES: tuple[str, ...] = ("inmemory", "live")
-_SAFE_PATH = re.compile(r"^[A-Za-z0-9_@+=:,./~-]+$")
+_SAFE_PATH = re.compile(r"[A-Za-z0-9_@+=:,./~-]+")
 
 Runner = Callable[[Sequence[str]], "subprocess.CompletedProcess[str]"]
 
@@ -53,7 +54,7 @@ def run_command(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
 
 def _safe(path: Path, what: str) -> str:
     text = str(path)
-    if not _SAFE_PATH.match(text):
+    if not _SAFE_PATH.fullmatch(text):
         raise ValueError(
             f"{what} {text!r} holds a character a unit line cannot carry unquoted"
         )
@@ -63,6 +64,14 @@ def _safe(path: Path, what: str) -> str:
 def _assignment(name: str, value: str) -> str:
     escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%")
     return f'Environment="{name}={escaped}"\n'
+
+
+def _environment_file_line(path: str) -> str:
+    """The unit's ``EnvironmentFile=-`` line: an absolute path a unit line carries unquoted, or a refusal naming the key."""
+    refusal = unit_line_path_refusal(path)
+    if refusal is not None:
+        raise ValueError(refusal)
+    return f"EnvironmentFile=-{path}\n"
 
 
 def _quote(value: str) -> str:
@@ -97,7 +106,7 @@ def overlay_json(
         "lab_hosts": rows,
     }
     if live is not None:
-        document[LIVE_OVERLAY_SECTION] = live.model_dump(mode="json")
+        document[LIVE_OVERLAY_SECTION] = live.model_dump(mode="json", exclude_none=True)
     return json.dumps(document, sort_keys=True, separators=(",", ":"))
 
 
@@ -143,6 +152,11 @@ def render_systemd(
         "PATH": f"{user_home}/.local/bin:/usr/local/bin:/usr/bin:/bin",
     }
     interval = f"{config.tick_interval_seconds}s"
+    environment_file = (
+        ""
+        if live is None or live.store_dsn_env_file is None
+        else _environment_file_line(live.store_dsn_env_file)
+    )
     service = (
         "# Rendered by the floor fill node (schedule install); the node contract owns the unit's name and\n"
         "# deadline and the overlay the interval, so change those and install again rather than editing this file.\n"
@@ -151,6 +165,7 @@ def render_systemd(
         "\n[Service]\nType=oneshot\n"
         f"TimeoutStartSec={schedule.timeout_seconds}\n"
         + "".join(_assignment(name, value) for name, value in environment.items())
+        + environment_file
         + f"WorkingDirectory={root}\n"
         f"ExecStart={exec_start(schedule, config, omni_root, hosts, live)}\n"
         f"SyslogIdentifier={schedule.unit_name}\n"
