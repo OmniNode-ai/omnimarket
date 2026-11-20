@@ -727,6 +727,18 @@ def test_https_door_busy_kafka_drift_keeps_prior_ack_but_never_retries() -> None
     assert "kafka-limit-drift" in str(result["detail"])
 
 
+def test_https_door_busy_kafka_drift_body_flag_sends_once() -> None:
+    """The body's own `retryable: false` stops a 500 on its own, with no per-record entry."""
+    door = RecordingDoor(
+        lambda _, __: httpx.Response(
+            500, json={"reason": "kafka-limit-drift", "retryable": False}
+        )
+    )
+    result = receipt(overlay(), door, event(b"first"), event(b"second"))
+    assert (result["forwarded"], result["failed"], len(door.requests)) == (0, 2, 1)
+    assert "kafka-limit-drift" in str(result["detail"])
+
+
 # - earlier acknowledgments survive a lost retry (review round 5; recorded in the in-flush
 # acknowledged set of section 3 Client): a `MockTransport` door answers attempt 1 with a `503`
 # listing records 0 and 1 `published`, record 2 `failed` and record 3 `not_attempted` (the shape
