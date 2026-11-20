@@ -1,0 +1,156 @@
+schema_version: 1.0.0
+ticket_id: OMN-24615
+title: The local dashboard serves savings, spend, pass rate, tokens and run duration under more than one definition
+summary: 'The local savings figure credited runs the quality gate refused and runs whose provider usage is unknown, the savings topic served a NULL baseline, the baseline was fixed in code, and stored spend included a routing tier''s flat rate on models with no price. This change makes the metering fold save nothing on a run with any failure cause and count it in a served runs_failed column, count a run whose calls were not all provider-measured as unknown tokens, read the configured pricing.baseline_model before the code default, take a run''s cost as spend only when the pricing manifest prices the model that ran, and replace the local savings view with one that serves each run''s modelled saving with its baseline model and pricing version. Recorded cost rows are not rewritten (decision D1); each local store recomputes its derived per-run savings once, so the savings view and the headline read one figure. Metering and usage-by-model-day serve the same token totals: a run with no call record has unknown tokens in both, and a call with no tokens and no cost is unmeasured (an escalation attempt booked 0/0 with its own measured cost keeps it, decision 3). GET /models (AC9) serves every provider onex models list prints, with no dashboard allow-list; this supersedes OMN-20816 decision (b). Run duration (AC8): a failed or timed-out call stored at latency 0 stores no latency, and the metering summary serves one run duration (execution_ms, labelled Duration) with its definition, which the dashboard pages read; the dashboard half and its Playwright check are in the omnidash pull request. This contract declares the criteria these changes deliver, AC1 to AC9, each bound to its check. The local SQLite projection views counted never-evaluated runs as failed quality checks (quality_gate_passed and the token columns are NOT NULL DEFAULT 0 in the local store), dropped runs whose data_source is NULL from the summary, grouped per-model figures by the delegated_to alias, and tested IS NULL on columns that cannot be NULL in the daily view. This change adds four view revisions as new one-time store steps after the steps that created their views (quality-gate v2, summary v3, model-routing v3, daily v2): a check is a run with quality_gates_checked other than 0 and a verdict, a NULL data_source is kept, experiment runs stay out of the aggregate views, per-model figures name the model that ran, and the per-day counts use the store''s own markers.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24615-one-savings-definition
+  statement: The local backend serves one savings figure over runs that succeeded with measured usage and a named price, against the configured baseline, and counts every excluded run by reason.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the backend serves one savings figure per window, the sum of modelled savings over runs that ended without a failure cause and whose cost and usage are measured, with the baseline model, pricing version and the excluded runs counted by reason, and every local page reads that figure -- falsifier: uv run pytest over a store fixture holding a refused run, an unknown-usage run and a measured run fails unless the served saving equals the measured run''s saving alone and both exclusions are counted by reason'
+  - id: AC2
+    statement: 'AC2: the savings baseline model comes from the configured pricing.baseline_model before the code default, and the savings topic serves the baseline model and pricing version, never NULL or 0 -- falsifier: uv run pytest that configures a different baseline model fails unless the served saving is priced against it and names it'
+  - id: AC3
+    statement: 'AC3: spend counts only costs priced from a named price source; a flat tier rate on a model with no price is served as unpriced and counted, not as spend -- falsifier: uv run pytest with a '':free'' model run costed at the tier rate fails unless spend excludes it and the unpriced count includes it'
+  - id: AC8
+    statement: 'AC8: the backend serves one run duration with its definition, the Runs table and the run detail both show it, and a stored latency of 0 on a failed call is not a measured duration -- falsifier: uv run pytest over a fixture with a failed run stored at latency 0 fails unless that run has no measured duration, and npx playwright test fails unless Runs and the run detail show the same duration'
+  - id: AC9
+    statement: 'AC9: GET /models serves every provider that onex models list --json lists on the same install, with the same set-up and last-test values, and no provider allow-list remains in the dashboard serve path -- falsifier: uv run pytest that registers a reflection key in a temporary ONEX home fails unless GET /models serves reflection as set up'
+  - id: AC5
+    statement: 'AC5: metering-summary.v1 and usage-by-model-day.v1 serve the same token totals for the same window, or serve the difference with the runs that have no call record, and a call with 0 input and 0 output tokens is not a measured call -- falsifier: uv run pytest with a run that has no call record and a zero-token call fails unless the totals reconcile and the zero-token call is not counted as measured'
+- id: req-omn24615-one-definition-per-figure
+  statement: The local backend serves one pass rate over evaluated runs, groups per-model figures by the model that ran, and counts unrecorded runs per day from the store's own markers.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: one pass rate per window, runs that passed the quality gate over runs that were evaluated, with not-evaluated runs counted separately; the summary, quality-gate and model-routing views serve the same rate, and no view drops a run whose data_source is NULL -- falsifier: uv run pytest with a not-evaluated run and a NULL-data_source run fails unless all three views serve the same rate and run count'
+  - id: AC6
+    statement: 'AC6: every served per-model figure is grouped by the model that ran, with the backend served as its own field -- falsifier: uv run pytest with Beam runs through the byok-reflection backend fails unless model-routing.v1 serves one Beam-1.0-501B-A23B group'
+  - id: AC7
+    statement: 'AC7: the daily view serves unrecorded runs and unmeasured tokens from the store''s own markers (both token counts 0, quality never evaluated), matching metering-summary.v1 -- falsifier: uv run pytest with a run that has no tokens recorded fails unless daily.v1 counts it as unrecorded'
+evidence_requirements:
+- kind: tests
+  description: The savings, baseline and spend tests pass at the pushed head.
+  command: uv run pytest tests/unit/projection/test_omn24615_metering_unknown_usage.py tests/unit/projection/test_omn24615_configured_pricing_model.py tests/unit/projection/test_omn24615_priced_spend.py tests/unit/projection/test_omn24615_savings_view_one_definition.py tests/unit/projection/test_omn24615_run_savings_recompute.py tests/unit/projection/test_omn24615_zero_token_call.py tests/unit/projection/test_omn24615_token_totals_reconcile.py tests/unit/delegation/test_omn24615_failed_run_saves_nothing.py -q -p no:randomly --no-cov
+- kind: tests
+  description: The evaluated-runs and served-model view tests pass at the pushed head.
+  command: uv run pytest tests/unit/projection/test_omn24615_evaluated_runs_and_served_model.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24615-ac1
+  description: 'AC1: a store holding a measured, a refused, an unknown-usage, an estimated-usage and a no-call run serves the measured run''s saving alone, with runs_failed 1 and runs_unknown_tokens 3; fails when the headline credits the others.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_metering_unknown_usage.py -q -p no:randomly --no-cov -k saves_only_the_measured_run
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_savings_view_priced_spend.py -q -p no:randomly --no-cov -k no_call_record_reads_the_headline
+    cwd: .
+- id: dod-omn24615-ac2
+  description: 'AC2: with pricing.baseline_model set in the ONEX home config the headline is priced against that model and names it; fails when the code default is used.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_configured_pricing_model.py -q -p no:randomly --no-cov -k prices_and_names_the_headline
+    cwd: .
+- id: dod-omn24615-ac3
+  description: 'AC3: a '':free'' model run costed at the tier rate and a run on a model with no price are left out of spend and counted in runs_unknown_spend; fails when the tier rate is summed.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_priced_spend.py -q -p no:randomly --no-cov -k only_named_prices_are_summed
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_savings_view_priced_spend.py -q -p no:randomly --no-cov -k flat_rate_on_a_model_with_no_price
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_routing_priced_spend.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24615-ac5
+  description: 'AC5: a measured run, an unknown-usage run, a run with no call record and a zero-token, no-cost call; metering and usage-by-model-day both read 313 in and 16 out and the zero-token call is unmeasured; fails when metering sums the no-call run or drops the unknown-usage run.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_token_totals_reconcile.py tests/unit/projection/test_omn24615_zero_token_call.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24615-ac8
+  description: 'AC8: a failed and a timed-out call stored at latency 0 store no latency while a measured latency and a completed call keep theirs, and the metering summary serves the run duration column (execution_ms, on the decisions topic, not latency_ms) with its label and definition; fails when a failed call keeps latency 0 or the summary serves no run duration.'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_omn24615_failed_call_latency.py tests/unit/projection/test_omn24615_run_duration_definition.py -q -p no:randomly --no-cov
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_failed_run_duration.py tests/unit/projection/test_omn24615_failed_zero_duration_store_step.py -q -p no:randomly --no-cov
+    cwd: .
+# OMN-24615 AC9 (2026-11-19): #5813 (OMN-23413) brought the reflection provider to dev, so the check's
+# -k models_every_provider now also selects the falsifier as written, a reflection key registered in the
+# temporary ONEX home (test_models_every_provider_a_reflection_key_is_served_as_set_up). The binding below
+# is kept as merged so dod-verify carries it: its tests pass at the merge base by construction.
+- id: dod-omn24615-ac9
+  description: 'AC9: a provider set up in the terminal outside the old four (Anthropic, on a temporary store) is served by GET /models as set up and passed, the served rows equal onex models list --json row for row, and no allow-list is left in the key module or the dashboard route; fails while the allow-list filters the rows. dev has no reflection provider (it is on the OMN-23413 branch), so the falsifier uses Anthropic; reflection is served the same way once that branch lands.'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py -q -p no:randomly --no-cov -k models_every_provider
+    cwd: .
+- id: dod-omn24615-ac4
+  description: 'AC4: only evaluated runs are quality checks, a NULL-data_source run is kept, experiment runs stay out, and the summary, quality-gate and model-routing views serve one run count and one pass rate; fails on the previous view steps.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_evaluated_runs_and_served_model.py -q -p no:randomly --no-cov -k "quality_gate_counts_only_evaluated_runs or summary_keeps_a_null_data_source_run or experiment_run_stays_out or three_views_serve_one_run_count"
+    cwd: .
+- id: dod-omn24615-ac6
+  description: 'AC6: one model reached through a backend alias is one group in model-routing.v1 and in metering-summary.v1 by_model, and every per-model row of metering-summary, model-routing (by_model, the model-by-task rows, each tier''s models), summary byModel and quality-gate tokens_to_compliance_by_model serves its backends as its own field; fails when a view groups by delegated_to or a per-model row has no backends.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_evaluated_runs_and_served_model.py -q -p no:randomly --no-cov -k one_model_reached_through_a_backend_is_one_group
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_metering_groups_by_model_that_ran.py -q -p no:randomly --no-cov
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_backend_served_per_model.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24615-ac7
+  description: 'AC7: the daily view counts a never-evaluated run as unrecorded and a run without tokens as unmeasured; fails when it tests IS NULL on NOT NULL DEFAULT 0 columns.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24615_evaluated_runs_and_served_model.py -q -p no:randomly --no-cov -k daily_counts_a_never_evaluated_run
+    cwd: .
+- id: dod-omn24615-integration-proof
+  description: the view store steps and their tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24615 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/unit/projection/test_omn24615_metering_unknown_usage.py tests/unit/projection/test_omn24615_configured_pricing_model.py tests/unit/projection/test_omn24615_priced_spend.py tests/unit/projection/test_omn24615_evaluated_runs_and_served_model.py -q --no-cov
+    cwd: .

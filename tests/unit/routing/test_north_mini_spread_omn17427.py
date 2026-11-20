@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-17427 / OMN-20376: north-mini-code is the free tier's only ordinary rung.
+"""OMN-17427 / OMN-20376 / OMN-26129: the free tier has one ordinary rung, now Nemotron 3.5 Super.
 
 It began as a spread peer mirrored from the Nemotron Ultra rung (RULING
 2026-09-30T15:09:11Z: no model is a fallback-only rung). OMN-20376 withdrew
@@ -35,7 +35,7 @@ pytestmark = pytest.mark.unit
 
 _CONFIGS = Path(__file__).resolve().parents[3] / "src" / "omnimarket" / "configs"
 _RETIRED = "openrouter-nemotron-ultra"
-_RUNG = "openrouter-north-mini-code"
+_RUNG = "openrouter-nemotron-3-5-super"
 _KEYS = tuple(uuid5(NAMESPACE_DNS, f"omn-17427-north-mini-{i}") for i in range(1000))
 
 type _CommittedConfig = tuple[

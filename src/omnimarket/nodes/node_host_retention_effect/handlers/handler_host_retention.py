@@ -14,7 +14,8 @@ import fnmatch
 import os
 import re
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -29,7 +30,10 @@ from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_pass im
     _Pass,
 )
 from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_ports import (
+    ArchivePort,
     HostRetentionPorts,
+    LaneLedgerState,
+    LaneReceiptsPort,
     PreCommitStorePort,
     read_references_portable,
 )
@@ -44,12 +48,17 @@ from omnimarket.nodes.node_host_retention_effect.models.model_host_retention imp
     ModelHostRetentionOverlay,
     ModelHostRetentionRequest,
     ModelHostRetentionResult,
+    ModelLedgerLoader,
     ModelRetentionBounds,
     ModelRetentionItem,
     ModelRunnerGroup,
     ModelRunnerMount,
+    ModelTerminalGuard,
     ModelUvBucketBound,
     ModelUvCache,
+)
+from omnimarket.nodes.node_retention_cleanup.handlers.handler_file_retention import (
+    load_file_policy,
 )
 from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention import (
     ProcessReferences,
@@ -132,11 +141,67 @@ def _check_declared_path(path: str, leaf_names: tuple[str, ...], what: str) -> P
     return declared
 
 
-def validate_declarations(
-    row: ModelHostRetention, bounds: ModelRetentionBounds
+def _terminal_refusals(
+    age: ModelAgeClass, terminal: ModelTerminalGuard, bounds: ModelRetentionBounds
 ) -> list[str]:
-    """Every refusal text for a host row (empty when valid)."""
+    """Every refusal text for the terminal guard of one age class (empty when valid)."""
     refusals: list[str] = []
+    loader = terminal.loader
+    allowed = bounds.terminal_loader
+    if terminal.terminal_keep_days < bounds.min_keep_days:
+        refusals.append(
+            f"{age.name}: terminal_keep_days {terminal.terminal_keep_days} is below the "
+            f"contract minimum {bounds.min_keep_days}"
+        )
+    if allowed is None:
+        refusals.append(f"{age.name}: the contract allows no terminal ledger loader")
+        return refusals
+    if tuple(loader.argv[-2:]) != ("-m", allowed.module):
+        refusals.append(
+            f"{age.name}: the terminal loader command must end with -m {allowed.module}"
+        )
+    if loader.window_hours > allowed.max_window_hours:
+        refusals.append(
+            f"{age.name}: terminal loader window_hours {loader.window_hours} is above the "
+            f"contract maximum {allowed.max_window_hours}"
+        )
+    if loader.window_hours <= terminal.terminal_keep_days * 24:
+        refusals.append(
+            f"{age.name}: terminal loader window_hours {loader.window_hours} cannot hold a "
+            f"TERMINAL {terminal.terminal_keep_days} days old"
+        )
+    return refusals
+
+
+def consent_archive_roots() -> dict[str, str]:
+    """The real path of every folder node_retention_cleanup's policy archives, with its entry as the label.
+
+    The operator's archive consent holds while an entry is disabled (this node owns the folder then), so
+    every entry whose action is archive counts, enabled or not.
+    """
+    labels: dict[str, list[str]] = {}
+    for entry in load_file_policy().entries:
+        if entry.action == "archive":
+            path = os.path.realpath(os.path.expandvars(os.path.expanduser(entry.path)))
+            labels.setdefault(path, []).append(
+                f"{entry.name} ({entry.consent_ref or 'archive rule'})"
+            )
+    return {path: ", ".join(names) for path, names in labels.items()}
+
+
+def validate_declarations(
+    row: ModelHostRetention,
+    bounds: ModelRetentionBounds,
+    consent_roots: Mapping[str, str] | None = None,
+) -> list[str]:
+    """Every refusal text for a host row (empty when valid).
+
+    ``consent_roots`` defaults to the folders node_retention_cleanup's policy archives: a lane_results
+    class on one of them that does not archive is refused.
+    """
+    refusals: list[str] = row.consent_refusals(
+        consent_archive_roots() if consent_roots is None else consent_roots
+    )
     for age in row.age_classes:
         try:
             _check_declared_path(
@@ -149,6 +214,9 @@ def validate_declarations(
                 f"{age.name}: keep_days {age.keep_days} is below the contract minimum "
                 f"{bounds.min_keep_days}"
             )
+        terminal = age.terminal
+        if terminal is not None:
+            refusals.extend(_terminal_refusals(age, terminal, bounds))
         if (
             age.kind == "pre_commit_store"
             and age.index_db is not None
@@ -221,6 +289,56 @@ def _held_by_mount(entry: Path, sources: set[str]) -> bool:
     return any(source == text or source.startswith(text + "/") for source in sources)
 
 
+_LANE_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def _finished(
+    age: ModelAgeClass,
+    entry_name: str,
+    states: dict[str, LaneLedgerState],
+    receipts: LaneReceiptsPort,
+    now: float,
+) -> tuple[str, str | None]:
+    """Why the terminal guard keeps the entry, or the evidence that said its lane finished.
+
+    Exactly one of the pair is set: a keep reason, or a finished_by (``ledger`` for a lane TERMINAL
+    old enough in the ledger window, ``receipt_final`` or ``receipt_dead`` for a lane judged by its
+    own receipt files). A lane the window holds no TERMINAL for is judged by its receipts when the
+    guard declares them, and kept as ``finished_unknown`` when they cannot say.
+    """
+    terminal = age.terminal
+    assert terminal is not None  # only a class with a terminal guard calls _finished
+    match = re.compile(terminal.lane_pattern).fullmatch(entry_name)
+    if match is None:
+        return "", "lane_unnamed"
+    lane = match.group("lane")
+    state = states.get(lane)
+    if state is not None:
+        if state.claim is not None and (
+            state.terminal is None or state.claim > state.terminal
+        ):
+            return "", "lane_open"
+        if state.terminal is not None:
+            if state.terminal > now - terminal.terminal_keep_days * _DAY:
+                return "", "terminal_too_new"
+            return "ledger", None
+    run = match.groupdict().get("run") or ""
+    for token in [lane, run] if run else [lane]:
+        if not _LANE_TOKEN.fullmatch(token) or ".." in token:
+            return "", "finished_unknown"
+    reading = receipts.read(
+        terminal.receipt.root, terminal.receipt.glob.format(lane=lane, run=run)
+    )
+    if reading.files == 0 or reading.unreadable > 0:
+        return "", "finished_unknown"
+    if reading.not_final == 0:
+        return "receipt_final", None
+    dead = terminal.receipt.dead_after_days
+    if dead is not None and reading.newest_mtime < now - dead * _DAY:
+        return "receipt_dead", None
+    return "", "receipt_not_final"
+
+
 def _age_class(
     age: ModelAgeClass,
     bounds: ModelRetentionBounds,
@@ -233,6 +351,10 @@ def _age_class(
     mounts: set[str],
     unit_refs: ProcessReferences,
     store: PreCommitStorePort,
+    states: dict[str, LaneLedgerState] | None,
+    receipts: LaneReceiptsPort,
+    archive: ArchivePort,
+    host: str,
     out: _Pass,
 ) -> None:
     root = Path(age.root)
@@ -245,6 +367,8 @@ def _age_class(
     unit_held = _held_names(root, unit_refs)
     device = root.lstat().st_dev
     protected = [re.compile(pattern) for pattern in age.protected_name_patterns]
+    archive_root = archive.root() if age.archive else None
+    archive_unavailable_reported = False
     for entry in sorted(root.iterdir(), key=lambda item: item.name):
         try:
             info = entry.lstat()
@@ -252,6 +376,7 @@ def _age_class(
             continue
         path = str(entry)
         reason: str | None = None
+        finished_by = ""
         if info.st_uid != uid:
             reason = "foreign_owner"
         elif (
@@ -272,18 +397,50 @@ def _age_class(
         elif any(lane in entry.name for lane in live):
             reason = "live_lane"
         else:
-            scan = _scan(entry, device, cutoff)
-            if scan.special:
-                reason = "special_file"
-            elif scan.newest >= cutoff:
-                reason = "too_new"
+            if age.terminal is not None:
+                finished_by, reason = _finished(
+                    age, entry.name, states or {}, receipts, now
+                )
+            if reason is None:
+                scan = _scan(entry, device, cutoff)
+                if scan.special:
+                    reason = "special_file"
+                elif scan.newest >= cutoff:
+                    reason = "too_new"
+        if reason is None and age.archive and not archive.archivable(entry):
+            reason = "not_archivable"
         if reason is not None:
             out.keep(age.name, path, reason)
             continue
+        dest: Path | None = None
+        if age.archive:
+            if archive_root is None:
+                if dry_run:
+                    # One error per class, not per entry: a dry run removes nothing anyway.
+                    if not archive_unavailable_reported:
+                        out.errors.append(
+                            f"{age.name}: archive root unavailable: a real run would "
+                            "remove nothing"
+                        )
+                        archive_unavailable_reported = True
+                else:
+                    out.keep(age.name, path, "archive_unavailable")
+                    continue
+            else:
+                suffix = ".tar.gz" if entry.is_dir() else ".gz"
+                stamp = datetime.fromtimestamp(scan.newest, UTC).strftime(
+                    "%Y%m%dT%H%M%SZ"
+                )
+                dest = archive_root / host / age.name / f"{entry.name}.{stamp}{suffix}"
         size = tree_bytes(entry)
         out.propose(
             ModelRetentionItem(
-                class_name=age.name, path=path, bytes=size, action="remove"
+                class_name=age.name,
+                path=path,
+                bytes=size,
+                action="remove",
+                finished_by=finished_by,
+                archived_to=str(dest) if dest is not None else "",
             )
         )
         if dry_run:
@@ -297,6 +454,17 @@ def _age_class(
             if result == "locked":
                 out.keep(age.name, path, "store_locked")
                 continue
+        if age.archive and dest is not None:
+            try:
+                archive.archive(entry, dest)
+                if not archive.synced(dest):
+                    out.keep(age.name, path, "pending_sync")
+                    continue
+                archive.verify(entry, dest)
+            except OSError as exc:
+                out.errors.append(f"{entry}: archive {type(exc).__name__}")
+                continue
+            out.archived_one(age.name)
         try:
             _remove(entry, uid)
         except OSError as exc:
@@ -567,7 +735,23 @@ class HandlerHostRetention:
                 and units is not None
             ):
                 unreadable = len(refs.unreadable)
+                closures: dict[
+                    ModelLedgerLoader, dict[str, LaneLedgerState] | None
+                ] = {}
                 for age in age_classes:
+                    terminal = age.terminal
+                    states: dict[str, LaneLedgerState] | None = None
+                    if terminal is not None:
+                        # One loader run per distinct loader; a class whose lane states are None
+                        # removes and lists nothing of its class, it records the error instead.
+                        loader = terminal.loader
+                        if loader not in closures:
+                            closures[loader] = ports.lane_closure.lane_states(loader)
+                        states = closures[loader]
+                        if states is None:
+                            out.begin(age.name)
+                            out.errors.append(f"{age.name}: ledger unreadable")
+                            continue
                     _age_class(
                         age,
                         bounds,
@@ -579,6 +763,10 @@ class HandlerHostRetention:
                         mounts=mounts,
                         unit_refs=ProcessReferences(blobs=units),
                         store=ports.pre_commit_store,
+                        states=states,
+                        receipts=ports.lane_receipts,
+                        archive=ports.archive,
+                        host=request.host_name,
                         out=out,
                     )
         if runs("runner_work"):
@@ -611,6 +799,12 @@ class HandlerHostRetention:
                 removed_count=out.removed.get(name, 0),
                 freed_bytes=out.freed.get(name, 0),
                 kept_count=sum(k.class_name == name for k in out.kept),
+                unknown_count=sum(
+                    k.class_name == name
+                    and k.reason in ("finished_unknown", "not_archivable")
+                    for k in out.kept
+                ),
+                archived_count=out.archived.get(name, 0),
             )
             for name in out.ran
         )

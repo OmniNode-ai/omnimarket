@@ -50,6 +50,7 @@ from omnimarket.events.provider_quota import (
     ModelProviderQuotaObserved,
 )
 from omnimarket.handlers import openai_compatible_endpoint as endpoints
+from omnimarket.handlers.model_catalog import catalog_config, runtime_catalog_entry
 from omnimarket.handlers.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
@@ -104,6 +105,7 @@ from omnimarket.models.delegation.local_credential_refusal import (
     EnumLocalCredentialRefusalReason,
     ModelLocalCredentialRefusal,
 )
+from omnimarket.models.model_catalog_entry import ModelCatalogEntry
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
     contract_subscribe_topics,
@@ -327,6 +329,21 @@ def _extract_usage(response_json: dict[str, Any]) -> tuple[int, int]:
     return tokens_in, tokens_out
 
 
+def _token_usage_source(
+    response_json: dict[str, Any], *, native: bool = False
+) -> EnumUsageSource:
+    """Provider counts are measured independently of whether a price is known."""
+    usage = response_json.get("usage")
+    fields = (
+        ("input_tokens", "output_tokens")
+        if native
+        else ("prompt_tokens", "completion_tokens")
+    )
+    if isinstance(usage, dict) and all(usage.get(key) is not None for key in fields):
+        return EnumUsageSource.MEASURED
+    return EnumUsageSource.UNKNOWN
+
+
 def _provider_reported_cost(response_json: dict[str, Any]) -> Decimal | None:
     """The cost the provider reported in its own usage accounting, or ``None``.
 
@@ -351,6 +368,7 @@ def _compute_cost(
     model_tier: str = "unknown",
     endpoint_url: str | None = None,
     provider: str | None = None,
+    model_entry: ModelCatalogEntry | None = None,
 ) -> tuple[Decimal, Decimal, Decimal, EnumCostBasis]:
     """Return (actual_cost, opus_equivalent_cost, savings, cost_basis).
 
@@ -374,7 +392,23 @@ def _compute_cost(
     missing or the tier is not declared.
     """
     if byok_backend_provider(provider) is not None:
-        model_price = byok_model_price_per_1m(provider, endpoint_url, model_id)
+        # OMN-23413 AC35/AC34: the catalogue's and the registry's declared price
+        # come first; then the combined entry (the provider's kept list over
+        # models.dev), so a catalog row with no price never hides a declared one
+        # and models.dev alone never outranks the provider's own list.
+        model_price = byok_model_price_per_1m(
+            provider, endpoint_url, model_id, supplemental=model_entry is None
+        )
+        if (
+            model_price is None
+            and model_entry is not None
+            and model_entry.input_usd_per_million is not None
+            and model_entry.output_usd_per_million is not None
+        ):
+            model_price = (
+                model_entry.input_usd_per_million,
+                model_entry.output_usd_per_million,
+            )
         if model_price is None:
             # OMN-23751: an eval arm on the registered key keeps the arm's model
             # and is booked at the arm's declared price.
@@ -988,65 +1022,8 @@ class HandlerLlmDelegationCall:
             if request.response_format is not None:
                 payload["response_format"] = request.response_format
 
-        # OMN-16419: fail-closed model-attribution guard. A live GET
-        # /v1/models reconciliation runs BEFORE the chat-completion POST —
-        # never after — because the response body's echoed ``model`` field is
-        # not trustworthy evidence (SGLang echoes whatever was requested,
-        # served or not; see transport.probe_served_models). ``served_ids`` is
-        # None when the endpoint offers no evidence either way (most cloud
-        # backends don't expose this path), in which case the guard is a
-        # no-op and behavior is unchanged from before this ticket. When
-        # ``served_ids`` IS available and does not contain the configured
-        # model_id, the call never reaches the network — this repo's own
-        # config no longer silently attributes to a model that isn't running.
-        # The native endpoint has no GET /v1/models next to ``/v1/messages`` to
-        # reconcile against; its reply names the model that served it instead,
-        # read below.
-        served_ids = None if native else _get_served_model_ids(endpoint_url)
-        if served_ids is not None and request.model_id not in served_ids:
-            # Reconcile a possible model replacement before refusing the call.
-            # An unreadable refresh retains the known mismatch evidence.
-            served_ids = (
-                transport.get_served_model_ids(endpoint_url, refresh=True) or served_ids
-            )
-        served_model_id: str | None = None
-        if served_ids is not None:
-            if request.model_id not in served_ids:
-                # OMN-18670: name the SOURCE of the configured literal, not
-                # only the literal. The 2026-09-18 outage was caused by an
-                # untracked ``~/.omninode/delegation/bifrost_overrides.yaml``
-                # that still pinned a retired model four days after every
-                # committed surface had been repointed; this message named the
-                # value and the endpoint, so three lanes re-derived the
-                # resolution path by hand to find a file no repo grep can see.
-                # ``model_id_source`` is empty when the caller resolved the
-                # backend outside the routing authority — the refusal still
-                # fires, it just cannot attribute what it was never told.
-                attribution = (
-                    f" The configured value came from: {request.model_id_source}."
-                    if request.model_id_source
-                    else (
-                        " The caller supplied no config provenance for this "
-                        "model_id, so this refusal cannot name the file that "
-                        "supplied it; resolve the backend through the routing "
-                        "authority (resolve_delegation_backend) to get one, or "
-                        "run `python -m omnimarket.cli.cli_explain_routing` to "
-                        "print the merged routing with a per-key source."
-                    )
-                )
-                return self._failure_result(
-                    request,
-                    EnumDelegationFailureClass.MODEL_ATTRIBUTION_MISMATCH,
-                    f"model_attribution_mismatch: configured model_name="
-                    f"{request.model_id!r} is not in the served ids "
-                    f"{sorted(served_ids)!r} reported by "
-                    f"{transport.served_models_url(endpoint_url)} (OMN-16419 "
-                    "fail-closed guard — refusing to silently attribute this "
-                    f"call to a model that is not running).{attribution}",
-                )
-            served_model_id = request.model_id
-
         secret_source: EnumSecretSource | None = None
+        model_entry: ModelCatalogEntry | None = None
         request_left_at: float | None = None
         try:
             # OMN-13861: resolve the backend's API key from ``secret_ref`` and merge
@@ -1057,6 +1034,89 @@ class HandlerLlmDelegationCall:
             # ref that cannot be resolved fails closed (raises → caught below as a
             # transport failure), never a silent unauthenticated call.
             outbound_headers, secret_source = self._resolve_outbound_headers(request)
+            provider = byok_backend_provider(request.provider)
+            if provider is not None and provider in catalog_config()["provider_ids"]:
+                # What the explorer last read, never a live listing per call.
+                model_entry = runtime_catalog_entry(provider, request.model_id)
+                if model_entry.max_output_tokens is not None:
+                    token_field = (
+                        "max_tokens"
+                        if native
+                        else token_limit_field_for_endpoint(endpoint_url)
+                    )
+                    payload[token_field] = min(
+                        request.max_tokens, model_entry.max_output_tokens
+                    )
+
+            # OMN-16419: fail-closed model-attribution guard. A live GET
+            # /v1/models reconciliation runs BEFORE the chat-completion POST —
+            # never after — because the response body's echoed ``model`` field is
+            # not trustworthy evidence (SGLang echoes whatever was requested,
+            # served or not; see transport.probe_served_models). ``served_ids`` is
+            # None when the endpoint offers no evidence either way (most cloud
+            # backends don't expose this path), in which case the guard is a
+            # no-op and behavior is unchanged from before this ticket. When
+            # ``served_ids`` IS available and does not contain the configured
+            # model_id, the call never reaches the network — this repo's own
+            # config no longer silently attributes to a model that isn't running.
+            # The native endpoint has no GET /v1/models next to ``/v1/messages`` to
+            # reconcile against; its reply names the model that served it instead,
+            # read below.
+            served_ids = (
+                None
+                if native
+                else transport.get_served_model_ids(
+                    endpoint_url, extra_headers=outbound_headers
+                )
+                if outbound_headers
+                else _get_served_model_ids(endpoint_url)
+            )
+            if served_ids is not None and request.model_id not in served_ids:
+                # Reconcile a possible model replacement before refusing the call.
+                # An unreadable refresh retains the known mismatch evidence.
+                served_ids = (
+                    transport.get_served_model_ids(
+                        endpoint_url, refresh=True, extra_headers=outbound_headers
+                    )
+                    or served_ids
+                )
+            served_model_id: str | None = None
+            if served_ids is not None:
+                if request.model_id not in served_ids:
+                    # OMN-18670: name the SOURCE of the configured literal, not
+                    # only the literal. The 2026-09-18 outage was caused by an
+                    # untracked ``~/.omninode/delegation/bifrost_overrides.yaml``
+                    # that still pinned a retired model four days after every
+                    # committed surface had been repointed; this message named the
+                    # value and the endpoint, so three lanes re-derived the
+                    # resolution path by hand to find a file no repo grep can see.
+                    # ``model_id_source`` is empty when the caller resolved the
+                    # backend outside the routing authority — the refusal still
+                    # fires, it just cannot attribute what it was never told.
+                    attribution = (
+                        f" The configured value came from: {request.model_id_source}."
+                        if request.model_id_source
+                        else (
+                            " The caller supplied no config provenance for this "
+                            "model_id, so this refusal cannot name the file that "
+                            "supplied it; resolve the backend through the routing "
+                            "authority (resolve_delegation_backend) to get one, or "
+                            "run `python -m omnimarket.cli.cli_explain_routing` to "
+                            "print the merged routing with a per-key source."
+                        )
+                    )
+                    return self._failure_result(
+                        request,
+                        EnumDelegationFailureClass.MODEL_ATTRIBUTION_MISMATCH,
+                        f"model_attribution_mismatch: configured model_name="
+                        f"{request.model_id!r} is not in the served ids "
+                        f"{sorted(served_ids)!r} reported by "
+                        f"{transport.served_models_url(endpoint_url)} (OMN-16419 "
+                        "fail-closed guard — refusing to silently attribute this "
+                        f"call to a model that is not running).{attribution}",
+                    )
+                served_model_id = request.model_id
+
             _report_call(
                 ModelLlmDelegationCallObservation(
                     phase="started",
@@ -1329,6 +1389,7 @@ class HandlerLlmDelegationCall:
                 response_json,
                 latency_ms=latency_ms,
                 secret_source=secret_source,
+                model_entry=model_entry,
                 event_publisher=event_publisher,
             )
 
@@ -1369,6 +1430,7 @@ class HandlerLlmDelegationCall:
             model_tier=request.model_tier,
             endpoint_url=endpoint_url,
             provider=request.provider,
+            model_entry=model_entry,
         )
 
         result = ModelLlmDelegationCallResult(
@@ -1393,7 +1455,7 @@ class HandlerLlmDelegationCall:
             actual_cost_usd=actual_cost,
             opus_equivalent_cost_usd=opus_cost,
             savings_usd=savings,
-            usage_source=_cost_usage_source(cost_basis),
+            usage_source=_token_usage_source(response_json),
             cost_basis=cost_basis,
             provider_reported_cost_usd=_provider_reported_cost(response_json),
             quality_gate_passed=True,
@@ -1424,6 +1486,7 @@ class HandlerLlmDelegationCall:
         latency_ms: int,
         secret_source: EnumSecretSource | None,
         event_publisher: Any,
+        model_entry: ModelCatalogEntry | None = None,
     ) -> ModelLlmDelegationCallResult:
         """Turn one native Messages reply into the typed result (OMN-20910).
 
@@ -1455,6 +1518,7 @@ class HandlerLlmDelegationCall:
             model_tier=request.model_tier,
             endpoint_url=endpoint_url,
             provider=request.provider,
+            model_entry=model_entry,
         )
         cache_read, cache_write_5m, cache_write_1h = cache_usage_figures(
             response_json.get("usage") or {}
@@ -1477,7 +1541,7 @@ class HandlerLlmDelegationCall:
             actual_cost_usd=actual_cost,
             opus_equivalent_cost_usd=opus_cost,
             savings_usd=savings,
-            usage_source=_cost_usage_source(cost_basis),
+            usage_source=_token_usage_source(response_json, native=True),
             cost_basis=cost_basis,
             quality_gate_passed=True,
             endpoint_healthy=True,
@@ -1536,7 +1600,7 @@ class HandlerLlmDelegationCall:
             opus_equivalent_cost_usd=result.opus_equivalent_cost_usd,
             savings_usd=result.savings_usd,
             provider_reported_cost_usd=result.provider_reported_cost_usd,
-            usage_source=result.usage_source,
+            usage_source=result.cost_usage_source,
             cost_basis=result.cost_basis,
             pricing_manifest_version=request.pricing_manifest_version,
             pricing_manifest_hash=request.pricing_manifest_hash,
