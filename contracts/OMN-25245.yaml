@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-25245
+title: Broker ACL render command reaches only the handler whose model it fits
+summary: The render node declares three operations (render, derive, coverage) on one command topic with operation_match routing, so the engine handed every command to all three dispatchers and the two that did not ask for it raised ValidationError (ModelBrokerAclDeriveRequest and ModelBrokerAclCoverageRequest, read on the dev runtime on h201 at 2026-11-18T00:41:09Z, correlation 97b129ab-b071-4fa1-ba2e-78615f3320b9) while the render itself published. The contract now routes by payload_type_match with the input model of each handler declared as its event_model. Not in this change - the handlers, the models, the overlay rows and the broker apply tool.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25245-fanout
+  statement: A command on the render node's topic is matched by the one handler whose request model validates it and refused by the other two without an error.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the render node's contract declares an event_model per handler equal to that handler's input model and routes by payload_type_match -- falsifier: pytest tests/nodes/node_broker_acl_overlay_render_compute/test_command_topic_fanout.py -q fails on the unchanged contract (no event_model is declared) and passes with the change"
+  - id: AC2
+    statement: "AC2: the engine's payload matcher accepts a render, a derive and a coverage request for its own handler only, on the bare payload and on the wire envelope -- falsifier: the same test file, test_a_command_is_matched_by_exactly_the_handler_it_is_for and test_the_matcher_also_reads_the_engines_wire_envelope"
+  - id: AC3
+    statement: "AC3: the node's existing tests and the routing input-model fit validator still pass -- falsifier: pytest tests/nodes/node_broker_acl_overlay_render_compute tests/nodes/node_broker_acl_reconcile_effect -q, and python -m omnimarket.validators.routing_input_model_fit src/omnimarket"
+evidence_requirements:
+- kind: tests
+  description: The render node tests at the pushed head; the fan-out tests fail against the contract before this change.
+  command: uv run pytest tests/nodes/node_broker_acl_overlay_render_compute -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25245-ac1-ac2
+  description: 'AC1 and AC2: the fan-out tests pass with the change; against the contract before it the three tests that build the matchers fail with no event_model declared.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_overlay_render_compute/test_command_topic_fanout.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25245-ac3
+  description: 'AC3: the existing render, derive and reconcile node tests pass and the routing fit validator reports no new conflict.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_overlay_render_compute tests/nodes/node_broker_acl_reconcile_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25245-integration-proof
+  description: 'Integration proof: the render node tests (the fan-out matcher tests among them) run on a lab host at the pushed head. The dispatch on the dev runtime on h201 is read after the dev window loads the branch and is not claimed by this local check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25245 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_broker_acl_overlay_render_compute -q --no-cov -p no:randomly
+    cwd: .

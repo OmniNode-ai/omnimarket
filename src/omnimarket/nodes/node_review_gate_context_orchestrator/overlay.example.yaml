@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic overlay for node_review_gate_context_orchestrator: the sweep settings and the ledger
+# read route. A deployment's real overlay lives in the overlays repository.
+settings:
+  owner: example-org
+  repositories:
+    - example-repo
+  watcher_state_path_env: EXAMPLE_WATCHER_STATE_PATH
+  max_age_seconds: 300
+  include_drafts: false
+  lookback_days: 7.0
+  review_lane_prefixes:
+    - orchestrator-
+  review_engines:
+    - fable
+ledger_read:
+  route: command
+  command_env: ONEX_LEDGER_BUS_READ_COMMAND
+  timeout_seconds: 60
+  row_limit: 5000
+schedule:
+  mode: probe

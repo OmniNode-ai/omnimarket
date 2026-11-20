@@ -354,7 +354,8 @@ class ModelDelegationEventProjectionRow(BaseModel):
     # OMN-20717: NULL for a call that was not priced, never an invented zero.
     cost_usd: Decimal | None
     cost_savings_usd: Decimal
-    latency_ms: int
+    # OMN-24615 AC8: NULL for a call that did not complete and timed nothing (latency 0), never a measured 0 ms.
+    latency_ms: int | None
     repo_name: str | None = None
     is_shadow: bool = False
     prompt_text: str | None = None
@@ -413,7 +414,11 @@ class ModelDelegationEventProjectionRow(BaseModel):
             # column. Keep that compatibility projection numeric; the typed
             # receipt and savings_estimates row preserve unresolved as null.
             cost_savings_usd=Decimal(str(metrics.cost_savings_usd or 0.0)),
-            latency_ms=metrics.latency_ms,
+            latency_ms=(
+                None
+                if metrics.latency_ms == 0 and event.status != "completed"
+                else metrics.latency_ms
+            ),
             repo_name=event.repo_name,
             prompt_text=event.prompt_text,
             # OMN-13596: never write a timeout/error string into response_text

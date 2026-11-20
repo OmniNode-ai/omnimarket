@@ -34,7 +34,7 @@ EMIT = "Emit coverage artifact metadata (OMN-14680)"
 pytestmark = pytest.mark.unit
 
 FLAGS = (
-    '-m "not kafka"',
+    '-m "not kafka and not release_proof"',
     "--timeout=300",
     "--timeout-method=thread",
     "--cov=src",
