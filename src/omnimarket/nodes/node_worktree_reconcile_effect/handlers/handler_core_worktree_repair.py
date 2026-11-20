@@ -5,6 +5,12 @@
 from pathlib import Path
 from typing import Literal, Protocol
 
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
+    SystemClock,
+)
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_core_worktree import (
+    GitConfigFileCoreWorktree,
+)
 from omnimarket.nodes.node_worktree_reconcile_effect.models.model_core_worktree_repair import (
     EnumCoreWorktreeRepairKind,
     ModelCoreWorktreeRepair,
@@ -52,13 +58,15 @@ class HandlerCoreWorktreeRepair:
     def __init__(
         self,
         *,
-        config: ProtocolCoreWorktreeConfig,
-        writer: ProtocolStatusRowWriter | None,
-        clock: ProtocolClock,
+        config: ProtocolCoreWorktreeConfig | None = None,
+        writer: ProtocolStatusRowWriter | None = None,
+        clock: ProtocolClock | None = None,
     ) -> None:
-        self._config = config
+        # Defaults are the host adapters, so the boot resolver can construct the handler
+        # from no arguments; the repair-core-worktree CLI passes its own writer.
+        self._config = config if config is not None else GitConfigFileCoreWorktree()
         self._writer = writer
-        self._clock = clock
+        self._clock = clock if clock is not None else SystemClock()
 
     @property
     def handler_type(self) -> Literal["NODE_HANDLER"]:
