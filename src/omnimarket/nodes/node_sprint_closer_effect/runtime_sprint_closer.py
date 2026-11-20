@@ -179,6 +179,12 @@ async def read_run(target: str, namespace: str, workflow_id: str) -> str:
     return cast(str, await client.get_workflow_handle(workflow_id).result())
 
 
+def _home_root(ap: argparse.ArgumentParser, value: str | None) -> Path:
+    if not value:
+        ap.error("--omni-home or the OMNI_HOME environment variable is required")
+    return Path(value)
+
+
 def main(argv: list[str] | None = None) -> int:
     cfg = load_config()
     ap = argparse.ArgumentParser(prog="node_sprint_closer_effect")
@@ -192,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--namespace", default="default")
         p.add_argument("--task-queue", default=str(cfg["task_queue"]))
         p.add_argument(
-            "--omni-home", dest="home_root", default=os.environ.get("OMNI_HOME", ".")
+            "--omni-home", dest="home_root", default=os.environ.get("OMNI_HOME")
         )
         p.add_argument(
             "--live",
@@ -217,7 +223,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     queue, target = args.task_queue, args.target_host
     if args.verb == "worker":
-        asyncio.run(run_worker(target, args.namespace, queue, Path(args.home_root)))
+        asyncio.run(
+            run_worker(target, args.namespace, queue, _home_root(ap, args.home_root))
+        )
         return 0
     if args.verb == "read":
         sys.stdout.write(
@@ -263,7 +271,7 @@ def main(argv: list[str] | None = None) -> int:
             + "\n"
         )
         return 0
-    sources = live_sources_from_env(Path(args.home_root))
+    sources = live_sources_from_env(_home_root(ap, args.home_root))
     outcomes = []
     for tid in sources.list_ticket_ids(plan):
         try:
