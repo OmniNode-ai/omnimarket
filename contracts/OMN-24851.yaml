@@ -89,5 +89,5 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: |-
-      bash -c 'h="$(python3 "$OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6326 --json | sed -n "/^{/,\$p" | jq -r .facts.head_sha)"; [ "${#h}" = 40 ] && gh pr view 6326 -R OmniNode-ai/omnimarket --json comments --jq ".comments[].body" | grep -E "^Lab: head=$h .*command=.* exit=0 .*contexts=" | grep -q . && onex scm pr-checks OmniNode-ai/omnimarket#6326 | jq -e --arg h "$h" ".result.head_sha == \$h and (.result.red | length) == 0 and (.result.pending | length) == 0"'
+      bash -c 'h="$(python3 "$OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6326 --json | sed -n "/^{/,\$p" | jq -r .facts.head_sha)"; [ "${#h}" = 40 ] && gh pr view 6326 -R OmniNode-ai/omnimarket --json comments --jq ".comments[].body" | grep -E "^Lab: head=$h .*command=.*pytest tests/delegation_golden( |$).* exit=0 .*contexts=[^ =,]+=success(,[^ =,]+=success)*( |$)" | grep -q . && onex scm pr-checks OmniNode-ai/omnimarket#6326 | jq -e --arg h "$h" ".result.head_sha == \$h and (.result.red | arrays | length) == 0 and (.result.pending | arrays | length) == 0"'
     cwd: .
