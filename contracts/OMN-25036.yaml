@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-25036
 title: Make the integration floor nodes run on the dev runtime from a demand the runtime delivers
-summary: node_integration_reading_publish_effect and node_floor_projection_read_effect declared no subscribe topic, so the runtime delivered them nothing and onex run-node refused them. The publish effect now subscribes to a command topic carrying one ModelIntegrationReadingBatch, builds the projection through node_integration_projection_compute and publishes the floor projection envelope on the snapshot topic over the runtime's own bus; the reader node subscribes to that snapshot topic and reads each delivered publication.
+summary: node_integration_reading_publish_effect and node_floor_projection_read_effect declared no subscribe topic, so the runtime delivered them nothing and onex run-node refused them. The publish effect now subscribes to a command topic carrying one ModelIntegrationReadingBatch, builds the projection through node_integration_projection_compute and publishes the floor projection envelope on the snapshot topic over the runtime's own bus; the reader node reads a snapshot publication through its own handler and subscribes to no topic, because a snapshot topic name carries no message category the runtime can dispatch.
 is_seam_ticket: true
 interface_change: true
 interfaces_touched:

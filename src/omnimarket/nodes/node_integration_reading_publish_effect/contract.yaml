@@ -37,6 +37,13 @@ handler_routing:
         module: omnimarket.nodes.node_integration_reading_publish_effect.handlers.handler_integration_reading_publish_requested
       input_model: omnimarket.models.integration_reading.ModelIntegrationReadingBatch
       output_model: omnimarket.models.floor_projection.ModelFloorProjectionPublishResult
+    # The hourly pass's publish, run by the runtime module and not subscribed to a topic.
+    - operation: publish_integration_projection
+      handler:
+        name: HandlerIntegrationReadingPublish
+        module: omnimarket.nodes.node_integration_reading_publish_effect.handlers.handler_integration_reading_publish
+      input_model: omnimarket.models.integration_reading.ModelIntegrationPublishCommand
+      output_model: omnimarket.models.floor_projection.ModelFloorProjectionPublishResult
 
 descriptor:
   node_archetype: effect

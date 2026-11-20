@@ -66,7 +66,7 @@ class HandlerFloorProjectionSnapshotRead:
     def handle(
         self, request: ModelFloorProjectionEnvelope
     ) -> ModelFloorProjectionEntry:
-        topic = _contract()["event_bus"]["subscribe_topics"][0]
+        topic = _contract()["runtime"]["integration_snapshot_topic"]
         overlay = self._read_overlay()
         (projection_id, spec) = next(
             (pid, s) for pid, s in overlay.projections.items() if s.topic == topic

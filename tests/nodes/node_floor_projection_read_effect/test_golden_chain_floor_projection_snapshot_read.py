@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MIT
 """The floor's reader takes the integration snapshot as the runtime delivers it (OMN-25036).
 
-The reader node declared no subscription, so the runtime delivered it nothing. The contract now subscribes it to the
-integration snapshot topic; this handler reads each delivered publication the way the pass does: the publication names
-the projection the overlay names for that topic, and it keeps its producer's own time.
+The snapshot topics carry no message category in their name, so the runtime cannot dispatch them and the reader
+subscribes to none; the contract declares the handler's operation and the topic the pass reads. This handler reads one
+publication the way the pass does: the publication names the projection the overlay names for that topic, and it keeps
+its producer's own time.
 """
 
 from __future__ import annotations
@@ -41,7 +42,7 @@ def _contract() -> dict[str, Any]:
     return dict(yaml.safe_load(text))
 
 
-TOPIC = _contract()["event_bus"]["subscribe_topics"][0]
+TOPIC = "onex.snapshot.projection.floor-integration.v1"  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
 OVERLAY = ModelFloorProjectionReadOverlay(
     bus="inmemory",
     read_window_s=1.0,
@@ -65,14 +66,12 @@ def _envelope(projection_id: str) -> ModelFloorProjectionEnvelope:
     )
 
 
-def test_the_contract_subscribes_the_reader_to_the_integration_snapshot_topic() -> None:
+def test_the_contract_reads_the_integration_snapshot_topic_without_a_runtime_subscription() -> (
+    None
+):
     contract = _contract()
-    assert contract["event_bus"]["subscribe_topics"] == [TOPIC]
+    assert contract["event_bus"]["subscribe_topics"] == []
     assert TOPIC in contract["snapshot_reads"]
-    routed = {
-        h["topic"] for h in contract["handler_routing"]["handlers"] if "topic" in h
-    }
-    assert routed == {TOPIC}
     assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
     assert contract["terminal_event"] == "onex.evt.omnimarket.floor-projection-read.v1"
 
