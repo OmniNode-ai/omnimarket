@@ -196,6 +196,14 @@ class ProtocolAlarmDelivery(Protocol):
         ...
 
 
+class ProtocolDigestStore(Protocol):
+    def load(self) -> dict[str, Any]:
+        """The held digest days (``pending``, ``sent``), empty when there is none; raises ValueError or OSError."""
+        ...
+
+    def save(self, state: Mapping[str, Any]) -> None: ...
+
+
 class CensusUnreadableError(Exception):
     """The census snapshot could not be read: no file, the command failed or timed out, or the text is not JSON."""
 
@@ -264,6 +272,7 @@ __all__ = [
     "ProtocolCensusSource",
     "ProtocolContainerRestartReader",
     "ProtocolDeliveredShaSource",
+    "ProtocolDigestStore",
     "ProtocolEffectsGroupReader",
     "ProtocolGroupLagReader",
     "ProtocolGrowthStreakStore",
