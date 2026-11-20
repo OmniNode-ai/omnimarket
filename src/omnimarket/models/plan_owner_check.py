@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Annotated
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -14,6 +15,8 @@ from omnimarket.models.model_work_ledger_reader import (
 )
 
 _FINDING = r"^[a-z][a-z0-9-]{0,63}$"
+# A pull request of the plan: ``<owner/repo>#<n>`` or ``<repo>#<n>``.
+_PR = r"^([A-Za-z0-9_.-]+/)?[A-Za-z0-9_.-]+#\d+$"
 
 
 class EnumPlanOwnerVerdict(StrEnum):
@@ -25,20 +28,37 @@ class EnumPlanOwnerVerdict(StrEnum):
 
 
 class ModelPlanOwnerRule(BaseModel):
-    """One plan to watch: the finding it answers, the claims that may own it, the live window."""
+    """One plan to watch: the finding it answers, what a claim must name to own it, the live window.
+
+    A live claim owns the plan when its ticket is listed, its plan cell names a listed plan path,
+    or its ``pr=`` names a listed pull request. The lane's name never decides: a rule that lists
+    none of the three is refused at load.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     finding: str = Field(pattern=_FINDING)
-    # A claim owns the plan when its lane starts with any prefix, or its ticket is listed.
-    lane_prefixes: tuple[str, ...] = Field(min_length=1)
     tickets: tuple[str, ...] = ()
+    # Plan paths as the claim's plan cell names them; compared by file stem (directories and a
+    # ``.md`` suffix do not matter), so ``plans/<name>.md`` and ``<name>`` are one plan.
+    plan_paths: tuple[str, ...] = ()
+    # Pull requests of the plan, ``<owner/repo>#<n>`` or ``<repo>#<n>``; compared by ``<repo>#<n>``.
+    prs: tuple[Annotated[str, Field(pattern=_PR)], ...] = ()
     # How recent a claim's newest row must be for the claim to count as live.
     live_window_minutes: int = Field(ge=1)
     why: str = Field(min_length=1)
     fix: str = Field(min_length=1)
     # What to do when the read failed or its answer cannot be read (the verdict is UNKNOWN).
     unknown_fix: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _names_something(self) -> ModelPlanOwnerRule:
+        """A rule that names no ticket, plan path or pull request could own nothing; refuse."""
+        if not (self.tickets or self.plan_paths or self.prs):
+            raise ValueError(
+                f"rule {self.finding!r} names no ticket, plan path or pull request"
+            )
+        return self
 
 
 class ModelPlanOwnerOverlay(BaseModel):

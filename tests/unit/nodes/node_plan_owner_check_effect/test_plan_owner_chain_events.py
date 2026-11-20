@@ -42,6 +42,7 @@ pytestmark = pytest.mark.unit
 
 NOW = datetime(2026, 11, 14, 15, 0, 0, tzinfo=UTC)
 TOPICS = load_topics()
+OWNING_TICKET = "OMN-19609"
 UNKNOWN_FIX = "read the open-claims answer and fix the read it names"
 HEADING = (
     "open-claims since=beginning claims=2 open=2 "
@@ -57,13 +58,24 @@ class ListSink:
         self.events.append(event)
 
 
-def claim_line(lane: str, newest: str, ticket: str = "none") -> str:
+def claim_line(
+    lane: str,
+    newest: str,
+    ticket: str = "none",
+    pr: str = "none",
+    plan: str = "none",
+) -> str:
     """One OPEN-CLAIM line in the shape the query node renders."""
     return (
         f"OPEN-CLAIM lane={lane} claim=2026-11-14T14:00:00Z db:row-1 "
-        f"ticket={ticket} newest-row={newest} kind=STATUS age=0h30m rows=4 "
-        f"host=h051 run=r1 leases=none liveness=unknown"
+        f"ticket={ticket} pr={pr} plan={plan} newest-row={newest} kind=STATUS "
+        f"age=0h30m rows=4 host=h051 run=r1 leases=none liveness=unknown"
     )
+
+
+def owned_claim(lane: str, newest: str) -> str:
+    """A claim whose ticket the rule lists: it names the plan whatever its lane is called."""
+    return claim_line(lane, newest, ticket=OWNING_TICKET)
 
 
 def node_answer(
@@ -88,8 +100,9 @@ def node_answer(
 def rule() -> ModelPlanOwnerRule:
     return ModelPlanOwnerRule(
         finding="cutover-plan-owner",
-        lane_prefixes=("ledger-cut",),
-        tickets=("OMN-19609",),
+        tickets=(OWNING_TICKET,),
+        plan_paths=("plans/cutover-plan",),
+        prs=("OmniNode-ai/omnimarket#6478",),
         live_window_minutes=180,
         why="no live lane CLAIM names the cutover plan",
         fix="start a ledger cutover lane",
@@ -114,12 +127,12 @@ def request(
     return ModelPlanOwnerRequest(finding=finding, node_answer=answer)
 
 
-def test_golden_a_live_claim_of_a_named_lane_answers_owned() -> None:
+def test_golden_a_live_claim_of_a_listed_ticket_on_any_lane_answers_owned() -> None:
     h, sink = handler()
     verdict = h.handle(
         request(
             node_answer(
-                (HEADING, claim_line("ledger-cut-6803", "2026-11-14T14:30:00Z"))
+                (HEADING, owned_claim("ledger-cut-6803", "2026-11-14T14:30:00Z"))
             )
         )
     )
@@ -150,8 +163,8 @@ def test_two_claims_of_one_lane_name_one_owner() -> None:
             node_answer(
                 (
                     HEADING,
-                    claim_line("ledger-cut-6803", "2026-11-14T14:30:00Z"),
-                    claim_line("ledger-cut-6803", "2026-11-14T14:45:00Z"),
+                    owned_claim("ledger-cut-6803", "2026-11-14T14:30:00Z"),
+                    owned_claim("ledger-cut-6803", "2026-11-14T14:45:00Z"),
                 )
             )
         )
@@ -165,7 +178,7 @@ def test_golden_a_claim_past_the_window_answers_missing_with_the_why_and_fix() -
     verdict = h.handle(
         request(
             node_answer(
-                (HEADING, claim_line("ledger-cut-6803", "2026-11-14T09:00:00Z"))
+                (HEADING, owned_claim("ledger-cut-6803", "2026-11-14T09:00:00Z"))
             )
         )
     )
@@ -204,7 +217,7 @@ def test_a_newest_row_in_the_future_counts_as_live() -> None:
     verdict = h.handle(
         request(
             node_answer(
-                (HEADING, claim_line("ledger-cut-6803", "2026-11-14T16:00:00Z"))
+                (HEADING, owned_claim("ledger-cut-6803", "2026-11-14T16:00:00Z"))
             )
         )
     )
@@ -216,7 +229,7 @@ def test_a_stale_answer_that_carries_an_owning_claim_is_still_owned() -> None:
     verdict = h.handle(
         request(
             node_answer(
-                (HEADING, claim_line("ledger-cut-6803", "2026-11-14T14:30:00Z")),
+                (HEADING, owned_claim("ledger-cut-6803", "2026-11-14T14:30:00Z")),
                 EnumReaderStatus.STALE,
             )
         )
@@ -251,8 +264,8 @@ def test_error_chain_a_claim_line_without_newest_row_is_unknown_never_missing() 
     h, _ = handler()
     broken = (
         "OPEN-CLAIM lane=ledger-cut-6803 claim=2026-11-14T14:00:00Z db:row-1 "
-        "ticket=none kind=STATUS age=0h30m rows=4 host=h051 run=r1 leases=none "
-        "liveness=unknown"
+        "ticket=none pr=none plan=none kind=STATUS age=0h30m rows=4 host=h051 "
+        "run=r1 leases=none liveness=unknown"
     )
     verdict = h.handle(request(node_answer((HEADING, broken))))
     assert verdict.verdict is EnumPlanOwnerVerdict.UNKNOWN
@@ -271,7 +284,7 @@ def test_break_live_window_always_true_reads_a_past_window_claim_as_owned(
 ) -> None:
     """Named break: with ``_is_live`` always true the MISSING claim above reads OWNED."""
     answer = node_answer(
-        (HEADING, claim_line("ledger-cut-6803", "2026-11-14T09:00:00Z"))
+        (HEADING, owned_claim("ledger-cut-6803", "2026-11-14T09:00:00Z"))
     )
     assert handler()[0].handle(request(answer)).verdict is EnumPlanOwnerVerdict.MISSING
     monkeypatch.setattr(
