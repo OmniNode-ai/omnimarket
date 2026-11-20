@@ -107,6 +107,8 @@ overlay_profiles:
   in_memory: overlays/in_memory.yaml
   lab_work: overlays/lab_work.example.yaml
 descriptor:
+  runtime_profiles:
+  - effects
   node_archetype: orchestrator
   purity: effectful
   idempotent: false
