@@ -37,8 +37,8 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC1"]
     checks:
-      - check_type: "command"
-        check_value: "grep -q 'latest-core-smoke:' .github/workflows/ci.yml && grep -q '\"Latest Core Smoke\"' scripts/ci/ci_summary_rules.json && grep -q 'name: \"Latest Core Smoke\"' .github/required-checks.yaml"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_latest_core_smoke.py -k declares_the_latest_core_smoke_job -q --no-cov"
         cwd: "."
   - id: "dod-omn26215-ac2-synthetic-removal"
     description: "A fake core build lacking a symbol the node imports makes the smoke exit 1; the control with the symbol exits 0. Built in a temp directory, no network."
@@ -61,8 +61,8 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC4"]
     checks:
-      - check_type: "command"
-        check_value: "test -f .github/workflows/latest-core-smoke-reusable.yml && grep -q 'workflow_call' .github/workflows/latest-core-smoke-reusable.yml"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_latest_core_smoke.py -k reusable_workflow_is_callable -q --no-cov"
         cwd: "."
   - id: "dod-omn26215-integration-proof"
     description: >-

@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-SMOKE = REPO / "src" / "omnimarket" / "handlers" / "latest_core_smoke.py"
+SMOKE = REPO / "scripts" / "ci" / "latest_core_smoke.py"
 FIXTURES = Path(__file__).parent / "fixtures" / "latest_core_smoke"
 PACKAGE = "node_run_node_user"
 
@@ -111,3 +111,22 @@ def test_smoke_script_is_stdlib_only(path: Path) -> None:
     text = path.read_text()
     assert "import omnibase" not in text
     assert "import omnimarket" not in text
+
+
+WORKFLOWS = REPO / ".github" / "workflows"
+
+
+def test_ci_declares_the_latest_core_smoke_job_strict_and_required() -> None:
+    """AC1: ci.yml has the job, the summary rules list it, the manifest requires it."""
+    assert "latest-core-smoke:" in (WORKFLOWS / "ci.yml").read_text()
+    rules = (REPO / "scripts" / "ci" / "ci_summary_rules.json").read_text()
+    assert '"Latest Core Smoke"' in rules
+    required = (REPO / ".github" / "required-checks.yaml").read_text()
+    assert 'name: "Latest Core Smoke"' in required
+
+
+def test_reusable_workflow_is_callable_from_a_core_pr() -> None:
+    """AC4 precondition: the reusable workflow exists and is a workflow_call."""
+    text = (WORKFLOWS / "latest-core-smoke-reusable.yml").read_text()
+    assert "workflow_call" in text
+    assert "scripts/ci/latest_core_smoke.py" in text

@@ -2743,8 +2743,10 @@ jobs:
           uv pip install --python "$RUNNER_TEMP/smoke-venv/bin/python" --upgrade --no-deps omnibase-core
           "$RUNNER_TEMP/smoke-venv/bin/python" -c "import importlib.metadata as m; print('omnibase-core', m.version('omnibase-core'))"
       - name: Import every node entry point
+        env:
+          OMNI_HOME: ${{ github.workspace }}
         run: |
-          "$RUNNER_TEMP/smoke-venv/bin/python" src/omnimarket/handlers/latest_core_smoke.py
+          "$RUNNER_TEMP/smoke-venv/bin/python" scripts/ci/latest_core_smoke.py
 
   # ============================================================================
   # CUSTOMER CLEAN-INSTALL DELEGATE GATE (OMN-16200, M4 C13/C17)
