@@ -51,3 +51,11 @@ dod_evidence:
       - check_type: command
         check_value: uv run --frozen onex --help && uv run --frozen onex setup --help
         cwd: .
+  - id: dod-omn25070-setup-hosted-deploy-smoke
+    description: The onex CLI built from the pull request head loads every command, setup included, so
+      a customer install on omnibase-core 0.47.75 no longer exits 1 on onex --help.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: uv run --frozen onex --help && uv run --frozen onex setup --help
+        cwd: .

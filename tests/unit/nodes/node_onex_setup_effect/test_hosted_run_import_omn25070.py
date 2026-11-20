@@ -54,9 +54,10 @@ def test_loads_on_a_core_without_run_node_in_process(
     monkeypatch.delattr(old, "run_node_in_process", raising=False)
     calls: list[tuple[Any, ...]] = []
     hosted = types.ModuleType(NEW_HOME)
-    hosted.ModelRunNodeHosted = type(  # type: ignore[attr-defined]
+    hosted_class = type(
         "ModelRunNodeHosted", (), {"run": staticmethod(_recording_runner(calls))}
     )
+    monkeypatch.setattr(hosted, "ModelRunNodeHosted", hosted_class, raising=False)
     monkeypatch.setitem(sys.modules, NEW_HOME, hosted)
 
     cli = _fresh_cli(monkeypatch)
