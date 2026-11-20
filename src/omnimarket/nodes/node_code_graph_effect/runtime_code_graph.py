@@ -6,6 +6,7 @@
 ``probe``    the same build and verdict, appending nothing.
 ``check``    ``--repo R --base REF --head REF``: name the modules the head adds that no root reaches.
 ``shadow``   check every open pull request of the overlay's shadow repositories, append one row, hold nothing.
+``lookup``   ``--question Q --repo R`` and the question's argument: one MATCH row per answer, then a LOOKUP line.
 ``schedule`` install | uninstall | status | run-now, for a host in the overlay; ``--unit shadow`` is the shadow's timer.
 
 ``--fault`` on nightly, probe or shadow injects a declared fault; the row then carries ``drill=yes``.
@@ -14,7 +15,8 @@ Exit codes: 0 the run was built and written (a NOT WORKING verdict is still 0: a
 nothing and refuses nothing), or the check found nothing; 1 the run failed (an unreadable
 repository, an append that did not land), or the check flagged a module or an allowlist entry
 past its date (the shadow verb exits 0 whatever it would refuse: it holds nothing); 3 a deployment fact is
-missing (INDETERMINATE).
+missing (INDETERMINATE). The lookup exits 0 on an answer (found or a clean not-found) and 1 on a
+lookup that could not be answered.
 """
 
 from __future__ import annotations
@@ -22,13 +24,17 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_overlay
+from omnimarket.handlers.node_overlay_resolved_roots import (
+    REGISTRY_ROOT_ENVS,
+    registry_root_from,
+)
 from omnimarket.handlers.rules_overlay_root_declared import (
     OverlayRootRefusedError,
     refuse_undeclared_overlay_root,
@@ -41,6 +47,7 @@ from omnimarket.models.model_code_graph import (
     ModelShadowCommand,
 )
 from omnimarket.models.model_code_graph_lookup import (
+    EnumCodeGraphQuestion,
     ModelCodeGraphLookupCommand,
     ModelCodeGraphLookupResult,
 )
@@ -95,15 +102,19 @@ SCHEDULE_BLOCKS = {
 }
 
 
-def _source(overlay: ModelCodeGraphOverlay) -> GitRepoSource:
+def _source(
+    overlay: ModelCodeGraphOverlay, environ: Mapping[str, str] | None = None
+) -> GitRepoSource:
     if overlay.graph_backend != "git":
         raise ValueError(
             "graph_backend in_memory is the test backend; a deployment reads git"
         )
-    root = os.environ.get(overlay.repos_root_env, "").strip()
+    env = os.environ if environ is None else environ
+    root = env.get(overlay.repos_root_env, "").strip() or registry_root_from(env)
     if not root:
         raise ValueError(
-            f"{overlay.repos_root_env} is not set; the overlay names it as the clones' root"
+            f"{overlay.repos_root_env} is not set; the overlay names it as the clones' root, "
+            f"and neither {' nor '.join(REGISTRY_ROOT_ENVS)} names the registry root"
         )
     return GitRepoSource(Path(root), max_file_bytes=overlay.graph_roots.max_file_bytes)
 
@@ -313,6 +324,37 @@ def _shadow(arguments: argparse.Namespace) -> int:
     return 1 if result.status == "failed" else 0
 
 
+def _lookup(arguments: argparse.Namespace) -> int:
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    result = answer_lookup(
+        ModelCodeGraphLookupCommand(
+            correlation_id=f"code-graph-lookup-{now}",
+            question=EnumCodeGraphQuestion(arguments.question),
+            repo=arguments.repo,
+            symbol=arguments.symbol,
+            path=arguments.path,
+            paths=tuple(arguments.paths),
+            archetype=arguments.archetype,
+            hint=arguments.hint,
+            as_of=arguments.as_of,
+        )
+    )
+    for match in result.matches:
+        cells = [
+            f"{key}={value}"
+            for key in ("name", "line", "detail")
+            if (value := getattr(match, key)) is not None
+        ]
+        sys.stdout.write(" ".join(["MATCH", match.path, *cells]) + "\n")
+    nearest = result.nearest.commit[:12] if result.nearest else "none"
+    sys.stdout.write(
+        f"LOOKUP question={result.question.value} repo={result.repo} status={result.status} "
+        f"answered_from={(result.answered_from or 'none')[:12]} matches={len(result.matches)} "
+        f"nearest={nearest} reason={result.reason or 'none'}\n"
+    )
+    return 1 if result.status == "failed" else 0
+
+
 def _schedule(arguments: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="schedule")
     verbs = parser.add_subparsers(dest="verb", required=True)
@@ -397,9 +439,37 @@ def main(argv: Sequence[str] | None = None) -> int:
         check.add_argument("--repo", required=True)
         check.add_argument("--base", required=True)
         check.add_argument("--head", required=True)
+        lookup = verbs.add_parser("lookup")
+        lookup.add_argument(
+            "--question",
+            required=True,
+            choices=[question.value for question in EnumCodeGraphQuestion],
+        )
+        lookup.add_argument("--repo", required=True)
+        lookup.add_argument(
+            "--symbol", help="definition and same-shape: the class or function name"
+        )
+        lookup.add_argument(
+            "--path",
+            help="importers: the repository-relative path of the imported file",
+        )
+        lookup.add_argument(
+            "--paths", nargs="+", default=[], help="reach: the changed files"
+        )
+        lookup.add_argument(
+            "--archetype", help="exemplar: the archetype (effect, compute, ...)"
+        )
+        lookup.add_argument("--hint", help="exemplar: words that rank the nodes")
+        lookup.add_argument(
+            "--as-of",
+            dest="as_of",
+            help="the commit to answer as of; absent means the head",
+        )
         args = parser.parse_args(arguments)
         if args.verb == "check":
             return _check(args)
+        if args.verb == "lookup":
+            return _lookup(args)
         if args.verb == "shadow":
             return _shadow(args)
         return _run(args, write=args.verb == "nightly")

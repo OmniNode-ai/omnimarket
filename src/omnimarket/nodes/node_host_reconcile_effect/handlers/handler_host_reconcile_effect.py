@@ -28,6 +28,7 @@ from typing import Literal
 import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
+from omnimarket.models.model_clone_lock_policy import ModelCloneLockPolicy
 from omnimarket.models.model_host_reconcile import (
     ModelGatePurityFact,
     ModelGuardFact,
@@ -57,6 +58,7 @@ from .adapter_holder import (
     read_holder,
     terminate_holder,
 )
+from .clone_lock_state import describe_lock_line, load_clone_lock_policy
 from .retired_repositories import (
     load_retirement_policy,
     retired_repository_findings,
@@ -163,6 +165,7 @@ class _ReconcilePass:
         self.verifier = self.scripts / "reconcile_verify_movement.py"
         self.host = socket.gethostname()
         self.owner_prefix: list[str] = []
+        self._clone_lock_policy: ModelCloneLockPolicy | None = None
         self.surfaces: list[ModelSurfaceDecision] = []
         self.diagnostics: list[str] = []
         self.floor_stamped = False
@@ -664,6 +667,12 @@ class _ReconcilePass:
             raise ValueError(f"{clone}: retired clone is still present after removal")
         self.say(f"retired clone removed: {clone.name}")
 
+    def clone_lock_policy(self) -> ModelCloneLockPolicy:
+        """The declared persistent flock names, loaded once on first lock line."""
+        if self._clone_lock_policy is None:
+            self._clone_lock_policy = load_clone_lock_policy()
+        return self._clone_lock_policy
+
     def clones(self, repos: list[str]) -> None:
         self.plan_owner(repos)
 
@@ -746,6 +755,11 @@ class _ReconcilePass:
                 explanation = self.verify(*args, owner=True)
                 for line in explanation.stdout.splitlines():
                     tag, _, text = line.partition("\t")
+                    if tag == "lock":
+                        described = describe_lock_line(text, self.clone_lock_policy())
+                        if described is not None:
+                            self.say(f"    {described}")
+                        continue
                     self.say(f"    {text}")
                     if tag == "owner" and not self.facts[-1].owner:
                         self.facts[-1] = self.facts[-1].model_copy(

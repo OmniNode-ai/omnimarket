@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-25040
+title: The host install state reducer publishes its folded record, so the branch deploy and host install orchestrators proceed past their first step
+summary: 'The hourly integration pass read omnimarket PR 5952 as not running on the dev runtime. The branch deploy orchestrator and the host install orchestrator each wait for the record the host install
+  state reducer folds on the state-updated topic. The reducer returned its record as a projection only, and the runtime publishes a reducer''s bare model return as an event only when the contract names the model
+  in published_events, so a step event sent to the dev runtime produced no record on the topic and each orchestrator stopped after its first step. This change names the record in the reducer contract''s
+  published_events and has the handler return the record itself. It does not change the probe effect, whose ssh read has no host in the runtime container, nor the command effect, which signs and publishes a
+  real dev rebuild.'
+is_seam_ticket: false
+interface_change: false
+requirements:
+- id: req-omn25040-reducer-publishes-record
+  statement: A step event sent to the host install state reducer ends as one record on the state-updated topic.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a step event published on the reducer''s step topic ends as one record on the state-updated topic, through the runtime''s own auto-wiring of the real contract -- falsifier: uv run pytest
+      tests/test_golden_chain_host_install_state_reducer.py -q, failing with the contract before this change restored'
+  - id: AC2
+    statement: 'AC2: the contract names the record as a published event on the state-updated topic and the runtime''s result normalisation over the handler''s output yields that one event and no projection --
+      falsifier: uv run pytest tests/nodes/node_host_install_state_reducer/test_state_updated_event.py -q, failing with the contract before this change restored'
+  - id: AC3
+    statement: 'AC3: integrated: after the dev runtime builds this change, a step event sent to it is read as one record on the state-updated topic, and a STATUS row on the ledger names the installed revision
+      and what ran -- falsifier: the dev runtime reading after the build shows no record on the topic'
+evidence_requirements:
+- kind: tests
+  description: The reducer, branch deploy orchestrator and host install orchestrator tests and the golden chain pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_install_state_reducer tests/nodes/node_branch_deploy_orchestrator tests/nodes/node_host_install_orchestrator tests/test_golden_chain_host_install_state_reducer.py
+    -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25040-ac1
+  description: 'AC1: the reducer node booted from its real contract over an in-memory bus turns one step event into one state-updated record; the control shows the contract before this change publishing
+    nothing.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_host_install_state_reducer.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25040-ac2
+  description: 'AC2: the contract declares the record as the state-updated event and the runtime''s normalisation of the handler output yields one event and no projection; the control shows the same
+    output with no declared events kept as a projection and never published.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_install_state_reducer tests/nodes/node_branch_deploy_orchestrator tests/nodes/node_host_install_orchestrator -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25040-ac3
+  description: 'hosted proxy for AC3: the golden chain and normalisation tests pass at the pushed head; the dev-runtime reading is taken after the build carries this change and is written as a STATUS row
+    naming the installed revision.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_host_install_state_reducer.py tests/nodes/node_host_install_state_reducer/test_state_updated_event.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25040-integration-proof
+  description: the reducer, orchestrator and golden chain tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25040 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/nodes/node_host_install_state_reducer tests/nodes/node_branch_deploy_orchestrator tests/nodes/node_host_install_orchestrator tests/test_golden_chain_host_install_state_reducer.py
+      -q --no-cov

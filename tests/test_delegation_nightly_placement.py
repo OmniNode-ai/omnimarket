@@ -122,25 +122,21 @@ class TestNightlyLaneWiring:
         assert "KAFKA_SASL_USERNAME" in env
         assert "KAFKA_SASL_" + "PASSWORD" in env
 
-    def test_default_lane_is_the_declared_proof_lane(self) -> None:
+    def test_gating_leg_is_the_dev_lane_the_merge_gate_reads(self) -> None:
+        """The Delegation Health Check reads this workflow, so its gating leg measures dev."""
         job = yaml.safe_load(NIGHTLY.read_text(encoding="utf-8"))["jobs"][
             "golden-tasks"
         ]
-        assert "'stability-test'" in job["env"]["ONEX_E2E_LANE"]
+        assert job["env"]["ONEX_E2E_LANE"] == "${{ matrix.lane }}"
+        gating = [
+            leg for leg in job["strategy"]["matrix"]["include"] if not leg["alarm_only"]
+        ]
+        assert [leg["lane"] for leg in gating] == ["dev"]
 
-    def test_the_run_title_names_the_lane_the_delivery_gate_reads(self) -> None:
-        """OMN-19311: staging delivery counts a dispatched run only when its title
-        carries ``lane=stability-test``. The title must render the same lane
-        expression the job runs against, with the same default, or a dev-lane
-        dispatch could be read as the governed verdict."""
+    def test_the_run_title_names_the_gating_lane(self) -> None:
+        """OMN-19311: the run title carries ``lane=<lane>`` of the gating leg."""
         document = yaml.safe_load(NIGHTLY.read_text(encoding="utf-8"))
-        run_name = document["run-name"]
-        lane_expr = "${{ github.event.inputs.lane || 'stability-test' }}"
-        assert run_name.endswith(f"lane={lane_expr}"), run_name
-        job_lane = document["jobs"]["golden-tasks"]["env"]["ONEX_E2E_LANE"]
-        assert job_lane == lane_expr, (
-            "the title and the job must resolve the lane from one expression"
-        )
+        assert document["run-name"].endswith("lane=dev"), document["run-name"]
 
 
 @pytest.mark.unit
@@ -163,7 +159,9 @@ class TestNightlyFailureEvidence:
         upload = next(
             step
             for step in job["steps"]
-            if step.get("with", {}).get("name") == "delegation-regression-scoreboard"
+            if str(step.get("with", {}).get("name", "")).startswith(
+                "delegation-regression-scoreboard"
+            )
         )
         assert upload["if"] == "always()"
         assert upload["with"]["if-no-files-found"] == "error", (

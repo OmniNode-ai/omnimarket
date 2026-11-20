@@ -152,8 +152,14 @@ def shim_coverage_violations(
     return violations
 
 
+#: The verbs declared outside the dispatch module (a baselined file that only shrinks) count as its table.
+_DECLARED_OUTSIDE = _DISPATCH.parent / "scm_status_write_verbs.py"
+
+
 def _real() -> tuple[str, str]:
-    return _CONTRACT.read_text("utf-8"), _DISPATCH.read_text("utf-8")
+    return _CONTRACT.read_text("utf-8"), (
+        _DISPATCH.read_text("utf-8") + "\n" + _DECLARED_OUTSIDE.read_text("utf-8")
+    )
 
 
 def test_the_shim_reads_every_write_operation_the_repo_serves() -> None:

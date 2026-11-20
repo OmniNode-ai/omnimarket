@@ -6,6 +6,7 @@ import hashlib
 from datetime import UTC
 from decimal import Decimal
 
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.nodes.node_projection_usage_by_model_day.models import (
     ModelUsageCallDelta,
     ModelUsageCallEvent,
@@ -31,6 +32,11 @@ class HandlerProjectionUsageByModelDay:
                 event.session_id or "",
             )
         )
+        cost = Decimal(str(event.estimated_cost_usd))
+        # OMN-24615 AC5: no tokens and no cost is a call that recorded nothing,
+        # never a measured one. An escalation attempt booked 0/0 with its own
+        # cost keeps it, so the run's cost split still adds up (decision 3).
+        recorded = event.prompt_tokens or event.completion_tokens or cost
         return ModelUsageCallDelta(
             call_id=event.call_id or hashlib.sha256(identity.encode()).hexdigest(),
             tenant_id=tenant_id,
@@ -39,8 +45,8 @@ class HandlerProjectionUsageByModelDay:
             cost_tier_name=event.cost_tier_name or NOT_TIER_ROUTED,
             input_tokens=event.prompt_tokens,
             output_tokens=event.completion_tokens,
-            cost_usd=Decimal(str(event.estimated_cost_usd)),
-            usage_source=event.usage_source,
+            cost_usd=cost,
+            usage_source=event.usage_source if recorded else EnumUsageSource.UNKNOWN,
             occurred_at=occurred_at,
         )
 
