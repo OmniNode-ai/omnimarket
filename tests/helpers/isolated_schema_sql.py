@@ -18,6 +18,14 @@ import re
 _PUBLIC_QUALIFIER = re.compile(r"\bpublic\.(?=[A-Za-z_\"])")
 
 
+_PUBLIC_SCHEMA_FILTER = re.compile(r"\btable_schema\s*=\s*'public'")
+
+
 def for_isolated_schema(sql: str) -> str:
-    """Return ``sql`` with every ``public.`` relation qualifier removed."""
-    return _PUBLIC_QUALIFIER.sub("", sql)
+    """Return ``sql`` with every ``public.`` relation qualifier removed.
+
+    A catalog assertion that filters ``table_schema = 'public'`` is pointed at
+    ``current_schema()`` so it inspects the test's own schema.
+    """
+    sql = _PUBLIC_QUALIFIER.sub("", sql)
+    return _PUBLIC_SCHEMA_FILTER.sub("table_schema = current_schema()", sql)
