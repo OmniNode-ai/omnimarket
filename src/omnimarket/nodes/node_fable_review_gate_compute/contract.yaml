@@ -25,16 +25,16 @@ description: >
 handler:
   module: omnimarket.nodes.node_fable_review_gate_compute.handlers.handler_fable_review_gate
   class: HandlerFableReviewGate
-  input_model: omnimarket.nodes.node_fable_review_gate_compute.models.model_fable_review_gate.ModelFableReviewGateRequest
-  output_model: omnimarket.nodes.node_fable_review_gate_compute.models.model_fable_review_gate.ModelFableReviewGateVerdict
+  input_model: omnimarket.events.fable_review_gate.ModelFableReviewGateRequest
+  output_model: omnimarket.events.fable_review_gate.ModelFableReviewGateVerdict
 
 input_model:
   name: ModelFableReviewGateRequest
-  module: omnimarket.nodes.node_fable_review_gate_compute.models.model_fable_review_gate
+  module: omnimarket.events.fable_review_gate
   description: "One review request: its route keys and the host the review would run on."
 output_model:
   name: ModelFableReviewGateVerdict
-  module: omnimarket.nodes.node_fable_review_gate_compute.models.model_fable_review_gate
+  module: omnimarket.events.fable_review_gate
   description: "The gate's answer: admitted or refused with the typed reason, and the receipt."
 
 # node_hostile_reviewer_orchestrator calls the handler in process, so this node has no event_bus

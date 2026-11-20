@@ -15,12 +15,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.events.fable_review_gate import (
+    ModelFableReviewGateVerdict,
+)
 from omnimarket.models.model_aggregated_finding import ModelAggregatedFinding
 from omnimarket.models.model_inference_provenance import ModelInferenceProvenance
 from omnimarket.models.model_review_target_snapshot import ModelReviewTargetSnapshot
-from omnimarket.nodes.node_fable_review_gate_compute.models import (
-    ModelFableReviewGateVerdict,
-)
 from omnimarket.nodes.node_hostile_reviewer_orchestrator.models.model_hostile_reviewer_phase import (
     EnumHostileReviewerPhase,
 )

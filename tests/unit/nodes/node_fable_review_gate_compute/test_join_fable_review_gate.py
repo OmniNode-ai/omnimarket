@@ -19,13 +19,13 @@ from uuid import uuid4
 
 import pytest
 
-from omnimarket.inference.adapter_inference_bridge import ModelInferenceAdapter
-from omnimarket.nodes.node_fable_review_gate_compute.models import (
+from omnimarket.events.fable_review_gate import (
     EnumFableReviewRefusal,
     ModelFableReviewGateOverlay,
     ModelFableReviewGateVerdict,
     ModelFableReviewReceipt,
 )
+from omnimarket.inference.adapter_inference_bridge import ModelInferenceAdapter
 from omnimarket.nodes.node_hostile_reviewer_orchestrator.handlers.handler_hostile_reviewer_orchestrator import (
     HandlerHostileReviewerOrchestrator,
 )

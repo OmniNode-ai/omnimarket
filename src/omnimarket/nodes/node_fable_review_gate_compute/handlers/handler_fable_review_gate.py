@@ -14,7 +14,7 @@ Pure and deterministic: it reads the overlay and the request and nothing else, w
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_fable_review_gate_compute.models import (
+from omnimarket.events.fable_review_gate import (
     EnumFableReviewRefusal,
     ModelFableReviewGateOverlay,
     ModelFableReviewGateRequest,

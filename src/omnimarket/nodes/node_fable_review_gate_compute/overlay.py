@@ -13,10 +13,10 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_fable_review_gate_compute.models.model_fable_review_gate import (
+from omnimarket.events.fable_review_gate import (
     ModelFableReviewGateOverlay,
 )
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 
 NODE_NAME = "node_fable_review_gate_compute"
 

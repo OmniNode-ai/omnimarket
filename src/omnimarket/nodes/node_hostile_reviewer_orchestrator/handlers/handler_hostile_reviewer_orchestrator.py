@@ -35,6 +35,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
+from omnimarket.events.fable_review_gate import (
+    EnumFableReviewRefusal,
+    ModelFableReviewGateOverlay,
+    ModelFableReviewGateRequest,
+    ModelFableReviewGateVerdict,
+)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
 from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
@@ -53,12 +59,6 @@ from omnimarket.models.model_review_finding import (
 from omnimarket.models.model_review_target_snapshot import ModelReviewTargetSnapshot
 from omnimarket.nodes.node_fable_review_gate_compute.handlers.handler_fable_review_gate import (
     HandlerFableReviewGate,
-)
-from omnimarket.nodes.node_fable_review_gate_compute.models import (
-    EnumFableReviewRefusal,
-    ModelFableReviewGateOverlay,
-    ModelFableReviewGateRequest,
-    ModelFableReviewGateVerdict,
 )
 from omnimarket.nodes.node_fable_review_gate_compute.overlay import (
     load_overlay as load_fable_gate_overlay,

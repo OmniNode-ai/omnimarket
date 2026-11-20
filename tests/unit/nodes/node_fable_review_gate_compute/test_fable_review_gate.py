@@ -14,14 +14,14 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_fable_review_gate_compute import HandlerFableReviewGate
-from omnimarket.nodes.node_fable_review_gate_compute import overlay as gate_overlay
-from omnimarket.nodes.node_fable_review_gate_compute.models import (
+from omnimarket.events.fable_review_gate import (
     EnumFableReviewRefusal,
     ModelFableReviewGateOverlay,
     ModelFableReviewGateRequest,
     ModelFableReviewGateVerdict,
 )
+from omnimarket.nodes.node_fable_review_gate_compute import HandlerFableReviewGate
+from omnimarket.nodes.node_fable_review_gate_compute import overlay as gate_overlay
 
 pytestmark = pytest.mark.unit
 

@@ -15,13 +15,13 @@ from uuid import UUID
 
 import pytest
 
-from omnimarket.nodes.node_fable_review_gate_compute import HandlerFableReviewGate
-from omnimarket.nodes.node_fable_review_gate_compute.models import (
+from omnimarket.events.fable_review_gate import (
     EnumFableReviewRefusal,
     ModelFableReviewGateOverlay,
     ModelFableReviewGateRequest,
     ModelFableReviewGateVerdict,
 )
+from omnimarket.nodes.node_fable_review_gate_compute import HandlerFableReviewGate
 from omnimarket.nodes.node_fable_review_gate_compute.overlay import read_origin_host
 
 pytestmark = pytest.mark.unit
