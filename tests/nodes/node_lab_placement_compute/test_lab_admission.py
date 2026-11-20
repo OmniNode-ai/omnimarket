@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import errno
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -260,7 +260,9 @@ class _Statvfs:
 
 def test_reconcile_lock_probe_reads_a_read_only_mount_as_errno_30() -> None:
     probe = HandlerLabReconcileLockProbe(
-        statvfs=lambda _p: _Statvfs(os.ST_RDONLY),  # type: ignore[arg-type,return-value]
+        statvfs=cast(
+            "Callable[[str], os.statvfs_result]", lambda _p: _Statvfs(os.ST_RDONLY)
+        ),
         access=lambda _p, _m: True,
     )
     reading = probe.handle(ModelLockProbeRequest(lock_dir="/sandbox/registry"))
