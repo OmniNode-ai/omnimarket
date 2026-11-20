@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerLabAlarmDeliverRoute is contract-wired by module path from contract.yaml handler_routing
 """The delivery as a runtime-attached handler: a command on the contract's topic reaches the delivery (OMN-25270).
 
 HandlerLabAlarmDeliver takes its overlay, channel, ledger, episode state and clock as constructor parameters, so a
