@@ -15,6 +15,7 @@ import asyncio
 import contextlib
 import json
 from pathlib import Path
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -38,16 +39,16 @@ NODE_DIR = (
 CONTRACT = NODE_DIR / "contract.yaml"
 
 
-def _declared() -> dict[str, object]:
-    return yaml.safe_load(CONTRACT.read_text())  # type: ignore[no-any-return]
+def _declared() -> dict[str, Any]:
+    return cast("dict[str, Any]", yaml.safe_load(CONTRACT.read_text()))
 
 
 def test_contract_declares_one_command_topic_and_one_terminal_event() -> None:
     contract = _declared()
-    subscribe = contract["event_bus"]["subscribe_topics"]  # type: ignore[index]
+    subscribe = contract["event_bus"]["subscribe_topics"]
     assert subscribe, "no subscribe topic: the runtime never attaches this node"
-    assert contract["runtime_dispatch"]["command_topic"] == subscribe[0]  # type: ignore[index]
-    assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]  # type: ignore[index]
+    assert contract["runtime_dispatch"]["command_topic"] == subscribe[0]
+    assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
     assert contract["runtime_profiles"] == ["main"]
 
 
@@ -63,7 +64,7 @@ async def test_probe_and_alarm_on_the_declared_topic_are_handled_and_answered(
     )
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(roots))
     contract = _declared()
-    command_topic = contract["event_bus"]["subscribe_topics"][0]  # type: ignore[index]
+    command_topic = contract["event_bus"]["subscribe_topics"][0]
     terminal_topic = contract["terminal_event"]
     assert isinstance(terminal_topic, str)
 
@@ -71,7 +72,7 @@ async def test_probe_and_alarm_on_the_declared_topic_are_handled_and_answered(
     assert not manifest.errors, manifest.errors
     bus = EventBusInmemory(environment="lab-alarm-deliver", group="lab-alarm-deliver")
     await bus.start()
-    answers: list[dict[str, object]] = []
+    answers: list[dict[str, Any]] = []
     both = asyncio.Event()
 
     async def _collect(message: object) -> None:
@@ -118,6 +119,6 @@ async def test_probe_and_alarm_on_the_declared_topic_are_handled_and_answered(
     await bus.close()
 
     assert len(answers) == 2, "the node did not answer both commands"
-    results = [a["payload"] for a in answers]  # type: ignore[index]
+    results = [a["payload"] for a in answers]
     outcomes = {str(r.get("correlation_id")): r.get("outcome") for r in results}
     assert outcomes == {"probe-1": "skipped", "run-1": "delivered"}, results
