@@ -32,7 +32,7 @@ with workflow.unsafe.imports_passed_through():
         ModelRunnerSelectedLine,
     )
 
-WORKFLOW_NAME = "MergedChangeRunnerReadWorkflow"
+WORKFLOW_NAME = "MergedChangeReadingWorkflow"
 ACTIVITY_NAME = "runner_read_step"
 
 
@@ -66,7 +66,7 @@ def _cause(exc: BaseException) -> str:
 
 
 @workflow.defn(name=WORKFLOW_NAME)
-class MergedChangeRunnerReadWorkflow:
+class MergedChangeReadingWorkflow:
     """lines -> one read_line activity per declared line (bounded concurrency) -> publish."""
 
     @workflow.run
@@ -173,6 +173,6 @@ class MergedChangeRunnerReadWorkflow:
 __all__ = [
     "ACTIVITY_NAME",
     "WORKFLOW_NAME",
-    "MergedChangeRunnerReadWorkflow",
+    "MergedChangeReadingWorkflow",
     "runner_read_step",
 ]

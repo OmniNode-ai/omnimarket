@@ -197,7 +197,7 @@ async def test_windowed_workflow_publishes_failed_read_with_cause():
     )
     from omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.temporal_runner_read import (
         ACTIVITY_NAME,
-        MergedChangeRunnerReadWorkflow,
+        MergedChangeReadingWorkflow,
     )
     from omnimarket.nodes.node_merged_change_runner_read_workflow.models.model_runner_read import (
         ModelRunnerIntegrationConfig,
@@ -246,12 +246,12 @@ async def test_windowed_workflow_publishes_failed_read_with_cause():
         Worker(
             env.client,
             task_queue=queue,
-            workflows=[MergedChangeRunnerReadWorkflow],
+            workflows=[MergedChangeReadingWorkflow],
             activities=[step],
         ),
     ):
         raw = await env.client.execute_workflow(
-            MergedChangeRunnerReadWorkflow.run,
+            MergedChangeReadingWorkflow.run,
             plan.model_dump_json(),
             id=queue,
             task_queue=queue,
@@ -354,7 +354,7 @@ async def test_schedule_declares_ready_watcher_without_a_full_read():
     cfg = runtime_runner_read.contract_config()
     await runtime_runner_read.upsert_schedule(client, cfg, "test-queue")
     schedule = client.create_schedule.await_args.args[1]
-    assert schedule.action.workflow == "MergedChangeRunnerReadReadyEdge"
+    assert schedule.action.workflow == "MergedChangeReadReadyEdge"
     assert schedule.action.args == [cfg["ready_edge"]["tick_timeout_seconds"]]
     assert (
         schedule.spec.intervals[0].every.total_seconds()

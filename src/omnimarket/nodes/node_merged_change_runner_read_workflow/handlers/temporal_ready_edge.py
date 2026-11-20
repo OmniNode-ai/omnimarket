@@ -7,12 +7,12 @@ from datetime import timedelta
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
-READY_WORKFLOW_NAME = "MergedChangeRunnerReadReadyEdge"
+READY_WORKFLOW_NAME = "MergedChangeReadReadyEdge"
 READY_ACTIVITY_NAME = "runner_read_ready_edge_tick"
 
 
 @workflow.defn(name=READY_WORKFLOW_NAME)
-class MergedChangeRunnerReadReadyEdge:
+class MergedChangeReadReadyEdge:
     """The schedule carries the previous tick's result across runs and worker restarts."""
 
     @workflow.run

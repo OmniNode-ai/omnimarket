@@ -247,7 +247,7 @@ async def test_workflow_retries_unread_lines_and_publishes_in_order():
 
     from omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.temporal_runner_read import (
         ACTIVITY_NAME,
-        MergedChangeRunnerReadWorkflow,
+        MergedChangeReadingWorkflow,
     )
 
     calls = Counter()
@@ -289,12 +289,12 @@ async def test_workflow_retries_unread_lines_and_publishes_in_order():
         Worker(
             env.client,
             task_queue=queue,
-            workflows=[MergedChangeRunnerReadWorkflow],
+            workflows=[MergedChangeReadingWorkflow],
             activities=[fake_step],
         ),
     ):
         result = await env.client.execute_workflow(
-            MergedChangeRunnerReadWorkflow.run,
+            MergedChangeReadingWorkflow.run,
             plan.model_dump_json(),
             id=f"runner-read-{uuid4()}",
             task_queue=queue,

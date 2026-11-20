@@ -48,10 +48,6 @@ handler_routing:
       handler:
         name: HandlerRunnerReadingIntegration
         module: omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.handler_runner_reading_integration
-    - operation: ready_edge
-      handler:
-        name: HandlerRunnerReadReadyEdge
-        module: omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.handler_runner_read_ready_edge
 event_bus:
   subscribe_topics: []
   publish_topics: []
@@ -110,7 +106,7 @@ runner_read:
     verdict_not_running: NOT_RUNNING
     verdict_unread: UNREAD
     library_kind: library
-    target_runtime: dev runtime on h201
+    target_runtime: the dev runtime
     target_unit_template: "{unit} on {host}"
     store_running_path: overlay_store_checkout
     # The reader's missing step (node_merged_change_reading_compute's requirements) -> the projection's state and gap.

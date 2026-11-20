@@ -300,10 +300,10 @@ async def run_worker(target_host: str, namespace: str, task_queue: str) -> None:
         ReadyEdgeActivities,
     )
     from omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.temporal_ready_edge import (
-        MergedChangeRunnerReadReadyEdge,
+        MergedChangeReadReadyEdge,
     )
     from omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.temporal_runner_read import (
-        MergedChangeRunnerReadWorkflow,
+        MergedChangeReadingWorkflow,
         runner_read_step,
     )
 
@@ -320,7 +320,7 @@ async def run_worker(target_host: str, namespace: str, task_queue: str) -> None:
     await Worker(
         client,
         task_queue=task_queue,
-        workflows=[MergedChangeRunnerReadWorkflow, MergedChangeRunnerReadReadyEdge],
+        workflows=[MergedChangeReadingWorkflow, MergedChangeReadReadyEdge],
         activities=[runner_read_step, activities.tick],
     ).run()
 
