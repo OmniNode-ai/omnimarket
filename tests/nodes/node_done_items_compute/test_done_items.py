@@ -96,6 +96,44 @@ def test_done_projection_replay_same_result() -> None:
     assert first.model_dump_json() == replayed.model_dump_json()
 
 
+def test_outcome_that_only_resembles_done_does_not_count() -> None:
+    # Merged is not done, and neither is an outcome that merely contains the word: only a first word exactly "done".
+    rows = (
+        "2026-11-17T10:00:00Z | TERMINAL | lane=alpha | ticket=OMN-1 | outcome=undone | finished",
+        "2026-11-17T10:01:00Z | TERMINAL | lane=alpha | ticket=OMN-2 | outcome=doneness | finished",
+        "2026-11-17T10:02:00Z | TERMINAL | lane=alpha | ticket=OMN-3 | finished",
+        "2026-11-17T10:03:00Z | TERMINAL | lane=alpha | ticket=OMN-4 | outcome=done | finished",
+    )
+    projection = HandlerDoneItems().handle(ModelDoneItemsRequest(events=_events(*rows)))
+
+    assert [item.ticket for item in projection.items] == ["OMN-4"]
+    assert projection.done == 1
+
+
+def test_same_second_done_rows_pick_one_winner_in_either_order() -> None:
+    # Two done rows for one ticket in the same second: the row id breaks the tie, so the order they arrive in does not.
+    first = "2026-11-17T10:00:00Z | TERMINAL | lane=alpha | ticket=OMN-1 | outcome=done | pr=1 | finished"
+    second = "2026-11-17T10:00:00Z | TERMINAL | lane=beta | ticket=OMN-1 | outcome=done | pr=2 | finished"
+    events = _events(first, second)
+    winner = max((_terminal(event) for event in events), key=lambda event: event.row_id)
+
+    forward = HandlerDoneItems().handle(ModelDoneItemsRequest(events=events))
+    backward = HandlerDoneItems().handle(
+        ModelDoneItemsRequest(events=tuple(reversed(events)))
+    )
+
+    assert forward.items[0].done_row_id == winner.row_id
+    assert forward.model_dump_json() == backward.model_dump_json()
+
+
+def test_one_done_row_closing_two_tickets_counts_both() -> None:
+    row = "2026-11-17T10:00:00Z | TERMINAL | lane=alpha | ticket=OMN-1,OMN-2 | outcome=done | finished"
+    projection = HandlerDoneItems().handle(ModelDoneItemsRequest(events=_events(row)))
+
+    assert [item.ticket for item in projection.items] == ["OMN-1", "OMN-2"]
+    assert projection.done == 2
+
+
 def test_outcome_done_with_extra_words_counts() -> None:
     row = "2026-11-17T10:00:00Z | TERMINAL | lane=alpha | ticket=OMN-1 | outcome=done delegated=1 | finished"
     events = _events(row)
