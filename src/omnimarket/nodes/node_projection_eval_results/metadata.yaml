@@ -1,0 +1,46 @@
+name: projection_eval_results
+version: "1.0.0"
+description: "One projection of every scored try, its trace and each model's pass rate, with a compact snapshot of the tracking runs."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags: [projection, evals, reducer]
+ownership:
+  eval_item_scores:
+    ddl_owner: omnimarket.nodes.node_projection_eval_results
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_eval_results_tables.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra]
+    rationale: "omnimarket owns the projection; omnibase_infra applies its migrations."
+  eval_item_traces:
+    ddl_owner: omnimarket.nodes.node_projection_eval_results
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_eval_results_tables.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra]
+    rationale: "omnimarket owns the projection; omnibase_infra applies its migrations."
+  eval_run_closes:
+    ddl_owner: omnimarket.nodes.node_projection_eval_results
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_eval_results_tables.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra]
+    rationale: "omnimarket owns the projection; omnibase_infra applies its migrations."
+  eval_run_rates:
+    ddl_owner: omnimarket.nodes.node_projection_eval_results
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_eval_results_tables.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra]
+    rationale: "omnimarket owns the projection; omnibase_infra applies its migrations."
+pack: "data"
+display_name: "Projection: Eval Results"
+node_role: "effect"
