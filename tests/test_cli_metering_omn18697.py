@@ -81,7 +81,8 @@ def db(tmp_path: Path) -> Path:
             (
                 "b",
                 (now - timedelta(hours=2)).isoformat(),
-                "Qwen3.8-27B",
+                # OMN-24615 AC3: a priced paid model, so the recorded cost is spend.
+                "gpt-4o-mini",
                 2000,
                 500,
                 0.002,

@@ -309,7 +309,9 @@ def test_host_is_never_interpreted_as_unit_syntax(
     assert "literal host identifier" in result.stderr
 
 
-@pytest.mark.parametrize("case", ["fresh", "stale", "future", "failed", "other_host"])
+@pytest.mark.parametrize(
+    "case", ["fresh", "skipped", "stale", "future", "failed", "other_host"]
+)
 def test_status_requires_a_fresh_matching_successful_tick(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -348,13 +350,22 @@ def test_status_requires_a_fresh_matching_successful_tick(
         receipt["completed_event"]["failures"] = 1
     elif case == "other_host":
         receipt["completed_event"]["host"] = "other"
+    elif case == "skipped":
+        # A skipped unit is a typed entry of the report, not a failure (OMN-24901).
+        receipt["skipped_units"] = [
+            {
+                "unit": "run-u1.service",
+                "reason": "environment_file_missing",
+                "path": "/tmp/gone.env",
+            }
+        ]
     receipt_path.write_text(json.dumps(receipt))
     result = handler.handle(
         ModelWorktreeScheduleRequest(
             mode="status", host="lab-host", overlay_path=str(path)
         )
     )
-    assert (result.exit_code == 0) is (case == "fresh")
+    assert (result.exit_code == 0) is (case in ("fresh", "skipped"))
 
 
 def test_schedule_handler_is_bound_by_the_node_contract(tmp_path: Path) -> None:
@@ -394,7 +405,12 @@ def test_host_reconciliation_is_not_a_boot_dispatched_route() -> None:
     assert contract["handler"]["class"] == "HandlerWorktreeReconcile"
     assert contract["runtime_dispatch"]["external_trigger"] is True
     routes = contract["handler_routing"]["handlers"]
-    assert [route["operation"] for route in routes] == ["schedule"]
+    # The core.worktree repair is a host-CLI operation too (repair-core-worktree): the CLI supplies
+    # its git adapter and publisher, so the runtime never dispatches it at boot.
+    assert [route["operation"] for route in routes] == [
+        "repair_core_worktree",
+        "schedule",
+    ]
 
 
 def test_the_unit_declares_its_priority_and_the_installer_replaces_a_hand_made_idle_drop_in(

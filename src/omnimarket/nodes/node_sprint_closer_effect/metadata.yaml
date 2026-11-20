@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_sprint_closer_effect
+version: "1.0.0"
+description: The sprint closer, an effect node with a Temporal workflow that sets finished tickets Done on passing checks only
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_sprint_closer_effect: omnimarket.nodes.node_sprint_closer_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: true
+  side_effect_class: external_write
+dependencies:
+  - pydantic>=2.11.0
+  - pyyaml
+  - temporalio>=1.35.0,<2.0.0
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, temporal, linear, dod-verify, sprint]
+node_role: effect
+pack: "routing"
+display_name: "Sprint Closer"

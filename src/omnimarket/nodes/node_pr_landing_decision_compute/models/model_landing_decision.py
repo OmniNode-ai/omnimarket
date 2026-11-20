@@ -411,6 +411,35 @@ class ModelLandingLandSkip(BaseModel):
         return self
 
 
+class ModelLandingNonRequiredRed(BaseModel):
+    """The red check-runs of one open PR that its base branch does not require.
+
+    Reported in the tick and held against nothing: they are never an external blocker, never
+    count as a red for a fix worker and never hold a merge.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr: str = Field(..., pattern=PR_KEY_PATTERN)
+    head_sha: str = Field(..., pattern=SHA_PATTERN)
+    checks: tuple[str, ...] = Field(..., min_length=1)
+
+
+class ModelLandingRequiredUnread(BaseModel):
+    """One open PR with red check-runs whose base branch's required contexts were not read.
+
+    Fail closed: the PR is held as it was before, because a required red cannot be told from
+    any other red without the list.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr: str = Field(..., pattern=PR_KEY_PATTERN)
+    head_sha: str = Field(..., pattern=SHA_PATTERN)
+    red_checks: tuple[str, ...] = Field(..., min_length=1)
+    reason: str = Field(..., min_length=1)
+
+
 class ModelLandingDecision(BaseModel):
     """One tick's decision."""
 
@@ -448,7 +477,32 @@ class ModelLandingDecision(BaseModel):
             "unreadable, or absent where the policy expects it. None is held for it."
         ),
     )
+    non_required_red: tuple[ModelLandingNonRequiredRed, ...] = Field(
+        default=(),
+        description=(
+            "Open PRs with red check-runs the base branch does not require, with those names: "
+            "visible in the tick, never a hold."
+        ),
+    )
+    required_contexts_unread: tuple[ModelLandingRequiredUnread, ...] = Field(
+        default=(),
+        description=(
+            "Open red PRs held because their base branch's required contexts were not read."
+        ),
+    )
     next_state: ModelLandingControllerState
+
+    def tick_cells(self) -> tuple[str, ...]:
+        """The cells a tick line carries for the required-contexts rule, one per PR."""
+        cells = [
+            f"non_required_red={row.pr}:{';'.join(row.checks)}"
+            for row in self.non_required_red
+        ]
+        cells.extend(
+            f"required_contexts_unread={row.pr}:{row.reason}"
+            for row in self.required_contexts_unread
+        )
+        return tuple(cells)
 
 
 __all__: list[str] = [
@@ -467,7 +521,9 @@ __all__: list[str] = [
     "ModelLandingDegraded",
     "ModelLandingGateRow",
     "ModelLandingLandSkip",
+    "ModelLandingNonRequiredRed",
     "ModelLandingRecordedOutcome",
+    "ModelLandingRequiredUnread",
     "ModelLandingViolation",
     "ModelLandingWorkerBrief",
 ]

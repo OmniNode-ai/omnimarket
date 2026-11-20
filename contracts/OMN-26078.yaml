@@ -1,0 +1,128 @@
+schema_version: "1.0.0"
+ticket_id: OMN-26078
+title: prove 6 merged L0 changes running on h051 (batch 1700-L0-a)
+summary: Declare the review-gate probe's scheduled entry point and the review replay freeze producer. The operational receipt reads the rolling ledger after lane closeout.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched: [events]
+requirements:
+  - id: req-omn26078-runtime-readback
+    statement: Read each named change on its runtime surface or record its cause and owner without restarting shared dev.
+    acceptance:
+      - id: AC1
+        statement: >-
+          AC1: one STATUS row per change on the rolling ledger reads kv pr=repo#n installed=host:revision observed=what ran read_at=UTC, or blocked=access or owner -- falsifier: the ticket's work-ledger query finds a change with no installed or blocked disposition
+      - id: AC2
+        statement: >-
+          AC2: each change reads running where it belongs (a log line, a unit exit 0, a health read or a job record), or its STATUS row names the single cause and who must act -- falsifier: a STATUS row carries neither an observed= cell nor a named cause and actor
+      - id: AC3
+        statement: >-
+          AC3: the shared dev runtime was not restarted by the lane and no host file, unit or plist was edited by hand -- falsifier: a branch install registers restart: true, or a STATUS row cites no installer receipt
+evidence_requirements:
+  - kind: tests
+    description: Exercise the scheduled entry with the registry installer's rendered arguments and exercise replay freeze on the event bus.
+    command: uv run --frozen pytest tests/unit/nodes/node_review_gate_context_orchestrator/test_review_gate_context_main.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26078-ac1-scheduled-receipt
+    description: Hosted proxy for AC1. The rendered unit enters the node and writes a receipt with a timestamp and a nonzero head count. The local ledger check reads the operational rows.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_review_gate_context_orchestrator/test_review_gate_context_main.py -q --no-cov -p no:randomly -k installer_tick_runs
+        cwd: .
+  - id: dod-omn26078-ac2-replay-command
+    description: Hosted proxy for AC2. The contract identifies the producer and the local bus sends its typed freeze command through to a manifest written from Git history.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_review_replay_set_effect/test_review_replay_set.py -q --no-cov -p no:randomly -k 'contract_names or typed_freeze'
+        cwd: .
+  - id: dod-omn26078-ac3-read-only-trigger
+    description: Hosted proxy for AC3. The installer renders the unit in memory, the scheduled probe posts zero, and an overlay with no schedule refuses a scheduled invocation.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_review_gate_context_orchestrator/test_review_gate_context_main.py -q --no-cov -p no:randomly -k installer_tick
+        cwd: .
+  - id: dod-omn26078-hosted-deploy-smoke
+    description: Dispatch the packaged replay node on the in-process bus with a disposable Git repository. Require one frozen merge and a manifest from the typed result.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          probe_dir=$(mktemp -d)
+          trap 'rm -rf "$probe_dir"' EXIT
+          uv sync --frozen --group dev
+          uv run --frozen python -c 'import sys; from pathlib import Path; from tests.unit.nodes.node_review_replay_set_effect.test_review_replay_set import _clone_with_one_merge, _request, ModelReplayRepo; p = Path(sys.argv[1]); clone = _clone_with_one_merge(p); r = _request(p, correlation_id="f0e20000-0000-4000-8000-000000026078", repos=(ModelReplayRepo(repo="clone", clone_path=str(clone), base_ref="main"),), target_count=1); (p / "request.json").write_text(r.model_dump_json())' "$probe_dir"
+          runtime_bin=$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')
+          PATH="$runtime_bin:$PATH" onex node node_review_replay_set_effect --input "$probe_dir/request.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt > "$probe_dir/receipt.json"
+          uv run --frozen python -c 'import json, sys; from pathlib import Path; r = json.loads(Path(sys.argv[1]).read_text()); out = r["result"]; assert r["status"] == "success" and out["item_count"] == 1 and out["short_by"] == 0 and Path(out["manifest_path"]).is_file()' "$probe_dir/receipt.json"
+        cwd: .
+  - id: dod-omn26078-integration-proof-replay
+    description: Publish the operator's typed replay-freeze request through its deployed broker binding and wait for the freeze terminal event.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'onex run-node node_review_replay_set_effect --input "$(cat "${ONEX_REVIEW_REPLAY_REQUEST:?}")" --timeout 120'
+        cwd: .
+  - id: dod-omn26078-live-watcher-read
+    description: Run the scheduled entry using the live watcher and ledger on the lab surface. Require a fresh read of at least one head and zero posted statuses.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          probe_dir=$(mktemp -d)
+          trap 'rm -rf "$probe_dir"' EXIT
+          uv run --frozen python -m omnimarket.nodes.node_review_gate_context_orchestrator.runtime_review_gate_context_sweep --omni-home "${OMNI_HOME:?}" --state-dir "$probe_dir"
+          uv run --frozen python -c 'import json, sys; from pathlib import Path; p = json.loads(Path(sys.argv[1]).read_text()); assert p["ok"] and p["heads"] > 0 and p["posted"] == 0' "$probe_dir/last-run.json"
+        cwd: .
+  - id: dod-omn26078-local-ledger-readback
+    description: Read the trigger batch's actual operational dispositions. Each row must provide a runtime observation or a named blocker and must record the runtime restart flag and installer receipt disposition.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          ledger_reply=$(mktemp)
+          trap 'rm -f "$ledger_reply"' EXIT
+          onex ledger query --ticket OMN-26078 --kind STATUS --limit 200 > "$ledger_reply"
+          python3 - "$ledger_reply" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          refs = {"overlays#572", "omnimarket#6298", "omnimarket#6231", "omnimarket#5910", "omnimarket#5752", "omniclaude#3283"}
+          reply = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert reply.get("status", "ok") == "ok" and not reply.get("error"), reply.get("status")
+          entries = reply["rows"]
+          assert not reply.get("next_cursor") and reply.get("matched", len(entries)) <= len(entries)
+          rows = {}
+          for entry in sorted(entries, key=lambda item: item["raw_row"][:20]):
+              cells = [cell.strip() for cell in entry["raw_row"].split(" | ")]
+              if len(cells) < 3 or cells[1] != "STATUS":
+                  continue
+              row = dict(cell.split("=", 1) for cell in cells[2:-1] if "=" in cell)
+              if row.get("ticket") == "OMN-26078" and row.get("pr") in refs:
+                  rows[row["pr"]] = row
+          assert refs == rows.keys(), refs - rows.keys()
+          for ref, row in rows.items():
+              assert row.get("read_at") and row.get("restart") == "false", ref
+              assert row.get("installer_receipt"), ref
+              if row.get("blocked"):
+                  assert row["blocked"] and row.get("cause"), ref
+              else:
+                  assert row.get("installed") and row.get("observed") and row["installer_receipt"] != "none", ref
+          PY
+        cwd: .

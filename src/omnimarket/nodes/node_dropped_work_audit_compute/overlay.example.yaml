@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Example values of the node_dropped_work_audit_compute overlay (the schema is ModelDroppedWorkAuditRules; no key has a
+# default). The deployed values are in the overlays repository.
+audit_lane: dropped-work-audit
+kinds:
+  - ruling_no_mechanism
+  - promise_no_lane
+  - blocked_next_step
+  - hold_unreleased
+  - claim_unfinished
+  - admission_refusal
+lookback_seconds: 172800
+standing_ruling_lookback_seconds: 2592000
+claim_window_seconds: 21600
+alarm_delay_seconds: 1800
+ruling_row_types: [RULING, OPERATOR-CONSENT]
+promise_row_type: MSG
+promise_marker: SENT-ON-BEHALF
+claim_row_type: CLAIM
+terminal_row_type: TERMINAL
+hold_row_type: HOLD
+closing_row_types: [TERMINAL, RELEASE, ACK]
+mechanism_row_types: [CLAIM, STATUS, TERMINAL, ACK, HOLD, RELEASE]
+promise_followup_row_types: [CLAIM, MSG, TERMINAL]
+activity_row_types: [STATUS, FRICTION]
+blocked_outcomes: [blocked, partial, failed]
+next_step_cells: [next, next-step, blocker]
+outcome_cell: outcome
+ticket_cell: ticket
+pr_cell: pr
+hold_id_cell: id
+closes_claim_cell: closes-CLAIM
+ignored_ref_cells: [unrelated]
+pr_ref_pattern: '[A-Za-z0-9_.-]+#[0-9]+'
+alarm_row_type: STATUS
+alarm_value: owner-missing
+suggested_steps:
+  ruling_no_mechanism: Place a lane or open a ticket for the ruling.
+  promise_no_lane: Place a lane that keeps the promise sent on the operator's behalf.
+  blocked_next_step: Place a lane on the next step the blocked TERMINAL names.
+  hold_unreleased: Release the HOLD, its pull request has merged.
+  claim_unfinished: Close the CLAIM with a TERMINAL or place a lane to finish it.
+  admission_refusal: Admit the work the standing ruling covers, or record why not.

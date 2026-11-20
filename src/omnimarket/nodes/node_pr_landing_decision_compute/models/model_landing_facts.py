@@ -186,6 +186,22 @@ class ModelLandingPrFacts(BaseModel):
             "pending, a stale cancelled copy holds the merge: refresh once."
         ),
     )
+    required_contexts: tuple[str, ...] | None = Field(
+        default=None,
+        description=(
+            "The check contexts the PR's base branch requires, read from its branch protection "
+            "and rulesets by the snapshot reader. None is unread: the decision then cannot tell "
+            "a required red from any other and holds every red PR as before, naming why."
+        ),
+    )
+    passed_checks: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Names of the check-runs on the head whose newest copy passed (success, skipped or "
+            "neutral). With required_contexts read, a PR whose reds are all non-required merges "
+            "only when every required context is in this set."
+        ),
+    )
     merge_state: EnumLandingMergeState = EnumLandingMergeState.CLEAN
     lacks_base_head: bool = Field(
         default=False,
@@ -569,6 +585,15 @@ class ModelLandingPolicy(BaseModel):
         description=(
             "The controller sends the review fact for every PR, so a PR with none is "
             "held as review_unread (it is never merged unread)."
+        ),
+    )
+    review_status_read_expected: bool = Field(
+        default=True,
+        description=(
+            "A new-work PR whose review fact carries no statuses (statuses None: none were read) is held as "
+            "review_status_unread: it is never merged unread. True by default, so a tick whose facts source "
+            "does not read the fable-review-gate statuses holds every new-work head instead of merging it; set "
+            "False only for a facts source that is known to read none."
         ),
     )
     lab_check_wait_seconds: int = Field(
