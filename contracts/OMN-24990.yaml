@@ -53,6 +53,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_overlay_drift_compute_scheduled_effect/test_contract_topics.py -q --no-cov
     cwd: .
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_overlay_drift_compute_scheduled_effect/contract.yaml?ref=omn-24990-overlay-join-scheduled" --jq .content | base64 -d | grep -F "HandlerOverlayDriftComputeScheduled" > /dev/null'''
+    cwd: .
 - id: dod-omn24990-integration-proof
   description: The scheduled node runs on a lab host at the pushed sha through the lab work runner; the read of one run on the dev runtime is the lane's STATUS row for pr=omnimarket#5502 once the overlays hold the two overlay files.
   source: manual
