@@ -21,6 +21,7 @@ import json
 import os
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command import (
@@ -76,6 +77,19 @@ def run_entry(
     )
 
 
+def read_env_file_value(path: str, name: str) -> str:
+    """The value of ``name`` in a KEY=VALUE env file, or an empty string when the file or key is absent."""
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return ""
+    for line in lines:
+        key, separator, value = line.partition("=")
+        if separator and key.strip() == name:
+            return value.strip().strip("\"'")
+    return ""
+
+
 def lab_host_rows(overlay: Mapping[str, Any]) -> list[tuple[str, bool]]:
     """The ``lab_hosts`` rows the caller passes beside the overlay, as ``(name, available)``; none means no host is listed."""
     return [
@@ -122,6 +136,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
         dsn = os.environ.get(live_settings.store_dsn_env, "")
+        if not dsn and live_settings.store_dsn_env_file:
+            dsn = read_env_file_value(
+                live_settings.store_dsn_env_file, live_settings.store_dsn_env
+            )
         if not dsn:
             sys.stdout.write(
                 f"UNKNOWN fill-state:store-dsn-unset:{live_settings.store_dsn_env}\n"

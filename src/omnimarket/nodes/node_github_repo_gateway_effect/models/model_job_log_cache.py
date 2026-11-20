@@ -18,6 +18,10 @@ class ModelJobLogCachePolicy(BaseModel):
     lane_miss_fill_max: int = Field(default=0, ge=0)
     #: Window, in seconds, over which a lane's on-demand fills are counted.
     lane_miss_fill_window_seconds: int = Field(default=3600, gt=0)
+    #: Seconds a request waits for another request's per-job lock before it answers JOB-LOG-BUSY.
+    lock_wait_seconds: float = Field(default=30.0, gt=0)
+    #: Seconds one log download may run before it answers JOB-LOG-FILL-TIMEOUT.
+    download_deadline_seconds: float = Field(default=45.0, gt=0)
 
 
 class ModelCachedJobLog(BaseModel):
