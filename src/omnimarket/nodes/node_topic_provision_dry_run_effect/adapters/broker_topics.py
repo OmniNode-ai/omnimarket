@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Protocol, runtime_checkable
 
 from aiokafka.admin import AIOKafkaAdminClient, NewTopic
-from aiokafka.errors import TopicAlreadyExistsError
+from aiokafka.errors import TopicAlreadyExistsError, for_code
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_for
 
 
@@ -62,19 +62,23 @@ class AiokafkaBrokerTopicCreator:
         self, name: str, num_partitions: int, replication_factor: int
     ) -> bool:
         """Create the topic; an existing one is accepted and reported as not created."""
-        try:
-            async with _admin_client(self._bootstrap_servers) as admin:
-                await admin.create_topics(
-                    [
-                        NewTopic(
-                            name=name,
-                            num_partitions=num_partitions,
-                            replication_factor=replication_factor,
-                        )
-                    ]
-                )
-        except TopicAlreadyExistsError:
-            return False
+        async with _admin_client(self._bootstrap_servers) as admin:
+            response = await admin.create_topics(
+                [
+                    NewTopic(
+                        name=name,
+                        num_partitions=num_partitions,
+                        replication_factor=replication_factor,
+                    )
+                ]
+            )
+        # The broker answers per topic and the client returns that answer without raising: a
+        # refusal (an unauthorized login, an invalid replication factor) must not read as created.
+        for topic, error_code, message in response.topic_errors:
+            if error_code == TopicAlreadyExistsError.errno:
+                return False
+            if error_code != 0:
+                raise for_code(error_code)(f"create {topic}: {message}")
         return True
 
 

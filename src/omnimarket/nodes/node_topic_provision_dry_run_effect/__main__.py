@@ -37,6 +37,8 @@ from omnimarket.nodes.node_topic_provision_plan_compute.overlay import (
     load_provision_rule,
 )
 
+BOOTSTRAP_ENV = "KAFKA_BOOTSTRAP_SERVERS"
+
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Load the overlay and rule, run the dry run (or, with --apply, the writer topic apply), print one JSON line."""
@@ -70,10 +72,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             binding = bind_lane_client_transport(transport)
         lister = AiokafkaBrokerTopicLister(selection.bootstrap_servers)
         creator = AiokafkaBrokerTopicCreator(selection.bootstrap_servers)
+    elif os.environ.get(BOOTSTRAP_ENV):
+        # No declared lane: the standard runtime Kafka environment answers for this broker.
+        lister = AiokafkaBrokerTopicLister(os.environ[BOOTSTRAP_ENV])
+        creator = AiokafkaBrokerTopicCreator(os.environ[BOOTSTRAP_ENV])
     request = ModelTopicProvisionDryRunRequest(overlay=overlay, rule=rule)
     if args.apply:
         if lister is None or creator is None:
-            raise SystemExit("--apply needs overlay.lane: the broker to create on")
+            raise SystemExit(
+                f"--apply needs overlay.lane or {BOOTSTRAP_ENV}: the broker to create on"
+            )
         with binding:
             result = asyncio.run(
                 HandlerWriterTopicApply(lister, creator).handle(request)
