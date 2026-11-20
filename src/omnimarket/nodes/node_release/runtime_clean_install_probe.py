@@ -13,7 +13,7 @@ the probe step has no ``continue-on-error``, the job stops before the tag push.
 
 Stdlib only, run by path from the release job::
 
-    python3 src/omnimarket/handlers/release_clean_install_probe.py dist/
+    python3 src/omnimarket/nodes/node_release/runtime_clean_install_probe.py dist/
 
 Exit codes: ``0`` installed and every entry point loaded; ``1`` the install or
 an import failed, or ``dist/`` did not hold exactly one wheel; ``2`` bad
