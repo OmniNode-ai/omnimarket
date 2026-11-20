@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Run one step as a plain process: no shell, the step key in the environment, the step input on stdin.
+
+The last line of standard output is the step's answer. Temporal delivers an activity at least once, so the command
+owns making a repeat delivery a no-op.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import os
+from collections.abc import Callable
+
+from pydantic import BaseModel, ConfigDict
+
+ENV_STEP_KEY = "ONEX_RUN_STEP_KEY"
+ENV_STEP_ATTEMPT = "ONEX_RUN_STEP_ATTEMPT"
+
+
+class ModelStepProcessResult(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    exit_code: int
+    output: str
+    error: str = ""
+
+
+async def run_step_process(
+    argv: tuple[str, ...],
+    stdin: str,
+    *,
+    step_key: str,
+    attempt: int,
+    heartbeat: Callable[[], None] | None = None,
+    heartbeat_interval_seconds: float = 10.0,
+) -> ModelStepProcessResult:
+    """Run ``argv`` with ``stdin``; heartbeat while it runs; kill it when the activity is cancelled."""
+    env = {
+        **os.environ,
+        ENV_STEP_KEY: step_key,
+        ENV_STEP_ATTEMPT: str(attempt),
+    }
+    proc = await asyncio.create_subprocess_exec(
+        *argv,
+        env=env,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    communicate = asyncio.ensure_future(proc.communicate(stdin.encode()))
+    try:
+        while not communicate.done():
+            if heartbeat is not None:
+                heartbeat()
+            await asyncio.wait({communicate}, timeout=heartbeat_interval_seconds)
+    except asyncio.CancelledError:
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        communicate.cancel()
+        await proc.wait()
+        raise
+    out, err = communicate.result()
+    lines = out.decode(errors="replace").strip().splitlines()
+    return ModelStepProcessResult(
+        exit_code=proc.returncode if proc.returncode is not None else -1,
+        output=lines[-1] if lines else "",
+        error=err.decode(errors="replace").strip()[-400:],
+    )
