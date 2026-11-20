@@ -408,8 +408,12 @@ def test_omn_25342_contract_refuse_skips_is_a_registered_option_and_asyncio_runs
     assert pytestconfig.getini("asyncio_mode") == "auto"
 
 
-def test_omn_25342_contract_ac2_is_bound_to_a_check_that_reads_a_run_line_or_a_cause() -> (
-    None
-):
-    bound = [e for e in _entries().values() if "AC2" in e.get("binds_ac", [])]
-    assert [e["id"] for e in bound] == ["dod-omn25342-ac2-run-line-or-cause"]
+def test_omn_25342_contract_local_done_gate_items_carry_no_binds_ac() -> None:
+    local = [
+        e for e in _entries().values() if e.get("execution_scope") == "local_done_gate"
+    ]
+    assert {e["id"] for e in local} >= {
+        "dod-omn25342-ac2-run-line-or-cause",
+        "dod-omn25342-integration-proof",
+    }  # positive control: the scan found the ledger and lab items
+    assert [e["id"] for e in local if e.get("binds_ac")] == []
