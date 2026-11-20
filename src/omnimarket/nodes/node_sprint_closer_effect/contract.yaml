@@ -38,28 +38,12 @@ dependencies:
     required: true
 handler_routing:
   routing_strategy: operation_match
-  default_handler: omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer:HandlerSprintCloser
+  default_handler: omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer_eligibility:HandlerSprintCloserEligibility
   handlers:
-    - operation: decide
-      handler:
-        name: HandlerSprintCloser
-        module: omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer
     - operation: eligibility
       handler:
         name: HandlerSprintCloserEligibility
         module: omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer_eligibility
-    - operation: bus_ticket_call
-      handler:
-        name: HandlerBusTicketCall
-        module: omnimarket.nodes.node_sprint_closer_effect.handlers.sprint_closer_sources
-    - operation: linear_ticket_node
-      handler:
-        name: HandlerLinearTicketNode
-        module: omnimarket.nodes.node_sprint_closer_effect.handlers.sprint_closer_sources
-    - operation: dod_verify_call
-      handler:
-        name: HandlerDodVerifyCall
-        module: omnimarket.nodes.node_sprint_closer_effect.handlers.sprint_closer_sources
 event_bus:
   subscribe_topics: []
   publish_topics: []
