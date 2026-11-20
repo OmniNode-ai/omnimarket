@@ -407,10 +407,7 @@ def test_host_reconciliation_is_not_a_boot_dispatched_route() -> None:
     routes = contract["handler_routing"]["handlers"]
     # The core.worktree repair is a host-CLI operation too (repair-core-worktree): the CLI supplies
     # its git adapter and publisher, so the runtime never dispatches it at boot.
-    assert [route["operation"] for route in routes] == [
-        "repair_core_worktree",
-        "schedule",
-    ]
+    assert [route["operation"] for route in routes] == ["schedule"]
 
 
 def test_the_unit_declares_its_priority_and_the_installer_replaces_a_hand_made_idle_drop_in(

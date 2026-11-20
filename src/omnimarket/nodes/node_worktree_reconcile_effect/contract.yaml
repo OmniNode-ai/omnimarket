@@ -70,15 +70,10 @@ handler_routing:
   # The reconcile handler is the node's canonical handler (handler: above). It is
   # named here as the default handler so the table does not drop it; the only routed
   # operation stays schedule, because the host CLI supplies the reconcile
-  # handler's dependencies and a runtime cannot.
+  # handler's dependencies and a runtime cannot. The core.worktree repair
+  # (repair-core-worktree) is a host-CLI operation for the same reason and is not routed.
   default_handler: omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_reconcile:HandlerWorktreeReconcile
   handlers:
-  - operation: repair_core_worktree
-    handler:
-      module: omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_core_worktree_repair
-      name: HandlerCoreWorktreeRepair
-    input_model: omnimarket.nodes.node_worktree_reconcile_effect.models.model_core_worktree_repair.ModelCoreWorktreeRepairRequest
-    output_model: omnimarket.nodes.node_worktree_reconcile_effect.models.model_core_worktree_repair.ModelCoreWorktreeRepairResult
   - operation: schedule
     handler:
       module: omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_schedule
