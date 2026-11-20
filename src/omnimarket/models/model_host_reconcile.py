@@ -26,6 +26,7 @@ class ModelHostReconcileCommand(BaseModel):
     dispatch_venv: str | None = None
     ledger: str = ""
     alert_command: str = ""
+    ledger_append_command: str = ""
 
 
 class ModelHostReconcileSlackCommand(BaseModel):
