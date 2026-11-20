@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerWorktreePruneRun is resolved at boot from the contract handler block and handler_routing, by module path, not by a Python import
 """The body of one worktree prune run: one host activity per host, retries, resume and a per-host report row.
 
 The host activity is injected (``ProtocolHostPruneActivity``): on a lab host it runs the declared pruner on that host

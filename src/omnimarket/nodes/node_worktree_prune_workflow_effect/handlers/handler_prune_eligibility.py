@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerWorktreePruneEligibility is resolved at boot from handler_routing in contract.yaml, by module path, not by a Python import
 """Which trees a prune run may remove: the shared worktree reconcile classifier under its merged-only rule.
 
 Nothing is classified here. The request goes to ``omnimarket.worktree_reconcile.rules.reconcile`` with the policy's
