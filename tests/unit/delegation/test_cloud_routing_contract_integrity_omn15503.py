@@ -162,6 +162,7 @@ def test_every_declared_tier_is_structurally_routable_for_all_sixteen_classes(
                 task_type,
                 backends,
                 contract,
+                prompt="",
             )
         ]
         if missing:
@@ -321,6 +322,7 @@ def test_next_tier_skips_a_repeated_exhausted_backend_ref(
             frozenset(),
             task_type="research",
             excluded_backend_refs=frozenset({"cloud-gemini-2-5-flash"}),
+            prompt="",
         )
         is None
     )
