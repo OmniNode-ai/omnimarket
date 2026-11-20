@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Example values of the node_dropped_work_audit_scheduled_effect overlay (the schema is
+# ModelDroppedWorkAuditScheduleOverlay; no key has a default). The deployed values are in the overlays repository.
+job_id: dropped_work_audit
+run_interval_seconds: 3600
+grace_seconds: 600
+rules_overlay_id: node_dropped_work_audit_compute
+schedule_host: dev-runtime
+ledger_read:
+  route: command
+  command_env: ONEX_LEDGER_BUS_READ_COMMAND
+  timeout_seconds: 120
+  row_limit: 20000
+ledger_append:
+  command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+  host_env: ONEX_LEDGER_HOST_NAME
+  timeout_seconds: 90
+pr_state_file_env: ONEX_PR_WATCHER_STATE
+merged_prs_key: merges
+merged_at_key: merged_at
+admission_refusal_read:
+  command_env: ONEX_ADMISSION_REFUSAL_READ_COMMAND
+  timeout_seconds: 60
