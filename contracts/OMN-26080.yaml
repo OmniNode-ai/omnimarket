@@ -32,7 +32,6 @@ emergency_bypass:
 dod_evidence:
   - id: dod-omn26080-ac1-disposition-check
     description: Hosted controls require one attributed STATUS disposition per PR and reject missing or unrelated rows. The live ledger read runs at the local Done gate.
-    binds_ac: [AC1]
     source: manual
     checks:
       - check_type: test_passes
@@ -40,7 +39,7 @@ dod_evidence:
         cwd: .
   - id: dod-omn26080-ac2-trigger-seams
     description: The snapshot publishes the liveness fact for the checked-out head and the tick publishes the optional restart probe run event. Live execution and remaining trigger gaps are recorded in the ledger.
-    binds_ac: [AC2]
+    binds_ac: [AC1, AC2, AC3]
     source: manual
     checks:
       - check_type: test_passes
@@ -51,7 +50,6 @@ dod_evidence:
         cwd: .
   - id: dod-omn26080-ac3-install-receipt-check
     description: Hosted controls require zero lane restarts and host edits and a branch installer receipt with restart disabled. The live closeout and branch receipt run at the local Done gate.
-    binds_ac: [AC3]
     source: manual
     checks:
       - check_type: test_passes
