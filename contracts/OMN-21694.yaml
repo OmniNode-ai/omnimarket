@@ -113,6 +113,9 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/test_literal_path_slice_omn21694.py -q --no-cov -k 'the_touched_module_holds_no_path_literal or the_scan_sees_a_path_literal'"
         cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_literal_path_slice_omn21694.py -q --no-cov -k path_literal"
+        cwd: "${OMNI_HOME}/omnimarket"
 context:
   ac_binding_provenance:
     "dod-omn21694-ac1-accepted-literal-path-checker":
