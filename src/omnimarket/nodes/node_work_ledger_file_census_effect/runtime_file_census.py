@@ -25,6 +25,7 @@ from omnimarket.handlers.emission_sink import (
 )
 from omnimarket.nodes.node_work_ledger_file_census_effect.adapters import (
     GitRepositorySource,
+    YamlFileBaselineStore,
     YamlRatchetStore,
 )
 from omnimarket.nodes.node_work_ledger_file_census_effect.handlers import (
@@ -39,9 +40,16 @@ from omnimarket.nodes.node_work_ledger_file_census_effect.overlay import (
     load_overlay,
 )
 
+_RED = ("ratchet-grew", "new-file-reader")
 _HEADER = (
     "# Shrink-only ratchet: executable readers and writers of the ledger file's name or path variable,\n"
     "# counted in files per repository. A count above its row fails; `--lower` only ever lowers a row.\n"
+)
+_BASELINE_HEADER = (
+    "# Shrink-only per-file baseline: the files that hold an executable reader or writer of the ledger\n"
+    "# file's name or path variable, with their line counts. A file not listed here, or a listed file\n"
+    "# holding more lines than its row, fails the census (new code opening the ledger file). `--lower`\n"
+    "# only ever lowers a row or drops a cleared file; it never adds a file.\n"
 )
 
 
@@ -65,6 +73,12 @@ def main(
         default=None,
         metavar="PATH",
         help="where this repository's ratchet file is, in place of the overlay's ratchet_file",
+    )
+    parser.add_argument(
+        "--baseline-file",
+        default=None,
+        metavar="PATH",
+        help="where this repository's per-file baseline is, in place of the overlay's baseline_file",
     )
     parser.add_argument(
         "--register",
@@ -110,6 +124,8 @@ def main(
     store = YamlRatchetStore(
         Path(args.ratchet_file) if args.ratchet_file else Path(overlay.ratchet_file)
     )
+    baseline_path: str | None = args.baseline_file or overlay.baseline_file
+    baseline = YamlFileBaselineStore(Path(baseline_path)) if baseline_path else None
     result = HandlerFileCensus(
         overlay,
         GitRepositorySource(
@@ -120,6 +136,7 @@ def main(
         store,
         sink,
         backend="real" if journal else "in_memory",
+        baseline=baseline,
     ).handle(
         ModelCensusRequest(
             correlation_id=uuid.uuid4().hex,
@@ -145,15 +162,15 @@ def main(
             )
             + "\n"
         )
-        return (
-            0 if result.passed else (1 if result.failure_code == "ratchet-grew" else 69)
-        )
+        return 0 if result.passed else (1 if result.failure_code in _RED else 69)
     for count in result.counts:
         line = "own-line" if count.own_line else "counted"
         sys.stdout.write(
             f"CENSUS {count.repository} {line} state={count.state} files={count.files} "
             f"readers={count.readers} writers={count.writers} ratchet={count.ratchet}\n"
         )
+        for new in count.new_readers:
+            sys.stdout.write(f"  NEW-READER {new}\n")
         if args.verbose:
             for hit in count.hits:
                 sys.stdout.write(f"  {hit.kind.value} {hit.path}:{hit.line}\n")
@@ -163,6 +180,8 @@ def main(
     )
     if result.passed and args.lower:
         store.write(result.lowered_ratchet, _HEADER)
+        if baseline is not None:
+            baseline.write(result.lowered_baseline, _BASELINE_HEADER)
     if result.passed:
         return 0
-    return 1 if result.failure_code == "ratchet-grew" else 69
+    return 1 if result.failure_code in _RED else 69

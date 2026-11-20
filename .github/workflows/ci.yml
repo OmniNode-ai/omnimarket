@@ -4348,7 +4348,7 @@ jobs:
         env:
           ONEX_LEDGER_CENSUS_ROOT: .
           ONEX_LEDGER_CENSUS_OVERLAY: src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml
-        run: uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=.
+        run: uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=. --baseline-file src/omnimarket/nodes/node_work_ledger_file_census_effect/file_baseline.yaml
       - name: Ledger file census ratchet turns red on a seeded reader (OMN-22917)
         run: uv run pytest tests/unit/validators/test_ledger_file_census.py tests/unit/nodes/node_work_ledger_file_census_effect -q --no-cov -p no:cacheprovider
       - name: The seven no-file readings turn red on their planted breaks (OMN-22917)

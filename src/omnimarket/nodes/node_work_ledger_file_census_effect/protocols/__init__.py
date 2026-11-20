@@ -28,4 +28,14 @@ class ProtocolRatchetStore(Protocol):
     def read(self) -> dict[str, int]: ...
 
 
-__all__ = ["ProtocolRatchetStore", "ProtocolRepositorySource"]
+class ProtocolFileBaselineStore(Protocol):
+    """The shrink-only per-file baseline, ``{repository: {path: hits}}``. A failed read raises OSError or ValueError."""
+
+    def read(self) -> dict[str, dict[str, int]]: ...
+
+
+__all__ = [
+    "ProtocolFileBaselineStore",
+    "ProtocolRatchetStore",
+    "ProtocolRepositorySource",
+]
