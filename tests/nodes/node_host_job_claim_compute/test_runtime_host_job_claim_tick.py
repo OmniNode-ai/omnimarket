@@ -243,7 +243,9 @@ def test_the_declared_broker_publisher_names_no_broker_setting_in_the_unit_env(
         event_id="e1",
     )
     assert accepted is False
-    assert "declares no event_bus" in capsys.readouterr().err
+    refusal = capsys.readouterr().err
+    assert "PUBLISH REFUSED NodeBrokerResolutionError" in refusal
+    assert "declares no event_bus" in refusal or "names no broker" in refusal
 
 
 def test_the_declared_broker_publisher_sends_the_envelope_on_the_declared_broker(
