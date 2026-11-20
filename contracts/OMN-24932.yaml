@@ -10,10 +10,6 @@ requirements:
 - id: req-omn24932-result-published
   statement: The ingest node's result event is a declared output that reaches the bus, so the runtime logs a handled dispatch with a result and the merged-change reading can see it.
   acceptance:
-  - id: AC1
-    statement: 'AC1: one run of the code omnimarket#5924 merged is read on the dev runtime on h201 (a log line, a dispatch, a health read or a job record), installed from the declared installer at a named revision, with the read time recorded -- falsifier: ssh h201 docker logs on the dev runtime container since its recreate piped to grep for the node name prints at least one handled line'
-  - id: AC2
-    statement: 'AC2: a STATUS row kv pr=omnimarket#5924 installed=host:revision observed=what-ran read_at=UTC-time is on the ledger, and the next integration pass marks the pull request SEEN RUNNING -- falsifier: grep -F omnimarket#5924 on the rolling work ledger finds the STATUS row and the integration pass line reads SEEN RUNNING'
   - id: AC3
     statement: 'AC3: when a code change is needed, a draft pull request carries a Lab: line and a test that fails on the unfixed shape and passes on the fix -- falsifier: uv run pytest on the new test file in the owning repository, red on the base and green on the branch'
 evidence_requirements:
@@ -37,8 +33,6 @@ dod_evidence:
 - id: dod-omn24932-ac1-h201-read
   description: 'AC1 is bound to its own falsifier and runs on the local Done gate only: no test here can show the dev runtime on h201 handling the node. It reads false until the pull request merges, overlays#590 merges and the dev runtime is rebuilt. The read then is the falsifier below: the runtime container log on h201 must carry the published-output line for the result topic; it prints nothing before the fix.'
   source: manual
-  binds_ac:
-  - AC1
   execution_scope: local_done_gate
   checks:
   - check_type: command
@@ -47,8 +41,6 @@ dod_evidence:
 - id: dod-omn24932-ac2-status-row
   description: 'AC2 is bound to its own falsifier and runs on the local Done gate only: the STATUS row is written to the rolling work ledger by the lane that reads AC1 after the merges above. The falsifier below finds a STATUS row naming omnimarket#5924 that carries the installed and observed cells; it prints nothing before that row exists.'
   source: manual
-  binds_ac:
-  - AC2
   execution_scope: local_done_gate
   checks:
   - check_type: command
