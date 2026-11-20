@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-26154
+title: The host preflight check run returns the host verdict when the registry root is read-only
+summary: A check-mode host reconcile no longer stops with exit 3 when the host lock cannot be created under a read-only registry root. Repair mode still takes the lock and still stops. The installed proof on two hosts depends on the lab and is checked by the local Done gate.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26154-readonly-root
+    statement: A check run on a read-only registry root returns the host verdict, and the preflight is not weakened.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: integrated: onex-host-reconcile --check run in a lane sandbox on h051 and on h053 returns the host''s real verdict and never exit 3 for Errno 30 -- falsifier: the running probe lane on h051 prints Errno 30 or exits 3 on its readback of the preflight'
+      - id: AC1
+        statement: 'AC1: a regression test built from the recorded failure (a registry root opened read-only, the lock path unwritable, Errno 30) fails on the current code and passes on the fix -- falsifier: uv run pytest tests/test_host_reconcile_readonly_root.py -q'
+      - id: AC3
+        statement: 'AC3: the preflight is not weakened, so check mode still reports an unhealthy host as unhealthy and a repair-mode run still takes the host lock -- falsifier: the existing host reconcile lock tests, tests/test_host_reconcile_effect.py and tests/test_retired_repository_reconcile.py, plus the repair-mode and held-lock cases of tests/test_host_reconcile_readonly_root.py'
+      - id: AC4
+        statement: 'AC4: the fix is installed on h051 and h053 through the declared plugin path and the hand-off carries installed=h051:REVISION and installed=h053:REVISION with the probe lane''s run id -- falsifier: the STATUS row of the probe lane lacks installed=h051 or names a revision other than the merged one'
+evidence_requirements:
+  - kind: tests
+    description: Read-only registry root regression tests through the host reconcile effect handler.
+    command: uv run --frozen pytest -q --no-cov -n 0 -p no:randomly tests/test_host_reconcile_readonly_root.py
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn26154-ac1-readonly-root
+    description: Hosted regression for AC1. A check run with the lock path unwritable (Errno 30) returns exit 0 in sync and exit 2 behind, never exit 3.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q --no-cov -n 0 -p no:randomly tests/test_host_reconcile_readonly_root.py
+        cwd: .
+  - id: dod-omn26154-ac3-not-weakened
+    description: Hosted regression for AC3. Repair mode on a read-only root still stops with exit 3, a live holder still stops a check with exit 4, and the existing lock tests are unchanged and green.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q --no-cov -n 0 -p no:randomly tests/test_host_reconcile_readonly_root.py tests/test_host_reconcile_effect.py tests/test_retired_repository_reconcile.py
+        cwd: .
+  - id: dod-omn26154-ac2-ac4-installed-status
+    description: A STATUS row of the lane carries installed=<host>:<revision> and observed= for each of h051 and h053, or names the cause and the actor that must act.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC2, AC4]
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c '
+          python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "lane=reglock-0940" |
+          awk '"'"'
+          / \| STATUS \| / && / \| lane=reglock-0940 \| / {
+            if ($0 ~ / \| installed=h051:[^ |]/ && $0 ~ / \| observed=[^ |]/) h051 = 1
+            if ($0 ~ / \| installed=h053:[^ |]/ && $0 ~ / \| observed=[^ |]/) h053 = 1
+          }
+          END { exit !(h051 && h053) }
+          '"'"''
+        cwd: .
+  - id: dod-omn26154-integration-proof-check-run
+    description: Run the host reconcile node in check mode against the live registry root of the lab host and require a verdict, never exit 3 with Errno 30.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC2]
+    checks:
+      - check_type: command
+        check_value: >-
+          onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane reglock-0940 --kind other -- bash -c 'out=$(uv run --frozen python -m omnimarket.nodes.node_host_reconcile_effect --check --omni-home "${OMNI_HOME:?}" 2>&1); rc=$?; printf "%s\n" "$out" | tail -5; test "$rc" -ne 3 && ! printf "%s" "$out" | grep -q "Errno 30"'
+        cwd: .
