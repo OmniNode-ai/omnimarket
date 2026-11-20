@@ -32,7 +32,7 @@ handler:
   class: HandlerValidatorWorkflowRuntime
   input_model: omnimarket.nodes.node_validator_workflow_orchestrator.models.model_validator_workflow.ModelValidatorWorkflowRequest
   output_model: omnimarket.nodes.node_validator_workflow_orchestrator.models.model_validator_workflow.ModelValidatorWorkflowResult
-# The workflow itself, HandlerValidatorWorkflow, takes its overlay, reader, contract source, reducer, emitter and gate as
+# The workflow itself, WorkflowRunner, takes its overlay, reader, contract source, reducer, emitter and gate as
 # constructor parameters; adapters/two_backend.py builds it. The runtime routes the workflow-requested
 # topic to HandlerValidatorWorkflowRuntime, which takes none and builds the workflow from the node
 # overlays on its first request.
