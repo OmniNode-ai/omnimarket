@@ -1,80 +1,39 @@
 schema_version: 1.0.0
 ticket_id: OMN-24827
-title: 'unblock omnimarket PR 6052 (red CI Summary (also red: Coverage Sweep Gate, Repo Evidence Dependency, repo-evidence / dod-verify))'
-summary: The PR head d7f6739a0992 was cut before omnimarket dev removed the delegation-health-check context from the CI Summary required lists (OMN-25514), so CI Summary read the failing dev nightly delegation run as an external context failure of this PR. This change merges the current dev into the PR branch, so CI Summary runs at the head with the lists dev carries today; no test, check or workflow of the PR is changed.
+title: The outbox reuse pull request's own contract binds AC2 and AC4 to tests that fail before the change
+summary: The repo-evidence dod-verify base control refused the outbox reuse pull request because the tests bound to its AC2 and AC4 also passed at the merge base, so they could not show the change. The still-sent criterion now includes a stored-refusal lookup test and the integrated criterion's hosted proxy includes a replay-adds-no-new-report test, and both fail against the merge-base outbox module, which has neither the lookup nor the reuse.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-- id: req-omn24827-unblock-6052
-  statement: The cause of each red required check on omnimarket PR 6052 is named from its failure text, a cause inside the pull request is fixed on its own branch without weakening a check, and a cause outside it is recorded with its evidence.
+- id: req-omn24827-bound-tests-fail-at-base
+  statement: The bound tests of the outbox reuse contract that name the new lookup or the reuse fail at the merge base and pass at the pushed head; the still-sent preservation tests pass at both.
   acceptance:
   - id: AC1
-    statement: 'AC1: every required check-run of omnimarket#6052 reads success at the new head, read through the declared scm path after the fix push -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6052` lists a required context that is not success at the new head'
-  - id: AC2
-    statement: 'AC2: the fix weakens no check or test, so the diff from head 16f83d936fdf to the new head removes no assertion and adds no skip, xfail, loosened threshold or widened check -- falsifier: `git diff 16f83d936fdf <new head> -- tests/ .github/` shows a removed assert, a new skip or xfail marker or a changed required-check list'
-  - id: AC3
-    statement: 'AC3: the new head is on the PR as a comment starting `Lab: head=<new head>` and the lane''s TERMINAL names it -- falsifier: the PR carries no comment starting `Lab: head=` with the new head sha'
-  - id: AC4
-    statement: 'AC4: when the cause is outside the PR the lane writes one STATUS row with cause=<one line> shared=yes and the evidence, and pushes nothing -- falsifier: the ledger holds neither a pushed new head nor a STATUS row with shared=yes naming omnimarket#6052 after the lane''s TERMINAL'
+    statement: 'AC1: each bound selection of the outbox reuse contract exits non-zero against the merge-base outbox module and zero at the pushed head -- falsifier: uv run pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q --no-cov -k "stored_refusal_lookup or no_new_report" exits zero with the merge-base outbox module loaded'
 evidence_requirements:
 - kind: tests
-  description: The outbox refused-receipt reuse tests of the pull request pass at the pushed head.
-  command: uv run --frozen pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q -n 0 --no-cov -p no:randomly
+  description: The two new outbox tests pass at the pushed head and fail with the merge-base outbox module loaded.
+  command: uv run pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q --no-cov -k "stored_refusal_lookup or no_new_report"
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24827-ac1
-  description: 'hosted proxy for AC1: the outbox refused-receipt reuse tests, the code of the pull request, pass at the pushed head; the live read of the required contexts is the local item dod-omn24827-ac1-live'
+  description: 'AC1: the stored-refusal lookup test and the replay-adds-no-new-report test pass at the head; the merge-base outbox module has neither the lookup nor the reuse, so both fail there.'
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q -n 0 --no-cov -p no:randomly
-    cwd: .
-- id: dod-omn24827-ac2
-  description: 'hosted proxy for AC2: the diff to the new head is a merge of dev, so no test of the pull request is removed or skipped; the same tests pass. The diff read over tests/ and .github/ against 16f83d936fdf is the PR comment of the Lab line.'
-  source: manual
-  binds_ac:
-  - AC2
-  checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q -n 0 --no-cov -p no:randomly
-    cwd: .
-- id: dod-omn24827-ac3
-  description: 'hosted proxy for AC3: the Lab comment and the TERMINAL are ledger and pull request facts read by the local Done gate; the tests of the pull request pass at the pushed head'
-  source: manual
-  binds_ac:
-  - AC3
-  checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q -n 0 --no-cov -p no:randomly
-    cwd: .
-- id: dod-omn24827-ac4
-  description: 'hosted proxy for AC4: the cause was inside the pull request branch (a head behind dev), so no shared-cause STATUS row is written and this change pushes a new head; the tests of the pull request pass at it'
-  source: manual
-  binds_ac:
-  - AC4
-  checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q -n 0 --no-cov -p no:randomly
-    cwd: .
-- id: dod-omn24827-ac1-live
-  description: 'AC1 read from the watcher: CI Summary and repo-evidence / dod-verify are not red or pending at the head the watcher read, and that head is this checkout HEAD. The watcher is not reachable from hosted CI, so only the local Done gate runs it.'
-  source: manual
-  execution_scope: local_done_gate
-  checks:
-  - check_type: command
-    check_value: sh -c 'onex scm pr-checks OmniNode-ai/omnimarket#6052 | python3 -c "import json,subprocess,sys; L=[json.loads(l) for l in sys.stdin if l.startswith(chr(123))]; r=L[-1][\"result\"] if L else {}; h=subprocess.run([\"git\",\"rev-parse\",\"HEAD\"],capture_output=True,text=True).stdout.strip(); bad=set(r.get(\"red\",[]))|set(r.get(\"pending\",[])); print(r.get(\"head_sha\"),h,sorted(bad)); sys.exit(0 if h and r.get(\"head_sha\")==h and not bad & {\"CI Summary\",\"repo-evidence / dod-verify\"} else 1)"'
+    check_value: uv run pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q --no-cov -p no:cacheprovider -k "stored_refusal_lookup or no_new_report"
     cwd: .
 - id: dod-omn24827-integration-proof
-  description: the outbox reuse tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  description: the outbox reuse tests and the neighbouring outbox suites run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24827 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q -n 0 --no-cov -p no:randomly
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24827 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/handlers/bus_binding tests/nodes/node_bus_binding_reducer/test_outbox_request_id_clash.py -q --no-cov
     cwd: .
