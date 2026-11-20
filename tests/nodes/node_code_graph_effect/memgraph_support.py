@@ -112,6 +112,16 @@ class FakeBoltSession:
             for row in params["rows"]:
                 graph.nodes["CgExemplar"][row["key"]] = {**row, "rev": params["rev"]}
             return []
+        if "MERGE (f:CgNodeFile" in query:
+            for row in params["rows"]:
+                graph.nodes["CgNodeFile"][row["key"]] = {**row, "rev": params["rev"]}
+            return []
+        if "MATCH (f:CgNodeFile {rev: $key})" in query:
+            return [
+                {k: f[k] for k in ("node", "kind", "path")}
+                for f in graph.nodes["CgNodeFile"].values()
+                if f["rev"] == params["key"]
+            ]
         if "MATCH (s:CgSymbol {rev: $key})" in query:
             return [
                 {k: s[k] for k in ("name", "kind", "path", "line")}
@@ -156,6 +166,7 @@ class FakeBoltDriver:
                 "CgSymbol",
                 "CgShape",
                 "CgExemplar",
+                "CgNodeFile",
             )
         }
         self.edges: list[dict[str, Any]] = []
