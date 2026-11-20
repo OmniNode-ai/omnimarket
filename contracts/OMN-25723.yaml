@@ -16,12 +16,6 @@ requirements:
   - id: req-omn25723-hosted-probe-at-push
     statement: A runtime push whose contract holds no check the hosted deploy gate accepts is refused by the push-time prerequisite, naming why.
     acceptance:
-      - id: AC1
-        statement: >-
-          AC1: the shared cause is named from the failure text read on at least three of PRs 6317,
-          6345, 6374 and 6403, with job ids and quoted lines in the lane's STATUS row, or a per-PR table
-          of what each lacks is in a STATUS row -- falsifier: the ledger holds no STATUS row from the
-          lane naming the cause with job ids and quotes for three PRs
       - id: AC2
         statement: >-
           AC2: one pull request on the default branch of the repository that owns the cause fixes it
@@ -34,11 +28,6 @@ requirements:
           xfail, loosened threshold or changed required-check list -- falsifier: `git diff <base>
           <head> -- tests/ .github/` shows a removed assert, a new skip or xfail marker or a changed
           required-check list
-      - id: AC4
-        statement: >-
-          AC4: the pull request is open and ready (not draft) with a line starting `Lab:` in its body,
-          and the lane TERMINAL names its head -- falsifier: `onex scm pr-view` shows the pull request
-          as a draft, or the body carries no line starting `Lab:`
 evidence_requirements:
   - kind: tests
     description: The new probe tests and the prerequisite node tests pass at the pushed head; the new through-git refusal test fails at the base.
@@ -51,7 +40,6 @@ dod_evidence:
   - id: dod-omn25723-ac1-cause
     description: The STATUS row of the lane names the cause and the job ids of the four pull requests. The ledger is on the launching host, so only the local Done gate runs this unbound check.
     source: manual
-    binds_ac: [AC1]
     execution_scope: local_done_gate
     checks:
       - check_type: command
@@ -77,7 +65,6 @@ dod_evidence:
   - id: dod-omn25723-ac4-ready-with-lab-line
     description: The pull request is open, not a draft, and its body carries a Lab line. The pull request read is local, so only the local Done gate runs this unbound check.
     source: manual
-    binds_ac: [AC4]
     execution_scope: local_done_gate
     checks:
       - check_type: command
