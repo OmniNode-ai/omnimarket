@@ -9,7 +9,14 @@ from typing import Literal, Self
 from uuid import UUID, uuid4
 
 from omnibase_core.types import JsonType
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    model_validator,
+)
 
 Timestamp = str
 
@@ -37,13 +44,15 @@ class ModelTickState(BaseModel):
 class ModelSweepResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="allow")
     __pydantic_extra__: dict[str, JsonType] = Field(init=False)
-    collected: int | None = Field(default=None, ge=0)
-    needing: int | None = Field(default=None, ge=0)
-    accepted: int | None = Field(default=None, ge=0)
-    held: int | None = Field(default=None, ge=0)
-    held_by_class: dict[str, int] | None = None
+    # Counts are exact integers: a held that is a list or a numeric string is refused by field
+    # name (OMN-26223), never coerced.
+    collected: int | None = Field(default=None, ge=0, strict=True)
+    needing: int | None = Field(default=None, ge=0, strict=True)
+    accepted: int | None = Field(default=None, ge=0, strict=True)
+    held: int | None = Field(default=None, ge=0, strict=True)
+    held_by_class: dict[str, StrictInt] | None = None
     linear_file: str | None = None
-    failed: bool = False
+    failed: StrictBool = False
     error_class: str | None = None
 
 
