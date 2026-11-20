@@ -29,6 +29,8 @@ operations:
     description: Post a comment through the Linear adapter.
   - name: transition
     description: Guard the update, resolve the named state for the team and update.
+  - name: list_open
+    description: List the identifiers of a project's tickets that are not completed or canceled.
 descriptor:
   node_archetype: effect
   purity: impure

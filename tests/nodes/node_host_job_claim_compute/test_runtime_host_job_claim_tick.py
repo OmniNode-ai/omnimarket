@@ -236,6 +236,10 @@ def test_the_declared_broker_publisher_names_no_broker_setting_in_the_unit_env(
     # An overlay with no event_bus names no broker, and a KAFKA_BOOTSTRAP_SERVERS in the environment does not stand in for it.
     monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "ignored.invalid:9092")
     monkeypatch.setenv("OMNI_HOME", str(wired.parent))
+    lanes = wired.parent / "config" / "lab"
+    lanes.mkdir(parents=True)
+    (lanes / "ci_bus_lanes.yaml").write_text("lanes: {}\n", encoding="utf-8")
+    monkeypatch.setenv("ONEX_WORKSPACE_CONFIG_ROOT", str(wired.parent))
     accepted = tick.DeclaredBrokerPublisher().publish(
         topic="onex.evt.omnimarket.host-job-claim-run-completed.v1",
         event_type=tick.EVENT_TYPE,
@@ -243,7 +247,9 @@ def test_the_declared_broker_publisher_names_no_broker_setting_in_the_unit_env(
         event_id="e1",
     )
     assert accepted is False
-    assert "declares no event_bus" in capsys.readouterr().err
+    refusal = capsys.readouterr().err
+    assert "PUBLISH REFUSED NodeBrokerResolutionError" in refusal
+    assert "declares no event_bus" in refusal or "names no broker" in refusal
 
 
 def test_the_declared_broker_publisher_sends_the_envelope_on_the_declared_broker(
