@@ -14,8 +14,8 @@ from pathlib import Path
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 
 from .container import container_private_hosted_minutes_watch_effect
-from .handlers.handler_hosted_minutes_private_scope import format_minutes
 from .models import ModelHostedMinutesWatchRequest
+from .private_scope import format_minutes
 
 
 def _parser() -> argparse.ArgumentParser:

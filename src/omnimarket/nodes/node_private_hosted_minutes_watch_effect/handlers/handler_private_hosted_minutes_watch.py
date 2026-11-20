@@ -21,7 +21,7 @@ from ..models import (
 )
 from ..models.model_hosted_minutes_watch_result import AlertOutcome
 from ..overlay import load_overlay
-from .handler_hosted_minutes_private_scope import (
+from ..private_scope import (
     alert_threshold,
     classify_repositories,
     percent_used,

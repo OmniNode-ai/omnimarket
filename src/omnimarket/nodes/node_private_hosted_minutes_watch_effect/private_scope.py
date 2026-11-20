@@ -8,7 +8,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from decimal import Decimal
 
-from ..models import (
+from .models import (
     ModelHostedMinutesOverlay,
     ModelRepoDayMinutes,
     ModelUncountedRepo,
