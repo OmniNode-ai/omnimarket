@@ -15,7 +15,7 @@ from typing import Literal, Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 import yaml
-from omnibase_infra.errors import InfraConnectionError
+from omnibase_infra.errors import RuntimeHostError
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.handlers.rules_cause_claim import canonical_check, cause_cells
@@ -305,12 +305,13 @@ class HandlerRedMainAlarm:
                 return await self._scan(request, self._ports, settings)
             async with AlarmBusPorts.open(settings) as ports:
                 return await self._scan(request, ports, settings)
-        except (RuntimeError, ValueError, OSError) as exc:
+        except (RuntimeError, ValueError, OSError, RuntimeHostError) as exc:
             # No repository is known here and the ledger may be the thing that did not open,
             # so no row can be raised; the runtime log is the one place left to be loud in.
             logger.error(
-                "red-main alarm could not scan: %s",
-                EnumAlarmFailure.CONFIGURATION_UNREADABLE,
+                "red-main alarm could not scan: failure=%s detail=%s",
+                EnumAlarmFailure.CONFIGURATION_UNREADABLE.value,
+                exc,
             )
             return ModelRedMainAlarmResult(
                 fire_id=request.fire_id,
@@ -330,7 +331,7 @@ class HandlerRedMainAlarm:
         now = self._clock()
         try:
             inventory = await ports.inventory(now)
-        except (OSError, RuntimeError, ValueError, InfraConnectionError) as exc:
+        except (OSError, RuntimeError, ValueError, RuntimeHostError) as exc:
             return ModelRedMainAlarmResult(
                 fire_id=request.fire_id,
                 failures=(
@@ -388,7 +389,12 @@ class HandlerRedMainAlarm:
                 or failure.branch is None
                 or failure.kind not in _ROW_FAILURES
             ):
-                logger.error("red-main alarm source unreadable: %s", failure.kind)
+                logger.error(
+                    "red-main alarm source unreadable: failure=%s repo=%s detail=%s",
+                    failure.kind.value,
+                    failure.repo,
+                    failure.detail,
+                )
                 continue
             if settings.drill_repos and failure.repo not in settings.drill_repos:
                 continue
@@ -418,17 +424,18 @@ class HandlerRedMainAlarm:
                 f":{failure.kind.value}:{hour:%Y-%m-%dT%H}",
             )
             logger.error(
-                "red-main alarm source unreadable: repo=%s branch=%s failure=%s",
+                "red-main alarm source unreadable: repo=%s branch=%s failure=%s detail=%s",
                 repo,
                 branch,
                 failure.kind.value,
+                failure.detail,
             )
             async with semaphore:
                 try:
                     delivered = await _deliver(
                         ports, _unreadable_request(alarm, settings, request_id)
                     )
-                except (OSError, RuntimeError, ValueError, InfraConnectionError) as exc:
+                except (OSError, RuntimeError, ValueError, RuntimeHostError) as exc:
                     return ModelAlarmFailure(
                         kind=EnumAlarmFailure.APPEND_FAILED,
                         repo=repo,
@@ -478,7 +485,7 @@ class HandlerRedMainAlarm:
             appended = await self._append(ports, alarm, settings, request_id)
             self._first_red.pop(request_id, None)
             return appended
-        except (OSError, RuntimeError, ValueError, InfraConnectionError) as exc:
+        except (OSError, RuntimeError, ValueError, RuntimeHostError) as exc:
             return ModelAlarmFailure(
                 kind=kind, repo=target.repo, branch=target.branch, detail=str(exc)
             )

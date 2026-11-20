@@ -18,7 +18,7 @@ from omnibase_infra.cli.delegate_lane_credentials import (
     ENV_SASL_PASSWORD,
     ENV_SASL_USERNAME,
 )
-from omnibase_infra.errors import InfraConnectionError
+from omnibase_infra.errors import InfraConnectionError, RuntimeHostError
 
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
 from omnimarket.delegated_test_loop.lane_bus import (
@@ -238,7 +238,7 @@ class AlarmBusPorts:
                 owner=registry_owner,
                 declared_owner=entry.owner,
             )
-        except (OSError, RuntimeError, ValueError, InfraConnectionError) as exc:
+        except (OSError, RuntimeError, ValueError, RuntimeHostError) as exc:
             return ModelAlarmFailure(
                 kind=EnumAlarmFailure.INVENTORY_UNREADABLE,
                 repo=entry.repo,

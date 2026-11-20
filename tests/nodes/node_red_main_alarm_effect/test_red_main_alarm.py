@@ -18,6 +18,7 @@ from omnibase_infra.cli.delegate_lane_credentials import (
     ENV_SASL_PASSWORD,
     ENV_SASL_USERNAME,
 )
+from omnibase_infra.errors import ProtocolConfigurationError
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 from omnibase_infra.runtime.auto_wiring import (
@@ -1014,6 +1015,40 @@ async def test_red_main_alarm_unreadable_row_append_failure_is_reported_not_repe
         EnumAlarmFailure.INVENTORY_UNREADABLE,
         EnumAlarmFailure.APPEND_FAILED,
     ]
+
+
+class UnprovisionedWriterTopic(UnreadableGateway):
+    """The 2026-11-20T04:05Z fire: the writer's command topic is not on the broker."""
+
+    async def append(
+        self, request: ModelWorkLedgerAppendRequest
+    ) -> ModelWorkLedgerAppendReceipt:
+        raise ProtocolConfigurationError(
+            "Topic 'onex.cmd.omnimarket.work-ledger-append-from-fixture-runtime-login.v1' "
+            "not found on broker. Ensure the topic is provisioned before publish"
+        )
+
+
+async def test_red_main_alarm_unprovisioned_writer_topic_is_a_typed_failure_not_a_crash(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The first fire after the install raised this out of the dispatcher, so no completed event
+    carried the failures and the fire left nothing but the broker's own log."""
+    ports = UnprovisionedWriterTopic()
+    handler = HandlerRedMainAlarm(
+        ports=ports, settings=UNREADABLE_MAP, clock=lambda: NOW
+    )
+
+    with caplog.at_level("ERROR"):
+        result = await handler.handle(tick())
+
+    assert not result.unreadable_alarms
+    assert [failure.kind for failure in result.failures] == [
+        EnumAlarmFailure.INVENTORY_UNREADABLE,
+        EnumAlarmFailure.APPEND_FAILED,
+    ]
+    assert "not found on broker" in result.failures[-1].detail
+    assert "failure=inventory_unreadable" in caplog.text
 
 
 class FakeBound:
