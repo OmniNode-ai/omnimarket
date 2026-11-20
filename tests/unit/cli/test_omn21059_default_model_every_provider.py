@@ -130,7 +130,7 @@ def test_default_model_refuses_a_key_the_provider_rejects(
     assert _OPENAI_KEY not in result.output
 
 
-@pytest.mark.parametrize("provider", ["ollama", "local"])
+@pytest.mark.parametrize("provider", ["local"])  # OMN-23413: Ollama is a Local Model
 def test_default_model_names_no_model_for_a_provider_without_a_key(
     provider: str,
 ) -> None:

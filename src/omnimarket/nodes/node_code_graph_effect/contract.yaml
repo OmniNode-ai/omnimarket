@@ -110,6 +110,9 @@ broker_acl_grants:
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.code-graph-lookup-answered.v1, operation: WRITE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.code-graph-lookup-answered.v1, operation: DESCRIBE}
 
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.code-graph-lookup-requested.v1
+    producer: "the onex node dispatcher (`onex run-node`) and callers asking where a symbol lives, which publish the lookup command directly -- not a node contract"
 externally_consumed_topics:
   - onex.evt.omnimarket.code-graph-run-started.v1
   - onex.evt.omnimarket.code-graph-repo-read.v1

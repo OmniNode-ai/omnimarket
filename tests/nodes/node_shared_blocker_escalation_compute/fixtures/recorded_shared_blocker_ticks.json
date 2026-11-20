@@ -1,0 +1,170 @@
+{
+ "source": "Reconstructed slice, not the controller's file: the landing controller's ticks.jsonl for 2026-11-17 is kept on the launching host and was not readable from the lab host this was built on. Grounded in ledger rows: the cause's check, first seen 02:20Z (named mktcause-0120), measured env stability against gated env dev, dev reading healthy from 06:58Z, and the seven omnimarket pull requests whose ledger rows name the Delegation Health Check. The controller's own member list (14 PRs at 11:40Z) is not reproduced.",
+ "reconstructed": true,
+ "redactions": "host names and the principal in the recorded andon-start row are replaced by <host> and <principal>; the environment label stability stands for the stability lane",
+ "andon_start_row": "2026-11-17T12:37:06Z | STATUS | lane=orchestrator-31d9-swarm | principal=<principal> | ticket=OMN-24562 | actor=claude:opus:session | model=opus | andon=andon-start | item=4 | blocker=delegation-health-check | owner=fix6047-1139 | req=602cdbee-dbf7-41b1-b5d2-53fe101f29a4 | via=bus:<host> | andon-start: the line is stopped on the shared Delegation Health Check. Measured 11:40Z by landing-why-1140: red on 24 of 25 open omnimarket PRs (cause e69e6df28c8f, 14 member PRs), omnimarket no merge for 10.4 h, no merge in any repo since 07:15Z; it holds item 4 (omnimarket 6335). The one fix is omnibase_infra 6047 (OMN-24903), CHANGES NEEDED at 7ce37985d13c (12:30Z), fixer fix6047-1139 on <host> (OMN-25313). While stopped: no new review or fixer lanes on omnimarket PRs whose only red is this check; the andon ends when the nightly delegation-regression reads green after 6047 lands and the stability follow installs it.",
+ "ticks": [
+  {
+   "ts": "2026-11-17T00:00:00Z",
+   "causes": []
+  },
+  {
+   "ts": "2026-11-17T02:00:00Z",
+   "causes": []
+  },
+  {
+   "ts": "2026-11-17T02:30:00Z",
+   "causes": [
+    {
+     "key": "cause:OmniNode-ai/omnimarket:e69e6df28c8f",
+     "check": "delegation-health-check / Delegation Health Check",
+     "first_seen": "2026-11-17T02:20:00Z",
+     "measured_env": "stability",
+     "gated_env": "dev",
+     "members": [
+      "omnimarket#5482",
+      "omnimarket#5611",
+      "omnimarket#5737",
+      "omnimarket#5998",
+      "omnimarket#6001",
+      "omnimarket#6219",
+      "omnimarket#6371"
+     ],
+     "gated_reading": "unread"
+    }
+   ]
+  },
+  {
+   "ts": "2026-11-17T03:30:00Z",
+   "causes": [
+    {
+     "key": "cause:OmniNode-ai/omnimarket:e69e6df28c8f",
+     "check": "delegation-health-check / Delegation Health Check",
+     "first_seen": "2026-11-17T02:20:00Z",
+     "measured_env": "stability",
+     "gated_env": "dev",
+     "members": [
+      "omnimarket#5482",
+      "omnimarket#5611",
+      "omnimarket#5737",
+      "omnimarket#5998",
+      "omnimarket#6001",
+      "omnimarket#6219",
+      "omnimarket#6371"
+     ],
+     "gated_reading": "unread"
+    }
+   ]
+  },
+  {
+   "ts": "2026-11-17T04:30:00Z",
+   "causes": [
+    {
+     "key": "cause:OmniNode-ai/omnimarket:e69e6df28c8f",
+     "check": "delegation-health-check / Delegation Health Check",
+     "first_seen": "2026-11-17T02:20:00Z",
+     "measured_env": "stability",
+     "gated_env": "dev",
+     "members": [
+      "omnimarket#5482",
+      "omnimarket#5611",
+      "omnimarket#5737",
+      "omnimarket#5998",
+      "omnimarket#6001",
+      "omnimarket#6219",
+      "omnimarket#6371"
+     ],
+     "gated_reading": "unread"
+    }
+   ]
+  },
+  {
+   "ts": "2026-11-17T06:30:00Z",
+   "causes": [
+    {
+     "key": "cause:OmniNode-ai/omnimarket:e69e6df28c8f",
+     "check": "delegation-health-check / Delegation Health Check",
+     "first_seen": "2026-11-17T02:20:00Z",
+     "measured_env": "stability",
+     "gated_env": "dev",
+     "members": [
+      "omnimarket#5482",
+      "omnimarket#5611",
+      "omnimarket#5737",
+      "omnimarket#5998",
+      "omnimarket#6001",
+      "omnimarket#6219",
+      "omnimarket#6371"
+     ],
+     "gated_reading": "unread"
+    }
+   ]
+  },
+  {
+   "ts": "2026-11-17T07:30:00Z",
+   "causes": [
+    {
+     "key": "cause:OmniNode-ai/omnimarket:e69e6df28c8f",
+     "check": "delegation-health-check / Delegation Health Check",
+     "first_seen": "2026-11-17T02:20:00Z",
+     "measured_env": "stability",
+     "gated_env": "dev",
+     "members": [
+      "omnimarket#5482",
+      "omnimarket#5611",
+      "omnimarket#5737",
+      "omnimarket#5998",
+      "omnimarket#6001",
+      "omnimarket#6219",
+      "omnimarket#6371"
+     ],
+     "gated_reading": "healthy"
+    }
+   ]
+  },
+  {
+   "ts": "2026-11-17T09:30:00Z",
+   "causes": [
+    {
+     "key": "cause:OmniNode-ai/omnimarket:e69e6df28c8f",
+     "check": "delegation-health-check / Delegation Health Check",
+     "first_seen": "2026-11-17T02:20:00Z",
+     "measured_env": "stability",
+     "gated_env": "dev",
+     "members": [
+      "omnimarket#5482",
+      "omnimarket#5611",
+      "omnimarket#5737",
+      "omnimarket#5998",
+      "omnimarket#6001",
+      "omnimarket#6219",
+      "omnimarket#6371"
+     ],
+     "gated_reading": "healthy"
+    }
+   ]
+  },
+  {
+   "ts": "2026-11-17T11:40:00Z",
+   "causes": [
+    {
+     "key": "cause:OmniNode-ai/omnimarket:e69e6df28c8f",
+     "check": "delegation-health-check / Delegation Health Check",
+     "first_seen": "2026-11-17T02:20:00Z",
+     "measured_env": "stability",
+     "gated_env": "dev",
+     "members": [
+      "omnimarket#5482",
+      "omnimarket#5611",
+      "omnimarket#5737",
+      "omnimarket#5998",
+      "omnimarket#6001",
+      "omnimarket#6219",
+      "omnimarket#6371"
+     ],
+     "gated_reading": "healthy"
+    }
+   ]
+  }
+ ]
+}

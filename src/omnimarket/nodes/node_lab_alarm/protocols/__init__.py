@@ -168,12 +168,40 @@ class ProtocolProjectionNewestReader(Protocol):
         ...
 
 
+class ContainerUnreadableError(Exception):
+    """Docker could not answer, the container is absent, or the answer is not ``<int> <status>``."""
+
+
+class RestartBoundsUnreadableError(Exception):
+    """The lane manifest is missing or unparsable, the lane is unknown, a restart bound is invalid, or the lane declares none."""
+
+
+class ProtocolRestartBoundSource(Protocol):
+    def bounds(self) -> dict[str, int]:
+        """Each declared container's restart bound, keyed by container name, or raise RestartBoundsUnreadableError."""
+        ...
+
+
+class ProtocolContainerRestartReader(Protocol):
+    def read(self, container: str, timeout: float) -> tuple[int, str]:
+        """The container's restart count and status, or raise ContainerUnreadableError."""
+        ...
+
+
 class ProtocolAlarmDelivery(Protocol):
     def handle(
         self, request: ModelLabAlarmDeliveryRequest
     ) -> ModelLabAlarmDeliveryResult:
         """Deliver the alarms one condition read (node_lab_alarm_deliver_effect), or raise ValueError or OSError."""
         ...
+
+
+class ProtocolDigestStore(Protocol):
+    def load(self) -> dict[str, Any]:
+        """The held digest days (``pending``, ``sent``), empty when there is none; raises ValueError or OSError."""
+        ...
+
+    def save(self, state: Mapping[str, Any]) -> None: ...
 
 
 class CensusUnreadableError(Exception):
@@ -227,6 +255,7 @@ class ProtocolRunRecordReader(Protocol):
 __all__ = [
     "CanaryRunsUnreadableError",
     "CensusUnreadableError",
+    "ContainerUnreadableError",
     "EffectsGroupReadError",
     "GroupNeverCommittedError",
     "GroupUnreadableError",
@@ -241,7 +270,9 @@ __all__ = [
     "ProtocolAlarmDelivery",
     "ProtocolCanaryRunSource",
     "ProtocolCensusSource",
+    "ProtocolContainerRestartReader",
     "ProtocolDeliveredShaSource",
+    "ProtocolDigestStore",
     "ProtocolEffectsGroupReader",
     "ProtocolGroupLagReader",
     "ProtocolGrowthStreakStore",
@@ -254,12 +285,14 @@ __all__ = [
     "ProtocolManifestCache",
     "ProtocolManifestSource",
     "ProtocolProjectionNewestReader",
+    "ProtocolRestartBoundSource",
     "ProtocolRunRecordReader",
     "ProtocolRunRecordStore",
     "ProtocolSampleStore",
     "ReceiptAbsentError",
     "ReceiptMalformedError",
     "ReceiptSurfaceUnreadableError",
+    "RestartBoundsUnreadableError",
     "RunRecordUnreadableError",
     "RunRecordUnwritableError",
     "ShaUnresolvedError",
