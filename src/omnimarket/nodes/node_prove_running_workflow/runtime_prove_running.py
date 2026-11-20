@@ -55,17 +55,17 @@ from omnimarket.nodes.node_prove_running_workflow.handlers import (
     HandlerProveRunningRows,
     HandlerProveRunningStarter,
 )
-from omnimarket.nodes.node_prove_running_workflow.handlers.handler_integration_projection_reader import (
-    IntegrationBatchRefusedError,
-    read_integration_batch,
-)
-from omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_hosts import (
-    group_by_host,
-)
 from omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_line_rows import (
     write_line_row,
 )
-from omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_merge_sha import (
+from omnimarket.nodes.node_prove_running_workflow.handlers.integration_projection_reader import (
+    IntegrationBatchRefusedError,
+    read_integration_batch,
+)
+from omnimarket.nodes.node_prove_running_workflow.handlers.prove_running_hosts import (
+    group_by_host,
+)
+from omnimarket.nodes.node_prove_running_workflow.handlers.prove_running_merge_sha import (
     CliMergeShaResolver,
 )
 from omnimarket.nodes.node_prove_running_workflow.models.model_prove_running import (

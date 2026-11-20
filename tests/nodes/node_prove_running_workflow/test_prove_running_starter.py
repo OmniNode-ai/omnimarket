@@ -188,7 +188,7 @@ SHA = "270e510aaf9da7fb52ba45df4ede46af2444b83c"
 
 
 def test_parse_merge_sha_reads_the_verbs_json_line() -> None:
-    from omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_merge_sha import (
+    from omnimarket.nodes.node_prove_running_workflow.handlers.prove_running_merge_sha import (
         parse_merge_sha,
     )
 
@@ -200,7 +200,7 @@ def test_parse_merge_sha_reads_the_verbs_json_line() -> None:
 
 
 def test_parse_merge_sha_reads_a_bare_sha_and_refuses_the_rest() -> None:
-    from omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_merge_sha import (
+    from omnimarket.nodes.node_prove_running_workflow.handlers.prove_running_merge_sha import (
         parse_merge_sha,
     )
 
