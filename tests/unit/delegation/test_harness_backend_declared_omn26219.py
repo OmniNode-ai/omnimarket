@@ -105,3 +105,21 @@ def test_harness_backend_declared_control_the_scan_finds_a_planted_literal(
     planted = tmp_path / "handler.py"
     planted.write_text('MODEL = "glm-5.3-flash"\n')
     assert re.search(r"glm-5|codex-account", planted.read_text()) is not None
+
+
+@pytest.mark.parametrize(
+    "topic",
+    [
+        "onex.evt.omnimarket.delegation-harness-completed.v1",
+        "onex.evt.omnimarket.delegation-harness-attempt-recorded.v1",
+    ],
+)
+def test_node_llm_delegation_call_effect_declares_harness_output_topic(
+    topic: str,
+) -> None:
+    """The harness terminal and the per-attempt cost record are declared outputs of the node."""
+    import yaml
+
+    contract = yaml.safe_load((NODE_SRC / "contract.yaml").read_text())
+    assert topic in contract["event_bus"]["publish_topics"]
+    assert topic in contract["externally_consumed_topics"]

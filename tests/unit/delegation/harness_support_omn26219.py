@@ -21,6 +21,7 @@ from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     ModelDelegationBackendConfig,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_harness_backend_call import (
+    HarnessExitCause,
     ModelHarnessAttemptRecord,
     ModelHarnessBackendCallRequest,
     ModelHarnessGateVerdict,
@@ -66,7 +67,7 @@ def call_request(
 def receipt(
     answer: str = "",
     *,
-    cause: str = "completed",
+    cause: HarnessExitCause = "completed",
     wall: float = 1.5,
     cost: Decimal | None = None,
 ) -> ModelHarnessRunReceipt:
@@ -76,7 +77,7 @@ def receipt(
         tokens_out=0 if cause != "completed" else 30,
         cost_usd=cost,
         wall_seconds=wall,
-        exit_cause=cause,  # type: ignore[arg-type]
+        exit_cause=cause,
     )
 
 
