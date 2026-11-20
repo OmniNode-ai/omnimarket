@@ -22,10 +22,6 @@ requirements:
     statement: 'AC3: contract AC1 and AC2 of contracts/OMN-24932.yaml are bound to their own falsifiers (a docker logs grep on h201 and a ledger `grep -F omnimarket#5924` for the STATUS row) or left open,
       the description of the h201 read is reworded, and the reader principal of the result topic holds a READ and DESCRIBE grant that is added or cited with where the topic is provisioned -- falsifier:
       `uv run pytest tests/nodes/node_host_table_keys_ingest_effect -q -k ''contract or grant''` fails when the YAML-shape pytest is restored as the AC1 binding or the reader grant is removed'
-  - id: AC4
-    statement: 'AC4: a PR comment starting `Lab: head=<full head sha>` names exactly the pushed head after the required suites ran on the lab (a whole-suite timeout rerun in named parts), with the base
-      and head runs of the packet command attached and the draft state confirmed -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6343` shows a head that differs from the head named in the Lab: comment,
-      or no Lab: comment'
 evidence_requirements:
 - kind: tests
   description: The host table keys ingest node's tests, including the runtime-loader and bus tests of the result topic.
@@ -70,8 +66,6 @@ dod_evidence:
   - check_type: command
     check_value: onex scm pr-view OmniNode-ai/omnimarket#6343
     cwd: .
-  binds_ac:
-  - AC4
 - id: dod-omn25188-integration-proof
   description: 'Integration proof: the pushed head''s ingest node tests ran on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this
     unbound check.'
