@@ -21,7 +21,7 @@ input_model:
 output_model:
   name: ModelEligibility
   module: omnimarket.nodes.node_sprint_closer_effect.models.model_sprint_closer
-  description: The verdict for one ticket; the action and comment are rendered from it by HandlerSprintCloser.
+  description: The verdict for one ticket; the action and comment are rendered from it by SprintCloserDecision.
 handler:
   module: omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer_eligibility
   class: HandlerSprintCloserEligibility

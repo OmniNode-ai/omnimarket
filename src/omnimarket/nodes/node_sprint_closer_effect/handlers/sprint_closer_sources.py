@@ -19,9 +19,9 @@ from pathlib import Path
 from typing import Protocol, cast
 
 from omnimarket.models.ticket_write_io import ModelTicketWriteRequest
-from omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer import (
+from omnimarket.nodes.node_sprint_closer_effect.handlers.sprint_closer_decision import (
     FINGERPRINT_PREFIX,
-    HandlerSprintCloser,
+    SprintCloserDecision,
 )
 from omnimarket.nodes.node_sprint_closer_effect.models.model_sprint_closer import (
     EnumCheckStatus,
@@ -377,7 +377,7 @@ class LiveSprintCloserSources:
             checks=checks,
             seen_running=read_seen_running(ticket_id, self.ledger_read_argv),
         )
-        decision = HandlerSprintCloser(plan.actor, last_fingerprint(bodies)).handle(
+        decision = SprintCloserDecision(plan.actor, last_fingerprint(bodies)).handle(
             evidence
         )
         commented = False

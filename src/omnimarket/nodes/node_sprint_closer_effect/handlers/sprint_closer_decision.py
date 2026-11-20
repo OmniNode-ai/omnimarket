@@ -63,7 +63,7 @@ def render_comment(
     return "\n".join(lines)
 
 
-class HandlerSprintCloser:
+class SprintCloserDecision:
     """handle(evidence) -> decision, given the actor line and the last fingerprint the closer wrote on the ticket."""
 
     def __init__(self, actor: str, last_fingerprint: str | None = None) -> None:

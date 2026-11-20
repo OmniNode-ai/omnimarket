@@ -7,11 +7,11 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer import (
-    HandlerSprintCloser,
-)
 from omnimarket.nodes.node_sprint_closer_effect.handlers.handler_sprint_closer_eligibility import (
     decide_eligibility,
+)
+from omnimarket.nodes.node_sprint_closer_effect.handlers.sprint_closer_decision import (
+    SprintCloserDecision,
 )
 from omnimarket.nodes.node_sprint_closer_effect.handlers.sprint_closer_sources import (
     last_fingerprint,
@@ -118,7 +118,7 @@ def test_no_criteria_is_left() -> None:
 
 
 def test_collaborator_ticket_gets_evidence_comment_not_done() -> None:
-    d = HandlerSprintCloser("t (m)").handle(
+    d = SprintCloserDecision("t (m)").handle(
         _ev(is_collaborator=True, assignee="Someone Else")
     )
     assert d.action is EnumCloserAction.COMMENT_EVIDENCE
@@ -128,14 +128,14 @@ def test_collaborator_ticket_gets_evidence_comment_not_done() -> None:
 
 def test_owner_ticket_is_set_done_and_unchanged_reason_is_not_recommented() -> None:
     assert (
-        HandlerSprintCloser("t (m)").handle(_ev()).action is EnumCloserAction.SET_DONE
+        SprintCloserDecision("t (m)").handle(_ev()).action is EnumCloserAction.SET_DONE
     )
     left = _ev(criteria=("AC1", "AC2", "AC3"))
-    first = HandlerSprintCloser("t (m)").handle(left)
+    first = SprintCloserDecision("t (m)").handle(left)
     assert first.action is EnumCloserAction.COMMENT_MISSING
     assert first.comment
     assert last_fingerprint([first.comment]) == first.fingerprint
-    again = HandlerSprintCloser("other (m)", first.fingerprint).handle(left)
+    again = SprintCloserDecision("other (m)", first.fingerprint).handle(left)
     assert again.action is EnumCloserAction.NO_CHANGE
     assert again.comment is None
 
