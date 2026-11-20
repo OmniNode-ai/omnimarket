@@ -16,6 +16,7 @@ from omnimarket.nodes.node_private_hosted_minutes_watch_effect.handlers import (
     HandlerPrivateHostedMinutesWatch,
 )
 from omnimarket.nodes.node_private_hosted_minutes_watch_effect.models import (
+    ModelHostedMinutesOverlay,
     ModelHostedMinutesWatchRequest,
     ModelHostedMinutesWatchResult,
 )
@@ -74,6 +75,12 @@ def test_golden_chain_billing_to_alert_and_status_row(tmp_path: Path) -> None:
         ledger_appender=appender,
         alert_sender=sender,
         clock=lambda: datetime(2026, 10, 19, 6, 0, tzinfo=UTC),
+        visibility_reader=lambda _org, repo: (
+            "private" if repo.startswith("private-") else "public"
+        ),
+        overlay_loader=lambda: ModelHostedMinutesOverlay(
+            included_minutes=50, alert_fraction=0.5
+        ),
     )
     request = ModelHostedMinutesWatchRequest(
         day=date(2026, 10, 18), state_dir=tmp_path, ledger=tmp_path / "ledger.md"
@@ -108,6 +115,12 @@ def test_error_chain_billing_failure_records_heartbeat(tmp_path: Path) -> None:
         ledger_appender=lambda _ledger, _row: (True, ""),
         alert_sender=lambda _text: "sent",
         clock=lambda: datetime(2026, 10, 19, 6, 0, tzinfo=UTC),
+        visibility_reader=lambda _org, repo: (
+            "private" if repo.startswith("private-") else "public"
+        ),
+        overlay_loader=lambda: ModelHostedMinutesOverlay(
+            included_minutes=50, alert_fraction=0.5
+        ),
     )
     with pytest.raises(RuntimeError, match="HTTP 403"):
         handler.handle(

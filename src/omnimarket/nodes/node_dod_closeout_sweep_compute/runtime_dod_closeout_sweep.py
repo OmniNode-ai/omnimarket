@@ -8,8 +8,14 @@
     python -m omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep prs OMN-1 OMN-2 \\
         [--wait-s 60] [--deadline ISO8601] [--overlay overlay.yaml]
 
+    python -m omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep read-bundle \\
+        --bundle BUNDLE.json
     python -m omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep zero-flip \\
         --summary RUN.json --stamp 2026-11-08T22:00:00Z [--rows-file ROWS.txt]
+
+``read-bundle`` parses a bundle file (``-`` for stdin) with ModelScopeBundle, the model the
+``bundle`` command validates its output with before it prints anything: exit 0 prints the
+bundle, exit 2 names the file and the field that failed (OMN-26223).
 
 ``zero-flip`` prints the typed reading of a run that flipped nothing and writes its alarm row;
 it exits 0 for a zero-flip run (OMN-20718), 2 only for an unreadable summary.
@@ -37,6 +43,8 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+
+from pydantic import BaseModel, JsonValue, ValidationError
 
 from omnimarket.handlers.closeout_boundary_reads import (
     read_text_file,
@@ -76,22 +84,48 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_rule
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (
     HandlerDodCloseoutSweep,
 )
+from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_scope_bundle import (
+    ModelScopeCandidateRow,
+    ModelScopeContractStateRow,
+    ModelScopePrStateRow,
+    ModelScopeTextStateRow,
+    parse_scope_bundle,
+    parse_scope_rows,
+)
 
 
-def read_array(path: Path, name: str) -> list[dict[str, object]]:
+def read_rows[M: BaseModel](
+    path: Path, name: str, model: type[M]
+) -> list[dict[str, JsonValue]]:
+    """The rows of one input file, each parsed with its model; the original keys pass through.
+
+    A file that is unreadable, not a JSON array or holds a row the model refuses raises
+    ScopeContractError naming the file and the field; no row is coerced to an empty one.
+    """
     try:
         text = read_text_file(path)
     except OSError as exc:
         raise ScopeInputUnreadableError(f"{name} {path}: unreadable: {exc}") from exc
+    rows = parse_scope_rows(text, model, file=f"{name} {path}")
+    return [r.model_dump(exclude_unset=True) for r in rows]
+
+
+def run_read_bundle(args: argparse.Namespace) -> int:
+    """The `read-bundle` command: parse a bundle file with the bundle model, print it or refuse.
+
+    The workflow script cannot import this model, so it reads the bundle through this command:
+    exit 0 prints the validated bundle; exit 2 prints the typed error naming the file and field.
+    """
     try:
-        rows = json.loads(text)
-    except ValueError as exc:
-        raise ScopeInputUnreadableError(f"{name} {path}: not JSON: {exc}") from exc
-    if not isinstance(rows, list):
-        raise ScopeInputUnreadableError(
-            f"{name} {path}: not a JSON array ({type(rows).__name__})"
+        text = (
+            sys.stdin.read() if str(args.bundle) == "-" else read_text_file(args.bundle)
         )
-    return [r if isinstance(r, dict) else {} for r in rows]
+        bundle = parse_scope_bundle(text, file=f"--bundle {args.bundle}")
+    except (ScopeInputUnreadableError, OSError, ValueError) as exc:
+        sys.stderr.write(f"closeout-scope: REFUSED: {exc}\n")
+        return 2
+    sys.stdout.write(bundle.model_dump_json() + "\n")
+    return 0
 
 
 def run_prs(args: argparse.Namespace) -> int:
@@ -125,6 +159,12 @@ def run_prs(args: argparse.Namespace) -> int:
         sys.stderr.write(
             f"closeout-scope: clones not read: {', '.join(result.unread_repositories)}\n"
         )
+    try:
+        for row in result.pr_rows or []:
+            ModelScopePrStateRow.model_validate(row)
+    except ValidationError as exc:
+        sys.stderr.write(f"closeout-scope: REFUSED: pr rows: {exc}\n")
+        return 2
     sys.stdout.write(json.dumps(result.pr_rows) + "\n")
     return 0
 
@@ -193,6 +233,11 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="a clone outside the registry root whose contracts/ also counts (repeatable)",
     )
+    read_bundle = sub.add_parser(
+        "read-bundle",
+        help="parse a bundle file with the bundle model; print it or refuse with the field named",
+    )
+    read_bundle.add_argument("--bundle", type=Path, required=True)
     prs = sub.add_parser("prs", help="merged and open PRs per ticket")
     prs.add_argument("tickets", nargs="+")
     prs.add_argument("--wait-s", type=int, default=60)
@@ -212,6 +257,8 @@ def main(argv: list[str] | None = None) -> int:
         if not STAMP_PATTERN.match(args.stamp):
             parser.error("--stamp must be a zero-padded ledger stamp")
         return run_zero_flip(args)
+    if args.mode == "read-bundle":
+        return run_read_bundle(args)
     if args.mode == "prs":
         if args.wait_s < 0:
             parser.error("--wait-s must not be negative")
@@ -222,9 +269,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--max must be a positive integer")
     try:
         overlay = load_scope_overlay(args.overlay)
-        candidates = read_array(args.candidates, "--candidates")
+        candidates = read_rows(args.candidates, "--candidates", ModelScopeCandidateRow)
         if args.contract_state is not None:
-            contract_state = read_array(args.contract_state, "--contract-state")
+            contract_state = read_rows(
+                args.contract_state, "--contract-state", ModelScopeContractStateRow
+            )
         else:
             home = registry_root_from_environment()
             if not home:
@@ -237,7 +286,7 @@ def main(argv: list[str] | None = None) -> int:
                 for c in candidates
                 if isinstance(c.get("id"), str)
             ]
-        pr_state = read_array(args.pr_state, "--pr-state")
+        pr_state = read_rows(args.pr_state, "--pr-state", ModelScopePrStateRow)
         if candidates and not pr_state:
             raise ScopeInputUnreadableError(
                 f"--pr-state {args.pr_state}: an empty array for {len(candidates)} candidate(s); "
@@ -252,7 +301,9 @@ def main(argv: list[str] | None = None) -> int:
             date="1970-01-01",
             scope_candidates=candidates,
             scope_pr_state=pr_state,
-            scope_text_state=read_array(args.text_state, "--text-state"),
+            scope_text_state=read_rows(
+                args.text_state, "--text-state", ModelScopeTextStateRow
+            ),
             scope_contract_state=contract_state,
             scope_overlay=overlay,
             max_candidates=args.limit,

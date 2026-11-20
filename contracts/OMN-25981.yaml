@@ -1,0 +1,77 @@
+schema_version: 1.0.0
+ticket_id: OMN-25981
+title: Every unowned item past 30 minutes gets one owner lane
+summary: >-
+  node_item_owner_dispatch_effect folds blocked lanes, pending rulings, plan-owner MISSING verdicts and
+  operator-capture asks into one typed item each, places exactly one owner lane per item unowned past the
+  overlay bound through the lane-brief check and the remote-lane runner, writes the state=owned row onto the
+  item, and reads FINDING, UNREAD or OK. It assigns owners only.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn25981-one-owner
+    statement: One owner lane per unowned item, and none for an owned or young item.
+    acceptance:
+      - id: AC1
+        statement: >-
+          AC1: one run of the workflow over a real blocked item places exactly one owner lane for it, and a
+          second run over the same item places none -- falsifier: uv run pytest
+          tests/unit/nodes/node_item_owner_dispatch_effect -q -k one_owner_per_item
+  - id: req-omn25981-reading
+    statement: The unowned reading fails while any item stays unowned past the bound.
+    acceptance:
+      - id: AC2
+        statement: >-
+          AC2: an item that stays unowned past 30 minutes reads unowned and the reading fails (non-zero exit)
+          while any item is unowned, and an item younger than 30 minutes or already owned never reads unowned
+          -- falsifier: uv run pytest tests/unit/nodes/node_item_owner_dispatch_effect -q -k unowned_reading
+  - id: req-omn25981-no-verdict
+    statement: The owner binding never admits or refuses work.
+    acceptance:
+      - id: AC3
+        statement: >-
+          AC3: the owner binding never admits or refuses work: no code path returns a refusal or an admission
+          verdict for a lane, ruling or plan step -- falsifier: uv run pytest
+          tests/unit/nodes/node_item_owner_dispatch_effect -q -k never_admits_or_refuses
+evidence_requirements:
+  - kind: tests
+    description: The node's focused unit tests.
+    command: uv run --frozen pytest tests/unit/nodes/node_item_owner_dispatch_effect -q
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn25981-ac1-one-owner
+    description: Two ticks and two concurrent runs over one blocked item place one lane and append one owner row.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_item_owner_dispatch_effect -q -k one_owner_per_item
+        cwd: .
+  - id: dod-omn25981-ac2-reading
+    description: The reading answers FINDING with a non-zero exit past the bound, UNREAD on an unread source, OK otherwise.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_item_owner_dispatch_effect -q -k unowned_reading
+        cwd: .
+  - id: dod-omn25981-ac3-no-verdict
+    description: No skip, reading or result field names an admission or refusal, and every source event stays an item.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_item_owner_dispatch_effect -q -k never_admits_or_refuses
+        cwd: .
+  - id: dod-omn25981-integration-proof
+    description: Run this pull request's own tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25981 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_item_owner_dispatch_effect -q --no-cov
+        cwd: .
