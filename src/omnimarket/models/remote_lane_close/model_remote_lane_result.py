@@ -72,3 +72,7 @@ class ModelRemoteLaneResult(BaseModel):
     ledger_cells: dict[str, str] = Field(default_factory=dict)
     needs: ModelRemoteLaneNeeds | None = None
     report_text: str = ""
+    findings: tuple[str, ...] = Field(
+        default=(),
+        description="Findings the closing decision records without refusing the lane, such as an unreachable code graph (OMN-24686).",
+    )
