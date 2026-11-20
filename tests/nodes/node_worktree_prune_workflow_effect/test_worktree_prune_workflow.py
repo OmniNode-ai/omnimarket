@@ -241,7 +241,7 @@ def test_contract_declares_the_daily_schedule_the_close_trigger_and_the_alarm_to
 def test_a_host_row_and_its_alarm_are_published_on_the_declared_topics() -> None:
     published: list[tuple[str, dict[str, object]]] = []
 
-    class _Full(_Activity):  # type: ignore[misc,valid-type]
+    class _Full(_Activity):
         def __call__(
             self, target: ModelPruneHostTarget, step_key: str, attempt: int
         ) -> ModelHostPruneResult:
