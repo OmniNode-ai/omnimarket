@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerValidatorWorkflowRuntime is resolved at boot from handler_routing in contract.yaml, by module path, not by a Python import
 """The runtime-constructible entry of node_validator_workflow_orchestrator (OMN-25055).
 
 ``ValidatorWorkflowPipeline`` takes its overlay, reader, contracts, reducer, emitter and gate as
