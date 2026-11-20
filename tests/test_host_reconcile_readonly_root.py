@@ -12,7 +12,7 @@ import errno
 import os
 import socket
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import pytest
 
@@ -37,10 +37,10 @@ def read_only_root(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make creating the lock directory fail the way the lane sandbox does."""
     real_mkdir = Path.mkdir
 
-    def mkdir(self: Path, *args: object, **kwargs: object) -> None:
+    def mkdir(self: Path, *args: Any, **kwargs: Any) -> None:
         if self.name == LOCK_NAME:
             raise OSError(errno.EROFS, os.strerror(errno.EROFS), str(self))
-        real_mkdir(self, *args, **kwargs)  # type: ignore[arg-type]
+        real_mkdir(self, *args, **kwargs)
 
     monkeypatch.setattr(Path, "mkdir", mkdir)
 
