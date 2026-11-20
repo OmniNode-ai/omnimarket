@@ -17,9 +17,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.model_code_graph import ModelFileReferences
+
 
 class EnumCodeGraphQuestion(StrEnum):
-    """The five questions a lookup answers."""
+    """The six questions a lookup answers."""
 
     #: Where a symbol (class or function) is defined.
     DEFINITION = "definition"
@@ -31,6 +33,30 @@ class EnumCodeGraphQuestion(StrEnum):
     EXEMPLAR = "exemplar"
     #: Whether a model of the same field shape exists, whatever its name.
     SAME_SHAPE = "same-shape"
+    #: Which files still use a removed Python symbol or module, from the imports as written.
+    USERS = "users"
+    #: Where a node lives: its directory, contract, metadata, overlay and the workflows that name it.
+    LOCATE = "locate"
+
+
+class EnumRemovalKind(StrEnum):
+    """What a removal took out of a repository."""
+
+    #: A class, function or other name a module (or a package ``__init__``) bound.
+    PYTHON_SYMBOL = "python_symbol"
+    #: A module file or package.
+    PYTHON_MODULE = "python_module"
+
+
+class EnumReferenceForm(StrEnum):
+    """How a file refers to a removed name."""
+
+    DIRECT_IMPORT = "direct-import"
+    ATTRIBUTE_USE = "attribute-use"
+    #: Imported by a package ``__init__``, by ``import x as x``, or listed in the file's ``__all__``.
+    RE_EXPORT = "re-export"
+    STAR_IMPORT = "star-import"
+    IMPORT_MODULE_LITERAL = "import-module-literal"
 
 
 class EnumLookupFault(StrEnum):
@@ -63,6 +89,29 @@ class EnumLookupFallbackReason(StrEnum):
     READ_TIMED_OUT = "read-timed-out"
     #: Any other transport failure (no route, reset, protocol handshake lost).
     UNREACHABLE = "unreachable"
+    #: The question reads the imports as written, which Memgraph does not hold yet.
+    QUESTION_NOT_IN_MEMGRAPH = "question-not-in-memgraph"
+
+
+class EnumNodeFileKind(StrEnum):
+    """The kind of a file that belongs to a node (OMN-26202)."""
+
+    DIRECTORY = "directory"
+    CONTRACT = "contract"
+    METADATA = "metadata"
+    OVERLAY = "overlay"
+    WORKFLOW = "workflow"
+
+
+class ModelNodeFile(BaseModel):
+    """One canonical repository-relative path that belongs to one node."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The node's directory name (``node_code_graph_effect``).
+    node: str = Field(min_length=1)
+    kind: EnumNodeFileKind
+    path: str = Field(min_length=1)
 
 
 class ModelSymbolDefinition(BaseModel):
@@ -118,6 +167,10 @@ class ModelCodeGraphVersion(BaseModel):
     shapes: tuple[ModelShapeEntry, ...] = ()
     imports: tuple[ModelImportRelation, ...] = ()
     exemplars: tuple[ModelExemplarNode, ...] = ()
+    #: Each file's imports as written, which a ``users`` lookup matches against a dotted identity.
+    references: tuple[ModelFileReferences, ...] = ()
+    #: Where each node lives and which non-Python files belong to it (OMN-26202).
+    node_files: tuple[ModelNodeFile, ...] = ()
 
 
 class ModelCodeGraphLookupSettings(BaseModel):
@@ -146,6 +199,20 @@ class ModelCodeGraphLookupCommand(BaseModel):
     archetype: str | None = None
     #: EXEMPLAR: words that rank the nodes of the archetype (a node whose name holds one ranks first).
     hint: str | None = None
+    #: USERS: what the removal took out, and the dotted identity of it (``a.mod.f``, or ``a.mod``).
+    removal_kind: EnumRemovalKind | None = None
+    identity: str | None = None
+    #: USERS: the names ``from <module> import *`` exposed in the base revision (the statically known
+    #: list of the removal); ``None`` means no list, and a star import then matches nothing.
+    star_export_list: tuple[str, ...] | None = None
+    #: USERS: the head revision's literal ``__all__`` still lists the removed name, so a star import
+    #: fails on the head whether or not the file uses the name.
+    head_all_lists_name: bool = False
+    #: USERS: dotted submodules (``a.mod``) whose name the package binds to another object in the base
+    #: or the head revision; ``from a import mod`` then does not reach the submodule.
+    rebound_submodules: tuple[str, ...] = ()
+    #: LOCATE: a node name, a contract path or a workflow path.
+    target: str | None = None
     #: The commit to answer as of; absent means the head, the newest stored version.
     as_of: str | None = None
     fault: EnumLookupFault = EnumLookupFault.NONE
@@ -158,6 +225,9 @@ class ModelCodeGraphLookupCommand(BaseModel):
             EnumCodeGraphQuestion.IMPORTERS: bool(self.path),
             EnumCodeGraphQuestion.REACH: bool(self.paths),
             EnumCodeGraphQuestion.EXEMPLAR: bool(self.archetype),
+            EnumCodeGraphQuestion.USERS: bool(self.identity)
+            and self.removal_kind is not None,
+            EnumCodeGraphQuestion.LOCATE: bool(self.target),
         }[self.question]
         if not needed:
             raise ValueError(f"the {self.question.value} question lacks its argument")
@@ -183,6 +253,8 @@ class ModelLookupMatch(BaseModel):
     name: str | None = None
     line: int | None = None
     detail: str | None = None
+    #: USERS: the reference form the file matched.
+    reference_form: EnumReferenceForm | None = None
 
 
 class ModelCodeGraphLookupResult(BaseModel):
