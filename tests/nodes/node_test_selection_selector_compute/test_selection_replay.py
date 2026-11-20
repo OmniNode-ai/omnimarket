@@ -50,7 +50,7 @@ from scripts.ci.detect_test_paths import compute_selection
 pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-RECEIPT_PATH = REPO_ROOT / "config" / "test_selection_baseline_receipt.json"
+RECEIPT_PATH = REPO_ROOT / "config" / "test_selection_replay_receipt.json"
 TREE_ID = "0123456789abcdef0123456789abcdef01234567"
 CATEGORIES = {"pyproject.toml": "pyproject", "uv.lock": "lock", "scripts/": "scripts"}
 

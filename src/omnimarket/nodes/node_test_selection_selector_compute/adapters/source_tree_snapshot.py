@@ -151,15 +151,13 @@ def materialize_tree(snapshot: ModelTreeSnapshot, root: Path) -> None:
         lines += [_relative_import(package, target) for target in entry.relative_refs]
         if entry.names:
             lines.append("# " + " ".join(entry.names))
-        target_path = root / rel
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        text = "\n".join(lines) + "\n"
-        target_path.write_text(text, encoding="utf-8")  # node-purity-ok: adapter
+        stub = root / rel
+        stub.parent.mkdir(parents=True, exist_ok=True)
+        stub.write_text("\n".join(lines) + "\n", encoding="utf-8")
     for rel, names in snapshot.yaml_names.items():
-        target_path = root / rel
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        text = "# " + " ".join(names) + "\n"
-        target_path.write_text(text, encoding="utf-8")  # node-purity-ok: adapter
+        stub = root / rel
+        stub.parent.mkdir(parents=True, exist_ok=True)
+        stub.write_text("# " + " ".join(names) + "\n", encoding="utf-8")
 
 
 def snapshot_bytes(snapshot: ModelTreeSnapshot) -> bytes:
@@ -186,5 +184,4 @@ def read_snapshot_file(
 
 
 def load_adjacency(path: Path) -> ModelAdjacencyMap:
-    text = path.read_text("utf-8")  # node-purity-ok: adapter
-    return ModelAdjacencyMap.model_validate(yaml.safe_load(text))
+    return ModelAdjacencyMap.model_validate(yaml.safe_load(_SOURCE.read_text(path)))
