@@ -264,11 +264,14 @@ jobs:
           DECIDED_VERSION: ${{ needs.decide.outputs.version }}
         run: |
           set -euo pipefail
-          python3 src/omnimarket/handlers/release_relock.py strip-sources
+          # release_relock.py is stdlib-only; load it by path so the package's
+          # other handlers (and their dependencies) are not imported.
+          RR="import sys, importlib.util as u; s = u.spec_from_file_location('release_relock', 'src/omnimarket/handlers/release_relock.py'); m = u.module_from_spec(s); sys.modules['release_relock'] = m; s.loader.exec_module(m); from pathlib import Path"
+          python3 -c "$RR; m.strip_pyproject(Path('.'))"
           uv lock
           git checkout -- pyproject.toml
-          python3 src/omnimarket/handlers/release_relock.py write-marker --version "$DECIDED_VERSION"
-          python3 src/omnimarket/handlers/release_relock.py verify
+          DECIDED_VERSION="$DECIDED_VERSION" python3 -c "$RR; import os; m.write_marker(Path('.'), os.environ['DECIDED_VERSION'])"
+          python3 -c "$RR; raise SystemExit(m.verify(Path('.')))"
           git config user.name "onexbot-occ-writer[bot]"
           git config user.email "onexbot-occ-writer[bot]@users.noreply.github.com"
           git add uv.lock .release-commit.json

@@ -155,13 +155,13 @@ def test_release_relock_marker_round_trips(tmp_path: Path) -> None:
     assert json.loads((tmp_path / rr.MARKER_NAME).read_text())["version"] == "0.4.324"
 
 
-def test_release_relock_cli_verify_exit_codes(tmp_path: Path) -> None:
+def test_release_relock_verify_exit_codes(tmp_path: Path) -> None:
     (tmp_path / "uv.lock").write_text(DEV_LOCK)
-    assert rr.main(["verify", "--root", str(tmp_path)]) == 0
+    assert rr.verify(tmp_path) == 0
     (tmp_path / rr.MARKER_NAME).write_text(rr.marker_text("0.4.324"))
-    assert rr.main(["verify", "--root", str(tmp_path)]) == 1
+    assert rr.verify(tmp_path) == 1
     (tmp_path / "uv.lock").write_text(RELEASE_LOCK)
-    assert rr.main(["verify", "--root", str(tmp_path)]) == 0
+    assert rr.verify(tmp_path) == 0
 
 
 # --- where the release commit is built ---------------------------------------
@@ -198,11 +198,13 @@ def test_release_relock_step_relocks_with_uv_and_verifies_the_lock(
     run = _steps(workflow, "release")[_index(workflow, "release", "release_relock.py")][
         "run"
     ]
-    assert "release_relock.py strip-sources" in run
+    assert "m.strip_pyproject" in run
     assert "uv lock" in run
     assert "git checkout -- pyproject.toml" in run
-    assert "release_relock.py verify" in run
-    assert run.index("strip-sources") < run.index("uv lock") < run.index("verify")
+    assert "m.verify(" in run
+    assert (
+        run.index("m.strip_pyproject") < run.index("uv lock") < run.index("m.verify(")
+    )
 
 
 def test_release_relock_the_tag_names_the_release_commit_not_dev_head(

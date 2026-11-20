@@ -11,15 +11,15 @@ The ``release`` job of ``.github/workflows/release-cut.yml`` is the one step
 that builds a release commit (the tag names it, ``sync-main`` fast-forwards main
 to it). It runs, in order::
 
-    python3 src/omnimarket/handlers/release_relock.py strip-sources   # drop the three [tool.uv.sources] pins
+    strip_pyproject(root)             # drop the three [tool.uv.sources] pins
     uv lock                           # resolve them from the index
     git checkout -- pyproject.toml    # restore the dev-tag pins byte for byte
-    python3 src/omnimarket/handlers/release_relock.py verify          # the lock reads registry for all three
+    verify(root)                      # the lock reads registry for all three
 
-and commits ``uv.lock`` plus the marker file, so ``pyproject.toml`` (the only
+and commits ``uv.lock`` plus the marker file (``write_marker``), so ``pyproject.toml`` (the only
 file the Internal Sibling Pins check reads) is identical to dev and the check's
 finding codes for dev stand. The reopen-dev job checks out ``dev`` and never
-calls this script, so dev and the reopen-dev commit keep their dev-tag locks.
+calls this module, so dev and the reopen-dev commit keep their dev-tag locks.
 
 ``verify`` is also the test of the pair rule: with the marker present the three
 siblings must read ``registry``; without it none of them may.
@@ -27,7 +27,6 @@ siblings must read ``registry``; without it none of them may.
 
 from __future__ import annotations
 
-import argparse
 import json
 import re
 import sys
@@ -107,41 +106,20 @@ def is_release_commit(root: Path) -> bool:
     return (root / MARKER_NAME).is_file()
 
 
-def _cmd_strip(root: Path) -> int:
+def strip_pyproject(root: Path) -> None:
     path = root / "pyproject.toml"
     path.write_text(strip_sources(path.read_text()))
-    return 0
 
 
-def _cmd_marker(root: Path, version: str) -> int:
+def write_marker(root: Path, version: str) -> None:
     (root / MARKER_NAME).write_text(marker_text(version))
-    return 0
 
 
-def _cmd_verify(root: Path) -> int:
+def verify(root: Path) -> int:
+    """Return 1 and name each finding on stderr when the lock breaks the pair rule."""
     release = is_release_commit(root)
     findings = check_lock((root / "uv.lock").read_text(), release_commit=release)
     kind = "release" if release else "non-release"
     for finding in findings:
         sys.stderr.write(f"{finding.code}: {finding.package} ({kind} commit)\n")
     return 1 if findings else 0
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("strip-sources", "verify", "write-marker"):
-        cmd = sub.add_parser(name)
-        cmd.add_argument("--root", default=".", type=Path)
-        if name == "write-marker":
-            cmd.add_argument("--version", required=True)
-    args = parser.parse_args(argv)
-    if args.command == "strip-sources":
-        return _cmd_strip(args.root)
-    if args.command == "write-marker":
-        return _cmd_marker(args.root, args.version)
-    return _cmd_verify(args.root)
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
