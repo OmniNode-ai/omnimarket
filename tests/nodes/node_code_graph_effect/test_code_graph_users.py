@@ -10,6 +10,7 @@ exists is still found.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -22,6 +23,10 @@ from omnimarket.models.model_code_graph_lookup import (
     EnumReferenceForm,
     EnumRemovalKind,
     ModelCodeGraphLookupCommand,
+    ModelCodeGraphLookupResult,
+)
+from omnimarket.nodes.node_code_graph_effect.adapters.memgraph_version_store import (
+    MemgraphVersionStore,
 )
 from omnimarket.nodes.node_code_graph_effect.adapters.version_stores import (
     InMemoryCommitClock,
@@ -128,9 +133,9 @@ def one(
     expected: list[tuple[str, int, EnumReferenceForm]],
     *,
     extra: dict[str, str] | None = None,
-    **options: object,
+    **options: Any,
 ) -> Case:
-    return Case({B: source, **(extra or {})}, kind, identity, expected, **options)  # type: ignore[arg-type]
+    return Case({B: source, **(extra or {})}, kind, identity, expected, **options)
 
 
 CASES: dict[str, Case] = {
@@ -306,12 +311,12 @@ def test_users_case(name: str) -> None:
     assert users(case) == case.expected, name
 
 
-def _command(**options: object) -> ModelCodeGraphLookupCommand:
+def _command(**options: Any) -> ModelCodeGraphLookupCommand:
     return ModelCodeGraphLookupCommand(
         correlation_id=CORRELATION,
         question=EnumCodeGraphQuestion.USERS,
         repo=REPO,
-        **options,  # type: ignore[arg-type]
+        **options,
     )
 
 
@@ -328,14 +333,14 @@ def test_users_is_answered_from_the_file_store_never_from_memgraph() -> None:
     store = InMemoryVersionStore(retention_versions=2)
     store.put(version("c1", case.files))
 
-    def fallback(command: ModelCodeGraphLookupCommand):  # type: ignore[no-untyped-def]
+    def fallback(command: ModelCodeGraphLookupCommand) -> ModelCodeGraphLookupResult:
         return CodeGraphLookup(store, InMemoryCommitClock({})).handle(command)
 
-    def refuse() -> None:
+    def refuse() -> MemgraphVersionStore:
         raise AssertionError("the users question must not open Memgraph")
 
     result = MemgraphFirstLookup(
-        open_store=refuse,  # type: ignore[arg-type]
+        open_store=refuse,
         fallback=fallback,
     ).handle(_command(removal_kind=SYMBOL, identity="a.mod.f"))
     assert result.status == "found"
