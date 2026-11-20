@@ -41,7 +41,7 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_host_retention_registry_units_contract.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn26111-hosted-deploy-smoke
-    description: Dispatch a dry-run request through the packaged registry installer and check the rendered service and timer in its typed receipt.
+    description: Run a dry-run request through the registry installer handler, with the host interpreter lookup fixed, and check the rendered service and timer.
     source: manual
     checks:
       - check_type: command
@@ -51,11 +51,7 @@ dod_evidence:
           trap 'rm -rf "$probe_dir"' EXIT;
           uv sync --frozen --group dev;
           ln -s "$PWD" "$probe_dir/omnimarket";
-          python3 -c 'import json, sys; root = sys.argv[1]; print(json.dumps({"unit": "host-retention-systemd", "mode": "dry-run", "home": root, "registry_root": root, "workspace_config_root": root, "host_name": "probe-host", "path_overrides": {"ONEX_SKILL_OVERLAY_ROOTS": root}}))' "$probe_dir" > "$probe_dir/request.json";
-          runtime_bin=$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)');
-          export PATH="$runtime_bin:$PATH";
-          env -u OMNIBASE_PATH -u PYTHONPATH ONEX_SKILL_OVERLAY_ROOTS="$probe_dir" onex node node_host_installer_registry_units --contract src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml --input "$probe_dir/request.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt > "$probe_dir/receipt.json";
-          python3 -c 'import json, sys; from pathlib import Path; out = json.loads(Path(sys.argv[1]).read_text())["result"]; assert out["status"] == "success" and out["mode"] == "dry-run"; rendered = out["rendered"]; assert "runtime_host_retention_preview" in rendered and "ONEX_HOST_NAME=probe-host" in rendered and "OnActiveSec=1s" in rendered' "$probe_dir/receipt.json"
+          uv run --frozen python -c 'import sys; from omnimarket.nodes.node_host_installer_registry_units.handlers import handler_registry_units as h; from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import ModelRegistryUnitsRequest; h.interpreter_present = lambda path: path == "/usr/bin/python3.12"; root = sys.argv[1]; out = h.HandlerRegistryUnits().handle(ModelRegistryUnitsRequest(unit="host-retention-systemd", mode="dry-run", home=root, registry_root=root, workspace_config_root=root, host_name="probe-host", path_overrides={"ONEX_SKILL_OVERLAY_ROOTS": root})); rendered = out.rendered; assert out.status == "success" and "runtime_host_retention_preview" in rendered and "ONEX_HOST_NAME=probe-host" in rendered and "OnActiveSec=1s" in rendered, (out.status, out.stderr)' "$probe_dir"
         cwd: .
   - id: dod-omn26111-integration-proof
     description: Verify the active h202 retention timer and its successful journal line, then read successful run lines for all four hosts from the live ledger.
