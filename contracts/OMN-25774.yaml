@@ -41,7 +41,7 @@ dod_evidence:
     binds_ac: [AC2]
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest -q tests/nodes/node_github_job_log_probe_effect/test_golden_chain_job_log_probe.py::test_two_no_terminals_raise_one_owned_alarm_and_reset_on_reply
+        check_value: uv run --frozen pytest -q tests/nodes/node_github_job_log_probe_effect/test_golden_chain_job_log_probe.py::test_two_failed_reads_raise_one_owned_alarm_and_reset_on_reply
         cwd: .
   - id: dod-omn25774-ac3-recovery
     description: After two unanswered reads and one owned alarm, the probe accepts a nonempty, correlated job log over the SCM bus and records a recovery STATUS with latency below 60 seconds. The hosted test uses an in-memory gateway responder.
