@@ -40,13 +40,12 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: dod-omn26092-ac1-report
-    description: The red-main alarm contract declares its overlay and its terminal event; the lane report names the install and the last run.
+    description: The red-main alarm contract declares its overlay, its terminal event and its 15-minute schedule, and the node's tests read them through the dispatch engine; the lane report names the install and the last run.
     source: manual
     binds_ac: [AC1]
     checks:
-      - check_type: command
-        check_value: >-
-          bash -o pipefail -c 'grep -Ec "^overlay:|file_env: ONEX_RED_MAIN_ALARM_OVERLAY|^terminal_event: onex.evt.omnimarket.red-main-alarm-completed.v1|^      interval_seconds: 900" src/omnimarket/nodes/node_red_main_alarm_effect/contract.yaml | grep -Fx 4'
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py -q --no-cov -k 'own_fifteen_minute_schedule or runtime_tick_to_the_handler'
         cwd: .
   - id: dod-omn26092-ac2-row-shape
     description: The row the node appends matches the alarm grep and carries an owner cell.
