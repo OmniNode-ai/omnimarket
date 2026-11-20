@@ -51,10 +51,17 @@ dod_evidence:
           grep -Fx '    - onex.evt.omnimarket.ticket-contract-written.v1'
           src/omnimarket/nodes/node_linear_ticket_write_effect/contract.yaml
         cwd: .
+  - id: dod-draft-readback-parse-normalization
+    description: The hosted part of AC4. With synthetic Linear responses that normalize the Markdown, the readback parses and a drifted body is refused. The live dev-lane round trip stays open in dod-draft-live-linear-integration-proof, a local Done gate item.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest src/omnimarket/nodes/node_create_ticket/tests/test_draft_create.py -q -k draft_create_refuses_drift_after_assumed_linear_markdown_normalization
+        cwd: .
   - id: dod-draft-live-linear-integration-proof
     description: AC4 remains open. The orchestrator must arrange a session with Linear write access to create one real draft on dev, read it back, parse its contract block, measure the Markdown round trip, and attach the output to the pull request before closing the ticket.
     source: manual
-    binds_ac: [AC4]
     execution_scope: local_done_gate
     status: pending
     checks:
