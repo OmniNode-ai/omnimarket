@@ -34,6 +34,7 @@ dod_evidence:
   - check_type: command
     check_value: |
       uv run --frozen python -c "import json; j=json.load(open('tests/nodes/node_delegation_scenario_r8_effect/fixtures/ready_unavailable_20261119.json'))['journal']; assert sum('02:34:45' in l and 'status=1/FAILURE' in l for l in j)==2; print('AC1_FIXTURE_JOURNAL_EXITS=2')"
+      grep -qE 'wait_seconds: 850$' src/omnimarket/nodes/node_delegation_scenario_r8_effect/contract.yaml
     cwd: .
 - id: dod-omn25878-ac2-regression
   description: The fixture contains the paired 02:34:45Z journal exits with simulated unavailability. The real scheduled entry points return a typed skipped result before either product check.
@@ -54,7 +55,6 @@ dod_evidence:
 - id: dod-omn25878-integration-proof-ac4-live-install
   description: Live read of the two scenario units on h053 after the branch install through the declared installer. Each unit's journal holds a Finished line after the install, which a typed dev-not-ready skip also produces because it exits 0, and a unit that exits 1 leaves none. The installed revision is recorded as installed=h053:<revision> in the lane report.
   source: manual
-  binds_ac: [AC4]
   execution_scope: local_done_gate
   checks:
   - check_type: command
@@ -64,13 +64,28 @@ dod_evidence:
 - id: dod-omn25878-ac5-deploy-agent-finding
   description: AC5 operational evidence is the prior lane's comment on the idle-converge ticket. It reports daily counts, the two measured changed component revisions, and the historical same-revision gap. The check reads the comment through the Linear API at the local Done gate and requires its actor line.
   source: manual
-  binds_ac: [AC5]
   execution_scope: local_done_gate
   evidence_artifact: https://linear.app/omninode/issue/OMN-19509#comment-ca7f5c2c-1388-4d6b-9b9a-6f7459ce0efe
   checks:
   - check_type: command
     check_value: |
       curl -sf -H "Authorization: $LINEAR_API_KEY" -H "Content-Type: application/json" -d '{"query":"{ comment(id: \"ca7f5c2c-1388-4d6b-9b9a-6f7459ce0efe\") { body } }"}' https://api.linear.app/graphql | grep -q 'actor:'
+    cwd: .
+- id: dod-omn25878-ac4-hosted-proxy
+  description: Hosted proxy for AC4. The scheduled unit declarations for the scenario nodes render from the installer registry at this revision. The live h053 read stays in the local Done gate item.
+  source: manual
+  binds_ac: [AC4]
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_scenario_r3_r5_r8_units.py -q
+    cwd: .
+- id: dod-omn25878-ac5-hosted-proxy
+  description: Hosted proxy for AC5. This contract cites the comment on the idle-converge ticket by its comment id, and the check fails where the contract does not exist.
+  source: manual
+  binds_ac: [AC5]
+  checks:
+  - check_type: command
+    check_value: grep -q 'ca7f5c2c-1388-4d6b-9b9a-6f7459ce0efe' contracts/OMN-25878.yaml
     cwd: .
 - id: dod-omn25878-hosted-deploy
   description: The hosted runner checks the exact PR revision's scenario contracts for a declared readiness wait, then exercises the packaged scheduled entry points with the fixture.
