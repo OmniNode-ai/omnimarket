@@ -4,6 +4,7 @@
 
 ``nightly``  build the graph of every declared repository and append the row (what the timer runs).
 ``probe``    the same build and verdict, appending nothing.
+``index``    ``[--repo R ...]``: write the version of each named declared repository (every one by default) into Memgraph; no row, no verdict.
 ``check``    ``--repo R --base REF --head REF``: name the modules the head adds that no root reaches.
 ``shadow``   check every open pull request of the overlay's shadow repositories, append one row, hold nothing.
 ``lookup``   ``--question Q --repo R`` and the question's argument: one MATCH row per answer, then a LOOKUP line.
@@ -56,9 +57,11 @@ from omnimarket.models.model_code_graph_lookup import (
 )
 from omnimarket.nodes.node_code_graph_effect.adapters.memgraph_version_store import (
     DEFAULT_RETENTION_VERSIONS,
+    MemgraphQueryError,
     MemgraphUnreachableError,
     MemgraphVersionStore,
     open_memgraph_store,
+    revision_key,
 )
 from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources import (
     WatcherStatePullRequestSource,
@@ -281,6 +284,63 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
     return 1 if result.status == "failed" else 0
 
 
+def _index(arguments: argparse.Namespace) -> int:
+    """Write the named repositories' versions into Memgraph, one revision per repository head.
+
+    It builds no verdict and appends no ledger row, so one repository whose clone a host lacks
+    names itself and never keeps the others out of the graph.
+    """
+    overlay = load_overlay()
+    rules = GraphRules(roots=overlay.graph_roots)
+    source = _source(overlay)
+    declared = {repo.name: repo for repo in overlay.repos}
+    names = list(arguments.repo or declared)
+    unknown = [name for name in names if name not in declared]
+    if unknown:
+        sys.stderr.write(
+            f"CODE-GRAPH-INDEX-FAILED the overlay does not declare {unknown}\n"
+        )
+        return 1
+    try:
+        store = _open_memgraph_store(overlay)
+    except MemgraphUnreachableError as exc:
+        sys.stderr.write(f"CODE-GRAPH-INDEX-FAILED {exc.reason.value}: {exc.detail}\n")
+        return 1
+    failed = 0
+    try:
+        for name in names:
+            try:
+                snapshot = source.snapshot(name, declared[name].ref, rules.wanted)
+                version = build_version(
+                    snapshot,
+                    rules,
+                    committed_at=source.committed_at(name, snapshot.head),
+                )
+                written, pruned = store.put(version)
+            except (
+                RepoSourceError,
+                MemgraphUnreachableError,
+                MemgraphQueryError,
+            ) as exc:
+                failed += 1
+                sys.stdout.write(f"INDEX-FAILED {name} {type(exc).__name__}: {exc}\n")
+                continue
+            modules = len(
+                {d.path for d in version.definitions}
+                | {i.importer_path for i in version.imports}
+                | {i.imported_path for i in version.imports}
+            )
+            sys.stdout.write(
+                f"INDEX {name}@{snapshot.head[:12]} revision={revision_key(name, snapshot.head)} "
+                f"written={'yes' if written else 'already'} modules={modules} "
+                f"symbols={len(version.definitions)} imports={len(version.imports)} "
+                f"pruned={len(pruned)}\n"
+            )
+    finally:
+        store.close()
+    return 1 if failed else 0
+
+
 def _check(arguments: argparse.Namespace) -> int:
     overlay = load_overlay()
     rules = GraphRules(roots=overlay.graph_roots)
@@ -488,6 +548,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             choices=[fault.value for fault in EnumGraphFault],
             default=EnumGraphFault.NONE.value,
         )
+        index = verbs.add_parser("index")
+        index.add_argument(
+            "--repo", action="append", help="a declared repository; default every one"
+        )
         check = verbs.add_parser("check")
         check.add_argument("--repo", required=True)
         check.add_argument("--base", required=True)
@@ -519,6 +583,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             help="the commit to answer as of; absent means the head",
         )
         args = parser.parse_args(arguments)
+        if args.verb == "index":
+            return _index(args)
         if args.verb == "check":
             return _check(args)
         if args.verb == "lookup":
