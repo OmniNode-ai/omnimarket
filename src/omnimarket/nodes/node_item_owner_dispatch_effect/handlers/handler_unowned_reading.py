@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
-from omnimarket.nodes.node_item_owner_dispatch_effect.handlers.handler_item_fold import (
+from omnimarket.nodes.node_item_owner_dispatch_effect.handlers.item_fold import (
     fold_items,
     moment,
     stamp_of,

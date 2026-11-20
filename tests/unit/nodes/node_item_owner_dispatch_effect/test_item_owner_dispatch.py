@@ -24,12 +24,9 @@ from omnimarket.nodes.node_item_owner_dispatch_effect.adapters.inmemory_adapters
     InMemoryReservation,
 )
 from omnimarket.nodes.node_item_owner_dispatch_effect.handlers import (
-    handler_item_fold,
     handler_item_owner_dispatch,
     handler_unowned_reading,
-)
-from omnimarket.nodes.node_item_owner_dispatch_effect.handlers.handler_item_fold import (
-    fold_items,
+    item_fold,
 )
 from omnimarket.nodes.node_item_owner_dispatch_effect.handlers.handler_item_owner_dispatch import (
     HandlerItemOwnerDispatch,
@@ -37,6 +34,9 @@ from omnimarket.nodes.node_item_owner_dispatch_effect.handlers.handler_item_owne
 from omnimarket.nodes.node_item_owner_dispatch_effect.handlers.handler_unowned_reading import (
     EXIT_CODES,
     HandlerUnownedReading,
+)
+from omnimarket.nodes.node_item_owner_dispatch_effect.handlers.item_fold import (
+    fold_items,
 )
 from omnimarket.nodes.node_item_owner_dispatch_effect.models import (
     EnumItemSource,
@@ -54,7 +54,7 @@ from omnimarket.nodes.node_item_owner_dispatch_effect.overlay import (
 
 pytestmark = pytest.mark.unit
 
-NODE = Path(handler_item_fold.__file__).resolve().parents[1]
+NODE = Path(item_fold.__file__).resolve().parents[1]
 OVERLAY = ModelItemOwnerOverlay.model_validate(
     yaml.safe_load((NODE / "overlay.example.yaml").read_text(encoding="utf-8"))
 )
@@ -427,7 +427,7 @@ def test_never_admits_or_refuses_any_lane_ruling_or_plan_step() -> None:
     for model in (ModelItemOwnerResult, ModelOwnerPlaced, ModelUnownedReading):
         assert not [name for name in model.model_fields if _VERDICT_WORDS.search(name)]
     for module in (
-        handler_item_fold,
+        item_fold,
         handler_item_owner_dispatch,
         handler_unowned_reading,
     ):

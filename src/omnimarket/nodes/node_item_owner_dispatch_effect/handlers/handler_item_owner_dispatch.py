@@ -26,7 +26,7 @@ from omnimarket.nodes.node_host_drift_owner_dispatch_effect.protocols import (
     ProtocolBriefPreparer,
     ProtocolLaneRunner,
 )
-from omnimarket.nodes.node_item_owner_dispatch_effect.handlers.handler_item_fold import (
+from omnimarket.nodes.node_item_owner_dispatch_effect.handlers.item_fold import (
     fold_items,
     moment,
     stamp_of,

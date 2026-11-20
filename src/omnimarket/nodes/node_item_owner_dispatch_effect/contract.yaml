@@ -37,6 +37,12 @@ handler:
 # HandlerItemOwnerDispatch takes the overlay, the rows, the plan owner check, the reservation, the brief preparer, the
 # lane runner, the appender and the clock as constructor parameters, so it is built by the node's runtime module and
 # declares no handler_routing.
+# HandlerUnownedReading takes constructor parameters too, and the node's runtime module builds it for the read command.
+secondary_handlers:
+  unowned_reading:
+    handler:
+      name: HandlerUnownedReading
+      module: omnimarket.nodes.node_item_owner_dispatch_effect.handlers.handler_unowned_reading
 
 descriptor:
   node_archetype: effect
