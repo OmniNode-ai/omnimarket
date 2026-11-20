@@ -52,10 +52,11 @@ dod_evidence:
         check_value: uv run --frozen onex --help && uv run --frozen onex setup --help
         cwd: .
   - id: dod-omn25070-setup-hosted-deploy-smoke
-    description: The onex CLI built from the pull request head loads every command, setup included, so
-      a customer install on omnibase-core 0.47.75 no longer exits 1 on onex --help.
+    description: The onex command installed from the pull request head starts, lists its commands and
+      loads setup. The falsifier for the import fix itself is the bound unit test, which fails on a core
+      without run_node_in_process.
     source: manual
     checks:
       - check_type: command
-        check_value: uv run --frozen onex --help && uv run --frozen onex setup --help
+        check_value: uv sync --frozen --quiet && .venv/bin/onex --help && .venv/bin/onex setup --help
         cwd: .
