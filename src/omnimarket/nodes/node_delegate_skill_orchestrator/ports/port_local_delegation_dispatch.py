@@ -172,6 +172,7 @@ from omnimarket.handlers.routing.delegation_backend_resolution import (
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
 )
+from omnimarket.handlers.routing.input_token_bound import clamp_max_tokens
 from omnimarket.handlers.routing.local_byok_route import (
     is_registered_named_connection_route,
     next_chosen_model_byok_route,
@@ -1270,10 +1271,11 @@ def _tier_lost_to_absent_credential(tier_name: str, task_type: str) -> bool:
     snapshot, so the two answers differ in the credential term alone: a rung
     withheld for any other reason stays counted.
     """
-    if backend_id_for_tier(tier_name, task_type) is not None:
+    if backend_id_for_tier(tier_name, task_type, prompt="") is not None:
         return False
     return (
-        backend_id_for_tier(tier_name, task_type, require_credential=False) is not None
+        backend_id_for_tier(tier_name, task_type, require_credential=False, prompt="")
+        is not None
     )
 
 
@@ -1595,6 +1597,26 @@ class _ProbeLadderWalk:
 _ACTIVE_PROBE_LADDER: ContextVar[_ProbeLadderWalk | None] = ContextVar(
     "active_probe_ladder", default=None
 )
+
+# The prompt of the dispatch running in this context. Every tier and backend
+# resolution of the run (first tier, sibling, escalation) reads it, so a local
+# member whose input bound is below the prompt's is not picked on any hop.
+# No default: a resolution that runs outside a dispatch raises ``LookupError``
+# instead of routing on an empty prompt every local member would admit.
+_ACTIVE_PROMPT: ContextVar[str] = ContextVar("active_routing_prompt")
+
+
+def _required_prompt(kwargs: Mapping[str, object]) -> str:
+    """The dispatch's ``prompt``: a ``str``, or a ``ValueError`` naming the fault."""
+    if "prompt" not in kwargs:
+        raise ValueError("a delegation dispatch needs a prompt; none was given")
+    prompt = kwargs["prompt"]
+    if not isinstance(prompt, str):
+        raise ValueError(
+            f"a delegation dispatch prompt must be a str, got {type(prompt).__name__}"
+        )
+    return prompt
+
 
 # OMN-23162: the transport faults of the faults-mode probe running in this
 # context, if any. Unlike a probe ladder they replace no rung: the production
@@ -2044,11 +2066,21 @@ class LocalDelegationDispatchPort:
     async def _dispatch_rungs_naming_skips(self, **kwargs: Any) -> dict[str, object]:
         """Run the ladder; name each rung it skipped on the result (OMN-21310)."""
         skipped_rungs: list[dict[str, object]] = []
-        token = _RUNG_SKIPS.set(skipped_rungs)
+        # Every tier and backend resolution of the run reads the prompt from here,
+        # on the production path (no probe ladder) as on the probe path. It is
+        # read before the rung-skip record is set, so a call with no prompt
+        # raises without leaving that record set, and a prompt that is not a
+        # string is refused instead of routed as its ``str()``.
+        prompt = _required_prompt(kwargs)
+        prompt_token = _ACTIVE_PROMPT.set(prompt)
         try:
-            result = await self._dispatch_rungs(**kwargs)
+            token = _RUNG_SKIPS.set(skipped_rungs)
+            try:
+                result = await self._dispatch_rungs(**kwargs)
+            finally:
+                _RUNG_SKIPS.reset(token)
         finally:
-            _RUNG_SKIPS.reset(token)
+            _ACTIVE_PROMPT.reset(prompt_token)
         if skipped_rungs and "skipped_rungs" not in result:
             result = {**result, "skipped_rungs": skipped_rungs}
         return result
@@ -4715,11 +4747,16 @@ class LocalDelegationDispatchPort:
             roi_overlay=roi_overlay,
             correlation_id=spread_key,
             quota_state=quota_state,
+            prompt=_ACTIVE_PROMPT.get(),
             **byok_kwargs,
         )
         if first_tier is not None:
             backend_id = backend_id_for_tier(
-                first_tier, task_type, spread_key=spread_key, **byok_kwargs
+                first_tier,
+                task_type,
+                spread_key=spread_key,
+                prompt=_ACTIVE_PROMPT.get(),
+                **byok_kwargs,
             )
             blocked = quota_blocked_backend_refs(quota_state)
             if backend_id is not None and backend_id in blocked:
@@ -4837,6 +4874,7 @@ class LocalDelegationDispatchPort:
                 current_tier,
                 task_type,
                 frozenset(tried) | quota_blocked_backend_refs(quota_state),
+                prompt=_ACTIVE_PROMPT.get(),
             )
             if sibling_ref is None:
                 return None
@@ -4992,6 +5030,7 @@ class LocalDelegationDispatchPort:
             roi_overlay=roi_overlay,
             excluded_backend_refs=excluded_backend_refs,
             correlation_id=spread_key,
+            prompt=_ACTIVE_PROMPT.get(),
             **byok_kwargs,
         )
 
@@ -5015,7 +5054,11 @@ class LocalDelegationDispatchPort:
             f"current_tier='{current_tier}'; next tier '{next_tier}'"
         )
         backend_id = backend_id_for_tier(
-            next_tier, task_type, spread_key=spread_key, **byok_kwargs
+            next_tier,
+            task_type,
+            spread_key=spread_key,
+            prompt=_ACTIVE_PROMPT.get(),
+            **byok_kwargs,
         )
         if backend_id is None:
             stopped(f"{stop_prefix} selects no backend for the task class")
@@ -5114,8 +5157,15 @@ class LocalDelegationDispatchPort:
         """
         # 2. RESOLVE the effective output-token budget from the routing contract.
         #    Unset request -> backend ceiling; explicit request -> capped at it.
-        effective_max_tokens = resolve_effective_max_tokens(
-            requested=max_tokens, backend_max_tokens=backend.max_tokens
+        #    The local tier's output is then cut to what the resolved backend's
+        #    window leaves after the prompt's token upper bound (the clamp).
+        effective_max_tokens = clamp_max_tokens(
+            prompt,
+            backend.tier,
+            backend.backend_id,
+            resolve_effective_max_tokens(
+                requested=max_tokens, backend_max_tokens=backend.max_tokens
+            ),
         )
 
         # 2b. RESOLVE the per-call HTTP timeout from the routing contract (÷1000),

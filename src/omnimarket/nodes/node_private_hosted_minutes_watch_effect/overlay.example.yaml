@@ -1,0 +1,4 @@
+# Example overlay: the real one is deployment data under ONEX_SKILL_OVERLAY_ROOTS at
+# <root>/node_private_hosted_minutes_watch_effect/overlay.yaml.
+included_minutes: 50000
+alert_fraction: 0.8

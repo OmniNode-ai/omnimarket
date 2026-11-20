@@ -153,7 +153,7 @@ def ladder(
     monkeypatch.setattr(
         hw,
         "sibling_backend_available_in_tier",
-        lambda tier, _task, excluded: (
+        lambda tier, _task, excluded, *_a, **_k: (
             "glm-5.3-flash"
             if tier == "cheap_cloud" and "glm-5.3-flash" not in excluded
             else None
