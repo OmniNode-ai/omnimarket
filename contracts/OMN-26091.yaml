@@ -11,6 +11,8 @@ requirements:
   acceptance:
   - id: AC2
     statement: "AC2: the Mac's ONEX_SKILL_OVERLAY_ROOTS resolves node_code_graph_effect/overlay.yaml through the declared overlay-store refresh unit (ai.omninode.overlay-store-refresh) with no hand copy -- falsifier: the lookup command above prints INDETERMINATE NodeOverlayNotFoundError on the Mac before the change and an answer after the unit's next tick, and git diff of the change touches no hand-copied file under a host overlay root"
+  - id: AC3
+    statement: "AC3: a repository the overlay lists that the host holds no clone of is skipped and named, not a failure of the whole run -- falsifier: the nightly run on a host that holds no clone of a listed repository exits 1 with repo-unreadable before the change and completes with a repo-skipped:<name>:no-clone reason after it, and the tests in test_code_graph_skipped_repos.py go red before the change and green after it"
 evidence_requirements:
 - kind: tests
   description: The node's overlay load and clones root with only a plugin overlay folder declared and the clones root variable unset, through the node's own CLI on real git clones.
@@ -38,8 +40,10 @@ dod_evidence:
     check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26091 --kind test -- sh -c 'env -u ONEX_CODE_GRAPH_REPOS_ROOT ONEX_SKILL_OVERLAY_ROOTS="$HOME" OMNIBASE_PATH="$OMNI_HOME" uv run --frozen python -m omnimarket.nodes.node_code_graph_effect lookup --question importers --repo omnimarket --path src/omnimarket/handlers/node_overlay_reader.py | grep -qE "^LOOKUP .*status=found "'
     cwd: .
 - id: dod-omn26091-skipped-repos-tests
-  description: A repository the overlay lists and the host holds no clone of is skipped and named as a repo-skipped reason, a skipped-repos cell on the row and a skipped field on the result, and the other repositories are read and counted. A clone with a bad ref still fails with repo-unreadable, a run that reads no repository fails, and a skipped repository the frozen sample names makes the reading NOT_WORKING with a sample-repo-skipped reason. It binds no criterion; it serves AC3, which stays open until the nightly build has run on the merged overlay. The cases go red on the code before the change and green after it.
+  description: A repository the overlay lists and the host holds no clone of is skipped and named as a repo-skipped reason, a skipped-repos cell on the row and a skipped field on the result, and the other repositories are read and counted. A clone with a bad ref still fails with repo-unreadable, a run that reads no repository fails, and a skipped repository the frozen sample names makes the reading NOT_WORKING with a sample-repo-skipped reason. It binds AC3 for the code behaviour; the nightly run on the merged overlay is read on the lab host after merge. The cases go red on the code before the change and green after it.
   source: manual
+  binds_ac:
+  - AC3
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_code_graph_effect/test_code_graph_skipped_repos.py -q --no-cov -n 0 -p no:randomly
