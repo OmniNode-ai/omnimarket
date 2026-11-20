@@ -102,6 +102,47 @@ def _occurrence_key(
     return (fact.file_name, fact.path, fact.kind.value, fact.value)
 
 
+#: One-time replacements of a packaged value the provider stopped serving, each named
+#: here with its ticket. A successor is admitted only while the value it replaces was
+#: in the base and is gone from the tree, and only at one occurrence, so the count of
+#: vendor values cannot grow and nothing but the named swap passes. Once merged the
+#: successor is in every later base, so an entry has no further effect.
+#: OMN-26129 (operator decision 2026-11-20): OpenRouter stopped listing
+#: cohere/north-mini-code:free, cheap_frontier's only rung; its free successor
+#: passed the tier's 10-task smoke 10 of 10.
+ADMITTED_REPLACEMENTS: Final[Mapping[tuple[str, str, str, str], str]] = {
+    (
+        "bifrost_delegation.yaml",
+        "backends[].backend_id",
+        "backend",
+        "openrouter-nemotron-3-5-super",
+    ): "openrouter-north-mini-code",
+    (
+        "bifrost_delegation.yaml",
+        "backends[].model_name",
+        "model_name",
+        "nvidia/nemotron-3.5-super-vl:free",
+    ): "cohere/north-mini-code:free",
+}
+
+
+def _admitted_replacement(
+    key: tuple[str, str, str, str],
+    head_counts: Counter[tuple[str, str, str, str]],
+    base_counts: Counter[tuple[str, str, str, str]],
+) -> bool:
+    replaced = ADMITTED_REPLACEMENTS.get(key)
+    if replaced is None:
+        return False
+    old_key = (key[0], key[1], key[2], replaced)
+    return (
+        base_counts[key] == 0
+        and head_counts[key] == 1
+        and base_counts[old_key] >= 1
+        and head_counts[old_key] == 0
+    )
+
+
 def _non_neutral(
     facts: Iterable[ModelDeploymentFactOccurrence],
 ) -> list[ModelDeploymentFactOccurrence]:
@@ -138,7 +179,9 @@ def judge_packaged_configs(
         )
         head_counts = Counter(_occurrence_key(fact) for fact in head_facts)
         for key in sorted(head_counts):
-            if head_counts[key] > base_counts[key]:
+            if head_counts[key] > base_counts[key] and not _admitted_replacement(
+                key, head_counts, base_counts
+            ):
                 file_name, path, _kind, value = key
                 sample = next(f for f in head_facts if _occurrence_key(f) == key)
                 new_facts.append(
