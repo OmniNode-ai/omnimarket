@@ -47,6 +47,18 @@
 tiers:
   - name: local
     cost_per_1k_tokens: 0.0
+    # Input bound per member (not declared here): the endpoint meters real
+    # tokens, not the characters-over-four estimate (digit-named generated code
+    # meters 2.0 characters per token, digits and floats 1.0), so a prompt inside
+    # the overlay input ceiling can still fill the window. The router drops a member
+    # whose bound is below the prompt's token upper bound
+    # (omnimarket.handlers.routing.input_token_bound, LOCAL_MEMBER_INPUT_BOUNDS):
+    # local-coder and local-heavy-reasoning read a 131072-token window with
+    # 65536 reserved for output (131072 - 65536 - 1024 wrapper margin = 64512);
+    # the spread peer local-omnipc2-chat has 65536 tokens per slot and a 16384
+    # output reserve (65536 - 16384 - 1024 = 48128). The bound lives in code, not
+    # in this file, so a ladder mounted without it is still bounded, and a local
+    # member the table does not list takes the smallest bound.
     # OMN-13234: typed per-tier cost model. local is served on owned GPUs
     # (.201/.200) — no marginal API cost. The dollar figure for a local call,
     # when surfaced, comes from the pricing manifest's GPU compute_cost

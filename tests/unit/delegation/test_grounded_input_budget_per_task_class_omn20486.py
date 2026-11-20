@@ -123,6 +123,7 @@ def _install_ladder(monkeypatch: pytest.MonkeyPatch) -> None:
         roi_overlay=None,
         excluded_backend_refs=frozenset(),
         correlation_id=None,
+        prompt="",
     ):
         idx = _LADDER.index(current)
         for tier in _LADDER[idx + 1 :]:
