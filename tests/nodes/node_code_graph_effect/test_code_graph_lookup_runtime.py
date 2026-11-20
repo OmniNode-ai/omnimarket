@@ -107,3 +107,72 @@ def test_a_repository_the_overlay_does_not_declare_is_a_typed_failure(
     )
     assert result.status == "failed"
     assert result.reason == "the overlay does not declare elsewhere"
+
+
+def test_a_lookup_with_no_bolt_address_falls_back_to_the_files_with_a_typed_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.models.model_code_graph_lookup import (
+        EnumLookupFallbackReason,
+        EnumLookupServedFrom,
+    )
+
+    _install(tmp_path, monkeypatch)
+    result = HandlerCodeGraphLookupRequested().handle(
+        ask(EnumCodeGraphQuestion.DEFINITION, repo="example_core", symbol="Thing")
+    )
+    assert result.status == "found"
+    assert result.served_from is EnumLookupServedFrom.FILE_STORE
+    assert result.fallback_reason is EnumLookupFallbackReason.BOLT_URI_UNRESOLVED
+
+
+def test_a_lookup_with_a_refused_bolt_port_falls_back_with_connection_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import socket
+
+    from omnimarket.models.model_code_graph_lookup import EnumLookupFallbackReason
+
+    _install(tmp_path, monkeypatch)
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    monkeypatch.setenv("ARCH_GRAPH_BOLT_URI", f"bolt://127.0.0.1:{port}")
+    result = HandlerCodeGraphLookupRequested().handle(
+        ask(EnumCodeGraphQuestion.DEFINITION, repo="example_core", symbol="Thing")
+    )
+    assert result.status == "found"
+    assert result.fallback_reason is EnumLookupFallbackReason.CONNECTION_REFUSED
+
+
+def test_the_index_verb_writes_each_named_repository_into_memgraph(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from omnimarket.nodes.node_code_graph_effect.adapters.memgraph_version_store import (
+        MemgraphVersionStore,
+    )
+    from tests.nodes.node_code_graph_effect.memgraph_support import FakeBoltDriver
+
+    _install(tmp_path, monkeypatch)
+    driver = FakeBoltDriver()
+    monkeypatch.setattr(
+        runtime_code_graph,
+        "_open_memgraph_store",
+        lambda _overlay: MemgraphVersionStore(driver, retention_versions=3),
+    )
+    assert runtime_code_graph.main(["index", "--repo", "example_core"]) == 0
+    out = capsys.readouterr().out
+    assert "INDEX example_core@" in out
+    assert "written=yes" in out
+    assert {r["repo"] for r in driver.nodes["CgRevision"].values()} == {"example_core"}
+    assert runtime_code_graph.main(["index", "--repo", "example_core"]) == 0
+    assert "written=already" in capsys.readouterr().out
+    assert runtime_code_graph.main(["index", "--repo", "elsewhere"]) == 1
+
+
+def test_the_index_verb_names_an_unreachable_memgraph(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _install(tmp_path, monkeypatch)
+    assert runtime_code_graph.main(["index", "--repo", "example_core"]) == 1
+    assert "bolt-uri-unresolved" in capsys.readouterr().err
