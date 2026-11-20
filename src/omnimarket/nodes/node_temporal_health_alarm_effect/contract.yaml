@@ -121,3 +121,7 @@ worker:
       task_queue: onex-worktree-prune
       module: omnimarket.nodes.node_worktree_prune_temporal_effect
       args: [worker, --target-host, "{address}", --namespace, "{namespace}"]
+    - name: item-owner
+      task_queue: onex-item-owner
+      module: omnimarket.nodes.node_item_owner_dispatch_effect.runtime_item_owner_worker
+      args: [worker, --target-host, "{address}", --namespace, "{namespace}", --omni-home, "{registry_root}"]
