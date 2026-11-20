@@ -31,7 +31,7 @@ GOOD_TASK = """### T1. The example node: `node_example_compute`
 - **Lab step:** run the node on the lab host with the recorded fixture and read its exit code.
 - **Acceptance criteria:**
   1. The node returns the verdict for the fixture -- falsifier: `-k fixture_verdicts`.
-  2. integrated: the node run twice on the lab host returns identical bytes -- falsifier: run it twice on the lab host, compare `model_dump_json`.
+  2. The same input twice is byte-identical -- falsifier: run twice, compare `model_dump_json`.
 """
 
 NO_FALSIFIER_TASK = """### T2. A task whose second criterion names no check

@@ -60,7 +60,7 @@ def _deployed() -> dict[str, Any]:
         {
             "id": "AC2",
             "statement": "done only when running and observed where it runs",
-            "falsifier": "one request on the dev lane and its reply",
+            "falsifier": "one request on the dev lane and its reply read back",
             "integrated": True,
         },
         {
