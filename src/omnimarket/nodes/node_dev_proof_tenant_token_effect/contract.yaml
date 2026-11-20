@@ -64,8 +64,8 @@ dev_only:
   audience: gateway-attach
   expiry_seconds: 3600
   tenants:
-    - cli-run-h051
-    - cli-run-h201
+    - cli-run-a
+    - cli-run-b
 
 metadata:
   ticket: OMN-26090

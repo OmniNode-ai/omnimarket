@@ -21,8 +21,8 @@ from omnimarket.nodes.node_dev_proof_tenant_token_effect.overlay import (
 
 SIGNING_FOLDER = "/test/keys"
 SIGNING_NAME = "TEST_LAB_SIGNING_KEY"
-H051 = "cli-run-h051"
-H201 = "cli-run-h201"
+H051 = "cli-run-a"
+H201 = "cli-run-b"
 SECRET_H051 = "TEST_TOKEN_H051"
 SECRET_H201 = "TEST_TOKEN_H201"
 ID_H051 = "11111111-1111-4111-8111-111111111051"

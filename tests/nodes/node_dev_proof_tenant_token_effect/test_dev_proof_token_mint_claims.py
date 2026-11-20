@@ -139,9 +139,7 @@ def test_dev_proof_token_mint_claims_with_es256_and_issuer() -> None:
     assert claims["tenant_id"] == ID_H201
 
 
-@pytest.mark.parametrize(
-    "tenant", ["cli-run-h999", "cli-run-h051x", "", "CLI-RUN-H051"]
-)
+@pytest.mark.parametrize("tenant", ["cli-run-z", "cli-run-ax", "", "CLI-RUN-A"])
 def test_dev_proof_token_mint_claims_refuses_a_third_tenant(tenant: str) -> None:
     result, reader, seeder = _run(
         ModelDevProofTokenCommand(lane="dev", tenants=(H051, tenant), write=True)
@@ -172,7 +170,7 @@ def test_dev_proof_token_mint_claims_overlay_with_a_third_tenant_is_refused() ->
                 .tenants[0]
                 .model_copy(
                     update={
-                        "tenant_slug": "cli-run-h999",
+                        "tenant_slug": "cli-run-z",
                         "tenant_id": "x",
                         "secret_name": "TEST_TOKEN_H999",
                     }

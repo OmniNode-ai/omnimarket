@@ -117,7 +117,7 @@ def test_dev_proof_token_mint_seed_node_end_to_end_verifies_with_the_public_half
         algorithms=["RS256"],
         audience="gateway-attach",
     )
-    assert claims["tenant_slug"] == "cli-run-h051"
+    assert claims["tenant_slug"] == "cli-run-a"
     again = asyncio.run(
         handler.handle(ModelDevProofTokenCommand(lane="dev", write=True))
     )

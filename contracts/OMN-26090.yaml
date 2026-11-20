@@ -15,13 +15,13 @@ requirements:
       - id: AC1
         statement: "AC1: the command refuses to run when the resolved environment is anything but dev, before it reads the key or writes a secret -- falsifier: `uv run pytest -q -k dev_proof_token_mint_refuses_non_dev` with the environment set to stability, prod or unset fails the refusal case if the guard is removed"
       - id: AC2
-        statement: "AC2: the command reads the lab test key from the secret store by name and the claims it signs are `tenant_id`, `tenant_slug` and audience `gateway-attach` for exactly the two tenants `cli-run-h051` and `cli-run-h201`, and a third tenant name is refused -- falsifier: `uv run pytest -q -k dev_proof_token_mint_claims` decoding each signed token with the test key's public half and asserting the claims, red if a claim or the tenant allowlist is changed"
+        statement: "AC2: the command reads the lab test key from the secret store by name and the claims it signs are `tenant_id`, `tenant_slug` and audience `gateway-attach` for exactly the two tenants `cli-run-a` and `cli-run-b`, and a third tenant name is refused -- falsifier: `uv run pytest -q -k dev_proof_token_mint_claims` decoding each signed token with the test key's public half and asserting the claims, red if a claim or the tenant allowlist is changed"
       - id: AC3
         statement: "AC3: each token is written to the dev secret store only through `node_secret_seed_effect`, and neither stdout, stderr, logs nor the returned result carries a token or key value -- falsifier: `uv run pytest -q -k dev_proof_token_mint_never_prints` capturing all output with a canary token value and asserting it is absent, red if the command prints it"
       - id: AC4
         statement: "AC4: the tests were written red first against the pre-change tree and green after, and the PR body records both runs -- falsifier: `uv run pytest -q -k dev_proof_token_mint` run at the parent commit fails on the missing command and passes at the head"
       - id: AC5
-        statement: "AC5: after the PR merges, the two tokens exist in the dev secret store by name and one MSG to door4-1950 or its successor names the two secret names without a value -- falsifier: a grep of the rolling work ledger file for `cli-run-h051` on a row of type MSG returns the row, and a read of the two names through the dev secret store's read path reports present"
+        statement: "AC5: after the PR merges, the two tokens exist in the dev secret store by name and one MSG to door4-1950 or its successor names the two secret names without a value -- falsifier: a grep of the rolling work ledger file for `cli-run-a` on a row of type MSG returns the row, and a read of the two names through the dev secret store's read path reports present"
 evidence_requirements:
   - kind: tests
     description: Focused tests of the dev proof tenant token node.
