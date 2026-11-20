@@ -1,0 +1,62 @@
+# A planted head: a schema 1.1.0 contract edited after its last sync, so its fingerprint no longer
+# recomputes. dod-verify run on it with the overlay beside it must refuse contract_not_synced.
+business_brief:
+  what_this_is: a
+  why_it_matters: b
+  done_looks_like: c
+  risk: d
+  depends_on: e
+parent_ticket_id: OMN-1
+parent_ac_label: AC1
+start_probe: null
+diagnosis: null
+repository: omnimarket
+schema_version: 1.1.0
+summary: s
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements: []
+emergency_bypass: null
+golden_path: null
+dod_evidence:
+- id: dod-001
+  description: the command exits 0
+  source: generated
+  binds_ac:
+  - AC1
+  ac_bindings: []
+  supersedes_ac_binding: []
+  linear_dod_text: null
+  checks:
+  - check_type: command
+    check_value: echo ok
+    cwd: null
+  execution_scope: hosted_and_local
+  status: pending
+  evidence_artifact: null
+contract_completeness: STUB
+proof_class: code-only
+ticket_id: OMN-1000
+title: An edited title
+description: ''
+phase: intake
+context: {}
+questions: []
+requirements:
+- id: REQ-1
+  statement: r
+  rationale: null
+  acceptance:
+  - id: AC1
+    statement: the command exits 0
+    falsifier: the command exits non-zero
+    integrated: false
+  proof_requirements: []
+verification_steps: []
+gates: []
+interfaces_provided: []
+interfaces_consumed: []
+contract_fingerprint: b4ec8a4539cb681c
+created_at: '2026-11-16T16:55:48.587586Z'
+updated_at: '2026-11-16T16:55:48.587842Z'
