@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from omnimarket.nodes.node_awaiting_reply_compute.models.model_awaiting_reply import (
+from omnimarket.models.model_awaiting_reply import (
     EnumExclusionReason,
     EnumReplyClass,
 )

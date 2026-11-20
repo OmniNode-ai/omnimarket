@@ -9,7 +9,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_awaiting_reply_compute.models.model_awaiting_reply import (
+from omnimarket.models.model_awaiting_reply import (
     EnumWaitSource,
     ModelAllowlistEntry,
     ModelWaitingItem,

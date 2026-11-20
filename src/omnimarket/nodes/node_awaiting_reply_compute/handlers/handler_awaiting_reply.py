@@ -16,7 +16,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_awaiting_reply_compute.models.model_awaiting_reply import (
+from omnimarket.models.model_awaiting_reply import (
     EnumConversationKind,
     EnumExclusionReason,
     EnumReadStatus,

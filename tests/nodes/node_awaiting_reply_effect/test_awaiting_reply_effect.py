@@ -13,6 +13,11 @@ import pytest
 import yaml
 
 import omnimarket.nodes.node_awaiting_reply_effect as node_package
+from omnimarket.models.model_awaiting_reply import (
+    EnumReplyClass,
+    ModelAwaitingReplyResult,
+    ModelWaitingItem,
+)
 from omnimarket.models.model_ticket_io import (
     EnumTicketOperation,
     ModelCreateTicketRequest,
@@ -21,17 +26,12 @@ from omnimarket.models.model_ticket_io import (
 from omnimarket.nodes.node_awaiting_reply_compute.handlers.handler_awaiting_reply import (
     HandlerAwaitingReply,
 )
-from omnimarket.nodes.node_awaiting_reply_compute.models.model_awaiting_reply import (
-    EnumReplyClass,
-    ModelAwaitingReplyResult,
-    ModelWaitingItem,
+from omnimarket.nodes.node_awaiting_reply_effect.adapters.adapter_linear_comment_port import (
+    LinearCommentPort,
 )
 from omnimarket.nodes.node_awaiting_reply_effect.handlers.handler_awaiting_reply_send import (
     LINEAR_ACTOR_LINE,
     HandlerAwaitingReplySend,
-)
-from omnimarket.nodes.node_awaiting_reply_effect.handlers.handler_linear_comment_port import (
-    LinearCommentPort,
 )
 from omnimarket.nodes.node_awaiting_reply_effect.models.model_awaiting_reply_send import (
     EnumSendOutcome,
@@ -92,7 +92,7 @@ def waiting(*items: dict[str, Any], **kw: Any) -> list[ModelWaitingItem]:
 def request(
     sends: list[ModelWaitingItem], dry_run: bool = False
 ) -> ModelAwaitingReplySendRequest:
-    from omnimarket.nodes.node_awaiting_reply_compute.models.model_awaiting_reply import (
+    from omnimarket.models.model_awaiting_reply import (
         ModelAllowlistEntry,
     )
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 
-from omnimarket.nodes.node_awaiting_reply_compute.models.model_awaiting_reply import (
+from omnimarket.models.model_awaiting_reply import (
     EnumConversationKind,
     EnumReplyClass,
     EnumWaitSource,

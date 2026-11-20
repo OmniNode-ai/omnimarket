@@ -12,7 +12,7 @@ import pytest
 from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
 
 import omnimarket.nodes.node_awaiting_reply_compute as node_package
-from omnimarket.nodes.node_awaiting_reply_compute.models.model_awaiting_reply import (
+from omnimarket.models.model_awaiting_reply import (
     EnumReplyClass,
     ModelAwaitingReplyRequest,
     ModelAwaitingReplyResult,

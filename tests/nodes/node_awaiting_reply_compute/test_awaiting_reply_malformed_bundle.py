@@ -10,12 +10,12 @@ from typing import Any
 
 import pytest
 
-from omnimarket.nodes.node_awaiting_reply_compute.handlers.handler_awaiting_reply import (
-    HandlerAwaitingReply,
-)
-from omnimarket.nodes.node_awaiting_reply_compute.models.model_awaiting_reply import (
+from omnimarket.models.model_awaiting_reply import (
     ModelAwaitingReplyRefusal,
     ModelAwaitingReplyResult,
+)
+from omnimarket.nodes.node_awaiting_reply_compute.handlers.handler_awaiting_reply import (
+    HandlerAwaitingReply,
 )
 
 pytestmark = pytest.mark.unit

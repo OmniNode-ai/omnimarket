@@ -12,15 +12,15 @@ description: >-
   named and never becomes an empty result. Reads nothing, sends nothing, mutates nothing.
 input_model:
   name: ModelAwaitingReplyRequest
-  module: omnimarket.nodes.node_awaiting_reply_compute.models.model_awaiting_reply
+  module: omnimarket.models.model_awaiting_reply
 output_model:
   name: ModelAwaitingReplyResult
-  module: omnimarket.nodes.node_awaiting_reply_compute.models.model_awaiting_reply
+  module: omnimarket.models.model_awaiting_reply
 handler:
   module: omnimarket.nodes.node_awaiting_reply_compute.handlers.handler_awaiting_reply
   class: HandlerAwaitingReply
-  input_model: omnimarket.nodes.node_awaiting_reply_compute.models.model_awaiting_reply.ModelAwaitingReplyRequest
-  output_model: omnimarket.nodes.node_awaiting_reply_compute.models.model_awaiting_reply.ModelAwaitingReplyResult
+  input_model: omnimarket.models.model_awaiting_reply.ModelAwaitingReplyRequest
+  output_model: omnimarket.models.model_awaiting_reply.ModelAwaitingReplyResult
 handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_awaiting_reply_compute.handlers.handler_awaiting_reply:HandlerAwaitingReply

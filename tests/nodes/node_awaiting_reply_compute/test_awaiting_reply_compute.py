@@ -14,16 +14,16 @@ import pytest
 import yaml
 
 import omnimarket.nodes.node_awaiting_reply_compute as node_package
-from omnimarket.nodes.node_awaiting_reply_compute.handlers.handler_awaiting_reply import (
-    HandlerAwaitingReply,
-    is_bare_acknowledgement,
-)
-from omnimarket.nodes.node_awaiting_reply_compute.models.model_awaiting_reply import (
+from omnimarket.models.model_awaiting_reply import (
     EnumExclusionReason,
     EnumReadStatus,
     EnumReplyClass,
     ModelAwaitingReplyRefusal,
     ModelAwaitingReplyResult,
+)
+from omnimarket.nodes.node_awaiting_reply_compute.handlers.handler_awaiting_reply import (
+    HandlerAwaitingReply,
+    is_bare_acknowledgement,
 )
 
 pytestmark = pytest.mark.unit
