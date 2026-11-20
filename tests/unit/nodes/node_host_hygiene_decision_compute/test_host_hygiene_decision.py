@@ -31,6 +31,7 @@ def _req(
     cleanup_ids: tuple[str, ...] = ("uv_cache",),
     when_unread: EnumHostHygieneUnreadPolicy = EnumHostHygieneUnreadPolicy.SKIP,
     min_used_fraction: float = 0.8,
+    min_used_inode_fraction: float | None = None,
     min_interval_seconds: int = 3600,
 ) -> ModelHostHygieneDecisionRequest:
     return ModelHostHygieneDecisionRequest(
@@ -40,6 +41,7 @@ def _req(
             ModelHostHygieneCleanupPolicy(
                 cleanup_id="uv_cache",
                 min_used_fraction=min_used_fraction,
+                min_used_inode_fraction=min_used_inode_fraction,
                 min_interval_seconds=min_interval_seconds,
                 when_unread=when_unread,
             ),
@@ -227,3 +229,130 @@ def test_failing_control_interval_gate() -> None:
     d2 = decide_host_hygiene(req2)
     assert d2.items[0].due is True
     assert d2.items[0].reason is EnumHostHygieneReason.DISK_PRESSURE
+
+
+@pytest.mark.unit
+def test_inode_pressure_is_due_when_bytes_are_below_threshold() -> None:
+    """Inodes 0.9 over the declared 0.7 policy is due as inode_pressure with bytes 0.5 under the 0.8 policy.
+
+    Failing control: the same fixture with ``min_used_inode_fraction`` None is
+    not due (``test_inode_policy_absent_leaves_bytes_as_the_only_threshold``).
+    """
+    req = _req(
+        reading=ModelHostHygieneReading(
+            read_at=NOW - timedelta(seconds=60),
+            used_fraction=0.5,
+            used_inode_fraction=0.9,
+        ),
+        min_used_inode_fraction=0.7,
+    )
+    d = decide_host_hygiene(req)
+    assert d.items[0].due is True
+    assert d.items[0].reason is EnumHostHygieneReason.INODE_PRESSURE
+
+
+@pytest.mark.unit
+def test_inode_policy_absent_leaves_bytes_as_the_only_threshold() -> None:
+    """Without a declared inode policy the same 0.9 inode reading is not due.
+
+    Failing control: the same fixture with ``min_used_inode_fraction`` 0.7 is
+    due (``test_inode_pressure_is_due_when_bytes_are_below_threshold``).
+    """
+    req = _req(
+        reading=ModelHostHygieneReading(
+            read_at=NOW - timedelta(seconds=60),
+            used_fraction=0.5,
+            used_inode_fraction=0.9,
+        ),
+        min_used_inode_fraction=None,
+    )
+    d = decide_host_hygiene(req)
+    assert d.items[0].due is False
+    assert d.items[0].reason is EnumHostHygieneReason.BELOW_THRESHOLD
+
+
+@pytest.mark.unit
+def test_inode_fraction_below_the_policy_is_not_due() -> None:
+    """Inodes 0.6 under the declared 0.7 policy is not due, bytes 0.5 being under 0.8 too.
+
+    Failing control: inodes 0.9 over 0.7 is due
+    (``test_inode_pressure_is_due_when_bytes_are_below_threshold``).
+    """
+    req = _req(
+        reading=ModelHostHygieneReading(
+            read_at=NOW - timedelta(seconds=60),
+            used_fraction=0.5,
+            used_inode_fraction=0.6,
+        ),
+        min_used_inode_fraction=0.7,
+    )
+    d = decide_host_hygiene(req)
+    assert d.items[0].due is False
+    assert d.items[0].reason is EnumHostHygieneReason.BELOW_THRESHOLD
+
+
+@pytest.mark.unit
+def test_bytes_pressure_takes_precedence_over_inode_pressure() -> None:
+    """Bytes 0.85 over the 0.8 policy reports disk_pressure even with inodes 0.9 over 0.7.
+
+    Failing control: the same reading with bytes 0.5 reports inode_pressure
+    (``test_inode_pressure_is_due_when_bytes_are_below_threshold``).
+    """
+    req = _req(
+        reading=ModelHostHygieneReading(
+            read_at=NOW - timedelta(seconds=60),
+            used_fraction=0.85,
+            used_inode_fraction=0.9,
+        ),
+        min_used_inode_fraction=0.7,
+    )
+    d = decide_host_hygiene(req)
+    assert d.items[0].due is True
+    assert d.items[0].reason is EnumHostHygieneReason.DISK_PRESSURE
+
+
+@pytest.mark.unit
+def test_inode_pressure_inside_the_interval_is_not_due() -> None:
+    """Inode pressure cannot fire inside the policy's interval; the interval check still comes first.
+
+    Failing control: the same pressure outside the interval is due
+    (``test_inode_pressure_is_due_when_bytes_are_below_threshold``) and the
+    bytes pressure inside the interval is held
+    (``test_interval_gate_wins_over_pressure``).
+    """
+    req = _req(
+        reading=ModelHostHygieneReading(
+            read_at=NOW - timedelta(seconds=60),
+            used_fraction=0.5,
+            used_inode_fraction=0.9,
+        ),
+        min_used_inode_fraction=0.7,
+        last_dispatched=(
+            ModelHostHygieneLastDispatch(
+                cleanup_id="uv_cache", dispatched_at=NOW - timedelta(seconds=10)
+            ),
+        ),
+    )
+    d = decide_host_hygiene(req)
+    assert d.items[0].due is False
+    assert d.items[0].reason is EnumHostHygieneReason.INTERVAL_NOT_ELAPSED
+
+
+@pytest.mark.unit
+def test_stale_reading_with_inode_pressure_applies_the_unread_policy() -> None:
+    """A stale reading is unread, so inode pressure follows the unread policy instead.
+
+    Failing control: the same reading fresh is due as inode_pressure
+    (``test_inode_pressure_is_due_when_bytes_are_below_threshold``).
+    """
+    req = _req(
+        reading=ModelHostHygieneReading(
+            read_at=NOW - timedelta(seconds=7200),
+            used_fraction=0.5,
+            used_inode_fraction=0.9,
+        ),
+        min_used_inode_fraction=0.7,
+    )
+    d = decide_host_hygiene(req)
+    assert d.items[0].due is False
+    assert d.items[0].reason is EnumHostHygieneReason.UNREAD_SKIPPED

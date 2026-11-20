@@ -73,11 +73,24 @@ class Usage(NamedTuple):
     total: int
     used: int
     free: int
+    #: File slots (inodes) from statvfs: f_files and f_files - f_ffree. None
+    #: where the filesystem reports no file-node count (f_files 0).
+    total_inodes: int | None = None
+    used_inodes: int | None = None
 
 
 def disk_usage(path: str) -> Usage:
     usage = shutil.disk_usage(path)
-    return Usage(usage.total, usage.used, usage.free)
+    stat = os.statvfs(path)
+    if stat.f_files == 0:
+        return Usage(usage.total, usage.used, usage.free)
+    return Usage(
+        usage.total,
+        usage.used,
+        usage.free,
+        total_inodes=stat.f_files,
+        used_inodes=stat.f_files - stat.f_ffree,
+    )
 
 
 def load_overlay(overlay_file: str = "") -> ModelLabDiskWatermarkOverlay:
@@ -293,6 +306,8 @@ class HandlerLabDiskWatermark:
                     total_bytes=usage.total,
                     free_bytes=usage.free,
                     used_bytes=usage.used,
+                    total_inodes=usage.total_inodes,
+                    used_inodes=usage.used_inodes,
                 )
                 for path, usage in usages
             ),

@@ -25,6 +25,7 @@ class _Frozen(BaseModel):
 
 class EnumHostHygieneReason(StrEnum):
     DISK_PRESSURE = "disk_pressure"
+    INODE_PRESSURE = "inode_pressure"
     UNREAD_RUN_ANYWAY = "unread_run_anyway"
     UNREAD_SKIPPED = "unread_skipped"
     BELOW_THRESHOLD = "below_threshold"
@@ -39,6 +40,8 @@ class EnumHostHygieneUnreadPolicy(StrEnum):
 class ModelHostHygieneCleanupPolicy(_Frozen):
     cleanup_id: CleanupId
     min_used_fraction: float = Field(ge=0, le=1)
+    #: None where the cleanup does not watch file slots; otherwise the used-inode fraction that makes it due.
+    min_used_inode_fraction: float | None = Field(default=None, ge=0, le=1)
     min_interval_seconds: int = Field(gt=0)
     when_unread: EnumHostHygieneUnreadPolicy
 
@@ -46,6 +49,8 @@ class ModelHostHygieneCleanupPolicy(_Frozen):
 class ModelHostHygieneReading(_Frozen):
     read_at: datetime
     used_fraction: float | None = Field(default=None, ge=0, le=1)
+    #: None where the pressure volume reported no file-slot count.
+    used_inode_fraction: float | None = Field(default=None, ge=0, le=1)
     unread_reason: str = ""
 
 

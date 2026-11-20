@@ -91,9 +91,15 @@ class HostDiskReadingStore:
                     used_fraction=None,
                     unread_reason="used bytes exceed total bytes",
                 )
+            used_inode_fraction = (
+                volume.used_inodes / volume.total_inodes
+                if volume.total_inodes is not None and volume.used_inodes is not None
+                else None
+            )
             return ModelHostHygieneReading(
                 read_at=read.read_at,
                 used_fraction=used_fraction,
+                used_inode_fraction=used_inode_fraction,
                 unread_reason="",
             )
 

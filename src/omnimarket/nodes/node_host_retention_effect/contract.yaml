@@ -68,7 +68,10 @@ descriptor:
   purity: effectful
   runtime_profiles: []
   idempotent: true
-  timeout_ms: 900000
+  # One pass: the uv cache walk of a host with millions of files took 33 minutes on h053 (2026-11-15), so a pass may run an hour. This is the
+  # hour the host hygiene overlay gives the scheduled unit (timeout_seconds 3600) and the most any `timeout_seconds` of a uv cache row may ask
+  # for one call (a test reads the contract and the overlay example); a declared timeout shorter than the walk ended the pass in the middle of it.
+  timeout_ms: 3600000
 execution:
   deterministic: false
   side_effects: true
@@ -100,10 +103,16 @@ retention_bounds:
   # (uv makes a new one for every revision it installs and never removes an old one; it rebuilds a missing one from its git
   # database). `keep_linked` keeps an entry in which a file has more than one hard link: a virtual environment shares the
   # unpacked wheel that way, so an archive entry so linked is in use; a git checkout is hard-linked to uv's own git database,
-  # never to a virtual environment, so the link there guards nothing. A cap naming any other folder is refused.
+  # never to a virtual environment, so the link there guards nothing. uv 0.13 names its git folder git-v1 and puts a
+  # zero-byte `<revision>.ok` marker file beside each checkout: the marker is paired with its checkout (`marker_suffix`
+  # below), so the scan skips a marker whose checkout folder is present, and a removal unlinks the marker before the folder
+  # (a marker kept beside a half-deleted checkout makes uv trust the half-deleted folder and fail). An orphan marker with no
+  # folder beside it is still reported as a special entry and the cap keeps it: harmless, and uv re-clones the checkout from
+  # its git database when it is needed again. A cap naming any other folder is refused.
   uv_evictable_buckets:
     archive-v0: {depth: 1, keep_linked: true}
-    git-v0/checkouts: {depth: 2, keep_linked: false}
+    git-v0/checkouts: {depth: 2, keep_linked: false, marker_suffix: ".ok"}
+    git-v1/checkouts: {depth: 2, keep_linked: false, marker_suffix: ".ok"}
   # The one sanctioned reader of the rolling work ledger (the bus-fed rows loader; it counts any file fallback itself). A terminal guard
   # runs this module and no other, and opens no ledger file: 720 hours is the loader's own window cap.
   terminal_loader: {module: omnimarket.nodes.node_ledger_rows_loader_effect, max_window_hours: 720}

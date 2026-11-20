@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.nodes.node_host_retention_effect.handlers import host_retention_ports
 from omnimarket.nodes.node_host_retention_effect.handlers.handler_host_retention import (
     CONTRACT_PATH,
     HandlerHostRetention,
@@ -282,6 +283,17 @@ def test_a_cap_bucket_not_named_by_contract_is_refused(tmp_path: Path) -> None:
     assert result.items == ()
 
 
+def test_a_cap_naming_git_v2_checkouts_is_still_refused(tmp_path: Path) -> None:
+    """Failing control: the contract naming git-v1 does not make the next git folder name evictable."""
+    path = tmp_path / "uv-cache"
+    path.mkdir()
+    cache = _uv_cache(path, cap_gib=30.0, buckets=("archive-v0", "git-v2/checkouts"))
+    result = _run_uv(tmp_path, cache, ports=make_ports())
+    assert result.status == "refused"
+    assert any("'git-v2/checkouts'" in r and "contract" in r for r in result.refusals)
+    assert result.items == ()
+
+
 def test_keep_days_below_contract_floor_is_refused(tmp_path: Path) -> None:
     path = tmp_path / "uv-cache"
     path.mkdir()
@@ -352,6 +364,110 @@ def test_unreadable_process_references_add_error_and_evict_nothing(
     assert result.status == "ok"
     assert any("references" in e for e in result.errors)
     assert archive.removed == []
+
+
+def test_process_references_are_reread_before_each_removal(tmp_path: Path) -> None:
+    """A candidate that passed the cheap guards is held against references read again right before its removal.
+
+    Two aged unlinked checkouts: the first goes, a process then works in the second, and the fresh
+    reading names it, so the second is kept with reason held_by_process and not removed.
+
+    Failing control: the single read at the start of the pass returns an empty process table, so the
+    old code held nothing and removed the second checkout too.
+    """
+    path = tmp_path / "uv-cache"
+    path.mkdir()
+    archive = FakeUvArchive(
+        entries={
+            "git-v0/checkouts": _entries(
+                ("db/rev-older", 10 * _GIB, NOW - 30 * 86400.0, False, False),
+                ("db/rev-second", 10 * _GIB, NOW - 20 * 86400.0, False, False),
+            )
+        }
+    )
+    uv = FakeUv(size=50 * _GIB, after=40 * _GIB)
+    # cap_gib 25 keeps the pass working after the first removal (30 GiB still over 25 GiB), so the
+    # second checkout is examined and re-read rather than left for the cap.
+    cache = _uv_cache(path, cap_gib=25.0, buckets=("git-v0/checkouts",))
+    calls: list[int] = []
+    second_blob = f"{path}/git-v0/checkouts/db/rev-second/pyproject.toml build"
+
+    def references() -> ProcessReferences | None:
+        calls.append(len(calls) + 1)
+        if len(calls) == 1:
+            return ProcessReferences()
+        return ProcessReferences(blobs=[second_blob])
+
+    handler = HandlerHostRetention(
+        now=lambda: NOW,
+        references=references,
+        ports=make_ports(uv=uv, uv_archive=archive),
+    )
+    result = handler.handle(
+        ModelHostRetentionRequest(
+            host_name="pool-a",
+            overlay_file=overlay_file(tmp_path, uv_caches=[cache]),
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.errors == ()
+    assert archive.removed == ["git-v0/checkouts/db/rev-older"]
+    assert {Path(k.path).name: k.reason for k in result.kept} == {
+        "rev-second": "held_by_process"
+    }
+    assert len(calls) == 3, "the start read plus one re-read before each removal"
+
+
+def test_unreadable_references_reread_mid_pass_stop_the_cap_pass(
+    tmp_path: Path,
+) -> None:
+    """A references re-read returning None mid-pass adds one error and removes nothing further.
+
+    The pass read the references at its start (call 1), so the start-of-pass skip does not fire; the
+    re-read before the first removal (call 2) returns None and the pass stops there, with the entries
+    it had not yet reached untouched.
+
+    Failing control: against the start-of-pass reading (an empty process table) the pass would have
+    gone on and removed both checkouts.
+    """
+    path = tmp_path / "uv-cache"
+    path.mkdir()
+    archive = FakeUvArchive(
+        entries={
+            "git-v0/checkouts": _entries(
+                ("db/rev-a", 10 * _GIB, NOW - 30 * 86400.0, False, False),
+                ("db/rev-b", 10 * _GIB, NOW - 20 * 86400.0, False, False),
+            )
+        }
+    )
+    uv = FakeUv(size=50 * _GIB, after=40 * _GIB)
+    cache = _uv_cache(path, cap_gib=25.0, buckets=("git-v0/checkouts",))
+    calls: list[int] = []
+
+    def references() -> ProcessReferences | None:
+        calls.append(len(calls) + 1)
+        return ProcessReferences() if len(calls) == 1 else None
+
+    handler = HandlerHostRetention(
+        now=lambda: NOW,
+        references=references,
+        ports=make_ports(uv=uv, uv_archive=archive),
+    )
+    result = handler.handle(
+        ModelHostRetentionRequest(
+            host_name="pool-a",
+            overlay_file=overlay_file(tmp_path, uv_caches=[cache]),
+        )
+    )
+
+    assert result.status == "ok"
+    assert len(result.errors) == 1
+    assert "references" in result.errors[0]
+    assert "stops" in result.errors[0], "the mid-pass stop, not the start-of-pass skip"
+    assert archive.removed == []
+    assert not any(i.action == "evict" for i in result.items)
+    assert len(calls) == 2, "the pass stopped at the first re-read"
 
 
 def test_seam_real_archive_reads_linked_and_unlinked(tmp_path: Path) -> None:
@@ -425,6 +541,102 @@ def test_seam_real_archive_reads_git_checkouts_two_levels_deep(tmp_path: Path) -
         archive.remove(str(bucket), "repoA/../repoB/rev9")
 
 
+def test_seam_real_archive_reads_git_v1_checkouts_and_keeps_the_ok_markers(
+    tmp_path: Path,
+) -> None:
+    """uv 0.13's git cache is ``checkouts/<database>/<revision>`` with a ``<revision>.ok`` marker file beside each checkout.
+
+    With the marker suffix the scan reports only the checkouts (a marker whose checkout folder is
+    present belongs to it), while an orphan marker with no folder beside it is still a special entry
+    the cap keeps. A removal takes the marker with its checkout.
+
+    Failing control: without the suffix the scan reports every marker as its own special entry, and a
+    removal that takes only the folder leaves ``rev1.ok`` behind, which uv then trusts beside the
+    half-deleted checkout.
+    """
+    bucket = tmp_path / "git-v1" / "checkouts"
+    (bucket / "dbhash" / "rev1").mkdir(parents=True)
+    (bucket / "dbhash" / "rev1" / "f").write_bytes(b"x" * 4096)
+    (bucket / "dbhash" / "rev2").mkdir()
+    (bucket / "dbhash" / "rev2" / "f").write_bytes(b"y" * 8192)
+    (bucket / "dbhash" / "rev1.ok").write_bytes(b"")
+    (bucket / "dbhash" / "rev2.ok").write_bytes(b"")
+    (bucket / "dbhash" / "orphan.ok").write_bytes(b"")
+
+    archive = FilesystemUvArchive()
+    entries = {e.name: e for e in archive.scan(str(bucket), 2, 1800.0, ".ok")}
+
+    assert set(entries) == {"dbhash/rev1", "dbhash/rev2", "dbhash/orphan.ok"}
+    assert entries["dbhash/rev1"].bytes == 4096
+    assert entries["dbhash/rev2"].bytes == 8192
+    assert entries["dbhash/orphan.ok"].special is True
+    archive.remove(str(bucket), "dbhash/rev1", ".ok")
+    assert not (bucket / "dbhash" / "rev1").exists()
+    assert not (bucket / "dbhash" / "rev1.ok").exists(), (
+        "the marker goes with its checkout"
+    )
+    assert (bucket / "dbhash" / "rev2").exists(), "a sibling revision stays"
+    assert (bucket / "dbhash" / "rev2.ok").exists()
+    assert (bucket / "dbhash" / "orphan.ok").exists()
+
+
+def test_seam_real_archive_remove_unlinks_the_marker_before_the_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An interrupted folder removal leaves no ``.ok`` marker beside the half-deleted checkout.
+
+    Failing control: unlinking the marker after ``shutil.rmtree`` would leave it in place whenever
+    the removal raises, and uv 0.13 then trusts the marker of a half-deleted checkout and fails;
+    unlinked first, the marker is gone and uv rebuilds the checkout from its git database.
+    """
+    bucket = tmp_path / "git-v1" / "checkouts"
+    (bucket / "dbhash" / "rev1").mkdir(parents=True)
+    (bucket / "dbhash" / "rev1" / "f").write_bytes(b"x" * 4096)
+    (bucket / "dbhash" / "rev1.ok").write_bytes(b"")
+
+    def interrupted_rmtree(path: object, *args: object, **kwargs: object) -> None:
+        first = sorted(Path(str(path)).iterdir())[0]
+        first.unlink()
+        raise OSError("interrupted")
+
+    monkeypatch.setattr(host_retention_ports.shutil, "rmtree", interrupted_rmtree)
+
+    with pytest.raises(OSError, match="interrupted"):
+        FilesystemUvArchive().remove(str(bucket), "dbhash/rev1", ".ok")
+
+    assert not (bucket / "dbhash" / "rev1.ok").exists(), (
+        "the marker was unlinked before the folder, so the interruption cannot leave it"
+    )
+    assert (bucket / "dbhash" / "rev1").is_dir(), "the folder partly remains"
+
+
+def test_seam_real_archive_remove_refuses_a_marker_that_is_not_a_regular_file(
+    tmp_path: Path,
+) -> None:
+    """A ``.ok`` marker that is a symlink or a directory makes the removal raise and the folder stays.
+
+    Failing control: an unlink without the regular-file check would take the symlinked marker and go
+    on to remove the checkout it guards; here the checkout is left untouched.
+    """
+    bucket = tmp_path / "git-v1" / "checkouts"
+    (bucket / "dbhash" / "rev1").mkdir(parents=True)
+    (bucket / "dbhash" / "rev1" / "f").write_bytes(b"x" * 4096)
+    (bucket / "dbhash" / "rev1.ok").symlink_to(bucket / "dbhash" / "rev1")
+    (bucket / "dbhash" / "rev2").mkdir(parents=True)
+    (bucket / "dbhash" / "rev2" / "f").write_bytes(b"y" * 4096)
+    (bucket / "dbhash" / "rev2.ok").mkdir()
+
+    archive = FilesystemUvArchive()
+    with pytest.raises(OSError, match="not a regular file"):
+        archive.remove(str(bucket), "dbhash/rev1", ".ok")
+    with pytest.raises(OSError, match="not a regular file"):
+        archive.remove(str(bucket), "dbhash/rev2", ".ok")
+    assert (bucket / "dbhash" / "rev1").is_dir()
+    assert (bucket / "dbhash" / "rev1.ok").is_symlink()
+    assert (bucket / "dbhash" / "rev2").is_dir()
+    assert (bucket / "dbhash" / "rev2.ok").is_dir()
+
+
 def test_seam_real_archive_scan_past_its_deadline_is_an_error_not_a_partial_list(
     tmp_path: Path,
 ) -> None:
@@ -436,13 +648,19 @@ def test_seam_real_archive_scan_past_its_deadline_is_an_error_not_a_partial_list
         FilesystemUvArchive().scan(str(bucket), 1, -1.0)
 
 
-def test_seam_real_uv_layout_names_two_buckets_and_the_overlay_example_loads() -> None:
-    """The contract names uv's two growing folders with their depths; the overlay example's cap buckets are all among them."""
+def test_seam_real_uv_layout_names_three_buckets_and_the_overlay_example_loads() -> (
+    None
+):
+    """The contract names uv's growing folders with their depths; the overlay example's cap buckets are all among them."""
     bounds = load_bounds()
     assert {
         name: (bound.depth, bound.keep_linked)
         for name, bound in bounds.uv_evictable_buckets.items()
-    } == {"archive-v0": (1, True), "git-v0/checkouts": (2, False)}
+    } == {
+        "archive-v0": (1, True),
+        "git-v0/checkouts": (2, False),
+        "git-v1/checkouts": (2, False),
+    }
     overlay = yaml.safe_load(
         (CONTRACT_PATH.parent / "overlay.example.yaml").read_text(encoding="utf-8")
     )
@@ -455,6 +673,40 @@ def test_seam_real_uv_layout_names_two_buckets_and_the_overlay_example_loads() -
     ]
     assert cap_buckets, "the overlay example declares a cap"
     assert set(cap_buckets) <= set(bounds.uv_evictable_buckets)
+
+
+def test_contract_pairs_an_ok_marker_with_each_git_checkouts_bucket() -> None:
+    """The contract's git checkout buckets carry the ``.ok`` marker suffix; ``archive-v0`` has none.
+
+    Failing control: without ``marker_suffix`` on the git rows the bounds read None, the scan reports
+    each marker as its own entry, and a removal leaves the marker beside the half-deleted checkout.
+    """
+    bounds = load_bounds(CONTRACT_PATH)
+    assert bounds.uv_evictable_buckets["git-v0/checkouts"].marker_suffix == ".ok"
+    assert bounds.uv_evictable_buckets["git-v1/checkouts"].marker_suffix == ".ok"
+    assert bounds.uv_evictable_buckets["archive-v0"].marker_suffix is None
+
+
+def test_contract_timeout_covers_the_longest_uv_call_an_overlay_may_declare() -> None:
+    """The node's declared timeout and the uv cache rows' per-call timeouts agree: one call never outlives the pass.
+
+    The contract allowed 900000 ms while a uv cache walk of 18 million files took 33 minutes and the h053 overlay row asks 3600 s.
+
+    Failing control: with ``timeout_ms`` 900000 the 3600 s row below is longer than the pass that is meant to hold it.
+    """
+    contract = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
+    timeout_ms = contract["descriptor"]["timeout_ms"]
+    example = yaml.safe_load(
+        (CONTRACT_PATH.parent / "overlay.example.yaml").read_text(encoding="utf-8")
+    )
+    asked = [
+        cache["timeout_seconds"]
+        for host in example["hosts"]
+        for cache in host.get("uv_caches", [])
+    ]
+    assert asked, "the overlay example declares uv cache rows"
+    assert max(asked) * 1000 <= timeout_ms
+    assert timeout_ms == 3600 * 1000
 
 
 def test_oldest_first_runs_across_both_buckets_and_scans_each_at_its_depth(
@@ -489,6 +741,42 @@ def test_oldest_first_runs_across_both_buckets_and_scans_each_at_its_depth(
     assert sorted(archive.scans) == [
         (str(path / "archive-v0"), 1),
         (str(path / "git-v0" / "checkouts"), 2),
+    ]
+    assert result.errors == ()
+
+
+def test_oldest_first_runs_across_archive_and_git_v1_and_scans_each_at_its_depth(
+    tmp_path: Path,
+) -> None:
+    """A git-v1 revision checkout older than every wheel goes first; each bucket is scanned at the depth the contract declares."""
+    path = tmp_path / "uv-cache"
+    path.mkdir()
+    day = 86400.0
+    archive = FakeUvArchive(
+        entries={
+            "archive-v0": _entries(
+                ("wheel-old", 10 * _GIB, NOW - 20 * day, False, False),
+                ("wheel-new", 10 * _GIB, NOW - 2 * day, False, False),
+            ),
+            "git-v1/checkouts": _entries(
+                ("repoA/rev-oldest", 10 * _GIB, NOW - 40 * day, False, False),
+                ("repoA/rev-mid", 10 * _GIB, NOW - 10 * day, False, False),
+            ),
+        }
+    )
+    uv = FakeUv(size=60 * _GIB, after=60 * _GIB)
+    cache = _uv_cache(path, cap_gib=30.0, buckets=("archive-v0", "git-v1/checkouts"))
+
+    result = _run_uv(tmp_path, cache, ports=make_ports(uv=uv, uv_archive=archive))
+
+    assert archive.removed == [
+        "git-v1/checkouts/repoA/rev-oldest",
+        "archive-v0/wheel-old",
+        "git-v1/checkouts/repoA/rev-mid",
+    ]
+    assert sorted(archive.scans) == [
+        (str(path / "archive-v0"), 1),
+        (str(path / "git-v1" / "checkouts"), 2),
     ]
     assert result.errors == ()
 
@@ -611,6 +899,43 @@ def test_golden_chain_the_cap_pass_removes_aged_unlinked_entries_from_both_bucke
     assert {Path(i.path).name for i in result.items if i.action == "evict"} == {
         "wheel-old",
         "rev-old",
+    }
+
+
+def test_golden_chain_the_cap_pass_takes_a_git_v1_marker_with_its_checkout(
+    tmp_path: Path,
+) -> None:
+    """A real tree through the real archive port with the contract's own bounds: an aged git-v1 checkout is evicted together
+    with its ``.ok`` marker, a recent checkout keeps folder and marker.
+
+    Failing control: a removal that left the marker would keep ``rev-old.ok`` beside the deleted
+    checkout, and uv 0.13 then trusts the marker of the half-removed entry and fails.
+    """
+    cache = tmp_path / "uv-cache"
+    checkouts = cache / "git-v1" / "checkouts"
+    entry(checkouts / "db", "rev-old", days=30)
+    (checkouts / "db" / "rev-old.ok").write_bytes(b"")
+    entry(checkouts / "db", "rev-new", days=2)
+    (checkouts / "db" / "rev-new.ok").write_bytes(b"")
+    uv = FakeUv(size=50 * _GIB, after=50 * _GIB)
+    # The contract itself names git-v1/checkouts with its marker suffix; the cap is never reached,
+    # so every candidate is examined.
+    spec = _uv_cache(cache, min_gib=1.0, cap_gib=1.0, buckets=("git-v1/checkouts",))
+
+    result = _run_uv(tmp_path, spec, ports=_real_archive_ports(uv))
+
+    assert result.status == "ok"
+    assert result.errors == ()
+    assert not (checkouts / "db" / "rev-old").exists()
+    assert not (checkouts / "db" / "rev-old.ok").exists(), (
+        "the marker goes with its checkout"
+    )
+    assert (checkouts / "db" / "rev-new").exists()
+    assert (checkouts / "db" / "rev-new.ok").exists()
+    kept = {Path(k.path).name: k.reason for k in result.kept}
+    assert kept == {"rev-new": "too_new"}
+    assert {Path(i.path).name for i in result.items if i.action == "evict"} == {
+        "rev-old"
     }
 
 

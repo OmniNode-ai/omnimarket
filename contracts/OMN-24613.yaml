@@ -1,0 +1,82 @@
+schema_version: 1.0.0
+ticket_id: OMN-24613
+title: Cap the package cache of lab host h053 so its main disk stops running out of file slots
+summary: 'The uv package cache on lab host h053 held 18,491,063 of the root disk file slots on 2026-11-15 (56 percent), git-v1/checkouts 10,506,101 and archive-v0 7,952,284, and the root disk read 90 percent of its
+  file slots. The retention contract named only git-v0/checkouts, so a size cap could not name the folder uv 0.13 writes. The contract now lists git-v1/checkouts at depth two; the overlays repository caps
+  the h053 cache and schedules the cleanup.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24613-h053-uv-cap
+  statement: The host retention node can cap the uv cache of h053 over archive-v0 and git-v1/checkouts, and the pass is scheduled and read on h053.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the host retention contract lists git-v1/checkouts as a folder a uv cache cap may evict from, at depth two -- falsifier: pytest tests/nodes/node_host_retention_effect/test_host_retention_uv_cap.py -q -k git_v1
+      fails when that line is removed from the contract'
+  - id: AC2
+    statement: 'AC2: the h053 row of the host retention overlay caps its uv cache over archive-v0 and git-v1/checkouts and the host hygiene overlay schedules uv_cache_retention for h053 -- falsifier: pytest tests/test_host_retention_overlay.py
+      tests/test_host_hygiene_orchestrator_overlay.py -q -k h053 in the overlays repository fails when the cap or the schedule entry is removed'
+  - id: AC3
+    statement: 'AC3: integrated: the lab work serve unit on h053, given the uv_cache_retention cleanup by the host hygiene orchestrator from the merged overlay, logs a uv_cache pass that evicts entries under git-v1/checkouts,
+      and the used file slots of / read lower after it than before -- falsifier: read in the running unit on the lab host h053, the user journal of h053 shows no uv_cache pass naming git-v1/checkouts,
+      or df -i / on h053 reads no lower after the pass than before'
+evidence_requirements:
+- kind: tests
+  description: The uv cap tests of the host retention node, including the failing control that refuses an unlisted git folder name.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_retention_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24613-ac1-contract-bucket
+  description: The contract names git-v1/checkouts at depth two; the oldest-first run takes a git-v1 revision before older-than-it wheels; the real archive scan reads the git-v1 layout with its marker files; a cap naming git-v2/checkouts is refused.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_retention_effect/test_host_retention_uv_cap.py -q --no-cov -n 0 -p no:randomly -k "git_v1 or git_v2"
+    cwd: .
+- id: dod-omn24613-ac2-overlay-pair
+  description: The overlays pull request for h053 (cap and schedule) is the other half; its tests run in that repository and its pin follows this change's merge commit. Hosted CI here runs the contract test only.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_retention_effect/test_host_retention_uv_cap.py -q --no-cov -n 0 -p no:randomly -k "three_buckets"
+    cwd: .
+- id: dod-omn24613-fix-round-marker-refs-inodes
+  description: The fix round after the review of this change. The marker file of a git checkout goes with the checkout and before it; the process references are read again before each removal; the contract timeout agrees with the one hour pass; the host hygiene schedule starts a cleanup on used file slots as well as used bytes. The tests fail on the revision before the fix round.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_retention_effect tests/unit/nodes/node_host_hygiene_decision_compute tests/unit/nodes/node_host_hygiene_orchestrator tests/chains/host_hygiene tests/nodes/node_lab_disk_watermark_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24613-ac3-cap-pass-evicts-git-v1
+  description: The hosted half of AC3. The cap pass takes a git-v1 checkout with its marker file; the running reading on h053 is the local Done gate item below.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_retention_effect/test_host_retention_uv_cap.py -q --no-cov -n 0 -p no:randomly -k "golden_chain_the_cap_pass_takes_a_git_v1_marker"
+    cwd: .
+- id: dod-omn24613-ac3-h053-journal
+  description: The unit on h053 logged a uv_cache pass naming git-v1/checkouts in the last two hours. Hosted CI cannot reach h053, so only the local Done gate runs this check, unbound from AC3 so the hosted control is not asked to run it.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: ssh h053 journalctl --user --since -2h --no-pager | grep -q 'git-v1/checkouts'
+    cwd: .
+- id: dod-omn24613-integration-proof
+  description: Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The pushed head runs the node tests on a lab host through the lab work runner. The running reading (a uv_cache pass on h053 evicting under git-v1/checkouts, and the root file slots before and after) is read from the lab receipt comment on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24613 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_retention_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
