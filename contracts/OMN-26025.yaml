@@ -73,11 +73,13 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: |-
-          set -euo pipefail;
+          set -eu;
           base="https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)";
-          curl --fail --silent --show-error --location --max-time 30 "$base/.github/workflows/release-cut.yml" | grep -q "nodes/node_release/runtime_clean_install_probe.py dist/";
-          curl --fail --silent --show-error --location --max-time 30 "$base/.github/workflows/release-cut.yml" | grep -q "nodes/node_release/runtime_work_contract_repin.py --root";
-          curl --fail --silent --show-error --location --max-time 30 "$base/src/omnimarket/nodes/node_release/runtime_work_contract_repin.py" | grep -q "^def repin_environment_pins";
+          wf="$(curl --fail --silent --show-error --location --max-time 30 "$base/.github/workflows/release-cut.yml")";
+          rp="$(curl --fail --silent --show-error --location --max-time 30 "$base/src/omnimarket/nodes/node_release/runtime_work_contract_repin.py")";
+          printf '%s\n' "$wf" | grep -q "nodes/node_release/runtime_clean_install_probe.py dist/" || exit 1;
+          printf '%s\n' "$wf" | grep -q "nodes/node_release/runtime_work_contract_repin.py --root" || exit 1;
+          printf '%s\n' "$rp" | grep -q "^def repin_environment_pins" || exit 1;
           echo "reopen-dev repin deploy probe: PASS"
         cwd: .
   - id: dod-omn26025-integration-proof
