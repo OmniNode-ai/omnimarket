@@ -6,6 +6,13 @@ summary: "The handler-shape validator over the omnimarket handler files reported
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn21787-ac1-accepted-20261120t1145z:
+      - label: "AC1"
+        criterion_hash: "6e827148632bbb6f58085fb5717f924da5b207d8ed74ea68a0c3531a654d034c"
+        proposed_by: "lane=dod-closeout-bind-2026-11-20T1145Z-c2"
+        accepted_by: "lane=dod-closeout-accept-2026-11-20T1145Z-c2"
 requirements:
   - id: "req-omn21787-typed-handle"
     statement: |-
@@ -60,4 +67,12 @@ dod_evidence:
           head_sha="$(git rev-parse HEAD)";
           handler="$(curl --fail --silent --show-error --location --max-time 10 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/${head_sha}/src/omnimarket/nodes/node_contract_reducer/handlers/handler_contract_reducer.py")";
           printf '%s\n' "$handler" | grep -Fq 'def handle(self, request: ModelReducerInput) -> ModelReducerResult:'
+        cwd: "."
+  - id: "dod-omn21787-ac1-accepted-20261120t1145z"
+    description: "AC1: ValidatorHandlerShape reports zero issues on each of the five slice handler files. Fails at the parent of omnimarket#4703, where all five files draw a handler-shape finding."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_omn21787_handler_shape_slice.py::test_slice_handler_has_no_handler_shape_finding -v -p no:cacheprovider --no-cov"
         cwd: "."
