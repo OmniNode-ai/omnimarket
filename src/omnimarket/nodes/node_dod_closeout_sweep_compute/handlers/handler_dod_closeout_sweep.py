@@ -76,6 +76,9 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_ticket_rul
     select_candidates,
     tick_comment,
 )
+from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_scope_bundle import (
+    parse_scope_bundle,
+)
 
 LANE = "dod-closeout-sweep"
 REPORT_PATH_TEMPLATE = "beta/tracking/{date}-dod-closeout-sweep.md"
@@ -902,6 +905,8 @@ def bundle_scope(
             request.scope_now,
         )
     )
+    # The producer's own contract (OMN-26223): a bundle the model refuses is never returned.
+    parse_scope_bundle(text, file="the scope bundle this handler produced")
     return ModelDodCloseoutDecisionResult(
         kind=EnumCloseoutDecisionKind.SCOPE_BUNDLE,
         scope_bundle=json.loads(text),
