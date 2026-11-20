@@ -130,7 +130,7 @@ assert X_EST_LIMIT_PEER < X_EST_LIMIT < INPUT_BUDGET
 
 LOCAL_CODER = "local-coder"
 LOCAL_HEAVY = "local-heavy-reasoning"
-BEYOND = "cheap_frontier/openrouter-north-mini-code"
+BEYOND = "cheap_frontier/openrouter-nemotron-3-5-super"
 # The literal outcome per class, written out and never derived from the ladder
 # the handler loads: the local rung that answers a prompt that fits, and what an
 # unpinned prompt above the local budget meets ("refused" or the rung that
@@ -534,7 +534,7 @@ def test_131072_overlay_is_loaded_and_one_narrowed_pair_changes_the_outcome(
     narrowed = routing.delta(request("summarization", 11072))
     assert (narrowed.tier_name, narrowed.selected_backend_ref) == (
         "cheap_frontier",
-        "openrouter-north-mini-code",
+        "openrouter-nemotron-3-5-super",
     )
     unchanged = routing.delta(request("research", 11072))
     assert (unchanged.tier_name, unchanged.selected_backend_ref) == ("local", other[0])
