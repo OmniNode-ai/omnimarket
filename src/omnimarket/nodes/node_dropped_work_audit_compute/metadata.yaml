@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dropped_work_audit_compute
+version: "0.1.0"
+description: Find the ledger commitments with no live owner (rulings, promises, blocked next steps, unreleased holds,
+  unfinished claims, admission refusals) from rows without I/O.
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_dropped_work_audit_compute: omnimarket.nodes.node_dropped_work_audit_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - pydantic>=2.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, ledger, audit, dropped-work, OMN-26205]
+pack: operator_tooling
+display_name: "Dropped Work Audit Compute"
+node_role: compute
