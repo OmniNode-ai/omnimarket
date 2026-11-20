@@ -1961,14 +1961,6 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_git_query_mirror_effect/git_mirror.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast, sys; tree = ast.parse(sys.stdin.read()); lists = [n for n in tree.body if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == "REGISTRY_REPOS"]; assert len(lists) == 1; names = [c.value for c in ast.walk(lists[0]) if isinstance(c, ast.Constant) and isinstance(c.value, str)]; assert len(names) > 5; assert not [n for n in names if n.endswith("_change_control")]; print("git mirror repo list deploy probe: PASS")'
-  - id: "dod-omn17427-ac58-lab-fill-tick"
-    description: "The lab-fill tick golden and error chains pass."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_tick.py tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_tick.py -q"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC58"]
   - id: "dod-omn17427-lab-fill-tick-deploy-probe"
     description: "Deploy probe. GitHub serves the lab-fill effect contract at the checked-out HEAD binding run_lab_fill_tick to HandlerLabFillTick. It fails at the merge base, which has no such operation, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
@@ -1976,14 +1968,6 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("run_lab_fill_tick", "HandlerLabFillTick", "ModelLabFillTickResult")); print("lab-fill tick deploy probe: PASS")'
-  - id: "dod-omn17427-ac60-lab-fill-zero-placement-alarm"
-    description: "The lab-fill zero-placement chain passes: refusals count every unplaced lane, two idle ticks dispatch one diagnose lane, a twice brief-check-refused ticket is parked."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_zero_placement.py -q"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC60"]
   - id: "dod-omn17427-lab-fill-zero-placement-deploy-probe"
     description: "Deploy probe. GitHub serves the lab-fill tick handler at the checked-out HEAD with the diagnose lane and the brief-check parking. It fails at the merge base, which has neither, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
@@ -1991,14 +1975,6 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_tick.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("diagnose_lane_name", "_diagnose", "brief-check-refused")); print("lab-fill zero-placement deploy probe: PASS")'
-  - id: "dod-omn17427-ac61-lab-fill-dod-verify-fallback"
-    description: "The lab-fill DoD-verify fallback chain passes, including the replay of the 2026-10-17T1730Z run's shape."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_dod_verify_fallback.py -q"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC61"]
   - id: "dod-omn17427-lab-fill-dod-verify-deploy-probe"
     description: "Deploy probe. GitHub serves the lab-fill dispatch plan at the checked-out HEAD with the dod-verify kind and its item builder. It fails at the merge base, which has neither, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
@@ -2391,14 +2367,6 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_friction_synthesis_effect/test_friction_synthesis.py tests/nodes/node_friction_synthesis_effect/test_golden_chain_friction_synthesis_effect.py tests/nodes/node_host_thermal_observe_effect/test_host_thermal_observe.py tests/nodes/node_host_thermal_observe_effect/test_golden_chain_host_thermal_observe_effect.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC92"]
-  - id: "dod-omn17427-ac76-lab-fill-repeat-limit"
-    description: "The lab-fill repeat-limit hold passes for ordinary tickets and DoD-verify lanes."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_selection_compute.py tests/nodes/node_lab_fill_selection_compute/test_lab_fill_dod_verify_fallback.py -k 'repeat or unchanged' -q"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC76"]
   - id: "dod-omn17427-lab-fill-repeat-limit-deploy-probe"
     description: "Deploy probe. GitHub serves the lab-fill selection handler at the checked-out HEAD with the repeat count. It fails at the merge base, which has no repeat count, and needs only GitHub access and Python on the hosted runner."
     source: "manual"

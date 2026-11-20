@@ -31,15 +31,6 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn21958-ac1
-  description: 'AC1 tests pass at the PR head: the stop_gate tests of the fill, the placement decision and the worker-engine choice.'
-  source: manual
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest -k stop_gate -q tests/nodes/node_idle_slot_fill_effect/test_stop_gate_fill.py tests/nodes/node_remote_lane_compute/test_stop_gate_placement.py tests/nodes/node_landing_worker_engine_compute/test_stop_gate_worker_engine.py
-    cwd: .
-  binds_ac:
-  - AC1
 - id: dod-omn21958-ac2
   description: AC2 tests pass at the PR head.
   source: manual
@@ -85,19 +76,6 @@ dod_evidence:
     cwd: .
   binds_ac:
   - AC6
-- id: dod-omn21958-deploy-stop-gate
-  description: 'Hosted-runner deploy smoke: the placement node asked the way the runner asks it refuses a fixture stop and places nothing, and the fill and the worker-engine choice refuse a stopped class, all in process with no broker, no Docker daemon and no production rollout.'
-  source: manual
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest -k stop_gate -q --no-cov tests/nodes/node_idle_slot_fill_effect/test_stop_gate_fill.py tests/nodes/node_remote_lane_compute/test_stop_gate_runner_path.py tests/nodes/node_landing_worker_engine_compute/test_stop_gate_worker_engine.py
-    cwd: .
-  - check_type: command
-    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_landing_worker_engine_compute/handlers/handler_landing_worker_engine.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep "stop_gate" > /dev/null
-    cwd: .
-  binds_ac:
-  - AC1
-  - AC5
 - id: dod-omn21958-integration-proof
   description: The pushed head ran the three stop-gated nodes' tests on a lab host through onex lab-work with its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual

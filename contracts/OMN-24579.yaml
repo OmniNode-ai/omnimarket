@@ -26,8 +26,6 @@ dod_evidence:
 - id: dod-omn24579-ac1-removed
   description: 'The four removed node directories and the removed unit test are gone, the unit declaration is gone from the registry units contract, and the shared modules the live tick imports still import.'
   source: manual
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: test ! -e src/omnimarket/nodes/node_lab_fill_effect && test ! -e src/omnimarket/nodes/node_lab_fill_selection_compute && test ! -e src/omnimarket/nodes/node_lab_fill_plan_compute && test ! -e src/omnimarket/nodes/node_idle_slot_fill_effect && test ! -e tests/nodes/node_host_installer_registry_units/test_lab_fill_tick_unit.py && ! grep -q "lab-fill-tick" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml && env -u PYTHONPATH uv run --frozen python -c "import omnimarket.nodes.node_floor_fill_orchestrator, omnimarket.handlers.rules_lab_fill_tickets, omnimarket.models.lab_fill"

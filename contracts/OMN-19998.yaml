@@ -373,22 +373,6 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_lane_toolchain_provision_effect/test_golden_chain_lane_toolchain_provision_effect.py -q --no-cov -n 0
         cwd: .
-  - id: dod-omn19998-ruling-failed-recovery
-    description: The recorded failed run is replayed through the throughput tick effect, including its corrected mechanism link and recovered repository brief. Four regressions fail before the change. This scoped recovery proof does not assert that all process rulings have mechanisms or that a host timer is installed.
-    source: manual
-    binds_ac: [AC11]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/test_ruling_recovery.py -q --no-cov -n 0
-        cwd: .
-  - id: dod-omn19998-ruling-failed-recovery-deploy
-    description: Hosted wiring smoke exercises the same HandlerLabFill entry used by the throughput tick, recovers the original repository from a brief, dispatches through a local runner and observes one sent-key receipt on repeated ticks. It uses a structural projection of the recorded ledger case and no external services; live runtime adoption remains unmeasured.
-    source: manual
-    binds_ac: [AC11]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/test_ruling_recovery.py -q --no-cov -n 0 -k recorded_failed_mechanism
-        cwd: .
   - id: dod-omn19998-job-log-accounting
     description: Replay the recorded eight import crashes through the lane node and real subprocess boundary, then read and cache a repaired result. Positive controls retain charges after dispatch and for corrupt receipts; concurrent failures release only their own reservations. This proof does not assert the unrelated controller timer criteria.
     source: manual

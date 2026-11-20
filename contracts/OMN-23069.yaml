@@ -81,16 +81,6 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_landing_canary_effect/test_review_findings_omn23069.py -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
-  - id: dod-omn23069-ac1-findings-tests-5
-    description: >-
-      The review findings tests for the lab fill plan order (#5305) pass with the fix and fail on dev's source without it.
-    source: manual
-    binds_ac:
-      - AC1
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute/test_review_findings_omn23069.py -q -n 0 --no-cov
-        cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn23069-ac2-findings-named
     description: >-
       Every finding of the five pull requests was still true at dev's head, so none is named as already fixed or false; the pull request body lists each finding with the test that covers it. The pre-existing pilot manifest tests still pass beside the new ones.

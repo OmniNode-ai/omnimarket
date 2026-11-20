@@ -62,26 +62,6 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn20867-headroom-unknown"
-    description: "The headroom plan and fan-out readback tests and the publish parity gate tests pass at the PR head."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_headroom_plan.py -q -p no:randomly"
-        cwd: "${OMNI_HOME}/omnimarket"
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_golden_chain_lab_fill_plan_compute.py -q -p no:randomly"
-        cwd: "${OMNI_HOME}/omnimarket"
-      - check_type: "test_passes"
-        check_value: 'uv run pytest tests/gates/test_contract_publish_parity.py -q -p no:randomly -k "failure_terminal"'
-        cwd: "${OMNI_HOME}/omnimarket"
-      - check_type: "test_passes"
-        check_value: 'uv run pytest tests/gates/test_contract_publish_parity.py -q -p no:randomly -k "repaired_nodes"'
-        cwd: "${OMNI_HOME}/omnimarket"
-      - check_type: "test_passes"
-        check_value: 'uv run pytest tests/gates/test_contract_publish_parity.py -q -p no:randomly -k "not failure_terminal and not repaired_nodes"'
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1"]
   - id: "dod-omn20867-headroom-unknown-cause"
     description: "The headroom plan handler emits the HEADROOM_UNKNOWN failure cause."
     source: "manual"
