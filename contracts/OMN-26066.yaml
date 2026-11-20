@@ -11,7 +11,7 @@ requirements:
   statement: Each recall operation of the review replay set node has a subscribed command topic with a named producer and a result topic the runtime router maps its result model to.
   acceptance:
   - id: AC1
-    statement: 'AC1: each of the six lines has either a merged trigger declaration naming its contract file or a CI-only reason naming the contract file read -- falsifier: grep the six repo and number pairs in the integration ledger NOT RUNNING and CI-ONLY sections'
+    statement: 'AC1: each recall operation declares its own command topic in handler_routing, subscribe_topics and externally_produced_topics -- falsifier: the route tests in test_review_replay_set.py fail on the contract at the merge base'
   - id: AC2
     statement: 'AC2: at least one declared trigger fires and its run line is read on the dev runtime on h201 -- falsifier: dev runtime log grep for the node name after the install'
 evidence_requirements:
@@ -33,11 +33,11 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_review_replay_set_effect -q
     cwd: .
 - id: dod-omn26066-deploy-conditions
-  description: 'Deploy probe the hosted runner can run: the node contract at the checked-out commit declares the score_recall command topic; the line does not exist at the merge base, so the probe fails there.'
+  description: 'Deploy probe the hosted runner can run: gh api reads the node contract at the checked-out commit and it declares the score_recall command topic; the line does not exist at the merge base, so the probe fails there.'
   source: manual
   checks:
   - check_type: command
-    check_value: bash -o pipefail -c 'grep -F "review-replay-recall-score-requested" src/omnimarket/nodes/node_review_replay_set_effect/contract.yaml > /dev/null'
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_replay_set_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "review-replay-recall-score-requested" > /dev/null'
     cwd: .
 - id: dod-omn26066-integration-proof
   description: The branch revision is installed on the dev lane on h201 and the node's run line is read in the dev runtime log; the host, revision and line are named in the pull request.
