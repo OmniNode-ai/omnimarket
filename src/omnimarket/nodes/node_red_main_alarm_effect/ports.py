@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import time
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -26,7 +27,11 @@ from omnimarket.delegated_test_loop.lane_bus import (
     bound_lane_principal,
     open_lab_run_bus,
 )
-from omnimarket.handlers.bus_binding.select import open_bound_bus, positional_opener
+from omnimarket.handlers.bus_binding.select import (
+    BoundBus,
+    open_bound_bus,
+    positional_opener,
+)
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.handlers.scm.handler_scm_dispatch import ScmBusCaller
 from omnimarket.handlers.scm.handler_scm_local_state import default_watcher_state_path
@@ -125,6 +130,45 @@ def _writer_principal() -> str:
         return username
 
 
+async def _open_durable_bus(
+    stack: contextlib.AsyncExitStack, settings: ModelAlarmSettings, workspace: Path
+) -> BoundBus:
+    """The lane's durable bus, opened with the bound a runtime-hosted caller needs.
+
+    The binding's own health read is the 8 s bound of a short-lived client command, and the node
+    is not one: it runs inside the shared runtime, whose event loop stalls for seconds under load
+    (log gaps of 3 to 7 s, consumer heartbeat sessions expiring), so the read reported a healthy
+    broker degraded with ``TimeoutError`` while a fresh process opened the same lane in under a
+    second. Each attempt waits the overlay's bound and a degraded one is closed and tried again; a
+    binding still degraded after the last attempt is raised with the reason the decision holds,
+    never as the bare state, so the failure the fire answers says why.
+    """
+    reasons: list[str] = []
+    started = time.monotonic()
+    for _ in range(settings.bus_open_attempts):
+        async with contextlib.AsyncExitStack() as attempt:
+            with _config_root_declared(settings):
+                bound = await attempt.enter_async_context(
+                    open_bound_bus(
+                        open_bus=positional_opener(open_lab_run_bus),
+                        bus="kafka",
+                        lane=settings.bus_lane,
+                        kafka_bootstrap=None,
+                        workspace_root=workspace,
+                        timeout_s=settings.bus_open_timeout_seconds,
+                    )
+                )
+            if not bound.decision.degraded:
+                stack.push_async_exit(attempt.pop_all())
+                return bound
+            reasons.append(bound.decision.reason.strip() or "no reason recorded")
+    raise RuntimeError(
+        f"alarm bus binding is {bound.decision.state.value}: {'; '.join(reasons)}"
+        f" (attempts={len(reasons)}, health_read_s={settings.bus_open_timeout_seconds:g},"
+        f" elapsed_s={time.monotonic() - started:.1f})"
+    )
+
+
 class AlarmBusPorts:
     def __init__(
         self,
@@ -157,20 +201,7 @@ class AlarmBusPorts:
                     "OMNIBASE_PATH does not name the workspace for the bus lane"
                 )
             async with contextlib.AsyncExitStack() as stack:
-                with _config_root_declared(settings):
-                    bound = await stack.enter_async_context(
-                        open_bound_bus(
-                            open_bus=positional_opener(open_lab_run_bus),
-                            bus="kafka",
-                            lane=settings.bus_lane,
-                            kafka_bootstrap=None,
-                            workspace_root=Path(workspace),
-                        )
-                    )
-                if bound.decision.degraded:
-                    raise RuntimeError(
-                        f"alarm bus binding is {bound.decision.state.value}"
-                    )
+                bound = await _open_durable_bus(stack, settings, Path(workspace))
                 writer = WorkLedgerAppendCaller(
                     bound.bus, principal=_writer_principal()
                 )

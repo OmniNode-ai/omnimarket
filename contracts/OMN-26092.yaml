@@ -108,3 +108,11 @@ dod_evidence:
           env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm.py
           -q -n 0 --no-cov -k 'bus_carries or one_alarm_per_red_head'
         cwd: .
+  - id: dod-omn26092-ac5-recorded-cause-degraded-binding
+    description: The tests built from the dev runtime's reading of the fires that answered configuration_unreadable with "alarm bus binding is degraded" (health read reason TimeoutError against a lane a fresh process opens in under a second) fail at the base and pass at the head. The open waits the overlay's bound per attempt, retries a degraded attempt, and a binding that stays degraded names its reason and attempts.
+    source: manual
+    binds_ac: [AC2, AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_red_main_alarm_effect/test_red_main_alarm_bus_open.py -q --no-cov
+        cwd: .

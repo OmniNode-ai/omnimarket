@@ -7,6 +7,10 @@ bus_lane: dev
 # The directory that holds config/lab/ci_bus_lanes.yaml in the runtime; set only when the runtime
 # mounts it and exports no ONEX_WORKSPACE_CONFIG_ROOT.
 workspace_config_root: /etc/example/workspace-config
+# The bus open runs in a shared runtime whose event loop stalls for seconds under load. Each attempt
+# waits this long for the durable bus and a degraded one is retried; the defaults are 45 and 2.
+bus_open_timeout_seconds: 45
+bus_open_attempts: 2
 repositories:
   - repo: example-org/example-repo
     branch: main

@@ -59,6 +59,12 @@ class ModelAlarmSettings(_Frozen):
     # scan then answers a configuration failure every fire. The overlay declares the mount; a root the
     # environment already names wins.
     workspace_config_root: ConfigRoot | None = None
+    # The bus open runs inside a shared runtime whose event loop stalls for seconds under load, so the
+    # client command's 8 s health read reports a healthy broker degraded. The node's open waits this long
+    # for the durable bus per attempt and retries, and a binding still degraded after the last attempt is
+    # reported with its reason.
+    bus_open_timeout_seconds: float = Field(default=45.0, gt=0, le=120)
+    bus_open_attempts: int = Field(default=2, ge=1, le=4)
 
 
 class ModelAlarmTarget(_Frozen):
