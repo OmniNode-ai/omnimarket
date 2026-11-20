@@ -20,7 +20,7 @@ description: >
   topic counts filled in: how many live topics are under the rule, how many are outside it, and how
   many are declared by no contract. The broker is read with list calls only.
 
-  With --apply (python -m, the one write this node makes) it creates each service writer topic the
+  With --apply (python -m ...runtime_topic_provision_dry_run, the one write this node makes) it creates each service writer topic the
   plan names and the broker does not hold: for every contract that declares a writer_topics template,
   one topic per declared service login (the service writers overlay, and a broker scope overlay's
   WRITE grant on the topic the template composes), 1 partition and 1 replica. An existing topic is
@@ -32,7 +32,13 @@ handler:
   input_model: omnimarket.nodes.node_topic_provision_dry_run_effect.models.model_topic_provision_dry_run_request.ModelTopicProvisionDryRunRequest
 
 # HandlerTopicProvisionDryRun takes the broker topic lister as a constructor parameter, so the node
-# runs through its own entry point (python -m), not handler_routing.
+# runs through its own entry point (python -m ...runtime_topic_provision_dry_run), not handler_routing.
+# HandlerWriterTopicApply takes the lister and the creator, so it is bound here, not routed.
+entry_point_handlers:
+  - operation: apply_writer_topics
+    handler:
+      name: HandlerWriterTopicApply
+      module: omnimarket.nodes.node_topic_provision_dry_run_effect.handlers.handler_writer_topic_apply
 
 descriptor:
   node_archetype: effect
