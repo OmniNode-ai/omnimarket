@@ -50,7 +50,7 @@ PROOF_ITEM = """
     binds_ac: [AC1]
     checks:
       - check_type: command
-        check_value: "uv run onex lab-work --lane l --repo omnimarket --ref b -- uv run pytest tests/test_x.py"
+        check_value: "onex lab-work --lane l --repo omnimarket --ref b -- uv run pytest tests/test_x.py"
 """
 
 

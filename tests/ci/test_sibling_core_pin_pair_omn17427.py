@@ -69,6 +69,7 @@ INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("b0b00a52dd57", "dev-20261111183916-a85cb916d4c1"),
     ("2b0c3eacdf4d", "dev-20261111183916-a85cb916d4c1"),
     ("6cea249fb8cf", "dev-20261113013358-a09066caf945"),
+    ("a679b44e2cfe", "dev-20261113013358-a09066caf945"),
     ("fe82074c1a23", "dev-20261113013358-a09066caf945"),
 )
 
