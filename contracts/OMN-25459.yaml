@@ -38,7 +38,7 @@ dod_evidence:
     binds_ac: [AC3]
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_ticket_closer_scheduled_effect/test_bound_profile.py -q --no-cov
+        check_value: uv run --frozen pytest tests/nodes/node_ticket_closer_scheduled_effect/test_bound_profile.py tests/nodes/node_ticket_closer_scheduled_effect/test_gateway_open_prs.py -q --no-cov
         cwd: .
   - id: dod-omn25459-integration-proof
     description: Run the closer node's tests, the gateway open-pull-request source and the bound profile among them, on a lab host at the pushed head. The live read of one closer tick on the dev runtime on h201 is taken after the branch install and goes in a ledger STATUS row naming the head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
