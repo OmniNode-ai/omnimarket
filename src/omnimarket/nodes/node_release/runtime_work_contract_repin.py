@@ -18,7 +18,7 @@ commit, or the bump pull request is red by construction:
 Stdlib only and run by path, so the release job needs no project install (the
 package ``__init__`` files import the project's dependencies)::
 
-    python3 src/omnimarket/handlers/work_contracts/repin.py --root . --target 0.4.322
+    python3 src/omnimarket/nodes/node_release/runtime_work_contract_repin.py --root . --target 0.4.322
 
 Contract files are edited textually, one line each, so no other byte moves.
 """

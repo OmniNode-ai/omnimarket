@@ -14,7 +14,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
-from omnimarket.handlers.dev_armed_row import (
+from omnimarket.nodes.node_release.runtime_dev_armed_row import (
     ArmedState,
     dev_armed_row,
     read_armed_state,

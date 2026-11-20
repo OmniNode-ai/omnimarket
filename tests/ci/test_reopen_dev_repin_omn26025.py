@@ -44,7 +44,7 @@ BASE_FILES = (
     Path("pyproject.toml"),
     Path("uv.lock"),
     Path("scripts/ci/post_release_dev_bump.py"),
-    Path("src/omnimarket/handlers/work_contracts/repin.py"),
+    Path("src/omnimarket/nodes/node_release/runtime_work_contract_repin.py"),
     PINS_TEST,
     Path("contracts/OMN-18010.yaml"),
 )

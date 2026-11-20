@@ -29,7 +29,14 @@ pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release-cut.yml"
-PROBE = REPO_ROOT / "src" / "omnimarket" / "handlers" / "release_clean_install_probe.py"
+PROBE = (
+    REPO_ROOT
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_release"
+    / "runtime_clean_install_probe.py"
+)
 PROBE_NAME_PART = "clean-install probe"
 TAG_STEP_ID = "tag"
 
@@ -108,7 +115,7 @@ def test_clean_install_probe_before_tag_is_ordered_ahead_of_the_tag_step() -> No
         "a probe that may fail without stopping the job is no gate"
     )
     assert "if" not in probe, "a probe that can be skipped is no gate"
-    assert "release_clean_install_probe.py" in probe["run"]
+    assert "runtime_clean_install_probe.py" in probe["run"]
 
 
 def test_clean_install_probe_before_tag_stops_the_job_before_the_tag_step(
