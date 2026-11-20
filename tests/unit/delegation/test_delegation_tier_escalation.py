@@ -1244,7 +1244,7 @@ class TestTestResearchTierPolicyVerified:
         # OMN-17427: the reachable cloud rung is the non-Gemini OpenRouter
         # cheap_frontier tier, declared in `test`'s closed tier_order. It is
         # selectable once its credential resolves and not before.
-        # OMN-20376: Ultra is pin-only; the ordinary rung is now north-mini's
+        # OMN-20376: Ultra is pin-only; the ordinary rung is now Nemotron 3.5 Super's (OMN-26129)
         # mirrored placement. Reload the committed ladder rather than reuse
         # one cached by a synthetic bifrost fixture with no placements.
         from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
@@ -1265,7 +1265,7 @@ class TestTestResearchTierPolicyVerified:
                 "local",
                 frozenset(),
                 task_type="test",
-                excluded_backend_refs=frozenset({"openrouter-north-mini-code"}),
+                excluded_backend_refs=frozenset({"openrouter-nemotron-3-5-super"}),
                 prompt="",
             )
         finally:
