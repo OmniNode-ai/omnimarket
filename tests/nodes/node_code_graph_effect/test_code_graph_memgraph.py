@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
+
 import pytest
 
 from omnimarket.models.model_code_graph_lookup import (
@@ -61,7 +64,7 @@ class _NoClock:
         return None
 
 
-def _opener(driver: FakeBoltDriver):  # type: ignore[no-untyped-def]
+def _opener(driver: FakeBoltDriver) -> Callable[[], MemgraphVersionStore]:
     return lambda: _store(driver)
 
 
@@ -257,7 +260,7 @@ def test_the_nightly_writes_one_revision_per_repository_into_memgraph() -> None:
     handler = CodeGraphRun(
         overlay=overlay(),
         host=HOST,
-        source=source("memory", None),  # type: ignore[arg-type]
+        source=source("memory", Path()),
         appender=None,
         clock=lambda: RUN_AT,
         version_writer=_store(driver),
@@ -275,7 +278,7 @@ def test_the_nightly_writes_one_revision_per_repository_into_memgraph() -> None:
     writing = CodeGraphRun(
         overlay=overlay(),
         host=HOST,
-        source=source("memory", None),  # type: ignore[arg-type]
+        source=source("memory", Path()),
         appender=InMemoryLedger(),
         clock=lambda: RUN_AT,
         version_writer=_store(driver),
@@ -309,7 +312,7 @@ def test_an_unreachable_memgraph_never_fails_the_nightly_reading() -> None:
     writing = CodeGraphRun(
         overlay=overlay(),
         host=HOST,
-        source=source("memory", None),  # type: ignore[arg-type]
+        source=source("memory", Path()),
         appender=InMemoryLedger(),
         clock=lambda: RUN_AT,
         version_writer=_store(FakeBoltDriver(fail=ConnectionRefusedError(111, "no"))),
