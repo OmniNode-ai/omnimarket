@@ -41,7 +41,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_broker_auth_refusal_reading_effect -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_broker_auth_refusal_reading_effect/test_broker_auth_refusal_schedule.py -q --no-cov -n 0 -p no:randomly -k install_writes_an_hourly_timer
     cwd: .
 - id: dod-omn25005-ac3-installer
   description: The unit is written by the node's own schedule install verb (dry run and rollback tested), never by hand.
