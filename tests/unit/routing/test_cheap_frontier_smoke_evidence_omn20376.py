@@ -26,22 +26,25 @@ from omnimarket.validators.routing_tier_backend_bindability import (
 pytestmark = pytest.mark.unit
 # Dated measurements remain covered by the repository's retired-model gate.
 # Retired identifiers are redacted; measured counts and verdicts are preserved.
-FIXTURE = (
-    Path(__file__).parents[2]
-    / "fixtures"
-    / "receipts"
-    / "cheap_frontier_smokes_2026_10_25.json"
-)
+RECEIPTS = Path(__file__).parents[2] / "fixtures" / "receipts"
+# Every dated smoke file, oldest first; a later smoke of a model replaces an earlier
+# one (OMN-26129 added the 2026-11-20 smoke that placed Nemotron 3.5 Super).
+FIXTURES = sorted(RECEIPTS.glob("cheap_frontier_smokes_*.json"))
 TIER = "cheap_frontier"
 
 
 def _smokes() -> dict[str, dict[str, Any]]:
-    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    return {row["model"]: row for row in payload["smokes"]}
+    rows: dict[str, dict[str, Any]] = {}
+    for fixture in FIXTURES:
+        payload = json.loads(fixture.read_text(encoding="utf-8"))
+        rows.update({row["model"]: row for row in payload["smokes"]})
+    return rows
 
 
 def _bar() -> int:
-    return int(json.loads(FIXTURE.read_text(encoding="utf-8"))["bar_accepted_of_10"])
+    return int(
+        json.loads(FIXTURES[-1].read_text(encoding="utf-8"))["bar_accepted_of_10"]
+    )
 
 
 def _ladder_rungs(contract_path: Path = BIFROST_CONTRACT_PATH) -> dict[str, str]:
@@ -115,3 +118,14 @@ def test_a_parked_rung_is_not_on_the_ladder(tmp_path: Path) -> None:
     path = tmp_path / "contract.yaml"
     path.write_text(yaml.safe_dump(contract), encoding="utf-8")
     assert "parked-rung" not in _ladder_rungs(path)
+
+
+def test_both_dated_smokes_are_read_and_the_latest_sets_the_bar() -> None:
+    assert [fixture.name for fixture in FIXTURES] == [
+        "cheap_frontier_smokes_2026_10_25.json",
+        "cheap_frontier_smokes_2026_11_20.json",
+    ]
+    smokes = _smokes()
+    assert smokes["nvidia/nemotron-3.5-super-vl:free"]["accepted"] == 10
+    assert "cohere/north-mini-code:free" in smokes
+    assert _bar() == 7
