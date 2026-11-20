@@ -11,7 +11,7 @@ requirements:
     statement: The three integration floor nodes have a trigger the runtime delivers, and one demand is handled by them.
     acceptance:
       - id: AC1
-        statement: 'AC1: a STATUS row on the rolling ledger reads kv pr=omnimarket#5879 installed=<host>:<revision> observed=<what ran> read_at=<UTC>, written by the lane after it read one run on the dev runtime on h201 itself (a log line, a dispatch, a health read or a job record) -- falsifier: `grep -F ''pr=omnimarket#5879'' $ONEX_LEDGER_PATH | grep -F ''installed=''` finds no row'
+        statement: 'AC1: a STATUS row on the rolling ledger reads kv pr=omnimarket#5879 installed=<host>:<revision> observed=<what ran> read_at=<UTC>, written by the lane after it read one run on the dev runtime on h201 itself (a log line, a dispatch, a health read or a job record) -- falsifier: the rolling ledger holds no STATUS row carrying both pr=omnimarket#5879 and installed='
       - id: AC2
         statement: 'AC2: one demand or tick reaches node_floor_projection_read_effect, node_integration_projection_compute and node_integration_reading_publish_effect on the dev runtime and is handled, or the STATUS row names the single measured cause that keeps it from running and who must act -- falsifier: the dev runtime log and job record on h201 show no handled run line of these three nodes and the STATUS row names no cause and no actor'
       - id: AC3
