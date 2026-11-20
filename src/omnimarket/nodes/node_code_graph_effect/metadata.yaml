@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_code_graph_effect
 version: 1.0.0
-description: Nightly Python import graph of the declared repositories at their default-branch heads, judged against a frozen sample and appended as a code graph reading row; a check verb names modules a pull request adds that no root reaches.
+description: Nightly Python import graph of the declared repositories at their default-branch heads, judged against a frozen sample and appended as a code graph reading row; a check verb names modules a pull request adds that no root reaches; a lookup verb answers definition, importers, reach, exemplar, same-shape and locate (where a node, its contract, overlay and workflows live).
 pack: operator_tooling
 node_role: effect
 display_name: Code Graph Effect
