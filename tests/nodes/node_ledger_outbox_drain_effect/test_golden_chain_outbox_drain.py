@@ -33,6 +33,9 @@ def test_golden_chain_the_node_drains_through_its_entry_point_with_the_publisher
     contract = yaml.safe_load(node.contract_path.read_text())
     assert contract["name"] == "node_ledger_outbox_drain_effect"
     assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.ledger-outbox-drain-completed.v1"
+    ]
     request = ModelOutboxDrainRequest(
         ledger_path=str(ledger),
         publisher_argv=(str(_script(tmp_path, "accepted")),),
