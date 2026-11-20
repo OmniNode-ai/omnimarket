@@ -2,19 +2,18 @@
 # SPDX-License-Identifier: MIT
 """The handler of node_branch_deploy_probe_effect.
 
-``HandlerBranchDeployProbe`` reads the running runtime's build provenance and health through an injected probe port
-and maps what it read to a typed result. When no probe is given it builds the runtime probe source reused from
-node_dev_deploy_reading_effect. It reports the observed sha; it does not judge it against the expected one.
+``HandlerBranchDeployProbe`` reads the running runtime's build provenance, health and readiness through an injected
+probe port and maps what it read to a typed result. When no probe is given it builds the HTTP runtime probe from the
+overlay's settings. It reports the observed sha; it does not judge it against the expected one.
 """
 
 from __future__ import annotations
 
-import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from datetime import UTC, datetime
 
-from omnimarket.nodes.node_branch_deploy_probe_effect.adapters.adapter_runtime_probe import (
-    RuntimeBuildProbe,
+from omnimarket.nodes.node_branch_deploy_probe_effect.adapters.adapter_http_probe import (
+    HttpRuntimeProbe,
 )
 from omnimarket.nodes.node_branch_deploy_probe_effect.models.model_branch_deploy_probe import (
     ModelBranchDeployProbeRequest,
@@ -36,12 +35,10 @@ class HandlerBranchDeployProbe:
         self,
         overlay: ModelBranchDeployProbeOverlay | None = None,
         probe: ProtocolBranchDeployProbe | None = None,
-        environ: Mapping[str, str] | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._configured_overlay = overlay
         self._configured_probe = probe
-        self._environ = environ
         self._clock = clock if clock is not None else (lambda: datetime.now(UTC))
 
     @property
@@ -53,10 +50,7 @@ class HandlerBranchDeployProbe:
     @property
     def _probe(self) -> ProtocolBranchDeployProbe:
         if self._configured_probe is None:
-            self._configured_probe = RuntimeBuildProbe(
-                self._overlay.probe,
-                self._environ if self._environ is not None else os.environ,
-            )
+            self._configured_probe = HttpRuntimeProbe(self._overlay.probe)
         return self._configured_probe
 
     def handle(
