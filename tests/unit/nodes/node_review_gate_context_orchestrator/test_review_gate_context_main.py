@@ -10,9 +10,11 @@ sweep, 1 a source that could not be read (nothing posted), 3 a missing deploymen
 from __future__ import annotations
 
 import json
+import os
 import plistlib
 import shlex
 import shutil
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,6 +35,7 @@ pytestmark = pytest.mark.unit
 
 NODES = Path(__file__).resolve().parents[4] / "src" / "omnimarket" / "nodes"
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
+INCIDENT_QUERY = Path(__file__).with_name("review_gate_context_probe_read.json")
 
 
 def _overlay_root(root: Path) -> None:
@@ -135,6 +138,88 @@ def test_installer_tick_runs_the_overlay_probe(
     assert result["ok"]
     assert result["heads"] == 1
     assert result["posted"] == 0
+
+
+@pytest.mark.parametrize("has_lane_declaration", [False, True])
+def test_review_gate_context_probe_read(
+    tmp_path: Path, has_lane_declaration: bool
+) -> None:
+    """Replay the failed launchd read and check the installer rejects that environment."""
+    config_root = tmp_path / "workspace-config"
+    declaration = config_root / "config/lab/ci_bus_lanes.yaml"
+    declaration.parent.mkdir(parents=True)
+    declaration.write_text(
+        "lanes:\n  dev:\n    broker: localhost:9092\n    security_protocol: PLAINTEXT\n",
+        encoding="utf-8",
+    )
+    req = request(
+        tmp_path,
+        unit="review-gate-context-probe",
+        workspace_config_root=str(
+            config_root if has_lane_declaration else tmp_path / "omni"
+        ),
+        path_overrides={"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays")},
+    )
+    unit = load_units()[req.unit]
+
+    def run_probe(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        # Run the module and its declared check with the installer's environment.
+        return subprocess.run(
+            [*argv[: argv.index("uv")], sys.executable, *argv[argv.index("-m") :]],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    installer = HandlerRegistryUnits(run=run_probe)
+    plist = plistlib.loads(
+        HandlerRegistryUnits().render(req, unit, tmp_path, "uv", "python").encode()
+    )
+    # Reconstruct the scheduled query from the incident tick and its overlay.
+    incident_query = INCIDENT_QUERY.read_text(encoding="utf-8")
+    read = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+from omnibase_infra.cli import cli_ledger
+
+class FixtureQuery:
+    def __init__(self, config):
+        pass
+
+    async def query(self, request, *, timeout_s):
+        assert request["query"] == "rows"
+        assert request["kinds"] == ["STATUS"]
+        assert request["term"] == "review="
+        return {"status": "ok", "rows": []}
+
+cli_ledger.HandlerWorkLedgerQuery = FixtureQuery
+cli_ledger.ledger_group()
+""",
+            "query",
+            "--stdin",
+        ],
+        input=incident_query,
+        env={**os.environ, **plist["EnvironmentVariables"]},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    start = installer.start_check(req, unit, "uv", "python", tmp_path)
+    if has_lane_declaration:
+        assert read.returncode == 0, read.stderr
+        assert json.loads(read.stdout) == {"status": "ok", "rows": []}
+        assert start.returncode == 0, start.stderr
+    else:
+        assert read.returncode == 1
+        assert read.stderr.startswith(
+            "Error: Work-ledger read refused (DelegateLaneSelectionError)"
+        )
+        assert start.returncode == 3, start.stdout + start.stderr
+        assert "DelegateLaneSelectionError" in start.stderr
+        assert "ONEX_WORKSPACE_CONFIG_ROOT" in start.stderr
+        assert "ci_bus_lanes.yaml" in start.stderr
 
 
 def test_installer_tick_requires_an_overlay_schedule(

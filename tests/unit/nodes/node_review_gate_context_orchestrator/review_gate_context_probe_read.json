@@ -1,0 +1,8 @@
+{
+  "query": "rows",
+  "since": "2026-11-06T00:50:39Z",
+  "until": "2026-11-21T00:50:39Z",
+  "kinds": ["STATUS"],
+  "limit": 100000,
+  "term": "review="
+}
