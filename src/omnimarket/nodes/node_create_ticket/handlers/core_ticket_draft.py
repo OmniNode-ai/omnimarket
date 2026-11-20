@@ -17,6 +17,11 @@ from omnibase_core.models.ticket.model_ticket_contract import (
 )
 from pydantic import AwareDatetime, BaseModel, Field, field_validator
 
+from omnimarket.models.model_ticket_contract_render import (
+    EnumTicketContractRenderOperation,
+    EnumTicketContractRenderOutcome,
+    ModelTicketContractRenderRequest,
+)
 from omnimarket.models.model_ticket_io import (
     ModelCreateTicketRequest,
     ModelCreateTicketResult,
@@ -27,11 +32,6 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_ticket_project import 
 )
 from omnimarket.nodes.node_ticket_contract_render_compute import (
     NodeTicketContractRenderCompute,
-)
-from omnimarket.nodes.node_ticket_contract_render_compute.models import (
-    EnumTicketContractRenderOperation,
-    EnumTicketContractRenderOutcome,
-    ModelTicketContractRenderRequest,
 )
 
 type DraftFailureReason = Literal[

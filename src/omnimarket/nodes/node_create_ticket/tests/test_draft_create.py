@@ -32,6 +32,10 @@ from omnibase_infra.runtime.core_runtime.routing_map_builder import (
 )
 
 from omnimarket.handlers.ticket import ticket_cli
+from omnimarket.models.model_ticket_contract_render import (
+    EnumTicketContractRenderOperation,
+    ModelTicketContractRenderRequest,
+)
 from omnimarket.models.model_ticket_io import ModelCreateTicketRequest
 from omnimarket.models.ticket_write_io import ModelTicketWriteRequest
 from omnimarket.nodes.node_create_ticket import HandlerCreateTicket
@@ -47,10 +51,6 @@ from omnimarket.nodes.node_linear_ticket_write_effect.handlers import (
 )
 from omnimarket.nodes.node_ticket_contract_render_compute import (
     NodeTicketContractRenderCompute,
-)
-from omnimarket.nodes.node_ticket_contract_render_compute.models import (
-    EnumTicketContractRenderOperation,
-    ModelTicketContractRenderRequest,
 )
 
 pytestmark = pytest.mark.unit
