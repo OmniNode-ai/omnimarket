@@ -20,14 +20,15 @@ import shlex
 import socket
 import sys
 import time
+import urllib.request
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Protocol
+from urllib.error import URLError
 
-import httpx
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -136,6 +137,16 @@ def build_transport(backend: str, host: str) -> ProtocolLegTransport:
     return _TRANSPORT_BY_BACKEND[backend](host)
 
 
+def _probe_ready(url: str, timeout: float) -> bool:
+    """Return True when one GET of the readiness URL answers 200, bypassing proxies."""
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(url, timeout=timeout) as response:
+            return bool(response.status == 200)
+    except (URLError, OSError):
+        return False
+
+
 def wait_for_dev_readiness(
     settings: ModelDevReadiness, environment: Mapping[str, str]
 ) -> bool:
@@ -153,28 +164,24 @@ def wait_for_dev_readiness(
     if host is None:
         raise RuntimeError(f"dev readiness host {host_name} is undeclared")
     urls = [
-        httpx.URL(scheme="http", host=target, port=settings.port, path="/ready")
+        f"http://{target}:{settings.port}/ready"
         for target in (host.target, *host.fallback_targets)
     ]
     deadline = time.monotonic() + settings.wait_seconds
-    with httpx.Client(trust_env=False) as client:
-        while (remaining := deadline - time.monotonic()) > 0:
-            next_poll = time.monotonic() + settings.poll_seconds
-            for url in urls:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    return False
-                try:
-                    with client.stream(
-                        "GET", url, timeout=min(remaining, settings.poll_seconds)
-                    ) as response:
-                        if response.status_code == 200 and time.monotonic() <= deadline:
-                            return True
-                except httpx.RequestError:
-                    continue
-            delay = min(deadline, next_poll) - time.monotonic()
-            if delay > 0:
-                time.sleep(delay)
+    while (remaining := deadline - time.monotonic()) > 0:
+        next_poll = time.monotonic() + settings.poll_seconds
+        for url in urls:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            if (
+                _probe_ready(url, min(remaining, settings.poll_seconds))
+                and time.monotonic() <= deadline
+            ):
+                return True
+        delay = min(deadline, next_poll) - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
     return False
 
 

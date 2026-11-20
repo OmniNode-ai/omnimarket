@@ -8,7 +8,6 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-import httpx
 import pytest
 
 from omnimarket.handlers import delegation_readiness_scenario
@@ -129,12 +128,11 @@ def test_readiness_polls_until_ready_or_deadline(
         nonlocal now
         now += seconds
 
-    def respond(request: httpx.Request) -> httpx.Response:
-        assert request.url == httpx.URL("http://dev.example.test:8085/ready")
+    def probe(url: str, timeout: float) -> bool:
+        assert url == "http://dev.example.test:8085/ready"
         attempts.append(now)
-        return httpx.Response(503 if len(attempts) == 1 else final_status)
+        return (503 if len(attempts) == 1 else final_status) == 200
 
-    client = httpx.Client(transport=httpx.MockTransport(respond))
     hosts = ModelLabHostsTable(
         hosts=(ModelLabHostRow(name="dev", target="dev.example.test"),)
     )
@@ -146,7 +144,7 @@ def test_readiness_polls_until_ready_or_deadline(
     monkeypatch.setattr(
         delegation_readiness_scenario, "resolve_lab_hosts_table", lambda _: hosts
     )
-    monkeypatch.setattr(httpx, "Client", lambda **_: client)
+    monkeypatch.setattr(delegation_readiness_scenario, "_probe_ready", probe)
 
     config = delegation_readiness_scenario.ModelDevReadiness(
         host_env="DEV_HOST", port=8085, wait_seconds=2, poll_seconds=1
