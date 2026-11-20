@@ -56,7 +56,9 @@ _RED = frozenset(
 
 
 class ProtocolRedMainAlarmPorts(Protocol):
-    async def inventory(self, now: datetime) -> ModelAlarmInventory: ...
+    async def inventory(self, now: datetime) -> ModelAlarmInventory:
+        """The default branches to read, each with its head and required checks."""
+
     async def check_runs(
         self, target: ModelAlarmTarget
     ) -> ModelCommitCheckRunsResult: ...
