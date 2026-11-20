@@ -172,27 +172,63 @@ def _onex_home() -> Path:
     return user_config_path().parent
 
 
-def pricing_models_dev_index() -> ModelsDevIndex:
-    """models.dev as the delegation call reads it to price a model (OMN-23413 AC35).
+@cache
+def _shipped_price_list() -> Mapping[str, Any]:
+    """The price list that ships inside the install (``model_price_list.v1.json``)."""
+    name = str(catalog_config()["shipped_price_list"]["file"])
+    document = json.loads((_CONFIG_PATH.parent / name).read_text(encoding="utf-8"))
+    if not isinstance(document, dict) or not isinstance(
+        document.get("providers"), dict
+    ):
+        raise ValueError(f"{name} must hold a providers mapping")
+    return document
 
-    The same cached index the model table reads, refetched when older than its
-    configured age. Tests replace this function so no unit test reads the network.
+
+def shipped_pricing_index() -> ModelsDevIndex:
+    """The shipped price list as an index of ``cost`` entries, read from disk only.
+
+    It is data in the install, refreshed with each release, so a delegation call
+    on a customer machine never reaches models.dev to price a model.
     """
-    return load_models_dev(_onex_home())
+    document = _shipped_price_list()
+    found: dict[tuple[str, str], Mapping[str, Any]] = {}
+    for provider_id, models in document["providers"].items():
+        if not isinstance(models, dict):
+            continue
+        for model_id, price in models.items():
+            if isinstance(price, list) and len(price) == 2:
+                found[(str(provider_id), str(model_id))] = {
+                    "cost": {"input": price[0], "output": price[1]}
+                }
+    return ModelsDevIndex(
+        models=found,
+        fetched_at=str(document.get("read_on")),
+        stale=False,
+        error=None,
+    )
+
+
+def pricing_models_dev_index() -> ModelsDevIndex:
+    """The prices a delegation call reads to price a model (OMN-23413 AC35).
+
+    The price list shipped with the install, never a fetch: a customer machine
+    makes no models.dev connection inside a delegation call. The model table's
+    own refresh (``load_models_dev``) is a separate, user-initiated read.
+    Tests replace this function so no unit test depends on the list's contents.
+    """
+    return shipped_pricing_index()
 
 
 def _pricing_index() -> ModelsDevIndex:
-    """The models.dev index a call may price from, or the empty index.
+    """The index a call may price from, or the empty index.
 
     Supplemental metadata cannot prevent a provider call, so a read failure is
-    no index. A failed refresh may be shown as stale in the explorer, but must
-    not price a new call with metadata older than the configured maximum age.
+    no index and the model stays unpriced.
     """
     try:
-        index = pricing_models_dev_index()
+        return pricing_models_dev_index()
     except Exception:  # Any failure reading optional metadata: price unknown.
         return EMPTY_INDEX
-    return EMPTY_INDEX if index.stale else index
 
 
 def _listing_path(provider: str, onex_home: Path) -> Path:
@@ -251,7 +287,8 @@ def models_dev_price_per_1m(
     """A model's ``(input, output)`` USD per 1M tokens as models.dev lists it, or None.
 
     OMN-23413 AC35: the provider's own catalogue and the model registry come
-    first; this is read only for a model neither prices. ``provider`` is the ONEX
+    first; this is read only for a model neither prices, from the price list
+    shipped with the install. ``provider`` is the ONEX
     provider id, mapped to models.dev's through ``provider_ids``. None when the
     provider has no models.dev id, models.dev does not list the model, or the
     entry states no input or output price.
