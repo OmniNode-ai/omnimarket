@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_lab_stack_reaper_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+lifecycle: experimental
+
+description: >
+  Registers generation-bound lab stack leases and runs one reaper pass. Only an explicitly
+  leased stack whose every unambiguous CLAIM has a matching closes-CLAIM TERMINAL is removable.
+  Declared lanes, lane-named containers and foreign-user stacks are protected. A stable lock
+  covers lease writes and removal decisions; a persisted fence blocks reuse during removal.
+  Dry run by default; execute retries compose down and confirms disappearance. Alarms append
+  FRICTION, each pass appends STATUS and writes last-run.json. No volumes, images or pruning.
+  Scheduled passes read a mutex-protected ledger-host snapshot, including required roll archives
+  and the lane census. On macOS the same read-only source also inventories all ticket roots
+  through the declared SSH access; missing, stale or wrong-host inventory refuses the pass before
+  Docker effects.
+  Labelled com.omninode.*-harness containers older than deadline_min are also removed by immutable
+  id when their owning claims are explicitly closed, or their ticket has no claim in the existing
+  336-hour window and no lane in any configured worktree root. Dogfood, runners, declared
+  containers and unlabelled containers are protected. A fresh inspection precedes removal and
+  disappearance is confirmed afterwards.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: run_lab_stack_reaper
+      handler:
+        name: HandlerLabStackReaper
+        module: omnimarket.nodes.node_lab_stack_reaper_effect.handlers.handler_lab_stack_reaper
+      input_model: omnimarket.nodes.node_lab_stack_reaper_effect.models.model_lab_stack_reaper_request.ModelLabStackReaperRequest
+      output_model: omnimarket.nodes.node_lab_stack_reaper_effect.models.model_lab_stack_reaper_result.ModelLabStackReaperResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+    - atomic per-project lease and fence storage under a stable flock
+    - docker compose down only after the locked lease proof and only with execute
+    - docker rm --force of an eligible labelled harness by immutable container id, without volumes
+    - read-only ledger-host snapshot under the ledger writer mutex before scheduled passes
+    - FRICTION alarms and one STATUS row appended per pass
+    - atomic last-run.json timer evidence
+
+metadata:
+  transport_type: in_process

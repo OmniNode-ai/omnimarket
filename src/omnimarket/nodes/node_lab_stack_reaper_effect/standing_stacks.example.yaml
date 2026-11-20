@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Shape of the standing stacks overlay. This example is never read.
+#
+# A lab stack is removable only when it is leased and every owning CLAIM is closed; a stack with
+# no lease raises an "unleased stack" alarm each pass, so that a lane's forgotten stack is named.
+# A host's own services, brought up by an installer or the deploy agent and meant to run for as
+# long as the host does, have no lane owner and never hold a lease. Undeclared, each one alarms on
+# every pass. A project named in the overlay is protected, exactly as a declared lane project is:
+# never removed and never alarmed.
+#
+# The deployment supplies the real file as <overlay root>/node_lab_stack_reaper_effect/
+# standing_stacks.yaml under a root named in ONEX_SKILL_OVERLAY_ROOTS, or at the path named by
+# ONEX_LAB_STANDING_STACKS.
+schema: lab-standing-stacks.v1
+projects:
+  - {project: example-registry-mirror, hosts: [h901]}
+  - {project: example-package-cache, hosts: [h901]}
