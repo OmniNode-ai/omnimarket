@@ -345,6 +345,7 @@ FLOOR_SIMPLE = "omnimarket.nodes.node_floor_simple_effect"
 FLOOR_COMPARE = "omnimarket.nodes.node_floor_compare_effect"
 FLOOR_DELEGATION = "omnimarket.nodes.node_floor_delegation_effect"
 FLOOR_DELEGATION_HISTORY = "omnimarket.nodes.node_floor_delegation_history_effect"
+COST_THROUGHPUT = "omnimarket.nodes.node_floor_cost_throughput_effect"
 BETA_BOARD = "omnimarket.nodes.node_beta_board_effect"
 JOIN_REFUSAL = "omnimarket.nodes.node_join_refusal_effect"
 FLOOR_PROJECTIONS = "omnimarket.nodes.node_floor_projection_read_effect"
@@ -418,6 +419,7 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
             JOIN_J7,
             FLOOR_DELEGATION,
             FLOOR_DELEGATION_HISTORY,
+            COST_THROUGHPUT,
             FLOOR_PROJECTIONS,
             FLOOR_EMISSIONS,
             FLOOR_OWNER_MAP,
@@ -468,6 +470,7 @@ def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_
         "join_refusal",
         "delegation_tracker",
         "delegation_history",
+        "cost_throughput",
         "beta_board",
         "mvp_launch_reads",
         "floor_owner_map",
@@ -499,6 +502,7 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
                 and FLOOR_COMPARE not in argv
                 and FLOOR_DELEGATION not in argv
                 and FLOOR_DELEGATION_HISTORY not in argv
+                and COST_THROUGHPUT not in argv
                 and BETA_BOARD not in argv
                 and JOIN_REFUSAL not in argv
                 and JOIN_J16 not in argv
