@@ -1087,6 +1087,7 @@ node_operator_waiting_tick_effect = "omnimarket.nodes.node_operator_waiting_tick
 node_order_advance_effect = "omnimarket.nodes.node_order_advance_effect"
 node_output_schema_registry_compute = "omnimarket.nodes.node_output_schema_registry_compute"
 node_overlay_drift_compute = "omnimarket.nodes.node_overlay_drift_compute"
+node_overlay_drift_compute_scheduled_effect = "omnimarket.nodes.node_overlay_drift_compute_scheduled_effect"
 node_overlay_drift_effect = "omnimarket.nodes.node_overlay_drift_effect"
 node_overlay_drift_scheduled_effect = "omnimarket.nodes.node_overlay_drift_scheduled_effect"
 node_overlay_main_load_check_effect = "omnimarket.nodes.node_overlay_main_load_check_effect"
