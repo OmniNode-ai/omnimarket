@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerKeyExpiryAlarm is the pure expiry judge that HandlerKeyExpiryTick in this module constructs directly; the runtime loads HandlerKeyExpiryTick from the node contract handler block, not from a Python import
 """Judge expiry dates and record one alarm per observed key-expiry episode."""
 
 from __future__ import annotations
