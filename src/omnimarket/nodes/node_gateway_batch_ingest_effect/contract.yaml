@@ -55,6 +55,11 @@ published_events:
     description: "Produced on tenant-<slug>.onex.evt.omniclaude.tool-executed.v1 for the tenant whose token carried the batch."
 # No handler_routing and no subscribed topic on purpose: this door is served only through the http_mount below, never by a
 # bus command, so the first slice ships as an experimental node (the staged shape node_workflow_gateway_effect uses).
+# The handler is bound by name below (the node_projection_query_api_effect shape) so the canonical file shape check sees
+# the contract bind it; the mount's app calls it, and no topic routes to it.
+handler:
+  name: HandlerGatewayBatchIngest
+  module: omnimarket.nodes.node_gateway_batch_ingest_effect.handlers.handler_gateway_batch_ingest
 # Runtime-owned HTTP boundary: the mount is the only serving path. max_body_bytes is the ceiling the runtime enforces
 # on every request body before it reaches the app; the overlay's max_body_bytes may not exceed it, and the overlay's
 # chunk_headroom_bytes must exceed it so no chunk the runtime hands over can pass a request's reservation.

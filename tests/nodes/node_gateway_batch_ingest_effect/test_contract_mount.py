@@ -62,6 +62,25 @@ def test_contract_mount_is_the_only_serving_path() -> None:
     assert contract["event_bus"]["subscribe_topics"] == []  # type: ignore[index]
 
 
+def test_contract_mount_publishes_exactly_the_two_canonical_topics() -> None:
+    assert _contract()["event_bus"]["publish_topics"] == [  # type: ignore[index]
+        "onex.evt.omnimarket.pool-usage-verdict-evaluated.v1",
+        "onex.evt.omniclaude.tool-executed.v1",
+    ]
+    assert [e["topic"] for e in _contract()["published_events"]] == [  # type: ignore[attr-defined]
+        "onex.evt.omnimarket.pool-usage-verdict-evaluated.v1",
+        "onex.evt.omniclaude.tool-executed.v1",
+    ]
+
+
+def test_contract_mount_binds_the_handler_by_name_and_module() -> None:
+    bound = _contract()["handler"]
+    assert bound == {  # type: ignore[comparison-overlap]
+        "name": "HandlerGatewayBatchIngest",
+        "module": "omnimarket.nodes.node_gateway_batch_ingest_effect.handlers.handler_gateway_batch_ingest",
+    }
+
+
 def test_contract_mount_declares_every_overlay_topic() -> None:
     declared = set(_contract()["event_bus"]["publish_topics"])  # type: ignore[index]
     example = yaml.safe_load(
