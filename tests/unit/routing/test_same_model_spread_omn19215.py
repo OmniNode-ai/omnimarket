@@ -319,8 +319,13 @@ def test_a_prompt_larger_than_the_peer_window_stays_on_the_rung(
     # This test is about the peer's window only, so local-coder's measured
     # correct ceiling (OMN-22220, which moves this prompt off the rung) is off
     # here; test_local_coder_code_generation_ceiling.py covers the ceiling.
+    # Likewise the local tier's metered input bound (OMN-25284), which this
+    # whitespace-heavy prompt exceeds; the input-bound tests cover that gate.
     monkeypatch.setattr(
         routing, "exceeds_measured_correct_ceiling", lambda *_args: False
+    )
+    monkeypatch.setattr(
+        routing, "input_bound_members", lambda _tier, models, _prompt: models
     )
     big = "word " * 40_000
     refs = {
@@ -333,12 +338,14 @@ def test_a_prompt_larger_than_the_peer_window_stays_on_the_rung(
 @pytest.mark.usefixtures("_spread")
 def test_the_availability_probes_keep_their_ordered_answers() -> None:
     assert (
-        routing.sibling_backend_available_in_tier("local", "document", frozenset())
+        routing.sibling_backend_available_in_tier(
+            "local", "document", frozenset(), prompt=""
+        )
         == "local-heavy-reasoning"
     )
     assert (
         routing.sibling_backend_available_in_tier(
-            "local", "document", frozenset({"local-heavy-reasoning"})
+            "local", "document", frozenset({"local-heavy-reasoning"}), prompt=""
         )
         == "local-omnipc2-chat"
     )

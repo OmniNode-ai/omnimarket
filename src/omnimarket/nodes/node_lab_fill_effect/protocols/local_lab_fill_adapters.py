@@ -43,6 +43,10 @@ from omnimarket.models.work_state_projection import (
     EnumWorkItemKind,
     ModelWorkStateResult,
 )
+from omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_approved_work_file import (
+    ApprovedWorkFileError,
+    parse_approved_work_file,
+)
 from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store import (
     HandlerSecretStore,
 )
@@ -260,21 +264,21 @@ class LocalApprovedWork:
 
     @staticmethod
     def _load(path: str) -> dict[str, object]:
+        file = Path(os.path.expandvars(path))
         try:
-            value = json.loads(
-                Path(os.path.expandvars(path)).read_text(encoding="utf-8")
-            )
-        except (OSError, ValueError) as exc:
+            return {
+                "rows": list(
+                    parse_approved_work_file(
+                        file.read_text(encoding="utf-8"), file=str(file)
+                    ).rows
+                )
+            }
+        except OSError as exc:
             raise LabFillPortError(
                 f"unreadable: {(str(exc).splitlines() or [type(exc).__name__])[0]}"
             ) from exc
-        if (
-            not isinstance(value, dict)
-            or value.get("version") != 1
-            or not isinstance(value.get("rows"), list)
-        ):
-            raise LabFillPortError("invalid list")
-        return value
+        except ApprovedWorkFileError as exc:
+            raise LabFillPortError(str(exc)) from exc
 
     def depth(self, path: str) -> int | None:
         try:

@@ -1,0 +1,93 @@
+schema_version: 1.0.0
+ticket_id: OMN-24851
+title: 'Review findings 1 to 6 on omnimarket PR 6326 are fixed or argued: the new branch is shown reachable, the gate reads terminal_ok NULL, and the tests cover a judged row, a missing terminal and more than I9 and I10'
+summary: 'Fixes the review findings on the nightly runner change: the unterminalised-row failure is gated on terminal_ok being NULL in the row read and says so, the tests cover all eight nightly hard failures, a judged zero-token row, a missing declared terminal and a row whose terminal is unknown with terminal_ok set, and the contract of the pull request gains a fails-on-base check. The lab placement and the pull request comments are read from the ledger and the watcher, not from hosted CI.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24851-review-findings-6326
+  statement: The review findings on the nightly runner change are fixed or argued with evidence, with a test red at the base and green at the head for each.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the reachability of the new branch in evaluate_row is shown and the new test output is attached against the base runner (failed) and against the new head (passed) -- falsifier: the new test file passes with the runner change reverted to the base'
+  - id: AC3
+    statement: 'AC3: the unterminalised-row failure is gated on terminal_ok being NULL in the row read, says "terminal_ok is NULL in the row read", and a test pins a row with terminal unknown and terminal_ok set -- falsifier: the new test file passes with the gate reverted to the terminal unknown test alone'
+  - id: AC4
+    statement: 'AC4: no consumer of the failure text classifies failures by the reworded text, and the eight cases I1, I3 and I5 to I10 each declare a terminal with the guard for exp.terminal None pinned by a test -- falsifier: the delegation golden tests pass with a consumer string match on the failure line left in place'
+  - id: AC5
+    statement: 'AC5: the tests include a completed row with zero tokens that yields the tokens line, a row with exp.terminal None on an unterminalised row and cases beyond I9 and I10, and the fixture and docstring match the nightly job -- falsifier: the new test file passes with the zero-token row asserting an empty failure list'
+  - id: AC6
+    statement: 'AC6: finding 2 of the review (AC1 of the nightly ticket) is answered with a third pull request read, finding 1 (AC2 of the nightly ticket) is answered as a diagnostic that does not fix the cause, and the non-blocking findings are fixed or argued in a pull request comment -- falsifier: the new test file passes with the message still saying the settle window elapsed'
+evidence_requirements:
+- kind: tests
+  description: The new runner test, the runner tests it sits beside and the golden layer tests.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/delegation_golden -q --no-cov -n 0 -p no:randomly -m "not e2e"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24851-ac2-red-green
+  description: The new test file passes at the head. Its red at the base runner is the local Done gate check below and the output pasted in the pull request comment.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn24851-ac2-fails-on-base
+  description: 'The new test file is run against a copy of the head tree whose tests/delegation_golden/runner.py is the file at the pinned base 6efbe3ee5027. The check passes only when that run exits with exactly nine failures: the eight test_one_failure_names_the_null_terminal_ok ids (I1, I10, I3, I5, I6, I7, I8, I9) and test_it_does_not_report_telemetry_misses_it_cannot_judge. A bare failing run does not pass it. It needs the pinned base object in the clone, so only the local Done gate runs it.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -c 'b=6efbe3ee5027f6efb67d0b81a1421f0dda32b4e5; t=tests/delegation_golden/test_runner_unterminalised_row_omn24831.py; d="$(mktemp -d)" && git archive HEAD | tar -x -C "$d" && git show "$b:tests/delegation_golden/runner.py" > "$d/tests/delegation_golden/runner.py" && cd "$d" && out="$(env -u PYTHONPATH uv run --frozen pytest $t -q --no-cov -n 0 -p no:randomly -p no:cacheprovider 2>&1)"; printf "%s\n" "$out" | tail -3; [ "$(printf "%s\n" "$out" | grep -cE "^FAILED .*test_one_failure_names_the_null_terminal_ok\[I(1|10|3|5|6|7|8|9)\]")" = 8 ] && printf "%s\n" "$out" | grep -q "^FAILED .*test_it_does_not_report_telemetry_misses_it_cannot_judge" && printf "%s\n" "$out" | grep -qE "(^| )9 failed"'
+    cwd: .
+- id: dod-omn24851-ac3-gate-and-message
+  description: The gate reads terminal_ok NULL and the message says so; the row with terminal unknown and terminal_ok set keeps the old line.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestTheGateIsTerminalOkNull::test_unknown_terminal_with_terminal_ok_set_is_not_named_as_null tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestTheGateIsTerminalOkNull::test_a_case_without_a_declared_terminal_keeps_the_old_path tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestTheGateIsTerminalOkNull::test_an_undeclared_terminal_is_judged_by_the_old_lines_exactly tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I1] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I10] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I3] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I5] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I6] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I7] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I8] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I9] -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn24851-ac4-consumers
+  description: The consumers of the failure text are read and none matches on it; the case without a declared terminal keeps the old path; the whole delegation golden suite passes.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/delegation_golden -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -m "not e2e"
+    cwd: .
+- id: dod-omn24851-ac5-test-coverage
+  description: The tests cover all eight nightly hard failures, a zero-token completed row that yields the tokens line, and a case without a declared terminal.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestATerminalisedRowIsStillJudged::test_a_completed_row_with_zero_tokens_yields_the_tokens_line tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestTheGateIsTerminalOkNull::test_a_case_without_a_declared_terminal_keeps_the_old_path tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_every_nightly_hard_failure_declares_a_terminal tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_the_case_still_fails[I1] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_the_case_still_fails[I10] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_the_case_still_fails[I3] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_the_case_still_fails[I5] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_the_case_still_fails[I6] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_the_case_still_fails[I7] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_the_case_still_fails[I8] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_the_case_still_fails[I9] -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn24851-ac6-no-settle-window
+  description: The message no longer says a settle window elapsed.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I1] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I10] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I3] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I5] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I6] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I7] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I8] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_one_failure_names_the_null_terminal_ok[I9] -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn24851-ac1-lab-comment
+  description: 'The pull request head is read from the watcher state (never from a local checkout, whose HEAD may be a merge commit). The check passes only when a comment has a line that starts `Lab: head=` with that full sha, names a `command=` and `exit=0` and carries a `contexts=` field, and when `onex scm pr-checks` reads that same head with no red and no pending context. A lane cannot read comments, so only the local Done gate runs it; an unreadable comment or check read fails it.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -c 'h="$(python3 "$OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6326 --json | sed -n "/^{/,\$p" | jq -r .facts.head_sha)"; [ "${#h}" = 40 ] && gh pr view 6326 -R OmniNode-ai/omnimarket --json comments --jq ".comments[].body" | grep -E "^Lab: head=$h .*command=.* exit=0 .*contexts=" | grep -q . && onex scm pr-checks OmniNode-ai/omnimarket#6326 | jq -e --arg h "$h" ".result.head_sha == \$h and (.result.red | length) == 0 and (.result.pending | length) == 0"'
+    cwd: .
