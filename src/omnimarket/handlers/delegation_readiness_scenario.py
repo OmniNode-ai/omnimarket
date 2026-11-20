@@ -69,11 +69,12 @@ Clock = Callable[[], datetime]
 
 
 class ModelDevReadiness(BaseModel):
-    """The h201 dev readiness route and polling budget for a scheduled scenario."""
+    """The dev readiness route and polling budget for a scheduled scenario."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    host: str = Field(min_length=1)
+    #: Name of the environment variable that carries the lab host-table row name of the dev host.
+    host_env: str = Field(min_length=1)
     port: int = Field(gt=0, le=65535)
     wait_seconds: int = Field(gt=0)
     poll_seconds: int = Field(gt=0)
@@ -139,13 +140,18 @@ def wait_for_dev_readiness(
     settings: ModelDevReadiness, environment: Mapping[str, str]
 ) -> bool:
     """Poll the declared dev host until /ready answers 200 or the budget expires."""
+    host_name = environment.get(settings.host_env, "").strip()
+    if not host_name:
+        raise RuntimeError(
+            f"dev readiness host is not configured: set {settings.host_env}"
+        )
     try:
         hosts = resolve_lab_hosts_table(environment).hosts
     except NodeOverlayError as exc:
         raise RuntimeError(f"cannot resolve dev readiness host: {exc}") from exc
-    host = next((row for row in hosts if row.name == settings.host), None)
+    host = next((row for row in hosts if row.name == host_name), None)
     if host is None:
-        raise RuntimeError(f"dev readiness host {settings.host} is undeclared")
+        raise RuntimeError(f"dev readiness host {host_name} is undeclared")
     urls = [
         httpx.URL(scheme="http", host=target, port=settings.port, path="/ready")
         for target in (host.target, *host.fallback_targets)

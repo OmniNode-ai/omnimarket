@@ -62,7 +62,7 @@ externally_consumed_topics:
 
 runtime:
   dev_readiness:
-    host: h201
+    host_env: ONEX_DEV_READINESS_HOST
     port: 8085
     wait_seconds: 850
     poll_seconds: 5

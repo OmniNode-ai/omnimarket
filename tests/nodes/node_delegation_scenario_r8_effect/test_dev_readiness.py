@@ -149,11 +149,11 @@ def test_readiness_polls_until_ready_or_deadline(
     monkeypatch.setattr(httpx, "Client", lambda **_: client)
 
     config = delegation_readiness_scenario.ModelDevReadiness(
-        host="dev", port=8085, wait_seconds=2, poll_seconds=1
+        host_env="DEV_HOST", port=8085, wait_seconds=2, poll_seconds=1
     )
 
-    assert delegation_readiness_scenario.wait_for_dev_readiness(config, {}) is (
-        final_status == 200
-    )
+    assert delegation_readiness_scenario.wait_for_dev_readiness(
+        config, {"DEV_HOST": "dev"}
+    ) is (final_status == 200)
     assert attempts == [0, 1]
     assert now == (1 if final_status == 200 else 2)
