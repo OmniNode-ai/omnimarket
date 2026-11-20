@@ -53,6 +53,9 @@ dod_evidence:
   - check_type: command
     check_value: sh -c 'test -f src/omnimarket/nodes/node_codex_lane_mcp_server_effect/__main__.py'
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_codex_lane_mcp_server_effect/test_codex_lane_mcp_server.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
 - id: dod-omn25178-ac4
   description: 'AC4: the change adds no skip, xfail or --no-verify.'
   source: manual
@@ -61,6 +64,9 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: sh -c 'test -f src/omnimarket/nodes/node_codex_lane_mcp_server_effect/__main__.py && ! grep -rEn "pytest.mark.(skip|xfail)|pytest.skip|no-verify" src/omnimarket/nodes/node_codex_lane_mcp_server_effect tests/unit/nodes/node_codex_lane_mcp_server_effect'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_codex_lane_mcp_server_effect/test_codex_lane_mcp_server.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn25178-integration-proof
   description: 'lab proxy: the node tests run on a lab host at the pushed head; the live Codex lane run on h053 is recorded in the pull request Lab line and is not claimed by this local check'

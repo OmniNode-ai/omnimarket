@@ -4,6 +4,9 @@ name: node_codex_lane_mcp_server_effect
 version: "0.1.0"
 description: "The onex tools a Codex lane calls over MCP on stdio — EFFECT"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
+pack: core
+node_role: effect
+display_name: Codex Lane MCP Server Effect
 # Registered for the node inventory; with no event_bus and no handler_routing the runtime prepares it as SKIPPED.
 entry_points:
   onex.nodes:
