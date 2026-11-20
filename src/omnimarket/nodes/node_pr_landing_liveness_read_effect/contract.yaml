@@ -24,7 +24,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_pr_landing_liveness_read_effect.handlers.handler_pr_landing_liveness_read
   class: HandlerPrLandingLivenessRead
-  input_model: omnimarket.nodes.node_pr_landing_liveness_read_effect.models.model_liveness_read.ModelLivenessReadRequest
+  input_model: omnimarket.models.pr_landing_liveness_read.ModelLivenessReadRequest
 
 # HandlerPrLandingLivenessRead takes the overlay, the reader and the publisher as constructor parameters, so the snapshot step
 # composes it, not handler_routing.
@@ -39,11 +39,11 @@ descriptor:
 
 input_model:
   name: ModelLivenessReadRequest
-  module: omnimarket.nodes.node_pr_landing_liveness_read_effect.models.model_liveness_read
+  module: omnimarket.models.pr_landing_liveness_read
   description: The PR and the head to read.
 output_model:
   name: ModelLivenessReadResult
-  module: omnimarket.nodes.node_pr_landing_liveness_read_effect.models.model_liveness_read
+  module: omnimarket.models.pr_landing_liveness_read
   description: The liveness fact for the head and the topic its event went to.
 
 terminal_event: onex.evt.omnimarket.pr-landing-liveness-read-completed.v1

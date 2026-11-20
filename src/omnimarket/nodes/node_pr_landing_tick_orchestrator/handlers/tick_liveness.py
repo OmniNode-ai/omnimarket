@@ -20,12 +20,12 @@ from uuid import uuid4
 from pydantic import BaseModel
 
 from omnimarket.models.landing_decision import EnumLivenessRead
+from omnimarket.models.pr_landing_liveness_read import (
+    ModelLivenessReadRequest,
+)
 from omnimarket.nodes.node_pr_landing_liveness_read_effect.handlers.handler_pr_landing_liveness_read import (
     HandlerPrLandingLivenessRead,
     build_reader,
-)
-from omnimarket.nodes.node_pr_landing_liveness_read_effect.models.model_liveness_read import (
-    ModelLivenessReadRequest,
 )
 from omnimarket.nodes.node_pr_landing_liveness_read_effect.overlay import (
     load_overlay as load_liveness_overlay,
