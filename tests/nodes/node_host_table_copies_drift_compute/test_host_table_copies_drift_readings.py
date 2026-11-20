@@ -9,12 +9,12 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.models.model_host_table_copies_drift import (
+    ModelHostTableDriftCommand,
+)
 from omnimarket.nodes.node_host_table_copies_drift_compute.handlers.handler_host_table_copies_drift import (
     HandlerHostTableCopiesDrift,
     compare_copies,
-)
-from omnimarket.nodes.node_host_table_copies_drift_compute.models import (
-    ModelHostTableDriftCommand,
 )
 from omnimarket.nodes.node_host_table_copies_drift_compute.runtime_host_table_copies_drift import (
     main,

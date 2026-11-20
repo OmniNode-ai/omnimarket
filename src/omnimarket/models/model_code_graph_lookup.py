@@ -43,6 +43,28 @@ class EnumLookupFault(StrEnum):
     ANSWER_FROM_HEAD = "answer-from-head"
 
 
+class EnumLookupServedFrom(StrEnum):
+    """Which store a lookup was answered from."""
+
+    #: The Memgraph instance the architecture graph overlay names, queried by Cypher.
+    MEMGRAPH = "memgraph"
+    #: The file-backed store, built from the repository clones; only when Memgraph is unreachable.
+    FILE_STORE = "file-store"
+
+
+class EnumLookupFallbackReason(StrEnum):
+    """Why a lookup left Memgraph for the file store: the typed reason a fallback answer carries."""
+
+    #: ARCH_GRAPH_BOLT_URI is unset and no overlay row names this host's Bolt address.
+    BOLT_URI_UNRESOLVED = "bolt-uri-unresolved"
+    #: The Bolt port refused the connection.
+    CONNECTION_REFUSED = "connection-refused"
+    #: Memgraph accepted the connection and did not answer in time.
+    READ_TIMED_OUT = "read-timed-out"
+    #: Any other transport failure (no route, reset, protocol handshake lost).
+    UNREACHABLE = "unreachable"
+
+
 class ModelSymbolDefinition(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -177,3 +199,9 @@ class ModelCodeGraphLookupResult(BaseModel):
     matches: tuple[ModelLookupMatch, ...] = ()
     nearest: ModelNearestVersion | None = None
     reason: str | None = None
+    #: The store that answered. A lookup that did not reach any store keeps the file-store default.
+    served_from: EnumLookupServedFrom = EnumLookupServedFrom.FILE_STORE
+    #: Set only on an answer served from the file store because Memgraph was unreachable.
+    fallback_reason: EnumLookupFallbackReason | None = None
+    #: The transport error text behind ``fallback_reason``.
+    fallback_detail: str | None = None

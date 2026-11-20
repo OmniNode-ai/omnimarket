@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_tailscale_key_expiry_alarm_effect
+version: 1.0.0
+description: Checks Tailscale key expiry on a host timer and pushes owned expiry alarms to Slack.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: effect
+display_name: Tailscale Key Expiry Alarm Effect
+entry_points:
+  onex.nodes:
+    node_tailscale_key_expiry_alarm_effect: omnimarket.nodes.node_tailscale_key_expiry_alarm_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: publish_event
+dependencies:
+  - omnibase_core>=0.39.0
+  - pydantic>=2.0
+  - pyyaml>=6.0
+license: MIT
+tags:
+  - effect
+  - alarm

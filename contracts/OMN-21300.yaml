@@ -49,3 +49,19 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_transport_import_outside_timeout_omn17427.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21300-ac1-accepted-20261117t1145z"
+    description: "AC1 binding (proposed by lane=dod-closeout-bind-2026-11-17T1145Z-c2, accepted by lane=dod-closeout-accept-2026-11-17T1145Z-c2). Re-run on lab host h051 at omnimarket origin/dev 13a7e30415: 2 passed. With this test file run against the code at the parent of 38affe56b6 (omnimarket#4300), both tests fail with TimeoutError."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_transport_import_outside_timeout_omn17427.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+context:
+  ac_binding_provenance:
+    dod-omn21300-ac1-accepted-20261117t1145z:
+      - label: "AC1"
+        criterion_hash: "ccb3b986157c35f9f3ebcd202538df0ec3f5a7a743725b773b4242a00d2cb685"
+        proposed_by: "lane=dod-closeout-bind-2026-11-17T1145Z-c2"
+        accepted_by: "lane=dod-closeout-accept-2026-11-17T1145Z-c2"
+        accepted_at: "2026-11-17T12:25:33Z"

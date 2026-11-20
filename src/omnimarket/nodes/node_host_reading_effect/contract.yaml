@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # ONEX Node Contract - Host Reading Effect (OMN-22478, B0 hourly read-only probes)
 #
-# Reads state that exists only on a host (its ledger outbox, its old ledger names), computes
+# Reads state that exists only on a host (its ledger outbox, its old ledger names, its copies of the lab host table), computes
 # WORKING, NOT_WORKING or UNKNOWN per probe and appends one row per probe through the configured
 # append command. A row is keyed per run because host state has no closed window. It writes host
 # reading rows and nothing else: a reading is never a gate, a stop or an admission.
@@ -24,6 +24,9 @@ description: >
   verdict for the nodes host discovery and placement depend on and publishes a typed result under
   the graph run's correlation id: both pieces' chains on success, the graph run's failure and the
   host stage's typed upstream_ failure with no start when a verdict is missing (OMN-22904).
+  host-table-copies (OMN-24558) reads every copy of the lab host table that the host table copies drift
+  node's own overlay declares and names each differing field per host (names and counts, never values):
+  WORKING when the copies agree, NOT_WORKING when they differ, UNKNOWN when a copy or that overlay cannot be read.
   ledger-durability appends one probe row through the bus and reads it back from the durable
   store (the read node over the database projection) by a deadline.
   A source that cannot be read gives UNKNOWN; an append that does not land and a bad command are

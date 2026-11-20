@@ -264,7 +264,7 @@ def test_the_migration_is_idempotent(tmp_path: Path) -> None:
 
 def test_a_row_written_to_the_model_column_alone_still_reads(tmp_path: Path) -> None:
     db = _db(tmp_path)
-    conn = credentials._connect(db)
+    conn = credentials.open_local_credentials(db)
     try:
         conn.execute(
             f"INSERT INTO {credentials.LOCAL_CREDENTIAL_TABLE} "

@@ -33,6 +33,7 @@ from typing import Any, Literal, cast
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers import openai_compatible_endpoint as endpoints
+from omnimarket.handlers.model_provider_labels import MODEL_LABELS
 from omnimarket.handlers.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
@@ -105,38 +106,19 @@ class LastUsableModelRefusedError(ModelKeyRefusedError):
     """Removing this provider would leave delegation no usable model (OMN-20816)."""
 
 
-MODEL_LABELS: dict[str, str] = {
-    "gemini": "Gemini",
-    "openrouter": "OpenRouter",
-    "openai": "OpenAI",
-    "anthropic": "Anthropic",
-    "glm": "GLM",
-    "ollama": "Ollama",
-    "local": "Local URL",
-    "openai_compatible": "OpenAI-compatible",  # OMN-21263: any endpoint, by URL
-}
-OLLAMA_HOW = (
-    "Ollama is installed by onboarding, which downloads a model sized to this "
-    "Mac: run onboarding again with --provider ollama."
-)
 LOCAL_HOW = (
-    "Declare a model server on an OpenAI-compatible URL (LM Studio, llama.cpp, "
-    "vLLM, MLX) with: onex models add local --url <base url> --model <name>"
+    "A Local Model is any model server you run that speaks the OpenAI API. Add it "
+    "by its endpoint URL: onex models add local --url <endpoint url> --model <name> "
+    "(add --key when the server needs one). "
+    "ONEX never installs a server or downloads models."
 )
 
-#: The providers the dashboard's Credentials page lists (OMN-20816 decision (b)):
-#: the ticket's four. Anthropic and a local URL are managed in the terminal.
-DASHBOARD_PROVIDERS: tuple[ModelProvider, ...] = (
-    "gemini",
-    "openrouter",
-    "openai",
-    "ollama",
-)
 #: The providers whose key ``remove_key`` deletes.
 KEYED_PROVIDERS: tuple[ModelProvider, ...] = (
     "gemini",
     "openrouter",
     "openai",
+    "reflection",
     "anthropic",
     "glm",
     "openai_compatible",
@@ -798,7 +780,7 @@ def refuse_last_usable(provider: str) -> None:
 def remove_key(provider: str, echo: Echo = _quiet) -> None:
     """Delete ``provider``'s stored key, unless it is the last usable model.
 
-    Keys only: Ollama's routes and a local URL are removed in the terminal, as
+    Keys only: a Local Model is removed in the terminal, as
     before, and the guard does not cover them.
     """
     handler = model_handler()
@@ -815,11 +797,8 @@ def remove_key(provider: str, echo: Echo = _quiet) -> None:
 
 
 __all__ = [
-    "DASHBOARD_PROVIDERS",
     "KEYED_PROVIDERS",
     "LOCAL_HOW",
-    "MODEL_LABELS",
-    "OLLAMA_HOW",
     "PENDING_CREDENTIAL_EVENTS_NAME",
     "AskModel",
     "Echo",

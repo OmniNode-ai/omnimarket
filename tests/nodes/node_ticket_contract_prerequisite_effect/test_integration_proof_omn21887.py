@@ -226,9 +226,12 @@ def test_check_refuses_a_runtime_push_without_proof_through_real_git(
 def test_check_passes_a_runtime_push_with_proof_through_real_git(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    head, base = _git_repo(
-        tmp_path, _contract_with_ac(UNIT_ITEM, _proof_item()), RUNTIME[0]
+    # The hosted deploy gate reads the head of a command as written, so the proof's
+    # probe starts at `onex`, not at `uv run` (OMN-25723).
+    proof = _proof_item(
+        command="onex lab-work --lane l --repo omnimarket --ref b -- uv run pytest tests/test_x.py"
     )
+    head, base = _git_repo(tmp_path, _contract_with_ac(UNIT_ITEM, proof), RUNTIME[0])
     monkeypatch.chdir(tmp_path)
     assert boundary.check(head, base, f"feat({TICKET}): change") == ()
 

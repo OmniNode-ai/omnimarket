@@ -42,6 +42,7 @@ from decimal import Decimal
 
 from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
     EnumBaselineState,
+    EnumMeteringMeasurement,
     ModelCounterfactualBaseline,
     ModelMeteringModelRow,
     ModelMeteringReconciliation,
@@ -73,9 +74,18 @@ def counterfactual_cost_usd(
 class _ModelAccumulator:
     """Mutable per-model tally, collapsed into a frozen row at the end."""
 
-    __slots__ = ("runs", "runs_measured", "savings", "spend", "tokens_in", "tokens_out")
+    __slots__ = (
+        "backends",
+        "runs",
+        "runs_measured",
+        "savings",
+        "spend",
+        "tokens_in",
+        "tokens_out",
+    )
 
     def __init__(self) -> None:
+        self.backends: set[str] = set()
         self.runs = 0
         self.runs_measured = 0
         self.tokens_in = 0
@@ -93,6 +103,7 @@ class HandlerMeteringSummary:
         runs_measured = 0
         runs_unknown_tokens = 0
         runs_unknown_spend = 0
+        runs_failed = 0
         tokens_in_total = 0
         tokens_out_total = 0
         spend_total = Decimal("0")
@@ -107,6 +118,8 @@ class HandlerMeteringSummary:
         for index, record in enumerate(payload.records):
             bucket = per_model[record.model or "(unrecorded)"]
             bucket.runs += 1
+            if record.backend:
+                bucket.backends.add(record.backend)
 
             if record.recorded_savings_usd is not None:
                 recorded_savings_total += record.recorded_savings_usd
@@ -123,10 +136,13 @@ class HandlerMeteringSummary:
                 bucket.tokens_in += tokens_in
                 bucket.tokens_out += tokens_out
 
-            if record.returned_to_caller:
-                # OMN-21264: no answer was accepted, so the run saved nothing.
-                # Its recorded spend still counts, and its counterfactual is
-                # that spend, so the headline subtraction books exactly zero.
+            # OMN-21264, OMN-24615 AC1: a run that ended with any failure cause
+            # had no answer used, so it saved nothing; runs_failed names it. A
+            # measured one (returned_to_caller always is) keeps its recorded
+            # spend with that spend as its counterfactual, so the headline
+            # subtraction books exactly zero. Any other is unknown, as below.
+            runs_failed += record.failed
+            if record.failed and record.measurement is EnumMeteringMeasurement.MEASURED:
                 returned_spend = record.spend_usd or Decimal("0")
                 runs_measured += 1
                 bucket.runs_measured += 1
@@ -141,7 +157,7 @@ class HandlerMeteringSummary:
             # the order they narrow the type. The enum on the record is the
             # readable statement of the same classification and is what the
             # tests assert against; these are the branches that consume it.
-            if not record.has_tokens:
+            if not record.has_tokens or not record.usage_measured:
                 runs_unknown_tokens += 1
                 continue
             spend = record.spend_usd
@@ -178,6 +194,7 @@ class HandlerMeteringSummary:
             runs_measured=runs_measured,
             runs_unknown_tokens=runs_unknown_tokens,
             runs_unknown_spend=runs_unknown_spend,
+            runs_failed=runs_failed,
             tokens_in=tokens_in_total,
             tokens_out=tokens_out_total,
             spend_usd=spend_usd,
@@ -226,6 +243,7 @@ class HandlerMeteringSummary:
             rows.append(
                 ModelMeteringModelRow(
                     model=model,
+                    backends=tuple(sorted(acc.backends)),
                     runs=acc.runs,
                     runs_measured=acc.runs_measured,
                     tokens_in=acc.tokens_in,
