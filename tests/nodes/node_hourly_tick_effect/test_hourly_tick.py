@@ -569,3 +569,122 @@ def test_cli_record_without_a_prepare_for_the_fire_is_refused(
         run_cli(
             home, "--record", "--fire-id", "../escape", "--sweep-file", str(sweep_file)
         )
+
+
+# --- held asks are handed to the operator, and a wakeup never records twice ---------
+
+HELD = [
+    {
+        "ticket": "OMN-23299",
+        "comment_id": "a6fb51b9",
+        "comment_url": "https://linear.app/x/issue/OMN-23299#comment-a6fb51b9",
+        "author_role": "human collaborator",
+        "question": "Which branch carries the fix?",
+        "why_held": "unsourced: the facts table does not support the draft",
+        "suggested_reply": "[needs: the facts that answer the branch question]",
+    },
+    {
+        "ticket": "OMN-23300",
+        "comment_id": "95b0dfa9",
+        "comment_url": "https://linear.app/x/issue/OMN-23300#comment-95b0dfa9",
+        "author_role": "human collaborator",
+        "question": "Can this close?",
+        "why_held": "unsourced: verifier rejected",
+        "suggested_reply": "[unverified draft] I think so.",
+    },
+]
+
+
+def _record(home: Path, held: list[dict[str, str]], fire: str = "fire-123"):  # type: ignore[no-untyped-def]
+    handler = HandlerHourlyTick()
+    prepared = asyncio.run(handler.handle(request(home, fireId=fire)))
+    sweep = {"needing": 2, "accepted": 0, "held": 2, "held_by_class": {"unsourced": 2}}
+    return prepared, lambda: asyncio.run(
+        handler.handle(
+            request(
+                home,
+                fireId=fire,
+                operation="record",
+                correlation_id=prepared.correlation_id,
+                state=prepared.state.model_dump(),
+                sweep={**sweep, "held_items": held},
+            )
+        )
+    )
+
+
+def test_each_held_ask_becomes_one_handoff_and_one_pending_push(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state"))
+    home = fixture_home(tmp_path)
+    _, record = _record(home, HELD)
+    done = record()
+    assert done.phase == "degraded"
+    assert done.handoffs is not None
+    assert done.handoffs.written == 2
+    assert done.handoffs.already_handed_off == 0
+    drafts = Path(done.handoffs.drafts_file)
+    assert drafts == tmp_path / "state/awaiting-reply/fire-123-held-drafts.md"
+    text = drafts.read_text()
+    for needle in (
+        "OMN-23299",
+        "Which branch carries the fix?",
+        "unsourced",
+        "[needs: the facts",
+    ):
+        assert needle in text
+    assert "OMN-23300" in text
+    assert text.count("## ") == 2
+    pushes = {p.comment_id: p for p in done.handoffs.pending_push}
+    assert set(pushes) == {"a6fb51b9", "95b0dfa9"}
+    one = pushes["a6fb51b9"]
+    assert "?" not in one.push_text
+    assert "Nothing is posted" in one.push_text
+    assert "ESCALATION" not in one.ledger_detail
+    assert one.ledger_detail.startswith("human collaborator https://")
+    assert "|" not in one.ledger_detail
+    assert "\n" not in one.ledger_detail
+
+
+def test_a_wakeup_records_once_and_a_failed_push_stays_pending(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state"))
+    home = fixture_home(tmp_path)
+    _, record = _record(home, HELD)
+    first = record()
+    lines = (home / "checkpoints.md").read_text().splitlines()
+    second = record()  # the same fire woken up again
+    assert (home / "checkpoints.md").read_text().splitlines() == lines
+    assert second.readbacks["completion"] is not None
+    assert second.readbacks["completion"].endswith("(already recorded)")
+    assert second.handoffs is not None
+    assert second.handoffs.written == 0
+    assert second.handoffs.already_handed_off == 2
+    assert [p.comment_id for p in second.handoffs.pending_push] == [
+        p.comment_id
+        for p in first.handoffs.pending_push  # type: ignore[union-attr]
+    ]  # no push was confirmed, so both are retried
+    assert cli_main(["--mark-pushed", "a6fb51b9,95b0dfa9"]) == 0
+    third = record()
+    assert third.handoffs is not None
+    assert third.handoffs.pending_push == []
+
+
+def test_marking_an_unknown_comment_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state"))
+    with pytest.raises(ValueError, match="no handoff for comment nope"):
+        cli_main(["--mark-pushed", "nope"])
+
+
+def test_a_clean_tick_writes_no_handoff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state"))
+    home = fixture_home(tmp_path)
+    _, record = _record(home, [])
+    assert record().handoffs is None
+    assert not (tmp_path / "state").exists()

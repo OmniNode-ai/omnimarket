@@ -11,7 +11,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick_handoff import (
+    record_handoffs,
+)
 from omnimarket.nodes.node_hourly_tick_effect.models.model_hourly_tick import (
+    ModelHandoffReport,
     ModelHourlyTickRequest,
     ModelHourlyTickResult,
     ModelPreparedTick,
@@ -195,6 +199,17 @@ def append_readback(path: Path, line: str) -> str:
     return f"READBACK: {readback}"
 
 
+def append_once(path: Path, line: str) -> str:
+    """Append the completion line unless an earlier record already wrote it.
+
+    A wakeup that records the same fire again carries the same prepared state, so the line is
+    byte-identical; it is found and not written twice.
+    """
+    if line in path.read_text().splitlines()[-200:]:
+        return f"READBACK: {line} (already recorded)"
+    return append_readback(path, line)
+
+
 def write_pointer(path: Path, value: str) -> str:
     path.write_text(value + "\n")
     return f"READBACK: {path.read_text().strip()}"
@@ -272,6 +287,7 @@ class HandlerHourlyTick:
             else None
         )
         done = ""
+        handoffs: ModelHandoffReport | None = None
         phase: Literal["prepared", "completed", "degraded"] = "prepared"
         outcome = tick_outcome(request.sweep)
         if request.operation == "record" or skipped:
@@ -287,8 +303,10 @@ class HandlerHourlyTick:
                         if request.sweep is not None and request.sweep.failed
                         else write_pointer(pointer, state.now)
                     )
-                readbacks["completion"] = append_readback(
-                    root / request.checkpoint_file, done
+                readbacks["completion"] = (
+                    append_once(root / request.checkpoint_file, done)
+                    if request.operation == "record"
+                    else append_readback(root / request.checkpoint_file, done)
                 )
                 if request.fire_id:
                     directory = root / ".onex_state/morning-workflows/results"
@@ -304,6 +322,14 @@ class HandlerHourlyTick:
                     )
                     temporary.replace(path)
                     readbacks["result"] = f"READBACK: {path.read_text().strip()}"
+        if (
+            request.operation == "record"
+            and not request.dry_run
+            and request.sweep is not None
+        ):
+            handoffs = record_handoffs(
+                request.sweep.held_items, request.fire_id or request.run_id
+            )
         return ModelHourlyTickResult(
             correlation_id=request.correlation_id,
             state=state,
@@ -326,4 +352,5 @@ class HandlerHourlyTick:
             degraded=phase == "degraded",
             held_class=outcome["class"],
             readbacks=readbacks,
+            handoffs=handoffs,
         )
