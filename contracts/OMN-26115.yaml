@@ -45,6 +45,9 @@ dod_evidence:
   - check_type: command
     check_value: sh -c '! grep -rIn --include="*.py" run_node_in_process src tests'
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_onex_setup_effect/test_setup_cli_core_entry_point.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26115-ac3
   description: The lock is fresh, both omnibase-core floors in pyproject.toml read 0.47.74 and the pin tests pass.
   source: manual
@@ -68,6 +71,9 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: sh -c 'set -eu; src="$PWD"; d="$(mktemp -d)"; trap "rm -rf \"$d\"" EXIT; uv venv -q "$d/venv"; uv pip install -q --python "$d/venv/bin/python" --no-sources "$src"; cd "$d"; "$d/venv/bin/python" -c "import omnimarket.nodes.node_onex_setup_effect.cli"'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_onex_setup_effect/test_setup_cli_core_entry_point.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn26115-integration-proof
   description: The setup cli entry point test and the setup cli import run on a lab host at the pushed head through the lab work node. Hosted CI cannot reach a lab host, so only the local Done gate runs this item; it binds no criterion, because the hosted check refuses a bound item it cannot run, and AC2 is bound by dod-omn26115-ac2-fresh-venv, which the hosted runner runs.
