@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
 
@@ -185,6 +186,25 @@ def judged_event(
             eval_run_id=eval_run_id,
         ).model_dump_json()
     )
+
+
+RECORDED_JUDGED_RENDER_RESULT = (
+    Path(__file__).resolve().parents[2]
+    / "fixtures"
+    / "eval_results"
+    / "judged_topic_render_result.json"
+)
+
+
+def recorded_judged_render_result() -> dict[str, Any]:
+    """The payload recorded on the dev broker's judged topic: the judge compute node's render result.
+
+    Not a judged event: it has no ``judge_run_id`` (nor any judged-event field) and an empty
+    ``judged_events`` list. Prompts and ids are scrubbed in the fixture; the shape is as recorded.
+    """
+    recorded = json.loads(RECORDED_JUDGED_RENDER_RESULT.read_text())
+    payload: dict[str, Any] = recorded["payload"]
+    return payload
 
 
 def trace_parts(
