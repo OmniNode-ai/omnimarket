@@ -130,6 +130,14 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/test_literal_path_slice_omn21694.py -q --no-cov -k path_literal"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21694-integration-proof"
+    description: "The contract binding tests run on a lab host through onex lab-work at the pushed sha. Local Done gate only."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21694 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_contract_binding_omn21694.py -q --no-cov -n 0 -p no:randomly'
+        cwd: "."
 context:
   ac_binding_provenance:
     "dod-omn21694-ac1-accepted-literal-path-checker":
