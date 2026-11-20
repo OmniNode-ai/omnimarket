@@ -123,6 +123,24 @@ class ModelLandingPrRecord(BaseModel):
     update_heads: tuple[str, ...] = Field(
         default=(), description="Heads the controller already updated from the base."
     )
+    update_base_heads: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Base heads this PR was already updated onto because its reds read green "
+            "there: one update per base head, whatever the PR head is."
+        ),
+    )
+    conflict_head: str | None = Field(
+        default=None, description="The head whose DIRTY reading conflict_since dates."
+    )
+    conflict_since: datetime | None = Field(
+        default=None,
+        description="When a shared-red cause PR's head first read DIRTY, on conflict_head.",
+    )
+    dirty_msg_heads: tuple[str, ...] = Field(
+        default=(),
+        description="Heads of a shared-red cause PR already raised as DIRTY too long.",
+    )
     update_no_new_commits_at: datetime | None = Field(
         default=None, description="Latest no-new-commits response already retried."
     )
