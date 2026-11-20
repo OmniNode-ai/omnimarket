@@ -64,7 +64,7 @@ replay:
   timestamp_authority: ingest_sequence
   deterministic: true
 metadata:
-  transport_type: local
+  transport_type: inmemory
   description: Judge one runtime boot against the boot set its deployment declares; work outside the set, no set, an
     unannounced name or a dropped declared contract reads FAIL, an unread boot reads UNKNOWN and fails.
   author: OmniNode Team
