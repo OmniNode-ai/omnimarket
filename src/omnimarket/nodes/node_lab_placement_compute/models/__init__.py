@@ -4,6 +4,17 @@
 
 from omnimarket.models.model_priority_rules import PRIORITY_OTHER, ModelPriorityRules
 
+from .model_lab_admission import (
+    AdmissionCheck,
+    ModelAdmissionHost,
+    ModelAdmissionHostVerdict,
+    ModelAdmissionRefusal,
+    ModelAdmissionRequest,
+    ModelAdmissionResult,
+    ModelAdmissionRules,
+    ModelLockProbeReading,
+    ModelLockProbeRequest,
+)
 from .model_lab_lane_priority import (
     ModelLanePriorityOverlay,
     ModelLanePriorityRequest,
@@ -38,8 +49,15 @@ __all__ = [
     "DEFAULT_MIN_FREE_BYTES",
     "LAB_WORK_WEIGHT_ENV",
     "PRIORITY_OTHER",
+    "AdmissionCheck",
     "EnumPlacementDecision",
     "EnumRefusalReason",
+    "ModelAdmissionHost",
+    "ModelAdmissionHostVerdict",
+    "ModelAdmissionRefusal",
+    "ModelAdmissionRequest",
+    "ModelAdmissionResult",
+    "ModelAdmissionRules",
     "ModelHostDefaults",
     "ModelHostTableVerdict",
     "ModelHostVerdict",
@@ -49,6 +67,8 @@ __all__ = [
     "ModelLanePriorityOverlay",
     "ModelLanePriorityRequest",
     "ModelLanePriorityResult",
+    "ModelLockProbeReading",
+    "ModelLockProbeRequest",
     "ModelParityRules",
     "ModelPlacement",
     "ModelPlacementRules",

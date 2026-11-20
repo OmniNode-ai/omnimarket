@@ -22,3 +22,7 @@ class ModelLaneModelPolicyRequest(BaseModel):
     code_edit_ready: bool = False
     # complexity:<band B4 or above> or sonnet-failed:<run or lane>; Opus needs one.
     escalation_reason: str | None = None
+    # OMN-26214: Codex is admitted only when the brief carries codexOk AND the latest RULING allows it. Both default
+    # to False, so a producer that supplies neither gets the first allowed non-Codex model (sonnet by default).
+    codex_ok: bool = False
+    codex_ruling_allows: bool = False

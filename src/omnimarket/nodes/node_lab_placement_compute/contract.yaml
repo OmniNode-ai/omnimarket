@@ -41,6 +41,14 @@ handler_routing:
     handler:
       name: HandlerLabPluginParity
       module: omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_plugin_parity
+  - operation: admission
+    handler:
+      name: HandlerLabAdmission
+      module: omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_admission
+  - operation: reconcile_lock_probe
+    handler:
+      name: HandlerLabReconcileLockProbe
+      module: omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_reconcile_lock_probe
 event_bus:
   subscribe_topics: []
   publish_topics: []
@@ -114,6 +122,20 @@ priority:
 # other depth still counts.
 parity:
   ignored_top_level: [.in_use, .orphaned_at]
+# PRE-PLACEMENT ADMISSION (OMN-26214). Live host state is read before a lane is placed, never taken from prose:
+#   gated_engine          the engine (read from the lane model policy's engine of the lane's model) refused unless the
+#                         brief carries codexOk AND the latest RULING allows it, and then only on a host whose table
+#                         row has `codex: true`. A lane naming no model gets the lane model policy's ceiling.
+#   repeat_window_minutes / repeat_threshold
+#                         a host or lane class with this many FRICTION rows naming the same errno in the window takes
+#                         no lane until a MERGE row newer than those rows clears it.
+#   refused_lock_errnos   what the reconcile lock probe (run in the lane sandbox, read-only) may read before the host
+#                         is refused: 30 is EROFS, the read-only registry that failed three lanes on 2026-11-20.
+admission:
+  gated_engine: codex
+  repeat_window_minutes: 120
+  repeat_threshold: 2
+  refused_lock_errnos: [30]
 metadata:
   transport_type: local
   description: "Judge which lab pool hosts the lab host table lets take one work unit: a host marked unavailable takes none, and the unit's weight, work kind and capability needs (AVX2) are matched against the columns the host row declares, with each host's own memory bar and speed returned; the unit's needs are contract data. Also place a unit on the advertising pool hosts (place), with the table and weight read through injected sources."

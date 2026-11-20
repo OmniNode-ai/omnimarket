@@ -54,6 +54,7 @@ def test_fill_routes_experiment_to_declared_available_model(
                         "key": "experiment",
                         "kind": "experiment-design",
                         "ticket": "OMN-21409",
+                        "codex_ok": True,
                     },
                     {
                         "key": "forbidden",
@@ -76,6 +77,7 @@ def test_fill_routes_experiment_to_declared_available_model(
         ModelLabFillRequest(
             now="2026-10-27T03:27:00Z",
             request={
+                "codex_ruling_allows": True,
                 "lab_headroom": {
                     "hosts": [
                         {
@@ -87,7 +89,7 @@ def test_fill_routes_experiment_to_declared_available_model(
                             },
                         }
                     ]
-                }
+                },
             },
             lines=["MISSING lab-headroom:host-a | free slots 2"],
             launch=None,
@@ -199,11 +201,13 @@ def test_shared_codex_never_exceeds_the_host_budget(reserved: int) -> None:
             ],
             lines=["MISSING lab-headroom:host-a | free slots 2"],
             queue_reserved={"codex": reserved},
+            codex_ruling_allows=True,
             backlog=[
                 {
                     "key": f"experiment-{n}",
                     "kind": "experiment-design",
                     "ticket": "OMN-21409",
+                    "codex_ok": True,
                 }
                 for n in range(3)
             ],
