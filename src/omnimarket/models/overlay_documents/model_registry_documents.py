@@ -34,6 +34,7 @@ class ModelRegistryRepository(BaseModel):
     type: str = Field(min_length=1)
     description: str = Field(min_length=1)
     landing: ModelRegistryRepositoryLanding | None = None
+    owner: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.@/-]*$")
 
 
 class ModelRepositoryRegistryOverlay(BaseModel):
