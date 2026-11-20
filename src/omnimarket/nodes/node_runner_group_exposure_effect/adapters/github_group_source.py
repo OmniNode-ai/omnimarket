@@ -289,7 +289,7 @@ class GithubGroupSource:
             facts = ModelRunnerGroupFacts(
                 group_id=self._s.group_id,
                 allows_public_repositories=bool(meta["allows_public_repositories"]),
-                restricted_to_workflows=bool(meta["restricted_to_selected_workflows"]),
+                restricted_to_workflows=bool(meta["restricted_to_workflows"]),
                 selected_workflows=tuple(
                     str(w) for w in meta.get("selected_workflows") or ()
                 ),
