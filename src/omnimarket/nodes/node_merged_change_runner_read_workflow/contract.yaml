@@ -48,6 +48,10 @@ handler_routing:
       handler:
         name: HandlerRunnerReadingIntegration
         module: omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.handler_runner_reading_integration
+    - operation: ready_edge
+      handler:
+        name: HandlerRunnerReadReadyEdge
+        module: omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.handler_runner_read_ready_edge
 event_bus:
   subscribe_topics: []
   publish_topics: []
