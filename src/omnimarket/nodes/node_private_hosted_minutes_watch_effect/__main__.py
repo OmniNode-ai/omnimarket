@@ -15,7 +15,7 @@ from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 
 from .container import container_private_hosted_minutes_watch_effect
 from .models import ModelHostedMinutesWatchRequest
-from .private_scope import format_minutes
+from .private_scope import render_report
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -54,20 +54,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except RuntimeError as exc:
         sys.stderr.write(f"private-hosted-minutes-watch: billing read failed: {exc}\n")
         return 2
-    sys.stdout.write(
-        f"private-hosted-minutes-watch: day={result.day} "
-        f"hosted_minutes={format_minutes(result.total_day_minutes)} "
-        f"repos={len(result.day_minutes)} alert={result.alert} "
-        f"private_month_minutes={format_minutes(result.private_month_minutes)} "
-        f"included={result.included_minutes} percent_used={format_minutes(result.percent_used)} "
-        f"uncounted={format_minutes(sum(u.minutes for u in result.uncounted))} "
-        f"ledger_written={result.ledger_written}\n"
-    )
-    for row in result.day_minutes:
-        repository = (
-            row.repository.replace("|", "/").replace("\r", " ").replace("\n", " ")
-        )
-        sys.stdout.write(f"  {repository}: {round(row.minutes, 2):g} min\n")
+    sys.stdout.write(render_report(result))
     return (
         0
         if result.ledger_written and result.alert in {"none", "sent", "already-sent"}

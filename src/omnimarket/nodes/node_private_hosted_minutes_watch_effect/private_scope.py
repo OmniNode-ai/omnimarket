@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from .models import (
     ModelHostedMinutesOverlay,
+    ModelHostedMinutesWatchResult,
     ModelRepoDayMinutes,
     ModelUncountedRepo,
 )
@@ -132,3 +133,21 @@ def render_private_status_row(
         f"usage read ({items_read} usage items); private month to date by repository: {month}; "
         f"uncounted by repository (repository:minutes:reason): {uncounted_repos}"
     )
+
+
+def render_report(result: ModelHostedMinutesWatchResult) -> str:
+    """The stdout report: one summary line, then one line per repository."""
+    lines = [
+        f"private-hosted-minutes-watch: day={result.day} "
+        f"hosted_minutes={format_minutes(result.total_day_minutes)} "
+        f"repos={len(result.day_minutes)} alert={result.alert} "
+        f"private_month_minutes={format_minutes(result.private_month_minutes)} "
+        f"included={result.included_minutes} percent_used={format_minutes(result.percent_used)} "
+        f"uncounted={format_minutes(sum(u.minutes for u in result.uncounted))} "
+        f"ledger_written={result.ledger_written}"
+    ]
+    lines += [
+        f"  {_safe(row.repository)}: {round(row.minutes, 2):g} min"
+        for row in result.day_minutes
+    ]
+    return "\n".join(lines) + "\n"
