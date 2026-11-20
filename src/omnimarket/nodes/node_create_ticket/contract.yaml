@@ -10,7 +10,9 @@ description: >
   repair_project. A create is
   judged first by the installed omniclaude ticket-creation guard (OMN-17942) on
   the exact payload filed, Backlog with no project and the caller's description
-  unchanged; with no guard found, or a refusal, nothing is created. A transition
+  unchanged; with no guard found, or a refusal, nothing is created. A lane-minted ticket is then
+  filed in the current sprint (project, milestone and due date resolved by date from Linear, never
+  typed) unless the request declares it not planned this sprint, which keeps it in the Backlog. A transition
   moves a ticket to a named workflow state through the adapter's update_issue,
   after the same guard judges the update payload. Read and comment go through the omnibase_infra Linear project-tracker adapter, with no
   stub fallback when the key is missing. Linear copies a parent's project onto a sub-issue
@@ -102,8 +104,13 @@ inputs:
     default: false
   project:
     type: str
-    description: "REFUSED on a create when non-empty: new tickets are created in the Backlog with no project (operator ruling 2026-09-30T14:30:05Z, OMN-17427); list_open takes the project id whose open tickets it lists"
+    description: "A create admits only the current sprint's project, which the node resolves by date and files itself; any other project is REFUSED (operator rulings 2026-09-30T14:30:05Z and 2026-11-20T13:52:49Z, OMN-17427); list_open takes the project id whose open tickets it lists"
     required: false
+  not_planned_this_sprint:
+    type: bool
+    description: "create: the lane declares the ticket not planned this sprint, so it is filed in the Backlog with no project, milestone or due date; the default places it in the current sprint with its project, milestone and due date resolved by date from Linear (operator ruling 2026-11-20T13:52:49Z)"
+    required: false
+    default: false
   day:
     type: str
     description: "One UTC day, YYYY-MM-DD, whose lane-created tickets repair_project lists (repair_project)"
@@ -130,7 +137,7 @@ inputs:
 outputs:
   status:
     type: str
-    description: "created | read | commented | transitioned | project_cleared | project_repaired | listed | dry_run | error"
+    description: "created | read | commented | transitioned | project_cleared | project_kept_current_sprint | project_repaired | listed | dry_run | error"
   project_cleared:
     type: bool
     description: "clear_project: the independent readback showed an explicit null project"
@@ -155,6 +162,21 @@ outputs:
   contract_completeness:
     type: str
     description: "stub | enriched | full"
+  sprint_status:
+    type: str
+    description: "create: resolved | no_sprint | ambiguous, the current-sprint resolution; empty when the ticket was declared not planned this sprint"
+  sprint_project:
+    type: str
+    description: "create: the name of the sprint project the ticket was filed in"
+  sprint_milestone:
+    type: str
+    description: "create: the name of the sprint milestone set"
+  due_date:
+    type: str
+    description: "create: the due date set, the sprint's end date"
+  sprint_detail:
+    type: str
+    description: "create: why no sprint project was set when none was; the ticket is then in the Backlog with no project"
 
 terminal_event: onex.evt.omnimarket.create-ticket-completed.v1
 

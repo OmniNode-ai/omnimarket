@@ -104,6 +104,11 @@ class _FakeLinear:
                     }
                 }
             }
+        if "SprintProjects" in query:
+            # No sprint project holds today in these recordings, so none is protected.
+            return {
+                "data": {"projects": {"pageInfo": {"hasNextPage": False}, "nodes": []}}
+            }
         if "issues(" in query:
             return copy.deepcopy(self.listing)
         return copy.deepcopy(self.issues[variables["id"]])

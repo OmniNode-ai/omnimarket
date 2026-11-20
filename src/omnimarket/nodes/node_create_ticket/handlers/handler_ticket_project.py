@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT
 """HandlerTicketProject: clear a project Linear copied from a parent, and repair the ones missed.
 
-Every new ticket is created in the Backlog with no project (operator ruling 2026-09-30T14:30:05Z).
-Linear copies a parent's project onto a sub-issue created without one, and nothing that sees only
-the create call can notice it. The documented recovery, an update with ``project=null``, has no
+A ticket declared not planned this sprint is created in the Backlog with no project; every other
+lane-minted ticket is created in the current sprint (operator ruling 2026-11-20T13:52:49Z). Linear
+copies a parent's project onto a sub-issue created without one, and nothing that sees only
+the create call can notice it. Neither operation below ever clears the current sprint's project:
+a ticket in the sprint is where the fill looks for it. The documented recovery, an update with ``project=null``, has no
 spelling in the Linear MCP: its ``project`` argument is a string, so ``null`` arrives as the text
 ``null`` and names a project that does not exist. This handler performs the one spelling that
 works, a direct GraphQL ``issueUpdate(projectId: null)``, and then reads the issue back in a
@@ -28,10 +30,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.handlers.handler_lane_intake import (
     ModelLaneIntakePolicy,
 )
+from omnimarket.handlers.handler_sprint_resolve import resolve_current_sprint
 from omnimarket.models.model_ticket_io import (
     EnumTicketOperation,
     ModelCreateTicketRequest,
     ModelCreateTicketResult,
+)
+from omnimarket.models.sprint_resolution.model_sprint_resolution import (
+    ModelSprintResolution,
 )
 
 _READ_QUERY = """
@@ -61,6 +67,10 @@ _MAX_PAGES = 50
 
 class TicketProjectNotClearedError(RuntimeError):
     """The independent readback after a clear did not show an explicit null project."""
+
+
+class TicketProjectNotSetError(RuntimeError):
+    """The independent readback after a sprint create did not show the sprint project."""
 
 
 class ModelTicketProjectReading(BaseModel):
@@ -112,6 +122,10 @@ class LinearTicketProjectGateway:
             project_reported="project" in issue,
         )
 
+    def current_sprint(self) -> ModelSprintResolution:
+        """The sprint holding today (the clock's UTC day), read from Linear now."""
+        return resolve_current_sprint(self._post)
+
     def clear(self, ticket_id: str) -> None:
         data = self._post(_CLEAR_MUTATION, {"id": ticket_id})
         update = (data.get("data") or {}).get("issueUpdate") or {}
@@ -145,16 +159,34 @@ class LinearTicketProjectGateway:
         raise RuntimeError(f"Linear listing did not end within {_MAX_PAGES} pages")
 
 
+def confirm_project(
+    gateway: TicketProjectGatewayProtocol, ticket_id: str, expected_name: str
+) -> None:
+    """Read ``ticket_id`` back and raise unless it sits in the project named ``expected_name``."""
+    now = gateway.read(ticket_id)
+    if now.project != expected_name:
+        raise TicketProjectNotSetError(
+            f"{ticket_id}: the readback shows project {now.project!r}, "
+            f"not the sprint project {expected_name!r}"
+        )
+
+
 def clear_inherited_project(
-    gateway: TicketProjectGatewayProtocol, ticket_id: str
+    gateway: TicketProjectGatewayProtocol,
+    ticket_id: str,
+    *,
+    keep_project: str = "",
 ) -> bool:
     """Clear ``ticket_id``'s project if it has one; return True when an update was sent.
 
-    A ticket that reads back with no project sends no update. After an update the ticket is read
+    A ticket that reads back with no project sends no update, and neither does one that sits in
+    ``keep_project`` (the project the resolver itself set). After an update the ticket is read
     again, and anything but an explicit null project raises :class:`TicketProjectNotClearedError`.
     """
     before = gateway.read(ticket_id)
     if before.project_reported and before.project is None:
+        return False
+    if keep_project and before.project == keep_project:
         return False
     gateway.clear(ticket_id)
     _require_explicit_null(gateway.read(ticket_id), ticket_id, before.project)
@@ -191,10 +223,12 @@ class HandlerTicketProject:
         label: str = "",
         *,
         lane_intake_policy: ModelLaneIntakePolicy | None = None,
+        sprint_resolver: Callable[[], ModelSprintResolution] | None = None,
     ) -> None:
         self._injectable_gateway = gateway
         self._label = label
         self._injectable_policy = lane_intake_policy
+        self._sprint_resolver = sprint_resolver
 
     @property
     def _gateway(self) -> TicketProjectGatewayProtocol:
@@ -207,6 +241,20 @@ class HandlerTicketProject:
 
             self._injectable_gateway = build_project_gateway()
         return self._injectable_gateway
+
+    def _current_sprint_project(self) -> str:
+        """The current sprint's project name, or '' when none holds today or no resolver is wired.
+
+        The injected resolver wins; otherwise the gateway's own ``current_sprint`` read (the live
+        gateway has one). A gateway without it protects no project.
+        """
+        resolve = self._sprint_resolver or getattr(
+            self._gateway, "current_sprint", None
+        )
+        if resolve is None:
+            return ""
+        sprint = resolve()
+        return sprint.project_name if sprint.resolved else ""
 
     def _lane_intake_label(self) -> str:
         """The lane-intake label: the one given, else the policy's, else the installed guard's."""
@@ -252,6 +300,13 @@ class HandlerTicketProject:
                 dry_run=True,
             )
         was = self._gateway.read(ticket_id).project
+        if was and was == self._current_sprint_project():
+            return ModelCreateTicketResult(
+                status="project_kept_current_sprint",
+                operation=EnumTicketOperation.CLEAR_PROJECT,
+                ticket_id=ticket_id,
+                sprint_project=was,
+            )
         self._gateway.clear(ticket_id)
         _require_explicit_null(self._gateway.read(ticket_id), ticket_id, was)
         return ModelCreateTicketResult(
@@ -281,9 +336,10 @@ class HandlerTicketProject:
         cleared: list[str] = []
         skipped: list[str] = []
         failed: list[str] = []
+        sprint_project = self._current_sprint_project() if candidates else ""
         for ticket_id in candidates:
             now = self._gateway.read(ticket_id)
-            reason = self._recheck(now, day, label, from_project)
+            reason = self._recheck(now, day, label, from_project, sprint_project)
             if reason:
                 skipped.append(f"{ticket_id}: {reason}")
                 continue
@@ -311,8 +367,11 @@ class HandlerTicketProject:
         day: str,
         label: str,
         from_project: str,
+        sprint_project: str = "",
     ) -> str:
         """Why ``ticket_id`` must not be written now, or '' when it still matches the listing."""
+        if sprint_project and now.project == sprint_project:
+            return f"project {now.project!r} is the current sprint's; left alone"
         if not now.created_at.startswith(f"{day}T"):
             return f"created {now.created_at!r}, not on {day}"
         if label not in now.labels:

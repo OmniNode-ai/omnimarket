@@ -65,6 +65,7 @@ from omnimarket.handlers.handler_lane_write_identity import (
     ModelLaneWriteIdentity,
     assert_linear_principal_is_actor,
 )
+from omnimarket.handlers.handler_sprint_resolve import resolve_current_sprint
 from omnimarket.handlers.ticket_guard_locator import (
     TicketGuardUnavailableError,
     locate_ticket_guard,
@@ -78,12 +79,17 @@ from omnimarket.models.model_ticket_io import (
 from omnimarket.models.secret_store.model_secret_resolution_error import (
     SecretResolutionError,
 )
+from omnimarket.models.sprint_resolution.model_sprint_resolution import (
+    EnumSprintResolutionStatus,
+    ModelSprintResolution,
+)
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_create_ticket.handlers.handler_ticket_project import (
     HandlerTicketProject,
     LinearTicketProjectGateway,
     TicketProjectGatewayProtocol,
     clear_inherited_project,
+    confirm_project,
 )
 
 # Seam signal keyword sets
@@ -181,6 +187,27 @@ mutation CreateIssue($teamId: String!, $title: String!, $description: String!, $
     assigneeId: $assigneeId,
     labelIds: $labelIds,
     projectId: null
+  }) {
+    issue { identifier url }
+  }
+}
+"""
+
+# A ticket placed in the current sprint: project, milestone and due date in the one create. The
+# milestone and due date variables are omitted when the sprint carries none.
+_ISSUE_CREATE_IN_SPRINT_MUTATION = """
+mutation CreateIssueInSprint($teamId: String!, $title: String!, $description: String!, $parentId: String, $stateId: String, $assigneeId: String, $labelIds: [String!], $projectId: String!, $projectMilestoneId: String, $dueDate: TimelessDate) {
+  issueCreate(input: {
+    teamId: $teamId,
+    title: $title,
+    description: $description,
+    parentId: $parentId,
+    stateId: $stateId,
+    assigneeId: $assigneeId,
+    labelIds: $labelIds,
+    projectId: $projectId,
+    projectMilestoneId: $projectMilestoneId,
+    dueDate: $dueDate
   }) {
     issue { identifier url }
   }
@@ -529,8 +556,14 @@ class LinearTicketHttpGateway:
         parent: str | None,
         assignee_id: str | None,
         label_names: Sequence[str] = (),
+        sprint: ModelSprintResolution | None = None,
     ) -> tuple[str, str]:
-        """Create a new Linear issue and return ``(identifier, url)``."""
+        """Create a new Linear issue and return ``(identifier, url)``.
+
+        With a resolved ``sprint`` the issue is created in that sprint's project with its milestone
+        and due date, and the readback must show the sprint project. With none it is created with
+        an explicit null project and a project Linear copied from a parent is cleared.
+        """
         team_data = self._post(_TEAM_QUERY, {"name": team})
         team_nodes = team_data.get("data", {}).get("teams", {}).get("nodes", [])
         if not team_nodes:
@@ -575,11 +608,24 @@ class LinearTicketHttpGateway:
             if parent_uuid:
                 variables["parentId"] = parent_uuid
 
-        result = self._post(_ISSUE_CREATE_MUTATION, variables)
+        in_sprint = sprint is not None and sprint.resolved
+        if sprint is not None and in_sprint:
+            variables["projectId"] = sprint.project_id
+            if sprint.milestone_id:
+                variables["projectMilestoneId"] = sprint.milestone_id
+            if sprint.due_date:
+                variables["dueDate"] = sprint.due_date
+            result = self._post(_ISSUE_CREATE_IN_SPRINT_MUTATION, variables)
+        else:
+            result = self._post(_ISSUE_CREATE_MUTATION, variables)
         issue = result.get("data", {}).get("issueCreate", {}).get("issue", {})
         identifier = str(issue.get("identifier", ""))
         url = str(issue.get("url", ""))
-        if identifier:
+        if identifier and sprint is not None and in_sprint:
+            # The sprint project is the one thing the fill reads this ticket by: a create whose
+            # readback shows any other project is not reported as placed.
+            confirm_project(self.project_gateway(), identifier, sprint.project_name)
+        elif identifier:
             # Every create is read back by an independent query and cleared when a project is
             # still set: Linear copies a parent's project onto a sub-issue even beside an explicit
             # null, and a create may also be filed without a parent. Success is reported only
@@ -590,6 +636,10 @@ class LinearTicketHttpGateway:
     def project_gateway(self) -> LinearTicketProjectGateway:
         """The project gateway over this client's own GraphQL transport."""
         return LinearTicketProjectGateway(self._post)
+
+    def resolve_current_sprint(self) -> ModelSprintResolution:
+        """The sprint holding today (the clock's UTC day), read from Linear now."""
+        return resolve_current_sprint(self._post)
 
     def open_issue_ids(self, project_id: str) -> list[str]:
         """Identifiers of the project's tickets whose state is not completed or canceled, every page."""
@@ -639,6 +689,21 @@ def build_project_gateway() -> LinearTicketProjectGateway:
     return LinearTicketHttpGateway(linear_api_key()).project_gateway()
 
 
+def _sprint_cells(sprint: ModelSprintResolution | None) -> dict[str, str]:
+    """The create result's sprint cells: what was set, or why no sprint was (never silent)."""
+    if sprint is None:
+        return {}
+    if sprint.status is EnumSprintResolutionStatus.RESOLVED:
+        return {
+            "sprint_status": sprint.status.value,
+            "sprint_project": sprint.project_name,
+            "sprint_milestone": sprint.milestone_name,
+            "due_date": sprint.due_date,
+            "sprint_detail": sprint.detail,
+        }
+    return {"sprint_status": sprint.status.value, "sprint_detail": sprint.detail}
+
+
 class HandlerCreateTicket:
     """The one ticket handler: create, read, comment and transition (OMN-20595).
 
@@ -665,10 +730,12 @@ class HandlerCreateTicket:
         project_gateway: TicketProjectGatewayProtocol | None = None,
         lane_intake_policy: ModelLaneIntakePolicy | None = None,
         principal_resolver: Callable[[], str] | None = None,
+        sprint_resolver: Callable[[], ModelSprintResolution] | None = None,
         *,
         lane_id: str | None = None,
         require_description_stamp: bool = False,
     ) -> None:
+        self._injectable_sprint_resolver = sprint_resolver
         self._lane_id = lane_id
         self._require_description_stamp = require_description_stamp
         self._injectable_lane_intake_policy = lane_intake_policy
@@ -712,7 +779,27 @@ class HandlerCreateTicket:
         return HandlerTicketProject(
             self._injectable_project_gateway,
             self._get_lane_intake_policy().label if repair else "",
+            sprint_resolver=self._injectable_sprint_resolver,
         )
+
+    def _resolve_sprint(
+        self, request: ModelCreateTicketRequest
+    ) -> ModelSprintResolution | None:
+        """The current sprint a lane-minted ticket is placed in, resolved by date from Linear now.
+
+        None when the lane declared the ticket not planned this sprint, or when no resolver is wired
+        (an injected client with no ``resolve_current_sprint`` and no injected resolver files as
+        before: Backlog, no project). A Linear failure raises: a ticket silently left in the Backlog
+        is the defect this resolver closes.
+        """
+        if request.not_planned_this_sprint:
+            return None
+        if self._injectable_sprint_resolver is not None:
+            return self._injectable_sprint_resolver()
+        if request.dry_run and self._injectable_client is None:
+            return None  # a dry run with no injected seam reads nothing from Linear
+        resolve = getattr(self._get_client(), "resolve_current_sprint", None)
+        return resolve() if resolve is not None else None
 
     def _get_guard(self, lane: str = "") -> TicketGuardProtocol:
         if self._injectable_guard is not None:
@@ -952,8 +1039,24 @@ class HandlerCreateTicket:
         }
         if request.parent:
             tool_input["parentId"] = request.parent
-        if request.project.strip():
-            # Judged by the guard, which refuses it with its own project_set finding.
+        requested_project = request.project.strip()
+        # The sprint is read from Linear, so it is read before the guard only when the caller named a
+        # project (the guard judges that name against it); otherwise after the guard admits.
+        sprint: ModelSprintResolution | None = None
+        if requested_project:
+            try:
+                sprint = self._resolve_sprint(request)
+            except (SecretResolutionError, RuntimeError, OSError):
+                sprint = None  # unreadable: the named project is refused below, as any other is
+        names_current_sprint = (
+            sprint is not None
+            and sprint.resolved
+            and requested_project in (sprint.project_id, sprint.project_name)
+        )
+        if requested_project and not names_current_sprint:
+            # Judged by the guard, which refuses it with its own project_set finding. The current
+            # sprint's own project is the one admission: the node files it from the resolver below,
+            # never from the caller's text.
             tool_input["project"] = request.project
         decision = self._get_guard(lane).check(tool_input)
         if not decision.admitted:
@@ -962,14 +1065,17 @@ class HandlerCreateTicket:
                 f"({decision.guard_path}):\n{decision.reason}",
                 decision.finding_codes,
             )
-        if request.project.strip():
+        if requested_project and not names_current_sprint:
             # A guard that admits a project is not this node's guard (OMN-17427): never file it.
             raise TicketGuardRefusedError(
-                f"node_create_ticket: project={request.project!r} refused: every new "
-                "ticket is created in the Backlog with no project (operator ruling "
-                "2026-09-30T14:30:05Z, OMN-17427).",
+                f"node_create_ticket: project={request.project!r} refused: a ticket is "
+                "created in the current sprint's project or in the Backlog with no project "
+                "(operator rulings 2026-09-30T14:30:05Z and 2026-11-20T13:52:49Z, OMN-17427).",
                 ["project_set"],
             )
+        if not requested_project:
+            sprint = self._resolve_sprint(request)
+        sprint_cells = _sprint_cells(sprint)
 
         if request.dry_run:
             return ModelCreateTicketResult(
@@ -979,6 +1085,7 @@ class HandlerCreateTicket:
                 guard_path=decision.guard_path,
                 description_body=description,
                 dry_run=True,
+                **sprint_cells,
             )
 
         is_seam, interfaces = _detect_seam(request.title, request.description)
@@ -993,6 +1100,11 @@ class HandlerCreateTicket:
         )
         self._assert_lane_actor("create")
         client = self._get_client()
+        # The sprint is passed only when one was resolved, so a client built before the sprint
+        # default keeps its signature.
+        sprint_kwargs: dict[str, ModelSprintResolution] = (
+            {"sprint": sprint} if sprint is not None and sprint.resolved else {}
+        )
         ticket_id, ticket_url = client.create_ticket(
             title=request.title,
             description=description,
@@ -1000,6 +1112,7 @@ class HandlerCreateTicket:
             parent=request.parent,
             assignee_id=assignee_id,
             label_names=[intake.label],
+            **sprint_kwargs,
         )
 
         # Fail-closed (OMN-14547): a "created" result with no id is a lie —
@@ -1024,6 +1137,7 @@ class HandlerCreateTicket:
             contract_completeness=contract_completeness,
             description_body=description,
             dry_run=False,
+            **sprint_cells,
         )
 
 

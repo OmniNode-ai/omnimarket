@@ -91,8 +91,17 @@ class ModelCreateTicketRequest(BaseModel):
     project: str = Field(
         default="",
         description=(
-            "Refused when non-empty: new tickets go to the Backlog with no project. The "
-            "ticket-creation guard refuses it with its project_set finding."
+            "Admitted only when it names the current sprint's project (the node resolves that "
+            "project by date and files it anyway); any other project is refused with the "
+            "ticket-creation guard's project_set finding."
+        ),
+    )
+    not_planned_this_sprint: bool = Field(
+        default=False,
+        description=(
+            "create: the lane declares this ticket not planned this sprint. It is then filed in "
+            "the Backlog with no project, milestone or due date. The default places it in the "
+            "current sprint (project, milestone and due date resolved by date from Linear)."
         ),
     )
 
@@ -101,6 +110,10 @@ class ModelCreateTicketRequest(BaseModel):
         op = self.operation
         if self.state.strip() and op is not EnumTicketOperation.TRANSITION:
             raise ValueError("state is only valid with operation=transition")
+        if self.not_planned_this_sprint and op is not EnumTicketOperation.CREATE:
+            raise ValueError(
+                "not_planned_this_sprint is only valid with operation=create"
+            )
         if op is EnumTicketOperation.REPAIR_PROJECT:
             if not _is_utc_day(self.day):
                 raise ValueError(
@@ -183,4 +196,23 @@ class ModelCreateTicketResult(BaseModel):
     skipped: list[str] = Field(
         default_factory=list,
         description="repair_project: '<id>: <reason>' for each listed ticket the recheck refused.",
+    )
+    sprint_status: str = Field(
+        default="",
+        description=(
+            "create: resolved, no_sprint or ambiguous, the current-sprint resolution; empty when "
+            "the ticket was declared not planned this sprint or no resolver was wired."
+        ),
+    )
+    sprint_project: str = Field(
+        default="", description="create: the sprint project's name."
+    )
+    sprint_milestone: str = Field(
+        default="", description="create: the sprint milestone's name."
+    )
+    due_date: str = Field(
+        default="", description="create: the due date set (the sprint's end)."
+    )
+    sprint_detail: str = Field(
+        default="", description="create: why no sprint was set, when none was."
     )

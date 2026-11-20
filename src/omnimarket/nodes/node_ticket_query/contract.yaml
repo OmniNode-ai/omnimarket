@@ -45,6 +45,11 @@ handler_routing:
       handler:
         name: "HandlerTicketFacts"
         module: "omnimarket.nodes.node_ticket_query.handlers.handler_ticket_facts"
+    # OMN-26203: the fill's one typed read of the current sprint: its open tickets with no live CLAIM.
+    - operation: "list_unowned_sprint_tickets"
+      handler:
+        name: "HandlerUnownedSprintTickets"
+        module: "omnimarket.nodes.node_ticket_query.handlers.handler_unowned_sprint_tickets"
 secrets:
   # OMN-22418: the tracker key is resolved in process from the secret store by
   # node_secret_store_effect (reference built from folder + key), never from the
