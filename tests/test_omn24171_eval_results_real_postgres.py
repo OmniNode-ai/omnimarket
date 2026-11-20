@@ -33,6 +33,7 @@ from omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results
 )
 from omnimarket.nodes.node_projection_eval_results.models.model_eval_projection_io import (
     TOPIC_CODE_TRY,
+    TOPIC_JUDGED,
     TOPIC_RUN_CLOSED,
 )
 from omnimarket.nodes.node_projection_eval_results.models.model_eval_rows import (
@@ -46,6 +47,7 @@ from tests.nodes.node_projection_eval_results.support import (
     at,
     close_event,
     code_event,
+    judged_event,
     overlay,
     try_row,
 )
@@ -305,3 +307,39 @@ async def test_a_late_older_close_changes_no_stored_run_or_rate_row_in_either_or
             )
     assert stored[0] == stored[1] == stored[2]
     assert any('"run_state": "closed"' in row for row in stored[0])
+
+
+@pytest.mark.integration
+async def test_a_judged_event_with_no_judge_run_id_or_event_id_is_dlq_routed_and_writes_no_row() -> (
+    None
+):
+    """OMN-26206: the payload that raised KeyError reaches the declared DLQ, and no table changes."""
+    async with _migrated_schema() as (db, _admin):
+        writer = EvalResultsProjectionWriter(overlay=overlay(), clock=lambda: at(100))
+        cast(Any, writer)._db = db
+        published: list[tuple[str, bytes]] = []
+
+        async def publish(topic: str, value: bytes) -> None:
+            published.append((topic, value))
+
+        writer._publish_fn = publish
+        before = await _counts(db)
+        payload = judged_event("00000000-0000-0000-0000-0000000000c1")
+        del payload["judge_run_id"]
+        del payload["event_id"]
+        outcome = await writer._project(
+            TOPIC_JUDGED,
+            {
+                **payload,
+                "_envelope_timestamp": at(2).isoformat(),
+                "_tenant_id": TENANT,
+            },
+            MessageMeta(partition=0, offset=0, fallback_id="", topic=TOPIC_JUDGED),
+        )
+        assert outcome["dlq_routed"] == 1
+        assert [r["reason"] for r in outcome["refused"]] == ["invalid_event"]
+        assert "judge_run_id" in outcome["refused"][0]["detail"]
+        assert [t for t, _ in published] == [
+            "onex.dlq.omnimarket.projection-eval-results-malformed.v1"
+        ]
+        assert await _counts(db) == before

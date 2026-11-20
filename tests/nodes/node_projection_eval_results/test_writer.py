@@ -16,6 +16,7 @@ from omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results
 from omnimarket.nodes.node_projection_eval_results.models.model_eval_projection_io import (
     SOURCE_TOPICS,
     TOPIC_CODE_TRY,
+    TOPIC_JUDGED,
     TOPIC_RUN_CLOSED,
     TOPIC_SNAPSHOT,
     TOPIC_TICK,
@@ -163,3 +164,30 @@ async def test_a_control_row_is_skipped_by_design_not_sent_to_the_dlq() -> None:
     assert [r["reason"] for r in outcome["refused"]] == ["not_a_try"]
     assert store.items == {}
     assert all(topic == TOPIC_SNAPSHOT for topic, _ in published)
+
+
+@pytest.mark.parametrize("with_event_id", [True, False])
+@pytest.mark.parametrize("bad", ["missing", "empty", "wrong_type"])
+async def test_a_judged_delivery_with_a_malformed_judge_run_id_is_routed_to_the_dlq_not_raised(
+    bad: str, with_event_id: bool
+) -> None:
+    from tests.nodes.node_projection_eval_results.support import judged_event
+
+    store = MemoryStore()
+    writer, published = make_writer(store)
+    payload = judged_event("00000000-0000-0000-0000-0000000000c1")
+    if not with_event_id:
+        del payload["event_id"]
+    if bad == "missing":
+        del payload["judge_run_id"]
+    else:
+        payload["judge_run_id"] = "" if bad == "empty" else 7
+    outcome = await deliver(writer, TOPIC_JUDGED, payload, at(2))
+    assert outcome["dlq_routed"] == 1
+    assert outcome["rows_upserted"] == 0
+    assert [r["reason"] for r in outcome["refused"]] == ["invalid_event"]
+    assert "judge_run_id" in outcome["refused"][0]["detail"]
+    assert [topic for topic, _ in published] == [
+        "onex.dlq.omnimarket.projection-eval-results-malformed.v1"
+    ]
+    assert store.tables().items == ()

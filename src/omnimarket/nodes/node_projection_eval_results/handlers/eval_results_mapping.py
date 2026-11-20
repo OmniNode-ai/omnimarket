@@ -212,10 +212,26 @@ def judged_item(
     try:
         event = ModelDelegationAcceptanceJudgedEvent.model_validate(request.payload)
     except ValidationError as exc:
+        first = exc.errors()[0]
+        field = ".".join(str(part) for part in first["loc"])
         return None, ModelEvalRefusedPart(
             reason=EnumEvalRefusal.INVALID_EVENT,
             subject="judged",
-            detail=str(exc.errors()[0]["msg"]),
+            detail=f"{field}: {first['msg']}" if field else str(first["msg"]),
+        )
+    except KeyError as exc:
+        # An event with no ``event_id`` derives it in a ``default_factory`` that reads
+        # ``judge_run_id`` and ``correlation_id`` from the fields validated so far. When either
+        # field failed its own check it is absent there, and pydantic lets the KeyError through
+        # instead of folding it into a ValidationError. It is a malformed event like any other.
+        return None, ModelEvalRefusedPart(
+            reason=EnumEvalRefusal.INVALID_EVENT,
+            subject="judged",
+            detail=(
+                f"{exc.args[0]}: missing or invalid, so event_id cannot be derived"
+                if exc.args
+                else "event_id cannot be derived"
+            ),
         )
     subject = str(event.correlation_id)
     if event.kind != "task":
