@@ -1,0 +1,12 @@
+{
+  "read_on": "the dev runtime container, 2026-11-20 07:57Z to 08:00Z",
+  "bus_binding_line": "bus-binding lane=dev binding=inmemory state=degraded pending_outbox=0 reason=TimeoutError: ",
+  "fire_error_line": "2026-11-20 07:45:20 [ERROR] omnimarket.nodes.node_red_main_alarm_effect.handler: red-main alarm could not scan: failure=configuration_unreadable detail=alarm bus binding is degraded",
+  "fresh_process_open_seconds": 0.6,
+  "health_read_bound_seconds": 8.0,
+  "runtime_process_cpu_percent_of_one_core": 105,
+  "log_gaps_of_4s_or_more_since_0600": 121,
+  "aiokafka_heartbeat_sessions_expired_since_0338": 27,
+  "completed_events_published_since_0338": 9,
+  "fires_that_reached_the_ledger_writer": 0
+}

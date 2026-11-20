@@ -30,6 +30,8 @@ from omnimarket.nodes.node_code_graph_effect.protocols import (
 
 #: An exemplar answer names at most this many nodes, best first.
 EXEMPLAR_LIMIT = 5
+#: The reason prefix of a locate asked of a version stored before node files were indexed.
+LOCATE_NOT_INDEXED = "question-not-indexed"
 
 
 class CodeGraphLookup:
@@ -54,6 +56,15 @@ class CodeGraphLookup:
         )
         if version is None:
             return self._no_version(command, as_of)
+        if command.question is EnumCodeGraphQuestion.LOCATE and not version.node_files:
+            return ModelCodeGraphLookupResult(
+                correlation_id=command.correlation_id,
+                question=command.question,
+                repo=command.repo,
+                status="not-found",
+                answered_from=version.commit,
+                reason=f"{LOCATE_NOT_INDEXED}: the stored version of {command.repo} holds no node files",
+            )
         matches = _answer(version, command)
         return ModelCodeGraphLookupResult(
             correlation_id=command.correlation_id,
@@ -129,6 +140,8 @@ def _answer(
         return _reach(version, command.paths)
     if question is EnumCodeGraphQuestion.EXEMPLAR:
         return _exemplar(version, command.archetype or "", command.hint)
+    if question is EnumCodeGraphQuestion.LOCATE:
+        return _locate(version, command.target or "")
     return _same_shape(
         version,
         command.symbol or "",
@@ -200,6 +213,19 @@ def _exemplar(
     return tuple(
         ModelLookupMatch(path=node.path, name=node.name, detail=node.archetype)
         for node in nodes[:EXEMPLAR_LIMIT]
+    )
+
+
+def _locate(
+    version: ModelCodeGraphVersion, target: str
+) -> tuple[ModelLookupMatch, ...]:
+    """Every file of each node the target is: its name, or any one of its stored paths."""
+    wanted = target.rstrip("/")
+    nodes = {f.node for f in version.node_files if wanted in (f.node, f.path)}
+    return tuple(
+        ModelLookupMatch(path=f.path, name=f.node, detail=f.kind.value)
+        for f in version.node_files
+        if f.node in nodes
     )
 
 
