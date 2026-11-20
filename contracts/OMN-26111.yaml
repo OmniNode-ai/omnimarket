@@ -49,6 +49,7 @@ dod_evidence:
           set -eu;
           probe_dir=$(mktemp -d);
           trap 'rm -rf "$probe_dir"' EXIT;
+          uv sync --frozen --group dev;
           ln -s "$PWD" "$probe_dir/omnimarket";
           python3 -c 'import json, sys; root = sys.argv[1]; print(json.dumps({"unit": "host-retention-systemd", "mode": "dry-run", "home": root, "registry_root": root, "workspace_config_root": root, "host_name": "probe-host", "path_overrides": {"ONEX_SKILL_OVERLAY_ROOTS": root}}))' "$probe_dir" > "$probe_dir/request.json";
           runtime_bin=$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)');
