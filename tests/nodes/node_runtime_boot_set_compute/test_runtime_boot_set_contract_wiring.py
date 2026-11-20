@@ -46,6 +46,7 @@ def test_the_judged_event_is_the_terminal_and_the_published_topic() -> None:
 
     assert contract["event_bus"]["publish_topics"] == [judged]
     assert contract["terminal_event"] == judged
+    assert judged == "onex.evt.omnimarket.runtime-boot-set-judged.v1"
 
 
 def test_the_runtime_principal_may_read_the_command_and_write_the_judged_event() -> (
