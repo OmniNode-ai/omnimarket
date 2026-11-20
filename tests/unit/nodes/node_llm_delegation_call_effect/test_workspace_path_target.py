@@ -60,14 +60,14 @@ def fake_claude(directory: Path) -> None:
 
 
 def test_workspace_path_excludes_repo_and_commit() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="workspace_path excludes repo"):
         request(
             workspace_path="/tmp/x", repo="OmniNode-ai/omnimarket", commit_sha="a" * 40
         )
 
 
 def test_session_needs_a_workspace_or_a_checkout() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="or a workspace_path"):
         request()
 
 
@@ -85,7 +85,7 @@ async def test_workspace_outside_allowed_roots_is_refused(
         "escape": str(root / "link"),
         "missing": str(root / "absent"),
     }[kind]
-    with pytest.raises(ValueError, match="workspace"):
+    with pytest.raises(ValueError, match="workspace refused"):
         await handler(tmp_path, [str(root)]).handle(request(workspace_path=path))
     assert not (tmp_path / "work").exists()
 
@@ -93,7 +93,7 @@ async def test_workspace_outside_allowed_roots_is_refused(
 async def test_no_declared_roots_refuses_every_workspace(tmp_path: Path) -> None:
     tree = tmp_path / "trees" / "t"
     tree.mkdir(parents=True)
-    with pytest.raises(ValueError, match="workspace"):
+    with pytest.raises(ValueError, match="workspace refused"):
         await handler(tmp_path, []).handle(request(workspace_path=str(tree)))
 
 
