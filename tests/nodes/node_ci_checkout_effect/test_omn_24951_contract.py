@@ -68,7 +68,13 @@ def _acceptance(contract: dict[str, Any]) -> dict[str, str]:
 
 
 def _evidence_for(contract: dict[str, Any], ac: str) -> list[dict[str, Any]]:
-    return [e for e in contract["dod_evidence"] if ac in e.get("binds_ac", [])]
+    # The ledger checks are local_done_gate and unbound: the hosted dod-verify refuses a bound check it cannot run.
+    ledger_ids = {v for k, v in LEDGER_CHECKS.items() if k.split("-")[0] == ac}
+    return [
+        e
+        for e in contract["dod_evidence"]
+        if ac in e.get("binds_ac", []) or e["id"] in ledger_ids
+    ]
 
 
 def _ledger_checks(contract: dict[str, Any], ac: str) -> list[str]:
@@ -253,11 +259,7 @@ def test_omn_24951_contract_h201_done_gate_reads_no_consumer_and_no_failed_termi
         ),
     }[case]
     assert not _passes(_check(LEDGER_CHECKS["AC1-h201"]), row, tmp_path, root)
-    assert "AC1" in next(
-        e["binds_ac"]
-        for e in _load()["dod_evidence"]
-        if e["id"] == "dod-omn24951-ac1-h201"
-    )
+    assert "dod-omn24951-ac1-h201" in [e["id"] for e in _evidence_for(_load(), "AC1")]
 
 
 def test_omn_24951_contract_ac2_ledger_check_takes_a_cause_and_who_must_act(
