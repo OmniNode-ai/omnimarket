@@ -26,7 +26,7 @@ from omnimarket.nodes.node_validator_workflow_orchestrator.adapters.change_reade
 from omnimarket.nodes.node_validator_workflow_orchestrator.adapters.effects import (
     PackageContractSource,
 )
-from omnimarket.nodes.node_validator_workflow_orchestrator.handlers.handler_validator_workflow import (
+from omnimarket.nodes.node_validator_workflow_orchestrator.handlers.validator_workflow import (
     load_topics,
 )
 from omnimarket.nodes.node_validator_workflow_orchestrator.models.model_validator_workflow import (
@@ -159,6 +159,10 @@ def test_workflow_error_chain_events_an_unreadable_change_fails_the_gate() -> No
         topics["workflow_started"],
         topics["workflow_failed"],
     ]
+    assert (
+        built.emitter.events[-1].topic
+        == "onex.evt.omnimarket.validator-workflow-failed.v1"
+    )
     assert [d.conclusion for d in built.gate.decisions] == [EnumGateConclusion.FAILURE]
 
 
