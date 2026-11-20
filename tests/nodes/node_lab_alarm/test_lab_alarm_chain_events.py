@@ -321,6 +321,7 @@ def test_the_example_overlay_loads_and_a_missing_or_extra_key_is_refused() -> No
                 "lane_census",
                 "lab_pass_receipt",
                 "stale_indeterminate",
+                "container_restarts",
                 "verdict_record",
                 "condition_schedules",
             )

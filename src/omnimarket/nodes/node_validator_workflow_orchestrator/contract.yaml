@@ -28,14 +28,26 @@ output_model:
   module: omnimarket.nodes.node_validator_workflow_orchestrator.models.model_validator_workflow
   description: The validator choices, outcomes, verdict, ratchet moves, canonical count and gate decision.
 handler:
-  module: omnimarket.nodes.node_validator_workflow_orchestrator.handlers.handler_validator_workflow
-  class: HandlerValidatorWorkflow
+  module: omnimarket.nodes.node_validator_workflow_orchestrator.handlers.handler_validator_workflow_runtime
+  class: HandlerValidatorWorkflowRuntime
   input_model: omnimarket.nodes.node_validator_workflow_orchestrator.models.model_validator_workflow.ModelValidatorWorkflowRequest
   output_model: omnimarket.nodes.node_validator_workflow_orchestrator.models.model_validator_workflow.ModelValidatorWorkflowResult
-# Not a runtime-dispatched handler: HandlerValidatorWorkflow takes its overlay, reader, contract
-# source, reducer, emitter and gate as constructor parameters; adapters/two_backend.py builds it.
+# The workflow itself, ValidatorWorkflowPipeline, takes its overlay, reader, contract source, reducer, emitter and gate as
+# constructor parameters; adapters/two_backend.py builds it. The runtime routes the workflow-requested
+# topic to HandlerValidatorWorkflowRuntime, which takes none and builds the workflow from the node
+# overlays on its first request.
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - event_model:
+        name: ModelValidatorWorkflowRequest
+        module: omnimarket.nodes.node_validator_workflow_orchestrator.models.model_validator_workflow
+      handler:
+        name: HandlerValidatorWorkflowRuntime
+        module: omnimarket.nodes.node_validator_workflow_orchestrator.handlers.handler_validator_workflow_runtime
 descriptor:
   node_archetype: orchestrator
+  runtime_profiles: [effects]
   purity: impure
   idempotent: true
   timeout_ms: 600000
@@ -49,6 +61,7 @@ dependency_ownership:
   gate: "Owned by the caller; the gate it injects."
 runtime_dispatch:
   external_trigger: true
+  command_topic: onex.cmd.omnimarket.validator-workflow-requested.v1
 # The topics by role; the handler reads these and holds no topic string.
 topics:
   workflow_requested: onex.cmd.omnimarket.validator-workflow-requested.v1
@@ -59,52 +72,24 @@ topics:
   verdict_folded: onex.evt.omnimarket.validator-workflow-verdict-folded.v1
   workflow_completed: onex.evt.omnimarket.validator-workflow-completed.v1
   workflow_failed: onex.evt.omnimarket.validator-workflow-failed.v1
-# OMN-19998: the declared broker grants for the topics this contract's event_bus lists (the permission coverage check, OMN-24005).
-# The principal is the dev runtime's login, read from the environment where the reconcile runs; no login name is written in a repository.
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.validator-workflow-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.validator-workflow-completed.v1
+    - onex.evt.omnimarket.validator-workflow-failed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.validator-workflow-completed.v1
+  - onex.evt.omnimarket.validator-workflow-failed.v1
 broker_acl_grants:
-  - principal: "${ONEX_ACL_DEV_RUNTIME_EFFECTS_PRINCIPAL}"
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
     grants:
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.validator-workflow-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.validator-workflow-requested.v1, operation: READ}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.validator-workflow-requested.v1, operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.validator-workflow-started.v1, operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.validator-workflow-started.v1, operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.validator-workflow-validator-skipped.v1, operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.validator-workflow-validator-skipped.v1, operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.validator-workflow-validator-completed.v1, operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.validator-workflow-validator-completed.v1, operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.validator-workflow-ratchet-refused.v1, operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.validator-workflow-ratchet-refused.v1, operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.validator-workflow-verdict-folded.v1, operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.validator-workflow-verdict-folded.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.validator-workflow-completed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.validator-workflow-completed.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.validator-workflow-failed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.validator-workflow-failed.v1, operation: DESCRIBE}
-# OMN-19998: boot provisioning reads only event_bus; the topics are listed as publish topics so they
-# exist on the broker, never as subscriptions, because the handler takes constructor arguments and a
-# subscription would make the runtime wire it.
-event_bus:
-  subscribe_topics: []
-  publish_topics:
-    - onex.cmd.omnimarket.validator-workflow-requested.v1
-    - onex.evt.omnimarket.validator-workflow-started.v1
-    - onex.evt.omnimarket.validator-workflow-validator-skipped.v1
-    - onex.evt.omnimarket.validator-workflow-validator-completed.v1
-    - onex.evt.omnimarket.validator-workflow-ratchet-refused.v1
-    - onex.evt.omnimarket.validator-workflow-verdict-folded.v1
-    - onex.evt.omnimarket.validator-workflow-completed.v1
-    - onex.evt.omnimarket.validator-workflow-failed.v1
-
-externally_consumed_topics:
-  - onex.cmd.omnimarket.validator-workflow-requested.v1
-  - onex.evt.omnimarket.validator-workflow-started.v1
-  - onex.evt.omnimarket.validator-workflow-validator-skipped.v1
-  - onex.evt.omnimarket.validator-workflow-validator-completed.v1
-  - onex.evt.omnimarket.validator-workflow-ratchet-refused.v1
-  - onex.evt.omnimarket.validator-workflow-verdict-folded.v1
-  - onex.evt.omnimarket.validator-workflow-completed.v1
-  - onex.evt.omnimarket.validator-workflow-failed.v1
-
 # On both backends (OMN-22911): in memory by default; the overlay's backends block picks the
 # git reader and the file emitter and gate.
 backends:

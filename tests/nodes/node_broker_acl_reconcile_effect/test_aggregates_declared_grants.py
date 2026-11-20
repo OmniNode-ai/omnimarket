@@ -52,6 +52,8 @@ ENV = {
     "ONEX_ACL_DEV_RUNTIME_EFFECTS_PRINCIPAL": "User:dev-runtime-effects",
     "ONEX_ACL_DEV_RUNTIME_PRINCIPAL": "User:dev-runtime",
 }
+ENV_FILLS = {key: value for key, value in ENV.items() if key.startswith("ONEX_ACL_")}
+"""The names ENV sets, as an overlay's placeholder_values: when an overlay is found it is the one source of the ${NAME} fills."""
 HEADER = (
     "PRINCIPAL HOST RESOURCE-TYPE RESOURCE-NAME RESOURCE-PATTERN-TYPE "
     "OPERATION PERMISSION ERROR\n"

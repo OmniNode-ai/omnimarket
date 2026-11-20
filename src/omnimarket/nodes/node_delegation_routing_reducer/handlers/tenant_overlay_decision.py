@@ -21,15 +21,18 @@ from omnimarket.models.delegation.wire.model_token_limits import (
     DELEGATION_MAX_TOKENS_HARD_LIMIT,
 )
 from omnimarket.models.model_tenant_routing_overlay_backend import (
+    TENANT_OVERLAY_TIER_NAME as TENANT_OVERLAY_TIER_NAME,
+)
+from omnimarket.models.model_tenant_routing_overlay_backend import (
     ModelTenantRoutingOverlayBackend,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_dod_resolution import (
     ModelDodResolution,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.tenant_overlay_resolver import HOUSE_OVERLAY_COST_TIER
-
-TENANT_OVERLAY_TIER_NAME = "tenant_overlay"
+from omnimarket.routing.tenant_overlay_resolver import (
+    HOUSE_OVERLAY_COST_TIER,
+)
 
 
 def build_tenant_overlay_decision(

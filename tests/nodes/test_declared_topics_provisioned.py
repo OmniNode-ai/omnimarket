@@ -48,7 +48,6 @@ GROUP_A: tuple[str, ...] = (
     "node_order_advance_effect",
     "node_overlay_drift_effect",
     "node_stop_escalation_effect",
-    "node_validator_workflow_orchestrator",
 )
 
 # daily_line_effect is a scheduled writer: it declares a terminal event and no command topic.
@@ -108,16 +107,6 @@ EXPECTED_PUBLISH_TOPICS: dict[str, tuple[str, ...]] = {
     "node_stop_escalation_effect": (
         "onex.cmd.omnimarket.stop-escalation-requested.v1",
         "onex.evt.omnimarket.stop-escalated.v1",
-    ),
-    "node_validator_workflow_orchestrator": (
-        "onex.cmd.omnimarket.validator-workflow-requested.v1",
-        "onex.evt.omnimarket.validator-workflow-started.v1",
-        "onex.evt.omnimarket.validator-workflow-validator-skipped.v1",
-        "onex.evt.omnimarket.validator-workflow-validator-completed.v1",
-        "onex.evt.omnimarket.validator-workflow-ratchet-refused.v1",
-        "onex.evt.omnimarket.validator-workflow-verdict-folded.v1",
-        "onex.evt.omnimarket.validator-workflow-completed.v1",
-        "onex.evt.omnimarket.validator-workflow-failed.v1",
     ),
     "node_ask_state_compute": (
         "onex.evt.omnimarket.ask-state-completed.v1",

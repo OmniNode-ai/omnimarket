@@ -98,7 +98,8 @@ _OR_MODEL_2 = "anthropic/claude-sonnet-x"
 _OAI_MODEL = "gpt-5-nano"
 _ANT_MODEL = "claude-haiku-5-5"
 _LISTED = [_OR_MODEL, _OR_MODEL_2, _OAI_MODEL, _ANT_MODEL]
-_PAGE_PROVIDERS = ["gemini", "openrouter", "openai", "ollama"]
+# OMN-23413: Ollama is no provider of its own; a Local Model is managed in the terminal.
+_PAGE_PROVIDERS = ["gemini", "openrouter", "openai"]
 
 
 class _Delegations:
@@ -618,3 +619,29 @@ def test_models_every_provider_no_allow_list_in_the_serve_path() -> None:
     source = inspect.getsourcefile(create_dashboard_app)
     assert source is not None
     assert "DASHBOARD_PROVIDERS" not in Path(source).read_text(encoding="utf-8")
+
+
+_REFLECTION_KEY = "synthetic-omn24615-reflection-key-never-printed-0123456789"
+_REFLECTION_MODEL = "Beam-1.0-501B-A23B"
+
+
+def test_models_every_provider_a_reflection_key_is_served_as_set_up(
+    delegations: _Delegations, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P4: the AC9 falsifier as written, a reflection key registered in a temporary ONEX home.
+
+    OMN-24615: dev gained the reflection provider with #5813 (OMN-23413), so the falsifier no longer needs
+    Anthropic as its stand-in.
+    """
+
+    def listed(*, url: str, **_: Any) -> Any:
+        return {"data": [{"id": model} for model in [*_LISTED, _REFLECTION_MODEL]]}
+
+    monkeypatch.setattr(byok_model_discovery, "get_models_json", listed)
+    delegations.models[_backend("reflection")] = _REFLECTION_MODEL
+    added = _cli_add("reflection", _REFLECTION_KEY, _REFLECTION_MODEL)
+    assert added.exit_code == 0, added.output
+    served = _rows(_client(tmp_path))
+    assert served["reflection"]["set_up"] is True
+    assert served["reflection"]["last_test"]["status"] == "passed"
+    assert served["reflection"] == _cli_rows()["reflection"]
