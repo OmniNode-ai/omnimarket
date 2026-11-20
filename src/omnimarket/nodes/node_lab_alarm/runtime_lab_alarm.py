@@ -75,6 +75,9 @@ from omnimarket.nodes.node_lab_alarm.adapters.inmemory_adapters import (
     InMemoryRunRecords,
     InMemorySamples,
 )
+from omnimarket.nodes.node_lab_alarm.adapters.routed_delivery_adapters import (
+    build_routed_delivery,
+)
 from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import (
     AdminLag,
     CommandLaneDispatcher,
@@ -89,6 +92,9 @@ from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import (
     KafkaEffectsGroups,
     KafkaLag,
     TcpApiVersionsProbe,
+)
+from omnimarket.nodes.node_lab_alarm.handlers.alarm_route import (
+    HandlerAlarmSeverityRoute,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag import (
     HandlerBrokerLag,
@@ -188,20 +194,18 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     ProtocolGroupLagReader,
     ProtocolListenerProbe,
 )
+from omnimarket.nodes.node_lab_alarm.runtime_alarm_digest import (
+    DIGEST_VERBS,
+    run_alarm_digest,
+)
 from omnimarket.nodes.node_lab_alarm.runtime_lab_alarm_conditions import (
     CONDITION_VERBS,
     add_condition_parsers,
     journal_exit,
     run_condition_verb,
 )
-from omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver import (
-    HandlerLabAlarmDeliver,
-)
 from omnimarket.nodes.node_lab_alarm_deliver_effect.overlay import (
     load_overlay as load_delivery_overlay,
-)
-from omnimarket.nodes.node_lab_alarm_deliver_effect.runtime_lab_alarm_deliver import (
-    build_handler as build_delivery_handler,
 )
 
 _EXIT_RECORD_UNWRITABLE = 4
@@ -234,11 +238,11 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def _delivery_for(overlay: ModelLabAlarmOverlay) -> HandlerLabAlarmDeliver | None:
+def _delivery_for(overlay: ModelLabAlarmOverlay) -> HandlerAlarmSeverityRoute | None:
     """The alarm delivery the overlay turns on; its own overlay must then load, or the run is refused."""
     if overlay.alarm_delivery is None or not overlay.alarm_delivery.enabled:
         return None
-    return build_delivery_handler(load_delivery_overlay())
+    return build_routed_delivery(load_delivery_overlay(), alarm_overlay=overlay)
 
 
 def _inmemory_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
@@ -909,6 +913,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             default="none",
         )
     add_condition_parsers(sub)
+    for verb in DIGEST_VERBS:
+        sub.add_parser(verb)
     schedule = sub.add_parser("schedule")
     schedule.add_argument(
         "action", choices=("install", "uninstall", "status", "run-now")
@@ -951,6 +957,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_broker_listener(
             args.verb, EnumBrokerListenerFault(args.fault), overlay=overlay
         )
+    if args.verb in DIGEST_VERBS:
+        return run_alarm_digest(args.verb, overlay=overlay)
     if args.verb in CONDITION_VERBS:
         return run_condition_verb(args.verb, args.fault, overlay=overlay)
     if args.verb.startswith("delegation-chain-canary"):

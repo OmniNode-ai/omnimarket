@@ -77,10 +77,11 @@ dod_evidence:
         check_value: test -z "$(git diff --name-only origin/dev...HEAD -- .github .onex_ratchets scripts/ci)"
         cwd: .
   - id: dod-omn24829-ac3-status-row-delegation-health
-    description: AC3. One STATUS row for omnimarket#5737 carries shared=yes and check=delegation-health-check; the row is read from the ledger file named by ONEX_LEDGER_PATH.
+    description: AC3. One STATUS row for omnimarket#5737 carries shared=yes and check=delegation-health-check; the row is read through the ledger query node (`onex ledger query --stdin`).
     source: manual
     execution_scope: local_done_gate
     checks:
       - check_type: command
-        check_value: test "$(grep -a '| STATUS |' "$ONEX_LEDGER_PATH" | grep -a 'pr=omnimarket#5737' | grep -a 'shared=yes' | grep -a -c 'check=delegation-health-check')" -ge 1
+        check_value: |-
+          now=$(date -u +%Y-%m-%dT%H:%M:%SZ); printf '{"query":"rows","since":"2026-11-01T00:00:00Z","until":"%s","kinds":["STATUS"],"pr":"omnimarket#5737","limit":20000}' "$now" | timeout 60 uv run onex ledger query --stdin | python3 -c 'import json,sys; a = json.load(sys.stdin); assert a["error"] is None, a["error"]; n = sum(1 for r in a["rows"] if "shared=yes" in r["text"] and "check=delegation-health-check" in r["text"]); assert n >= 1, n'
         cwd: .
