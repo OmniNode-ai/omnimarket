@@ -34,7 +34,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_onex_setup_effect -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn26115-ac2
-  description: The setup cli module imports in the environment built from the lock of the pushed head, and no file under src or tests names the removed function.
+  description: The setup cli module imports in the environment built from the lock of the pushed head, and no Python source file under src or tests names the removed function (the search reads source text only, so a compiled file under __pycache__ never matches).
   source: manual
   binds_ac:
   - AC2
@@ -43,7 +43,7 @@ dod_evidence:
     check_value: uv run --frozen python -c "import omnimarket.nodes.node_onex_setup_effect.cli"
     cwd: .
   - check_type: command
-    check_value: sh -c '! grep -rn run_node_in_process src tests'
+    check_value: sh -c '! grep -rIn --include="*.py" run_node_in_process src tests'
     cwd: .
 - id: dod-omn26115-ac3
   description: The lock is fresh, both omnibase-core floors in pyproject.toml read 0.47.74 and the pin tests pass.
@@ -60,12 +60,19 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_sibling_core_pin_pair_omn17427.py tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn26115-integration-proof
-  description: The setup cli entry point test and the setup cli import run on a lab host at the pushed head through the lab work node. Hosted CI cannot reach a lab host, so only the local Done gate runs this item.
+- id: dod-omn26115-ac2-fresh-venv
+  description: A fresh venv built with uv venv in a temporary directory installs the checked-out tree with its dependencies resolved from the published packages (no git sources), so the omnibase-core it gets is the newest published one the tree's own floor allows, and python -c "import omnimarket.nodes.node_onex_setup_effect.cli" in that venv exits 0. The command exits with the exit code of that import.
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC2
+  checks:
+  - check_type: command
+    check_value: sh -c 'set -eu; src="$PWD"; d="$(mktemp -d)"; trap "rm -rf \"$d\"" EXIT; uv venv -q "$d/venv"; uv pip install -q --python "$d/venv/bin/python" --no-sources "$src"; cd "$d"; "$d/venv/bin/python" -c "import omnimarket.nodes.node_onex_setup_effect.cli"'
+    cwd: .
+- id: dod-omn26115-integration-proof
+  description: The setup cli entry point test and the setup cli import run on a lab host at the pushed head through the lab work node. Hosted CI cannot reach a lab host, so only the local Done gate runs this item; it binds no criterion, because the hosted check refuses a bound item it cannot run, and AC2 is bound by dod-omn26115-ac2-fresh-venv, which the hosted runner runs.
+  source: manual
+  execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26115 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_onex_setup_effect -q --no-cov -n 0 -p no:randomly

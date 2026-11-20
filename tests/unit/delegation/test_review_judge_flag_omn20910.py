@@ -73,7 +73,7 @@ def _routing_backends_with_ordinary_judge() -> list[dict[str, Any]]:
     north_mini = next(
         backend
         for backend in backends
-        if backend["backend_id"] == "openrouter-north-mini-code"
+        if backend["backend_id"] == "openrouter-nemotron-3-5-super"
     )
     north_mini["capabilities"].append("judge_adequacy")
     return backends
@@ -160,8 +160,8 @@ def test_ordinary_selection_skips_a_pin_only_backend_when_another_qualifies() ->
         "Qwen3.8-27B", _routing_backends_with_ordinary_judge()
     )
     assert judge is not None
-    assert judge["backend_id"] == "openrouter-north-mini-code"
-    assert judge["model_name"] == "cohere/north-mini-code:free"
+    assert judge["backend_id"] == "openrouter-nemotron-3-5-super"
+    assert judge["model_name"] == "nvidia/nemotron-3.5-super-vl:free"
     assert not judge.get("explicit_pin_only")
     assert "judge_adequacy" in judge["capabilities"]
 
@@ -357,13 +357,13 @@ def test_review_with_the_flag_on_is_refused_when_the_judge_rejects(
     built = _install(
         monkeypatch,
         reply="Step 1. UNSUPPORTED\nVERDICT: REJECT",
-        resolved="cohere/north-mini-code:free",
+        resolved="nvidia/nemotron-3.5-super-vl:free",
     )
     result = _dispatch_review(tmp_path, monkeypatch, None)
     assert result["quality_gate_passed"] is False
     # a refusal climbs the ladder, so the same answer may be judged again
     assert built
-    assert built[0].backend_id == "openrouter-north-mini-code"
+    assert built[0].backend_id == "openrouter-nemotron-3-5-super"
     assert "value = value or DEFAULT" in built[0].calls[0][1]
 
 
@@ -375,11 +375,11 @@ def test_review_with_the_flag_on_is_accepted_when_the_judge_accepts(
     built = _install(
         monkeypatch,
         reply="Step 1. SUPPORTED\nStep 2. NONE\nVERDICT: ACCEPT",
-        resolved="cohere/north-mini-code:free",
+        resolved="nvidia/nemotron-3.5-super-vl:free",
     )
     result = _dispatch_review(tmp_path, monkeypatch, None)
     assert result["quality_gate_passed"] is True
-    assert built[0].backend_id == "openrouter-north-mini-code"
+    assert built[0].backend_id == "openrouter-nemotron-3-5-super"
 
 
 @pytest.mark.usefixtures("stub_provider_quota_reader")

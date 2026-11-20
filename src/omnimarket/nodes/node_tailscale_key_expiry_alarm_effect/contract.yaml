@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_tailscale_key_expiry_alarm_effect
+contract_name: node_tailscale_key_expiry_alarm_effect
+node_name: node_tailscale_key_expiry_alarm_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  On a host timer, read Tailscale key expiries for lab hosts and the watching host.
+  Within 14 days, record one ALARM per host and expiry, and send it through the
+  direct alert-channel Slack push. A recent local reading can trigger an alarm
+  when Tailscale is unavailable. Each tick reports hosts without an expiry reading.
+
+handler:
+  module: omnimarket.nodes.node_tailscale_key_expiry_alarm_effect.handlers.handler_key_expiry_alarm
+  class: HandlerKeyExpiryTick
+  input_model: omnimarket.nodes.node_tailscale_key_expiry_alarm_effect.models.ModelKeyExpiryTickRequest
+  output_model: omnimarket.nodes.node_tailscale_key_expiry_alarm_effect.models.ModelKeyExpiryTickResult
+
+input_model:
+  name: ModelKeyExpiryTickRequest
+  module: omnimarket.nodes.node_tailscale_key_expiry_alarm_effect.models
+output_model:
+  name: ModelKeyExpiryTickResult
+  module: omnimarket.nodes.node_tailscale_key_expiry_alarm_effect.models
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  side_effects: [tailscale-status-read, state-file-write, alert-channel-post]
+  timeout_ms: 360000
+  runtime_profiles: [effects]
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+overlay:
+  node: node_tailscale_key_expiry_alarm_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-26026
