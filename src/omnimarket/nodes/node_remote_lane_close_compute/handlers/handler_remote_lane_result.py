@@ -26,6 +26,12 @@ from omnimarket.models.remote_lane_close import (
 )
 from omnimarket.nodes.node_remote_lane_close_compute.overlay import load_needs_policy
 
+from .exemplar_graph_cell import (
+    FINISHING_OUTCOMES,
+    NO_CELL_PROBLEM,
+    code_lane,
+    exemplar_graph_cells,
+)
 from .first_turn_context import first_turn_context
 from .lane_needs import lane_needs, report_text
 from .receipt_usage import receipt_usage
@@ -218,6 +224,11 @@ class HandlerRemoteLaneResult:
             outcome = REJECTED_OUTCOME
         else:
             outcome = declared
+        carried, findings, step_cells = exemplar_graph_cells(message)
+        if (
+            outcome in FINISHING_OUTCOMES and not carried and code_lane(request.brief)
+        ):  # OMN-24686: a code lane copies an exemplar and queries the graph, and says so
+            outcome, problem = "partial", NO_CELL_PROBLEM
         usage = receipt_usage(
             request.engine, request.engine_output, request.brief, request.wall_seconds
         )
@@ -229,6 +240,9 @@ class HandlerRemoteLaneResult:
         }
         if withdrawn_by is not None:
             ledger_cells["withdrawn-by"] = withdrawn_by
+        ledger_cells.update(
+            step_cells
+        )  # the cells ride to the TERMINAL, not only in findings
         needs = lane_needs(message, outcome, self._needs_policy)
         report = report_text(message, self._needs_policy)
         if needs is not None:
@@ -239,6 +253,7 @@ class HandlerRemoteLaneResult:
             outcome=outcome,
             problem=problem,
             declared_outcome=declared,
+            findings=findings,
             delegation=parse_delegation_line(message),
             waiting_on_background=waiting_on_background(message),
             usage=usage,

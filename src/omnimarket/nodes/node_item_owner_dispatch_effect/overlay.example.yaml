@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_item_owner_dispatch_effect/overlay.yaml under a root
+# named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+backend: inmemory
+policy:
+  owner_after_minutes: 30
+  settle_minutes: 20
+  lane_cap: 1
+  node_lane: example-item-owner
+  node_actor: script:example-item-owner
+  lane_prefix: own
+  cause_prefix: item
+  item_outcomes: [blocked, partial]
+  ruling_pending_cell: mechanism-pending
+  ruling_done_cell: mechanism
+  capture_lane: operator-capture
+  capture_open_states: [open]
+  capture_closed_states: [done, dropped, ticketed, parked]
+  umbrella_tickets: [OMN-1]
+  summary_limit: 400
+  reading_id_limit: 20
+ledger:
+  query_command: [example-onex, ledger, query, --bus-lane, example-lane]
+  kinds: [CLAIM, TERMINAL, RULING, CORRECTION, STATUS]
+  lookback_hours: 24
+  row_limit: 5000
+  timeout_seconds: 120
+  append_command: [example-onex-ledger, example-ledger.md, --append]
+plan_owner:
+  command: []
+  timeout_seconds: 120
+dispatch:
+  interpreter: python3
+  runner_env: EXAMPLE_REMOTE_LANE_RUNNER
+  claude_dir_env: EXAMPLE_LANE_CLAUDE_DIR
+  plugins: [example-plugin@example-marketplace]
+  subcommand: run
+  model: sonnet
+  ticket: OMN-1
+  briefs_dir: .onex_state/example-item-owner/briefs
+  settle_seconds: 20
+  extra_args: [--parent, example-item-owner, --priority-class, other]
+brief:
+  lane_brief_script: skills/lane-brief/scripts/lane_brief.py
+  rules_block_script: scripts/lane_rules_block.py
+  runner_root_levels: 4
+  ledger_env: EXAMPLE_LEDGER_PATH
+  parent: example-orchestrator
+  landing_lane: example-landing
+  landing_ruling_lane: example-ruling-lane
+  landing_ruling: "2026-01-01T00:00:00Z"
+  out_of_scope: any change to the lane-brief script or the remote-lane runner
+  repo: none
+  effort: high
+  route_band: B3
+  route_dims: S2A1R1V2N1C1J1
+  check_where: lab
+  command_timeout_seconds: 120
+  regenerate_attempts: 2
+  sections:
+    exemplars: "EXEMPLARS: read the example nodes before writing and match their shape."
+    seams: "SEAMS: name every topic, contract or model your change shares and add the test that fails when either side changes shape."
+    runtime: "RUNTIME: work is done only when observed running where it runs; name the host, the revision and the receipt."
+    delegation: "DELEG: drafts go through the delegation step first; end with a DELEGATION line carrying every run id."
