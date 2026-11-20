@@ -26,8 +26,8 @@ description: >
   channel and the ledger bus) comes from the overlay.
 
 handler:
-  module: omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver
-  class: HandlerLabAlarmDeliver
+  module: omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver_route
+  class: HandlerLabAlarmDeliverRoute
   input_model: omnimarket.models.lab_alarm_delivery.ModelLabAlarmDeliveryRequest
   output_model: omnimarket.models.lab_alarm_delivery.ModelLabAlarmDeliveryResult
 
