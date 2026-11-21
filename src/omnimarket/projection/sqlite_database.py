@@ -285,7 +285,8 @@ CREATE TABLE IF NOT EXISTS usage_by_model_day_calls (
     occurred_at TEXT NOT NULL,
     ingested_at TEXT NOT NULL,
     usage_source TEXT NOT NULL DEFAULT 'unknown',
-    cost_tier_name TEXT NOT NULL DEFAULT 'not_tier_routed'
+    cost_tier_name TEXT NOT NULL DEFAULT 'not_tier_routed',
+    backend TEXT
 )
 """
 
@@ -307,6 +308,7 @@ CREATE TABLE IF NOT EXISTS {table} (
     updated_at TEXT NOT NULL,
     projection_cursor INTEGER,
     call_share REAL,
+    backends TEXT,
     PRIMARY KEY (tenant_id, usage_day, model_id, cost_tier_name)
 )
 """
@@ -325,6 +327,15 @@ _USAGE_BY_MODEL_DAY_ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("usage_by_model_day", "measured_cost_usd", "REAL"),
     ("usage_by_model_day", "unmeasured_call_count", "INTEGER NOT NULL DEFAULT 0"),
     ("usage_by_model_day", "projection_cursor", "INTEGER"),
+)
+
+# OMN-25861: the SQLite counterpart of usage_by_model_day migration 0004, nullable with
+# no default as there: a call stored before it stated no backend (NULL), and a row
+# counting one serves backends NULL until a recount finds every call stated. backends
+# holds a JSON array, which the exposure declares in json_columns.
+_USAGE_BY_MODEL_DAY_BACKEND_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("usage_by_model_day_calls", "backend", "TEXT"),
+    ("usage_by_model_day", "backends", "TEXT"),
 )
 
 # The exposure's cursor. On Postgres it is a BIGSERIAL that every recount
@@ -560,6 +571,8 @@ _USAGE_BY_MODEL_DAY_STEP = "omn20006_usage_by_model_day_measured_cost"
 # that read the old table live with the node that owns it, as the delegation
 # views' do.
 _USAGE_BY_MODEL_DAY_TIER_STEP = "omn21015_usage_by_model_day_tier_share"
+# The SQLite counterpart of usage_by_model_day migration 0004 (OMN-25861).
+_USAGE_BY_MODEL_DAY_BACKENDS_STEP = "omn25861_usage_by_model_day_backends"
 _USAGE_BY_MODEL_DAY_TIER_KEY_SQL = (
     "omnimarket.nodes.node_projection_usage_by_model_day",
     "sqlite/usage_by_model_day_tier_key.sql",
@@ -828,6 +841,14 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                     "keyed usage-by-model-day on the tier with each row's share",
                 )
             )
+        if not cls._store_step_recorded(conn, _USAGE_BY_MODEL_DAY_BACKENDS_STEP):
+            pending.append(
+                (
+                    _USAGE_BY_MODEL_DAY_BACKENDS_STEP,
+                    cls._add_usage_by_model_day_backends,
+                    "added the usage-by-model-day backend columns",
+                )
+            )
         for step, resource in DELEGATION_SUMMARY_VIEW_STEPS:
             if not cls._store_step_recorded(conn, step):
                 pending.append(
@@ -987,6 +1008,19 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                     conn.execute(statement)
             for trigger in _USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS:
                 conn.execute(trigger)
+
+    @classmethod
+    def _add_usage_by_model_day_backends(cls, conn: sqlite3.Connection) -> None:
+        """OMN-25861: give a store written before them the backend columns, run once
+        per store as a store step, after the OMN-21015 step.
+
+        Nullable with no default, so every kept call and row reads NULL: nothing
+        recorded which backend a stored call was reached through. The columns are
+        read again under the step's write lock, and a fresh store already has them.
+        """
+        for table, column, declaration in _USAGE_BY_MODEL_DAY_BACKEND_COLUMNS:
+            if column not in cls._existing_columns(conn, table):
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
 
     @classmethod
     def _add_metering_summary_columns(

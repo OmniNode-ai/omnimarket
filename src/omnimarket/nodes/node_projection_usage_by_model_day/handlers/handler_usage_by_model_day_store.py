@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Store-neutral, sequential call deduplication and aggregate recount."""
 
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -18,6 +19,24 @@ AGGREGATE_KEY = "tenant_id,usage_day,model_id,cost_tier_name"
 
 class UsageCallReadBackError(RuntimeError):
     """The store did not read back a call it was just given, so no share can be counted from it."""
+
+
+def backends_of_calls(model_id: str, calls: list[dict[str, object]]) -> str | None:
+    """A row's backends as stored: a JSON array, or None when any call stated none.
+
+    OMN-25861, the writer's rule (_BACKENDS_OF_CALLS) on the local store: the sorted
+    distinct backends the calls were reached through, where the backend is set and
+    differs from the model, so a direct call adds nothing. A call that stated no
+    backend, including one stored before the column existed, is unknown, so the row's
+    list is unknown too (JG-19), never a partial list or an empty one.
+    """
+    stated = [row.get("backend") for row in calls]
+    if any(backend is None for backend in stated):
+        return None
+    return json.dumps(
+        sorted({str(b) for b in stated if b and b != model_id}),
+        separators=(",", ":"),
+    )
 
 
 def apply_usage_call(delta: ModelUsageCallDelta, db: DatabaseAdapter) -> bool:
@@ -47,6 +66,7 @@ def apply_usage_call(delta: ModelUsageCallDelta, db: DatabaseAdapter) -> bool:
             "output_tokens": delta.output_tokens,
             "cost_usd": delta.cost_usd,
             "usage_source": delta.usage_source.value,
+            "backend": delta.backend,
             "occurred_at": delta.occurred_at.isoformat(),
             "ingested_at": updated_at,
         },
@@ -89,6 +109,7 @@ def apply_usage_call(delta: ModelUsageCallDelta, db: DatabaseAdapter) -> bool:
             "unmeasured_call_count": len(calls) - len(measured),
             "call_count": len(calls),
             "call_share": len(calls) / day_calls,
+            "backends": backends_of_calls(delta.model_id, calls),
             "updated_at": updated_at,
         },
     )

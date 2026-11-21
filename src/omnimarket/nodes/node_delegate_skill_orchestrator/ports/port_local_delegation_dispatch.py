@@ -3236,7 +3236,11 @@ class LocalDelegationDispatchPort:
                 if local_next is not None:
                     cumulative_cost_usd += transport_result.actual_cost_usd
                     attempt_usage.append(
-                        _AttemptUsage.of(transport_result, model_id=backend.model_id)
+                        _AttemptUsage.of(
+                            transport_result,
+                            model_id=backend.model_id,
+                            backend=backend.backend_id,
+                        )
                     )
                     attempts.append(
                         _local_rung_attempt(
@@ -3351,7 +3355,11 @@ class LocalDelegationDispatchPort:
                 # post-success banking below without requiring a gate verdict.
                 cumulative_cost_usd += transport_result.actual_cost_usd
                 attempt_usage.append(
-                    _AttemptUsage.of(transport_result, model_id=backend.model_id)
+                    _AttemptUsage.of(
+                        transport_result,
+                        model_id=backend.model_id,
+                        backend=backend.backend_id,
+                    )
                 )
                 attempts.append(
                     {
@@ -3618,7 +3626,9 @@ class LocalDelegationDispatchPort:
             cumulative_cost_usd += result.actual_cost_usd
             attempt_usage.append(
                 _AttemptUsage.of(
-                    result, model_id=result.served_model_id or backend.model_id
+                    result,
+                    model_id=result.served_model_id or backend.model_id,
+                    backend=backend.backend_id,
                 )
             )
 
@@ -6546,6 +6556,7 @@ class LocalDelegationDispatchPort:
                     estimated_cost_usd=float(usage.cost_usd),
                     usage_source=usage.usage_source,
                     cost_tier_name=run_cost_tier_name,
+                    backend=usage.backend,
                     timestamp=emitted_at,
                 )
                 apply_usage_call(
@@ -6673,6 +6684,10 @@ class _AttemptUsage:
     """What one banked effect call consumed, on the model that served it."""
 
     model_id: str
+    # OMN-25861: the id of the backend the dispatcher resolved for this attempt (the
+    # attempt record's backend_id), which the usage row serves as how its model was
+    # reached. Required, so no build site can leave it out.
+    backend: str
     tokens_in: int
     tokens_out: int
     cost_usd: Decimal
@@ -6681,10 +6696,11 @@ class _AttemptUsage:
 
     @classmethod
     def of(
-        cls, result: ModelLlmDelegationCallResult, *, model_id: str
+        cls, result: ModelLlmDelegationCallResult, *, model_id: str, backend: str
     ) -> _AttemptUsage:
         return cls(
             model_id=model_id,
+            backend=backend,
             tokens_in=result.tokens_in,
             tokens_out=result.tokens_out,
             cost_usd=result.actual_cost_usd,
