@@ -32,6 +32,8 @@ class ModelHostCapacityProbeRequest(BaseModel):
     running_units: int = Field(default=0, ge=0)
     max_units: int = Field(default=1, ge=1, le=64)
     rank_penalty: float = Field(default=0.0, ge=0.0, le=10.0)
+    # The serve's lane work root (OMN-26371): the capacity node reads the volume holding it live. None: not judged.
+    work_root: str | None = None
 
     @field_validator("host_name")
     @classmethod

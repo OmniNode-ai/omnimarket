@@ -48,6 +48,7 @@ from omnimarket.models.model_host_capacity import (
 )
 from omnimarket.nodes.node_host_capacity_compute.handlers.handler_host_capacity import (
     HandlerHostCapacity,
+    read_work_root_volume_used_percent,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit import (
     ModelHostCapacityAdvertisement,
@@ -119,6 +120,17 @@ class HandlerHostCapacityAdvertiseEffect:
             capacity_refusal=refusal,
         )
 
+    @staticmethod
+    def _volume_percent(work_root: str | None) -> float | None:
+        """The live percent used of the volume holding the work root; None when no root is declared or it cannot be read."""
+        if work_root is None:
+            return None
+        try:
+            return read_work_root_volume_used_percent(work_root)
+        except OSError:  # fallback-ok: an unreadable volume is not judged, as an unread swap reading is not
+            logger.warning("work root %s: volume unreadable, not judged", work_root)
+            return None
+
     def _slot_cap(
         self, request: ModelHostCapacityProbeRequest, reading: HostReading
     ) -> tuple[int, str, str]:
@@ -156,6 +168,10 @@ class HandlerHostCapacityAdvertiseEffect:
                     swap_out_kb_s=reading.swap_out_kb_s,
                     load_one_minute=reading.load1,
                     running_lanes=request.running_units,
+                    work_root=request.work_root,
+                    work_root_volume_used_percent=self._volume_percent(
+                        request.work_root
+                    ),
                 ),
                 limits=limits,
             )

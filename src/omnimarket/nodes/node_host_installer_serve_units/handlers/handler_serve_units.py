@@ -343,7 +343,7 @@ class HandlerServeUnits:
                 "linger-off",
                 f"linger is off; run: sudo loginctl enable-linger {user}",
             )
-        return self._write(request, declared, texts)
+        return self._write(request, declared, texts, row.lab_work_root)
 
     def _render(
         self,
@@ -362,7 +362,9 @@ class HandlerServeUnits:
         def header(entry: ModelUnitDeclaration) -> str:
             return str(unit["header"]).format(ticket=entry.ticket)
 
-        def lab_lines(lane: str, work_directory: str) -> list[str]:
+        def lab_lines(
+            lane: str, work_directory: str, declared_root: str | None = None
+        ) -> list[str]:
             lines = [
                 f"OMNIBASE_PATH={request.serve_root}",
                 f"LAB_WORK_HOST_NAME={row.name}",
@@ -375,11 +377,14 @@ class HandlerServeUnits:
                 lines.append(f"OMNI_HOME={root}")
                 lines.extend(f"{key}={value}" for key, value in lane_values.items())
             lines.append(f"{SKILL_OVERLAY_ROOTS_ENV}={overlay_roots}")
-            lines.append(f"LAB_WORK_ROOT={request.home}/{work_directory}")
+            lines.append(
+                f"LAB_WORK_ROOT={declared_root or f'{request.home}/{work_directory}'}"
+            )
             lines.append(f"PATH={path}")
             return lines
 
-        lab = lab_lines(bus_lane, str(unit["work_directory"]))
+        # The host row's declared work root (OMN-26371) decides the serve's root; a lane serve keeps its own directory.
+        lab = lab_lines(bus_lane, str(unit["work_directory"]), row.lab_work_root)
 
         sync = _quoted_env_value(
             shlex.join(["python3", f"{root}/{unit['sync_engine']}", "sync", "--repo"])
@@ -417,12 +422,15 @@ class HandlerServeUnits:
         request: ModelServeUnitsRequest,
         declared: ModelServeUnitsOverlay,
         texts: dict[str, str],
+        work_root: str | None = None,
     ) -> ModelServeUnitsResult:
         unit = self._unit
         home = Path(request.home)
         unit_dir = home / str(unit["unit_directory"])
         unit_dir.mkdir(parents=True, exist_ok=True)
-        (home / str(unit["work_directory"])).mkdir(parents=True, exist_ok=True)
+        (Path(work_root) if work_root else home / str(unit["work_directory"])).mkdir(
+            parents=True, exist_ok=True
+        )
         for lane_serve in declared.lane_serves:
             (home / lane_serve.work_directory).mkdir(parents=True, exist_ok=True)
         changed = False

@@ -212,7 +212,18 @@ class ModelLabHostRow(_ModelOverlayBase):
     parity_python: str | None = None
     parity_clones: tuple[NonEmptyStr, ...] = ()
     gh_absent: bool = False
-    lab_work_root: str | None = None
+    # The host's lane work root (OMN-26371): an absolute path ending in ``/lab-run`` (the remote-lane runner's reader accepts no
+    # other), declared on the host's data volume; the serve unit's ``--work-root`` and the runner's run directories come from it.
+    # Omitted: ``<home>/lab-run``.
+    lab_work_root: (
+        Annotated[
+            str,
+            StringConstraints(
+                pattern=r"^/(?:[A-Za-z0-9_+-][A-Za-z0-9_.+-]*/)+lab-run$"
+            ),
+        ]
+        | None
+    ) = None
     report_retention_days: int | None = Field(default=None, ge=1)
     clones: tuple[ModelLabHostClone, ...] = ()
     # What the host can take, read by lab work placement (OMN-17232) next to ``available``. Flat

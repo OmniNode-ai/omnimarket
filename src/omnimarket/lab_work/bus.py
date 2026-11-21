@@ -189,9 +189,11 @@ class LabWorkHost:
         progress_seconds: float = DEFAULT_PROGRESS_SECONDS,
         check_seconds: float = _WATCH_SECONDS,
         clock: Callable[[], float] = time.monotonic,
+        work_root: str | None = None,
     ) -> None:
         self._bus = bus
         self._work = work_handler
+        self._work_root = work_root
         self._advertise = advertise_handler
         self._topics = topics or load_lab_work_topics()
         self._host = work_handler.host_name
@@ -267,6 +269,7 @@ class LabWorkHost:
             running_units=self.running,
             max_units=self._max_units,
             rank_penalty=self._rank_penalty,
+            work_root=self._work_root,
         )
         try:
             ad = await asyncio.to_thread(self._advertise.handle, request)

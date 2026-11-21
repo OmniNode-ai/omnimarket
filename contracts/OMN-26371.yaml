@@ -1,0 +1,94 @@
+schema_version: 1.0.0
+ticket_id: OMN-26371
+title: Each lab host declares its lane work root on its data drive, and a check refuses a work root on a volume above 85 percent used
+summary: The serve unit renders LAB_WORK_ROOT from the host row's lab_work_root and creates it; the serve passes its work root to the capacity advertisement, where node_host_capacity_compute reads the live volume and refuses a host whose work root is on a volume above the overlay's bar. The overlays repository declares the root per host.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26371-work-root
+  statement: A host's lane work root is declared in its row on its data drive, reaches the serve unit, and a work root on a volume above 85 percent used is refused by the capacity node reading the live volume.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the report lists every place a host''s lane work root, worktree root, uv and pip caches, model caches and runner work dirs are decided (the lab host table and its overlay copy, the remote-lane runner, the lab_work serve work root option, the omni_worktrees roots, the landing workers) and which copy each reads today, each with a file and line -- falsifier: the report names no file and line for one of those places, checked by reading the report against a grep of the clones'
+  - id: AC2
+    statement: 'AC2: each host row in the declared host configuration (overlays or omnimarket, never the frozen internal repository) carries a work root on its data drive: h101 on OmniData, h053 on the larger free NVMe, h051 on /mnt/h051-nvme, h201 and h202 on their data or scratch volumes -- falsifier: `uv run pytest tests -q -k work_root_declared` in the repository that owns the host table, failing on a row with a work root on the boot volume'
+  - id: AC3
+    statement: 'AC3: a check refuses a work root on a volume above 85 percent used and admits one at or below it, and it reads the live volume -- falsifier: `uv run pytest tests -q -k work_root_volume_bar` in the repository that owns the check, failing with the bar removed'
+  - id: AC4
+    statement: 'AC4: existing lane run dirs and caches move only when the live CLAIMs and the process table show no lane using them, no running lane is killed, and a symlink is left only where a tool hard-codes the old path, with one ticket filed for each such tool -- falsifier: the lane STATUS row lacks the CLAIM and process readings taken before each move'
+  - id: AC5
+    statement: 'AC5: one new lane on h101 and one on h053 each writes its worktree on the data drive, and each host boot-disk use is reported before and after -- falsifier: `ssh h053 df -Pk <worktree path>` names the NVMe filesystem for the h053 lane, and the same read on h101 names OmniData for the h101 lane, with the before and after boot-disk percent in the lane STATUS row'
+  - id: AC6
+    statement: 'AC6: every pull request is open and ready (not draft) with a line starting `Lab:` in its body, one pull request per repository, and the change is installed from its branch to where placement reads it -- falsifier: `onex scm pr-view` shows a draft or a body with no line starting `Lab:`'
+evidence_requirements:
+- kind: tests
+  description: The capacity and serve-unit node tests, including the work_root selections, pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_capacity_compute tests/nodes/node_host_installer_serve_units -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26371-ac1
+  description: 'AC1: the inventory is the lane report and the PR comment; the proxy is the node tests that read the declared root through the installer.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_capacity_compute tests/nodes/node_host_installer_serve_units -q --no-cov -p no:cacheprovider -k work_root
+    cwd: .
+- id: dod-omn26371-ac2
+  description: 'AC2: the serve unit renders the host row''s lab_work_root; the row-per-host rule is overlays tests/test_lab_host_work_root_declared.py, which hosted CI of the overlays repository runs.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_serve_units -q --no-cov -p no:cacheprovider -k work_root_declared
+    cwd: .
+- id: dod-omn26371-ac3
+  description: 'AC3: the capacity node refuses a work root on a volume above 85 percent used, admits one at or below it, and reads the live volume; the selection fails at the merge base.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_capacity_compute -q --no-cov -p no:cacheprovider -k work_root_volume_bar
+    cwd: .
+- id: dod-omn26371-ac4
+  description: 'AC4: the move readings are lane STATUS rows read from the ledger; the proxy is the node tests.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_capacity_compute tests/nodes/node_host_installer_serve_units -q --no-cov -p no:cacheprovider -k work_root
+    cwd: .
+- id: dod-omn26371-ac5
+  description: 'AC5: the df lines of the two probe lanes are lane STATUS rows and the PR Lab line; the proxy is the node tests.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_capacity_compute tests/nodes/node_host_installer_serve_units -q --no-cov -p no:cacheprovider -k work_root
+    cwd: .
+- id: dod-omn26371-ac6
+  description: 'AC6: the PR state and the installed revision are read from the watcher and the lane STATUS rows; the proxy is the node tests.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_capacity_compute tests/nodes/node_host_installer_serve_units -q --no-cov -p no:cacheprovider -k work_root
+    cwd: .
+- id: dod-omn26371-integration-proof
+  description: Run the capacity and serve-unit node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26371 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_capacity_compute tests/nodes/node_host_installer_serve_units -q --no-cov
+    cwd: .

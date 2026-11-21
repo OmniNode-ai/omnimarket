@@ -48,6 +48,9 @@ class ModelHostCapacityLimits(BaseModel):
     memory_per_slot_gb: float = Field(gt=0)
     slot_floor: int = Field(ge=0)
     slot_ceiling_per_core: float = Field(gt=0)
+    # The most a volume holding a host's lane work root may be used (OMN-26371): a work root on a volume above it is refused.
+    # Omitted: no volume bar is judged.
+    max_work_root_volume_used_percent: float | None = Field(default=None, gt=0, le=100)
     hosts: dict[str, ModelHostSlotBounds] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -74,6 +77,10 @@ class ModelHostCapacityReading(BaseModel):
     swap_out_kb_s: float | None = None
     load_one_minute: float = Field(ge=0)
     running_lanes: int = Field(ge=0)
+    # The host's declared lane work root and the percent used of the volume holding it, read live
+    # (``read_work_root_volume_used_percent``). None when the host declares no root or the volume was not read: not judged.
+    work_root: str | None = None
+    work_root_volume_used_percent: float | None = Field(default=None, ge=0, le=100)
 
 
 class ModelHostCapacityRequest(BaseModel):

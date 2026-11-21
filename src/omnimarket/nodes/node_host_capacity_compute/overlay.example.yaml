@@ -16,4 +16,5 @@ memory_per_slot_gb: 2.0
 # The cap is held between the floor and the ceiling; a host named under `hosts` has its own pair.
 slot_floor: 1
 slot_ceiling_per_core: 0.5
+max_work_root_volume_used_percent: 85
 hosts: {}

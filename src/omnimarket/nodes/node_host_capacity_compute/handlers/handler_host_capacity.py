@@ -12,6 +12,8 @@ memory, and the cap follows headroom:
 - ``memory_headroom_slots``: the memory above ``min_free_memory_ratio`` of the total, in units of
   ``memory_per_slot_gb``.
 - swap activity over either swap bar refuses the host.
+- a declared work root on a volume used above ``max_work_root_volume_used_percent`` refuses the host, naming the host,
+  the root and the percent (OMN-26371).
 - A host that passes every bar has ``free_slots`` of the smaller headroom, at least one; a refused host
   has none, whatever the floor says, so admission and the floor's slots number are one answer.
   ``slot_cap`` is the running lanes plus the headroom (refused or not), held between the floor and the
@@ -21,11 +23,23 @@ memory, and the cap follows headroom:
 from __future__ import annotations
 
 import math
+import shutil
+from pathlib import Path
 
 from omnimarket.models.model_host_capacity import (
     ModelHostCapacityRequest,
     ModelHostCapacityVerdict,
 )
+
+
+def read_work_root_volume_used_percent(path: str) -> float:
+    """The percent used of the volume holding ``path``, read live, as ``df`` reports it (used over used plus available)."""
+    probe = Path(path)
+    # A work root is created on first use; the volume it will sit on is its nearest existing parent's.
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    usage = shutil.disk_usage(probe)
+    return 100.0 * usage.used / (usage.used + usage.free)
 
 
 class HandlerHostCapacity:
@@ -44,6 +58,17 @@ class HandlerHostCapacity:
             reasons.append(
                 f"free memory {r.mem_avail_gb:.1f}G of {r.mem_total_gb:.1f}G is "
                 f"{free_ratio:.2f} < {lim.min_free_memory_ratio}"
+            )
+        bar = lim.max_work_root_volume_used_percent
+        if (
+            bar is not None
+            and r.work_root is not None
+            and r.work_root_volume_used_percent is not None
+            and r.work_root_volume_used_percent > bar
+        ):
+            reasons.append(
+                f"work root {r.work_root} on host {r.host} is on a volume "
+                f"{r.work_root_volume_used_percent:.1f} percent used > {bar:g} percent"
             )
         swapping = False
         if r.swap_in_kb_s is not None and r.swap_out_kb_s is not None:
