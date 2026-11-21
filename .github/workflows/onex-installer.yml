@@ -63,10 +63,10 @@ jobs:
         shell: bash
         run: |
           wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
-          ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
-            uv run --frozen pytest tests/e2e/test_setup_packaged_journey.py \
-            -k "no_git_install or customer_launchers_only" -q -rs --no-cov \
-            -p no:randomly -p no:cacheprovider
+          PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest --with pydantic --with httpx pytest -o addopts="" --noconftest \
+            -p no:cacheprovider -q -rs tests/e2e/test_setup_packaged_journey.py \
+            -k "no_git_install or customer_launchers_only"
 
   linux-arm64:
     runs-on: ubuntu-24.04-arm
@@ -97,10 +97,10 @@ jobs:
         shell: bash
         run: |
           wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
-          ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
-            uv run --frozen pytest tests/e2e/test_setup_packaged_journey.py \
-            -k "no_git_install or customer_launchers_only" -q -rs --no-cov \
-            -p no:randomly -p no:cacheprovider
+          PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest --with pydantic --with httpx pytest -o addopts="" --noconftest \
+            -p no:cacheprovider -q -rs tests/e2e/test_setup_packaged_journey.py \
+            -k "no_git_install or customer_launchers_only"
 
   macos-arm64:
     runs-on: macos-latest
@@ -131,10 +131,10 @@ jobs:
         shell: bash
         run: |
           wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
-          ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
-            uv run --frozen pytest tests/e2e/test_setup_packaged_journey.py \
-            -k "no_git_install or customer_launchers_only" -q -rs --no-cov \
-            -p no:randomly -p no:cacheprovider
+          PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest --with pydantic --with httpx pytest -o addopts="" --noconftest \
+            -p no:cacheprovider -q -rs tests/e2e/test_setup_packaged_journey.py \
+            -k "no_git_install or customer_launchers_only"
 
   macos-intel:
     runs-on: macos-15-intel

@@ -682,17 +682,57 @@ GUIDE_INSTALL_LINE: tuple[str, ...] = (
 )
 
 
-def _source_only_certifi(links: Path, marker: Path) -> None:
+def _wheel_requiring(links: Path, name: str, requires: str) -> None:
+    import base64
+    import hashlib
+    import zipfile
+
+    dist = name.replace("-", "_")
+    metadata = (
+        f"Metadata-Version: 2.1\n"
+        f"Name: {name}\n"
+        f"Version: 1.0\n"
+        f"Requires-Dist: {requires}\n"
+    )
+    wheel = (
+        "Wheel-Version: 1.0\n"
+        "Generator: test\n"
+        "Root-Is-Purelib: true\n"
+        "Tag: py3-none-any\n"
+    )
+
+    def _digest(content: str) -> str:
+        digest = hashlib.sha256(content.encode("utf-8")).digest()
+        return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+    files = {
+        f"{dist}-1.0.dist-info/METADATA": metadata,
+        f"{dist}-1.0.dist-info/WHEEL": wheel,
+    }
+    record_lines = [
+        f"{path},{_digest(content)},{len(content.encode('utf-8'))}"
+        for path, content in files.items()
+    ]
+    record = "\n".join(record_lines) + f"\n{dist}-1.0.dist-info/RECORD,,\n"
+    files[f"{dist}-1.0.dist-info/RECORD"] = record
+
+    wheel_path = links / f"{dist}-1.0-py3-none-any.whl"
+    with zipfile.ZipFile(wheel_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path, content in files.items():
+            zf.writestr(path, content)
+
+
+def _source_only(links: Path, name: str, version: str, marker: Path) -> None:
     import tarfile
 
-    build_root = links.parent / "certifi-2099.1.1"
+    build_root = links.parent / f"{name}-{version}"
     build_root.mkdir(parents=True, exist_ok=True)
     (build_root / "pyproject.toml").write_text(
         '[build-system]\nrequires = []\nbuild-backend = "stub"\nbackend-path = ["backend"]\n\n'
-        '[project]\nname = "certifi"\nversion = "2099.1.1"\n'
+        f'[project]\nname = "{name}"\nversion = "{version}"\n'
     )
     (build_root / "PKG-INFO").write_text(
-        "Metadata-Version: 2.1\nName: certifi\nVersion: 2099.1.1\n"
+        f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n"
     )
     backend_dir = build_root / "backend"
     backend_dir.mkdir()
@@ -707,9 +747,9 @@ def _source_only_certifi(links: Path, marker: Path) -> None:
         "prepare_metadata_for_build_wheel = _invoke\n"
         "build_editable = _invoke\n"
     )
-    archive = links / "certifi-2099.1.1.tar.gz"
+    archive = links / f"{name}-{version}.tar.gz"
     with tarfile.open(archive, "w:gz") as tf:
-        tf.add(build_root, arcname="certifi-2099.1.1")
+        tf.add(build_root, arcname=f"{name}-{version}")
 
 
 def _git_stub(directory: Path, log: Path) -> None:
@@ -727,6 +767,34 @@ def _git_stub(directory: Path, log: Path) -> None:
 def test_no_git_install(tmp_path: Path) -> None:
     """AC1: the guide's install line, run as printed with its --no-build into an empty HOME, never calls git, creates no .git directory, builds nothing and gives an onex that runs; the same line without --no-build builds the source-only fixture and fails."""
     import shutil
+    import subprocess
+
+    installer = (
+        Path(__file__).resolve().parents[2]
+        / "packages"
+        / "omninode-onex"
+        / "installer.json"
+    )
+    rendered = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_onex_installer_render_compute.runtime_onex_installer_render",
+        ],
+        input=installer.read_text(),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert rendered.returncode == 0, rendered.stderr
+    tool_install_lines = [
+        line for line in rendered.stdout.splitlines() if "tool install" in line
+    ]
+    assert len(tool_install_lines) >= 1
+    for flag in GUIDE_INSTALL_LINE:
+        if flag.startswith("--"):
+            assert any(flag in line for line in tool_install_lines)
 
     wheel_env = os.environ.get("ONEX_TEST_ONEX_WHEEL")
     if wheel_env is None:
@@ -743,7 +811,7 @@ def test_no_git_install(tmp_path: Path) -> None:
     links.mkdir()
     shutil.copy2(wheel, links / wheel.name)
     marker = tmp_path / "backend-invoked"
-    _source_only_certifi(links, marker)
+    _source_only(links, "certifi", "2099.1.1", marker)
 
     stub_dir = tmp_path / "stub"
     git_log = tmp_path / "git-called.log"
@@ -759,11 +827,28 @@ def test_no_git_install(tmp_path: Path) -> None:
         return command
 
     def environment(home: Path) -> dict[str, str]:
-        return {
+        env: dict[str, str] = {
             "HOME": str(home),
             "PATH": f"{stub_dir}{os.pathsep}{home / '.local' / 'bin'}{os.pathsep}/usr/bin{os.pathsep}/bin",
             "LANG": "en_US.UTF-8",
         }
+        tmp_dir = tmp_path / "tmp"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        env["TMPDIR"] = str(tmp_dir)
+        for key in (
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NO_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "no_proxy",
+            "SSL_CERT_FILE",
+            "SSL_CERT_DIR",
+        ):
+            if key in os.environ:
+                env[key] = os.environ[key]
+        assert not any(k.startswith("UV_") for k in env)
+        return env
 
     home = tmp_path / "home"
     home.mkdir()
@@ -777,7 +862,7 @@ def test_no_git_install(tmp_path: Path) -> None:
     installed = _run(line(True), environment(home), tmp_path, timeout=1200)
     assert installed.returncode == 0, installed.stdout + installed.stderr
     assert not git_log.exists(), git_log.read_text() if git_log.exists() else ""
-    dot_git = sorted(str(p) for p in home.rglob(".git") if p.is_dir())
+    dot_git = sorted(str(p) for p in tmp_path.rglob(".git") if p.is_dir())
     assert dot_git == [], dot_git
     assert not marker.exists(), "the build backend ran under --no-build"
 
@@ -799,6 +884,21 @@ def test_no_git_install(tmp_path: Path) -> None:
         assert ran.returncode == 0, ran.stdout + ran.stderr
         if args == ["--version"]:
             assert version in ran.stdout
+
+    marker_child = tmp_path / "child-backend-invoked"
+    _source_only(links, "onex-fixture-child", "1.0", marker_child)
+    _wheel_requiring(links, "onex-fixture-parent", "onex-fixture-child")
+    naming_home = tmp_path / "naming-home"
+    naming_home.mkdir()
+    naming = _run(
+        [*line(True), "--with", "onex-fixture-parent==1.0"],
+        environment(naming_home),
+        tmp_path,
+        timeout=1200,
+    )
+    assert naming.returncode != 0
+    assert "onex-fixture-child" in naming.stdout + naming.stderr
+    assert not marker_child.exists(), "the build backend ran under --no-build"
 
     control_home = tmp_path / "control-home"
     control_home.mkdir()
