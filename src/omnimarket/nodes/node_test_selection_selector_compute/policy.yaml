@@ -13,6 +13,12 @@
 #   durations_path          recorded per-file seconds, relative to the repository root.
 #   path_count_shards       the older rule, kept as a floor: [up to this many selected paths, shards].
 #   path_count_max_shards   shards for more paths than the last rung.
+#   selection_stage         the stage gate. A narrowing rule is active only at or above its stage.
+#                           0 is shadow: what a pull request runs is today's logic, and the record
+#                           keeps what the later stages would have run. Advancing it is its own change.
+#   full_split_count        shards of the full-suite matrix: what a run with the flag off and every
+#                           escalation to the full suite takes.
+#   record_retention_days   days a pull request's selection record artifact is kept.
 target_shard_seconds: 360
 max_narrowed_shards: 5
 durations_path: config/test_file_durations.json
@@ -22,3 +28,6 @@ path_count_shards:
   - [10, 3]
   - [16, 4]
 path_count_max_shards: 5
+selection_stage: 0
+full_split_count: 20
+record_retention_days: 14
