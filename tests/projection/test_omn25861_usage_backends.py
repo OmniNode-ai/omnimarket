@@ -17,7 +17,8 @@ tests/test_omn25861_usage_backends_real_postgres.py):
 B1  two calls to one model, one through byok-reflection, serve no backends, or not exactly ["byok-reflection"],
     on the row the local dashboard serves (AC1);
 B2  a direct call is listed as a backend: one whose backend is the model itself, or empty;
-B3  one backend reached twice is listed twice, or the backends are not in a stable order;
+B3  one backend reached twice is listed twice, or the backends are not in code-point order (the Postgres
+    writer's COLLATE "C" order, so both stores serve one order);
 B4  a call whose backend was never stated is served as a known list (empty or partial) instead of NULL;
 B5  one tier's backends leak into another tier's row of the same model, or another day's or tenant's into a row;
 B6  a local store written before this change cannot be opened, loses rows, or is not given the new columns once;
@@ -175,6 +176,16 @@ def test_b3_backends_are_distinct_and_sorted(
     assert _backends(path) == {
         ("2026-11-19", _BEAM, "cheap_cloud"): ["byok-openrouter", "byok-reflection"]
     }
+    # Code point, not a linguistic order that skips the hyphen: "cloud-glm" first.
+    _apply(
+        db,
+        _call("s4", "cloudflare-x", tier="local"),
+        _call("s5", "cloud-glm", tier="local"),
+    )
+    assert _backends(path)[("2026-11-19", _BEAM, "local")] == [
+        "cloud-glm",
+        "cloudflare-x",
+    ]
 
 
 def test_b4_a_call_with_no_stated_backend_makes_the_row_unknown(

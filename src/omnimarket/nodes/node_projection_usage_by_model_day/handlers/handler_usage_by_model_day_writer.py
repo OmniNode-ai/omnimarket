@@ -44,8 +44,12 @@ _INSERT_CALL = """
 # vendored into omnibase_infra after this code merges, so a lane's database can be a step
 # behind the writer; like the key below, the writer follows the columns in force and
 # writes as before until both are there. A column is never dropped, so once in force they
-# stay; a migration that commits after this read waits on the call row's insert and is
-# seen by the next call.
+# stay. The calls table is locked before the read (_HOLD_CALLS): ROW EXCLUSIVE conflicts
+# with the ACCESS EXCLUSIVE lock 0004's ALTER TABLE takes, so the migration either
+# committed before the read, and is seen, or waits for this write to commit; it cannot
+# land between the read and the call's insert and leave a stated backend unstored.
+_HOLD_CALLS = "LOCK TABLE public.usage_by_model_day_calls IN ROW EXCLUSIVE MODE"
+
 _BACKENDS_IN_FORCE = """
     SELECT COUNT(*) = 2
     FROM pg_attribute
@@ -69,11 +73,13 @@ _INSERT_CALL_WITH_BACKEND = """
 # sorted distinct backends its calls were reached through, where the backend is set and
 # differs from the model, so a direct call adds nothing and a row of direct calls serves
 # []. A call that stated no backend (NULL) is unknown, so its row serves NULL rather than
-# a list that reads as complete (JG-19).
+# a list that reads as complete (JG-19). Sorted by code point (COLLATE "C"), the order the
+# local store's Python sort gives, so both stores serve one order whatever the database's
+# collation.
 _BACKENDS_OF_CALLS = """
            CASE WHEN bool_or(backend IS NULL) THEN NULL
                 ELSE COALESCE(
-                    jsonb_agg(DISTINCT backend ORDER BY backend)
+                    jsonb_agg(DISTINCT backend COLLATE "C" ORDER BY backend COLLATE "C")
                         FILTER (WHERE backend <> '' AND backend <> model_id),
                     '[]'::jsonb
                 )
@@ -244,11 +250,15 @@ _RESHARE_DAY_WITH_BACKENDS = _replace_once(
 
 
 def _wire_row(row: dict[str, Any]) -> dict[str, Any]:
+    # asyncpg returns JSONB as its text; backends (OMN-25861) is decoded so the row this
+    # writer returns carries the list the exposure serves, not its JSON text.
     return {
         key: value.isoformat()
         if isinstance(value, date | datetime)
         else str(value)
         if isinstance(value, Decimal)
+        else json.loads(value)
+        if key == "backends" and isinstance(value, str)
         else value
         for key, value in row.items()
     }
@@ -293,6 +303,7 @@ async def write_usage_call(
         delta.usage_source.value,
     )
     # OMN-25861: 0004's columns are written only where they exist (see _BACKENDS_IN_FORCE).
+    await conn.execute(sql(_HOLD_CALLS))
     backends = bool(await conn.fetchval(sql(_BACKENDS_IN_FORCE)))
     if backends:
         inserted = await conn.fetch(

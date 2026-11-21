@@ -17,7 +17,13 @@ R2  a direct call is listed, a backend is listed twice or out of order, or a row
 R3  0004 rewrites or drops a row stored before it, or cannot run twice;
 R4  the writer raises, or loses the call, on a database 0004 has not reached;
 R5  the rows the writer returns for the bus snapshot lack the backends, or the Postgres read serves them as text
-    rather than a list.
+    rather than a list;
+R6  under the three-column key 0003 keeps, the model's day folded into one not_tier_routed row does not list the
+    backends of every tier's calls;
+R7  the database's collation orders the list differently from the local store's code-point sort.
+
+Each case states which key is in force: 0003 keeps the three-column key and the contract migration (OMN-21161,
+copied below as tests/test_omn21015_usage_tier_share_real_postgres.py copies it) makes the tier part of it.
 """
 
 from __future__ import annotations
@@ -58,11 +64,23 @@ def _scoped(statement: str) -> str:
     return statement.replace("public.", f"{_SCHEMA}.")
 
 
-async def _fresh(conn: asyncpg.Connection, *, with_backends: bool = True) -> None:
+# What the contract migration (OMN-21161) does: the four-column index becomes the key.
+_TIER_KEY = f"""
+    ALTER TABLE {_SCHEMA}.usage_by_model_day DROP CONSTRAINT usage_by_model_day_pkey;
+    ALTER TABLE {_SCHEMA}.usage_by_model_day
+        ADD CONSTRAINT usage_by_model_day_pkey PRIMARY KEY USING INDEX usage_by_model_day_tier_key;
+"""
+
+
+async def _fresh(
+    conn: asyncpg.Connection, *, with_backends: bool = True, tier_key: bool = True
+) -> None:
     await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
     await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
     for migration in _MIGRATIONS:
         await conn.execute(_scoped(migration.read_text(encoding="utf-8")))
+    if tier_key:
+        await conn.execute(_TIER_KEY)
     if with_backends:
         await conn.execute(_scoped(_BACKENDS_MIGRATION.read_text(encoding="utf-8")))
 
@@ -210,5 +228,40 @@ async def test_real_postgres_the_writer_keeps_writing_before_0004_reaches_the_da
             f"SELECT call_id FROM {_SCHEMA}.usage_by_model_day_calls"
         )
         assert stored["call_id"] == "early"
+    finally:
+        await _drop(conn)
+
+
+@pytest.mark.integration
+async def test_real_postgres_under_the_old_key_the_folded_row_lists_every_tiers_backends() -> (
+    None
+):
+    """R6: 0003's three-column key folds a model's day into one not_tier_routed row; it lists both tiers' backends."""
+    conn = await _connect_or_skip()
+    try:
+        await _fresh(conn, tier_key=False)
+        await _write(conn, "o1", "byok-reflection", tier="cheap_cloud")
+        await _write(conn, "o2", "byok-openrouter", tier="local")
+        await _write(conn, "o3", _BEAM, tier="local")
+        assert await _backends(conn) == {
+            (_BEAM, "not_tier_routed"): ["byok-openrouter", "byok-reflection"]
+        }
+    finally:
+        await _drop(conn)
+
+
+@pytest.mark.integration
+async def test_real_postgres_backends_sort_by_code_point_as_the_local_store_does() -> (
+    None
+):
+    """R7: "cloud-glm" sorts before "cloudflare-x" by code point; a linguistic collation that skips punctuation does not."""
+    conn = await _connect_or_skip()
+    try:
+        await _fresh(conn)
+        await _write(conn, "x1", "cloudflare-x")
+        await _write(conn, "x2", "cloud-glm")
+        assert await _backends(conn) == {
+            (_BEAM, "cheap_cloud"): ["cloud-glm", "cloudflare-x"]
+        }
     finally:
         await _drop(conn)
