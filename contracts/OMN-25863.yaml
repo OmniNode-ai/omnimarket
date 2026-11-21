@@ -21,7 +21,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn25863-ac1
-  description: 'AC1: a store an earlier build wrote (the run priced by its alias gpt-4o, the earlier recompute recorded) re-prices the run by the model that ran (gpt-4o-mini) on its next open, a manifest change recomputes once more, a second open with nothing changed recomputes nothing, and recorded cost is untouched; fails without the rule-digest step.'
+  description: 'AC1: a store an earlier build wrote (the earlier recompute recorded, the run''s saving priced by its alias) re-prices the run by the model that ran on its next open, both for an alias the manifest does not list and for an alias the manifest prices differently from the model (gpt-4o-mini, paid, reached through qwen2.5-7b, listed free); a manifest change recomputes once more, a second open with nothing changed recomputes nothing, recorded cost is untouched, and a read-only store is read as it is; fails without the rule-digest step.'
   source: manual
   binds_ac:
   - AC1
