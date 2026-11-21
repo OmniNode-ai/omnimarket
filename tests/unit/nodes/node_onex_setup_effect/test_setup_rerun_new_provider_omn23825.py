@@ -203,13 +203,16 @@ def _store() -> Path:
     return local_byok_credential_adapter.default_evidence_db_path()
 
 
-def test_a_world_readable_store_is_neither_changed_nor_read(rerun: Any) -> None:
-    """F6: the lookup reads read-only; the store's refusal stands and the prompt asks."""
-    os.chmod(_store(), 0o644)
+def test_a_group_readable_store_is_neither_changed_nor_read(rerun: Any) -> None:
+    """F6: the lookup reads read-only; the store refuses a group-readable file.
+
+    Its refusal stands and the prompt asks.
+    """
+    os.chmod(_store(), 0o640)
     before = _store().stat()
     result, rec = rerun(input="openai\ngpt-4.1-mini\n")
     after = _store().stat()
-    assert stat.S_IMODE(after.st_mode) == 0o644
+    assert stat.S_IMODE(after.st_mode) == 0o640
     assert after.st_mtime_ns == before.st_mtime_ns
     assert rec.keys == ["openai"], result.output
 
