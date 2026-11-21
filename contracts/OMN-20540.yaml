@@ -29,6 +29,23 @@ emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
+context:
+  ac_binding_provenance:
+    dod-omn20540-ac1:
+    - label: AC1
+      criterion_hash: 4b3d6f3e951b046eece81c8176e0c70243cee7128e7fe3e2c031159e661b911d
+      proposed_by: lane=dod-closeout-bind-2026-11-21T1745Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-21T1745Z-c2
+    dod-omn20540-ac2:
+    - label: AC2
+      criterion_hash: 06629eff1700f4353993080728b46c7defbbaaddef7d75b0adee03193e49ba31
+      proposed_by: lane=dod-closeout-bind-2026-11-21T1745Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-21T1745Z-c2
+    dod-omn20540-ac3:
+    - label: AC3
+      criterion_hash: d3b13cd3f0a766c91f34db1d7a5812d8651572483362dc3b09abc8f2e9817ae3
+      proposed_by: lane=dod-closeout-bind-2026-11-21T1745Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-21T1745Z-c2
 dod_evidence:
 - id: dod-omn20540-ac1
   description: AC1 the append command, run with the durable open failing on a lane that declares an in-memory fallback, exits 0 and prints a receipt with status spooled naming the request id, and the request file is in the spool directory.
