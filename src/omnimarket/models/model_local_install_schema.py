@@ -371,28 +371,57 @@ LOCAL_RUN_STORE_STEPS: tuple[
 RUN_SAVINGS_RULE_VERSION = "2026-11-19: priced by the model that ran (model_name, then delegated_to), spend from a named price only"
 
 
-def _manifest_price_lines() -> list[str]:
-    """Every model the pricing manifest prices, with both rates, sorted: what a stored saving was priced from."""
+_RUN_SAVINGS_RULE_STEP_PREFIX = "omn25863_run_savings_rule_"
+
+
+def _manifest_price_lines() -> list[str] | None:
+    """The manifest's version and every model it prices, with both rates, sorted: what a stored saving was priced
+    from. None when the manifest did not load (pricing._load_table's empty fallback table prices no model)."""
     from omnimarket.pricing import (
         _load_table,
     )
 
-    return sorted(
-        f"{key},{entry.input_cost_per_1k},{entry.output_cost_per_1k}"
-        for key, entry in _load_table().models.items()
-    )
+    table = _load_table()
+    if not table.models:
+        return None
+    return [
+        f"schema_version,{table.schema_version}",
+        *sorted(
+            f"{key},{entry.input_cost_per_1k},{entry.output_cost_per_1k}"
+            for key, entry in table.models.items()
+        ),
+    ]
 
 
-def run_savings_rule_step() -> str:
-    """OMN-25863: the recompute step named by the savings rule's version and every manifest price.
+def run_savings_rule_step() -> str | None:
+    """OMN-25863: the recompute step named by the savings rule's version and the manifest's prices.
 
     A change to either names a new step, so a store recomputes its stored per-run savings once per change, through
-    the same one-time step machinery (its write transaction, its read-only handling) as every other step.
+    the same one-time step machinery (its write transaction, its read-only handling) as every other step. None when
+    the manifest did not load: no saving can be priced, so nothing is recomputed or recorded.
     """
-    payload = "\n".join([RUN_SAVINGS_RULE_VERSION, *_manifest_price_lines()])
+    prices = _manifest_price_lines()
+    if prices is None:
+        return None
+    payload = "\n".join([RUN_SAVINGS_RULE_VERSION, *prices])
     return (
-        "omn25863_run_savings_rule_" + hashlib.sha256(payload.encode()).hexdigest()[:16]
+        _RUN_SAVINGS_RULE_STEP_PREFIX
+        + hashlib.sha256(payload.encode()).hexdigest()[:16]
     )
+
+
+def _recompute_for_rule(rule: str) -> Callable[[sqlite3.Connection], None]:
+    """Recompute every stored saving, then forget every other rule step in the same transaction, so only the
+    current rule and prices stand recorded and a later return to earlier ones recomputes again."""
+
+    def apply(conn: sqlite3.Connection) -> None:
+        recompute_run_savings(conn)
+        conn.execute(
+            "DELETE FROM omnimarket_sqlite_store_steps WHERE step GLOB ? AND step != ?",
+            (_RUN_SAVINGS_RULE_STEP_PREFIX + "*", rule),
+        )
+
+    return apply
 
 
 def pending_local_run_steps(
@@ -401,11 +430,15 @@ def pending_local_run_steps(
     """The run-level steps this store has not recorded, in order, then the savings recompute for the current rule."""
     pending = [step for step in LOCAL_RUN_STORE_STEPS if not recorded(conn, step[0])]
     rule = run_savings_rule_step()
-    if not recorded(conn, rule):
+    if rule is None:
+        logging.getLogger(__name__).warning(
+            "the pricing manifest did not load, so stored run savings are read as they are, not recomputed"
+        )
+    elif not recorded(conn, rule):
         pending.append(
             (
                 rule,
-                recompute_run_savings,
+                _recompute_for_rule(rule),
                 "recomputed each run's modelled saving for the current rule and prices",
             )
         )

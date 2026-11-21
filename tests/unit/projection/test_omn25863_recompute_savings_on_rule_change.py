@@ -15,6 +15,8 @@ Failure modes, each with a test below:
   R3  the recompute runs on every open instead of once per change
   R4  the recorded cost columns are rewritten
   R5  a store that cannot be written fails to open instead of being read as it is
+  R6  a reverted rule or price change is not recomputed (an earlier digest is still recorded)
+  R7  a manifest that cannot be loaded breaks the open, or records a recompute against the empty fallback table
 
 The model a run is priced by reaches its saving only through priced_spend: whether the manifest lists the model, and
 whether it lists it free while the run cost money. Where the alias and the model are both paid, the two orders give the
@@ -26,15 +28,19 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
+from omnibase_infra.models.pricing import (
+    model_pricing_table as pricing_table_module,
+)
 
 from omnimarket import pricing
-from omnimarket.models import model_local_install_schema as schema
 from omnimarket.nodes.node_projection_delegation.handlers import handler_run_savings
-from omnimarket.projection import sqlite_database
+from omnimarket.projection import sqlite_database, sqlite_metering_summary
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from tests.unit.projection.test_sqlite_delegation_savings_view_omn20008 import (
     _delegation,
@@ -44,6 +50,71 @@ from tests.unit.projection.test_sqlite_delegation_savings_view_omn20008 import (
 pytestmark = pytest.mark.unit
 
 _STALE = "9.999"
+
+
+@pytest.fixture(autouse=True)
+def _own_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The developer's ~/.onex/config.yaml can name another savings baseline; these tests use the default."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+
+class _Manifest:
+    """The real pricing manifest, read from a copy this test may edit: what both the store step and the saving read."""
+
+    def __init__(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._original = pricing_table_module._DEFAULT_MANIFEST_PATH
+        self._text = self._original.read_text(encoding="utf-8")
+        self.path = tmp_path / "pricing_manifest.yaml"
+        self._monkeypatch = monkeypatch
+        self.restore()
+        monkeypatch.setattr(pricing_table_module, "_DEFAULT_MANIFEST_PATH", self.path)
+
+    def _reload(self) -> None:
+        pricing._load_table.cache_clear()
+
+    def restore(self) -> None:
+        self.path.write_text(self._text, encoding="utf-8")
+        self._reload()
+
+    def reprice(self, model: str, factor: float) -> None:
+        """Multiply one model's input and output rates, as a real price change would."""
+        data = yaml.safe_load(self._text)
+        entry = data["models"][model]
+        entry["input_cost_per_1k"] = entry["input_cost_per_1k"] * factor
+        entry["output_cost_per_1k"] = entry["output_cost_per_1k"] * factor
+        self.path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+        self._reload()
+
+    def remove(self) -> None:
+        """The manifest cannot be found: pricing._load_table falls back to an empty table, resolve_baseline raises."""
+        self.path.unlink()
+        self._reload()
+
+
+@pytest.fixture
+def manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[_Manifest]:
+    controlled = _Manifest(tmp_path, monkeypatch)
+    try:
+        yield controlled
+    finally:
+        monkeypatch.undo()
+        pricing._load_table.cache_clear()
+
+
+def _baseline_model() -> str:
+    return sqlite_metering_summary.resolve_metering_baseline_model().model
+
+
+def _recorded_rule_steps(path: Path) -> list[str]:
+    with sqlite3.connect(path) as conn:
+        return [
+            row[0]
+            for row in conn.execute(
+                "SELECT step FROM omnimarket_sqlite_store_steps WHERE step LIKE 'omn25863_%' ORDER BY step"
+            )
+        ]
 
 
 def _open(path: Path) -> None:
@@ -171,22 +242,63 @@ def test_recompute_savings_an_alias_priced_differently_from_its_model(
 
 
 def test_recompute_savings_a_price_manifest_change_recomputes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, manifest: _Manifest
 ) -> None:
-    """R2: a changed manifest names a new step, so the store recomputes once more."""
-    path = _earlier_store(tmp_path)
-    _open(path)
-    with sqlite3.connect(path) as conn:
-        conn.execute(
-            "UPDATE delegation_events SET modelled_savings_usd = ? WHERE correlation_id = 'aliased'",
-            (_STALE,),
-        )
-    real = schema._manifest_price_lines
-    monkeypatch.setattr(
-        schema, "_manifest_price_lines", lambda: [*real(), "a-new-model,0.001,0.002"]
+    """R2: a real price change in the manifest (the baseline's rates doubled) re-prices the stored saving once more."""
+    path = _earlier_store(
+        tmp_path, model=_PAID_MODEL, alias=_FREE_ALIAS, cost_usd=_PAID_COST
     )
     _open(path)
-    assert _saving_and_cost(path)[0] == _expected(path)
+    old_prices = _saving_and_cost(path)[0]
+    assert old_prices == _expected(path)
+    manifest.reprice(_baseline_model(), 2.0)
+    new_prices = _expected(path)
+    assert new_prices is not None
+    assert new_prices != old_prices  # the change moves this run's saving
+    _open(path)
+    assert _saving_and_cost(path)[0] == new_prices
+
+
+def test_recompute_savings_a_reverted_price_change_recomputes_again(
+    tmp_path: Path, manifest: _Manifest
+) -> None:
+    """R6: prices A, then B, then back to A: the store recomputes at each change and ends priced by A again."""
+    path = _earlier_store(
+        tmp_path, model=_PAID_MODEL, alias=_FREE_ALIAS, cost_usd=_PAID_COST
+    )
+    _open(path)
+    priced_by_a = _saving_and_cost(path)[0]
+    manifest.reprice(_baseline_model(), 2.0)
+    _open(path)
+    priced_by_b = _saving_and_cost(path)[0]
+    assert priced_by_b != priced_by_a
+    manifest.restore()
+    _open(path)
+    assert _saving_and_cost(path)[0] == priced_by_a
+    assert (
+        len(_recorded_rule_steps(path)) == 1
+    )  # only the current rule and prices stand recorded
+
+
+def test_recompute_savings_a_manifest_that_cannot_load_leaves_the_store_as_it_is(
+    tmp_path: Path, manifest: _Manifest
+) -> None:
+    """R7: with no manifest, the store still opens, keeps its savings and records no recompute for the empty table."""
+    path = _earlier_store(
+        tmp_path, model=_PAID_MODEL, alias=_FREE_ALIAS, cost_usd=_PAID_COST
+    )
+    _open(path)
+    priced = _saving_and_cost(path)[0]
+    assert priced is not None
+    recorded = _recorded_rule_steps(path)
+    manifest.remove()
+    _open(path)
+    assert _saving_and_cost(path)[0] == priced
+    assert _recorded_rule_steps(path) == recorded
+    manifest.restore()
+    _open(path)
+    assert _saving_and_cost(path)[0] == priced
+    assert _recorded_rule_steps(path) == recorded
 
 
 def test_recompute_savings_runs_once_per_change(tmp_path: Path) -> None:
