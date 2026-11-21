@@ -19,6 +19,10 @@
 #                     contract_globs match, their metadata and overlay files, and the files command_globs match
 #   lookup            how many versions of a repository the lookup keeps (retention_versions); versions
 #                     past it are pruned, oldest first (optional: absent where no lookup is served)
+#   compare           the selection comparison's deadlines in seconds: lookup_deadline_seconds (the Memgraph
+#                     lookup) and fallback_deadline_seconds (the file store, separate so the lookup cannot
+#                     consume it); a comparison takes at most their sum plus a second (optional: absent
+#                     where no comparison is run)
 #   schedule_hosts    hosts that install the nightly systemd user timer
 #   unit_environment  environment the installed unit carries
 graph_backend: in_memory
@@ -73,6 +77,9 @@ shadow:
   max_pull_requests: 50
 lookup:
   retention_versions: 3
+compare:
+  lookup_deadline_seconds: 20
+  fallback_deadline_seconds: 60
 schedule_hosts:
   - name: example-host
     scheduler: systemd-user
