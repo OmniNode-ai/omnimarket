@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -329,7 +329,7 @@ def test_attribution_source_gateway_read_returns_the_summary_only_with_include_o
 
     def run(include: bool) -> ModelCheckRun:
         result = read_commit_check_runs(
-            _Transport("{}"),  # type: ignore[arg-type]
+            cast(Any, _Transport("{}")),
             ModelGithubGatewayRequest(
                 operation=EnumGithubGatewayOperation.COMMIT_CHECK_RUNS,
                 repo=REPO,
