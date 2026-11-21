@@ -1,0 +1,65 @@
+schema_version: 1.0.0
+ticket_id: OMN-26329
+title: "Ledger-file census group 1: its 13 src files read the work ledger through the bus or are deleted, and their census rows are lowered"
+summary: "The files of group 1 of the omnimarket ledger-file census move their ledger readers and writers to the bus (the paged read of the work ledger reader node and the bus append command) or stay listed with a written reason; each cleared file's census row is dropped with the census node's --lower."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26329-group-1
+    statement: Each group 1 file the change clears holds no executable reader or writer of the ledger file or its path variable, its census row is lowered, and the node tests of the group stay green.
+    acceptance:
+      - id: AC1
+        statement: "AC1: after the change, none of the group's runtime files holds an executable reader or writer of the ledger file or its path variable, and each is moved to the bus or deleted -- falsifier: the census run with --per-file exits non-zero or prints a hit for a group 1 src file the change claims to clear"
+      - id: AC2
+        statement: "AC2: the census ratchet rows for the cleared files are lowered with the census node's --lower, and no row is raised or added -- falsifier: git diff origin/dev -- src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml shows a raised or added line, or the census run exits non-zero"
+      - id: AC3
+        statement: "AC3: each moved reader or writer has a test that fails on the old code and passes on the change, and every node test of the group stays green -- falsifier: the focused node tests of the group exit non-zero"
+evidence_requirements:
+  - kind: tests
+    description: The node tests of the cleared files pass at the pushed head.
+    command: uv run pytest tests/nodes/node_friction_rollup_tick_effect tests/nodes/node_floor_simple_effect tests/nodes/node_host_installer_registry_units -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26329-ac1
+    description: "AC1: the census run over the branch passes with --per-file; each cleared group 1 file has no row left in the ratchet table."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/validators/test_ledger_file_census.py -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26329-ac2
+    description: "AC2: the ratchet diff holds only dropped rows and lowered counts, written by the census node's --lower."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/validators/test_ledger_file_census.py -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26329-ac3
+    description: "AC3: the moved readers and writers have tests that read the bus read command and the bus append command as separate processes; the node tests of the group pass."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_friction_rollup_tick_effect tests/nodes/node_floor_simple_effect -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26329-integration-proof
+    description: "Run the focused node tests of the cleared files on a lab host at the pushed revision. This local completion proof carries no hosted AC bindings."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-26329 --kind test --
+          env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+          tests/nodes/node_friction_rollup_tick_effect
+          tests/nodes/node_host_installer_registry_units/test_friction_rollup_unit.py
+          -q -n 0 --no-cov --refuse-skips
+        cwd: .
