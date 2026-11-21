@@ -33,6 +33,8 @@ shipped_price_list:
 provider_listing:
   cache_file: cache/provider_models_{provider}.json
   max_age_hours: 24
+  # Only a regular file up to this size is read; anything else is no listing.
+  max_bytes: 33554432
 
 # ONEX provider id -> models.dev provider id, for the hosted providers /config
 # offers (setup_provider_traits.yaml). Ollama and vLLM run on the user's own

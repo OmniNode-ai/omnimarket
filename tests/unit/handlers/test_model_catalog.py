@@ -515,6 +515,28 @@ def test_a_read_provider_list_is_recalled_until_it_is_too_old(tmp_path: Path) ->
 
 
 @pytest.mark.unit
+@pytest.mark.skipif(os.name != "posix", reason="mkfifo is POSIX only")
+def test_a_cache_path_that_is_not_a_regular_file_never_blocks(tmp_path: Path) -> None:
+    """The TUI reads this cache on its event loop: a FIFO there must not hang it."""
+    import threading
+
+    path = model_catalog._listing_path("openrouter", tmp_path)
+    path.parent.mkdir(parents=True)
+    os.mkfifo(path)
+    result: list[ModelByokModelListing | None] = []
+    reader = threading.Thread(
+        target=lambda: result.append(
+            model_catalog.recalled_provider_listing("openrouter", tmp_path)
+        ),
+        daemon=True,
+    )
+    reader.start()
+    reader.join(timeout=5)
+    assert not reader.is_alive(), "reading the provider-listing cache blocked"
+    assert result == [None]
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "outcome", ["rejected", "billing", "unsupported", "inconclusive"]
 )

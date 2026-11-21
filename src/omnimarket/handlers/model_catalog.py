@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import stat
 import tempfile
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime, timedelta
@@ -256,17 +257,26 @@ def recalled_provider_listing(
 ) -> ModelByokModelListing | None:
     """The kept list for ``provider`` while younger than its age, else None."""
     path = _listing_path(provider, onex_home or _onex_home())
+    settings = catalog_config()["provider_listing"]
+    max_bytes = int(settings["max_bytes"])
+    # Nonblocking, regular files only: the TUI reads this on its event loop.
     try:
-        kept_at = datetime.fromtimestamp(path.stat().st_mtime, UTC)
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
     except OSError:
         return None
-    max_age = timedelta(
-        hours=float(catalog_config()["provider_listing"]["max_age_hours"])
-    )
-    if (now or datetime.now(UTC)) - kept_at >= max_age:
-        return None
     try:
-        return ModelByokModelListing.model_validate_json(path.read_text("utf-8"))
+        with os.fdopen(fd, "rb") as source:
+            info = os.fstat(source.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > max_bytes:
+                return None
+            kept_at = datetime.fromtimestamp(info.st_mtime, UTC)
+            max_age = timedelta(hours=float(settings["max_age_hours"]))
+            if (now or datetime.now(UTC)) - kept_at >= max_age:
+                return None
+            raw = source.read(max_bytes + 1)
+        if len(raw) > max_bytes:
+            return None
+        return ModelByokModelListing.model_validate_json(raw.decode("utf-8"))
     except (OSError, ValueError):
         return None
 
