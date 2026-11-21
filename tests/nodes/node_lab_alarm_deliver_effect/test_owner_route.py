@@ -282,8 +282,13 @@ def test_failure_a_refused_push_on_the_first_request_is_a_failed_owner_step_and_
     assert retry.outcome is EnumDeliveryOutcome.DELIVERED
     [retried_delivery] = retry.deliveries
     assert retried_delivery.owner is EnumDeliveryStep.DUPLICATE
+    assert retried_delivery.channel is EnumDeliveryStep.DELIVERED
     assert retried_delivery.owner_request_id == delivery.owner_request_id
-    assert [category for category, _ in channel.posts] == [route.push_category]
+    # the refused alarm post is posted again on the retry, then the owner push once
+    assert [category for category, _ in channel.posts] == [
+        overlay.channel.category,
+        route.push_category,
+    ]
     assert _row_kinds(ledger) == ["FRICTION", "MSG"]
     assert _msg_rows(ledger)[0][0] == retried_delivery.owner_request_id
 

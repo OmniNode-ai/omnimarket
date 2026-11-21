@@ -4,12 +4,12 @@
 
 Edge-triggered, as scripts/lab_alarm.py is: a subject is delivered when it ENTERS the alarm state and not
 again until its condition reads OK. An INDETERMINATE read neither clears nor starts an episode ("I could not
-tell" is not "it recovered"). The channel step is once per episode and a failure is a typed failure of the
-run; the ledger step is retried on every later request until the row lands, and a subject that clears and
-re-raises inside the overlay's window appends no second row. A condition the overlay routes to an owner
-also gets, once per episode under the same window, one push notice on the alert channel and one MSG row
-addressed to the owner lane, retried the same way. A request that does not write delivers nothing
-and keeps nothing.
+tell" is not "it recovered"). The channel step is once per episode: a subject is marked active only after a
+delivered post, so a failed post is a typed failure of the run and is posted again on the next request. The
+ledger step is retried on every later request until the row lands, and a subject that clears and re-raises
+inside the overlay's window appends no second row. A condition the overlay routes to an owner also gets, once
+per episode under the same window, one push notice on the alert channel and one MSG row addressed to the owner
+lane, retried the same way. A request that does not write delivers nothing and keeps nothing.
 """
 
 from __future__ import annotations
@@ -205,8 +205,11 @@ class HandlerLabAlarmDeliver:
                         ledger=EnumDeliveryStep.NOT_DUE,
                     )
                     continue
-                active[key] = _iso(now)
                 channel, channel_ref, failure = self._post(alarm)
+                if channel is EnumDeliveryStep.DELIVERED:
+                    # Active only after a delivered post: a failed post leaves the subject
+                    # un-marked, so the next request posts it again.
+                    active[key] = _iso(now)
                 if key in pending:
                     ledger = EnumDeliveryStep.NOT_DUE
                 elif key in last_row:
