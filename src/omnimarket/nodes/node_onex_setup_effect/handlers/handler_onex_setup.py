@@ -127,7 +127,7 @@ def which(name: str) -> str | None:
     return shutil.which(name)
 
 
-class _StepFailedError(Exception):
+class StepFailedError(Exception):
     """One step could not complete; carries its single fix."""
 
     def __init__(self, step: str, problem: str, fix: str) -> None:
@@ -257,6 +257,8 @@ def refused_before_any_step(
             "terminal to ask in",
             "pass --workspace DIR, or export OMNIBASE_PATH=DIR",
         )
+    if provider is None and not request.model and not request.url:
+        return None  # no model server named: the models step is skipped, not refused
     if provider is None:
         return _refuse(
             request,
@@ -290,7 +292,7 @@ def refused_before_any_step(
 
 def ensure_workspace(workspace: Path | None) -> tuple[Path, bool]:
     if workspace is None:
-        raise _StepFailedError(
+        raise StepFailedError(
             "workspace",
             "no workspace root is named, and there is no terminal to ask in",
             "pass --workspace DIR, or export OMNIBASE_PATH=DIR, naming the directory "
@@ -301,7 +303,7 @@ def ensure_workspace(workspace: Path | None) -> tuple[Path, bool]:
     try:
         root.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        raise _StepFailedError(
+        raise StepFailedError(
             "workspace",
             f"cannot use {root} as the workspace root ({exc.strerror or exc})",
             f"move aside whatever is at {root}, or pass --workspace with another directory",
@@ -319,13 +321,13 @@ def _resolve_path(
     else:
         choice = recorded_install_path(runtime_config) or "local"
     if choice == "cloud":
-        raise _StepFailedError(
+        raise StepFailedError(
             "prerequisites",
             "the cloud install path is not available yet",
             "use --path local (no Docker) or --path docker",
         )
     if choice not in INSTALL_PATHS:
-        raise _StepFailedError(
+        raise StepFailedError(
             "prerequisites",
             f"unknown install path '{choice}'",
             "use --path local (no Docker) or --path docker",
@@ -339,7 +341,7 @@ def ensure_user_config(onex_home: Path) -> tuple[str, bool]:
         try:
             read_user_config(config)
         except (ModelOnexError, OSError) as exc:
-            raise _StepFailedError(
+            raise StepFailedError(
                 "user_config",
                 f"{config} exists but cannot be read as a config ({exc})",
                 f"repair {config}, or move it aside so setup writes a fresh one",
@@ -356,7 +358,7 @@ def ensure_runtime_config(workspace: Path, install_path: str) -> tuple[Path, boo
     if runtime_config.exists():
         lines = runtime_config.read_text(encoding="utf-8").splitlines()
         if not lines or lines[0] not in _OWNED_MARKERS:
-            raise _StepFailedError(
+            raise StepFailedError(
                 "runtime_config",
                 f"{runtime_config} exists and was not written by onex setup or "
                 "install.sh; it is left untouched",
@@ -401,7 +403,7 @@ def prove_model(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
             key = request.key.get_secret_value() if request.key is not None else ""
             result = model_keys.add_key(provider, key, (model,), url=request.url)
     except (model_keys.ModelKeyRefusedError, ModelSetupRefusedError) as refusal:
-        raise _StepFailedError(
+        raise StepFailedError(
             "model",
             str(refusal),
             "check the key and the model against the provider's own pages"
@@ -411,7 +413,7 @@ def prove_model(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
     if result is None or result.status != "passed":
         reason = (result.reason if result is not None else None) or "no delegation ran"
         throttled = result is not None and result.status == "throttled"
-        raise _StepFailedError(
+        raise StepFailedError(
             "model",
             f"the test delegation did not answer on {provider}/{model}: {reason}",
             "the provider is throttling; run the retry command again shortly"
@@ -419,7 +421,7 @@ def prove_model(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
             else "fix the key or the server, then run the retry command again",
         )
     if result.model != model:
-        raise _StepFailedError(
+        raise StepFailedError(
             "model",
             f"the delegation answered on model '{result.model}', not the '{model}' named",
             f"check which models {provider} offers your key, then name one with --model",
@@ -510,7 +512,8 @@ class HandlerOnexSetup:
                     retry=retry_command(None, request.install_path, request),
                 ),
             )
-        if not request.provider or not request.model:
+        named = bool(request.provider or request.model or request.url)
+        if named and (not request.provider or not request.model):
             return _refuse(
                 request,
                 "A provider and model are required.",
@@ -535,12 +538,14 @@ class HandlerOnexSetup:
                             in setup_provider_traits().endpoint_auth
                             and request.key is not None,
                         }
-                    ],
+                    ]
+                    if request.provider and request.model
+                    else [],
                 }
             )
             credentials = (
                 {request.provider.lower(): request.key}
-                if request.key is not None
+                if request.provider and request.key is not None
                 else {}
             )
             # The runtime calls handle() on its event loop and the model step
@@ -609,6 +614,7 @@ __all__ = [
     "SETUP_STEPS",
     "URL_PROVIDERS",
     "HandlerOnexSetup",
+    "StepFailedError",
     "discard_key",
     "park_key",
     "prove_model",

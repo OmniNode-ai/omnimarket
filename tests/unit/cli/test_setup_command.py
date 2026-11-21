@@ -371,7 +371,7 @@ def _fix_runtime_config(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> 
 
 def _break_model(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> list[str]:
     def refuse(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
-        raise handler_onex_setup._StepFailedError(
+        raise handler_onex_setup.StepFailedError(
             "model", "the provider refused the key", "check the key"
         )
 
