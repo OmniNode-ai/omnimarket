@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26210
+title: "Ledger entrypoint detail capture is bounded: the query verb defaults to a window, large captures keep head and tail, small files expire after 7 days"
+summary: The ledger rows query defaults to a configured count cap with an explicit full flag, the entrypoint detail capture keeps head, tail and a dropped-line count past a configured size, and ledger detail expiry skips a file cited by a rolled ledger archive.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26210-bounded-detail-capture
+    statement: A ledger entrypoint call can no longer write an unbounded file to disk.
+    acceptance:
+      - id: AC1
+        statement: "AC1: the ledger query verb returns a bounded window by default, the bound (count or time) read from a config or overlay value and never a literal, and a full read needs an explicit flag -- falsifier: uv run pytest -k query_default_window, red before the change and green after, asserting a 150000-row fixture returns at most the configured bound without the flag and every row with it"
+      - id: AC2
+        statement: "AC2: the entrypoint detail capture keeps the head, the tail and a line count once a file passes a size bound read from config -- falsifier: uv run pytest -k detail_capture_bound, red before and green after, with a 200 MB fixture stream ending as a file under the bound whose last line states the dropped line count"
+      - id: AC3
+        statement: "AC3: detail files older than 7 days expire through a declared scheduled mechanism, and a file cited by any ledger row is skipped -- falsifier: uv run pytest -k detail_expiry, red before and green after, with one old uncited file removed and one old cited file kept"
+evidence_requirements:
+  - kind: tests
+    description: The three falsifier tests.
+    command: uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_query_default_window_count_bound.py tests/nodes/test_omn26210_detail_capture_bound.py tests/nodes/test_omn26210_detail_expiry.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26210-ac1
+    description: "A 150000-row ledger read without the flag returns at most the configured count; with full it returns every row."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_query_default_window_count_bound.py -q --no-cov -k query_default_window
+  - id: dod-omn26210-ac2
+    description: "A 200 MB stream ends as a file under the bound whose last line states the dropped line count."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/test_omn26210_detail_capture_bound.py -q --no-cov -k detail_capture_bound
+  - id: dod-omn26210-ac3
+    description: "An old uncited detail is removed and an old cited one, in the live ledger or a rolled archive, is kept."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/test_omn26210_detail_expiry.py -q --no-cov -k detail_expiry
+  - id: dod-omn26210-integration-proof
+    description: "Run the three falsifier tests on a lab host at the pushed head; the local Done gate runs this unbound check."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26210 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_query_default_window_count_bound.py tests/nodes/test_omn26210_detail_capture_bound.py tests/nodes/test_omn26210_detail_expiry.py -q --no-cov
+        cwd: .
