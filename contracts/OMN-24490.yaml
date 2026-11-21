@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-24490
+title: Factory board reads the work log from the database copy, not from files
+summary: The factory floor step reads its 14-day ledger window from the work ledger projection through the moved work ledger reader, one UTC day at a time (today first, then each closed day, within the step's ledger read deadline), opening no ledger file, no archive file and no reader subprocess; a closed day is kept in the cache only from a complete answer taken while the projection is current, a refused read is a named refusal, a day left unread when the deadline is spent is reported unread, and a day whose returned line count is below the rows the node matched is reported as a gap, never an empty window and never a file read (ledger cutover wave 0).
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24490-floor-projection-read
+  statement: The factory floor step no longer reads the ledger file.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the factory floor step''s ledger window read, with the projection block in its overlay, returns the window''s rows from the work ledger projection and opens no ledger file, archive file or reader subprocess -- falsifier: pytest tests/nodes/node_factory_floor_effect/test_ledger_window_from_projection.py -q'
+  - id: AC2
+    statement: 'AC2: a reader the work ledger reader does not move, an unreadable answer and a stale answer for today each end the read with a named refusal and never an empty window or a file read; a closed day is stored in the cache only when its answer is complete and the projection holds a row stamped after the day ends, and a day left unread at the read deadline or short of the rows the node matched is named on the ledger source health -- falsifier: pytest tests/nodes/node_factory_floor_effect/test_ledger_window_from_projection.py -k error -q'
+  - id: AC3
+    statement: 'AC3: the projection window read and the file window read of the same ledger window give the same rows for the kinds the floor keeps whole -- falsifier: pytest tests/nodes/node_factory_floor_effect/test_ledger_window_projection_parity.py -q'
+  - id: AC4
+    statement: 'AC4: integrated: the board publisher''s factory_floor step, run with the projection overlay on a lab host against the dev bus, answers from the projection with file_read=no and finishes inside its step limit -- falsifier: the step''s stderr READER line on that host reads file_read=no and its exit code is 0'
+evidence_requirements:
+- kind: tests
+  description: The node's tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_ledger_window_from_projection.py tests/nodes/node_factory_floor_effect/test_ledger_window_projection_parity.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24490-ac1
+  description: 'Golden chain: the window rows come from the projection lines; the step makes zero ledger file reads and zero reader subprocess calls (failing control: the file window read trips the same guard).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_ledger_window_from_projection.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24490-ac2
+  description: 'Error chain: not-moved, unreadable and stale answers are refused by name and never return an empty window.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_ledger_window_from_projection.py -q --no-cov -n 0 -p no:randomly -k error
+    cwd: .
+- id: dod-omn24490-ac3
+  description: 'Seam: the file parser and the projection parser give equal rows for the same window; the step test runs the whole floor step over the projection overlay with no ledger file access.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_ledger_window_projection_parity.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24490-ac4
+  description: The step's stderr carries one READER line per day read, each ending file_read=no (the test below); the live reading on a lab host, with its exit code, is recorded in the Lab comment.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_ledger_window_from_projection.py -q --no-cov -n 0 -p no:randomly -k summary_line_to_stderr
+    cwd: .
+- id: dod-omn24490-integration-proof
+  description: Run the node tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24490 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_ledger_window_from_projection.py tests/nodes/node_factory_floor_effect/test_ledger_window_projection_parity.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
