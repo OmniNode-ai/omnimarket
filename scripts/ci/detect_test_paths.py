@@ -10,6 +10,13 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 
 from omnimarket.handlers.adapter_test_selection_policy_file import load_policy
+from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+    load_adjacency_map,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_file_level_closure import (
+    closure_selection,
+    legacy_module_escalation,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_path_resolution import (
     HandlerTestPathResolution,
 )
@@ -17,6 +24,7 @@ from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test
     HandlerTestSelectionSelector,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
+    ModelAdjacencyMap,
     ModelPathResolutionRequest,
     ModelPathResolutionResult,
 )
@@ -27,11 +35,9 @@ from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_sel
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector import (
     ModelSelectorRequest,
 )
-from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-SRC_PREFIX = "src/omnimarket/"
 TEST_PREFIX = "tests/"
 
 FULL_SUITE_BRANCHES = {"main"}
@@ -44,18 +50,12 @@ def resolve_test_paths(
 ) -> list[str]:
     """Map changed file paths to deterministic test directories.
 
-    Behavior:
+    Behavior (the module-level resolver; the file-level closure is in compute_selection):
       - Source changes under src/omnimarket/<module>: include tests/<module>/,
-        except for a module in node_scoped_modules, where the tests of the
-        nodes the change can reach by the import graph are selected instead
-        (OMN-23719; see ModelAdjacencyMap.node_scoped_modules).
+        except for a node-scoped module, where the import graph narrows it (OMN-23719).
       - Test-only changes under tests/: include the changed test directory; a
-        root-level tests/*.py file selects itself and the tests that import it,
-        and a deleted or renamed one the tests that still name its old path or
-        dotted name (OMN-26272).
-      - Files outside src/ and tests/: no contribution.
-      - Mapped paths that do not exist on disk are dropped, so pytest never
-        receives a non-existent test directory.
+        root-level tests/*.py file selects itself and its importers (OMN-26272).
+      - Files outside src/ and tests/ contribute nothing; paths not on disk are dropped.
     """
     config = load_adjacency_map(adjacency_path)
     result = _resolve_result(changed_files, config, repo_root or REPO_ROOT)
@@ -81,8 +81,13 @@ def compute_selection(
     event_name: str = "pull_request",
     feature_flag_enabled: bool = True,
     repo_root: Path | None = None,
+    stage: int | None = None,
 ) -> ModelTestSelection:
     config = load_adjacency_map(adjacency_path)
+    policy = load_policy()
+    closure = (stage if stage is not None else policy.selection_stage) >= (
+        policy.file_level_closure_stage
+    )
     root = repo_root or REPO_ROOT
 
     if not feature_flag_enabled:
@@ -111,26 +116,17 @@ def compute_selection(
     ):
         return _full_suite(EnumFullSuiteReason.PROTECTED_SURFACE)
 
-    # Fail closed even in mixed diffs: an unmapped source must not disappear
-    # merely because another changed module contributed a test directory.
-    # A file directly under src/omnimarket/ has no mapped module either.
-    source_paths = [
-        path[len(SRC_PREFIX) :] for path in changed_files if path.startswith(SRC_PREFIX)
-    ]
-    if any(
-        "/" not in path or path.split("/", 1)[0] not in config.adjacency
-        for path in source_paths
-    ):
-        return _full_suite(EnumFullSuiteReason.UNMAPPED_MODULE)
-
-    changed_modules = {path.split("/", 1)[0] for path in source_paths}
-    if changed_modules & set(config.shared_modules):
-        return _full_suite(EnumFullSuiteReason.SHARED_MODULE)
-
-    if len(changed_modules) >= config.thresholds.modules_changed_for_full_suite:
-        return _full_suite(EnumFullSuiteReason.THRESHOLD_MODULES)
-
-    resolved = _resolve_result(changed_files, config, repo_root=root)
+    # OMN-26277: at the closure's stage the file-level closure replaces the module-level escalations.
+    if closure:
+        resolved = closure_selection(
+            changed_files, config, root, policy.root_conftest_edge
+        )
+        if isinstance(resolved, EnumFullSuiteReason):
+            return _full_suite(resolved)
+    elif reason := legacy_module_escalation(changed_files, config):
+        return _full_suite(reason)
+    else:
+        resolved = _resolve_result(changed_files, config, repo_root=root)
     if not (selected := list(resolved.selected_paths)) and not resolved.data_only:
         # OMN-20305: nothing narrowed, so the whole tests/ tree runs. Take the
         # full-suite shard matrix; an is_full_suite=False selection of tests/
@@ -173,6 +169,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to a file with one changed-file path per line.",
     )
     parser.add_argument("--ref-name", required=True)
+    parser.add_argument("--stage", type=int, default=None)
     parser.add_argument("--event-name", default="pull_request")
     parser.add_argument(
         "--adjacency",
@@ -197,6 +194,7 @@ def main(argv: list[str] | None = None) -> int:
         ref_name=args.ref_name,
         event_name=args.event_name,
         feature_flag_enabled=(args.feature_flag == "on"),
+        stage=args.stage,
     )
     sys.stdout.write(selection.model_dump_json())
     sys.stdout.write("\n")

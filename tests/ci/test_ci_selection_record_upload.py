@@ -288,6 +288,8 @@ def test_detect_changes_keeps_its_needs_and_outputs() -> None:
         "split_count",
         "matrix",
         "selected_paths",
+        # OMN-26277: read by the one whole-tree collection job, which follows this job.
+        "collection_gate",
     }
     assert workflow["jobs"]["test"]["needs"] == [
         "repo-evidence-preflight",

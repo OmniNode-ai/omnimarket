@@ -22,6 +22,10 @@ description: >-
   HandlerSelectionRecord builds the typed record of a pull request run's selection (the executed selection and the
   selection of every stage) behind the stage gate in policy.yaml; the workflow uploads it and builds the pytest matrix
   from the executed selection only.
+  HandlerFileLevelClosure runs the closure for every module by file, a vertex being a file except a node package, behind
+  the policy's file_level_closure_stage: a deleted or renamed file seeds from the files that still name it, a nested
+  conftest.py selects its directory, the root conftest edge is the policy's root_conftest_edge, and a source file the
+  closure cannot place escalates as unresolved_source.
 input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorRequest
 output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorDecision
 handler:
@@ -49,6 +53,12 @@ handler_routing:
       handler:
         name: HandlerSelectionRecord
         module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_selection_record
+    - operation: resolve_file_level_closure
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_file_level_closure.ModelFileLevelClosureRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_file_level_closure.ModelFileLevelClosureResult
+      handler:
+        name: HandlerFileLevelClosure
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_file_level_closure
 descriptor:
   node_archetype: compute
   purity: pure
@@ -73,4 +83,4 @@ externally_consumed_topics:
   - onex.evt.omnimarket.test-selection-select-failed.v1
 metadata:
   transport_type: kafka
-  related_tickets: [OMN-23296, OMN-26270]
+  related_tickets: [OMN-23296, OMN-26270, OMN-26277]

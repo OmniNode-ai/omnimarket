@@ -8,6 +8,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_file_level_closure import (
+    EnumRootConftestEdge,
+)
+
 
 class EnumSelectorOutcome(StrEnum):
     #: The selection runs narrowed, split into ``split_count`` shards.
@@ -30,6 +34,11 @@ class ModelSelectorPolicy(BaseModel):
     path_count_max_shards: int = Field(ge=1)
     #: The stage gate: a narrowing rule is active only at or above its stage; 0 is shadow.
     selection_stage: int = Field(ge=0, le=4)
+    #: The stage at which the file-level closure replaces the module-level escalations.
+    file_level_closure_stage: int = Field(ge=1, le=4)
+    #: Whether a closure that reaches the root tests/conftest.py selects the tree (keep) or runs the
+    #: whole-tree collection gate instead (cut).
+    root_conftest_edge: EnumRootConftestEdge
     #: Shards of the full-suite matrix, which a flag-off run and every escalation take.
     full_split_count: int = Field(ge=1, le=40)
     #: Days a pull request's selection record artifact is kept.
