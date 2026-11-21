@@ -1444,6 +1444,7 @@ node_stability_stack_compose_effect = "omnimarket.nodes.node_stability_stack_com
 node_stability_stack_plan_compute = "omnimarket.nodes.node_stability_stack_plan_compute"
 node_staging_readiness_compute = "omnimarket.nodes.node_staging_readiness_compute"
 node_stall_responder_compute = "omnimarket.nodes.node_stall_responder_compute"
+node_stall_responder_scheduled_effect = "omnimarket.nodes.node_stall_responder_scheduled_effect"
 node_standalone_service_redeploy_effect = "omnimarket.nodes.node_standalone_service_redeploy_effect"
 node_standup_draft_check_compute = "omnimarket.nodes.node_standup_draft_check_compute"
 node_standup_retrospective_compute = "omnimarket.nodes.node_standup_retrospective_compute"
