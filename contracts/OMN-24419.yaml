@@ -45,6 +45,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_lab_fill_effect/test_runtime_lab_fill_tick_refusals.py -q --no-cov --tb=line
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_fill_effect/test_runtime_lab_fill_tick_refusals.py -q --no-cov --tb=line -k names_its
+    cwd: .
 - id: dod-omn24419-ac3
   description: 'AC3: the registry units declare lab-fill-tick and a dry install renders a plist naming the module and the label; a checkout without the entry file is refused.'
   source: manual
