@@ -520,3 +520,63 @@ def test_switch_install_path_preserves_customer_edits(
     else:
         assert outcome.status == "success", outcome.fix
         assert b"# install-path: local" in config.read_bytes()
+
+
+def test_a_folder_swapped_for_a_link_after_the_check_is_never_written_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The runtime config is written into the folder setup checked, not a link's target."""
+    from omnimarket.nodes.node_onex_setup_effect.handlers import handler_onex_setup
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
+        HandlerSetupEnvironment,
+    )
+
+    plan = plan_at(tmp_path)
+    plan.workspace.mkdir()
+    (plan.workspace / ".onex-setup-workspace").write_text("onex setup\n")
+    relative = handler_onex_setup.RUNTIME_CONFIG_RELPATH
+    top = relative.parts[0]
+    (plan.workspace / relative.parent).mkdir(parents=True)
+    outside = tmp_path / "outside"
+    (outside / relative.parent.relative_to(top)).mkdir(parents=True)
+    generate = handler_onex_setup._generated_runtime_config
+
+    def swap_then_generate(*args: str) -> str:
+        # Runs after setup has checked the folder and before it writes.
+        (plan.workspace / top).rename(plan.workspace / "checked")
+        (plan.workspace / top).symlink_to(outside, target_is_directory=True)
+        return generate(*args)
+
+    monkeypatch.setattr(
+        handler_onex_setup, "_generated_runtime_config", swap_then_generate
+    )
+    HandlerSetupWorkflow(
+        onex_home=tmp_path / "onex",
+        steps=(HandlerSetupEnvironment(name="runtime_config"),),
+    ).handle(plan)
+    assert [p for p in outside.rglob("*") if p.is_file()] == []
+    checked = plan.workspace / "checked" / relative.relative_to(top)
+    assert b"# install-path: local" in checked.read_bytes()
+
+
+def test_an_edit_saved_after_the_check_is_not_overwritten(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.handlers import handler_onex_setup
+
+    config, _ = handler_onex_setup.ensure_runtime_config(tmp_path, "docker")
+    can_switch = handler_onex_setup.runtime_config_can_switch
+
+    def edit_after_check(content: str) -> bool:
+        allowed = can_switch(content)
+        with config.open("a") as stream:
+            stream.write("# customer edit saved after the check\n")
+        return allowed
+
+    monkeypatch.setattr(
+        handler_onex_setup, "runtime_config_can_switch", edit_after_check
+    )
+    with pytest.raises(handler_onex_setup.StepFailedError):
+        handler_onex_setup.ensure_runtime_config(tmp_path, "local")
+    assert config.read_text().endswith("# customer edit saved after the check\n")
+    assert "# install-path: docker" in config.read_text()

@@ -25,9 +25,11 @@ is what a retry with a corrected key needs. Which omnibase install.sh step went 
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shlex
 import shutil
+import stat
 import tempfile
 import threading
 import uuid
@@ -382,20 +384,95 @@ def runtime_config_can_switch(content: str) -> bool:
     )
 
 
+_FOLDER_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+_RUNTIME_CONFIG_MAX_BYTES = 1024 * 1024
+
+
+def _open_runtime_config_folder(workspace: Path) -> int:
+    """The runtime config's folder, opened without following a link anywhere below
+    the workspace, so the folder checked is the folder written."""
+    workspace.mkdir(parents=True, exist_ok=True)
+    folder = workspace
+    fd = os.open(workspace, _FOLDER_FLAGS)
+    try:
+        for part in RUNTIME_CONFIG_RELPATH.parent.parts:
+            folder = folder / part
+            try:
+                child = os.open(part, _FOLDER_FLAGS, dir_fd=fd)
+            except FileNotFoundError:
+                os.mkdir(part, 0o755, dir_fd=fd)
+                child = os.open(part, _FOLDER_FLAGS, dir_fd=fd)
+            os.close(fd)
+            fd = child
+    except OSError:
+        os.close(fd)
+        raise StepFailedError(
+            "runtime_config",
+            f"Setup needs a folder at {folder}, not a link or a file.",
+            f"Review {folder} or choose another workspace.",
+        ) from None
+    return fd
+
+
+def _read_at(folder: int, name: str, shown: Path) -> bytes | None:
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=folder)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        fd = -1
+    if fd >= 0:
+        with os.fdopen(fd, "rb") as source:
+            info = os.fstat(source.fileno())
+            if stat.S_ISREG(info.st_mode):
+                raw = source.read(_RUNTIME_CONFIG_MAX_BYTES + 1)
+                if len(raw) <= _RUNTIME_CONFIG_MAX_BYTES:
+                    return raw
+    raise StepFailedError(
+        "runtime_config",
+        f"Setup cannot read {shown} as a regular runtime config.",
+        f"Review {shown} or move it aside.",
+    )
+
+
 def ensure_runtime_config(workspace: Path, install_path: str) -> tuple[Path, bool]:
     runtime_config = workspace / RUNTIME_CONFIG_RELPATH
-    if runtime_config.exists():
-        existing = runtime_config.read_bytes().decode()
-        if runtime_config_install_path(existing) == install_path:
-            return runtime_config, False
-        if not runtime_config_can_switch(existing):
+    name = RUNTIME_CONFIG_RELPATH.name
+    folder = _open_runtime_config_folder(workspace)
+    temporary = f".{name}.{uuid.uuid4().hex}"
+    try:
+        checked = _read_at(folder, name, runtime_config)
+        if checked is not None:
+            existing = checked.decode()
+            if runtime_config_install_path(existing) == install_path:
+                return runtime_config, False
+            if not runtime_config_can_switch(existing):
+                raise StepFailedError(
+                    "runtime_config",
+                    f"{runtime_config} contains an existing configuration that setup cannot replace.",
+                    f"Review {runtime_config} or move it aside before changing the install path.",
+                )
+        content = _generated_runtime_config(install_path)
+        fd = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=folder,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        if _read_at(folder, name, runtime_config) != checked:
             raise StepFailedError(
                 "runtime_config",
-                f"{runtime_config} contains an existing configuration that setup cannot replace.",
-                f"Review {runtime_config} or move it aside before changing the install path.",
+                f"{runtime_config} changed while setup was writing it, so it was left as it is.",
+                f"Review {runtime_config}, then run setup again.",
             )
-    written = write_if_changed(runtime_config, _generated_runtime_config(install_path))
-    return runtime_config, written
+        os.rename(temporary, name, src_dir_fd=folder, dst_dir_fd=folder)
+        return runtime_config, True
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(temporary, dir_fd=folder)
+        os.close(folder)
 
 
 def prove_model(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
