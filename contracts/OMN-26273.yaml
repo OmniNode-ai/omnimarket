@@ -1,0 +1,78 @@
+schema_version: 1.0.0
+ticket_id: OMN-26273
+title: The code graph reach answer is compared with the parse selection on each merged pull request with a terminable hard deadline, and a written verdict says whether the graph finds tests the parse misses
+summary: 'node_code_graph_effect gains the operation compare_selection: it asks REACH of the graph for a merged pull request''s changed files, compares the test files in the answer with the parse selection entry of the policy''s compared stage, and appends one row of graph-only, parse-only and both counts. The lookup runs in a worker process the caller terminates at the overlay''s lookup_deadline_seconds; the file-store fallback has its own fallback_deadline_seconds. A row whose indexed commit is not the pull request''s base is snapshot_mismatch and is in no count; a file-store answer is excluded from the verdict. The operation selection_verdict writes the two-part verdict and its model refuses unknown after the window. The compared stage and the minimum valid comparisons are policy.yaml keys of the selector node. Nothing gates.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26273-selection-compare
+  statement: The graph's reach is compared with the parse selection on each merged pull request under a hard, terminable deadline, and a written verdict says whether the graph finds tests the parse misses.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a hung Bolt peer returns within the lookup deadline plus the fallback deadline plus 1 s with a typed reason, a slow or hung file store returns a typed error inside the same bound, and twenty hangs in a row leave no live worker and no open socket growth -- falsifier: `uv run pytest tests/nodes/node_code_graph_effect/test_selection_compare.py -q --no-cov -k hung_bolt_deadline` against a fake server; remove the deadline or the termination and it must time out or find a live worker'
+  - id: AC2
+    statement: 'AC2: each row states counts of graph-only, parse-only and both, and a `snapshot_mismatch` row is in none of them -- falsifier: a row missing a count fails the model, and a fixture with a mismatched indexed commit must show zero in all three counts'
+  - id: AC3
+    statement: 'AC3: the verdict model refuses `unknown` for part one (did the graph find tests the parse did not, over at least `graph_min_valid_comparisons` valid comparisons, else `insufficient`) after 7 days and for part two (did a graph-only test later fail in a nightly) after T11''s 7th night -- falsifier: `-k verdict` over fixtures'
+evidence_requirements:
+- kind: tests
+  description: The comparison, deadline, verdict and bound-handler chain tests.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_code_graph_effect/test_selection_compare.py -q --no-cov
+- kind: manual
+  description: 'deploy: read the compare_selection handler at this head from the public repository and run the comparison tests on a hosted runner.'
+  command: uv run pytest tests/nodes/node_code_graph_effect/test_selection_compare.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26273-ac1-hung-bolt-deadline
+  description: A fake Bolt peer that accepts and never answers returns the file-store answer with reason read-timed-out inside the deadlines plus 1 s; a hung file store is a typed error inside the same bound; twenty hangs leave no live worker and no socket growth; a worker that ignores termination is killed.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_graph_effect/test_selection_compare.py -q --no-cov -k "hung_bolt_deadline"
+    cwd: .
+- id: dod-omn26273-ac2-row-counts
+  description: A row states graph-only, parse-only and both counts; a row missing a count fails the model; a snapshot_mismatch row shows zero in all three.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_graph_effect/test_selection_compare.py -q --no-cov -k "compare_selection"
+    cwd: .
+- id: dod-omn26273-ac3-verdict
+  description: The verdict model refuses unknown for part one after 7 days and for part two after the 7th night, over fixtures.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_graph_effect/test_selection_compare.py -q --no-cov -k "verdict"
+    cwd: .
+- id: dod-omn26273-deploy-handler-at-head
+  description: 'Hosted deploy readback: the public repository at this exact head must contain the compare_selection handler, and the comparison tests must pass there. No lab service is required.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_graph_effect/test_selection_compare.py -q --no-cov
+    cwd: .
+  - check_type: command
+    check_value: 'set -eu;
+
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_code_graph_effect/handlers/code_graph_selection_compare.py" | grep ''^class SelectionCompare:'' > /dev/null
+
+      '
+    cwd: .
+- id: dod-omn26273-integration-proof
+  description: Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check. It runs the comparison tests at the sha on a lab host through the lab work runner.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26273 --kind test -- uv run --frozen pytest tests/nodes/node_code_graph_effect/test_selection_compare.py -q --no-cov
+    cwd: .

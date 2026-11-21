@@ -210,3 +210,57 @@ async def test_a_valid_judged_delivery_routes_nothing_to_the_dlq_control() -> No
     assert outcome["refused"] == []
     assert len(store.items) == 1
     assert all(topic != DLQ_TOPIC for topic, _ in published)
+
+
+@pytest.mark.parametrize("bad_tenant", ["omninode", "not-a-uuid", "0" * 31])
+@pytest.mark.parametrize(
+    ("topic", "payload"),
+    [
+        (TOPIC_JUDGED, judged_event(CALL)),
+        (TOPIC_CODE_TRY, code_event(RUN, try_row(RUN, "t1"))),
+    ],
+)
+async def test_a_delivery_whose_envelope_tenant_is_not_a_uuid_is_dead_lettered_typed(
+    bad_tenant: str, topic: str, payload: dict[str, Any]
+) -> None:
+    """The tenant stamp is part of the delivery: one that is no uuid is refused once, never raised and rewound."""
+    store = MemoryStore()
+    writer, published = make_writer(store)
+    outcome = await deliver(writer, topic, payload, at(2), tenant=bad_tenant)
+    assert outcome["rows_upserted"] == 0
+    assert outcome["dlq_routed"] == 1
+    assert [r["reason"] for r in outcome["refused"]] == ["invalid_event"]
+    assert "tenant" in outcome["refused"][0]["detail"]
+    assert store.items == {}
+    assert [t for t, _ in published] == [DLQ_TOPIC]
+
+
+async def test_a_delivery_whose_envelope_tenant_is_not_a_uuid_raises_when_the_dead_letter_is_not_published() -> (
+    None
+):
+    store = MemoryStore()
+    writer, _ = make_writer(store)
+
+    async def refuse(topic: str, value: bytes) -> None:
+        raise ConnectionError("broker down")
+
+    writer._publish_fn = refuse
+    with pytest.raises(RuntimeError, match="dead letter not published"):
+        await deliver(
+            writer, TOPIC_JUDGED, judged_event(CALL), at(2), tenant="omninode"
+        )
+    assert store.items == {}
+
+
+async def test_a_configured_tenant_that_is_not_a_uuid_still_raises_control(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lane whose own tenant setting is no uuid is a defect of the lane, not of the event: the offset stays."""
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results_writer.house_tenant_write_stamp",
+        lambda **_: {"tenant_id": "omninode"},
+    )
+    writer, published = make_writer(MemoryStore())
+    with pytest.raises(ValueError, match="badly formed hexadecimal UUID string"):
+        await deliver(writer, TOPIC_JUDGED, judged_event(CALL), at(2), tenant="")
+    assert published == []
