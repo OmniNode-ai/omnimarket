@@ -152,6 +152,11 @@ requirements:
   acceptance:
   - id: AC27
     statement: 'One catalogue, no hard-coded lists. /model, /config and /delegation read the same entries; the providers, capabilities, columns and words come from configuration. /model chooses the first model or Auto.'
+- id: req-omn23413-ac32
+  statement: 'execute each approved, unowned delivery unit whose prerequisites have been read green, and name the others with their owning prerequisite. Evidence: per-unit ownership, baseline failure controls, final checks and full AC/TI report. Package publication, release, merge, paid inference and ticket status remain separately controlled actions.'
+  acceptance:
+  - id: AC32
+    statement: 'execute each approved, unowned delivery unit whose prerequisites have been read green, and name the others with their owning prerequisite. Evidence: per-unit ownership, baseline failure controls, final checks and full AC/TI report. Package publication, release, merge, paid inference and ticket status remain separately controlled actions.'
 - id: req-omn23413-ac33
   statement: Every ordinary prompt goes to delegation first when bit 11 is enabled; documented slash and @claude skips remain native. A quality-passed answer is shown with model and full run ID without native Claude inference. Decline via the fixed CANNOT_ANSWER marker, failure, timeout, quality veto or OFF continues to Claude. Bounded delegated history is deduplicated by run ID and delivered once on the next native turn. onex delegation on/off and the TUI switch add and remove the one prompt hook while preserving Claude settings; subagents stay on Claude (Amendment 14a, 2026-11-17). Real inference and token receipt evidence is required separately from deterministic process controls.
   acceptance:
@@ -265,6 +270,21 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/e2e/test_setup_local_stack.py tests/e2e/test_setup_stack_requirements.py
       tests/e2e/test_setup_tenant_endpoint_registration.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac32-t2-ac9-platform-preflight
+  description: >-
+    Partial evidence for the T2 AC9 platform delivery unit. The collector accepts
+    Ubuntu on native and WSL 2 kernel fixtures, rejects unlisted distributions
+    and reports unreadable release data safely. With Windows platform inputs and
+    Unix locking unavailable, the installed CLI prints the Ubuntu under WSL 2
+    remedy and leaves the profile and workspace untouched.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac: [AC32]
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_linux_preflight.py
+      tests/e2e/test_setup_preflight_cli.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23413-ac8-migration-repair
   description: One versioned journal, nonblocking lock, atomic checkpoints, one-time import, resume and

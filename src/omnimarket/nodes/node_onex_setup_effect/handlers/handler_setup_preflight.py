@@ -7,10 +7,14 @@ from __future__ import annotations
 import platform
 import shutil
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_command import (
     HandlerSetupCommand,
+)
+from omnimarket.nodes.node_onex_setup_effect.handlers.setup_contract_values import (
+    supported_linux_distributions,
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_command_request import (
     ModelSetupCommandRequest,
@@ -32,6 +36,11 @@ def collect_machine_facts(workspace: Path) -> ModelSetupMachineFacts:
     while not ancestor.exists():
         ancestor = ancestor.parent
     system = platform.system()
+    linux_distribution = None
+    if system == "Linux":
+        # Keep unreadable facts unknown; the preflight boundary refuses them.
+        with suppress(OSError, ValueError):
+            linux_distribution = platform.freedesktop_os_release().get("ID", "")
     observations: dict[str, bool | None] = {}
     if system == "Darwin":
         command = HandlerSetupCommand()
@@ -53,6 +62,7 @@ def collect_machine_facts(workspace: Path) -> ModelSetupMachineFacts:
         platform=system,
         architecture=platform.machine(),
         macos_version=platform.mac_ver()[0],
+        linux_distribution=linux_distribution,
         free_disk_bytes=shutil.disk_usage(ancestor).free,
         rosetta=observations.get("rosetta"),
         virtual_machine=observations.get("virtual_machine"),
@@ -86,15 +96,27 @@ class HandlerSetupPreflight:
                 else str(facts.virtual_machine).lower(),
             }
             reasons: list[str] = []
-            if facts.platform != "Darwin":
-                reasons.append("Run onboarding on macOS 14 or newer.")
-            else:
+            if facts.platform == "Linux":
+                if facts.linux_distribution is None:
+                    raise ValueError("The Linux distribution could not be observed")
+                evidence["linux_distribution"] = facts.linux_distribution or "unknown"
+                if facts.linux_distribution not in supported_linux_distributions():
+                    reasons.append(
+                        "Run onboarding on Ubuntu Linux or macOS 14 or newer."
+                    )
+            elif facts.platform == "Windows":
+                reasons.append(
+                    "Run onboarding in Ubuntu under WSL 2 instead of native Windows."
+                )
+            elif facts.platform == "Darwin":
                 if int(facts.macos_version.split(".")[0]) < 14:
                     reasons.append("Upgrade to macOS 14 or newer.")
                 if facts.architecture not in ("arm64", "x86_64"):
                     reasons.append("Use a supported arm64 or x86_64 Mac architecture.")
                 if facts.rosetta:
                     reasons.append("Open a native arm64 terminal instead of Rosetta.")
+            else:
+                reasons.append("Run onboarding on Ubuntu Linux or macOS 14 or newer.")
             if reasons:
                 return ModelSetupObservation(
                     step=self.name,
@@ -109,7 +131,7 @@ class HandlerSetupPreflight:
             return ModelSetupObservation(
                 step=self.name,
                 status="failure",
-                fix="A platform observation could not complete. Run onex setup --preflight-only from a supported native macOS terminal.",
+                fix="A platform observation could not complete. Check the OS release data and run onex setup --preflight-only from Ubuntu Linux or a supported native macOS terminal.",
             )
 
     def observe(self, plan: ModelSetupPlan) -> ModelSetupObservation:
