@@ -266,6 +266,18 @@ dod_evidence:
     check_value: uv run pytest tests/e2e/test_setup_local_stack.py tests/e2e/test_setup_stack_requirements.py
       tests/e2e/test_setup_tenant_endpoint_registration.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn23413-ac7-engine-reader-compatibility
+  description: A selected local stack reports the required infra upgrade before launching a command
+    when the installed infra package lacks the engine reader.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/e2e/test_setup_stack_requirements.py::test_selected_stack_with_older_infra_reports_install_action
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn23413-ac8-migration-repair
   description: One versioned journal, nonblocking lock, atomic checkpoints, one-time import, resume and
     a no-write unchanged rerun.

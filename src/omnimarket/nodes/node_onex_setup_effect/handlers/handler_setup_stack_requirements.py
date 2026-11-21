@@ -11,13 +11,17 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Coroutine, Mapping
 from typing import Any
 
+from omnibase_core.utils.util_run_coro_sync import run_coro_sync
 from omnibase_infra.nodes.node_setup_local_provision_effect.handlers.handler_local_provision import (
     compose_base_command,
 )
 
+from omnimarket.nodes.node_onex_setup_effect.adapters.adapter_local_engine_info import (
+    read_engine_capacity,
+)
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_command import (
     HandlerSetupCommand,
 )
@@ -33,6 +37,8 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_stack_requirements import (
     ModelSetupStackRequirementsRequest,
 )
+
+EngineCapacityReader = Callable[[], Coroutine[Any, Any, tuple[float, int]]]
 
 
 def _bytes(value: object) -> int:
@@ -54,8 +60,12 @@ class HandlerSetupStackRequirements:
 
     name = "local-stack"
 
-    def __init__(self) -> None:
+    def __init__(
+        self, engine_reader: EngineCapacityReader = read_engine_capacity
+    ) -> None:
+        """The engine reader is injected so the adapter, not this handler, builds the infra handler."""
         self._commands = HandlerSetupCommand()
+        self._engine_reader = engine_reader
 
     def _read(self, argv: tuple[str, ...]) -> str:
         result = self._commands.handle(
@@ -94,23 +104,13 @@ class HandlerSetupStackRequirements:
                 fix="Select explicit compose/topology services before checking Docker.",
             )
         try:
-            info = json.loads(self._read(("docker", "info", "--format", "{{json .}}")))
+            available_cpu, available_memory = run_coro_sync(self._engine_reader())
             base = tuple(compose_base_command(selection.compose_file, None))
             config = json.loads(self._read((*base, "config", "--format", "json")))
-            if (
-                not isinstance(info, dict)
-                or not isinstance(config, dict)
-                or not isinstance(config.get("services"), dict)
+            if not isinstance(config, dict) or not isinstance(
+                config.get("services"), dict
             ):
                 raise ValueError("Malformed Docker observation")
-            available_cpu = float(info["NCPU"])
-            available_memory = int(info["MemTotal"])
-            if (
-                not math.isfinite(available_cpu)
-                or available_cpu <= 0
-                or available_memory <= 0
-            ):
-                raise ValueError("Invalid engine resources")
             cpus, memory = 0.0, 0
             service_config = config["services"]
             for name in required:
@@ -164,6 +164,14 @@ class HandlerSetupStackRequirements:
                     )
             return ModelSetupObservation(
                 step=self.name, status="success", evidence=evidence
+            )
+        except ModuleNotFoundError as exc:
+            if exc.name != "omnibase_infra.handlers.handler_local_engine_info":
+                raise
+            return ModelSetupObservation(
+                step=self.name,
+                status="action_required",
+                fix="Upgrade omnimarket and omnibase-infra to compatible releases that support local-stack engine checks, then retry.",
             )
         except OSError:
             return ModelSetupObservation(
