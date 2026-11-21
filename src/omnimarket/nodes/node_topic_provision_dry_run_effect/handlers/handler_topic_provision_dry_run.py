@@ -18,6 +18,10 @@ from omnimarket.nodes.node_topic_provision_dry_run_effect.adapters.broker_topics
 from omnimarket.nodes.node_topic_provision_dry_run_effect.adapters.contract_facts import (
     read_contract_facts,
 )
+from omnimarket.nodes.node_topic_provision_dry_run_effect.adapters.service_logins import (
+    read_acl_write_grants,
+    read_service_writer_logins,
+)
 from omnimarket.nodes.node_topic_provision_dry_run_effect.models.model_topic_provision_dry_run_request import (
     ModelTopicProvisionDryRunRequest,
 )
@@ -28,7 +32,7 @@ from omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_p
 
 
 class HandlerTopicProvisionDryRun:
-    """Reads the contract tree and lists the live topics; creates and deletes nothing."""
+    """Reads the contract tree, the declared service logins and the live topics; creates and deletes nothing."""
 
     def __init__(self, lister: ProtocolBrokerTopicLister | None) -> None:
         self._lister = lister
@@ -41,7 +45,9 @@ class HandlerTopicProvisionDryRun:
             raise TopicProvisionRuleError("overlay.profile is required for the dry run")
         if not overlay.contract_roots:
             raise TopicProvisionRuleError("overlay.contract_roots must be non-empty")
-        facts = read_contract_facts([Path(root) for root in overlay.contract_roots])
+        contract_roots = [Path(root) for root in overlay.contract_roots]
+        overlay_roots = [Path(root) for root in overlay.overlay_roots]
+        facts = read_contract_facts(contract_roots)
         live = await self._lister.list_topics() if self._lister is not None else ()
         return plan_topic_provision(
             ModelTopicProvisionRequest(
@@ -50,5 +56,9 @@ class HandlerTopicProvisionDryRun:
                 lane_manifest=overlay.lane_manifest,
                 live_topics=live,
                 rule=request.rule,
+                service_logins=read_service_writer_logins(
+                    contract_roots, overlay_roots
+                ),
+                acl_write_grants=read_acl_write_grants(overlay_roots),
             )
         )

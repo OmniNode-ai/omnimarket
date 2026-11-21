@@ -1,0 +1,44 @@
+schema_version: 1.0.0
+ticket_id: OMN-25969
+title: The receipt gate reads per-test duration records as test bookkeeping, not product
+summary: omnibase_core#2346 made the receipt gate count config/test_file_durations.d records as test-side;
+  its first dev-merge tag is dev-20261120161913-d3ba14c48d02. This contract covers AC3 in omnimarket, the
+  caller pin. AC1 and AC2 are proved by omnibase_core's own contract. The omnimarket#6429 dod-verify readback
+  named in AC3 is read after this pin merges.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25969-ac3
+  statement: 'omnimarket''s call-repo-evidence-gate.yml pins the omnibase_core dev-merge tag that carries AC1,
+    so a pull request of tests, its cited contract and their duration records qualifies for the test-only
+    waiver.'
+  acceptance:
+  - id: AC3
+    statement: 'AC3: .github/workflows/call-repo-evidence-gate.yml and tests/ci/receipt_gate_pin.py pin
+      receipt-gate.yml at dev-20261120161913-d3ba14c48d02 or a later dev-merge tag -- falsifier: uv run pytest
+      tests/ci/test_receipt_gate_pin_duration_records_omn25969.py -q fails at the merge base, which pins
+      dev-20261113222915-b853619df394.'
+evidence_requirements:
+- kind: tests
+  description: The caller pin and the test-side copy of the pin agree and are at or after the first core tag
+    that reads duration records as test bookkeeping.
+  command: uv run pytest tests/ci/test_receipt_gate_pin_duration_records_omn25969.py tests/ci/test_receipt_gate_caller_pin_omn20134.py
+    -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25969-ac3-caller-pin
+  description: The caller pins the receipt-gate reusable at a dev-merge tag at or after dev-20261120161913-d3ba14c48d02,
+    and the test-side copy of the pin matches it. Fails at the merge base, which pins dev-20261113222915-b853619df394.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_receipt_gate_pin_duration_records_omn25969.py -q --no-cov -n 0
+      -p no:randomly
+    cwd: .

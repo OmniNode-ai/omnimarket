@@ -17,7 +17,6 @@ from omnimarket.protocols.protocol_ledger_rows_reader import LedgerReadError
 
 ENV = {
     "ONEX_LEDGER_BUS_APPEND_COMMAND": "/venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev",
-    "ONEX_LEDGER_PATH": "/does/not/exist/ROLLING_WORK_LEDGER.md",
 }
 
 

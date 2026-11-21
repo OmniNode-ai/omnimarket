@@ -995,13 +995,17 @@ def test_the_overlay_experiment_designs_are_well_formed():
     )
 
 
-def test_default_sources_read_the_session_s_files_and_can_be_turned_off(tmp_path: Path):
-    env = {
+def _session_env(tmp_path: Path, ledger: Path | None = None) -> dict[str, str]:
+    return {
         "ONEX_REGISTRY_ROOT": str(tmp_path),
-        "ONEX_LEDGER_PATH": str(tmp_path / "ledger.md"),
+        "ONEX_LEDGER_PATH": str(ledger or tmp_path / "ledger.md"),
         "HOME": str(tmp_path),
         **ENV,
     }
+
+
+def test_default_sources_read_the_session_s_files_and_can_be_turned_off(tmp_path: Path):
+    env = _session_env(tmp_path)
     src = handler.default_sources(FILL_NOW, env)
     assert (
         src.linear_snapshot
@@ -1114,11 +1118,8 @@ def test_default_sources_read_the_ledger_through_the_bus_reader_not_the_file(
     src = handler.default_sources(
         FILL_NOW,
         {
-            "ONEX_REGISTRY_ROOT": str(tmp_path),
-            "ONEX_LEDGER_PATH": str(ledger),
+            **_session_env(tmp_path, ledger),
             "OMNI_PLUGIN_ROOT": str(tmp_path / "plugin"),
-            "HOME": str(tmp_path),
-            **ENV,
         },
     )
     assert src is not None
