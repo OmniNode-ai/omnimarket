@@ -30,7 +30,11 @@ from omnimarket.handlers.tick_unit_arguments import (
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator import (
     HandlerPrLandingTickOrchestrator,
 )
+from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_liveness import (
+    build_liveness_reader,
+)
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports import (
+    ProtocolTickLivenessReader,
     ProtocolTickPublisher,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_rerun_source import (
@@ -64,6 +68,7 @@ def run_once(
     topic_reader_factory: TopicReaderFactory | None = None,
     publisher: ProtocolTickPublisher | None = None,
     publisher_factory: PublisherFactory | None = None,
+    liveness_reader: ProtocolTickLivenessReader | None = None,
 ) -> tuple[int, dict[str, object]]:
     """One pass: the exit code and the line it prints."""
     if overlay.act_enabled:
@@ -86,6 +91,9 @@ def run_once(
     except ValueError as exc:  # no host identity: refused, never the shared group
         return 3, {"status": "overlay_refused", "detail": str(exc)}
     sink, label = build_emission(overlay)
+    liveness = overlay.liveness_reads
+    if liveness is not None and liveness_reader is None:
+        liveness_reader = build_liveness_reader(publisher)
     handler = HandlerPrLandingTickOrchestrator(
         publisher=publisher,
         act_enabled=False,
@@ -100,6 +108,8 @@ def run_once(
             else None
         ),
         rerun_ledger=build_rerun_ledger(overlay),
+        liveness_reader=liveness_reader if liveness is not None else None,
+        max_liveness_reads=liveness.max_reads_per_pass if liveness else 0,
     )
     try:
         results = run_snapshots(handler, source, EnumTickMode.OBSERVE, rerun_source)
@@ -139,6 +149,9 @@ def run_once(
             "verdicts": sorted({a.verdict.value for a in answers}),
             "skipped": [row.model_dump(mode="json") for row in rerun_source.skipped()],
         }
+    if liveness is not None:
+        reads = [read for result in results for read in result.liveness_reads]
+        line["liveness_reads"] = [read.model_dump(mode="json") for read in reads]
     return (1 if failed else 0), line
 
 
@@ -169,6 +182,12 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         code, line = 3, {"status": "overlay_refused", "detail": str(exc)}
     write_tick_heartbeat(args.state_dir, code=code, line=line)
+    # one line per liveness read (OMN-26024), before the pass's status line; the status line keeps the count
+    reads = line.pop("liveness_reads", None)
+    if isinstance(reads, list):
+        for read in reads:
+            sys.stdout.write(json.dumps({"liveness_read": read}, sort_keys=True) + "\n")
+        line["liveness_read_count"] = len(reads)
     sys.stdout.write(json.dumps(line, sort_keys=True) + "\n")
     return code
 
