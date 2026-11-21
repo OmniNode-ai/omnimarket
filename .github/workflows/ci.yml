@@ -432,6 +432,13 @@ jobs:
         run: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
       - name: Lane census alias parity (OMN-19998)
         run: uv run --frozen pytest tests/nodes/node_lane_census_alias_parity_compute/test_alias_parity.py -q --no-cov
+      # OMN-24445: the CI twin of the ledger-file-census pre-commit hook. The count of executable
+      # readers and writers of the ledger file may not grow past its ratchet row; SYNC with the hook.
+      - name: Ledger file census ratchet (OMN-24445)
+        env:
+          ONEX_LEDGER_CENSUS_ROOT: .
+          ONEX_LEDGER_CENSUS_OVERLAY: src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml
+        run: uv run --frozen python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=. --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml
       - name: Ruff format check
         run: uv run ruff format --check src/ tests/ benchmarks/
       - name: Delegation target and lab-job seam gate

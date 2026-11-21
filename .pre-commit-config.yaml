@@ -1211,7 +1211,7 @@ repos:
       - id: ledger-file-census
         name: Ledger file census ratchet
         language: system
-        entry: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=.
+        entry: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=. --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml
         pass_filenames: false
         files: '\.(py|sh|bash|zsh|ya?ml|json|toml|plist|service|timer|cfg|ini|js|ts|mjs|cjs|tmpl|j2)$'
         stages: [pre-commit]
