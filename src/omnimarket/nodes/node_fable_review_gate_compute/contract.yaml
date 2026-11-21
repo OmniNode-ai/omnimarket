@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Fable Review Gate Compute (OMN-24533)
+#
+# The gate decision of operator ruling 2026-11-14T23:50:35Z: every Fable diff review runs only on
+# the orchestrating Mac. Given the logical route keys of a review request and the host the review
+# would run on, the node admits or refuses with a typed reason.
+name: node_fable_review_gate_compute
+contract_name: node_fable_review_gate_compute
+node_name: node_fable_review_gate_compute
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+
+description: >
+  The gate decision of operator ruling 2026-11-14T23:50:35Z (OMN-24533): every Fable diff review
+  runs only on the orchestrating Mac. A request whose route keys carry no Fable-class key is
+  admitted with the ruling not applying and no refusal; a Fable-class request is admitted only
+  when its origin host is one of the orchestrating hosts the overlay declares. An unreadable
+  origin host is refused with origin_unreadable; a Fable-class request on any other host is
+  refused with origin_not_orchestrating_mac. Pure: it reads the overlay and the request and
+  nothing else, with no I/O and no clock.
+
+handler:
+  module: omnimarket.nodes.node_fable_review_gate_compute.handlers.handler_fable_review_gate
+  class: HandlerFableReviewGate
+  input_model: omnimarket.events.fable_review_gate.ModelFableReviewGateRequest
+  output_model: omnimarket.events.fable_review_gate.ModelFableReviewGateVerdict
+
+input_model:
+  name: ModelFableReviewGateRequest
+  module: omnimarket.events.fable_review_gate
+  description: "One review request: its route keys and the host the review would run on."
+output_model:
+  name: ModelFableReviewGateVerdict
+  module: omnimarket.events.fable_review_gate
+  description: "The gate's answer: admitted or refused with the typed reason, and the receipt."
+
+# node_hostile_reviewer_orchestrator calls the handler in process, so this node has no event_bus
+# topics of its own and is invoked locally with a typed request.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by node_hostile_reviewer_orchestrator with the review's route keys and origin host.
+
+# The handler is constructed with the overlay the orchestrator loads (overlay: below).
+dependencies:
+  - name: overlay
+    dependency_type: internal
+    description: The Fable review gate overlay naming the orchestrating hosts.
+    required: true
+
+overlay:
+  node: node_fable_review_gate_compute
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-24533
+  transport_type: local

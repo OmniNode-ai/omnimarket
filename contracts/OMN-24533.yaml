@@ -1,0 +1,73 @@
+schema_version: 1.0.0
+ticket_id: OMN-24533
+title: Fable review gate refuses a review that does not start on the orchestrating Mac
+summary: A new compute node, node_fable_review_gate_compute, decides whether a review whose route keys include a Fable-class key may run on the host it would run on. The route keys that mark a review Fable-class, the hosts that are the orchestrating Mac and the name of the variable holding this machine's host identity are all overlay values. The hostile review orchestrator calls the gate before it reads a diff or calls any model; a refused request ends as a failed completed event carrying the typed reason (origin_not_orchestrating_mac or origin_unreadable) and the gate's receipt, and an admitted one carries the receipt naming the origin host and the matched orchestrating host. Where no gate overlay is installed the gate is not armed and the completed event says so with an empty gate field. Not in this change - the overlay values of a deployment (overlays repository), the installation on the runtime and the Mac, and the ledger CORRECTION row that links the mechanism to the ruling.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- events
+requirements:
+- id: req-omn24533-fable-gate
+  statement: A review with a Fable-class route runs only where the host identity is an orchestrating host, is refused with a typed reason otherwise, and an admitted review's receipt names the origin.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a review whose route is Fable-class and whose host identity is not an orchestrating Mac host is refused with the typed reason origin_not_orchestrating_mac and no model call is made -- falsifier: pytest tests/unit/nodes/node_fable_review_gate_compute -q -k refused"
+  - id: AC2
+    statement: "AC2: a Fable-class review with an unreadable host identity is refused with origin_unreadable -- falsifier: pytest tests/unit/nodes/node_fable_review_gate_compute -q -k unreadable"
+  - id: AC3
+    statement: "AC3: an admitted review's completed event carries a receipt naming the origin host and the matched orchestrating host -- falsifier: pytest tests/unit/nodes/node_fable_review_gate_compute -q -k golden"
+  - id: AC4
+    statement: "AC4: integrated: one review request read in the running runtime shows the Mac origin in its receipt, read with the time -- falsifier: the same request issued from a lab host reads origin_not_orchestrating_mac in the running runtime"
+evidence_requirements:
+- kind: tests
+  description: The gate node tests and the join test of gate, start command and completed-event receipt at the pushed head; each refusal test fails when its injected break (a gate that admits every origin, a gate that admits an empty origin, a handler that drops the receipt) is in place.
+  command: uv run pytest tests/unit/nodes/node_fable_review_gate_compute -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24533-ac1
+  description: 'AC1: the refusal tests pass with the change; with the gate replaced by one that admits every origin the refusal check fails.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_fable_review_gate_compute -q -n 0 --no-cov -p no:cacheprovider -k refused
+    cwd: .
+- id: dod-omn24533-ac2
+  description: 'AC2: the unreadable-origin tests pass with the change; with a gate that admits an empty origin the check fails.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_fable_review_gate_compute -q -n 0 --no-cov -p no:cacheprovider -k unreadable
+    cwd: .
+- id: dod-omn24533-ac3
+  description: 'AC3: the golden chain test passes with the change: the Mac-origin request is admitted and the completed event carries the receipt.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_fable_review_gate_compute -q -n 0 --no-cov -p no:cacheprovider -k golden
+    cwd: .
+- id: dod-omn24533-integration-proof
+  description: 'AC4 lab proxy: the gate node and join tests run on a lab host at the pushed head; the read of one review request in the running runtime with the Mac origin in its receipt is taken by the orchestrator after the install and is not claimed by this local check'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24533 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_fable_review_gate_compute -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24533-ac4-hosted-proxy
+  description: 'hosted proxy for AC4: the join test drives a Fable-class start command through the orchestrator on the in-memory bus; the Mac-origin request reads its receipt and the lab-origin request reads the typed refusal; the running-runtime read itself is the unbound integration proof item above.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_fable_review_gate_compute -q -n 0 --no-cov -p no:cacheprovider -k join
+    cwd: .

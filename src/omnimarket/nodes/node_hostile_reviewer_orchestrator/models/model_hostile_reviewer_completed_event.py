@@ -15,6 +15,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.events.fable_review_gate import (
+    ModelFableReviewGateVerdict,
+)
 from omnimarket.models.model_aggregated_finding import ModelAggregatedFinding
 from omnimarket.models.model_inference_provenance import ModelInferenceProvenance
 from omnimarket.models.model_review_target_snapshot import ModelReviewTargetSnapshot
@@ -98,6 +101,15 @@ class ModelHostileReviewerCompletedEvent(BaseModel):
         description=(
             "Requested route keys that produced no review output and were "
             "replaced by fallback_engine (OMN-17427)."
+        ),
+    )
+    fable_gate: ModelFableReviewGateVerdict | None = Field(
+        default=None,
+        description=(
+            "The Fable review gate's verdict for this review (OMN-24533): admitted, "
+            "with the receipt naming the origin host and the matched orchestrating "
+            "host, or refused with a typed reason. None when no gate overlay is "
+            "installed on this host, so the gate was not armed."
         ),
     )
 
