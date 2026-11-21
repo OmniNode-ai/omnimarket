@@ -515,6 +515,8 @@ def test_two_servers_in_one_credential_slot_name_the_slot(
     assert rec.plan is None, result.output
     assert "credential slot" in result.output, result.output
     assert "--connection" in result.output, result.output
+    # The way out moves the default route; the refusal must say so.
+    assert "default route" in " ".join(result.output.split()), result.output
     assert "Invalid or conflicting setup selections" not in result.output, result.output
 
 
