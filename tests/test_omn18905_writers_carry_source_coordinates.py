@@ -27,6 +27,7 @@ alike -- carried `source_offset 0`. First writer wins forever.
 
 from __future__ import annotations
 
+import ast
 import importlib
 import json
 import pickle
@@ -513,3 +514,90 @@ def test_partition_missing_delivery_context_incident_dispatch_ends_typed(
     assert raised.value.missing_keys == ("_partition", "_offset")
     assert raised.value.topic == recorded["_topic"]
     assert _RecordingRunner.seen == []
+
+
+# OMN-26355: no package source reads a delivery coordinate without a default.
+# A subscript or one-argument pop of _partition or _offset turns a dispatch that
+# carries no delivery context into a bare KeyError; a read that supplies a default
+# raises none and is out of this guard's reach by design.
+_COORDINATE_SCAN_ROOT = Path(__file__).resolve().parents[1] / "src" / "omnimarket"
+_DELIVERY_COORDINATE_KEYS = frozenset(
+    {"_partition", "_offset", "INJECTED_PARTITION_KEY", "INJECTED_OFFSET_KEY"}
+)
+
+
+def _names_a_coordinate(node: ast.expr) -> bool:
+    if isinstance(node, ast.Constant):
+        return node.value in _DELIVERY_COORDINATE_KEYS
+    return isinstance(node, ast.Name) and node.id in _DELIVERY_COORDINATE_KEYS
+
+
+def _is_subscript_read(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Subscript)
+        and isinstance(node.ctx, ast.Load)
+        and _names_a_coordinate(node.slice)
+    )
+
+
+def _is_default_less_pop(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "pop"
+        and len(node.args) == 1
+        and not node.keywords
+        and _names_a_coordinate(node.args[0])
+    )
+
+
+def unconditional_coordinate_reads(source: str) -> list[int]:
+    """The line of every subscript or default-less ``pop`` of a delivery coordinate."""
+    return sorted(
+        node.lineno
+        for node in ast.walk(ast.parse(source))
+        if _is_subscript_read(node) or _is_default_less_pop(node)
+    )
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_lines"),
+    [
+        ('partition = int(data.pop("_partition"))', [1]),
+        ('offset = int(request["_offset"])', [1]),
+        ("partition = request[INJECTED_PARTITION_KEY]", [1]),
+        ('x = 1\ny = data.pop("_offset")', [2]),
+        ('partition = int(data.pop("_partition", 0))', []),
+        ('partition = data.pop("_partition", None)', []),
+        ('partition = data.get("_partition")', []),
+        ('data["_partition"] = 3', []),
+        ('topic = data.pop("_topic")', []),
+    ],
+)
+def test_scanner_flags_only_the_reads_that_raise_key_error(
+    source: str, expected_lines: list[int]
+) -> None:
+    """Positive control: the reads that wedged dev are found, the defaulted ones are not."""
+    assert unconditional_coordinate_reads(source) == expected_lines
+
+
+def test_partition_missing_delivery_context_no_source_reads_a_coordinate_unconditionally() -> (
+    None
+):
+    """Every package source reads ``_partition`` and ``_offset`` through the typed request."""
+    sources = [
+        path
+        for path in sorted(_COORDINATE_SCAN_ROOT.rglob("*.py"))
+        if "tests" not in path.relative_to(_COORDINATE_SCAN_ROOT).parts
+    ]
+    assert len(sources) > 100, "the scan found no package tree to read"
+    offenders = {
+        str(path.relative_to(_COORDINATE_SCAN_ROOT)): lines
+        for path in sources
+        if (lines := unconditional_coordinate_reads(path.read_text(encoding="utf-8")))
+    }
+    assert offenders == {}, (
+        "these sources read a runtime-injected delivery coordinate with no default; "
+        "read it through ModelProjectionRequest.require_delivery_context instead: "
+        f"{offenders}"
+    )
