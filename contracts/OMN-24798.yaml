@@ -1,0 +1,61 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-24798"
+title: "Unblock the pull request that carried a red Overlay Main Load by bringing dev into its branch"
+summary: "Overlay Main Load (OMN-23963) and CI Summary were red on this branch because its base was 194 commits behind dev: the branch's ModelTicketCloserScheduleOverlay (extra=forbid) lacked the four fields home_env, bus_lane, ticket_timeout_seconds and scan_limit that dev's model has and that overlays main now declares, so the check refused node_ticket_closer_scheduled_effect. CI Summary was red only because its default-deny sweep reports that one job. The fix is a merge of origin/dev into the branch; no workflow, threshold, baseline or check changed."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn24798-overlay-main-loads"
+    statement: |-
+      Every overlays-main document loads through this branch's node models, and CI Summary reports no failed job.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the cause of each red (CI Summary and Overlay Main Load) is named from the failure text read at the head through the declared scm read path, in one lane STATUS row that cites the job id and failed step of each check -- falsifier: grep of the rolling ledger for the lane STATUS row finds 6114 with two job ids"
+      - id: "AC2"
+        statement: "AC2: CI Summary and Overlay Main Load read green at the new head, fixed in the pull request itself by a rebase onto the current base -- falsifier: pr_state_local.py --pr OmniNode-ai/omnimarket#6114 lists neither as red after the watcher next reads that head"
+      - id: "AC4"
+        statement: "AC4: a test that was red is run red then green on a lab host before the push, and the new head is commented with a Lab line carrying head=<sha> -- falsifier: the overlay main load run exits nonzero before the fix and zero after it, and the pull request comment starting Lab: carries the new head sha"
+      - id: "AC5"
+        statement: "AC5: no commit of the lane widens a check, lowers a threshold, skips a check or reverts a commit, and the lane never touches prod -- falsifier: git diff of the head against dev shows no change to a workflow, threshold or baseline, and git log lists no revert commit"
+evidence_requirements:
+  - kind: "tests"
+    description: "The overlay main load check's own tests pass at the pushed head."
+    command: "uv run --frozen pytest tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov -n 0 -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn24798-ac1"
+    description: "AC1 is a ledger reading: the lane STATUS row for this branch names job 132309230970 (step overlay-main-load) and job 132309230763 (step Summary). Hosted proxy: the check's own tests pass at the head."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
+  - id: "dod-omn24798-ac2"
+    description: "hosted proxy for AC2: the check's own tests pass here; the check itself needs the private overlays repository, so the green reading of Overlay Main Load and CI Summary comes from the watcher's next read of the new head."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
+  - id: "dod-omn24798-ac4"
+    description: "hosted proxy for AC4: the check's own tests pass here; the red and green runs of the check against overlays main are taken on a lab host and named in the Lab: pull request comment with their exit codes."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
+  - id: "dod-omn24798-ac5"
+    description: "hosted proxy for AC5: the check's own tests pass here; the diff against dev holds no workflow, threshold or baseline change beyond what dev itself carries."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
