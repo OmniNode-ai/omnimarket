@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: 1.0.0
+ticket_id: OMN-26024
+title: 'prove 5 merged changes running on h201 (batch 1250-h201: triggers for review gate, liveness read, replay recall, lab alarm, h202 retention)'
+summary: This change gives two merged-but-never-triggered nodes a declared trigger. The landing tick orchestrator reads the liveness of each compared head through node_pr_landing_liveness_read_effect, and the container-restarts verb of node_lab_alarm becomes schedulable.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26024-ac1
+    statement: The liveness read node and the container-restarts verb each have a declared trigger in a contract or schedule.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: each of the five has a declared trigger in a contract or schedule, or is marked CI-ONLY by decision -- falsifier: grep of the integration ledger for the five repo numbers shows a trigger or CI-ONLY state'
+  - id: req-omn26024-ac2
+    statement: Each triggered node prints a run line that is not a wiring line.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: one run line per triggered node is read in the dev runtime log -- falsifier: dev runtime log read shows a non-wiring line for each node name'
+evidence_requirements:
+  - kind: tests
+    description: Focused tick liveness trigger tests and the lab alarm schedule tests.
+    command: uv run --frozen pytest -q -n 0 --no-cov tests/nodes/node_pr_landing_tick_orchestrator/test_tick_liveness_read.py tests/nodes/node_lab_alarm/test_lab_alarm_condition_schedule.py
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn26024-ac1-liveness
+    description: The tick orchestrator calls the liveness read for each compared head and the contract declares that trigger. The read changes no decision, comparison row, event or write.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q -n 0 --no-cov tests/nodes/node_pr_landing_tick_orchestrator/test_tick_liveness_read.py
+        cwd: .
+  - id: dod-omn26024-ac1-restarts
+    description: The container-restarts verb is a schedulable verb and the example overlay declares its schedule, so a launchd agent and a systemd unit render for it.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q -n 0 --no-cov tests/nodes/node_lab_alarm/test_lab_alarm_condition_schedule.py
+        cwd: .
+  - id: dod-omn26024-ac2
+    description: The landing tick runtime prints one liveness_read line per read before its status line. The first line on the floor host is read after the overlay and install land, so this evidence is the runtime pass test.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q -n 0 --no-cov tests/nodes/node_pr_landing_tick_orchestrator/test_tick_liveness_read.py -k runtime_pass_prints_one_liveness_line
+        cwd: .
+  - id: dod-omn26024-integration-proof
+    description: Run the focused trigger tests at the pushed revision on a lab host through onex lab-work. The tick liveness tests run the real liveness read handler under its example overlay and assert the read is made for each compared head, and the schedule tests render the container-restarts unit. The first run line on the floor host is read after the overlay and install land.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26024 --host h053 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest -q -n 0 --no-cov tests/nodes/node_pr_landing_tick_orchestrator/test_tick_liveness_read.py tests/nodes/node_lab_alarm/test_lab_alarm_condition_schedule.py
+        cwd: .

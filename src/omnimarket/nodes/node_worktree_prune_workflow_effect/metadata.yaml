@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_worktree_prune_workflow_effect
+version: 1.0.0
+description: Daily and ticket-closed worktree prune run over every lab host, one activity per host, with a per-host
+  report and a disk alarm.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: effect
+display_name: Worktree Prune Workflow Effect
+entry_points:
+  onex.nodes:
+    node_worktree_prune_workflow_effect: omnimarket.nodes.node_worktree_prune_workflow_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- omnibase_core>=0.39.0
+- pydantic>=2.0
+license: MIT
+tags:
+- effect
+- worktree
+- prune
+- schedule
