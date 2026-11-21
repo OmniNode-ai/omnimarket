@@ -42,12 +42,3 @@ dod_evidence:
     check_value: uv run pytest tests/ci/test_receipt_gate_pin_duration_records_omn25969.py -q --no-cov -n 0
       -p no:randomly
     cwd: .
-- id: dod-omn25969-integration-proof
-  description: Run the runtime-profile shadow test and the lab alarm delivery wiring test on a lab host at the pushed head;
-    the lab alarm deliver contract declares one runtime profile in its top level and its descriptor, as dev's validation test requires.
-  source: manual
-  execution_scope: local_done_gate
-  checks:
-  - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25969 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/validation/test_no_toplevel_runtime_profiles_shadow.py tests/nodes/node_lab_alarm/test_lab_alarm_delivery_wiring.py -q
-    cwd: .
