@@ -62,6 +62,23 @@ def outbox_dir(state_dir: Path) -> Path:
     return state_dir / OUTBOX_DIRNAME
 
 
+def _write_durable(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` and fsync it, so the request is on disk before anything is published."""
+    with path.open("w", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def _fsync_directory(directory: Path) -> None:
+    """Fsync the directory entry, so the rename that publishes the request file survives a crash."""
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def queue_request(state_dir: Path, request: ModelWorkLedgerAppendRequest) -> Path:
     """Keep one request for replay. Idempotent on the request id. Raises OSError when it cannot be written."""
     directory = outbox_dir(state_dir)
@@ -71,11 +88,9 @@ def queue_request(state_dir: Path, request: ModelWorkLedgerAppendRequest) -> Pat
     name = f"{time.time_ns():020d}_{request.request_id}.json"
     target = directory / name
     tmp = directory / f".{name}.tmp"
-    with tmp.open("w", encoding="utf-8") as handle:
-        handle.write(request.model_dump_json())
-        handle.flush()
-        os.fsync(handle.fileno())
+    _write_durable(tmp, request.model_dump_json())
     tmp.replace(target)
+    _fsync_directory(directory)
     return target
 
 
@@ -178,8 +193,9 @@ def first_attempt(
     ):
         return earlier
     tmp = directory / f".{target.name}.{os.getpid()}.tmp"
-    tmp.write_text(request.model_dump_json(), encoding="utf-8")
+    _write_durable(tmp, request.model_dump_json())
     tmp.replace(target)
+    _fsync_directory(directory)
     return request
 
 
@@ -216,12 +232,12 @@ def queued_receipt(path: Path, decision: ModelBusBindingDecision) -> dict[str, o
     """What the writer is told when its append is queued instead of sent."""
     return {
         "request_id": str(request_id_of(path)),
-        "status": "queued",
+        "status": "spooled",
         "exit_code": 0,
         "binding": decision.binding.value,
         "bus_state": decision.state.value,
         "outbox": path.name,
-        "message": "durable bus unavailable; queued for replay under this request id",
+        "message": "durable bus unavailable; spooled for replay under this request id",
     }
 
 

@@ -79,7 +79,7 @@ def _install(monkeypatch: pytest.MonkeyPatch, *, lead: frozenset[str]) -> None:
     monkeypatch.setattr(
         port_mod,
         "sibling_backend_available_in_tier",
-        lambda _tier, _task, excluded: next(
+        lambda _tier, _task, excluded, *_a, **_k: next(
             (ref for ref in (_LEAD, _RUNG) if ref not in excluded), None
         ),
     )
