@@ -151,7 +151,13 @@ def test_every_unit_that_refuses_worktree_overlay_roots_also_refuses_a_pinned_pl
             continue
         checked += 1
         with pytest.raises(UnitRootPinnedError):
-            environment_of(tmp_path, name, units, path_overrides={ROOTS: PINNED})
+            environment_of(
+                tmp_path,
+                name,
+                units,
+                ledger_path=str(tmp_path / "ledger.md"),
+                path_overrides={ROOTS: PINNED},
+            )
     assert checked >= 5
 
 
