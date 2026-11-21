@@ -7,12 +7,15 @@ event per row: ``answered`` (golden) for an OK reading, ``refused`` (error) for 
 The port never raises and a refused read is never an answer; judging the readings into
 verdicts belongs to ``node_ruling_register_compute``. A journal write that fails costs
 its row's event only: the remaining rows still read, and the failed rows come back in
-``sink_errors``. The topics are a constructor parameter of two strings -- the CLI passes
-them from the contract -- so no topic string is in this file.
+``sink_errors``. The whole read is bounded by the constructor's ``total_timeout_seconds``:
+a row the budget did not reach reads UNREAD and still emits its refused event. The topics
+are a constructor parameter of two strings -- the CLI passes them from the contract -- so
+no topic string is in this file.
 """
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -51,18 +54,38 @@ class HandlerRulingRegisterRead:
         port: ProtocolRulingReadPort,
         sink: ProtocolRulingEventSink,
         topics: Mapping[str, str],
+        *,
+        total_timeout_seconds: int,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._port = port
         self._sink = sink
         self._topics = dict(topics)
+        self._total_timeout_seconds = total_timeout_seconds
         self._clock = clock
+        self._monotonic = monotonic
 
     def handle(self, request: ModelRulingReadRequest) -> ModelRulingReadResult:
         readings = []
         sink_errors = []
+        start = self._monotonic()
         for row in request.policy.rows:
-            reading = self._port.read(row)
+            remaining = self._total_timeout_seconds - (self._monotonic() - start)
+            if remaining < 1:
+                # The budget is spent: the row is neither read nor dropped. It reads
+                # UNREAD and still emits its refused event like any unread row.
+                reading = ModelRulingReading(
+                    row_id=row.row_id,
+                    status=EnumReadStatus.UNREAD,
+                    read_at=self._clock(),
+                    detail=(
+                        f"not read: the register's {self._total_timeout_seconds} "
+                        "second read budget was spent"
+                    ),
+                )
+            else:
+                reading = self._port.read(row, budget_seconds=int(remaining))
             readings.append(reading)
             try:
                 self._emit(request, row, reading)

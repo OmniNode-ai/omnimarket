@@ -2,7 +2,10 @@
 # and found under ONEX_SKILL_OVERLAY_ROOTS) names the register's read hosts and their
 # ssh targets; this repository ships only the synthetic route.
 kind: inmemory
-timeout_seconds: 30
+# One read's ceiling and the whole register read's ceiling in seconds: the sum of the
+# rows' reads is bounded by the total, and both sit under the facts effect's 30000 ms.
+timeout_seconds: 10
+total_timeout_seconds: 20
 remote_argv_prefix: ["ssh", "-o", "BatchMode=yes", "{target}"]
 local_hosts: [local]
 host_targets:

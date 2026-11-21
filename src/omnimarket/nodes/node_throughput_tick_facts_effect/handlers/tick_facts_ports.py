@@ -85,13 +85,13 @@ class RulingRegisterSource:
     CLI path's own runtime (``node_ruling_register_effect.read_register``); an absent or
     invalid overlay raises ``NodeOverlayError``."""
 
-    def read(self, overlay_roots: str) -> ModelRulingRegisterResult:
+    def read(
+        self, overlay_roots: str
+    ) -> tuple[ModelRulingRegisterResult, tuple[str, ...]]:
         # The process environment stays visible so the route's journal variable is read;
-        # the request's roots decide where the overlays are.
-        judged, _ = read_register(
-            environ={**os.environ, OVERLAY_ROOTS_ENV: overlay_roots}
-        )
-        return judged
+        # the request's roots decide where the overlays are. The read's journal write
+        # failures ride beside the judgement instead of being dropped (OMN-24556).
+        return read_register(environ={**os.environ, OVERLAY_ROOTS_ENV: overlay_roots})
 
 
 __all__ = [

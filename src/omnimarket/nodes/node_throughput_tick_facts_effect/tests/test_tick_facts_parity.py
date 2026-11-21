@@ -291,15 +291,19 @@ class _RegisterSource:
         self,
         result: ModelRulingRegisterResult | None = None,
         error: Exception | None = None,
+        sink_errors: tuple[str, ...] = (),
     ) -> None:
         self._result = result
         self._error = error
+        self._sink_errors = sink_errors
 
-    def read(self, overlay_roots: str) -> ModelRulingRegisterResult:
+    def read(
+        self, overlay_roots: str
+    ) -> tuple[ModelRulingRegisterResult, tuple[str, ...]]:
         if self._error is not None:
             raise self._error
         assert self._result is not None
-        return self._result
+        return self._result, self._sink_errors
 
 
 def register_result(*row_ids: str) -> ModelRulingRegisterResult:
@@ -345,6 +349,7 @@ def install_register_overlays(root: Path) -> str:
         yaml.safe_dump(
             {
                 "max_reading_age_seconds": 600,
+                "allowed_commands": ["example-command"],
                 "rows": [
                     {
                         "row_id": "row-quiet",
@@ -371,7 +376,9 @@ def install_register_overlays(root: Path) -> str:
         yaml.safe_dump(
             {
                 "kind": "inmemory",
-                "timeout_seconds": 30,
+                # under the route schema's ceilings, the total bounding the reads' sum
+                "timeout_seconds": 10,
+                "total_timeout_seconds": 20,
                 "remote_argv_prefix": ["ssh", "-o", "BatchMode=yes", "{target}"],
                 "local_hosts": ["local"],
                 "host_targets": {"host-a": "192.0.2.10"},

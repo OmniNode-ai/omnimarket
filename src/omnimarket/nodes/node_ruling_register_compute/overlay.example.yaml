@@ -5,9 +5,12 @@ max_reading_age_seconds: 600
 # One verdict detail is folded to one printable line of at most this many characters,
 # so a read's output can carry no tick line of its own.
 max_detail_chars: 120
-# The register refuses a row whose read.argv[0] is not in allowed_commands; drop the
-# comment to restrict what a deployment's rows may run. None restricts nothing.
-# allowed_commands: [example-census-command, example-queue-count]
+# The rows may run only what allowed_commands lists. An entry is one shell-style string
+# holding an argv prefix: a row is allowed when its read.argv starts token for token with
+# one entry's tokens (no path normalisation, no globbing), else it becomes a refused row.
+# An entry is an argv prefix: listing "sh -c" allows any shell script, so a deployment
+# that lists it trusts its own overlay.
+allowed_commands: [example-census-command, example-queue-count]
 rows:
   - row_id: example-ruling-live
     ruling: "2026-07-01T10:00:00Z"

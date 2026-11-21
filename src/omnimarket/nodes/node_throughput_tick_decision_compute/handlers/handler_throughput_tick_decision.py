@@ -55,7 +55,8 @@ OMN-21396: ledger experiment STATUS rows yield per-engine attempts, successes an
 OMN-24478: the standing-rulings register the caller read through node_ruling_register_effect judges each row
 TRUE, FALSE or UNREAD; each FALSE or UNREAD row is a MISSING `ruling-not-running:<row>` line, a register that
 could not be read is one MISSING `ruling-not-running:register` line naming why, and no register at all leaves
-the check out of `checked`.
+the check out of `checked`. OMN-24556: read events the register's journal did not take
+(`ruling_register_sink_errors`) are one UNKNOWN `ruling-register-journal` line beside those findings.
 """
 
 from __future__ import annotations
@@ -1941,6 +1942,19 @@ class HandlerThroughputTickDecision:
                 f"{LOOP_PREFIX}:register",
                 f"the standing-rulings register could not be read: {reason}",
                 "supply the node_ruling_register_compute overlay on this host's overlay roots",
+            )
+        if request.ruling_register_sink_errors:
+            # OMN-24556: the register's read events the journal refused are UNKNOWN beside
+            # the register's own findings, not a silent drop; `checked` keeps the one
+            # `ruling-register` entry the check above already put there.
+            errors = request.ruling_register_sink_errors
+            taken = "; ".join(" ".join(error.split()) for error in errors[:3])[:200]
+            rep.unk(
+                "ruling-register-journal",
+                "the register's journal did not take "
+                f"{len(errors)} read event(s): {taken}",
+                "make the journal path the effect route's journal_env names "
+                "writable on the tick host",
             )
         return ModelThroughputTickResult(
             lines=rep.lines,
