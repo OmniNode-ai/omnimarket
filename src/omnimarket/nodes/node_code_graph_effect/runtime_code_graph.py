@@ -50,6 +50,10 @@ from omnimarket.models.model_code_graph import (
     ModelCodeGraphResult,
     ModelShadowCommand,
 )
+from omnimarket.models.model_code_graph_handlers import (
+    EnumHandlerResolution,
+    EnumHandlerRoute,
+)
 from omnimarket.models.model_code_graph_lookup import (
     EnumCodeGraphQuestion,
     EnumRemovalKind,
@@ -474,6 +478,18 @@ def _lookup(arguments: argparse.Namespace) -> int:
         f"fallback_reason={result.fallback_reason.value if result.fallback_reason else 'none'} "
         f"reason={result.reason or 'none'}\n"
     )
+    if result.question is EnumCodeGraphQuestion.HANDLERS:
+        unresolved = sum(
+            row.resolution is EnumHandlerResolution.UNRESOLVED
+            for row in result.handler_rows
+        )
+        no_route = sum(
+            row.route is EnumHandlerRoute.NO_ROUTE for row in result.handler_rows
+        )
+        sys.stdout.write(
+            f"HANDLERS repo={result.repo} rows={len(result.handler_rows)} "
+            f"unresolved={unresolved} no_route={no_route}\n"
+        )
     return 1 if result.status == "failed" else 0
 
 
