@@ -52,6 +52,7 @@ import omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_lab_h
 import omnimarket.nodes.node_review_key_credit_probe_effect.handlers.handler_review_key_credit_probe as key_probe
 from omnimarket.handlers import handler_model_keys as model_keys
 from omnimarket.handlers import model_provider_labels as provider_labels
+from omnimarket.handlers.models_group import MODELS_HELP, ModelsGroup
 from omnimarket.handlers.models_list_edit_commands import (
     LIST_EDIT_COMMANDS,
     edit_model_list,
@@ -883,35 +884,12 @@ def _read_model_key(provider: str) -> str:
     return value
 
 
-class _ModelsGroup(click.Group):
-    """``onex models`` group with bare-provider hints (OMN-23825)."""
-
-    def resolve_command(
-        self, ctx: click.Context, args: list[str]
-    ) -> tuple[str | None, click.Command | None, list[str]]:
-        if args:
-            name = args[0].lower()
-            if name in provider_labels.LISTED_PROVIDERS and name not in self.commands:
-                raise click.UsageError(
-                    f"No such command '{args[0]}'. "
-                    f"Did you mean 'onex models add {name}'?",
-                    ctx=ctx,
-                )
-        return super().resolve_command(ctx, args)
-
-
 _model_choice = provider_labels.ModelProviderChoice()
 
 
-models_group = _ModelsGroup(
+models_group = ModelsGroup(
     "models",
-    help=(
-        "Set up the models delegation can use: Google Gemini, OpenRouter, OpenAI, "
-        "Reflection AI, Anthropic, GLM (z.ai), or a Local Model: any model server "
-        "you run, by its endpoint URL.\n\nSet up any "
-        "combination; delegation chooses among them for each task.\n\n"
-        "Add a provider after setup with: onex models add <provider>."
-    ),
+    help=MODELS_HELP,
     commands=[*MODEL_COMMANDS, *LIST_EDIT_COMMANDS],  # first, only, add-model, reorder
 )
 
