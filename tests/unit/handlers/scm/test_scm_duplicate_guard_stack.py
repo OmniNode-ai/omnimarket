@@ -23,6 +23,7 @@ from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.handler_pr_dupl
     load_stack_config,
     read_request,
 )
+from tests.helpers.fake_ledger_rows import FakeLedgerRows
 from tests.unit.handlers.scm.test_scm_duplicate_guard import (
     BASELINE,
     LANE,
@@ -52,7 +53,6 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     empty = tmp_path / "no-overlays"
     empty.mkdir()
     monkeypatch.setenv("ONEX_PR_WATCHER_STATE", str(built.state))
-    monkeypatch.setenv("ONEX_LEDGER_PATH", str(built.ledger))
     monkeypatch.setenv("ONEX_SCM_CLONE_ROOT", str(built.root))
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(empty))
     monkeypatch.delenv("ONEX_WORKSPACE_CONFIG_ROOT", raising=False)
@@ -103,7 +103,7 @@ def snapshot(world: World) -> ModelPrDuplicateGuardRequest:
         lane=LANE,
         cause=None,
         watcher_state=world.state,
-        ledger=world.ledger,
+        ledger_reader=FakeLedgerRows(),
         clone=world.root / "omnibase_core",
         worktree=world.lane,
     )

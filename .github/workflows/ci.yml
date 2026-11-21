@@ -2776,6 +2776,44 @@ jobs:
         run: .venv-core-only/bin/python scripts/ci/core_only_install_harness.py
 
   # ============================================================================
+  # LATEST-CORE SMOKE (OMN-26215)
+  # CI installs the lockfile's core while dispatch venvs resolve the newest, so a
+  # core removal (core#2335 dropped run_node_in_process) was seen first about 43
+  # hours later, in the field. This job installs the newest published
+  # omnibase-core with NO lockfile into a throwaway venv and imports every
+  # `onex.nodes` entry point and its non-test submodules, naming each failing
+  # module and symbol. Strict CI Summary gate (ci_summary_rules.json). A core PR
+  # runs the same steps through latest-core-smoke-reusable.yml (keep them in sync).
+  # ============================================================================
+  latest-core-smoke:
+    needs: repo-evidence-preflight
+    if: always()
+    name: Latest Core Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+      - name: Build a throwaway venv with this head (no lockfile)
+        run: |
+          uv venv --python 3.12 "$RUNNER_TEMP/smoke-venv"
+          uv pip install --python "$RUNNER_TEMP/smoke-venv/bin/python" -e .
+      - name: Replace core with the newest published release
+        run: |
+          uv pip install --python "$RUNNER_TEMP/smoke-venv/bin/python" --upgrade --no-deps omnibase-core
+          "$RUNNER_TEMP/smoke-venv/bin/python" -c "import importlib.metadata as m; print('omnibase-core', m.version('omnibase-core'))"
+      - name: Import every node entry point
+        env:
+          OMNI_HOME: ${{ github.workspace }}
+        run: |
+          "$RUNNER_TEMP/smoke-venv/bin/python" tests/ci/latest_core_smoke.py
+
+  # ============================================================================
   # CUSTOMER CLEAN-INSTALL DELEGATE GATE (OMN-16200, M4 C13/C17)
   # A customer installs the packages and runs `onex delegate` against their own
   # local model. This builds THIS head's wheel, installs it with its siblings

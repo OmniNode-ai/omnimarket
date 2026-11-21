@@ -3,10 +3,11 @@
 """Bind the ledger-guard refusal actor's ports on the writer's machine (OMN-21959).
 
 The names come from ``refused_request_settlement`` in the bus binding reducer's contract: the environment
-variable that points at the ledger, the glob of its archive rolls beside it, and the environment variable of
-the root a relative worktree cell is resolved under. A corrected request is not sent from here: it is queued
-to the local outbox as a new request, so the replay that runs next sends it and a refusal of it is reported
-like any other.
+variable of the root a relative worktree cell is resolved under. The lane's ledger rows are read through the
+ledger rows reader port (the bus-fed projection), never from a ledger file; a ledger that cannot be read
+raises ``LedgerReadError`` out of ``lane_rows``, which the actor treats as unknown. A corrected request is not
+sent from here: it is queued to the local outbox as a new request, so the replay that runs next sends it and a
+refusal of it is reported like any other.
 """
 
 from __future__ import annotations
@@ -21,9 +22,18 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.handlers.adapter_work_ledger_rows_reader import (
+    SubprocessLedgerRowsReader,
+)
 from omnimarket.handlers.bus_binding import outbox
 from omnimarket.handlers.bus_binding.guard_port_types import GuardPorts
 from omnimarket.models.work_ledger_append import ModelWorkLedgerAppendRequest
+from omnimarket.protocols.protocol_ledger_rows_reader import ProtocolLedgerRowsReader
+
+#: The reader node's name for the lane-rows read, and the window it covers. No horizon is declared by the
+#: actor, so the window is a week: a refusal older than that finds no CLAIM and stays open for the operator.
+LANE_ROWS_READER = "bus-binding-guard-lane-rows"
+LANE_ROWS_WINDOW_HOURS = 168
 
 
 def settlement_policy() -> dict[str, str]:
@@ -39,24 +49,21 @@ class _LocalGuardPorts:
     def __init__(
         self,
         state_dir: Path,
-        ledger_files: list[Path],
+        ledger_reader: ProtocolLedgerRowsReader,
         worktree_root: Path | None,
     ) -> None:
         self._state_dir = state_dir
-        self._ledger_files = ledger_files
+        self._ledger_reader = ledger_reader
         self._worktree_root = worktree_root
-        self._lines: list[str] | None = None
+        self._lines: tuple[str, ...] | None = None
         self._bodies: dict[str, dict[str, object]] = {}
 
-    def _all_lines(self) -> list[str]:
+    def _all_lines(self) -> tuple[str, ...]:
+        """The window's rows, read once; raises LedgerReadError, and an unread ledger is never cached as empty."""
         if self._lines is None:
-            lines: list[str] = []
-            for path in self._ledger_files:
-                try:
-                    lines.extend(path.read_text(encoding="utf-8").splitlines())
-                except OSError:
-                    continue
-            self._lines = lines
+            self._lines = self._ledger_reader.rows(
+                reader=LANE_ROWS_READER, window_hours=LANE_ROWS_WINDOW_HOURS
+            )
         return self._lines
 
     def lane_rows(self, lane: str) -> list[str]:
@@ -105,21 +112,23 @@ class _LocalGuardPorts:
 
 
 def local_guard_ports(
-    state_dir: Path, *, env: Mapping[str, str] | None = None
-) -> GuardPorts | None:
-    """The actor's ports as the contract names them; None when the ledger is not readable on this machine."""
+    state_dir: Path,
+    *,
+    env: Mapping[str, str] | None = None,
+    ledger_reader: ProtocolLedgerRowsReader | None = None,
+) -> GuardPorts:
+    """The actor's ports as the contract names them; the ledger is read through the bus reader, lazily.
+
+    A ledger that cannot be read raises ``LedgerReadError`` from ``lane_rows`` when the actor first asks.
+    """
     environ = os.environ if env is None else env
     policy = settlement_policy()
-    ledger = environ.get(policy["ledger_path_env"], "")
-    if not ledger or not Path(ledger).is_file():
-        return None
-    ledger_path = Path(ledger)
-    files = [
-        ledger_path,
-        *sorted(ledger_path.parent.glob(policy["ledger_archive_glob"])),
-    ]
     root = environ.get(policy["worktree_root_env"], "")
-    ports = _LocalGuardPorts(state_dir, files, Path(root) if root else None)
+    ports = _LocalGuardPorts(
+        state_dir,
+        ledger_reader or SubprocessLedgerRowsReader(environ),
+        Path(root) if root else None,
+    )
     return GuardPorts(
         lane_rows=ports.lane_rows,
         refused_rows=ports.refused_rows,

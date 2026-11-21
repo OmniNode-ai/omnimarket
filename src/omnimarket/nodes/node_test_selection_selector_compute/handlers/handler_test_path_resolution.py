@@ -557,3 +557,17 @@ class HandlerTestPathResolution:
         return ModelPathResolutionResult(
             selected_paths=tuple(selected), data_only=data_only
         )
+
+
+# The graph's building blocks, public for the selection replay, which writes a frozen snapshot of
+# a tree and reads it back as a stub tree this handler resolves over unchanged.
+NODE_NAME = _NODE_NAME
+ImportGraph = _ImportGraph
+dotted_module = _dotted
+module_references = _references
+graph_vertex = _vertex
+
+
+def clear_import_graph_cache() -> None:
+    """Forget the import graphs built so far (one per checkout read)."""
+    _import_graph.cache_clear()
