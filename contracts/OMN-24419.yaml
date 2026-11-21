@@ -71,3 +71,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_lab_fill_effect/test_runtime_lab_fill_tick.py -q --no-cov --tb=line -k snapshots_free_slots
     cwd: .
+- id: dod-omn24419-deploy-gate-head-carries-the-fix
+  description: The pull request head carries the refusal-line fix (the unit entry's overlay refusal names the overlay id and the roots searched, and an approved-work refusal names its file path).
+  source: manual
+  checks:
+  - check_type: command
+    check_value: >-
+      bash -c 'gh api -H "Accept: application/vnd.github.raw" "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/runtime_lab_fill_tick.py?ref=$(git rev-parse HEAD)" | grep -q _overlay_detail'
+    cwd: .

@@ -31,6 +31,7 @@ from omnibase_spi.contracts.services import ModelLaneHostPoolRequest
 
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
+    NodeOverlayNotFoundError,
     load_structured_overlay,
 )
 from omnimarket.models.lab_fill.model_lab_fill_selection_overlay import (
@@ -91,6 +92,15 @@ class _RefusedError(Exception):
         self.code = code
 
 
+def _overlay_detail(exc: Exception) -> str:
+    """The error type; an overlay no root holds also names its id and the roots searched (that text holds no document value).
+
+    An overlay that is present but wrong keeps the type alone: its errors may carry private deployment facts."""
+    if isinstance(exc, NodeOverlayNotFoundError):
+        return f"{type(exc).__name__}: {' '.join(str(exc).split())}"
+    return type(exc).__name__
+
+
 def _hosts_from_snapshot(
     overlay: ModelLabFillTickOverlay,
     clock: Callable[[], datetime],
@@ -129,11 +139,15 @@ def _candidates_from_approved_work(path: Path) -> list[dict[str, object]]:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise _RefusedError(
-            "approved-work", type(exc).__name__, _EXIT_INPUT_UNAVAILABLE
+            "approved-work",
+            f"{type(exc).__name__} path={path}",
+            _EXIT_INPUT_UNAVAILABLE,
         ) from exc
     rows = document.get("rows") if isinstance(document, dict) else None
     if not isinstance(rows, list):
-        raise _RefusedError("approved-work", "no rows list", _EXIT_INPUT_UNAVAILABLE)
+        raise _RefusedError(
+            "approved-work", f"no rows list path={path}", _EXIT_INPUT_UNAVAILABLE
+        )
     candidates: list[dict[str, object]] = []
     for row in rows:
         if not isinstance(row, dict):
@@ -167,7 +181,7 @@ def _select_holds(
     try:
         deployment = ModelLabFillSelectionOverlay.load_deployment(environ)
     except (NodeOverlayError, ValueError) as exc:
-        raise _RefusedError("overlay", type(exc).__name__, _EXIT_OVERLAY) from exc
+        raise _RefusedError("overlay", _overlay_detail(exc), _EXIT_OVERLAY) from exc
     request = ModelLabFillSelectRequest(
         selection={
             "now": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -307,7 +321,7 @@ def main(
         )
     except (NodeOverlayError, ValueError) as exc:
         err.write(
-            f"lab-fill unit: step={_STEP} REFUSED reason=overlay detail={type(exc).__name__}\n"
+            f"lab-fill unit: step={_STEP} REFUSED reason=overlay detail={_overlay_detail(exc)}\n"
         )
         code = _EXIT_OVERLAY
     else:
