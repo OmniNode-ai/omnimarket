@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import click
@@ -36,6 +36,12 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
     setup_provider_traits,
 )
+
+
+def _credential_key(selection: Mapping[str, object]) -> str:
+    """The credential identity of an inline selection, as the setup plan keys it."""
+    connection = selection.get("connection_id")
+    return f"connection:{connection}" if connection else str(selection["provider"])
 
 
 def run_workflow_cli(
@@ -121,26 +127,17 @@ def run_workflow_cli(
             reuse = saved is not None and workspace == saved.workspace
             if added_to is not None and providers:
                 # OMN-23825: a configure re-run adds the chosen provider to the
-                # saved ones: the same provider is replaced in place, a new one
-                # is appended, and every other saved provider is kept, whatever
-                # folder the re-run starts in (the providers are this machine's).
-                chosen = {(p["provider"], p["connection_id"]) for p in providers}
-                had = {(s.provider, s.connection_id) for s in added_to.providers}
+                # saved ones: the entry with the same credential identity (the
+                # provider, or a named connection) is replaced in place, a new
+                # one is appended, and every other saved provider is kept,
+                # whatever folder the re-run starts in (the providers are this
+                # machine's).
+                chosen = {_credential_key(p): p for p in providers}
+                had = {s.credential_identity for s in added_to.providers}
                 providers = [
-                    next(
-                        p
-                        for p in providers
-                        if (p["provider"], p["connection_id"])
-                        == (s.provider, s.connection_id)
-                    )
-                    if (s.provider, s.connection_id) in chosen
-                    else s.model_dump()
+                    chosen.get(s.credential_identity, s.model_dump())
                     for s in added_to.providers
-                ] + [
-                    p
-                    for p in providers
-                    if (p["provider"], p["connection_id"]) not in had
-                ]
+                ] + [p for key, p in chosen.items() if key not in had]
             plan = ModelSetupPlan.model_validate(
                 {
                     "workspace": workspace or Path.home() / "Code" / "omnibase",
