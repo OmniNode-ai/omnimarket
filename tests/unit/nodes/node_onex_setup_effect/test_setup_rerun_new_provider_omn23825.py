@@ -7,6 +7,7 @@ Failure modes:
   F2. The fix prompts for a key the participant already stored for an unchanged provider.
   F3. The recorder that stands in for the hidden key prompt never fires, so a green F1 would prove nothing.
   F4. The fix widens past configure, so a repair or upgrade re-run stops keeping the saved provider and asks again.
+  F5. A finished setup never says how to add a provider later (AC3, the completion half).
 """
 
 from __future__ import annotations
@@ -169,3 +170,11 @@ def test_repair_and_upgrade_keep_the_saved_provider(rerun: Any, action: str) -> 
     result, rec = rerun("--action", action, input="")
     assert rec.plan is not None, result.output
     assert [p.provider for p in rec.plan.providers] == ["openai"]
+
+
+def test_completed_setup_names_the_command_to_add_a_provider(rerun: Any) -> None:
+    """F5: the completion output names onex models add."""
+    result, _rec = rerun(input="openai\ngpt-4.1-mini\n")
+    assert result.exit_code == 0, result.output
+    assert "Setup complete." in result.output
+    assert "onex models add" in result.output
