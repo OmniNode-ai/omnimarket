@@ -79,10 +79,8 @@ def main(
     result = build_handler_owner_summary(ledger_rows).handle(request)
     if result.facts is not None:
         sys.stdout.write(result.facts.model_dump_json(indent=1) + "\n")
-    for problem in result.problems:
-        sys.stdout.write(
-            f"{problem}\n" if args.command == "triage" else f"FAIL {problem}\n"
-        )
+    prefix = "" if args.command == "triage" else "FAIL "
+    sys.stdout.writelines(f"{prefix}{problem}\n" for problem in result.problems)
     if result.facts is None:
         sys.stdout.write(f"{result.message}\n")
     return result.exit_code
