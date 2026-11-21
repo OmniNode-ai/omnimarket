@@ -1,0 +1,81 @@
+{
+  "measured_on": "2026-11-20",
+  "bar_accepted_of_10": 7,
+  "path": "onex delegate in-process (--bus inmemory --locus in-process), customer OpenRouter key in a scratch HOME (onex models add openrouter --model <candidate>), --model <candidate>; accepted when the result is completed with quality_gate_passed true, served by the candidate itself on one attempt with HTTP 200 (OMN-26129)",
+  "tasks": "10 prompts with the 2026-10-25 composition (7 summarization, 1 review, 1 code_generation, 1 test); the 2026-10-25 prompts were not stored, so these neutral prompts are recorded here in full",
+  "task_prompts": [
+    {
+      "file": "01-summarization.md",
+      "task_type": "summarization",
+      "prompt": "Summarize the following in three sentences for a project status update.\n\nThe team moved the nightly build from a single large machine to four smaller runners. Build time fell from 52 minutes to 31 minutes, but two flaky integration tests now fail about once a week because they share a temporary directory. The fix is to give each test its own directory, which one engineer is doing this week. Cost went down by about 18 percent because the smaller runners are cheaper per hour.\n"
+    },
+    {
+      "file": "02-summarization.md",
+      "task_type": "summarization",
+      "prompt": "Summarize this incident note in two sentences: what happened and what was done.\n\nAt 09:14 UTC the checkout service began returning HTTP 502 for about 6 percent of requests. The cause was a configuration change that lowered the upstream connection pool from 200 to 20. The change was rolled back at 09:41 UTC and errors returned to zero by 09:44. A review rule now requires a load test for any connection-pool change.\n"
+    },
+    {
+      "file": "03-summarization.md",
+      "task_type": "summarization",
+      "prompt": "Summarize the key decision and its reason in one short paragraph.\n\nWe compared two queue designs for order events. Design A uses one topic per region, which keeps ordering within a region but needs six consumers. Design B uses one global topic keyed by order id, which keeps ordering per order and needs one consumer group. We chose Design B because ordering only matters within an order, and one consumer group is simpler to run and monitor.\n"
+    },
+    {
+      "file": "04-summarization.md",
+      "task_type": "summarization",
+      "prompt": "Summarize these release notes as three bullet points.\n\nVersion 2.4 adds dark mode to the settings page, fixes a bug where exported CSV files dropped the last row, and speeds up the search page by caching the last 50 queries. It also removes the deprecated v1 export endpoint, which was announced six months ago. Users of the v1 endpoint should move to v2, which returns the same fields plus a created_at timestamp.\n"
+    },
+    {
+      "file": "05-summarization.md",
+      "task_type": "summarization",
+      "prompt": "Summarize this meeting note in two sentences, naming the owner of each follow-up.\n\nThe design review agreed to keep the current database schema for the launch and revisit sharding in the next quarter. Priya will write the load-test plan by Friday. Marco will check whether the analytics job can run at night instead of during business hours. Nobody objected to dropping the legacy admin page after launch.\n"
+    },
+    {
+      "file": "06-summarization.md",
+      "task_type": "summarization",
+      "prompt": "Summarize this paragraph in one sentence for a non-technical reader.\n\nThe mobile app now retries a failed upload up to three times with a growing delay between attempts, and it stores the file locally until an upload succeeds. Before this change, a single network error during upload lost the photo, and users had to take it again.\n"
+    },
+    {
+      "file": "07-summarization.md",
+      "task_type": "summarization",
+      "prompt": "Summarize the trade-off described here in two sentences.\n\nCaching the product catalogue for ten minutes cuts database reads by about 80 percent during peak hours. The downside is that a price change can take up to ten minutes to appear on the site. For flash sales, the team can clear the cache by hand so new prices show immediately.\n"
+    },
+    {
+      "file": "08-review.md",
+      "task_type": "review",
+      "prompt": "Review this Python function and list any bugs or risks, most important first.\n\ndef average(values):\n    total = 0\n    for v in values:\n        total += v\n    return total / len(values)\n"
+    },
+    {
+      "file": "09-code_generation.md",
+      "task_type": "code_generation",
+      "prompt": "Write a Python function `chunk(items, size)` that splits a list into consecutive chunks of at most `size` items and returns a list of lists. Raise ValueError if size is less than 1. Include a short docstring.\n"
+    },
+    {
+      "file": "10-test.md",
+      "task_type": "test",
+      "prompt": "Write pytest tests for this function. Cover a normal case, an empty string, and a string with only spaces.\n\ndef word_count(text: str) -> int:\n    return len(text.split())\n"
+    }
+  ],
+  "smokes": [
+    {
+      "model": "nvidia/nemotron-3.5-super-vl:free",
+      "accepted": 10,
+      "tasks": 10,
+      "p50_seconds": 4.2,
+      "cost_usd_total": 0.0,
+      "cost_usd_per_task": 0.0,
+      "price_in_usd_per_million": 0.0,
+      "price_out_usd_per_million": 0.0,
+      "qualifies": true
+    }
+  ],
+  "not_measured": [
+    {
+      "model": "google/gemma-4-31b-it:free",
+      "reason": "OpenRouter answered 429 Too Many Requests when the key was registered for it, so no customer route was stored and every task was refused before dispatch; no answer was graded"
+    },
+    {
+      "model": "inclusionai/ling-3.2-flash:free",
+      "reason": "OpenRouter answered 429 Too Many Requests when the key was registered for it, so no customer route was stored and every task was refused before dispatch; no answer was graded"
+    }
+  ]
+}

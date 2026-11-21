@@ -4,9 +4,10 @@
 
 ``nightly``  build the graph of every declared repository and append the row (what the timer runs).
 ``probe``    the same build and verdict, appending nothing.
+``index``    ``[--repo R ...]``: write the version of each named declared repository (every one by default) into Memgraph; no row, no verdict.
 ``check``    ``--repo R --base REF --head REF``: name the modules the head adds that no root reaches.
 ``shadow``   check every open pull request of the overlay's shadow repositories, append one row, hold nothing.
-``lookup``   ``--question Q --repo R`` and the question's argument: one MATCH row per answer, then a LOOKUP line.
+``lookup``   ``--question Q --repo R`` and the question's argument (locate: ``--target``, a node name, contract path or workflow path): one MATCH row per answer, then a LOOKUP line.
 ``schedule`` install | uninstall | status | run-now, for a host in the overlay; ``--unit shadow`` is the shadow's timer.
 
 ``--fault`` on nightly, probe or shadow injects a declared fault; the row then carries ``drill=yes``.
@@ -24,13 +25,20 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from pydantic import ValidationError
 
+from omnimarket.handlers.arch_graph_bolt_host_overlay import (
+    resolve_arch_graph_bolt_uri,
+)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_overlay
+from omnimarket.handlers.node_overlay_resolved_roots import (
+    REGISTRY_ROOT_ENVS,
+    registry_root_from,
+)
 from omnimarket.handlers.rules_overlay_root_declared import (
     OverlayRootRefusedError,
     refuse_undeclared_overlay_root,
@@ -44,8 +52,17 @@ from omnimarket.models.model_code_graph import (
 )
 from omnimarket.models.model_code_graph_lookup import (
     EnumCodeGraphQuestion,
+    EnumRemovalKind,
     ModelCodeGraphLookupCommand,
     ModelCodeGraphLookupResult,
+)
+from omnimarket.nodes.node_code_graph_effect.adapters.memgraph_version_store import (
+    DEFAULT_RETENTION_VERSIONS,
+    MemgraphQueryError,
+    MemgraphUnreachableError,
+    MemgraphVersionStore,
+    open_memgraph_store,
+    revision_key,
 )
 from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources import (
     WatcherStatePullRequestSource,
@@ -59,6 +76,9 @@ from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_index import (
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_lookup import (
     CodeGraphLookup,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_lookup_routed import (
+    MemgraphFirstLookup,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
     CodeGraphRun,
@@ -98,15 +118,19 @@ SCHEDULE_BLOCKS = {
 }
 
 
-def _source(overlay: ModelCodeGraphOverlay) -> GitRepoSource:
+def _source(
+    overlay: ModelCodeGraphOverlay, environ: Mapping[str, str] | None = None
+) -> GitRepoSource:
     if overlay.graph_backend != "git":
         raise ValueError(
             "graph_backend in_memory is the test backend; a deployment reads git"
         )
-    root = os.environ.get(overlay.repos_root_env, "").strip()
+    env = os.environ if environ is None else environ
+    root = env.get(overlay.repos_root_env, "").strip() or registry_root_from(env)
     if not root:
         raise ValueError(
-            f"{overlay.repos_root_env} is not set; the overlay names it as the clones' root"
+            f"{overlay.repos_root_env} is not set; the overlay names it as the clones' root, "
+            f"and neither {' nor '.join(REGISTRY_ROOT_ENVS)} names the registry root"
         )
     return GitRepoSource(Path(root), max_file_bytes=overlay.graph_roots.max_file_bytes)
 
@@ -116,6 +140,19 @@ _VERSIONS: dict[int, InMemoryVersionStore] = {}
 
 
 def answer_lookup(command: ModelCodeGraphLookupCommand) -> ModelCodeGraphLookupResult:
+    """Answer a lookup from Memgraph by Cypher; from the file store only when Memgraph is unreachable.
+
+    The fallback answer carries the typed reason (``EnumLookupFallbackReason``) it fell back for.
+    """
+    return MemgraphFirstLookup(
+        open_store=lambda: _open_memgraph_store(None),
+        fallback=answer_lookup_from_files,
+    ).handle(command)
+
+
+def answer_lookup_from_files(
+    command: ModelCodeGraphLookupCommand,
+) -> ModelCodeGraphLookupResult:
     """Answer a lookup from the overlay's versions, building the head version of a repository on first ask.
 
     A lookup for a repository the overlay does not declare, or an overlay with no lookup block, or a
@@ -180,16 +217,41 @@ def build_handler(write: bool) -> tuple[CodeGraphRun, str]:
         raise ValueError(
             f"{overlay.ledger_append.host_env} is not set; the overlay names it as this host"
         )
+    source = _source(overlay)
     handler = CodeGraphRun(
         overlay=overlay,
         host=host,
-        source=_source(overlay),
+        source=source,
         appender=build_appender(overlay.ledger_append, overlay.publish.lane)
         if write
         else None,
         clock=lambda: datetime.now(UTC),
+        version_writer=_memgraph_writer(overlay) if write else None,
+        commit_clock=source,
     )
     return handler, host
+
+
+def _open_memgraph_store(overlay: ModelCodeGraphOverlay | None) -> MemgraphVersionStore:
+    retention = (
+        overlay.lookup.retention_versions
+        if overlay is not None and overlay.lookup is not None
+        else DEFAULT_RETENTION_VERSIONS
+    )
+    return open_memgraph_store(
+        resolve_uri=resolve_arch_graph_bolt_uri, retention_versions=retention
+    )
+
+
+def _memgraph_writer(overlay: ModelCodeGraphOverlay) -> MemgraphVersionStore | None:
+    """The nightly's Memgraph writer, or none where no Bolt address resolves (the file reading still runs)."""
+    try:
+        return _open_memgraph_store(overlay)
+    except MemgraphUnreachableError as exc:
+        sys.stderr.write(
+            f"CODE-GRAPH-MEMGRAPH-SKIPPED {exc.reason.value}: {exc.detail}\n"
+        )
+        return None
 
 
 def _run(arguments: argparse.Namespace, write: bool) -> int:
@@ -215,11 +277,69 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         f"outcome={result.outcome.value} fault={result.fault.value} "
         f"sample={f'{sample.agree}/{sample.total}' if sample else 'none'} "
         f"controls={f'{sample.controls_reached}/{sample.controls_total}' if sample else 'none'} "
-        f"ledger={result.ledger} key={result.row_key} reason={','.join(result.reasons[:8])}\n"
+        f"ledger={result.ledger} key={result.row_key} memgraph={result.memgraph} "
+        f"reason={','.join(result.reasons[:8])}\n"
     )
     if result.failure:
         sys.stderr.write(f"CODE-GRAPH-FAILED {result.failure}\n")
     return 1 if result.status == "failed" else 0
+
+
+def _index(arguments: argparse.Namespace) -> int:
+    """Write the named repositories' versions into Memgraph, one revision per repository head.
+
+    It builds no verdict and appends no ledger row, so one repository whose clone a host lacks
+    names itself and never keeps the others out of the graph.
+    """
+    overlay = load_overlay()
+    rules = GraphRules(roots=overlay.graph_roots)
+    source = _source(overlay)
+    declared = {repo.name: repo for repo in overlay.repos}
+    names = list(arguments.repo or declared)
+    unknown = [name for name in names if name not in declared]
+    if unknown:
+        sys.stderr.write(
+            f"CODE-GRAPH-INDEX-FAILED the overlay does not declare {unknown}\n"
+        )
+        return 1
+    try:
+        store = _open_memgraph_store(overlay)
+    except MemgraphUnreachableError as exc:
+        sys.stderr.write(f"CODE-GRAPH-INDEX-FAILED {exc.reason.value}: {exc.detail}\n")
+        return 1
+    failed = 0
+    try:
+        for name in names:
+            try:
+                snapshot = source.snapshot(name, declared[name].ref, rules.wanted)
+                version = build_version(
+                    snapshot,
+                    rules,
+                    committed_at=source.committed_at(name, snapshot.head),
+                )
+                written, pruned = store.put(version)
+            except (
+                RepoSourceError,
+                MemgraphUnreachableError,
+                MemgraphQueryError,
+            ) as exc:
+                failed += 1
+                sys.stdout.write(f"INDEX-FAILED {name} {type(exc).__name__}: {exc}\n")
+                continue
+            modules = len(
+                {d.path for d in version.definitions}
+                | {i.importer_path for i in version.imports}
+                | {i.imported_path for i in version.imports}
+            )
+            sys.stdout.write(
+                f"INDEX {name}@{snapshot.head[:12]} revision={revision_key(name, snapshot.head)} "
+                f"written={'yes' if written else 'already'} modules={modules} "
+                f"symbols={len(version.definitions)} imports={len(version.imports)} "
+                f"pruned={len(pruned)}\n"
+            )
+    finally:
+        store.close()
+    return 1 if failed else 0
 
 
 def _check(arguments: argparse.Namespace) -> int:
@@ -328,6 +448,14 @@ def _lookup(arguments: argparse.Namespace) -> int:
             paths=tuple(arguments.paths),
             archetype=arguments.archetype,
             hint=arguments.hint,
+            removal_kind=EnumRemovalKind(arguments.kind) if arguments.kind else None,
+            identity=arguments.identity,
+            star_export_list=(
+                tuple(arguments.star_export) if arguments.star_export else None
+            ),
+            head_all_lists_name=arguments.head_all_lists,
+            rebound_submodules=tuple(arguments.rebound_submodule),
+            target=arguments.target,
             as_of=arguments.as_of,
         )
     )
@@ -342,7 +470,9 @@ def _lookup(arguments: argparse.Namespace) -> int:
     sys.stdout.write(
         f"LOOKUP question={result.question.value} repo={result.repo} status={result.status} "
         f"answered_from={(result.answered_from or 'none')[:12]} matches={len(result.matches)} "
-        f"nearest={nearest} reason={result.reason or 'none'}\n"
+        f"nearest={nearest} served_from={result.served_from.value} "
+        f"fallback_reason={result.fallback_reason.value if result.fallback_reason else 'none'} "
+        f"reason={result.reason or 'none'}\n"
     )
     return 1 if result.status == "failed" else 0
 
@@ -427,6 +557,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             choices=[fault.value for fault in EnumGraphFault],
             default=EnumGraphFault.NONE.value,
         )
+        index = verbs.add_parser("index")
+        index.add_argument(
+            "--repo", action="append", help="a declared repository; default every one"
+        )
         check = verbs.add_parser("check")
         check.add_argument("--repo", required=True)
         check.add_argument("--base", required=True)
@@ -453,11 +587,42 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         lookup.add_argument("--hint", help="exemplar: words that rank the nodes")
         lookup.add_argument(
+            "--kind",
+            choices=[kind.value for kind in EnumRemovalKind],
+            help="users: what the removal took out",
+        )
+        lookup.add_argument(
+            "--identity", help="users: the dotted identity (a.mod.f, or a.mod)"
+        )
+        lookup.add_argument(
+            "--star-export",
+            nargs="+",
+            default=[],
+            help="users: the names the base revision's star import exposed",
+        )
+        lookup.add_argument(
+            "--head-all-lists",
+            action="store_true",
+            help="users: the head's literal __all__ still lists the removed name",
+        )
+        lookup.add_argument(
+            "--rebound-submodule",
+            action="append",
+            default=[],
+            help="users: a dotted submodule whose name the package binds to another object",
+        )
+        lookup.add_argument(
+            "--target",
+            help="locate: a node name, a contract path or a workflow path",
+        )
+        lookup.add_argument(
             "--as-of",
             dest="as_of",
             help="the commit to answer as of; absent means the head",
         )
         args = parser.parse_args(arguments)
+        if args.verb == "index":
+            return _index(args)
         if args.verb == "check":
             return _check(args)
         if args.verb == "lookup":

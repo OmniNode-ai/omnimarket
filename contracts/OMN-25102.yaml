@@ -1,0 +1,78 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-25102"
+title: "Omnimarket pull request 6344 fixes every blocking finding of its review at head 53e3cd0f6050: the missing-terminal cause remains open (a captured reproduction is recorded), the output reserve is gated, and the tests drive the public handler"
+summary: "Evidence for the review fixes carried on the branch of omnimarket#6344: the output reserve declared for each local rung, the public routing ladder exercised per use_for class with and without the overlay, the contract proof parsing the deployed dev terminal, the local-share alarm split out with defaulted rule fields. The missing-terminal cause of OMN-24980 stays open and is recorded as such in that ticket contract."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: "req-omn25102-review-fixes"
+  statement: "Every blocking finding of the review at head 53e3cd0f6050 is fixed or argued with evidence."
+  acceptance:
+  - id: "AC1"
+    statement: "AC1: the bus evidence for the missing terminal (consumer, registration, lag, handler errors) is recorded in the contract, or AC1 is re-scoped and AC2 and AC3 are listed as open, and the proof reads the answering field of a run on the dev runtime and not only an in-process run -- falsifier: `uv run pytest` of the contract proof test fails when the proof matches a skipped candidate or runs only in process"
+  - id: "AC2"
+    statement: "AC2: the served window minus the output reserve is declared or a near-window prompt is refused for every use_for class, with and without the overlay, and the route of every class beyond the local tier is pinned per class (escalation and research are refused unpinned, because the one rung beyond the local tier that lists them is explicit_pin_only) -- falsifier: `uv run pytest tests/nodes/node_delegation_routing_reducer -q -p no:cacheprovider` fails with the reserve removed or a class pinned local"
+  - id: "AC3"
+    statement: "AC3: the ceiling test pins the routing tiers path against DELEGATION_ROUTING_TIERS_PATH and drives the public handler with the full ladder and the overlay gate -- falsifier: `uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py -q -p no:cacheprovider` passes with the environment variable set to another file"
+  - id: "AC4"
+    statement: "AC4: the local_share finding is populated or split out, the new rule fields have defaults or every contract copy and fixture is updated, and the smoke test asserts the rendered command with --backend-id -- falsifier: `uv run pytest tests/nodes -q -p no:cacheprovider -k delegation_health` fails with the field defaults removed or the template left unrendered"
+  - id: "AC5"
+    statement: "AC5: each blocking finding has a test that fails at head 53e3cd0f6050 and passes at the new head, the non-blocking findings are fixed or argued, and a PR comment starting `Lab: head=<full new head sha>` names each command with exit 0 -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6344` shows no comment starting `Lab: head=` with the new head sha, or the comment lacks a command or exit 0, checked with `uv run pytest` of each changed file"
+evidence_requirements:
+- kind: "tests"
+  description: "Focused tests of every file the change touches."
+  command: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+- id: "dod-omn25102-contract-proof"
+  description: "The contract proof reads the answering attempt of a deployed dev-runtime terminal and is refused for an in-process run, another lane, a failed terminal and a skipped local candidate; the missing-terminal cause stays recorded as open in contracts/OMN-24980.yaml, with AC2 and AC3 of that ticket listed as open."
+  source: "manual"
+  checks:
+  - check_type: "test_passes"
+    check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov"
+    cwd: "."
+  binds_ac: ["AC1"]
+- id: "dod-omn25102-output-reserve"
+  description: "The public routing reducer keeps the output reserve for every local use_for class with and without the overlay, and pins the route of every class beyond the local tier (escalation and research are refused unpinned; a pin reaches the one large-window rung that lists them)."
+  source: "manual"
+  checks:
+  - check_type: "test_passes"
+    check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer -q --no-cov"
+    cwd: "."
+  binds_ac: ["AC2"]
+- id: "dod-omn25102-ceiling-path-pin"
+  description: "The ceiling test pins the routing tiers path against DELEGATION_ROUTING_TIERS_PATH and drives the public handler with the full ladder and the overlay gate."
+  source: "manual"
+  checks:
+  - check_type: "test_passes"
+    check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py -q --no-cov"
+    cwd: "."
+  binds_ac: ["AC3"]
+- id: "dod-omn25102-health-rules"
+  description: "The local_share finding is split out, the new delegation health rule fields carry defaults, and the smoke test asserts the rendered command with --backend-id."
+  source: "manual"
+  checks:
+  - check_type: "test_passes"
+    check_value: "uv run pytest tests/nodes/node_delegation_health_compute -q --no-cov"
+    cwd: "."
+  binds_ac: ["AC4"]
+- id: "dod-omn25102-changed-files"
+  description: "Each changed test file passes at the new head; the lab comment of the new head names each command with its exit code."
+  source: "manual"
+  checks:
+  - check_type: "test_passes"
+    check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q --no-cov"
+    cwd: "."
+  binds_ac: ["AC5"]
+- id: "dod-omn25102-integration-proof"
+  description: "Run the focused routing, contract-proof and delegation-health tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; it binds no acceptance criterion."
+  source: "manual"
+  execution_scope: "local_done_gate"
+  checks:
+  - check_type: "command"
+    check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-25102 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_routing_reducer tests/nodes/node_delegation_health_compute -q --no-cov"
+    cwd: "."

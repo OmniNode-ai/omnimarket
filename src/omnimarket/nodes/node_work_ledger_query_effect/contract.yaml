@@ -87,6 +87,11 @@ work_ledger_query:
   # table (326 thousand rows, 22.5 s). The node's overlay field default_rows_window_days, when an
   # overlay supplies it, replaces this declared default.
   rows_default_window_days: 3
+  # A rows read with no limit, page_size or full flag is also cut to the newest this many rows,
+  # because a window can still hold more rows than one capture should carry (a whole-ledger read
+  # wrote 100,000 to 190,000 lines into one file per call). A caller that wants everything sets
+  # full. The node's overlay field default_rows_limit, when an overlay supplies it, replaces this.
+  rows_default_limit: 1000
   # A rows query that carries page_size reads its window from the store once and holds it (OMN-24031):
   # the cursor of each page names the window's until, so the next page is cut from the held copy
   # instead of re-reading the window (measured on the dev bus: 108,757 rows over 7 days, about 109

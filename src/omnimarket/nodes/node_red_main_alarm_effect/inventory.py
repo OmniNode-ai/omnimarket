@@ -109,6 +109,12 @@ def _fresh(stamp: str, now: datetime, max_age: timedelta) -> bool:
     return value.tzinfo is not None and timedelta() <= now - value <= max_age
 
 
+def _default_branch(snapshot: _Snapshot, name: str) -> Branch | None:
+    metadata = snapshot.repos.get(name)
+    branch = metadata.default_branch if metadata else None
+    return cast(Branch, branch) if branch in ("main", "dev") else None
+
+
 def _target(
     snapshot: _Snapshot,
     name: str,
@@ -218,6 +224,7 @@ def read_inventory(
                 ModelAlarmFailure(
                     kind=EnumAlarmFailure.INVENTORY_UNREADABLE,
                     repo=repo,
+                    branch=_default_branch(snapshot, name),
                     detail=str(exc),
                 )
             )

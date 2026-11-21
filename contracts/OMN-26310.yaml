@@ -1,0 +1,88 @@
+schema_version: 1.0.0
+ticket_id: OMN-26310
+title: A runtime tick on projection_eval_results returns or fails within its deadline and orphans no dispatch, and a judged event on an unmaterialized projection does not loop
+summary: 'The eval-results writer bounds its connect, snapshot read and publish with declared constants of the node and returns a typed refusal for a tick that breaches them; it stops the runtime-owned producer inside the event loop that built it, so a send is never attempted on a producer from a loop that no longer exists; and it withholds a judged event that meets an unmaterialized table a declared number of times, then dead-letters it with a typed reason instead of leaving it to be rewound without end.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26310-bounded-tick
+    statement: A runtime tick on node_projection_eval_results returns or fails typed inside a declared bound, a judged event on an unmaterialized projection is dead-lettered after a declared count, and the dispatch deadline, the boot guard, the broker health check and every compose file are untouched.
+    acceptance:
+      - id: AC1
+        statement: "AC1: the await that the projection_eval_results runtime tick parks on is measured from a thread or asyncio task dump of the running dev container (read only) and named in the PR body with the dump excerpt, the read time and the container -- falsifier: onex scm pr-view of the PR shows no section headed Measured await holding a stack excerpt and a UTC read time"
+      - id: AC2
+        statement: "AC2: a runtime tick on node_projection_eval_results whose snapshot read or publish never completes returns or fails with a typed reason within a declared bound well under the 600 s dispatch deadline and orphans no dispatch -- falsifier: uv run pytest tests/nodes/node_projection_eval_results -q -k tick_deadline fails at omnimarket origin/dev and passes with the fix"
+      - id: AC3
+        statement: "AC3: a judged event that arrives while the projection table is not materialized is refused or deferred once with a typed reason and is not rewound and redelivered in a loop -- falsifier: uv run pytest tests/nodes/node_projection_eval_results -q -k not_materialized fails at omnimarket origin/dev and passes with the fix"
+      - id: AC4
+        statement: "AC4: the dispatch deadline, the boot guard and the broker health check are unchanged, and the PR changes no compose file by hand; if the 3.22 GiB runtime memory ceiling is a declared compose setting the PR comment names the file, the value and the measured need -- falsifier: git diff origin/dev --stat on the PR branch lists no dispatch deadline setting, no boot guard file, no health check file and no compose file, run with uv run pytest tests/nodes/node_projection_eval_results -q"
+      - id: AC5
+        statement: "AC5: on the dev runtime after the deploy agent applies the branch, the group local.omnimarket.projection_eval_results.consume.1.0.0 reads STATE Stable with its committed offset advancing across two reads 10 minutes apart and dev /health event_bus reports orphaned dispatches at or below 3 -- falsifier: rpk group describe on the dev broker shows an unchanged committed offset across the two reads or /health event_bus still reads unhealthy"
+      - id: AC6
+        statement: "AC6: a judged or code-try delivery whose envelope tenant stamp is no uuid is dead-lettered once with a typed invalid_event refusal naming the tenant, and a dead letter that is not confirmed published raises so the offset stays -- falsifier: uv run pytest tests/nodes/node_projection_eval_results/test_writer.py -k tenant -q fails at omnimarket origin/dev and passes with the fix"
+evidence_requirements:
+  - kind: tests
+    description: The node tests, including the tick_deadline and not_materialized selections, pass at the pushed head.
+    command: uv run pytest tests/nodes/node_projection_eval_results -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26310-ac1
+    description: "AC1: the Measured await section of the PR body holds the container, the UTC read time and the excerpt the runtime logged for the abandoned tick; the producer test reproduces the parked second delivery on a loop-bound producer."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_projection_eval_results -k 'tick_deadline and carried' -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26310-ac2
+    description: "AC2: each tick_deadline test holds a store, a connect or a publisher that never completes and reads a typed refusal inside the declared bound; the selection fails at the merge base."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_projection_eval_results -k tick_deadline -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26310-ac3
+    description: "AC3: the not_materialized tests read the withheld deliveries below the declared count, one dead letter at it, a raise when the dead letter is not published, and no effect on any other failure; the selection fails at the merge base."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_projection_eval_results -k not_materialized -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26310-ac4
+    description: "AC4: the diff touches only the node, its tests and this contract; the node suite runs green with no compose file, dispatch deadline, boot guard or health check in the change. The memory ceiling is named in a PR comment."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_projection_eval_results -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26310-ac5
+    description: "AC5: the group state and the dev /health reading after the deploy agent applies the branch are operational evidence read from the dev broker and the dev runtime; the hosted proxy is the node suite."
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_projection_eval_results -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26310-tenant-stamp-dead-letter
+    description: "A judged or code-try delivery whose envelope tenant stamp is no uuid is dead-lettered once with a typed invalid_event refusal naming the tenant, a dead letter that is not confirmed published is raised, and a lane's own configured tenant that is no uuid still raises; the dev runtime logged this as ValueError badly formed hexadecimal UUID string and withheld the offset. It binds AC6."
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_projection_eval_results/test_writer.py -k tenant -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26310-integration-proof
+    description: 'Run the node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion: the dev runtime install of the branch is read under AC5 after the deploy agent applies it.'
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26310 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_projection_eval_results -q --no-cov
+        cwd: .

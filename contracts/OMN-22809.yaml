@@ -23,6 +23,11 @@ requirements:
         statement: 'AC4: handler_routing stays boot-resolvable with HandlerLandingJoinJ8 constructed in process, not routed -- falsifier: uv run --frozen pytest tests/test_handler_routing_boot_resolvable.py tests/validation/test_runtime_profile_contract_ownership.py -q --no-cov'
       - id: AC5
         statement: 'AC5: HandlerLandingJoinJ8 constructs with no arguments and refuses to emit without a sink -- falsifier: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_join_j8.py -q --no-cov'
+  - id: req-omn22809-overlay-root-no-pin
+    statement: A registry unit's overlay roots name the plugin only through the marketplace root; the installer refuses a plugin cache path that pins a version, whether it comes from the unit's default or from a request override.
+    acceptance:
+      - id: AC6
+        statement: 'AC6: an overlay-root override naming a version-pinned plugin cache folder is refused with the path and version named, for the job-log filler and every unit declaring the worktree refusal on the overlay roots; the default roots carry no pinned version -- falsifier: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_root_never_a_pinned_plugin_version.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The node's focused tests, golden and error chain event tests, and the named breaks.
@@ -91,4 +96,13 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22809-j8 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_handler_routing_boot_resolvable.py tests/validation/test_runtime_profile_contract_ownership.py -q --no-cov'
+        cwd: .
+  - id: dod-omn22809-overlay-root-no-pin
+    description: A version-pinned plugin cache path in an overlay-root variable is refused with the path and version named, for every unit that refuses a worktree there; the test module fails to import at the merge base and passes with the change.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_root_never_a_pinned_plugin_version.py -q --no-cov -n 0 -p no:randomly
         cwd: .

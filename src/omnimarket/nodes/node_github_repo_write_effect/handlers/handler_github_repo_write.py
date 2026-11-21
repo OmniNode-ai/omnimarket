@@ -1558,7 +1558,7 @@ async def _runner_group_get(run: _Run) -> ModelRepoWriteCompleted:
         page += 1
     name = meta.get("name")
     allows_public = meta.get("allows_public_repositories")
-    restricted = meta.get("restricted_to_selected_workflows")
+    restricted = meta.get("restricted_to_workflows")
     selected = meta.get("selected_workflows")
     if (
         not isinstance(name, str)
@@ -1568,7 +1568,7 @@ async def _runner_group_get(run: _Run) -> ModelRepoWriteCompleted:
         raise run.refused(
             EnumRepoWriteRefusal.GITHUB_REFUSED,
             f"runner group {group_id} on {organization} answered a body without "
-            "name, allows_public_repositories and restricted_to_selected_workflows",
+            "name, allows_public_repositories and boolean restricted_to_workflows",
         )
     return run.completed(
         runner_group=ModelRepoWriteRunnerGroup(

@@ -1,0 +1,82 @@
+schema_version: 1.0.0
+ticket_id: OMN-24584
+title: Deliver the h202 thermal guard's queued rows and alarm on every trip and release
+summary: The thermal guard on host h202 closes the lab-run folder when the CPU is hot and writes a latch file only an operator removes, and its status rows never reached the ledger (its stale posting wrapper exits 70; 22 rows sit in its outbox). A new node, node_host_thermal_hold_report_effect, runs on the host as a declared systemd timer unit. It delivers the queued rows through the declared ledger bus append command (delivered rows leave the outbox, undelivered rows stay, a refused row is moved to a refused file and reported) and posts one ledger MSG to the orchestrator lane when the latch appears and one when it is gone after a trip, each naming the host, the temperature and what an operator does next; the hourly tick prints such a MSG as a MISSING inbox line. A latch that cannot be read or has changed shape is a typed error and never a release. The guard's thresholds, latch, power caps and fans are not changed.
+is_seam_ticket: false
+interface_change: false
+requirements:
+- id: req-omn24584-guard-rows-alarm
+  statement: A host's thermal guard trip and release each produce one alarm that reaches the hourly tick, and the guard's queued rows reach the ledger or are reported.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a trip of a host's thermal guard produces exactly one ledger message to the orchestrator lane that names the host, the temperature and what an operator does next, and a second run while the latch stays posts none -- falsifier: pytest tests/nodes/node_host_thermal_hold_report_effect/test_host_thermal_hold_report.py -q"
+  - id: AC2
+    statement: "AC2: a release produces exactly one message, and a latch file that cannot be read or has changed shape never produces a release -- falsifier: pytest tests/nodes/node_host_thermal_hold_report_effect/test_error_chain_host_thermal_hold_report_effect.py -q"
+  - id: AC3
+    statement: "AC3: every queued guard row is delivered, kept or moved to a refused file with its refusal reported, none is dropped, and a row the guard appends while delivery runs is kept -- falsifier: pytest tests/nodes/node_host_thermal_hold_report_effect/test_host_thermal_hold_report.py tests/nodes/node_host_thermal_hold_report_effect/test_seam_guard_state.py -q"
+  - id: AC4
+    statement: "AC4: the guard's real file shapes and the alarm row against the ledger row grammar are pinned, so a change on either side fails a test -- falsifier: pytest tests/nodes/node_host_thermal_hold_report_effect/test_seam_guard_state.py -q"
+  - id: AC5
+    statement: "AC5: integrated: on host h202 the unit onex-host-thermal-hold-report, installed from the merged revision, runs every minute with exit 0, the guard's queued rows are in the rolling ledger, and the throughput tick prints a MISSING inbox line naming h202 and its temperature for a trip -- falsifier: systemctl --user list-timers onex-host-thermal-hold-report.timer on h202, the unit's last-run.json, a ledger read for the queued request ids, and the throughput tick output"
+evidence_requirements:
+- kind: tests
+  description: The node's unit, golden chain, error chain and seam tests (with the dedupe failing control) and the installer unit declaration tests.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_thermal_hold_report_effect tests/nodes/node_host_installer_registry_units/test_host_thermal_hold_report_unit.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24584-ac1-trip-alarm
+  description: One MSG per trip naming host and temperature; the dedupe failing control sends a second row when the dedupe is removed.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_thermal_hold_report_effect/test_host_thermal_hold_report.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24584-ac2-release-and-error-chain
+  description: One MSG per release; an unreadable or reshaped latch never reads as a release; every error path loses nothing.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_thermal_hold_report_effect/test_error_chain_host_thermal_hold_report_effect.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24584-ac3-outbox
+  description: Delivery, keeping and refusal of the guard's queued rows, and the claim that keeps a row the guard appends meanwhile.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_thermal_hold_report_effect/test_host_thermal_hold_report.py tests/nodes/node_host_thermal_hold_report_effect/test_seam_guard_state.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24584-ac4-seam
+  description: The guard's file shapes as literals, and the alarm row against the ledger row grammar node; a renamed key gives the typed shape_changed error and a row with no from cell is refused.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_thermal_hold_report_effect/test_seam_guard_state.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24584-ac5-hosted-half
+  description: The hosted half of AC5, the unit declaration renders with the host name and the declared ledger append command and the module answers its probe; the running reading on h202 is the unbound check below.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_host_thermal_hold_report_unit.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24584-ac5-integration-proof
+  description: Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The pushed head runs the seam tests on a lab host through the lab work runner. The running reading on host h202 (the installed unit, its heartbeat, the delivered rows and the tick line) is read from the lab receipt comment on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-omn24584 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_thermal_hold_report_effect/test_seam_guard_state.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
