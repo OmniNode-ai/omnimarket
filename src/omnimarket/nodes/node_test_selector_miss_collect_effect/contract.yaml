@@ -70,12 +70,18 @@ input_subscriptions:
 
 terminal_event: onex.evt.omnimarket.test-selector-collect-completed.v1
 
+# Both handlers take their ports (gateway, alarm store, receiver) and the overlay's settings as constructor parameters,
+# which the runtime's auto-wiring cannot supply, so the runtime subscribes to nothing for this node: the lab host's
+# poller and the lab status tick run it as their own process (the way node_lab_alarm's CLI-built handlers run). Its
+# command topics are declared under externally_produced_topics below.
 event_bus:
-  subscribe_topics:
-    - onex.cmd.omnimarket.test-selector-collect-nightly-requested.v1
-    - onex.cmd.omnimarket.test-selector-slot-check-requested.v1
+  subscribe_topics: []
   publish_topics:
     - onex.evt.omnimarket.test-selector-collect-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+  command_topic: onex.cmd.omnimarket.test-selector-collect-nightly-requested.v1
 
 # A lab host polls the nightly's run (onex scm run-list) after its scheduled time and the lab status tick sends the
 # slot check; neither sender is a node contract.
