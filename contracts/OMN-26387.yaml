@@ -16,6 +16,8 @@ requirements:
         statement: "AC2: a test shows pr-create's duplicate guard reads its claims through the reader node and never the ledger file -- falsifier: uv run pytest of that test in the repository that owns the guard fails when the guard reads the file or the reader answers not-moved"
       - id: AC5
         statement: "AC5: a regression test built from the recorded reader output of 2026-11-21 (the exit 3 reader-not-in-moved-readers answer and the exit 1 answer of h105, fixture under the owning repository's tests/fixtures) fails on the broken code and passes on the fix -- falsifier: uv run pytest of that test on the code before the fix passes"
+      - id: AC6
+        statement: "AC6: the guard's reader subprocess is given a timeout longer than the 253 second read recorded on h051 at a load of 46 on 2026-11-21 -- falsifier: uv run pytest of the loaded-host test fails when the guard keeps the reader adapter's 120 second default"
 evidence_requirements:
   - kind: tests
     description: "The guard's reader-host tests, replaying the recorded reader answers through the production adapter."
@@ -41,6 +43,14 @@ dod_evidence:
       - check_type: test_passes
         check_value: >-
           uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_reader_hosts.py -q --no-cov -k "before_fix or answers_of_2026_11_21"
+  - id: dod-omn26387-ac6
+    description: "The guard builds its production reader with a timeout above the loaded-host read time; the 120 second default fails this test."
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_reader_hosts.py -q --no-cov -k waits_for_the_reader
   - id: dod-omn26387-deploy-contract
     description: "Hosted deploy check: the guard's reader-host tests pass."
     source: manual
