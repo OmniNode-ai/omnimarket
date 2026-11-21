@@ -19,6 +19,7 @@ Failure modes, each with a test below:
   R7  a manifest that cannot be loaded breaks the open, or records a recompute against the empty fallback table;
       R7b the same for a manifest that goes after the process cached it
   R8  a manifest version change leaves the stored manifest version stale
+  R9  a store with neither recompute recorded prices every run twice on one open, holding the write lock longer
 
 The model a run is priced by reaches its saving only through priced_spend: whether the manifest lists the model, and
 whether it lists it free while the run cost money. Where the alias and the model are both paid, the two orders give the
@@ -421,3 +422,35 @@ def test_recompute_savings_a_read_only_store_is_read_as_it_is(
     assert len(warnings) == 1
     assert str(path) in warnings[0]
     assert "recomputed each run's modelled saving" in warnings[0]
+
+
+def test_recompute_savings_a_store_with_neither_recompute_recorded_recomputes_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R9: a store with neither the earlier recompute nor a rule step recorded prices each run once on one open, not
+    once per step: both steps run the same recompute, and every run held under the write lock delays other writers."""
+    path = _earlier_store(
+        tmp_path, model=_PAID_MODEL, alias=_FREE_ALIAS, cost_usd=_PAID_COST
+    )
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "DELETE FROM omnimarket_sqlite_store_steps WHERE step = ?", (_EARLIER_STEP,)
+        )
+    real = handler_run_savings.modelled_run_savings_columns
+    calls: list[object] = []
+
+    def counted(row: Any) -> dict[str, object]:
+        calls.append(row["correlation_id"])
+        return real(row)
+
+    monkeypatch.setattr(handler_run_savings, "modelled_run_savings_columns", counted)
+    _open(path)
+    assert calls == ["aliased"]
+    monkeypatch.undo()
+    assert _saving_and_cost(path)[0] == _expected(path)
+    assert len(_recorded_rule_steps(path)) == 1
+    with sqlite3.connect(path) as conn:
+        assert conn.execute(
+            "SELECT 1 FROM omnimarket_sqlite_store_steps WHERE step = ?",
+            (_EARLIER_STEP,),
+        ).fetchone()

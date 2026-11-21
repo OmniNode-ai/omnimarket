@@ -411,12 +411,17 @@ def run_savings_rule_step() -> str | None:
     )
 
 
-def _recompute_for_rule(rule: str) -> Callable[[sqlite3.Connection], None]:
+def _recompute_for_rule(
+    rule: str, recompute: bool = True
+) -> Callable[[sqlite3.Connection], None]:
     """Recompute every stored saving, then forget every other rule step in the same transaction, so only the
-    current rule and prices stand recorded and a later return to earlier ones recomputes again."""
+    current rule and prices stand recorded and a later return to earlier ones recomputes again. With recompute
+    False the step only records itself: the earlier recompute step, listed before it in the same open, has just
+    run the same recompute."""
 
     def apply(conn: sqlite3.Connection) -> None:
-        recompute_run_savings(conn)
+        if recompute:
+            recompute_run_savings(conn)
         conn.execute(
             "DELETE FROM omnimarket_sqlite_store_steps WHERE step GLOB ? AND step != ?",
             (_RUN_SAVINGS_RULE_STEP_PREFIX + "*", rule),
@@ -459,10 +464,13 @@ def pending_local_run_steps(
         # Checked only when the recompute is pending, so an open with nothing to do reads no file.
         _warn_manifest_unloaded()
     else:
+        # A store that has not run the earlier recompute either runs it first in this open (same function, same
+        # rule and prices), so the rule step does not price every run a second time under the write lock.
+        earlier = any(step[0] == RUN_SAVINGS_RECOMPUTE_STEP for step in pending)
         pending.append(
             (
                 rule,
-                _recompute_for_rule(rule),
+                _recompute_for_rule(rule, recompute=not earlier),
                 "recomputed each run's modelled saving for the current rule and prices",
             )
         )
