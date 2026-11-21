@@ -69,7 +69,6 @@ event_bus:
     - onex.cmd.omnimarket.test-selector-attribute-requested.v1
   publish_topics:
     - onex.evt.omnimarket.test-selector-read.v1
-    - onex.evt.omnimarket.test-selector-attributed.v1
 
 # The floor's reading source sends the request and reads the result; neither is a node contract.
 externally_produced_topics:
@@ -79,15 +78,12 @@ externally_produced_topics:
     producer: "a caller that holds the night's per-file outcomes and the candidate records, for example the collect effect, which applies the same pure rules in-process; not a node contract"
 externally_consumed_topics:
   - onex.evt.omnimarket.test-selector-read.v1
-  - onex.evt.omnimarket.test-selector-attributed.v1
 
 broker_acl_grants:
   - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
     grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-attribute-requested.v1, operation: READ}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-attribute-requested.v1, operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-selector-attributed.v1, operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-selector-attributed.v1, operation: DESCRIBE}
 
 metadata:
   description: "Test selector activation and shadow-miss reading per repository"

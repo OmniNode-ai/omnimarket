@@ -608,10 +608,7 @@ def test_the_contract_declares_both_operations_and_their_handlers() -> None:
             / "src/omnimarket/nodes/node_test_selector_miss_collect_effect/contract.yaml"
         ).read_text()
     )
-    routes = {
-        h["operation"]: h["handler"]["name"]
-        for h in contract["handler_routing"]["handlers"]
-    }
+    routes = {h["operation"]: h["handler"]["name"] for h in contract["cli_handlers"]}
     assert routes == {
         "collect_nightly": "HandlerCollectNightly",
         "check_slot_result": "HandlerCheckSlotResult",

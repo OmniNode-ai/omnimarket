@@ -54,7 +54,7 @@ def _handler_class(entry: dict[str, Any]) -> Any:
 
 
 def test_contract_binds_each_operation_with_the_canonical_signature() -> None:
-    for entry in _contract()["handler_routing"]["handlers"]:
+    for entry in _contract()["cli_handlers"]:
         handler_class = _handler_class(entry)
         hints = get_type_hints(handler_class.handle)
         request_module, _, request_name = entry["input_model"].rpartition(".")
@@ -70,7 +70,7 @@ def test_contract_binds_each_operation_with_the_canonical_signature() -> None:
 def test_golden_a_night_with_no_gateway_run_records_nothing_and_the_slot_check_alarms() -> (
     None
 ):
-    entries = {e["operation"]: e for e in _contract()["handler_routing"]["handlers"]}
+    entries = {e["operation"]: e for e in _contract()["cli_handlers"]}
     settings = ModelMissCollectSettings.load(OVERLAY)
     store, receiver = InMemoryAlarmStore(), InMemoryAlarmReceiver()
     collect = _handler_class(entries["collect_nightly"])(

@@ -71,7 +71,6 @@ def test_contract_binds_the_handler_with_the_canonical_signature() -> None:
     ]
     assert contract["event_bus"]["publish_topics"] == [
         "onex.evt.omnimarket.test-selector-read.v1",
-        "onex.evt.omnimarket.test-selector-attributed.v1",
     ]
 
 

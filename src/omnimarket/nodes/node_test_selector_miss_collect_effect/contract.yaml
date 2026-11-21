@@ -23,21 +23,22 @@ description: >
   within collector_max_lag_hours of the slot, also when the collector is disabled. The effect refuses to start when the
   overlay's owner_role is unset. A detector with named limits, not proof of cause.
 
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: collect_nightly
-      handler:
-        name: HandlerCollectNightly
-        module: omnimarket.nodes.node_test_selector_miss_collect_effect.handlers.handler_collect_nightly
-      input_model: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_collect.ModelCollectRequest
-      output_model: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_collect.ModelCollectResult
-    - operation: check_slot_result
-      handler:
-        name: HandlerCheckSlotResult
-        module: omnimarket.nodes.node_test_selector_miss_collect_effect.handlers.handler_check_slot_result
-      input_model: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_collect.ModelSlotCheckRequest
-      output_model: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_collect.ModelSlotCheckResult
+# Both handlers take their ports and the overlay's settings as constructor parameters, so the runtime cannot construct
+# them at boot (tests/test_handler_routing_boot_resolvable.py); they are built by this node's own process, like
+# node_lab_alarm's cli_handlers, and the node declares no handler_routing.
+cli_handlers:
+  - operation: collect_nightly
+    handler:
+      name: HandlerCollectNightly
+      module: omnimarket.nodes.node_test_selector_miss_collect_effect.handlers.handler_collect_nightly
+    input_model: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_collect.ModelCollectRequest
+    output_model: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_collect.ModelCollectResult
+  - operation: check_slot_result
+    handler:
+      name: HandlerCheckSlotResult
+      module: omnimarket.nodes.node_test_selector_miss_collect_effect.handlers.handler_check_slot_result
+    input_model: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_collect.ModelSlotCheckRequest
+    output_model: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_collect.ModelSlotCheckResult
 
 handler:
   module: omnimarket.nodes.node_test_selector_miss_collect_effect.handlers.handler_collect_nightly
