@@ -152,3 +152,16 @@ def test_worker_unit_declares_the_overlay_root_its_read_step_needs() -> None:
     assert unit["environment"]["ONEX_SKILL_OVERLAY_ROOTS"] == "{overlays_root}"
     assert "ONEX_SKILL_OVERLAY_ROOTS" in unit["environment_path_overrides"]
     assert unit["environment_refuse_worktree_paths"] == ["ONEX_SKILL_OVERLAY_ROOTS"]
+
+
+@pytest.mark.unit
+def test_worker_unit_declares_the_config_root_its_ledger_append_needs() -> None:
+    """The write steps append through the bus append command, which resolves the lane declaration under the workspace
+    config root; a worker unit without it fails every per-change write step with append-command-exit-69."""
+    unit = yaml.safe_load(UNITS.read_text(encoding="utf-8"))["units"][
+        "temporal-worker-systemd"
+    ]
+    assert unit["environment_inputs"]["ONEX_WORKSPACE_CONFIG_ROOT"] == (
+        "workspace_config_root"
+    )
+    assert "ONEX_WORKSPACE_CONFIG_ROOT" in unit["required_environment_inputs"]

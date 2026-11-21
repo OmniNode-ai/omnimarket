@@ -1,0 +1,609 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""``python -m omnimarket.nodes.node_prove_running_workflow <verb>``: the node's declared CLI.
+
+Verbs:
+
+* ``worker``: run the Temporal worker for both workflows against a server (``--target-host``, ``--namespace``).
+* ``start``: read one integration pass batch (``--batch``, a ``ModelIntegrationReadingBatch`` JSON file), and start
+  one workflow per NOT RUNNING line, id ``<repo>#<n>@<sha>``; a second start of a running change joins it and a start
+  of a finished one is refused.
+* ``schedule``: create or update the hourly batch schedule, with an optional immediate trigger.
+* ``read-not-running``, ``group-by-host`` and ``write-line-row``: batch step commands. The first reads the integration pass's typed batch
+  from its snapshot topic (no ledger file) and selects every NOT RUNNING line; the second builds child plans per host; the third
+  writes the result row of a line that has no workflow of its own in this batch.
+* ``read``: a step command. Reads the step input on stdin, reads the change through
+  ``node_merged_change_reading_effect`` (its declared CLI) and answers one ``ModelProveRunningAnswer`` line.
+* ``install``: a step command. The declared installer of the change's target, from the contract's ``installers``.
+* ``write-row``: a step command. Builds the STATUS or alarm row and appends it through the ledger CLI
+  (``onex-ledger``, which writes through the work ledger append node over the bus on a bus host).
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import os
+import shlex
+import subprocess
+import sys
+from collections.abc import Mapping
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+from importlib import resources
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+from uuid import NAMESPACE_URL, uuid5
+
+import yaml
+
+from omnimarket.handlers.floor_projection import (
+    BusSnapshotSource,
+    InMemorySnapshotSource,
+    ProtocolSnapshotSource,
+)
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    load_structured_overlay,
+)
+from omnimarket.handlers.overlay_store.bus_opener import open_lane_bus, workspace_root
+from omnimarket.models.floor_projection import ModelFloorProjectionReadOverlay
+from omnimarket.models.integration_reading import ModelIntegrationReadingBatch
+from omnimarket.models.model_merged_change_reading import ModelMcrResult
+from omnimarket.nodes.node_prove_running_workflow.handlers import (
+    HandlerProveRunningRows,
+    HandlerProveRunningStarter,
+)
+from omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_line_rows import (
+    write_line_row,
+)
+from omnimarket.nodes.node_prove_running_workflow.handlers.integration_projection_reader import (
+    IntegrationBatchRefusedError,
+    read_integration_batch,
+)
+from omnimarket.nodes.node_prove_running_workflow.handlers.prove_running_hosts import (
+    group_by_host,
+)
+from omnimarket.nodes.node_prove_running_workflow.handlers.prove_running_merge_sha import (
+    CliMergeShaResolver,
+)
+from omnimarket.nodes.node_prove_running_workflow.models.model_prove_running import (
+    EnumProveRunningOutcome,
+    ModelProveRunningAnswer,
+    ModelProveRunningBatchPlan,
+    ModelProveRunningBatchStepInput,
+    ModelProveRunningBatchSteps,
+    ModelProveRunningChange,
+    ModelProveRunningHostGroups,
+    ModelProveRunningHostsOverlay,
+    ModelProveRunningPlan,
+    ModelProveRunningRowRequest,
+    ModelProveRunningStartBatch,
+    ModelProveRunningStartRequest,
+    ModelProveRunningStepInput,
+    ModelProveRunningSteps,
+)
+from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    CommandLedgerAppender,
+)
+
+if TYPE_CHECKING:
+    from temporalio.client import Client, Schedule
+
+NODE = "node_prove_running_workflow"
+BUS_APPEND_COMMAND_ENV = "ONEX_LEDGER_BUS_APPEND_COMMAND"
+HOST_NAME_ENV = "ONEX_LEDGER_HOST_NAME"
+APPEND_TIMEOUT_SECONDS = 120
+EXIT_REFUSED = 65
+
+
+def contract_config() -> dict[str, Any]:
+    text = (
+        resources.files(f"omnimarket.nodes.{NODE}")
+        .joinpath("contract.yaml")
+        .read_text(encoding="utf-8")
+    )
+    return dict(yaml.safe_load(text)["prove_running"])
+
+
+def _now() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _argv(template: list[str]) -> tuple[str, ...]:
+    """The contract's step argv with ``{python}`` as this interpreter, so the worker runs the steps in its own venv."""
+    return tuple(sys.executable if part == "{python}" else part for part in template)
+
+
+def build_plan(
+    change: ModelProveRunningChange, cfg: dict[str, Any], *, batch_id: str = ""
+) -> ModelProveRunningPlan:
+    steps = {name: _argv(list(argv)) for name, argv in cfg["steps"].items()}
+    return ModelProveRunningPlan(
+        change=change,
+        steps=ModelProveRunningSteps(**steps),
+        wait_seconds=int(cfg["wait_seconds"]),
+        max_readings=int(cfg["max_readings"]),
+        deadline_seconds=int(cfg["deadline_seconds"]),
+        step_timeout_seconds=int(cfg["step_timeout_seconds"]),
+        step_max_attempts=int(cfg["step_max_attempts"]),
+        batch_id=batch_id,
+    )
+
+
+def build_batch_plan(cfg: dict[str, Any]) -> ModelProveRunningBatchPlan:
+    batch = cfg["batch"]
+    steps = {name: _argv(list(argv)) for name, argv in batch["steps"].items()}
+    return ModelProveRunningBatchPlan(
+        steps=ModelProveRunningBatchSteps(**steps),
+        step_timeout_seconds=int(batch["step_timeout_seconds"]),
+        step_max_attempts=int(batch["step_max_attempts"]),
+    )
+
+
+def build_schedule(cfg: dict[str, Any], task_queue: str) -> Schedule:
+    from temporalio.client import (
+        Schedule,
+        ScheduleActionStartWorkflow,
+        ScheduleIntervalSpec,
+        ScheduleOverlapPolicy,
+        SchedulePolicy,
+        ScheduleSpec,
+    )
+
+    from omnimarket.nodes.node_prove_running_workflow.handlers.temporal_prove_running_batch import (
+        BATCH_WORKFLOW_NAME,
+    )
+
+    batch = cfg["batch"]
+    return Schedule(
+        action=ScheduleActionStartWorkflow(
+            BATCH_WORKFLOW_NAME,
+            build_batch_plan(cfg).model_dump_json(),
+            id=batch["schedule_id"],
+            task_queue=task_queue,
+        ),
+        spec=ScheduleSpec(
+            intervals=[
+                ScheduleIntervalSpec(
+                    every=timedelta(seconds=int(batch["interval_seconds"]))
+                )
+            ]
+        ),
+        policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
+    )
+
+
+def _read_step_input() -> ModelProveRunningStepInput:
+    return ModelProveRunningStepInput.model_validate_json(sys.stdin.read())
+
+
+def cmd_read(cfg: dict[str, Any]) -> int:
+    step = _read_step_input()
+    change = step.change
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_merged_change_reading_effect",
+            "--change",
+            f"{change.key}={change.merge_sha}",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=int(cfg["read_timeout_seconds"]),
+        check=False,
+    )
+    read_at = _now()
+    if proc.returncode != 0:
+        answer = ModelProveRunningAnswer(
+            installed=False,
+            running=False,
+            host=change.target,
+            revision=change.merge_sha[:12],
+            observed="unread",
+            detail=f"merged change reading exited {proc.returncode}: {proc.stderr.strip()[-200:]}",
+            read_at=read_at,
+        )
+    else:
+        result = ModelMcrResult.model_validate(json.loads(proc.stdout)["reading"])
+        reading = result.readings[0]
+        running = reading.verdict == cfg["verdict_running"]
+        answer = ModelProveRunningAnswer(
+            installed=reading.in_build is True,
+            running=running,
+            host=change.target,
+            revision=(reading.merge_sha or change.merge_sha)[:12],
+            observed=(
+                f"{reading.verdict} {reading.kind} last_result={reading.last_result or 'none'}"
+                f" last_run_at={reading.last_run_at.isoformat() if reading.last_run_at else 'none'}"
+            ),
+            detail=f"{reading.missing_step} {reading.detail}".strip(),
+            read_at=read_at,
+        )
+    sys.stdout.write(answer.model_dump_json() + "\n")
+    return 0
+
+
+def cmd_install(cfg: dict[str, Any]) -> int:
+    step = _read_step_input()
+    installers: dict[str, Any] = cfg["installers"]
+    entry = installers.get(step.change.target) or installers["default"]
+    detail = str(entry["detail"])
+    argv = list(entry.get("argv") or [])
+    if argv:
+        proc = subprocess.run(_argv(argv), capture_output=True, text=True, check=False)
+        if proc.returncode != 0:
+            sys.stderr.write(
+                f"installer exited {proc.returncode}: {proc.stderr[-300:]}\n"
+            )
+            return proc.returncode
+        detail = f"{detail}: {proc.stdout.strip()[-200:]}"
+    sys.stdout.write(json.dumps({"installer": entry["name"], "detail": detail}) + "\n")
+    return 0
+
+
+def _append_row(row: str, step_key: str, lane: str) -> tuple[int, str]:
+    """Append one row. A test names the append command in ``ONEX_PROVE_RUNNING_LEDGER_ARGV``; otherwise the row goes
+    through the bus append command the unit's environment names (the ledger file is never named). The request id is
+    derived from the step key, so a step delivered twice is one request the ledger host answers once."""
+    raw = os.environ.get("ONEX_PROVE_RUNNING_LEDGER_ARGV", "").strip()
+    if raw:
+        proc = subprocess.run(
+            [*json.loads(raw), row], capture_output=True, text=True, check=False
+        )
+        return proc.returncode, proc.stderr[-300:]
+    command = os.environ.get(BUS_APPEND_COMMAND_ENV, "").strip()
+    host = os.environ.get(HOST_NAME_ENV, "").strip()
+    if not command or not host:
+        return 2, f"refused: {BUS_APPEND_COMMAND_ENV} or {HOST_NAME_ENV} is not set"
+    outcome = CommandLedgerAppender(
+        shlex.split(command), lane, host, APPEND_TIMEOUT_SECONDS
+    ).append(row, str(uuid5(NAMESPACE_URL, f"onex:prove-running:{step_key}")))
+    if outcome.status in ("accepted", "duplicate"):
+        return 0, ""
+    return 1, f"ledger bus append {outcome.status}: {outcome.message}"
+
+
+def cmd_write_row(cfg: dict[str, Any], outcome: str) -> int:
+    step = _read_step_input()
+    row = (
+        HandlerProveRunningRows()
+        .handle(
+            ModelProveRunningRowRequest(
+                outcome=EnumProveRunningOutcome(outcome),
+                change=step.change,
+                reading=step.last_reading,
+                step_key=step.step_key,
+                lane=os.environ.get("ONEX_PROVE_RUNNING_LANE", cfg["lane"]),
+                ticket=cfg["ticket"],
+                written_at=_now(),
+                batch_id=step.batch_id,
+            )
+        )
+        .row
+    )
+    code, error = _append_row(
+        row, step.step_key, os.environ.get("ONEX_PROVE_RUNNING_LANE", cfg["lane"])
+    )
+    if code != 0:
+        sys.stderr.write(f"ledger append exited {code}: {error}\n")
+        return code
+    sys.stdout.write(json.dumps({"written": True, "row": row}) + "\n")
+    return 0
+
+
+def cmd_write_line_row(cfg: dict[str, Any]) -> int:
+    lane = os.environ.get("ONEX_PROVE_RUNNING_LANE", cfg["lane"])
+    code, text = write_line_row(
+        sys.stdin.read(),
+        lane=lane,
+        ticket=cfg["ticket"],
+        written_at=_now(),
+        append=_append_row,
+    )
+    (sys.stdout if code == 0 else sys.stderr).write(text + "\n")
+    return code
+
+
+def _merge_sha_resolver(cfg: dict[str, Any], owner: str) -> CliMergeShaResolver:
+    raw = os.environ.get(cfg["merge_sha_argv_env"], "").strip()
+    return CliMergeShaResolver(owner, tuple(json.loads(raw)) if raw else ())
+
+
+def projection_overlay(
+    cfg: dict[str, Any], env: Mapping[str, str]
+) -> ModelFloorProjectionReadOverlay:
+    """The overlay that declares the integration projection's topic, bound and broker (the floor reader's own)."""
+    declared = cfg["batch"]["input"]
+    return load_structured_overlay(
+        declared["overlay_id"],
+        ModelFloorProjectionReadOverlay,
+        env,
+        file_env=declared["file_env"],
+    )
+
+
+def batch_hosts(cfg: dict[str, Any], env: Mapping[str, str]) -> tuple[str, ...]:
+    """The host names the deployment's overlay declares for the batch's group-by-host step."""
+    batch = cfg["batch"]
+    return load_structured_overlay(
+        batch["hosts_overlay_id"],
+        ModelProveRunningHostsOverlay,
+        env,
+        file_env=batch["hosts_file_env"],
+    ).hosts
+
+
+def snapshot_source(
+    overlay: ModelFloorProjectionReadOverlay,
+    env: Mapping[str, str],
+    group_prefix: str,
+) -> ProtocolSnapshotSource:
+    """The source the overlay selects: held in memory, or the broker."""
+    if overlay.bus == "inmemory":
+        return InMemorySnapshotSource()
+    bootstrap = overlay.kafka_bootstrap
+    return BusSnapshotSource(
+        open_bus=lambda: open_lane_bus(
+            bus="kafka",
+            lane=None if bootstrap else overlay.bus_lane,
+            kafka_bootstrap=bootstrap,
+            root=workspace_root(env),
+        ),
+        group_prefix=group_prefix,
+        window_s=overlay.read_window_s,
+    )
+
+
+def cmd_read_not_running(cfg: dict[str, Any]) -> int:
+    """Select the NOT RUNNING lines of the integration pass's newest typed batch, read from its snapshot topic."""
+    ModelProveRunningBatchStepInput.model_validate_json(sys.stdin.read())
+    declared = cfg["batch"]["input"]
+    env = os.environ
+    try:
+        overlay = projection_overlay(cfg, env)
+    except NodeOverlayError as exc:
+        sys.stderr.write(
+            f"refused: the integration projection overlay is unreadable: {exc}\n"
+        )
+        return EXIT_REFUSED
+    spec = overlay.projections.get(declared["projection_id"])
+    if spec is None:
+        sys.stderr.write(
+            f"refused: the overlay {declared['overlay_id']} declares no {declared['projection_id']} projection\n"
+        )
+        return EXIT_REFUSED
+    try:
+        batch = asyncio.run(
+            read_integration_batch(
+                snapshot_source(overlay, env, declared["group_prefix"]),
+                topic=spec.topic,
+                projection_id=declared["projection_id"],
+                max_age_s=spec.max_age_s,
+                now=datetime.now(UTC),
+            )
+        )
+    except IntegrationBatchRefusedError as exc:
+        sys.stderr.write(f"refused: {exc}\n")
+        return EXIT_REFUSED
+    resolver = _merge_sha_resolver(cfg, cfg["scm_owner"])
+    selected = HandlerProveRunningStarter(
+        resolver, workers=int(cfg["batch"]["resolve_workers"])
+    ).handle(ModelProveRunningStartRequest(batch=batch))
+    sys.stdout.write(selected.model_dump_json() + "\n")
+    return 0
+
+
+def cmd_group_by_host(cfg: dict[str, Any]) -> int:
+    step = ModelProveRunningBatchStepInput.model_validate_json(sys.stdin.read())
+    selected = ModelProveRunningStartBatch.model_validate_json(step.payload)
+    batch = cfg["batch"]
+    child_cfg = {**cfg, **batch["child"]}
+    default_host = batch["default_host"]
+    try:
+        hosts = batch_hosts(cfg, os.environ)
+    except NodeOverlayError as exc:
+        sys.stderr.write(f"refused: the hosts overlay is unreadable: {exc}\n")
+        return EXIT_REFUSED
+    grouped = group_by_host(
+        selected.changes,
+        lambda change: build_plan(change, child_cfg, batch_id=step.batch_id),
+        hosts,
+        default_host,
+    )
+    # Keep the named hosts in order, then run the fallback group.
+    result = ModelProveRunningHostGroups(
+        groups=tuple(
+            sorted(grouped.groups, key=lambda group: group.host == default_host)
+        ),
+        skipped=selected.skipped,
+    )
+    sys.stdout.write(result.model_dump_json() + "\n")
+    return 0
+
+
+async def _connect(target_host: str, namespace: str) -> Client:
+    from temporalio.client import Client
+
+    return await Client.connect(target_host, namespace=namespace)
+
+
+async def upsert_schedule(
+    client: Client, cfg: dict[str, Any], task_queue: str, *, trigger: bool
+) -> str:
+    from temporalio.client import (
+        ScheduleAlreadyRunningError,
+        ScheduleUpdate,
+        ScheduleUpdateInput,
+    )
+
+    schedule_id: str = cfg["batch"]["schedule_id"]
+    schedule = build_schedule(cfg, task_queue)
+
+    def update(current: ScheduleUpdateInput) -> ScheduleUpdate:
+        return ScheduleUpdate(
+            schedule=replace(schedule, state=current.description.schedule.state)
+        )
+
+    try:
+        handle = await client.create_schedule(schedule_id, schedule)
+    except ScheduleAlreadyRunningError:
+        handle = client.get_schedule_handle(schedule_id)
+        await handle.update(update)
+    if trigger:
+        await handle.trigger()
+    return schedule_id
+
+
+async def start_changes(
+    client: Client,
+    changes: tuple[ModelProveRunningChange, ...],
+    cfg: dict[str, Any],
+    task_queue: str,
+) -> list[dict[str, str]]:
+    """One start per change, id ``<repo>#<n>@<sha>``: a running one is joined, a finished one is refused."""
+    from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
+    from temporalio.exceptions import WorkflowAlreadyStartedError
+
+    from omnimarket.nodes.node_prove_running_workflow.handlers.temporal_prove_running import (
+        WORKFLOW_NAME,
+    )
+
+    out: list[dict[str, str]] = []
+    for change in changes:
+        plan = build_plan(change, cfg)
+        try:
+            handle = await client.start_workflow(
+                WORKFLOW_NAME,
+                plan.model_dump_json(),
+                id=change.workflow_id,
+                task_queue=task_queue,
+                id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
+                id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
+            )
+            out.append(
+                {
+                    "workflow_id": change.workflow_id,
+                    "run_id": handle.result_run_id or "",
+                    "start": "accepted-or-joined",
+                }
+            )
+        except WorkflowAlreadyStartedError:
+            out.append(
+                {
+                    "workflow_id": change.workflow_id,
+                    "run_id": "",
+                    "start": "refused-already-proven",
+                }
+            )
+    return out
+
+
+async def run_worker(target_host: str, namespace: str, task_queue: str) -> None:
+    from temporalio.worker import Worker
+
+    from omnimarket.nodes.node_prove_running_workflow.handlers.temporal_prove_running import (
+        ProveRunningWorkflow,
+        prove_running_step,
+    )
+    from omnimarket.nodes.node_prove_running_workflow.handlers.temporal_prove_running_batch import (
+        ProveRunningBatchWorkflow,
+        prove_running_batch_step,
+        prove_running_earlier,
+    )
+
+    client = await _connect(target_host, namespace)
+    await Worker(
+        client,
+        task_queue=task_queue,
+        workflows=[ProveRunningWorkflow, ProveRunningBatchWorkflow],
+        activities=[
+            prove_running_step,
+            prove_running_batch_step,
+            prove_running_earlier,
+        ],
+    ).run()
+
+
+def main(argv: list[str] | None = None) -> int:
+    cfg = contract_config()
+    ap = argparse.ArgumentParser(prog=NODE)
+    sub = ap.add_subparsers(dest="verb", required=True)
+    for verb in ("worker", "start", "schedule"):
+        p = sub.add_parser(verb)
+        p.add_argument("--target-host", required=True)
+        p.add_argument("--namespace", default=cfg["namespace"])
+        p.add_argument("--task-queue", default=cfg["task_queue"])
+    sub.choices["start"].add_argument(
+        "--batch", required=True, help="ModelIntegrationReadingBatch JSON file"
+    )
+    sub.choices["start"].add_argument("--owner", default=cfg["scm_owner"])
+    sub.choices["start"].add_argument(
+        "--wait", action="store_true", help="wait for each result"
+    )
+    sub.choices["schedule"].add_argument(
+        "--schedule-id", default=cfg["batch"]["schedule_id"]
+    )
+    sub.choices["schedule"].add_argument(
+        "--trigger", action="store_true", help="trigger one immediate batch run"
+    )
+    sub.add_parser("read-not-running")
+    sub.add_parser("group-by-host")
+    sub.add_parser("write-line-row")
+    sub.add_parser("read")
+    sub.add_parser("install")
+    w = sub.add_parser("write-row")
+    w.add_argument(
+        "--outcome", choices=[o.value for o in EnumProveRunningOutcome], required=True
+    )
+    args = ap.parse_args(argv)
+
+    if args.verb == "read":
+        return cmd_read(cfg)
+    if args.verb == "install":
+        return cmd_install(cfg)
+    if args.verb == "write-row":
+        return cmd_write_row(cfg, args.outcome)
+    if args.verb == "read-not-running":
+        return cmd_read_not_running(cfg)
+    if args.verb == "group-by-host":
+        return cmd_group_by_host(cfg)
+    if args.verb == "write-line-row":
+        return cmd_write_line_row(cfg)
+    if args.verb == "worker":
+        asyncio.run(run_worker(args.target_host, args.namespace, args.task_queue))
+        return 0
+    if args.verb == "schedule":
+        cfg["batch"]["schedule_id"] = args.schedule_id
+
+        async def _schedule() -> str:
+            client = await _connect(args.target_host, args.namespace)
+            return await upsert_schedule(
+                client, cfg, args.task_queue, trigger=args.trigger
+            )
+
+        sys.stdout.write(json.dumps({"schedule_id": asyncio.run(_schedule())}) + "\n")
+        return 0
+
+    batch = ModelIntegrationReadingBatch.model_validate_json(
+        Path(args.batch).read_text()
+    )
+    selected = HandlerProveRunningStarter(_merge_sha_resolver(cfg, args.owner)).handle(
+        ModelProveRunningStartRequest(batch=batch)
+    )
+
+    async def _start() -> list[dict[str, str]]:
+        client = await _connect(args.target_host, args.namespace)
+        started = await start_changes(client, selected.changes, cfg, args.task_queue)
+        if args.wait:
+            for entry in started:
+                entry["result"] = await client.get_workflow_handle(
+                    entry["workflow_id"]
+                ).result()
+        return started
+
+    report = {"started": asyncio.run(_start()), "skipped": list(selected.skipped)}
+    sys.stdout.write(json.dumps(report, indent=2) + "\n")
+    return 0 if selected.changes else EXIT_REFUSED

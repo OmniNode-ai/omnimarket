@@ -303,6 +303,9 @@ dependencies = [
 dep-health = [
     "graphifyy==0.8.2",
 ]
+temporal = [
+    "temporalio>=1.35.0,<2.0.0",
+]
 intelligence = [
     "adaptive-classifier>=0.1.2",
 ]
@@ -1278,6 +1281,7 @@ node_projection_worktree_reconcile = "omnimarket.nodes.node_projection_worktree_
 node_projection_write_effect = "omnimarket.nodes.node_projection_write_effect"
 node_prompt_cost_estimate_compute = "omnimarket.nodes.node_prompt_cost_estimate_compute"
 node_prompt_intent_classify_compute = "omnimarket.nodes.node_prompt_intent_classify_compute"
+node_prove_running_workflow = "omnimarket.nodes.node_prove_running_workflow"
 node_provider_model_catalogue_effect = "omnimarket.nodes.node_provider_model_catalogue_effect"
 node_provider_rung_canary_effect = "omnimarket.nodes.node_provider_rung_canary_effect"
 node_prrp_snapshot_publish_effect = "omnimarket.nodes.node_prrp_snapshot_publish_effect"
