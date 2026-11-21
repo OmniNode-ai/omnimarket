@@ -1,0 +1,81 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-26215"
+title: "A required latest-core smoke CI job in omnimarket installs the newest omnibase-core release and imports every node"
+summary: "A Latest Core Smoke job in ci.yml installs the newest published omnibase-core without the lockfile into a throwaway venv and imports every onex.nodes entry point and its non-test submodules, naming each failing module and symbol. It is a strict CI Summary job and a REQUIRED row in the required-checks manifest; a reusable workflow lets a core PR run it against omnimarket dev."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26215-smoke"
+    statement: |-
+      A core removal that a node imports turns a required omnimarket job red within one CI run.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the omnimarket workflow installs the newest omnibase-core release without the lockfile and imports every node, and the job is a required context on dev -- falsifier: gh api repos/OmniNode-ai/omnimarket/branches/dev/protection --jq '.required_status_checks.contexts' lacks the latest-core smoke context
+      - id: "AC2"
+        statement: |-
+          AC2: a throwaway PR that removes a symbol the nodes import from a core build turns the job red -- falsifier: uv run pytest tests/ci/test_latest_core_smoke.py -k synthetic_removal exits non-zero, or the throwaway PR check-run reads success
+      - id: "AC3"
+        statement: |-
+          AC3: a regression test built from the recorded incident (core#2335 removing run_node_in_process, fixture path in the pull request) fails on the broken code and passes on the fix -- falsifier: uv run pytest tests/ci/test_latest_core_smoke.py -k run_node_in_process
+      - id: "AC4"
+        statement: |-
+          AC4: measurement read 2026-11-21 and on the next core merge: the smoke job ran on that merge and names any removed symbol within one CI run -- falsifier: onex scm pr-checks on the next core merge PR shows no latest-core smoke check-run
+evidence_requirements:
+  - kind: "tests"
+    description: "The smoke tests, the CI Summary replay and the workflow shape tests."
+    command: "uv run pytest tests/ci/test_latest_core_smoke.py tests/unit/scripts/ci/test_ci_summary_rules_replay_omn23079.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26215-ac1-job-declared"
+    description: "ci.yml carries the latest-core-smoke job, ci_summary_rules.json lists it strict, and the manifest has a REQUIRED row for the Latest Core Smoke context. The branch-protection context itself is the operator step that remains."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_latest_core_smoke.py -k declares_the_latest_core_smoke_job -q --no-cov"
+        cwd: "."
+  - id: "dod-omn26215-ac2-synthetic-removal"
+    description: "A fake core build lacking a symbol the node imports makes the smoke exit 1; the control with the symbol exits 0. Built in a temp directory, no network."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_latest_core_smoke.py -k synthetic_removal -q --no-cov"
+        cwd: "."
+  - id: "dod-omn26215-ac3-run-node-in-process"
+    description: "With run_node_in_process absent the smoke names omnibase_core.cli.cli_run_node.run_node_in_process and exits non-zero; with it present it passes. Fixture: tests/ci/fixtures/latest_core_smoke/node_run_node_user/cli.py."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_latest_core_smoke.py -k run_node_in_process -q --no-cov"
+        cwd: "."
+  - id: "dod-omn26215-ac4-measurement"
+    description: "Measurement read 2026-11-21 and on the next core merge; not part of this change. The reusable workflow file is the hosted-checkable precondition."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_latest_core_smoke.py -k reusable_workflow_is_callable -q --no-cov"
+        cwd: "."
+  - id: "dod-omn26215-integration-proof"
+    description: >-
+      Run the smoke tests on a lab host at the pushed revision. This local completion proof carries no hosted AC bindings.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-26215 --kind test --
+          env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+          tests/ci/test_latest_core_smoke.py
+          -q -n 0 --no-cov --refuse-skips
+        cwd: "."

@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
 
@@ -187,6 +188,25 @@ def judged_event(
     )
 
 
+RECORDED_JUDGED_RENDER_RESULT = (
+    Path(__file__).resolve().parents[2]
+    / "fixtures"
+    / "eval_results"
+    / "judged_topic_render_result.json"
+)
+
+
+def recorded_judged_render_result() -> dict[str, Any]:
+    """The payload recorded on the dev broker's judged topic: the judge compute node's render result.
+
+    Not a judged event: it has no ``judge_run_id`` (nor any judged-event field) and an empty
+    ``judged_events`` list. Prompts and ids are scrubbed in the fixture; the shape is as recorded.
+    """
+    recorded = json.loads(RECORDED_JUDGED_RENDER_RESULT.read_text())
+    payload: dict[str, Any] = recorded["payload"]
+    return payload
+
+
 def trace_parts(
     run_id: str,
     task: str,
@@ -332,6 +352,7 @@ def make_writer(
     *,
     overlay_: ModelEvalResultsOverlay | None = None,
     clock: Any = None,
+    **writer_kwargs: Any,
 ) -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
     """A writer over ``store`` with its publish transport captured in the returned list."""
     from omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results_writer import (
@@ -343,6 +364,11 @@ def make_writer(
         clock=clock or (lambda: at(100)),
         store_factory=lambda _db: store,
     )
+    for (
+        knob,
+        value,
+    ) in writer_kwargs.items():  # the writer keeps each bound as a private attribute
+        setattr(writer, f"_{knob}", value)
     cast(Any, writer)._db = FakeDb()
     published: list[tuple[str, dict[str, Any]]] = []
 

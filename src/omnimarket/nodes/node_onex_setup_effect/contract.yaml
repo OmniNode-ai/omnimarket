@@ -40,7 +40,7 @@ handler_routing:
   routing_strategy: operation_match
   handlers:
     # First: the local runtime gives the subscribe topic to the first entry by position,
-    # so `onex setup` through run_node_in_process reaches HandlerOnexSetup (OMN-24455).
+    # so `onex setup` through ModelRunNodeHosted.run reaches HandlerOnexSetup (OMN-24455).
     - operation: onex_setup.run_walk
       handler:
         name: HandlerOnexSetup

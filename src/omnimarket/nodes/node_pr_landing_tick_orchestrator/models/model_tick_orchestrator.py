@@ -10,7 +10,11 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.landing_controller_carry import ModelLandingControllerDecisions
-from omnimarket.models.landing_decision import ModelLandingDecision, ModelLandingFacts
+from omnimarket.models.landing_decision import (
+    EnumLivenessRead,
+    ModelLandingDecision,
+    ModelLandingFacts,
+)
 from omnimarket.models.landing_tick import (
     ModelTickDivergence,
     ModelTickSubjectRow,
@@ -116,6 +120,25 @@ class ModelTickRequest(BaseModel):
     )
 
 
+class ModelTickLivenessRead(BaseModel):
+    """One pull request head's automation-liveness read, made beside the comparison (OMN-26024).
+
+    Observation only: the read changes no decision, no comparison row and no write. A read that could not be
+    made carries read=unreadable and why in detail; a made read's event that could not be published carries
+    publish_error and still keeps the fact.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr: str
+    head_sha: str
+    read: EnumLivenessRead
+    undeclared_sources: tuple[str, ...] = ()
+    detail: str = ""
+    topic: str = ""
+    publish_error: str = ""
+
+
 class ModelTickResult(BaseModel):
     """The tick's comparison, or its typed failure."""
 
@@ -160,6 +183,10 @@ class ModelTickResult(BaseModel):
         default=(),
         description="The answer to each rerun request the tick carried, in request order (OMN-23830).",
     )
+    liveness_reads: tuple[ModelTickLivenessRead, ...] = Field(
+        default=(),
+        description="The liveness read of each compared pull request head, when the overlay turns reads on (OMN-26024); never part of the comparison.",
+    )
 
 
 class ModelTickComparedEvent(BaseModel):
@@ -199,6 +226,7 @@ __all__: list[str] = [
     "EnumTickStatus",
     "ModelTickComparedEvent",
     "ModelTickFailedEvent",
+    "ModelTickLivenessRead",
     "ModelTickRequest",
     "ModelTickResult",
     "ModelTickSkippedRecord",

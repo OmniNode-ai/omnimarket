@@ -30,6 +30,7 @@ NULL, not the reduced terminal being ``unknown`` alone.
 
 from __future__ import annotations
 
+import ast
 import re
 import subprocess
 import sys
@@ -105,6 +106,21 @@ class TestAnUnterminalisedRowIsNamedAsSuch:
         assert "no terminal outcome" in failures[0], failures
         assert "terminal_ok is NULL in the row read" in failures[0], failures
         assert "settle window" not in failures[0], failures
+
+    def test_an_absent_terminal_ok_key_is_reported_as_absent(self) -> None:
+        """A row read with no ``terminal_ok`` key is not called NULL.
+
+        The projection read can omit the column; ``row.get`` returns None for
+        both, so the text must tell the two apart from the key's presence.
+        """
+        case = load_corpus().by_id("I9")
+        row = _unterminalised_row()
+        del row["terminal_ok"]
+        failures = runner_module.evaluate_row(case, row)
+        assert len(failures) == 1, failures
+        assert "no terminal outcome" in failures[0], failures
+        assert "terminal_ok is absent from the row read" in failures[0], failures
+        assert "terminal_ok is NULL" not in failures[0], failures
 
     def test_it_does_not_report_telemetry_misses_it_cannot_judge(self) -> None:
         """A row with no outer outcome has no telemetry to hold to an expectation."""
@@ -590,6 +606,43 @@ class TestContractChecksNameExplicitNodeIds:
         assert len(named) >= 20, sorted(named)
 
 
+_LAB_CHECK_CONTRACTS = (
+    "contracts/OMN-24851.yaml",
+    "contracts/OMN-24925.yaml",
+    "contracts/OMN-24986.yaml",
+)
+_LAB_GREP = re.compile(r'grep -E "(\^Lab: head=\$h[^"]*)"')
+_SHA = "0123456789abcdef0123456789abcdef01234567"
+_SUITE_COMMAND = "uv run pytest tests/delegation_golden"
+
+
+def _lab_grep_pattern(check: str) -> str:
+    match = _LAB_GREP.search(check)
+    assert match, check
+    return match.group(1).replace("$h", _SHA)
+
+
+def _lab_line_matches(check: str, line: str) -> bool:
+    """Run the check's own ``grep -E`` pattern over one comment line."""
+    done = subprocess.run(
+        ["grep", "-E", _lab_grep_pattern(check)],
+        input=line + "\n",
+        capture_output=True,
+        text=True,
+    )
+    return done.returncode == 0
+
+
+def _lab_line(
+    *,
+    command: str = _SUITE_COMMAND + " -m 'not e2e'",
+    exit_code: str = "exit=0",
+    contexts: str = "contexts=ci=success,lint=success",
+    sha: str = _SHA,
+) -> str:
+    return f"Lab: head={sha} host=h053 command={command} {exit_code} {contexts} red=I1 green=I1"
+
+
 @pytest.mark.unit
 class TestLabChecksPinTheHeadAndTheCommand:
     @pytest.mark.parametrize("contract", _CONTRACTS)
@@ -597,31 +650,101 @@ class TestLabChecksPinTheHeadAndTheCommand:
         offenders = [v for v in _check_values(contract) if "rev-parse HEAD" in v]
         assert offenders == []
 
-    @pytest.mark.parametrize("contract", _CONTRACTS)
+    @pytest.mark.parametrize("contract", _LAB_CHECK_CONTRACTS)
+    def test_the_contract_carries_a_lab_check(self, contract: str) -> None:
+        """Fails for a contract with no lab check: the loops below cannot pass on none."""
+        assert _lab_checks(contract), contract
+
+    def test_a_contract_without_a_lab_check_is_seen_as_one(self) -> None:
+        """Control: the helper returns nothing for a contract that carries none."""
+        assert _lab_checks("contracts/OMN-24902.yaml") == []
+
+    @pytest.mark.parametrize("contract", _LAB_CHECK_CONTRACTS)
     def test_a_lab_comment_check_matches_head_command_exit_and_contexts(
         self, contract: str
     ) -> None:
-        checks = _lab_checks(contract)
-        for value in checks:
+        for value in _lab_checks(contract):
             for needle in ("head_sha", "command=", "exit=0", "contexts=", "pr-checks"):
                 assert needle in value, (needle, value)
 
-    def test_the_lab_comment_checks_exist(self) -> None:
-        """Control: at least the three contracts that read the comment are scanned."""
-        assert sum(bool(_lab_checks(c)) for c in _CONTRACTS) >= 3
+    @pytest.mark.parametrize("contract", _LAB_CHECK_CONTRACTS)
+    def test_the_lab_line_pattern_accepts_the_suite_run_and_nothing_weaker(
+        self, contract: str
+    ) -> None:
+        for value in _lab_checks(contract):
+            assert _lab_line_matches(value, _lab_line())
+            # any other command, a non-zero exit, an empty or non-success
+            # context list, another head: each is refused
+            assert not _lab_line_matches(value, _lab_line(command="true"))
+            assert not _lab_line_matches(value, _lab_line(command="echo pytest"))
+            assert not _lab_line_matches(value, _lab_line(exit_code="exit=1"))
+            assert not _lab_line_matches(value, _lab_line(contexts="contexts="))
+            assert not _lab_line_matches(
+                value, _lab_line(contexts="contexts=ci=failure")
+            )
+            assert not _lab_line_matches(
+                value, _lab_line(contexts="contexts=ci=success,lint=pending")
+            )
+            assert not _lab_line_matches(value, _lab_line(sha="f" * 40))
+
+    @pytest.mark.parametrize("contract", _LAB_CHECK_CONTRACTS)
+    def test_the_red_key_is_tested_present_before_its_length_is_compared(
+        self, contract: str
+    ) -> None:
+        """``(null | length) == 0`` is true in jq: ``arrays`` drops a null or absent key."""
+        for value in _lab_checks(contract):
+            for key in ("red", "pending"):
+                assert f".result.{key} | arrays | length) == 0" in value, (key, value)
+            assert "(.result.red | length)" not in value, value
+
+    @pytest.mark.parametrize(
+        ("doc", "passes"),
+        [
+            ('{"head_sha":"H","red":[],"pending":[]}', True),
+            ('{"head_sha":"H","pending":[]}', False),
+            ('{"head_sha":"H","red":[]}', False),
+            ('{"head_sha":"H","red":null,"pending":[]}', False),
+            ('{"head_sha":"H","red":["x"],"pending":[]}', False),
+            ('{"head_sha":"H2","red":[],"pending":[]}', False),
+        ],
+        ids=[
+            "ok",
+            "red-absent",
+            "pending-absent",
+            "red-null",
+            "red-nonempty",
+            "other-head",
+        ],
+    )
+    @pytest.mark.parametrize("contract", _LAB_CHECK_CONTRACTS)
+    def test_the_checks_jq_expression_judges_a_red_key_that_is_absent(
+        self, contract: str, doc: str, passes: bool
+    ) -> None:
+        for value in _lab_checks(contract):
+            match = re.search(r'jq -e --arg h "\$h" "(.+)"\'$', value)
+            assert match, value
+            expr = match.group(1).replace("\\$h", "$h")
+            done = subprocess.run(
+                ["jq", "-e", "--arg", "h", "H", expr],
+                input='{"result":' + doc + "}",
+                capture_output=True,
+                text=True,
+            )
+            assert (done.returncode == 0) is passes, (done.stdout, done.stderr, expr)
 
 
 _SK_WORD = "ski" + "p"
 
 
 _BASE_PIN = "6efbe3ee5027f6efb67d0b81a1421f0dda32b4e5"
+_TREE_PIN = "e3818d33b0b31eb0c80d599a0f4c135cbd4a5a5d"
 
 
 @pytest.mark.unit
 class TestContractTextAnswersTheReview:
     """What the contracts say about the base, the review heads and the diff checks."""
 
-    def test_the_fails_on_base_checks_pin_the_base_and_require_the_nine_ids(
+    def test_the_fails_on_base_checks_pin_the_base_and_require_the_ten_ids(
         self,
     ) -> None:
         pinned = [
@@ -634,7 +757,13 @@ class TestContractTextAnswersTheReview:
         for contract, value in pinned:
             assert f"b={_BASE_PIN}" in value, contract
             assert "I(1|10|3|5|6|7|8|9)" in value, contract
-            assert "(^| )9 failed" in value, contract
+            assert "(^| )10 failed" in value, contract
+            assert "test_an_absent_terminal_ok_key_is_reported_as_absent" in value, (
+                contract
+            )
+            assert f"h={_TREE_PIN}" in value, contract
+            assert 'git archive "$h"' in value, contract
+            assert "git archive HEAD" not in value, contract
             assert "origin/dev" not in value, contract
 
     def test_the_nightly_ticket_contract_keeps_its_ac2_unmet(self) -> None:
@@ -678,15 +807,83 @@ class TestContractTextAnswersTheReview:
             assert "mark\\.(" + _SK_WORD in value, contract
 
 
-# The skip vectors, spelled from fragments so that this file does not itself
-# carry a literal the diff checks of the contracts look for.
+# The skip vectors are found by AST, so a string, a comment or this file's own
+# sample text never matches, and a vector in any form of call, decorator,
+# alias or ``from pytest import`` does. Names are spelled from fragments so that
+# this file does not itself carry a literal the diff checks of the contracts
+# look for.
 _SK = "ski" + "p"
-_IMPORT_OR_SKIP = re.compile("import" + "or" + _SK)
-_UNCONDITIONAL_SKIP = re.compile(rf"\bmark\.{_SK}\b(?!if)|\bpytest\.{_SK}\s*\(")
+_IMPORT_OR_SKIP = "import" + "or" + _SK
+_SUITE_DIR = _REPO_ROOT / "tests" / "delegation_golden"
 
 
-def _skip_vectors(text: str) -> list[str]:
-    return [p.pattern for p in (_IMPORT_OR_SKIP, _UNCONDITIONAL_SKIP) if p.search(text)]
+def _is_pytest_mark(node: ast.expr) -> bool:
+    """``pytest.mark`` or a bare ``mark`` alias."""
+    if isinstance(node, ast.Name):
+        return node.id == "mark"
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "mark"
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "pytest"
+    )
+
+
+def _skip_vectors(source: str) -> list[str]:
+    """Every unconditional skip vector of one source text, by AST.
+
+    A module-level or in-test ``importorskip``, an unconditional ``mark.skip``
+    (decorator, ``pytestmark`` value or call, whatever the alias of ``mark``) and
+    a ``pytest.skip(...)`` call. The conditional marker is a different attribute
+    and is left alone.
+    """
+    found: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Attribute):
+            if node.attr == _IMPORT_OR_SKIP:
+                found.append(_IMPORT_OR_SKIP)
+            elif node.attr == _SK and _is_pytest_mark(node.value):
+                found.append("mark." + _SK)
+            elif (
+                node.attr == _SK
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "pytest"
+            ):
+                found.append("pytest." + _SK)
+        elif isinstance(node, ast.ImportFrom) and node.module == "pytest":
+            found.extend(
+                alias.name
+                for alias in node.names
+                if alias.name in (_IMPORT_OR_SKIP, _SK)
+            )
+        elif isinstance(node, ast.Name) and node.id == _IMPORT_OR_SKIP:
+            found.append(_IMPORT_OR_SKIP)
+    return found
+
+
+def _suite_offenders(root: Path) -> dict[str, list[str]]:
+    """Every python file under ``root``, recursively, this test file included."""
+    offenders = {
+        str(path.relative_to(root)): _skip_vectors(path.read_text(encoding="utf-8"))
+        for path in sorted(root.rglob("*.py"))
+    }
+    return {name: found for name, found in offenders.items() if found}
+
+
+_VECTOR_SNIPPETS = {
+    "module-level": "import pytest\nmod = pytest." + _IMPORT_OR_SKIP + "('x')\n",
+    "bare-marker": "import pytest\n\n@pytest.mark."
+    + _SK
+    + "\ndef test_a() -> None: ...\n",
+    "mark-alias": "from pytest import mark\n\n@mark."
+    + _SK
+    + "(reason='x')\ndef test_a() -> None: ...\n",
+    "module-pytestmark": "import pytest\npytestmark = pytest.mark." + _SK + "\n",
+    "call": "import pytest\n\ndef test_a() -> None:\n    pytest."
+    + _SK
+    + "('no bus')\n",
+    "from-import": "from pytest import " + _IMPORT_OR_SKIP + "\n",
+}
 
 
 @pytest.mark.unit
@@ -694,40 +891,57 @@ class TestNoSkipVectorInTheDelegationGoldenTests:
     """No test here may skip itself away: neither a module skip nor a bare marker.
 
     The live gate of the Layer-2 file uses the conditional form and is not an
-    unconditional skip. Run on the files of the suite, not on this one, whose own
-    pattern text is the control below.
+    unconditional skip. The scan walks the directory recursively and reads every
+    file, this one included.
     """
 
     def test_no_file_in_the_suite_carries_one(self) -> None:
-        here = Path(__file__).resolve()
-        offenders = {
-            path.name: _skip_vectors(path.read_text(encoding="utf-8"))
-            for path in sorted(
-                (_REPO_ROOT / "tests" / "delegation_golden").glob("*.py")
-            )
-            if path.resolve() != here
-        }
-        assert {k: v for k, v in offenders.items() if v} == {}
+        assert _suite_offenders(_SUITE_DIR) == {}
 
-    @pytest.mark.parametrize(
-        "line",
-        [
-            "mod = pytest." + "import" + "or" + _SK + "('x')",
-            "@pytest.mark." + _SK,
-            "@mark." + _SK + "(reason='x')",
-            "pytest." + _SK + "('no bus')",
-        ],
-        ids=["module-level", "bare-marker", "mark-alias", "call"],
-    )
-    def test_the_scan_flags_each_vector(self, line: str) -> None:
-        assert _skip_vectors(line), line
+    def test_the_scan_reads_this_file_and_the_subdirectories(self) -> None:
+        """Control: the files the scan reads include this one, and ``rglob`` is recursive."""
+        names = {p.name for p in _SUITE_DIR.rglob("*.py")}
+        assert Path(__file__).name in names
+        assert "runner.py" in names
 
-    @pytest.mark.parametrize(
-        "line",
-        ["@pytest.mark." + _SK + "if(not LIVE, reason='x')", "@pytest.mark.unit"],
-        ids=["conditional-gate", "other-marker"],
-    )
-    def test_the_scan_leaves_a_conditional_gate_and_other_markers(
-        self, line: str
+    @pytest.mark.parametrize("name", sorted(_VECTOR_SNIPPETS))
+    def test_the_scan_flags_each_vector(self, name: str) -> None:
+        assert _skip_vectors(_VECTOR_SNIPPETS[name]), name
+
+    @pytest.mark.parametrize("name", sorted(_VECTOR_SNIPPETS))
+    def test_a_vector_in_a_subdirectory_is_found(
+        self, name: str, tmp_path: Path
     ) -> None:
-        assert _skip_vectors(line) == []
+        sub = tmp_path / "nested" / "deeper"
+        sub.mkdir(parents=True)
+        (sub / "test_planted.py").write_text(_VECTOR_SNIPPETS[name], encoding="utf-8")
+        assert list(_suite_offenders(tmp_path)) == [
+            str(Path("nested") / "deeper" / "test_planted.py")
+        ]
+
+    def test_a_vector_added_to_this_test_file_is_found(self, tmp_path: Path) -> None:
+        """The runner test file itself is read: its text plus a planted vector is flagged."""
+        copy = tmp_path / Path(__file__).name
+        copy.write_text(
+            Path(__file__).read_text(encoding="utf-8")
+            + "\n"
+            + _VECTOR_SNIPPETS["bare-marker"],
+            encoding="utf-8",
+        )
+        assert list(_suite_offenders(tmp_path)) == [copy.name]
+
+    @pytest.mark.parametrize(
+        "snippet",
+        [
+            "import pytest\n\n@pytest.mark."
+            + _SK
+            + "if(True, reason='x')\ndef test_a() -> None: ...\n",
+            "import pytest\n\n@pytest.mark.unit\ndef test_a() -> None: ...\n",
+            "text = 'pytest." + _IMPORT_OR_SKIP + " and mark." + _SK + "'\n",
+        ],
+        ids=["conditional-gate", "other-marker", "text-in-a-string"],
+    )
+    def test_the_scan_leaves_a_conditional_gate_other_markers_and_strings(
+        self, snippet: str
+    ) -> None:
+        assert _skip_vectors(snippet) == []
