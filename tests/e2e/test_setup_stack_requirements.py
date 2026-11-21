@@ -244,3 +244,51 @@ def test_selected_stack_reads_the_engine_through_the_injected_reader(
     )
     assert calls == ["read"]
     assert result.status == "action_required"
+
+
+@pytest.mark.parametrize(
+    ("reserved_cpus", "engine"),
+    [
+        ("8", (float("nan"), 200)),
+        ("0", (0.0, 0)),
+        ("8", (float("inf"), 1 << 30)),
+    ],
+)
+def test_selected_stack_refuses_invalid_capacity_from_an_injected_reader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reserved_cpus: str,
+    engine: tuple[float, int],
+) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_stack_requirements import (
+        HandlerSetupStackRequirements,
+    )
+
+    commands: list[list[str]] = []
+
+    async def reader() -> tuple[float, int]:
+        return engine
+
+    def transport(self, request):
+        commands.append(list(request.argv))
+        reservations = {"cpus": reserved_cpus}
+        if "config" in request.argv:
+            body = {
+                "services": {
+                    "worker": {"deploy": {"resources": {"reservations": reservations}}}
+                }
+            }
+        else:
+            body = {"Service": "worker", "State": "running", "Health": ""}
+        return ModelSetupCommandResult(
+            argv=request.argv, returncode=0, stdout=json.dumps(body), stderr=""
+        )
+
+    monkeypatch.setattr(HandlerSetupCommand, "handle", transport)
+    result = HandlerSetupStackRequirements(engine_reader=reader).observe(
+        _plan(tmp_path), ("worker",)
+    )
+    assert result.status == "failure", (
+        "a non-finite or non-positive engine capacity must never compare as enough"
+    )
+    assert commands == [], "the engine answer is refused before any Compose command"

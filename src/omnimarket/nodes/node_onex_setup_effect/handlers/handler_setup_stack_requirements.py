@@ -105,6 +105,13 @@ class HandlerSetupStackRequirements:
             )
         try:
             available_cpu, available_memory = run_coro_sync(self._engine_reader())
+            # An injected reader is not bound by infra's checks; NaN compares as enough.
+            if not (
+                math.isfinite(available_cpu)
+                and available_cpu > 0
+                and available_memory > 0
+            ):
+                raise ValueError("Invalid engine resources")
             base = tuple(compose_base_command(selection.compose_file, None))
             config = json.loads(self._read((*base, "config", "--format", "json")))
             if not isinstance(config, dict) or not isinstance(
