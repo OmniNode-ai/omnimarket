@@ -65,6 +65,17 @@ class ModelMissCollectPolicy(_Frozen):
     collector_max_lag_hours: int = Field(ge=1)
     nightly_slot_time_utc: time
     record_retention_days: int = Field(ge=1)
+    #: The nightly workflow's triggering event, and its artifact prefix (``<prefix><shard number>``).
+    nightly_event: str = Field(min_length=1)
+    nightly_artifact_prefix: str = Field(min_length=1)
+    #: The pull request workflow whose run and record are a candidate's evidence.
+    pr_workflow_file: str = Field(min_length=1)
+    pr_event: str = Field(min_length=1)
+    selection_artifact_prefix: str = Field(min_length=1)
+    #: A regular expression with one group, the shard number, over the pytest shard job names.
+    shard_job_pattern: str = Field(min_length=1)
+    artifact_max_bytes: int = Field(ge=1, le=524288)
+    artifact_unzipped_max_bytes: int = Field(ge=1)
 
     @field_validator("nightly_slot_time_utc", mode="before")
     @classmethod
@@ -107,6 +118,13 @@ class ModelMissCollectSettings(_Frozen):
                     "the overlay's owner_role is not a role; refusing to start"
                 ) from exc
             raise
+
+
+class ModelRangeCommit(_Frozen):
+    """One first-parent commit between the two nights' tested heads."""
+
+    sha: str = Field(pattern=r"^[0-9a-f]{40}$")
+    committed_at: AwareDatetime
 
 
 class ModelNightlyRun(_Frozen):

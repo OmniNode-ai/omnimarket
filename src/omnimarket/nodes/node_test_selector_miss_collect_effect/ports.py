@@ -11,12 +11,17 @@ from omnimarket.models.lab_alarm_delivery import (
     ModelLabAlarmDeliveryRequest,
     ModelLabAlarmDeliveryResult,
 )
+from omnimarket.models.model_github_gateway_io import (
+    GithubGatewayResult,
+    ModelGithubGatewayRequest,
+)
 from omnimarket.models.test_selector_reading import ModelAttributionCandidate
 from omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_collect import (
     ModelNightlyAlarm,
     ModelNightlyRun,
     ModelNightReading,
     ModelPreviousNight,
+    ModelRangeCommit,
 )
 
 
@@ -38,6 +43,20 @@ class ProtocolNightlyGateway(Protocol):
     def candidates(
         self, repo: str, previous_head: str, head: str, retention_days: int
     ) -> tuple[ModelAttributionCandidate, ...]: ...
+
+
+class ProtocolGatewayRead(Protocol):
+    """One typed read through the repository gateway (in process or over the bus); it raises the gateway client's error."""
+
+    def read(self, request: ModelGithubGatewayRequest) -> GithubGatewayResult: ...
+
+
+class ProtocolCommitRange(Protocol):
+    """The first-parent commits in ``previous_head..head``, oldest first. Read-only."""
+
+    def first_parent(
+        self, previous_head: str, head: str
+    ) -> tuple[ModelRangeCommit, ...]: ...
 
 
 class ProtocolAlarmStore(Protocol):
@@ -75,5 +94,7 @@ __all__: list[str] = [
     "ProtocolAlarmReceiver",
     "ProtocolAlarmRoutingDelivery",
     "ProtocolAlarmStore",
+    "ProtocolCommitRange",
+    "ProtocolGatewayRead",
     "ProtocolNightlyGateway",
 ]

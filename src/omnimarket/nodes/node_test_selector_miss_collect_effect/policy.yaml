@@ -9,8 +9,24 @@
 #                            recorded a result; later, the slot check raises the dead-man alarm.
 #   nightly_slot_time_utc    the nightly's scheduled time of day (its cron), which the slot date and the lag are counted from.
 #   record_retention_days    commits further back than this are not candidates (the record artifacts expire).
+#   nightly_event            the event of the nightly workflow's runs (its schedule); the slot date's newest such run is the night.
+#   nightly_artifact_prefix  a nightly junit artifact is named <prefix><shard number>.
+#   pr_workflow_file         the pull request workflow whose run and selection record are a candidate's evidence.
+#   pr_event                 the event of that workflow's pull request runs.
+#   selection_artifact_prefix  a selection record artifact is named <prefix><pr>-<run id>-<attempt>.
+#   shard_job_pattern        the pytest shard job names of the pull request workflow, one group: the shard number.
+#   artifact_max_bytes       the largest archive the gateway fetches (the gateway's own cap is 524288); larger is a shard in error.
+#   artifact_unzipped_max_bytes  the most bytes read out of one archive.
 nightly_shard_count: 10
 nightly_min_test_files: 2000
 collector_max_lag_hours: 6
 nightly_slot_time_utc: "02:30"
 record_retention_days: 14
+nightly_event: schedule
+nightly_artifact_prefix: nightly-test-results-
+pr_workflow_file: ci.yml
+pr_event: pull_request
+selection_artifact_prefix: test-selection-
+shard_job_pattern: '^Tests \(Split (\d+)/\d+\)$'
+artifact_max_bytes: 524288
+artifact_unzipped_max_bytes: 134217728

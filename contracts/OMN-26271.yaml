@@ -99,12 +99,15 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_miss_collect.py -q --no-cov -k owner"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26271-ac6"
-    description: "The real collector over a skipped-test fixture classes miss and raises one alarm; the same fixture with the test selected raises none."
+    description: "The collector over a skipped-test fixture classes miss and raises one alarm; the same fixture with the test selected raises none. Run over the in-memory gateway and over the real gateway adapter (typed gateway results, real zip archives)."
     source: "manual"
     binds_ac: ["AC6"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_miss_collect.py -q --no-cov -k injected_miss"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_gateway_adapter.py -q --no-cov -k injected_miss"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26271-integration-proof"
     description: >-
