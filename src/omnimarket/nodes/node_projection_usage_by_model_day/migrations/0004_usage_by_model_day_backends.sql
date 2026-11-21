@@ -10,7 +10,10 @@
 -- may be empty. The writer recounts a row's backends with its other figures on the
 -- row's next call; nothing is backfilled, since nothing recorded a stored call's
 -- backend. The writer follows the columns in force, so the writer that runs on lanes
--- today keeps writing, and a rollback needs no data change.
+-- today keeps writing. A writer rolled back past OMN-25861 recounts a row without
+-- touching backends, which would then read as complete while counting calls whose
+-- backend it never stored: rolling the writer back therefore also runs
+-- UPDATE public.usage_by_model_day SET backends = NULL, so every row reads unknown.
 -- Re-runnable: every statement is IF NOT EXISTS.
 
 ALTER TABLE public.usage_by_model_day_calls ADD COLUMN IF NOT EXISTS backend TEXT;

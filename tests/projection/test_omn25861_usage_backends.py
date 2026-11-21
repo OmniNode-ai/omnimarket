@@ -22,7 +22,10 @@ B3  one backend reached twice is listed twice, or the backends are not in code-p
 B4  a call whose backend was never stated is served as a known list (empty or partial) instead of NULL;
 B5  one tier's backends leak into another tier's row of the same model, or another day's or tenant's into a row;
 B6  a local store written before this change cannot be opened, loses rows, or is not given the new columns once;
-B7  the event drops a stated backend on its way to the stored call, or invents one the event did not state.
+B7  the event drops a stated backend on its way to the stored call, or invents one the event did not state;
+B8  the store-neutral write names a column its database does not have yet: an overlay-bound local install writes
+    through the Postgres sync adapter to a database 0004 may not have reached (or has half reached), and every usage
+    call would be refused there and dropped by the producer's guard.
 """
 
 from __future__ import annotations
@@ -54,6 +57,7 @@ from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_
     apply_usage_call,
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
+from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from omnimarket.projection.sqlite_database import (
     SqliteDatabaseAdapter,
     reconcile_existing_store,
@@ -298,3 +302,53 @@ def test_b6_a_store_from_before_gains_the_columns_and_keeps_its_rows(
     finally:
         conn.close()
     assert json.loads(stored) == ["byok-reflection"]
+
+
+class _ColumnsInForce(InmemoryDatabaseAdapter):
+    """A store that, like Postgres, has only the 0004 columns a migration added, and refuses any other."""
+
+    def __init__(self, columns: set[tuple[str, str]]) -> None:
+        super().__init__()
+        self._columns = columns
+
+    def has_column(self, table: str, column: str) -> bool:
+        return (table, column) in self._columns
+
+    def upsert(self, table: str, conflict_key: str, row: dict[str, object]) -> bool:
+        for column in ("backend", "backends"):
+            if column in row and (table, column) not in self._columns:
+                raise AssertionError(f"{table}.{column} does not exist yet")
+        return super().upsert(table, conflict_key, row)
+
+
+@pytest.mark.parametrize(
+    ("columns", "call_backend", "row_backends"),
+    [
+        (set(), "absent", "absent"),
+        ({("usage_by_model_day_calls", "backend")}, "byok-reflection", "absent"),
+        (
+            {
+                ("usage_by_model_day_calls", "backend"),
+                ("usage_by_model_day", "backends"),
+            },
+            "byok-reflection",
+            ["byok-reflection"],
+        ),
+    ],
+    ids=["before-0004", "half-applied-0004", "with-0004"],
+)
+def test_b8_the_store_writes_each_new_column_only_where_it_exists(
+    columns: set[tuple[str, str]], call_backend: object, row_backends: object
+) -> None:
+    db = _ColumnsInForce(columns)
+    _apply(db, _call("p1", "byok-reflection"))  # type: ignore[arg-type]
+    (call,) = db.query("usage_by_model_day_calls")
+    (row,) = db.query("usage_by_model_day")
+    assert call.get("backend", "absent") == call_backend
+    if "backends" in row:
+        stored = row["backends"]
+        assert (
+            json.loads(stored) if isinstance(stored, str) else stored
+        ) == row_backends
+    else:
+        assert row_backends == "absent"

@@ -21,6 +21,18 @@ class UsageCallReadBackError(RuntimeError):
     """The store did not read back a call it was just given, so no share can be counted from it."""
 
 
+def _column_in_force(db: DatabaseAdapter, table: str, column: str) -> bool:
+    """Whether ``db`` has migration 0004's ``column`` (OMN-25861).
+
+    A store that answers ``has_column`` (the Postgres sync adapter, whose schema the
+    migrations own) is asked, so the write follows the columns in force as the async
+    writer does; a store that does not (the local SQLite file, which adds a column
+    a row brings, and the in-memory double) takes every column.
+    """
+    has_column = getattr(db, "has_column", None)
+    return True if has_column is None else bool(has_column(table, column))
+
+
 def backends_of_calls(model_id: str, calls: list[dict[str, object]]) -> str | None:
     """A row's backends as stored: a JSON array, or None when any call stated none.
 
@@ -56,6 +68,11 @@ def apply_usage_call(delta: ModelUsageCallDelta, db: DatabaseAdapter) -> bool:
         "cost_tier_name": delta.cost_tier_name,
     }
     updated_at = datetime.now(UTC).isoformat()
+    # OMN-25861: 0004's two columns are written only where they exist; its two ALTERs
+    # can commit separately, so the call's backend is stored once its column exists
+    # and the row's backends counted once the day table has its column too.
+    call_backend = _column_in_force(db, CALLS_TABLE, "backend")
+    row_backends = call_backend and _column_in_force(db, AGGREGATE_TABLE, "backends")
     db.upsert(
         CALLS_TABLE,
         "call_id",
@@ -66,7 +83,7 @@ def apply_usage_call(delta: ModelUsageCallDelta, db: DatabaseAdapter) -> bool:
             "output_tokens": delta.output_tokens,
             "cost_usd": delta.cost_usd,
             "usage_source": delta.usage_source.value,
-            "backend": delta.backend,
+            **({"backend": delta.backend} if call_backend else {}),
             "occurred_at": delta.occurred_at.isoformat(),
             "ingested_at": updated_at,
         },
@@ -109,7 +126,11 @@ def apply_usage_call(delta: ModelUsageCallDelta, db: DatabaseAdapter) -> bool:
             "unmeasured_call_count": len(calls) - len(measured),
             "call_count": len(calls),
             "call_share": len(calls) / day_calls,
-            "backends": backends_of_calls(delta.model_id, calls),
+            **(
+                {"backends": backends_of_calls(delta.model_id, calls)}
+                if row_backends
+                else {}
+            ),
             "updated_at": updated_at,
         },
     )
