@@ -669,3 +669,141 @@ def test_customer_launchers_only(tmp_path: Path) -> None:
 
     control, _ = install("omnibase-core", "control")
     assert control > {"onex", "omni-agent"}, control
+
+
+GUIDE_INSTALL_LINE: tuple[str, ...] = (
+    "uv",
+    "tool",
+    "install",
+    "--python",
+    "3.12",
+    "--no-build",
+    "omninode-onex",
+)
+
+
+def _source_only_certifi(links: Path, marker: Path) -> None:
+    import tarfile
+
+    build_root = links.parent / "certifi-2099.1.1"
+    build_root.mkdir(parents=True, exist_ok=True)
+    (build_root / "pyproject.toml").write_text(
+        '[build-system]\nrequires = []\nbuild-backend = "stub"\nbackend-path = ["backend"]\n\n'
+        '[project]\nname = "certifi"\nversion = "2099.1.1"\n'
+    )
+    (build_root / "PKG-INFO").write_text(
+        "Metadata-Version: 2.1\nName: certifi\nVersion: 2099.1.1\n"
+    )
+    backend_dir = build_root / "backend"
+    backend_dir.mkdir()
+    (backend_dir / "stub.py").write_text(
+        f"def _invoke(*args: object, **kwargs: object) -> None:\n"
+        f"    with open({str(marker)!r}, 'w', encoding='utf-8') as f:\n"
+        f"        f.write('invoked')\n"
+        f"    raise RuntimeError('build backend stub invoked')\n\n"
+        "build_wheel = _invoke\n"
+        "build_sdist = _invoke\n"
+        "get_requires_for_build_wheel = _invoke\n"
+        "prepare_metadata_for_build_wheel = _invoke\n"
+        "build_editable = _invoke\n"
+    )
+    archive = links / "certifi-2099.1.1.tar.gz"
+    with tarfile.open(archive, "w:gz") as tf:
+        tf.add(build_root, arcname="certifi-2099.1.1")
+
+
+def _git_stub(directory: Path, log: Path) -> None:
+    import stat
+
+    directory.mkdir(parents=True, exist_ok=True)
+    git_path = directory / "git"
+    git_path.write_text(f'#!/bin/sh\necho "git $*" >> {str(log)!r}\nexit 97\n')
+    git_path.chmod(
+        stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH
+    )
+
+
+@pytest.mark.release_proof
+def test_no_git_install(tmp_path: Path) -> None:
+    """AC1: the guide's install line, run as printed with its --no-build into an empty HOME, never calls git, creates no .git directory, builds nothing and gives an onex that runs; the same line without --no-build builds the source-only fixture and fails."""
+    import shutil
+
+    wheel_env = os.environ.get("ONEX_TEST_ONEX_WHEEL")
+    if wheel_env is None:
+        if os.environ.get("ONEX_E2E_REQUIRE_COMPLETE") == "1":
+            pytest.fail("No-git install check requires ONEX_TEST_ONEX_WHEEL")
+        pytest.skip("No-git install check requires ONEX_TEST_ONEX_WHEEL")
+    wheel = Path(wheel_env)
+    assert wheel.is_file()
+    version = wheel.name.split("-")[1]
+    uv = shutil.which(os.environ.get("ONEX_TEST_UV") or "uv")
+    assert uv
+
+    links = tmp_path / "links"
+    links.mkdir()
+    shutil.copy2(wheel, links / wheel.name)
+    marker = tmp_path / "backend-invoked"
+    _source_only_certifi(links, marker)
+
+    stub_dir = tmp_path / "stub"
+    git_log = tmp_path / "git-called.log"
+    _git_stub(stub_dir, git_log)
+
+    def line(no_build: bool) -> list[str]:
+        command = list(GUIDE_INSTALL_LINE)
+        command[0] = uv
+        if not no_build:
+            command.remove("--no-build")
+        command[-1] = f"omninode-onex=={version}"
+        command.extend(["--find-links", str(links)])
+        return command
+
+    def environment(home: Path) -> dict[str, str]:
+        return {
+            "HOME": str(home),
+            "PATH": f"{stub_dir}{os.pathsep}{home / '.local' / 'bin'}{os.pathsep}/usr/bin{os.pathsep}/bin",
+            "LANG": "en_US.UTF-8",
+        }
+
+    home = tmp_path / "home"
+    home.mkdir()
+    resolved = shutil.which("git", path=environment(home)["PATH"])
+    assert resolved == str(stub_dir / "git")
+    probe = _run([resolved, "probe"], environment(home), tmp_path)
+    assert probe.returncode == 97
+    assert git_log.read_text().count("\n") == 1
+    git_log.unlink()
+
+    installed = _run(line(True), environment(home), tmp_path, timeout=1200)
+    assert installed.returncode == 0, installed.stdout + installed.stderr
+    assert not git_log.exists(), git_log.read_text() if git_log.exists() else ""
+    dot_git = sorted(str(p) for p in home.rglob(".git") if p.is_dir())
+    assert dot_git == [], dot_git
+    assert not marker.exists(), "the build backend ran under --no-build"
+
+    dist_infos = list(
+        (home / ".local" / "share" / "uv" / "tools" / "omninode-onex").glob(
+            "lib/python3.12/site-packages/certifi-*.dist-info"
+        )
+    )
+    assert len(dist_infos) == 1
+    assert not dist_infos[0].name.startswith("certifi-2099.1.1")
+
+    for args in (["--version"], ["--help"]):
+        ran = _run(
+            [str(home / ".local" / "bin" / "onex"), *args],
+            environment(home),
+            tmp_path,
+            timeout=120,
+        )
+        assert ran.returncode == 0, ran.stdout + ran.stderr
+        if args == ["--version"]:
+            assert version in ran.stdout
+
+    control_home = tmp_path / "control-home"
+    control_home.mkdir()
+    control = _run(line(False), environment(control_home), tmp_path, timeout=1200)
+    assert marker.exists(), (
+        "the control did not build the source-only fixture, so the check above proves nothing"
+    )
+    assert control.returncode != 0, control.stdout
