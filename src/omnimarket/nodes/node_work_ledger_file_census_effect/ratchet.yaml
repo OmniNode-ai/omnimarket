@@ -49,10 +49,8 @@ files:
     src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_launch.py: 1
     src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_lane_render.py: 1
     src/omnimarket/nodes/node_lab_history_archive_effect/handlers/handler_lab_history_archive.py: 1
-    src/omnimarket/nodes/node_lab_story_log_effect/cli.py: 1
     src/omnimarket/nodes/node_ledger_reconcile_compute/handlers/ledger_rows.py: 1
     src/omnimarket/nodes/node_ledger_reconcile_effect/protocols/local_ledger_reconcile_adapters.py: 2
-    src/omnimarket/nodes/node_merged_running_count_effect/contract.yaml: 1
     src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_remote_setup_check.py: 2
     src/omnimarket/nodes/node_operator_capture_effect/contract.yaml: 1
     src/omnimarket/nodes/node_operator_capture_effect/handlers/capture_ports.py: 1
@@ -172,7 +170,6 @@ files:
     tests/unit/nodes/node_context_source_repo_doctrine_effect/test_context_source_repo_doctrine.py: 1
     tests/unit/nodes/node_context_source_work_state_effect/test_context_source_work_state.py: 1
     tests/unit/nodes/node_dropped_work_audit_scheduled_effect/test_dropped_work_audit_scheduled.py: 1
-    tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py: 1
     tests/unit/nodes/node_operator_capture_compute/test_golden_chain_operator_capture.py: 1
     tests/unit/nodes/node_operator_capture_effect/test_capture_accepted_append.py: 1
     tests/unit/nodes/node_operator_capture_effect/test_operator_capture_effect.py: 1
@@ -192,4 +189,4 @@ files:
     tests/unit/validators/test_ledger_file_census.py: 27
     tests/unit/work_ledger_bus/test_work_ledger_append_cli.py: 1
 ratchet:
-  omnimarket: 186
+  omnimarket: 183
