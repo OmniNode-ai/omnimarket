@@ -23,6 +23,7 @@ description: >-
   run_timeout_s runs under a wrapper that ends a hung run and exits 124, because launchd has no run limit for a timer job, and ends its run
   on TERM, INT and HUP, so an unload ends it too. A unit that declares tick_lock_file has a tick that holds that file in its evidence directory
   while it runs: an install or uninstall waits for a running tick to end after the unload, then stops it, and refuses the install of one it cannot stop.
+  A systemd unit with log_to_journal sends its stdout and stderr to the journal.
   Before loading a unit the installer runs its module with the arguments of the unit's declared probe_argv (the help request when none is declared) under the rendered environment; a module whose help request would run a real pass declares a probe its main honours without a pass, a bus read or a write, and a probe that is not a non-empty list of words is refused. The status mode of a systemd unit also compares the installed service and timer files with the text the installer renders now, prints one UNIT TEXT line per file (IN SYNC, DIFFERS FROM RENDER with the differing lines, or NOT COMPARED with the reason) and fails when a file differs.
 input_model:
   name: ModelRegistryUnitsRequest
@@ -1688,6 +1689,42 @@ units:
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
     evidence_file: .local/state/omni/lab-disk-hygiene/last-run.json
     state_directory: .onex_state/lab-disk-hygiene
+  # The first scheduled pass previews the host's retention policy and records which overlay row ran.
+  host-retention-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-host-retention
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 86400
+      run_timeout_s: 3600
+      run_at_load: true
+      description: daily and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    log_to_journal: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_host_retention_effect.runtime_host_retention_preview
+    entry_file: src/omnimarket/nodes/node_host_retention_effect/runtime_host_retention_preview.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    environment_inputs:
+      ONEX_HOST_NAME: host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/host-retention/last-run.json
+    state_directory: .onex_state/host-retention
   # The Temporal health alarm on the lab host that runs the self-hosted Temporal server (OMN-24900): every 60 s it reads
   # the server's cluster health and the worker's task queue pollers and appends one alarm row per episode.
   temporal-health-alarm-systemd:

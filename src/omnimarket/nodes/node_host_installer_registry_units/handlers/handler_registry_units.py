@@ -1113,6 +1113,7 @@ class HandlerRegistryUnits:
             for name, value in self.environment(request, unit).items()
         )
         user = self.run(["id", "-un"]).stdout.strip() or os.environ.get("USER", "")
+        log_to_journal = unit.get("log_to_journal", False)
         values = {
             "LABEL": str(unit["label"]),
             "UNIT": request.unit,
@@ -1125,6 +1126,12 @@ class HandlerRegistryUnits:
             "HOME": str(home),
             "USER": user,
             "STATE_DIR": str(state),
+            "LOG_STDOUT": "journal"
+            if log_to_journal
+            else f"append:{state}/{request.unit}.out.log",
+            "LOG_STDERR": "journal"
+            if log_to_journal
+            else f"append:{state}/{request.unit}.err.log",
             "RUN_TIMEOUT": str(int(unit["schedule"].get("run_timeout_s") or interval)),
             "START_INTERVAL": str(interval),
             "DESCRIPTION": str(unit["schedule"]["description"]),
