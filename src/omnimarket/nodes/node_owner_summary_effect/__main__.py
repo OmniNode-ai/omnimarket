@@ -7,7 +7,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from .container.container_owner_summary_effect import build_handler_owner_summary
@@ -24,7 +24,6 @@ def _parser() -> argparse.ArgumentParser:
         )
         command.add_argument("--state-file")
         if name == "facts":
-            command.add_argument("--ledger", default=os.environ.get("ONEX_LEDGER_PATH"))
             command.add_argument("--watcher-state")
             command.add_argument("--since", default="")
             command.add_argument("--until", default="")
@@ -53,7 +52,11 @@ def _path(value: str | None) -> Path | None:
     return Path(value) if value else None
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    ledger_rows: Callable[[int], tuple[str, ...]] | None = None,
+) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     root = getattr(args, "root", None)
@@ -62,7 +65,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     request = ModelOwnerSummaryRequest(
         command=args.command,
         root=Path(root or "."),
-        ledger=_path(getattr(args, "ledger", None)),
         watcher_state=_path(getattr(args, "watcher_state", None)),
         state_file=_path(getattr(args, "state_file", None)),
         since=getattr(args, "since", ""),
@@ -74,7 +76,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         now=getattr(args, "now", ""),
         full_list_link=getattr(args, "full_list_link", ""),
     )
-    result = build_handler_owner_summary().handle(request)
+    result = build_handler_owner_summary(ledger_rows).handle(request)
     if result.facts is not None:
         sys.stdout.write(result.facts.model_dump_json(indent=1) + "\n")
     for problem in result.problems:

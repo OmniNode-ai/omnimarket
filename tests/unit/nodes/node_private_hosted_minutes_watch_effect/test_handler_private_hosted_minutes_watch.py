@@ -10,6 +10,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from omnimarket.handlers import ledger_append_via_node as append_via_node
 from omnimarket.nodes.node_private_hosted_minutes_watch_effect.handlers import (
     handler_private_hosted_minutes_watch as module,
 )
@@ -30,9 +31,7 @@ def fixture_visibility(_org, repository):
 
 
 def request(tmp_path):
-    return ModelHostedMinutesWatchRequest(
-        day=DAY, state_dir=tmp_path / "state", ledger=tmp_path / "ledger.md"
-    )
+    return ModelHostedMinutesWatchRequest(day=DAY, state_dir=tmp_path / "state")
 
 
 def make_handler(fixture="billing_usage_month.json", **overrides):
@@ -55,7 +54,7 @@ def test_handle_reads_once_alerts_before_append_and_persists(tmp_path):
     events = []
     handler, reader, appender, sender = make_handler()
     sender.side_effect = lambda text: events.append(("alert", text)) or "sent"
-    appender.side_effect = lambda _ledger, row: (
+    appender.side_effect = lambda row, _day: (
         events.append(("ledger", row)) or (True, "written")
     )
     result = handler.handle(request(tmp_path))
@@ -77,7 +76,7 @@ def test_handle_reads_once_alerts_before_append_and_persists(tmp_path):
     assert events == [("alert", result.alert_text), ("ledger", result.status_row)]
     assert result.status_row.startswith("2026-10-19T12:00:00Z | STATUS |")
     assert "| alert=sent |" in result.status_row
-    appender.assert_called_once_with(tmp_path / "ledger.md", result.status_row)
+    appender.assert_called_once_with(result.status_row, DAY)
     state = tmp_path / "state"
     record = json.loads((state / "days/2026-10-18.json").read_text())
     assert record == {
@@ -124,21 +123,17 @@ def test_quiet_day_still_appends_status(tmp_path):
     assert "repos=none | alert=none" in result.status_row
 
 
-def test_ledger_unset_fails_before_billing(tmp_path, monkeypatch):
-    monkeypatch.delenv("ONEX_LEDGER_PATH", raising=False)
-    handler, reader, appender, sender = make_handler()
-    with pytest.raises(ValueError, match="ONEX_LEDGER_PATH is unset"):
-        handler.handle(ModelHostedMinutesWatchRequest(day=DAY, state_dir=tmp_path))
-    reader.assert_not_called()
-    appender.assert_not_called()
-    sender.assert_not_called()
+def test_request_names_no_ledger_file(tmp_path):
+    with pytest.raises(ValueError, match="ledger"):
+        ModelHostedMinutesWatchRequest(
+            day=DAY, state_dir=tmp_path, ledger=tmp_path / "ledger.md"
+        )
 
 
-def test_ledger_environment_used(tmp_path, monkeypatch):
-    monkeypatch.setenv("ONEX_LEDGER_PATH", str(tmp_path / "env-ledger.md"))
+def test_row_goes_to_the_appender_with_no_file_named(tmp_path):
     handler, _, appender, _ = make_handler()
     result = handler.handle(ModelHostedMinutesWatchRequest(day=DAY, state_dir=tmp_path))
-    appender.assert_called_once_with(tmp_path / "env-ledger.md", result.status_row)
+    appender.assert_called_once_with(result.status_row, DAY)
 
 
 def test_billing_failure_writes_error_heartbeat(tmp_path):
@@ -282,19 +277,33 @@ def test_alert_launch_failure(monkeypatch, failure):
 
 
 @pytest.mark.parametrize("rc", [0, 4])
-def test_ledger_command_and_result(tmp_path, monkeypatch, rc):
+def test_ledger_command_and_result(monkeypatch, rc):
     monkeypatch.setenv(
-        "ONEX_HOSTED_MINUTES_LEDGER_BIN", 'fake-ledger --config "some path"'
+        "ONEX_HOSTED_MINUTES_LEDGER_BIN", 'fake-onex --config "some path" work-ledger'
     )
+    monkeypatch.setattr(append_via_node.socket, "gethostname", lambda: "h053.example")
     run = Mock(return_value=subprocess.CompletedProcess([], rc, "", "e" * 210))
     monkeypatch.setattr(module.subprocess, "run", run)
-    ledger = tmp_path / "ledger.md"
-    assert module.append_ledger(ledger, "row") == (
+    assert module.append_ledger("row", DAY) == (
         rc == 0,
         f"ledger append exit {rc}: " + "e" * 200,
     )
+    request_id = module.append_request_id(DAY)
     run.assert_called_once_with(
-        ["fake-ledger", "--config", "some path", str(ledger), "--append", "row"],
+        [
+            "fake-onex",
+            "--config",
+            "some path",
+            "work-ledger",
+            "append",
+            "--lane",
+            module.APPEND_LANE,
+            "--host",
+            "h053",
+            "--request-id",
+            str(request_id),
+        ],
+        input="row",
         capture_output=True,
         text=True,
         timeout=360,
@@ -302,11 +311,16 @@ def test_ledger_command_and_result(tmp_path, monkeypatch, rc):
     )
 
 
+def test_append_request_id_is_the_day_and_nothing_else():
+    assert module.append_request_id(DAY) == module.append_request_id(DAY)
+    assert module.append_request_id(DAY) != module.append_request_id(date(2026, 10, 19))
+
+
 @pytest.mark.parametrize(
     "failure", [OSError("missing"), subprocess.TimeoutExpired("ledger", 360)]
 )
-def test_ledger_launch_failure(tmp_path, monkeypatch, failure):
+def test_ledger_launch_failure(monkeypatch, failure):
     monkeypatch.setattr(module.subprocess, "run", Mock(side_effect=failure))
-    ok, detail = module.append_ledger(tmp_path / "ledger.md", "row")
+    ok, detail = module.append_ledger("row", DAY)
     assert ok is False
     assert str(failure) in detail

@@ -40,8 +40,13 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+from omnimarket.handlers.ledger_rows_via_node import (
+    MAX_WINDOW_HOURS,
+    LedgerRowsUnreadableError,
+    read_ledger_rows_via_node,
+)
 from omnimarket.handlers.model_binding_reader import model_binding
 
 from ..models.model_plans_today import ModelPlansTodayRequest, ModelPlansTodayResult
@@ -77,6 +82,9 @@ MSG_WINDOW_HOURS = 12
 # phase at most SUMMARY_BUDGET_S plus the GLM receipt margin, and a MSG send CHILD_TIMEOUT_S.
 CHILD_TIMEOUT_S = 120
 LEDGER_TIMEOUT_S = 300
+LEDGER_READER = (
+    "plans-today"  # the reader name the deployment's reader overlay moves onto the bus
+)
 SUMMARY_BUDGET_S = 330
 DEFAULT_SUMMARY_TIMEOUT_S = 240
 # harness_delegate.py refuses --timeout-s at or above its call budget less the cleanup reserve (GLM_TIMEOUT_MAX_S
@@ -621,39 +629,44 @@ def parse_ledger_rows(text: str) -> tuple[list[LedgerRow], str]:
     return rows, newest
 
 
+def parse_bus_rows(lines: tuple[str, ...]) -> tuple[list[LedgerRow], str]:
+    """Ledger rows as the rows loader prints them: ``<stamp> | <KIND> | <cells> | <text>``, one per line."""
+    rows: list[LedgerRow] = []
+    for number, line in enumerate(lines, start=1):
+        cells = [c.strip() for c in line.split(" | ")]
+        try:
+            ts = parse_ts(cells[0])
+        except ValueError:
+            continue
+        rows.append(
+            LedgerRow(ts, cells[1] if len(cells) > 1 else "", cells, f"bus:L{number}")
+        )
+    return rows, fmt_ts(max(r.ts for r in rows)) if rows else ""
+
+
 def read_ledger(
-    window_days: int, plugin_root: Path | None
+    window_days: int, plugin_root: Path | None = None
 ) -> tuple[list[LedgerRow], str]:
-    if plugin_root is None:
-        raise RefusedError(
-            f"{PLUGIN_ROOT_ENV} is not set: the ledger is read only through the omni plugin's onex_ledger.py"
-        )
-    reader = plugin_root / "scripts" / "onex_ledger.py"
-    if not reader.is_file():
-        raise RefusedError(f"ledger reader not found: {reader}")
-    if not os.environ.get("ONEX_LEDGER_PATH"):
-        raise RefusedError(
-            "ONEX_LEDGER_PATH is not set (no default): export it or source session.env"
-        )
-    argv = [
-        sys.executable,
-        str(reader),
-        "query",
-        "--since",
-        f"{window_days}d",
-        "--archives",
-        "--limit",
-        "1000000",
-    ]
+    """The window's rows from the rows loader node over the bus; an unread window refuses the run.
+
+    ``plugin_root`` is kept for the callers that still pass it; no ledger reader runs from it.
+    """
+
+    def _run(argv: list[str], timeout_s: float) -> subprocess.CompletedProcess[str]:
+        return cast("subprocess.CompletedProcess[str]", run(argv, timeout=timeout_s))
+
     try:
-        r = run(argv, timeout=LEDGER_TIMEOUT_S)
-    except subprocess.TimeoutExpired:
-        raise timed_out(argv, LEDGER_TIMEOUT_S) from None
-    if r.returncode != 0:
-        raise RefusedError(
-            f"onex_ledger.py query failed (exit {r.returncode}): {r.stderr.strip()[:200]}"
+        lines = read_ledger_rows_via_node(
+            LEDGER_READER,
+            min(window_days * 24, MAX_WINDOW_HOURS),
+            runner=_run,
+            timeout_s=LEDGER_TIMEOUT_S,
         )
-    return parse_ledger_rows(r.stdout)
+    except subprocess.TimeoutExpired:
+        raise timed_out(["ledger rows loader"], LEDGER_TIMEOUT_S) from None
+    except LedgerRowsUnreadableError as exc:
+        raise RefusedError(str(exc)) from exc
+    return parse_bus_rows(lines)
 
 
 @dataclass

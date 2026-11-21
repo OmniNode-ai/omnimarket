@@ -23,10 +23,16 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
+from omnimarket.handlers.ledger_rows_via_node import (
+    LedgerRowsUnreadableError,
+    read_ledger_rows_via_node,
+    window_hours_covering,
+)
 from omnimarket.nodes.node_owner_summary_effect.models.model_clone_commit import (
     ModelCloneCommit,
 )
@@ -53,6 +59,8 @@ from omnimarket.nodes.node_owner_summary_effect.models.model_owner_summary_resul
     ModelOwnerSummaryResult,
 )
 
+#: The reader name the deployment's reader overlay moves onto the bus.
+LEDGER_READER = "owner-summary"
 DEFAULT_WINDOW_HOURS = 12
 MAX_WINDOW_HOURS = 48
 MAX_WORDS = 420
@@ -229,7 +237,18 @@ def _closes(terminal: dict[str, str], when: datetime, claim: dict[str, str]) -> 
 
 
 class HandlerOwnerSummary:
-    """Run one owner-summary command."""
+    """Run one owner-summary command.
+
+    The window's work ledger rows come from ``ledger_rows``: a function of the window in hours that answers the
+    rows loader node's lines. Without one the handler asks that node itself; it never reads the ledger file.
+    """
+
+    def __init__(
+        self, ledger_rows: Callable[[int], tuple[str, ...]] | None = None
+    ) -> None:
+        self._ledger_rows_source = ledger_rows or (
+            lambda hours: read_ledger_rows_via_node(LEDGER_READER, hours)
+        )
 
     def handle(self, request: ModelOwnerSummaryRequest) -> ModelOwnerSummaryResult:
         if request.command == "facts":
@@ -410,15 +429,24 @@ class HandlerOwnerSummary:
                 fetch_age = max(fetch_age, int(now.timestamp() - fetch.stat().st_mtime))
         return out, fetch_age
 
-    @staticmethod
-    def _ledger_rows(
-        path: Path, start: datetime, errors: list[str]
-    ) -> list[dict[str, str]]:
+    def _ledger_lines(
+        self, start: datetime, now: datetime, errors: list[str]
+    ) -> tuple[str, ...]:
+        """The window's rows from the rows loader node; an unread window is named in ``errors``, never empty."""
+        hours = window_hours_covering(start - timedelta(hours=1), now)
         try:
-            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError as exc:
+            return self._ledger_rows_source(hours)
+        except LedgerRowsUnreadableError as exc:
             errors.append(f"ledger unreadable: {exc}")
-            return []
+            return ()
+
+    @staticmethod
+    def _ledger_rows(raw: Sequence[str], start: datetime) -> list[dict[str, str]]:
+        # The node's order is not relied on: stamp rows in time order, continuation lines dropped.
+        lines = sorted(
+            (line for line in raw if _parse(line[:20]) is not None),
+            key=lambda line: line[:20],
+        )
         rows: list[dict[str, str]] = []
         seen: set[tuple[str, str, str]] = set()
         for line in reversed(lines):
@@ -478,9 +506,13 @@ class HandlerOwnerSummary:
         )
 
     def _lanes(
-        self, path: Path, start: datetime, end: datetime, errors: list[str]
+        self,
+        lines: Sequence[str],
+        start: datetime,
+        end: datetime,
+        errors: list[str],
     ) -> dict[str, Any]:
-        rows = self._ledger_rows(path, start, errors)
+        rows = self._ledger_rows(lines, start)
         in_window = []
         for row in rows:
             moment = _parse(row["ts"])
@@ -583,10 +615,6 @@ class HandlerOwnerSummary:
             return ModelOwnerSummaryResult(
                 exit_code=2, message=f"--now is not an ISO instant: {request.now}"
             )
-        if request.ledger is None:
-            return ModelOwnerSummaryResult(
-                exit_code=2, message="--ledger is required for facts"
-            )
         try:
             start, end, source = self.resolve_window(
                 now, request.since, request.until, self._state_file(request)
@@ -599,7 +627,7 @@ class HandlerOwnerSummary:
         )
         merged, queue, age = self._watcher(watcher_path, start, end, now, errors)
         clones, fetch_age = self._clones(request.root, start, end, now, errors)
-        lanes = self._lanes(request.ledger, start, end, errors)
+        lanes = self._lanes(self._ledger_lines(start, now, errors), start, end, errors)
         friction_status, friction_reason, friction_top = self._friction(
             request.friction_data, errors
         )

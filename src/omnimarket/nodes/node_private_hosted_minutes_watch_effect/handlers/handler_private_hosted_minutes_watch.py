@@ -6,13 +6,18 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
 import subprocess
+import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
+
+from omnimarket.handlers.ledger_append_via_node import (
+    append_row_via_bus,
+    request_id_for,
+)
 
 from ..models import (
     ModelHostedMinutesOverlay,
@@ -95,22 +100,23 @@ def read_repository_visibility(org: str, repository: str) -> str:
     raise RuntimeError("visibility read carried no visibility field")
 
 
-def append_ledger(ledger: Path, row: str) -> tuple[bool, str]:
-    """Append through the ledger command, never through a direct file write."""
-    argv = shlex.split(os.environ.get("ONEX_HOSTED_MINUTES_LEDGER_BIN", "onex-ledger"))
-    try:
-        done = subprocess.run(
-            [*argv, str(ledger), "--append", row],
-            capture_output=True,
-            text=True,
-            timeout=360,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return False, f"ledger append did not run: {exc}"
-    return (
-        done.returncode == 0,
-        f"ledger append exit {done.returncode}: {done.stderr[-200:]}",
+APPEND_LANE = "private-hosted-minutes-watch"
+_APPEND_NAMESPACE = uuid.UUID("5f0c1d2e-7a4b-4c8e-9b3a-2d6e8f1a0c47")
+APPEND_COMMAND_ENV = "ONEX_HOSTED_MINUTES_LEDGER_BIN"
+
+
+def append_request_id(day: date) -> uuid.UUID:
+    """One request id per checked day: the ledger host answers a repeat as a duplicate."""
+    return request_id_for(_APPEND_NAMESPACE, f"{APPEND_LANE}:{day.isoformat()}")
+
+
+def append_ledger(row: str, day: date) -> tuple[bool, str]:
+    """Send the row over the bus append path (``onex work-ledger append``), never to a file."""
+    return append_row_via_bus(
+        row,
+        lane=APPEND_LANE,
+        request_id=append_request_id(day),
+        command_env=APPEND_COMMAND_ENV,
     )
 
 
@@ -154,7 +160,7 @@ class HandlerPrivateHostedMinutesWatch:
         self,
         *,
         billing_reader: Callable[[str, int, int], dict[str, Any]] | None = None,
-        ledger_appender: Callable[[Path, str], tuple[bool, str]] | None = None,
+        ledger_appender: Callable[[str, date], tuple[bool, str]] | None = None,
         alert_sender: Callable[[str], str] | None = None,
         clock: Callable[[], datetime] | None = None,
         visibility_reader: Callable[[str, str], str] | None = None,
@@ -170,12 +176,6 @@ class HandlerPrivateHostedMinutesWatch:
     def handle(
         self, request: ModelHostedMinutesWatchRequest
     ) -> ModelHostedMinutesWatchResult:
-        ledger = request.ledger
-        if ledger is None:
-            ledger_env = os.environ.get("ONEX_LEDGER_PATH", "").strip()
-            if not ledger_env:
-                raise ValueError("ONEX_LEDGER_PATH is unset: no ledger to record on")
-            ledger = Path(ledger_env)
         day = request.day
         stamp = self._clock().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         heartbeat = request.state_dir / "last-run.json"
@@ -244,7 +244,7 @@ class HandlerPrivateHostedMinutesWatch:
         if record.get("ledger_written") is True:
             ledger_written, ledger_detail = True, f"already written {day}"
         else:
-            ledger_written, ledger_detail = self._ledger_appender(ledger, row)
+            ledger_written, ledger_detail = self._ledger_appender(row, day)
         _write_json(
             record_path,
             {

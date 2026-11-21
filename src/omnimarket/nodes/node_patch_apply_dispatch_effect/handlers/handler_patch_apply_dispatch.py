@@ -6,15 +6,26 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import shlex
 import subprocess
 import tempfile
+import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from omnimarket.handlers.ledger_append_via_node import (
+    append_row_via_bus,
+    request_id_for,
+)
+from omnimarket.handlers.ledger_rows_via_node import (
+    MAX_WINDOW_HOURS,
+    LedgerRowsUnreadableError,
+    read_ledger_rows_via_node,
+)
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     require_lane_model,
 )
@@ -42,13 +53,17 @@ GIT_LOCATION_ENV = frozenset(
         "GIT_ALTERNATE_OBJECT_DIRECTORIES",
     }
 )
-APPEND_COMMAND_ENV = "ONEX_LEDGER_COMMAND"
+APPEND_COMMAND_ENV = "ONEX_WORK_LEDGER_COMMAND"
+#: The reader name the deployment's rows loader overlay lists in ``moved_readers``.
+ROWS_READER = "patch-apply-dispatch"
+_APPEND_NAMESPACE = uuid.UUID("0c6f4a52-3b1e-4d7a-8f29-6a5e1b9c7d03")
 # A runner that refuses the brief (a ticket mismatch, no host) exits within seconds.
 RUNNER_REFUSAL_SECONDS = 5
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
 
 Dispatch = Callable[[Path, str, str, str], tuple[bool, str]]
 AppendRow = Callable[[str], tuple[bool, str]]
+ReadRows = Callable[[str, int], tuple[str, ...]]
 
 
 def runner_command(env: dict[str, str] | None = None) -> tuple[str, ...]:
@@ -65,25 +80,17 @@ def runner_command(env: dict[str, str] | None = None) -> tuple[str, ...]:
     return ()
 
 
-def append_ledger_row(ledger: Path, row: str) -> tuple[bool, str]:
-    """Use the deployment's ledger writer, retaining its validation and bus transport."""
-    command = shlex.split(os.environ.get(APPEND_COMMAND_ENV, "onex-ledger"))
-    if not command:
-        return False, "ledger command is empty"
-    try:
-        done = subprocess.run(
-            [*command, str(ledger), "--append", row],
-            capture_output=True,
-            text=True,
-            timeout=360,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return False, f"ledger writer did not run ({type(exc).__name__})"
-    return done.returncode == 0, f"exit {done.returncode}: {done.stderr.strip()[:300]}"
+def append_ledger_row(row: str) -> tuple[bool, str]:
+    """Send the row over the bus append path (``onex work-ledger append``), never to a file."""
+    return append_row_via_bus(
+        row,
+        lane=LANE,
+        request_id=request_id_for(_APPEND_NAMESPACE, row),
+        command_env=APPEND_COMMAND_ENV,
+    )
 
 
-def runner_dispatch(command: tuple[str, ...], ledger: Path) -> Dispatch:
+def runner_dispatch(command: tuple[str, ...]) -> Dispatch:
     """Start one remote-lane run for a brief; a runner that refuses it in seconds is a failure."""
 
     def dispatch(brief: Path, lane: str, ticket: str, repo: str) -> tuple[bool, str]:
@@ -112,8 +119,6 @@ def runner_dispatch(command: tuple[str, ...], ledger: Path) -> Dispatch:
                         ticket,
                         "--repo",
                         repo,
-                        "--ledger",
-                        str(ledger),
                     ],
                     start_new_session=True,
                     stdin=subprocess.DEVNULL,
@@ -160,8 +165,8 @@ def _cells(line: str) -> tuple[datetime, str, dict[str, str]] | None:
 class _Ledger:
     """The two things the tick reads from the ledger: live CLAIMs and a lane's ticket."""
 
-    def __init__(self, text: str) -> None:
-        self.rows = [row for row in map(_cells, text.splitlines()) if row is not None]
+    def __init__(self, rows: tuple[str, ...]) -> None:
+        self.rows = [row for row in map(_cells, rows) if row is not None]
 
     def ticket(self, lane: str) -> str:
         family = _family(lane)
@@ -256,10 +261,15 @@ def _fence(text: str) -> str:
 
 class HandlerPatchApplyDispatch:
     def __init__(
-        self, *, dispatch: Dispatch | None = None, append_row: AppendRow | None = None
+        self,
+        *,
+        dispatch: Dispatch | None = None,
+        append_row: AppendRow | None = None,
+        read_rows: ReadRows | None = None,
     ) -> None:
         self._stated_dispatch = dispatch
         self._stated_append = append_row
+        self._read_rows: ReadRows = read_rows or read_ledger_rows_via_node
         self._dispatch: Dispatch
         self._append_row: AppendRow
 
@@ -267,12 +277,8 @@ class HandlerPatchApplyDispatch:
         self, request: ModelPatchApplyDispatchRequest
     ) -> ModelPatchApplyDispatchResult:
         errors: list[str] = []
-        self._dispatch = self._stated_dispatch or runner_dispatch(
-            runner_command(), request.ledger_path
-        )
-        self._append_row = self._stated_append or (
-            lambda row: append_ledger_row(request.ledger_path, row)
-        )
+        self._dispatch = self._stated_dispatch or runner_dispatch(runner_command())
+        self._append_row = self._stated_append or append_ledger_row
         root = (
             request.patch_root or request.registry_root / ".onex_state/hook-preflight"
         )
@@ -282,9 +288,12 @@ class HandlerPatchApplyDispatch:
         ledger: _Ledger | None = None
         try:
             ledger = _Ledger(
-                request.ledger_path.read_text(encoding="utf-8", errors="replace")
+                self._read_rows(
+                    ROWS_READER,
+                    max(1, min(MAX_WINDOW_HOURS, math.ceil(request.max_age_hours) + 1)),
+                )
             )
-        except OSError as exc:
+        except LedgerRowsUnreadableError as exc:
             errors.append(
                 f"ledger unreadable ({type(exc).__name__}): live CLAIMs cannot be checked"
             )
