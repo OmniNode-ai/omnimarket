@@ -13,6 +13,10 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record import (
+    EnumFullSuiteReason,
+)
+
 
 class ModelAdjacencyEntry(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -142,6 +146,41 @@ class ModelAdjacencyMap(BaseModel):
     off, and for any Python file beneath them, the path forces the full suite like ``test_infrastructure_paths``.
     """
 
+    pyproject_section_selection_enabled: bool = False
+    """Whether a ``pyproject.toml`` change narrows by section instead of taking the full suite.
+
+    The stage 2 entry of the selection record. Off, a path in ``pyproject_paths`` or
+    ``pyproject_lock_paths`` that ``test_infrastructure_paths`` names keeps the unconditional full-suite
+    rule. On, the handler compares the changed keys of the file (``data_file_changes``) with
+    ``pyproject_narrowable_keys`` and narrows only when every one matches.
+    """
+
+    pyproject_paths: list[str] = Field(default_factory=list)
+    """Repo-relative paths of the project files the section rule reads (``pyproject.toml``)."""
+
+    pyproject_lock_paths: list[str] = Field(default_factory=list)
+    """Repo-relative paths of their lock files (``uv.lock``): narrowable only beside a version change."""
+
+    pyproject_narrowable_keys: list[str] = Field(default_factory=list)
+    """Dotted key patterns (fnmatch) a ``pyproject.toml`` change may touch and still narrow.
+
+    An allowlist: a changed key no pattern matches, including one the list has never seen, escalates.
+    """
+
+    pyproject_reader_globs: list[str] = Field(default_factory=list)
+    """Repo-relative globs of the non-test files whose text is indexed for a read of the project file.
+
+    A file that opens ``pyproject.toml`` or reads entry-point metadata (``importlib.metadata``,
+    ``entry_points(``) makes every test that imports it, transitively, a reader.
+    """
+
+    def effective_test_infrastructure_paths(self) -> list[str]:
+        """``test_infrastructure_paths`` less the files the section rule decides, when it is on."""
+        if not self.pyproject_section_selection_enabled:
+            return self.test_infrastructure_paths
+        decided = {*self.pyproject_paths, *self.pyproject_lock_paths}
+        return [p for p in self.test_infrastructure_paths if p not in decided]
+
     @model_validator(mode="after")
     def validate_data_reader_overrides(self) -> ModelAdjacencyMap:
         for glob, paths in self.data_reader_overrides.items():
@@ -195,7 +234,7 @@ class ModelAdjacencyMap(BaseModel):
 
     def is_test_infrastructure(self, path: str) -> bool:
         """Whether a changed ``path`` invalidates narrowing: the full suite runs."""
-        paths = self.test_infrastructure_paths
+        paths = self.effective_test_infrastructure_paths()
         if not self.is_reader_data_file(path):
             paths = [*paths, *self.data_reader_gated_infrastructure_paths]
         return any(path == p or path.startswith(p.rstrip("/") + "/") for p in paths)
@@ -215,6 +254,30 @@ class ModelAdjacencyMap(BaseModel):
         return set(self.always_selected_paths) | triggered
 
 
+class ModelKeyChange(BaseModel):
+    """One changed key of a TOML file: its dotted path and its value on each side (None: absent)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    key: str = Field(min_length=1)
+    base_value: str | None = None
+    head_value: str | None = None
+
+
+class ModelDataFileChange(BaseModel):
+    """The keys that differ between the base and head text of one declared data file.
+
+    ``parse_failed`` is set when either side is absent or is not TOML: the keys are then unknown and the
+    rule fails closed.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    path: str = Field(min_length=1)
+    parse_failed: bool = False
+    changed_keys: tuple[ModelKeyChange, ...] = ()
+
+
 class ModelPathResolutionRequest(BaseModel):
     """The changed files, the adjacency map and the repository root to read."""
 
@@ -223,6 +286,8 @@ class ModelPathResolutionRequest(BaseModel):
     changed_files: tuple[str, ...]
     adjacency: ModelAdjacencyMap
     repo_root: str = Field(min_length=1)
+    data_file_changes: tuple[ModelDataFileChange, ...] = ()
+    """The changed keys of each declared data file, from a source-diff adapter. Empty when not read."""
 
 
 class ModelPathResolutionResult(BaseModel):
@@ -237,3 +302,6 @@ class ModelPathResolutionResult(BaseModel):
     Such a change may select no test of its own (the always set is added by the caller), so an empty
     ``selected_paths`` is a narrowed answer, not an unattributable one.
     """
+    full_suite_reason: EnumFullSuiteReason | None = None
+    """Set when the change cannot be narrowed (a ``pyproject.toml`` key outside the allowlist, an
+    unparseable side, a lock change beyond the version line): the caller takes the full suite with it."""

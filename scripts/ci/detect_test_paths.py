@@ -12,6 +12,7 @@ from pathlib import Path
 from omnimarket.handlers.adapter_test_selection_policy_file import load_policy
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_path_resolution import (
     HandlerTestPathResolution,
+    declared_data_file_changes,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
     HandlerTestSelectionSelector,
@@ -63,13 +64,19 @@ def resolve_test_paths(
 
 
 def _resolve_result(
-    changed_files: list[str], config: ModelAdjacencyMap, repo_root: Path
+    changed_files: list[str],
+    config: ModelAdjacencyMap,
+    repo_root: Path,
+    base_ref: str | None = None,
 ) -> ModelPathResolutionResult:
     return HandlerTestPathResolution().handle(
         ModelPathResolutionRequest(
             changed_files=tuple(changed_files),
             adjacency=config,
             repo_root=str(repo_root),
+            data_file_changes=declared_data_file_changes(
+                changed_files, config, str(repo_root), base_ref
+            ),
         )
     )
 
@@ -81,6 +88,7 @@ def compute_selection(
     event_name: str = "pull_request",
     feature_flag_enabled: bool = True,
     repo_root: Path | None = None,
+    base_ref: str | None = None,
 ) -> ModelTestSelection:
     config = load_adjacency_map(adjacency_path)
     root = repo_root or REPO_ROOT
@@ -126,7 +134,9 @@ def compute_selection(
     if len(changed_modules) >= config.thresholds.modules_changed_for_full_suite:
         return _full_suite(EnumFullSuiteReason.THRESHOLD_MODULES)
 
-    resolved = _resolve_result(changed_files, config, repo_root=root)
+    resolved = _resolve_result(changed_files, config, repo_root=root, base_ref=base_ref)
+    if resolved.full_suite_reason is not None:
+        return _full_suite(resolved.full_suite_reason)
     if not (selected := list(resolved.selected_paths)) and not resolved.data_only:
         # OMN-20305: nothing narrowed, so the whole tests/ tree runs. Take the
         # full-suite shard matrix; an is_full_suite=False selection of tests/
@@ -175,6 +185,7 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=Path(__file__).parent / "test_selection_adjacency.yaml",
     )
+    parser.add_argument("--base-ref", default=None)
     parser.add_argument(
         "--feature-flag",
         choices=("on", "off"),
@@ -193,6 +204,7 @@ def main(argv: list[str] | None = None) -> int:
         ref_name=args.ref_name,
         event_name=args.event_name,
         feature_flag_enabled=(args.feature_flag == "on"),
+        base_ref=args.base_ref,
     )
     sys.stdout.write(selection.model_dump_json())
     sys.stdout.write("\n")
