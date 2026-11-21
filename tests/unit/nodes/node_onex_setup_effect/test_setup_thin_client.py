@@ -86,7 +86,7 @@ def test_default_workflow_reaches_model_configuration_without_source_acquisition
     )
     observations = {item.step: item for item in journal.observations}
     assert "models" in observations, journal.model_dump_json()
-    assert observations["models"].status == "action_required"
+    assert observations["models"].status == "skipped"
     assert commands == []
     assert sentinel.read_text() == "keep my work"
     assert not (workspace / "omnimarket").exists()
