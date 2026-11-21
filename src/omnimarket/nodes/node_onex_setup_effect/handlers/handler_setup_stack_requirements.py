@@ -99,6 +99,13 @@ class HandlerSetupStackRequirements:
     def observe(
         self, plan: ModelSetupPlan, required: tuple[str, ...]
     ) -> ModelSetupObservation:
+        """Synchronous entry for callers that own no event loop."""
+        return run_coro_sync(self.observe_async(plan, required))
+
+    async def observe_async(
+        self, plan: ModelSetupPlan, required: tuple[str, ...]
+    ) -> ModelSetupObservation:
+        """Read the engine on the caller's loop, so a reader may share that loop."""
         selection = plan.local_stack
         if selection is None or not required:
             return ModelSetupObservation(
@@ -107,10 +114,8 @@ class HandlerSetupStackRequirements:
                 fix="Select explicit compose/topology services before checking Docker.",
             )
         try:
-            available_cpu, available_memory = run_coro_sync(
-                asyncio.wait_for(
-                    self._engine_reader(), timeout=_ENGINE_READ_TIMEOUT_SECONDS
-                )
+            available_cpu, available_memory = await asyncio.wait_for(
+                self._engine_reader(), timeout=_ENGINE_READ_TIMEOUT_SECONDS
             )
             # An injected reader is not bound by infra's checks; NaN compares as enough.
             if not (
@@ -200,7 +205,8 @@ class HandlerSetupStackRequirements:
                 fix="Docker returned an invalid or incomplete engine, configuration or health observation. Repair the selected stack inputs and retry; raw process output was withheld.",
             )
 
-    def handle(
+    async def handle(
         self, request: ModelSetupStackRequirementsRequest
     ) -> ModelSetupObservation:
-        return self.observe(request.plan, request.services)
+        """Bus entry: the runtime awaits this on its own loop."""
+        return await self.observe_async(request.plan, request.services)

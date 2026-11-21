@@ -128,7 +128,7 @@ def test_selected_stack_requirements_and_health(
     request = ModelSetupStackRequirementsRequest(
         plan=_plan(tmp_path), services=("worker",)
     )
-    result = HandlerSetupStackRequirements().handle(request)
+    result = asyncio.run(HandlerSetupStackRequirements().handle(request))
     assert result.status == expected
     from uuid import uuid4
 
@@ -321,3 +321,63 @@ def test_selected_stack_bounds_an_injected_reader_by_the_engine_deadline(
     elapsed = time.monotonic() - started
     assert result.status == "action_required"
     assert elapsed < 2, f"the reader ran {elapsed:.2f}s past its deadline"
+
+
+def test_bus_run_reads_an_injected_reader_on_the_bus_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnibase_core.protocols.runtime.protocol_local_runtime_bus import (
+        ProtocolLocalRuntimeBus,
+    )
+    from omnibase_core.runtime.runtime_local_adapter import LocalRuntimeBusAdapter
+
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_stack_requirements import (
+        HandlerSetupStackRequirements,
+    )
+    from omnimarket.nodes.node_onex_setup_effect.models.model_setup_stack_requirements import (
+        ModelSetupStackRequirementsRequest,
+    )
+
+    def transport(self, request):
+        if "config" in request.argv:
+            body = {"services": {"worker": {}}}
+        else:
+            body = {"Service": "worker", "State": "running", "Health": ""}
+        return ModelSetupCommandResult(
+            argv=request.argv, returncode=0, stdout=json.dumps(body), stderr=""
+        )
+
+    monkeypatch.setattr(HandlerSetupCommand, "handle", transport)
+    bus = AsyncMock(spec=ProtocolLocalRuntimeBus)
+    errors: list[str] = []
+    request = ModelSetupStackRequirementsRequest(
+        plan=_plan(tmp_path), services=("worker",)
+    )
+
+    async def run_on_bus() -> None:
+        # A reader sharing the runtime's loop: its answer is a future of that loop.
+        loop = asyncio.get_running_loop()
+        answer: asyncio.Future[tuple[float, int]] = loop.create_future()
+        loop.call_later(0.05, answer.set_result, (4.0, 1 << 30))
+
+        async def bus_loop_reader() -> tuple[float, int]:
+            return await answer
+
+        adapter = LocalRuntimeBusAdapter(
+            handler=HandlerSetupStackRequirements(engine_reader=bus_loop_reader),
+            handler_name="onex_setup.stack_requirements",
+            input_model_cls=ModelSetupStackRequirementsRequest,
+            output_topic="observations",
+            bus=bus,
+            on_error=lambda: errors.append("handler raised"),
+        )
+        await adapter.on_message(
+            SimpleNamespace(value=request.model_dump_json().encode())
+        )
+
+    asyncio.run(run_on_bus())
+    assert errors == [], "the reader must run on the loop that owns its answer"
+    bus.publish.assert_awaited_once()
+    published = json.loads(bus.publish.await_args.args[2])
+    assert published["status"] == "success"
+    assert published["evidence"]["engine_cpus"] == "4.0"
