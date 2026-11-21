@@ -15,6 +15,7 @@ import asyncio
 import hashlib
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -937,9 +938,24 @@ def _launcher_owners(site: Path) -> dict[str, list[tuple[str, str]]]:
 
     owners: dict[str, list[tuple[str, str]]] = {name: [] for name in CUSTOMER_LAUNCHERS}
     for dist in importlib_metadata.distributions(path=[str(site)]):
+        name = dist.metadata["Name"]
         for entry in dist.entry_points:
-            if entry.group == "console_scripts" and entry.name in owners:
-                owners[entry.name].append((dist.metadata["Name"], entry.value))
+            if (
+                entry.group in {"console_scripts", "gui_scripts"}
+                and entry.name in owners
+            ):
+                owners[entry.name].append((name, entry.value))
+        # A launcher a distribution ships as a file (its RECORD lists bin/onex) is a
+        # declaration too, unless it is the script its own entry point generated.
+        for file in dist.files or []:
+            path = Path(str(file))
+            declared = {owner for owner, _ in owners.get(path.name, [])}
+            if (
+                path.parent.name == "bin"
+                and path.name in owners
+                and name not in declared
+            ):
+                owners[path.name].append((name, "installed file"))
     return owners
 
 
@@ -969,6 +985,33 @@ def _customer_wheel(wheel: Path) -> tuple[list[str], list[str]]:
     return paths, requires
 
 
+def _assert_installed_matches_wheel(site: Path, wheel: Path) -> None:
+    """Every hashed file of the customer wheel's RECORD is installed with that sha256."""
+    import base64
+    import zipfile
+
+    with zipfile.ZipFile(wheel) as archive:
+        info = next(
+            n.split("/")[0]
+            for n in archive.namelist()
+            if n.endswith(".dist-info/RECORD")
+        )
+        record = archive.read(f"{info}/RECORD").decode("utf-8")
+    checked = 0
+    for line in record.splitlines():
+        path, _, rest = line.partition(",")
+        algorithm, _, expected = rest.split(",")[0].partition("=")
+        if algorithm != "sha256":
+            continue
+        installed = site / path
+        assert installed.is_file(), f"{path} from the wheel is not installed"
+        digest = hashlib.sha256(installed.read_bytes()).digest()
+        actual = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+        assert actual == expected, f"installed {path} differs from the wheel's RECORD"
+        checked += 1
+    assert checked, f"{wheel.name} lists no hashed file"
+
+
 def _assert_carries_no_code(paths: list[str]) -> None:
     code = [path for path in paths if not path.split("/")[0].endswith(".dist-info")]
     assert code == [], (
@@ -986,6 +1029,17 @@ def _assert_pins_match_installed(requires: list[str], site: Path) -> None:
         canonicalize_name(dist.metadata["Name"]): dist.version
         for dist in importlib_metadata.distributions(path=[str(site)])
     }
+    assert requires, f"{CUSTOMER_PACKAGE} pins nothing"
+    pinned = {canonicalize_name(Requirement(line).name) for line in requires}
+    omninode = {
+        name
+        for name in installed
+        if name.startswith(("omnibase-", "omnimarket", "omninode-"))
+        and name != CUSTOMER_PACKAGE
+    }
+    assert omninode <= pinned, (
+        f"installed but not pinned by {CUSTOMER_PACKAGE}: {sorted(omninode - pinned)}"
+    )
     for line in requires:
         requirement = Requirement(line)
         specifiers = list(requirement.specifier)
@@ -1010,6 +1064,21 @@ def _check_customer_install(venv: Path, bin_dir: Path, wheel: Path, home: Path) 
     paths, requires = _customer_wheel(wheel)
     _assert_carries_no_code(paths)
     _assert_pins_match_installed(requires, site)
+    _assert_installed_matches_wheel(site, wheel)
+    # Positive control for "builds nothing": certifi is in the closure, so the resolver
+    # saw AC1's source-only certifi 2099.1.1 in the links folder and had to pass it over.
+    from importlib import metadata as importlib_metadata
+
+    versions = {
+        dist.metadata["Name"].lower(): dist.version
+        for dist in importlib_metadata.distributions(path=[str(site)])
+    }
+    assert "certifi" in versions, (
+        "certifi is not in the closure, so the build check proved nothing"
+    )
+    assert versions["certifi"] != "2099.1.1", (
+        "the source-only certifi fixture was installed"
+    )
     ran = _run(
         [str(bin_dir / "onex"), "--version"],
         {"HOME": str(home), "PATH": "/usr/bin:/bin", "LANG": "en_US.UTF-8"},
@@ -1056,10 +1125,22 @@ def _customer_installs(
             (links / candidate.name).write_bytes(candidate.read_bytes())
         marker = root / "backend-invoked"
         _source_only(links, "certifi", "2099.1.1", marker)
+        # Only the two installers and Python 3.12 are added to a minimal PATH; with uv in
+        # reach pipx installs through uv, which keeps pipx's default interpreter.
+        tools_path = root / "path"
+        tools_path.mkdir()
+        for tool, source in (
+            ("uv", shutil.which(os.environ.get("ONEX_TEST_UV") or "uv")),
+            ("pipx", shutil.which(os.environ.get("ONEX_TEST_PIPX") or "pipx")),
+            ("python3.12", py312),
+        ):
+            assert source, f"{tool} is not available"
+            (tools_path / tool).symlink_to(source)
         environment = {
             "HOME": str(home),
-            "PATH": f"{Path(py312).parent}:{os.environ.get('PATH', '/usr/bin:/bin')}",
+            "PATH": f"{tools_path}:/usr/bin:/bin",
             "LANG": "en_US.UTF-8",
+            "UV_PYTHON_DOWNLOADS": "never",
         }
         if installer == "uv":
             tools = root / "tools"
@@ -1068,7 +1149,7 @@ def _customer_installs(
                 "UV_TOOL_BIN_DIR": str(bin_dir),
                 "UV_PYTHON": py311,
             }
-            command = [os.environ.get("ONEX_TEST_UV") or "uv", "tool", "install"]
+            command = ["uv", "tool", "install"]
             command += ["--python", "3.12"]
             command += [
                 "--no-build",
@@ -1084,8 +1165,8 @@ def _customer_installs(
                 "PIPX_BIN_DIR": str(bin_dir),
                 "PIPX_DEFAULT_PYTHON": py311,
             }
-            command = [os.environ.get("ONEX_TEST_PIPX") or "pipx", "install"]
-            command += ["--python", py312] if pipx_python_flag else []
+            command = ["pipx", "install"]
+            command += ["--python", "3.12"] if pipx_python_flag else []
             command += [
                 f"--pip-args=--only-binary=:all: --find-links {links}",
                 f"{CUSTOMER_PACKAGE}=={version}",
@@ -1183,3 +1264,88 @@ def test_one_package_uv_and_pipx_no_code_and_exact_pins(tmp_path: Path) -> None:
         _assert_pins_match_installed(["omnibase-core>=1.0"], site)
     with pytest.raises(AssertionError, match=r"installed 1\.0"):
         _assert_pins_match_installed(["omnibase-core==2.0"], site)
+
+
+def test_one_package_uv_and_pipx_pins_name_every_omninode_distribution(
+    tmp_path: Path,
+) -> None:
+    """AC3 controls: no pins at all, or an installed OmniNode distribution left unpinned, fails."""
+    site = tmp_path / "site-packages"
+    site.mkdir()
+    _fake_dist(site, "omnibase-core", {})
+    _fake_dist(site, "omnimarket", {})
+    _assert_pins_match_installed(["omnibase-core==1.0", "omnimarket==1.0"], site)
+    with pytest.raises(AssertionError, match="pins nothing"):
+        _assert_pins_match_installed([], site)
+    with pytest.raises(AssertionError, match="not pinned"):
+        _assert_pins_match_installed(["omnibase-core==1.0"], site)
+
+
+def test_one_package_uv_and_pipx_counts_every_kind_of_declaration(
+    tmp_path: Path,
+) -> None:
+    """AC3 controls: a wrong target, a gui_scripts entry, or a launcher file another
+    distribution installs (its RECORD lists bin/onex) all break the one-owner rule."""
+    wrong = tmp_path / "wrong"
+    wrong.mkdir()
+    _fake_dist(
+        wrong, CUSTOMER_PACKAGE, dict.fromkeys(CUSTOMER_LAUNCHERS, "other.module:cli")
+    )
+    with pytest.raises(AssertionError, match="one-owner rule"):
+        _assert_one_owner(_launcher_owners(wrong))
+    gui = tmp_path / "gui"
+    gui.mkdir()
+    _fake_dist(
+        gui, CUSTOMER_PACKAGE, dict.fromkeys(CUSTOMER_LAUNCHERS, LAUNCHER_TARGET)
+    )
+    info = gui / "omnibase_core-1.0.dist-info"
+    info.mkdir()
+    (info / "METADATA").write_text(
+        "Metadata-Version: 2.1\nName: omnibase-core\nVersion: 1.0\n"
+    )
+    (info / "entry_points.txt").write_text(f"[gui_scripts]\nonex = {LAUNCHER_TARGET}\n")
+    with pytest.raises(AssertionError, match="one-owner rule"):
+        _assert_one_owner(_launcher_owners(gui))
+    # importlib only lists RECORD files that exist, as in a real install.
+    files = tmp_path / "venv" / "lib" / "python3.12" / "site-packages"
+    files.mkdir(parents=True)
+    (tmp_path / "venv" / "bin").mkdir()
+    (tmp_path / "venv" / "bin" / "onex").write_text("#!/bin/sh\n")
+    _fake_dist(
+        files, CUSTOMER_PACKAGE, dict.fromkeys(CUSTOMER_LAUNCHERS, LAUNCHER_TARGET)
+    )
+    other = files / "omnibase_core-1.0.dist-info"
+    other.mkdir()
+    (other / "METADATA").write_text(
+        "Metadata-Version: 2.1\nName: omnibase-core\nVersion: 1.0\n"
+    )
+    (other / "RECORD").write_text("../../../bin/onex,,\n")
+    with pytest.raises(AssertionError, match="one-owner rule"):
+        _assert_one_owner(_launcher_owners(files))
+
+
+def test_one_package_uv_and_pipx_ties_the_install_to_the_wheel(tmp_path: Path) -> None:
+    """AC3 control: an installed customer file whose sha256 differs from the wheel's RECORD fails."""
+    import base64
+    import zipfile
+
+    content = "Metadata-Version: 2.1\nName: omninode-onex\nVersion: 1.0\n"
+    digest = base64.urlsafe_b64encode(hashlib.sha256(content.encode()).digest()).rstrip(
+        b"="
+    )
+    wheel = tmp_path / "omninode_onex-1.0-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("omninode_onex-1.0.dist-info/METADATA", content)
+        archive.writestr(
+            "omninode_onex-1.0.dist-info/RECORD",
+            f"omninode_onex-1.0.dist-info/METADATA,sha256={digest.decode()},{len(content)}\n"
+            "omninode_onex-1.0.dist-info/RECORD,,\n",
+        )
+    site = tmp_path / "site-packages"
+    (site / "omninode_onex-1.0.dist-info").mkdir(parents=True)
+    installed = site / "omninode_onex-1.0.dist-info" / "METADATA"
+    installed.write_text(content)
+    _assert_installed_matches_wheel(site, wheel)
+    installed.write_text(content + "Summary: changed\n")
+    with pytest.raises(AssertionError, match="differs from the wheel"):
+        _assert_installed_matches_wheel(site, wheel)
