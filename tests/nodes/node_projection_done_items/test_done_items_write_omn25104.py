@@ -33,12 +33,9 @@ from tests.nodes.node_projection_done_items.test_done_items_projection import (
     Served,
     _read,
     _v1,
-    served,
 )
 
 pytestmark = pytest.mark.unit
-
-__all__ = ["served"]
 
 
 def _handle(

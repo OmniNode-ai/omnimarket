@@ -110,18 +110,6 @@ def _topic_map() -> dict[str, ProjectionTableConfig]:
     }
 
 
-@pytest.fixture
-def served(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Served:
-    db = tmp_path / "done.sqlite"
-    writer = DoneItemsProjectionWriter(store=SqliteDoneItemsStore(db))
-    overlay = tmp_path / "projection_binding.yaml"
-    overlay.write_text(
-        f"kafka_bootstrap_servers: inmemory\ndatabase_url: 'sqlite:///{db}'\n"
-    )
-    monkeypatch.setenv("OMNIMARKET_PROJECTION_RUNTIME_BINDING_OVERLAY", str(overlay))
-    return writer, HandlerProjectionRead(topic_map=_topic_map())
-
-
 async def _read(reader: HandlerProjectionRead) -> Rows:
     result = await reader.handle(ModelProjectionReadRequest(topic=TOPIC))
     assert result.ok, result
