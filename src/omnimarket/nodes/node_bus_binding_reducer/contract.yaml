@@ -75,11 +75,10 @@ exception_settlement:
 
 # OMN-21959: a ledger guard's refusal of a replayed append is settled in code by the replay that finds it
 # when its cause is gone; only a case the guard actor cannot settle reaches the exception queue. The actor's
-# ports are bound from these names: the ledger and its archive rolls are read where the environment points,
-# a worktree cell is resolved under the registry root, and a corrected request is queued to the local outbox.
+# ports are bound from these names: the lane's ledger rows are read through the ledger rows reader
+# (bus-binding-guard-lane-rows, 168h), a worktree cell is resolved under the registry root, and a corrected
+# request is queued to the local outbox.
 refused_request_settlement:
-  ledger_path_env: ONEX_LEDGER_PATH
-  ledger_archive_glob: "archive/ROLLING_WORK_LEDGER*.md"
   worktree_root_env: OMNI_HOME
 
 state_machine:
