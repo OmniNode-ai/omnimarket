@@ -473,14 +473,15 @@ dod_evidence:
     call. A declined prompt and a timed-out delegation pass the prompt to Claude, and with no pending
     history the check asserts empty hook output; for a decline the quality gate vetoed, the check
     asserts only the declined outcome and its run id. A plain process failure is covered by the local
-    Done gate item below. The prompt switch pauses only prompts. The next prompt's hook output carries
-    what delegation answered while blocked, a later prompt's hook output carries nothing, and the
-    history in that output is bounded; the check reads the hook output and does not observe what a
-    Claude client does with it. Amendment 14a requires onex delegation on to register only the prompt
-    hook so that subagents stay on Claude. This check does not verify which hooks an installation
-    registers. This check calls the handler directly, which still answers a subagent request, and does
-    not observe a Claude session. The skip prefix, the fixture installed-hook journey and the
-    captured-receipt readback are covered by the unbound local Done gate item below.
+    Done gate item below. The prompt switch pauses only prompts. The hook output of the next
+    same-session prompt that passes through to Claude carries what delegation answered while blocked, a
+    later such prompt's hook output carries nothing, and the history in that output is bounded; the
+    check reads the hook output and does not observe what a Claude client does with it. Amendment 14a
+    requires onex delegation on to register only the prompt hook so that subagents stay on Claude. This
+    check does not verify which hooks an installation registers. This check calls the handler directly,
+    which still answers a subagent request, and does not observe a Claude session. The skip prefix, the
+    fixture installed-hook journey and the captured-receipt readback are covered by the unbound local
+    Done gate item below.
   source: manual
   execution_scope: hosted_and_local
   binds_ac:
