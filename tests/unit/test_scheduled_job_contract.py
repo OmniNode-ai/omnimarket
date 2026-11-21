@@ -29,6 +29,7 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_scope_bundle 
     ModelScopeBundle,
     ModelScopeCandidateRow,
     ModelScopePrStateRow,
+    ModelScopeTextStateRow,
     ScopeContractError,
     parse_scope_bundle,
     parse_scope_rows,
@@ -226,6 +227,88 @@ def test_bundle_held_not_array_is_never_written_by_the_producer(
     assert (tmp_path / "examined.json").exists()
 
 
+# A row as the closeout text-state command (the producer, which another repository owns) prints it: every row
+# carries ``error``, empty when the ticket was read, the failure's text when it was not. The shape
+# is spelled here so the check runs on every runner without that repository.
+def _producer_text_state_rows(
+    candidates: list[dict[str, Any]], errors: dict[str, str]
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": c["id"],
+            "text_sha": "" if c["id"] in errors else "0123456789abcdef",
+            "last_closeout_comment_at": "",
+            "held_text_sha": "",
+            "waiting_on": [],
+            "error": errors.get(c["id"], ""),
+        }
+        for c in candidates
+    ]
+
+
+def _write_producer_text_state(tmp_path: Path, errors: dict[str, str]) -> list[str]:
+    argv = _write_inputs(tmp_path)
+    candidates = json.loads(PARITY.read_text())["candidates"]
+    (tmp_path / "text_state.json").write_text(
+        json.dumps(_producer_text_state_rows(candidates, errors))
+    )
+    return argv
+
+
+def test_scheduled_job_contract_text_state_rows_as_the_producer_writes_them(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The live failure: the producer's ``error`` cell on each row was refused by the model."""
+    candidates = json.loads(PARITY.read_text())["candidates"]
+    rows = _producer_text_state_rows(candidates, {})
+    parsed = parse_scope_rows(
+        json.dumps(rows), ModelScopeTextStateRow, file="--text-state t.json"
+    )
+    assert [r.error for r in parsed] == [""] * len(rows)
+    assert runtime.main(_write_producer_text_state(tmp_path, {})) == 0
+    printed = capsys.readouterr().out
+    bundle = parse_scope_bundle(printed, file="bundle")
+    assert bundle.text_state
+    assert all(r.error == "" for r in bundle.text_state)
+
+
+def test_scheduled_job_contract_text_state_error_is_a_finding_never_a_zero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An unreadable ticket is named in the bundle's waiting rows, not dropped or read as clean."""
+    unread = (
+        "OMN-1"  # the first id in sort order: inside the bundle's capped waiting list
+    )
+    why = "URLError: <urlopen error timed out>"
+    argv = _write_producer_text_state(tmp_path, {unread: why})
+    assert runtime.main(argv) == 0
+    bundle = parse_scope_bundle(capsys.readouterr().out, file="bundle")
+    assert unread not in [c.id for c in bundle.candidates]
+    reasons = {w.id: w.reason for w in bundle.waiting}
+    assert reasons[unread] == f"text state unread: {why}"
+    assert bundle.waiting_by_reason["text state unread"] == 1
+    assert bundle.totals.waiting == bundle.waiting_count
+    # the same inputs with the error cleared: the finding is the row's own, not a side effect
+    assert runtime.main(_write_producer_text_state(tmp_path, {})) == 0
+    again = parse_scope_bundle(capsys.readouterr().out, file="bundle")
+    assert "text state unread" not in again.waiting_by_reason
+    assert again.waiting_count == bundle.waiting_count - 1
+
+
+def test_scheduled_job_contract_text_state_error_must_be_text() -> None:
+    row = {"id": "OMN-1", "error": ["boom"]}
+    with pytest.raises(ScopeContractError) as caught:
+        parse_scope_rows(json.dumps([row]), ModelScopeTextStateRow, file="t.json")
+    assert caught.value.fields == ("[0].error",)
+    with pytest.raises(ScopeContractError) as caught:
+        parse_scope_rows(
+            json.dumps([{"id": "OMN-1", "sneaky": 1}]),
+            ModelScopeTextStateRow,
+            file="t.json",
+        )
+    assert caught.value.fields == ("[0].sneaky",)
+
+
 def test_scheduled_job_contract_integration_record_names_the_field() -> None:
     good = (
         "artifact_type: ModelIntegrationRecord\nartifact_version: 1.0.0\n"
@@ -331,3 +414,55 @@ def test_no_hand_parsed_bundle_positive_control() -> None:
     assert _hand_checks("if not isinstance(rows, list):\n    raise X") != []
     assert _hand_checks('or value.get("version") != 1') != []
     assert _hand_checks("parse_approved_work_file(text, file=f)") == []
+
+
+def test_scheduled_job_contract_beside_registry_clone_follows_a_symlinked_root(
+    tmp_path: Path,
+) -> None:
+    """The live warning ``clones not read``: a registry root that is a symlink has its sibling
+    clones beside the link's target, which is where the shell's ``..`` reads them."""
+    from omnimarket.models.closeout_scope_overlay import (
+        EnumCloneLocation,
+        ModelPrRepository,
+    )
+    from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_pr_sources import (
+        clone_path,
+    )
+
+    real = tmp_path / "data" / "registry"
+    real.mkdir(parents=True)
+    (tmp_path / "data" / "sibling").mkdir()
+    link = tmp_path / "home" / "registry"
+    link.parent.mkdir()
+    link.symlink_to(real)
+    repo = ModelPrRepository(
+        name="sibling",
+        default_branch="main",
+        location=EnumCloneLocation.BESIDE_REGISTRY,
+    )
+    assert clone_path(link, repo) == (tmp_path / "data" / "sibling").resolve()
+    assert clone_path(link, repo).is_dir()
+
+
+def test_bundle_held_not_array_and_error_rows_reader_reads_the_one_and_refuses_the_other(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A bundle whose text-state rows carry ``error`` (the producer's own cell) is read; the
+    same bundle with ``held`` a string is refused naming ``held``, never read as empty."""
+    assert runtime.main(_write_producer_text_state(tmp_path, {"OMN-1": "boom"})) == 0
+    printed = capsys.readouterr().out
+    carried = json.loads(printed)
+    assert carried["text_state"], (
+        "the bundle must carry text-state rows for this control"
+    )
+    carried["text_state"][0]["error"] = "boom"
+    good = tmp_path / "bundle.json"
+    good.write_text(json.dumps(carried))
+    assert runtime.main(["read-bundle", "--bundle", str(good)]) == 0
+    assert '"error":"boom"' in capsys.readouterr().out
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({**carried, "held": "OMN-23"}))
+    assert runtime.main(["read-bundle", "--bundle", str(bad)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "held" in captured.err
