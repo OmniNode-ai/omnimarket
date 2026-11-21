@@ -16,6 +16,9 @@ import pytest
 from omnimarket.nodes.node_onex_setup_effect.handlers import (
     handler_setup_preflight as preflight,
 )
+from omnimarket.nodes.node_onex_setup_effect.handlers import (
+    setup_contract_values as contract_values,
+)
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
     ModelSetupPlan,
 )
@@ -43,6 +46,33 @@ def test_preflight_linux_and_wsl_supported(
     assert result.evidence["linux_distribution"] == "ubuntu"
     assert result.changed is False
     assert list(tmp_path.iterdir()) == []
+
+
+def test_contract_list_decides_which_distributions_are_admitted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A gate that ignores the contract and names Ubuntu itself must fail."""
+    monkeypatch.setattr(preflight.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        preflight.platform, "freedesktop_os_release", lambda: {"ID": "fedora"}
+    )
+    plan = ModelSetupPlan(workspace=tmp_path / "workspace")
+    shipped = preflight.HandlerSetupPreflight().handle(plan)
+    assert shipped.status == "unavailable", shipped
+    node = tmp_path / "node"
+    node.mkdir()
+    (node / "contract.yaml").write_text(
+        "metadata:\n  native_linux_distributions: [ubuntu, fedora]\n"
+    )
+    contract_values._mapping.cache_clear()
+    try:
+        with monkeypatch.context() as patched:
+            patched.setattr(contract_values, "_NODE", node)
+            reviewed = preflight.HandlerSetupPreflight().handle(plan)
+    finally:
+        contract_values._mapping.cache_clear()
+    assert reviewed.status == "success", reviewed
+    assert reviewed.evidence["linux_distribution"] == "fedora"
 
 
 @pytest.mark.parametrize(
