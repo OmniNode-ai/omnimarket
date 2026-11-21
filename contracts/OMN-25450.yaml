@@ -1,0 +1,52 @@
+schema_version: 1.0.0
+ticket_id: OMN-25450
+title: node_unit_probe_effect declares a command topic and a result topic so a demand on the dev runtime reaches it and is handled
+summary: 'node_unit_probe_effect (merged in omnimarket#6207) declared event_bus.subscribe_topics as an empty list, so onex run-node refused it ("does not declare event_bus.subscribe_topics") and no demand or tick could reach it on the dev runtime. This change gives its contract one command topic, one terminal topic, the effects runtime profile and the broker grants for the runtime principal, with a golden-chain test of the demand on the in-memory bus. Not in this change: the merged-change runner line in the overlays repository and the broker grants for the lab login that sends the demand.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25450-unit-probe-trigger
+  statement: a demand on the dev runtime reaches node_unit_probe_effect and is handled.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a STATUS row on the rolling ledger reads kv pr=omnimarket#6207 installed=<host>:<revision> observed=<what ran> read_at=<UTC>, written by the lane after it read one run itself -- falsifier: grep -F pr=omnimarket#6207 on the ledger, filtered to installed=, finds no row'
+  - id: AC2
+    statement: 'AC2: one demand or tick reaches node_unit_probe_effect on the dev runtime on h201 and is handled, or the STATUS row names the single measured cause and who must act -- falsifier: the contract declares no subscribe topic, or the golden chain test of the demand fails'
+  - id: AC3
+    statement: 'AC3: no host file, unit or plist was edited by hand: every change went through the declared installer -- falsifier: the STATUS row cites no installer receipt'
+evidence_requirements:
+- kind: tests
+  description: The unit probe contract and chain tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_unit_probe_effect -q -p no:randomly --no-cov -m unit
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25450-ac2
+  description: the contract declares the command topic and the terminal topic and a demand on the command topic is handled and answered on the terminal topic (in-memory bus golden chain)
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_unit_probe_effect/test_unit_probe_bus_chain.py -q -p no:randomly --no-cov -m unit
+    cwd: .
+- id: dod-omn25450-integration-proof
+  description: a demand sent with onex run-node to the dev runtime reaches node_unit_probe_effect and its typed result comes back; the STATUS row and the installer receipt are read on the ledger by the lane itself. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex run-node node_unit_probe_effect --input '{"manager":"systemd","label":"","name":"onex-lane-census.timer","out_paths":[],"landing_placement_path":"/nonexistent"}' --timeout 30
+- id: dod-omn25450-ac1-ac3-hosted-proxy
+  description: 'hosted proxy for AC1 and AC3: the ledger STATUS row and the installer receipt are read by the lane and are not claimed by this check; the contract test proves the declaration those rows depend on (one command topic, one terminal topic, the effects runtime profile, and the request model the handler routes on)'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_unit_probe_effect/test_unit_probe_bus_chain.py -q -p no:randomly --no-cov -m unit -k test_contract_declares_the_demand_and_result_topics
+    cwd: .
