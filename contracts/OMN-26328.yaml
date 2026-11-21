@@ -25,20 +25,20 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
   - id: dod-omn26328-ac1-census
-    description: 'AC1: the census prints no hit for any of the nine moved files; at the merge base it prints a hit for each, so the check fails there.'
+    description: 'AC1: the census run over the tree prints no hit for any of the nine moved files and still prints the hits of a file that holds one; at the merge base the census prints a hit for each, so the test fails there.'
     source: manual
     binds_ac: [AC1]
     checks:
-      - check_type: command
-        check_value: bash -c '! env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=. --per-file --verbose | grep -E "handlers/scm/scm_duplicate_guard.py|wip_admission_brief_gate.py|node_ask_state_effect/(contract.yaml|runtime_ask_state.py)|node_bus_binding_reducer/contract.yaml|node_context_source_repo_doctrine_effect/contract.yaml|node_dev_runtime_mutation_guard_effect/contract.yaml|handler_entrypoint_lib.py|container_exception_queue_effect.py"'
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group0_cleared_files.py -q --no-cov
         cwd: .
   - id: dod-omn26328-ac2-ratchet
-    description: 'AC2: the ratchet file lists none of the nine cleared files; at the merge base it lists each, so the check fails there.'
+    description: 'AC2: the ratchet table lists none of the nine cleared files and its count equals its rows; at the merge base it lists each, so the test fails there.'
     source: manual
     binds_ac: [AC2]
     checks:
-      - check_type: command
-        check_value: bash -c '! grep -E "handlers/scm/scm_duplicate_guard.py|wip_admission_brief_gate.py|node_ask_state_effect/(contract.yaml|runtime_ask_state.py)|node_bus_binding_reducer/contract.yaml|node_context_source_repo_doctrine_effect/contract.yaml|node_dev_runtime_mutation_guard_effect/contract.yaml|handler_entrypoint_lib.py|container_exception_queue_effect.py" src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml'
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group0_cleared_files.py -q --no-cov
         cwd: .
   - id: dod-omn26328-ac3-wip-and-guard
     description: 'AC3: the wip admission gate and the PR duplicate guard read through an injected rows reader, open no ledger file and fail closed on a read error; the selections fail at the merge base.'
