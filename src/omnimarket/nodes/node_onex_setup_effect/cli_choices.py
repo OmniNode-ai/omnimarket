@@ -39,7 +39,7 @@ def stored_key_for_unchanged_provider(
     participant stored, never asking for it again; a new provider asks. A key
     is stored per provider, not per endpoint, so a server given by URL or a
     named connection always asks. The store is opened read-only: it is never
-    created, migrated or chmodded, its own refusal of a world-readable file
+    created, migrated or chmodded, its own refusal of a group- or world-readable file
     stands, and anything unreadable means no stored key, so the prompt asks.
     """
     if (

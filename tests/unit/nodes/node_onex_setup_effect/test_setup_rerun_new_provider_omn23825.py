@@ -8,8 +8,9 @@ Failure modes:
   F3. The recorder that stands in for the hidden key prompt never fires, so a green F1 would prove nothing.
   F4. The fix widens past configure, so a repair or upgrade re-run stops keeping the saved provider and asks again.
   F5. A finished setup never says how to add a provider later (AC3, the completion half).
-  F6. Looking up a stored key writes the credential store: it chmods a world-readable
-      file to 0600 and so reads a key the store itself refuses (OMN-18695).
+  F6. Looking up a stored key writes the credential store: it chmods a group- or
+      world-readable file to 0600 and so reads a key the store itself refuses
+      (OMN-18695).
   F7. An explicit --provider run reuses the stored key, so a rotated key cannot be entered.
   F8. A server provider reuses the provider-wide key for an endpoint it was never stored for.
   F9. An unreadable store crashes setup instead of falling back to the hidden prompt.
