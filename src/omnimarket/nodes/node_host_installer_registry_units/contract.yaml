@@ -1809,12 +1809,13 @@ units:
       ONEX_TEMPORAL_WORKER_PROJECT: "{registry_root}/omnimarket"
       ONEX_LEDGER_WRITE_VIA: "bus"
       ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+    # The unit names no ledger file (OMN-26329): no worker queue's node reads a ledger path, so the unit asks for none; the
+    # steps append through the bus append command above and the closer reads rows through the host's declared reader argv.
     environment_inputs:
       ONEX_LEDGER_HOST_NAME: ledger_host_name
-      ONEX_LEDGER_PATH: ledger_path
       OMNIBASE_INTERNAL_HOME: appender_root
       ONEX_RUNTIME_SSH_HOST: runtime_ssh_host
-    required_environment_inputs: [ONEX_LEDGER_HOST_NAME, ONEX_LEDGER_PATH, OMNIBASE_INTERNAL_HOME]
+    required_environment_inputs: [ONEX_LEDGER_HOST_NAME, OMNIBASE_INTERNAL_HOME]
     environment_file: .config/onex/merged-change-runner-read.env
     evidence_file: .local/state/omni/temporal-worker/last-run.json
     state_directory: .onex_state/temporal-worker
