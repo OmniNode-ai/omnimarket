@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26208
+title: "Landing controller merges on the base branch required contexts only; non-required reds stay visible and never hold a merge"
+summary: The landing decision scopes each red PR's check-runs to the contexts its base branch requires, read by the snapshot reader; a non-required red is reported in the tick and never holds a merge, a required red still holds, and unreadable required contexts fail closed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26208-required-contexts-only
+    statement: The landing decision merges on the base branch's required contexts and mergeability only.
+    acceptance:
+      - id: AC1
+        statement: "AC1: a resolved, wired mechanism enforces the operator ruling that the landing controller decides merges on required contexts only, linked to it by a correction row carrying mechanism=<repo path> -- falsifier: ruling_mechanisms.py no longer lists the ruling as unmechanized"
+evidence_requirements:
+  - kind: tests
+    description: Focused tests for the required-contexts-only landing decision.
+    command: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_required_contexts_only.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26208-ac1
+    description: "A PR with every required context green and one non-required red merges; a required red, a pending required context and unreadable required contexts hold; the tick cells list the non-required reds."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_required_contexts_only.py -q --no-cov
+  - id: dod-omn26208-integration-proof
+    description: "Run the focused required-contexts-only landing decision tests on a lab host at the pushed head; the local Done gate runs this unbound check."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26208 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_required_contexts_only.py -q --no-cov
+        cwd: .

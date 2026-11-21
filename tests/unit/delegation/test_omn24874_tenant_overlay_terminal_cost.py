@@ -930,7 +930,7 @@ def test_omn24874_a_tenant_overlay_run_has_no_platform_successor_tier() -> None:
     for task_type in task_types:
         assert (
             next_eligible_tier(
-                TENANT_OVERLAY_TIER_NAME, frozenset(), task_type=task_type
+                TENANT_OVERLAY_TIER_NAME, frozenset(), task_type=task_type, prompt=""
             )
             is None
         ), task_type

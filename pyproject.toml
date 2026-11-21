@@ -295,6 +295,8 @@ dependencies = [
     # S3 sink and KMS envelope encryption of topic archives; already resolved
     # through omnibase-infra, declared here because omnimarket now imports it.
     "boto3>=1.43.0,<2.0.0",
+    # OMN-24901: node_prove_running_workflow imports the Temporal SDK at module import.
+    "temporalio>=1.35.0,<2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -675,6 +677,8 @@ node_dod_closeout_sweep_compute = "omnimarket.nodes.node_dod_closeout_sweep_comp
 node_dod_criteria_check_effect = "omnimarket.nodes.node_dod_criteria_check_effect"
 node_dod_sweep_orchestrator = "omnimarket.nodes.node_dod_sweep_orchestrator"
 node_dod_verify = "omnimarket.nodes.node_dod_verify"
+node_dropped_work_audit_compute = "omnimarket.nodes.node_dropped_work_audit_compute"
+node_dropped_work_audit_scheduled_effect = "omnimarket.nodes.node_dropped_work_audit_scheduled_effect"
 node_duplication_sweep = "omnimarket.nodes.node_duplication_sweep"
 node_e2e_bridge_effect = "omnimarket.nodes.node_e2e_bridge_effect"
 node_e2e_orchestrator = "omnimarket.nodes.node_e2e_orchestrator"
@@ -876,6 +880,7 @@ node_intent_query_effect = "omnimarket.nodes.node_intent_query_effect"
 node_intent_storage_effect = "omnimarket.nodes.node_intent_storage_effect"
 node_internal_release_path_guard_compute = "omnimarket.nodes.node_internal_release_path_guard_compute"
 node_issuer_overlay_delivery_effect = "omnimarket.nodes.node_issuer_overlay_delivery_effect"
+node_item_owner_dispatch_effect = "omnimarket.nodes.node_item_owner_dispatch_effect"
 node_job_log_filler_effect = "omnimarket.nodes.node_job_log_filler_effect"
 node_job_start_source_effect = "omnimarket.nodes.node_job_start_source_effect"
 node_join_j0_effect = "omnimarket.nodes.node_join_j0_effect"
@@ -1074,6 +1079,7 @@ node_on_vs_off_experiment_compute = "omnimarket.nodes.node_on_vs_off_experiment_
 node_onboarding = "omnimarket.nodes.node_onboarding"
 node_onboarding_clean_vm_walk_effect = "omnimarket.nodes.node_onboarding_clean_vm_walk_effect"
 node_oneoff_register_compute = "omnimarket.nodes.node_oneoff_register_compute"
+node_onex_installer_render_compute = "omnimarket.nodes.node_onex_installer_render_compute"
 node_onex_ledger_admission_compute = "omnimarket.nodes.node_onex_ledger_admission_compute"
 node_onex_pillar_owner_compute = "omnimarket.nodes.node_onex_pillar_owner_compute"
 node_onex_setup_effect = "omnimarket.nodes.node_onex_setup_effect"
@@ -1084,6 +1090,7 @@ node_operator_waiting_tick_effect = "omnimarket.nodes.node_operator_waiting_tick
 node_order_advance_effect = "omnimarket.nodes.node_order_advance_effect"
 node_output_schema_registry_compute = "omnimarket.nodes.node_output_schema_registry_compute"
 node_overlay_drift_compute = "omnimarket.nodes.node_overlay_drift_compute"
+node_overlay_drift_compute_scheduled_effect = "omnimarket.nodes.node_overlay_drift_compute_scheduled_effect"
 node_overlay_drift_effect = "omnimarket.nodes.node_overlay_drift_effect"
 node_overlay_drift_scheduled_effect = "omnimarket.nodes.node_overlay_drift_scheduled_effect"
 node_overlay_main_load_check_effect = "omnimarket.nodes.node_overlay_main_load_check_effect"
@@ -1426,6 +1433,7 @@ node_skill_overseer_verify_orchestrator = "omnimarket.nodes.node_skill_overseer_
 node_skill_tree_read_effect = "omnimarket.nodes.node_skill_tree_read_effect"
 node_slack_publish_effect = "omnimarket.nodes.node_slack_publish_effect"
 node_source_read_cache_effect = "omnimarket.nodes.node_source_read_cache_effect"
+node_sprint_closer_effect = "omnimarket.nodes.node_sprint_closer_effect"
 node_stability_lane_refresh_effect = "omnimarket.nodes.node_stability_lane_refresh_effect"
 node_stability_stack_compose_effect = "omnimarket.nodes.node_stability_stack_compose_effect"
 node_stability_stack_plan_compute = "omnimarket.nodes.node_stability_stack_plan_compute"
@@ -1456,6 +1464,7 @@ node_swarm_subtask_state_reducer = "omnimarket.nodes.node_swarm_subtask_state_re
 node_swarm_supervisor_orchestrator = "omnimarket.nodes.node_swarm_supervisor_orchestrator"
 node_sweep_outcome_classify = "omnimarket.nodes.node_sweep_outcome_classify"
 node_tailnet_https_serve_effect = "omnimarket.nodes.node_tailnet_https_serve_effect"
+node_tailscale_key_expiry_alarm_effect = "omnimarket.nodes.node_tailscale_key_expiry_alarm_effect"
 node_tart_host_admission_compute = "omnimarket.nodes.node_tart_host_admission_compute"
 node_task_execution_orchestrator = "omnimarket.nodes.node_task_execution_orchestrator"
 node_team_identity_compute = "omnimarket.nodes.node_team_identity_compute"
@@ -1569,6 +1578,8 @@ node_workflow_comparison_compute = "omnimarket.nodes.node_workflow_comparison_co
 node_workflow_contract_catalog_effect = "omnimarket.nodes.node_workflow_contract_catalog_effect"
 node_workflow_gateway_effect = "omnimarket.nodes.node_workflow_gateway_effect"
 node_workflow_routing_scan_compute = "omnimarket.nodes.node_workflow_routing_scan_compute"
+node_worktree_prune_temporal_effect = "omnimarket.nodes.node_worktree_prune_temporal_effect"
+node_worktree_prune_workflow_effect = "omnimarket.nodes.node_worktree_prune_workflow_effect"
 node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
 [project.scripts]
 onex-triage-fences-node = "omnimarket.nodes.node_triage_fences_effect.runtime_triage_fences_cli:main"
@@ -2099,6 +2110,8 @@ dev = [
     "mypy>=1.19.1",
     "types-pyyaml>=6.0.12.20250822",
     "types-jsonschema>=4.25.1.20251222",
+    # OMN-24901: node_prove_running_workflow defines a Temporal workflow; strict mypy and its tests need the SDK.
+    "temporalio>=1.35.0,<2.0.0",
 ]
 
 [tool.coverage.run]
