@@ -11,12 +11,16 @@ and the command exits non-zero.
 
 from __future__ import annotations
 
+import inspect
+import re
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
 import pytest
 from click.testing import CliRunner
+from omnibase_core.validation.validator_node_purity import ValidatorNodePurity
 
 from omnimarket.handlers.ledger_row_grammar import GOVERNED_LEDGER_NAMES, parse_row
 from omnimarket.models.work_ledger_append.model_work_ledger_append import (
@@ -405,3 +409,16 @@ def test_the_command_refuses_a_serve_log_without_its_request_record(
     )
     assert result.exit_code == 2
     assert "go together" in result.output
+
+
+def test_command_form_is_pure_without_a_suppression_comment() -> None:
+    """The command module passes the node-purity gate with every comment stripped, so no suppression carries it (OMN-26342)."""
+    assert main.callback is not None
+    source_file = inspect.getsourcefile(sys.modules[main.callback.__module__])
+    assert source_file is not None
+    path = Path(source_file)
+    stripped = "\n".join(
+        re.sub(r"\s+#.*$", "", line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+    )
+    assert ValidatorNodePurity().check_source(path, stripped) == []

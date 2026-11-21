@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import TextIO
 
 import click
 
@@ -58,42 +59,46 @@ def planted_judge(row_type: str) -> JudgeFn:
     return judge
 
 
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")  # node-purity-ok: the command boundary
+def _archive_texts(archive_dir: Path | None) -> list[str]:
+    """Texts of the archive rolls, oldest name first; click opens each file (the framework's input boundary)."""
+    if archive_dir is None:
+        return []
+    texts: list[str] = []
+    for roll in sorted(archive_dir.glob("*.md")):
+        with click.open_file(str(roll), encoding="utf-8") as handle:
+            texts.append(handle.read())
+    return texts
 
 
 @click.command()
-@click.option("--ledger", type=click.Path(exists=True, path_type=Path), required=True)
+@click.option("--ledger", type=click.File("r", encoding="utf-8"), required=True)
 @click.option(
     "--archive-dir", type=click.Path(exists=True, file_okay=False, path_type=Path)
 )
 @click.option("--days", type=click.IntRange(min=1), default=14, show_default=True)
-@click.option("--serve-log", type=click.Path(exists=True, path_type=Path))
-@click.option(
-    "--requests", "requests_file", type=click.Path(exists=True, path_type=Path)
-)
+@click.option("--serve-log", type=click.File("r", encoding="utf-8"))
+@click.option("--requests", "requests_file", type=click.File("r", encoding="utf-8"))
 @click.option("--plant-guard-break", "planted_type", default=None)
 @click.option("--show", type=click.IntRange(min=0), default=20, show_default=True)
 def main(
-    ledger: Path,
+    ledger: TextIO,
     archive_dir: Path | None,
     days: int,
-    serve_log: Path | None,
-    requests_file: Path | None,
+    serve_log: TextIO | None,
+    requests_file: TextIO | None,
     planted_type: str | None,
     show: int,
 ) -> None:
     if (serve_log is None) != (requests_file is None):
         click.echo("--serve-log and --requests go together", err=True)
         sys.exit(2)
-    rolls = sorted(archive_dir.glob("*.md")) if archive_dir is not None else []
-    rows = accepted_rows([_read(path) for path in [*rolls, ledger]])
+    rows = accepted_rows([*_archive_texts(archive_dir), ledger.read()])
     refused: tuple[ModelRefusedRequest, ...] = ()
     unreadable: tuple[str, ...] = ()
     if serve_log is not None and requests_file is not None:
         refused, unreadable = join_refusals(
-            serve_log_refusals(_read(serve_log)),
-            recorded_requests(_read(requests_file)),
+            serve_log_refusals(serve_log.read()),
+            recorded_requests(requests_file.read()),
         )
     handler = (
         WorkLedgerWindowReplay(judge=planted_judge(planted_type))
@@ -102,7 +107,7 @@ def main(
     )
     result = handler.handle(
         ModelWindowReplayRequest(
-            ledger_name=ledger.name,
+            ledger_name=Path(ledger.name).name,
             accepted_rows=rows,
             window_days=days,
             refused_requests=refused,
