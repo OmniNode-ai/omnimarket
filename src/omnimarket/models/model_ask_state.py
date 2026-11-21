@@ -300,6 +300,9 @@ class ModelAskStateReport(BaseModel):
     not_tracked: tuple[ModelKindCount, ...] = ()
     unclassified: tuple[ModelUnclassifiedPrompt, ...] = ()
     text: str = ""
+    # The field the runtime's failure-terminal guard reads: a report carrying a cause is published
+    # on the contract's failure terminal. The fold itself never sets one; it stays None.
+    terminal_failure_cause: str | None = None
 
 
 __all__ = [

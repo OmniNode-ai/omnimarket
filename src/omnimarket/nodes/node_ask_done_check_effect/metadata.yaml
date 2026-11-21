@@ -9,7 +9,7 @@ entry_points:
     node_ask_done_check_effect: omnimarket.nodes.node_ask_done_check_effect
 capabilities:
   standalone: true
-  full_runtime: false
+  full_runtime: true
   requires_network: true
   requires_repo: false
   requires_secrets: false

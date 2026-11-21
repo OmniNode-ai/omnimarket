@@ -954,6 +954,8 @@ class HandlerAskState:
             wip=wip,
             not_tracked=tuple(not_tracked),
             unclassified=tuple(unclassified),
+            # A completed fold carries no failure cause, so the runtime publishes the success terminal.
+            terminal_failure_cause=None,
         )
         return report.model_copy(
             update={"text": render_text(report, config.excerpt_chars)}
