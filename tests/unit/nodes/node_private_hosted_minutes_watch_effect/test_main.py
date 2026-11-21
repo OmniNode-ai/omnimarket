@@ -63,8 +63,6 @@ def args(tmp_path):
         "2026-10-18",
         "--state-dir",
         str(tmp_path / "state"),
-        "--ledger",
-        str(tmp_path / "ledger.md"),
         "--omni-home",
         str(tmp_path),
     ]
