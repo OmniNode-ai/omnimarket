@@ -18,7 +18,8 @@ description: >
   the alert channel (through the alert-channel library's alarm function, the path the liveness watchdog sends
   over) and appended once to the rolling ledger as a FRICTION row (through the ledger host's bus append, the path
   the pin-friction effect writes over). A subject already in an episode is not delivered again; an episode ends
-  only when its condition reads OK, and an INDETERMINATE read neither ends nor starts one. A ledger row that could
+  only when its condition reads OK, and an INDETERMINATE read neither ends nor starts one. An OK request
+  can carry a recovery notice, which is sent through the same channel before its episode is cleared. A ledger row that could
   not be written is kept and retried on every later request until it lands; a subject that clears and re-raises
   inside the overlay's dedupe window appends no second row. A channel or ledger step that fails is a typed failure
   of the run, never a silent skip. A request that does not write (a probe or a drill) delivers nothing and keeps

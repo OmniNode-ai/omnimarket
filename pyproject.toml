@@ -298,7 +298,8 @@ dependencies = [
     # S3 sink and KMS envelope encryption of topic archives; already resolved
     # through omnibase-infra, declared here because omnimarket now imports it.
     "boto3>=1.43.0,<2.0.0",
-    # OMN-24901: node_prove_running_workflow imports the Temporal SDK at module import.
+    # The Temporal SDK: node_merged_change_runner_read_workflow's worker and schedule,
+    # and node_prove_running_workflow imports it at module import.
     "temporalio>=1.35.0,<2.0.0",
 ]
 
@@ -1050,6 +1051,7 @@ node_merge_sweep_same_head_compute = "omnimarket.nodes.node_merge_sweep_same_hea
 node_merge_sweep_state_reducer = "omnimarket.nodes.node_merge_sweep_state_reducer"
 node_merged_change_reading_compute = "omnimarket.nodes.node_merged_change_reading_compute"
 node_merged_change_reading_effect = "omnimarket.nodes.node_merged_change_reading_effect"
+node_merged_change_runner_read_workflow = "omnimarket.nodes.node_merged_change_runner_read_workflow"
 node_merged_running_count_compute = "omnimarket.nodes.node_merged_running_count_compute"
 node_merged_running_count_effect = "omnimarket.nodes.node_merged_running_count_effect"
 node_metering_summary_compute = "omnimarket.nodes.node_metering_summary_compute"

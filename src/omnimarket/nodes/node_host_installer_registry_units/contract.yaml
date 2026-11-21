@@ -2308,3 +2308,45 @@ units:
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
     evidence_file: .local/state/omni/friction-rollup/last-run.json
     state_directory: .onex_state/friction-rollup
+  # The merged-change runner read (node_merged_change_runner_read_workflow) on the lab host that runs the Temporal server:
+  # a long-running run that creates or updates the Temporal schedule of the full read and then serves its task queue,
+  # started again within 60 s of any exit. The schedule reads the dev runtime's readiness and build window;
+  # the reader probes the runtime and user units over ssh, so the unit takes the runtime host's ssh target
+  # (ONEX_RUNTIME_SSH_HOST) and the unit hosts' targets from its host-owned environment file; a missing file is not an
+  # error (those lines then read unread, with the cause). The publish step publishes the integration projection.
+  merged-change-runner-read-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-merged-change-runner-read
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 2592000
+      run_at_load: true
+      description: at load and within 60 s of any exit
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_merged_change_runner_read_workflow.runtime_runner_read_worker
+    entry_file: src/omnimarket/nodes/node_merged_change_runner_read_workflow/runtime_runner_read_worker.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment_inputs:
+      ONEX_RUNTIME_SSH_HOST: runtime_ssh_host
+    environment:
+      ONEX_TEMPORAL_ADDRESS: "127.0.0.1:7233"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+    environment_file: .config/onex/merged-change-runner-read.env
+    evidence_file: .local/state/omni/merged-change-runner-read/last-run.json
+    state_directory: .onex_state/merged-change-runner-read

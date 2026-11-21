@@ -347,3 +347,18 @@ def test_the_overlay_refuses_a_template_without_its_placeholders() -> None:
     del body["ledger"]["dedupe_window_minutes"]
     with pytest.raises(ValidationError):
         ModelDeliveryOverlay.model_validate(body)
+
+
+def test_recovery_posts_once_through_the_alarm_channel() -> None:
+    handler, channel, ledger, _, _ = _build()
+    handler.handle(_request())
+    recover = _request(EnumDeliveryCondition.OK).model_copy(
+        update={"recovery_detail": "the integration read completed"}
+    )
+    recovered = handler.handle(recover)
+    assert recovered.cleared == (f"{_CONDITION}:group-a",)
+    assert recovered.deliveries[0].channel is EnumDeliveryStep.DELIVERED
+    assert handler.handle(recover).cleared == ()
+    assert len(channel.posts) == 2
+    assert channel.posts[-1][1] == "Recovered: the integration read completed"
+    assert len(ledger.rows) == 1
