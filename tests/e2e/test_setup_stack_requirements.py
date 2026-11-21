@@ -160,9 +160,12 @@ def test_selected_stack_requirements_and_health(
     assert not any("up" in cmd or "restart" in cmd for cmd in commands)
     assert not (tmp_path / "workspace").exists()
     if case == "tiny":
+        from omnibase_core.protocols.runtime.protocol_local_runtime_bus import (
+            ProtocolLocalRuntimeBus,
+        )
         from omnibase_core.runtime.runtime_local_adapter import LocalRuntimeBusAdapter
 
-        bus = AsyncMock()
+        bus = AsyncMock(spec=ProtocolLocalRuntimeBus)
         adapter = LocalRuntimeBusAdapter(
             handler=HandlerSetupStackRequirements(),
             handler_name="onex_setup.stack_requirements",
