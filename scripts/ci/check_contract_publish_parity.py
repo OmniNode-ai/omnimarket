@@ -20,7 +20,9 @@ emit call somewhere in that node package's Python. ``terminal_event`` is exempt
 because the runtime publishes it on the handler's behalf. So is a declared
 failure terminal (``runtime_dispatch.terminal_events.failure``) when the node's
 Python carries ``terminal_failure_cause``: the runtime's failure-terminal guard
-publishes a result carrying one on that topic (OMN-20867). Without that field no
+publishes a result carrying one on that topic (OMN-20867). A topic listed in
+``externally_consumed_topics`` and in ``broker_acl_grants`` is exempt: it is declared so boot provisioning
+creates it, and an outside consumer reads it (OMN-19998). Without that field no
 result can reach the failure terminal, and it stays an offender.
 
 The gate is a burn-down ratchet against
@@ -89,6 +91,7 @@ def scan_publish_parity(root: Path) -> list[ModelPublishParityFinding]:
         exempt = {str(raw.get("terminal_event"))}
         if _returns_failure_cause(node_dir):
             exempt |= _failure_terminals(raw)
+        exempt |= _provisioning_only_topics(raw)
         candidates = sorted({str(topic) for topic in declared} - exempt)
         if not candidates:
             continue
@@ -101,6 +104,28 @@ def scan_publish_parity(root: Path) -> list[ModelPublishParityFinding]:
             )
         )
     return findings
+
+
+def _provisioning_only_topics(raw: dict[str, object]) -> set[str]:
+    """Publish topics listed only so boot provisioning creates them (OMN-19998).
+
+    Boot provisioning reads ``event_bus`` alone, so a node whose topics live
+    elsewhere lists them under ``publish_topics`` for the broker to create them.
+    A topic the contract lists in ``externally_consumed_topics`` and also grants
+    in ``broker_acl_grants`` is declared on purpose and read outside this repo; the declaration is not a claim that this
+    node's handler publishes it.
+    """
+    external = raw.get("externally_consumed_topics")
+    grants = raw.get("broker_acl_grants")
+    if not isinstance(external, list) or not isinstance(grants, list):
+        return set()
+    granted: set[str] = set()
+    for entry in grants:
+        rows = entry.get("grants") if isinstance(entry, dict) else None
+        for row in rows if isinstance(rows, list) else []:
+            if isinstance(row, dict) and row.get("name"):
+                granted.add(str(row["name"]))
+    return {str(topic) for topic in external} & granted
 
 
 def _failure_terminals(raw: dict[str, object]) -> set[str]:
