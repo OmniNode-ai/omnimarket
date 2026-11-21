@@ -29,6 +29,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn24874-ac1-contract-ac5-check-tests
+  description: Hosted proxy for the contract's own checks. The AC5 command reads the review head of each pull request from the PR watcher and needs a CLEAN row at that head; the behavioural tests run it over fixtures for the three archived ledger formats and over the refused row shapes. The whole file runs, with no -k selection, so a rename cannot empty the evidence. Fails at the merge base, where the original AC5 command refuses those fixtures.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn24874-live-readings
   description: 'Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check. It fails unless it runs on h053 (hostname pinned), and parses the conclusion field of the newest R8 and R9 last-run records there, read at most the alarm contract''s max_age_seconds ago (R8 27000, R9 4500), and both read success; a record whose conclusion is failure or refused, or whose time is older, fails it.'
   source: manual
@@ -92,13 +101,51 @@ dod_evidence:
       sh -c 'test "$(hostname -s)" = hp-gen9 && F=$(git log origin/dev --first-parent --no-merges --format="%H %s" | grep -m1 -E " \(#6335\)\$" | cut -d" " -f1) && test -n "$F" && R=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])" "${OMNI_HOME:?}/.onex_state/delegation-scenario-r8/scenario-r8-systemd.installed.json" revision) && git -C "${OMNI_HOME:?}/omnimarket" merge-base --is-ancestor "$F" "$R" && test -n "$(git -C "${OMNI_HOME:?}/omnimarket" tag --contains "$R" --list "dev-*")" && T=$(git -C "${OMNI_HOME:?}/omnimarket" for-each-ref --sort=-creatordate --count=1 --format="%(creatordate:unix)" "refs/tags/dev-*") && test $(( $(date +%s) - T )) -le 86400 && P=$(ssh -o BatchMode=yes "${ONEX_RUNTIME_SSH_HOST:?set ONEX_RUNTIME_SSH_HOST to the dev runtime host}" "docker inspect omninode-runtime; docker exec omninode-runtime cat /app/build-provenance.json") && S=$(printf %s "$P" | jq -s -r "select(.[0][0].Name == \"/omninode-runtime\" and .[0][0].Config.Labels[\"com.docker.compose.project\"] == \"omnibase-infra\") | .[1].per_repo_vcs_provenance.siblings.omnimarket | select(.vcs_dirty == false and (.dev_merge_tag | startswith(\"dev-\"))) | .vcs_ref + \" \" + .dev_merge_tag") && C=${S% *} && N=${S#* } && test -n "$C" && test "$(git -C "${OMNI_HOME:?}/omnimarket" rev-parse "$N^{commit}")" = "$C" && git -C "${OMNI_HOME:?}/omnimarket" merge-base --is-ancestor "$F" "$C" && ssh -o BatchMode=yes "$ONEX_RUNTIME_SSH_HOST" "docker exec omninode-runtime python -c \"import omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow as w, omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation as p; assert w.byok_declared_price_per_1m and p._tenant_overlay_cost_usd\""'
     cwd: .
 - id: dod-omn24874-ac5-clean-verdict-row
-  description: Live reading for AC5. The ledger holds a STATUS row with verdict=CLEAN for this pull request (#6335) written by the Fable review lane of #6335 (lane=fable-omnimarket-6335-*, actor=fable-reviewer) whose head= cell is the 12-character head of the checkout the gate runs in, and a STATUS row with verdict=CLEAN written by the review lane of the alarm pull request #6353 (lane=fable-omnimarket-6353-*) whose head= cell is the head the PR watcher's state records for #6353 (a pull request the watcher cannot read fails the check), so a CLEAN row for an older head of either pull request does not pass after a new push. Local Done gate only.
+  description: >-
+    Live reading for AC5. The ledger holds a STATUS row with verdict=CLEAN from the Fable review lane of each
+    pull request (#6335 and #6353). Each row's head cell must equal the full head SHA or its 12-character prefix
+    from the local PR watcher record for that pull request. An unreadable watcher record or missing matching
+    row fails the check. Local Done gate only.
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: >-
-      sh -c 'H=$(git rev-parse HEAD | cut -c1-12) && J=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6353 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]][:12])" facts head_sha) && test -n "$J" && V=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "verdict=CLEAN") && printf %s "$V" | grep -F "| lane=fable-omnimarket-6335-" | grep -F "| actor=fable-reviewer |" | grep -F "head=$H" | grep -q STATUS && printf %s "$V" | grep -F "| lane=fable-omnimarket-6353-" | grep -F "| actor=fable-reviewer |" | grep -F "head=$J" | grep -q STATUS'
+    check_value: |-
+      python3 -c '
+      import json
+      import os
+      import re
+      import subprocess
+      import sys
+      from pathlib import Path
+
+      skills = Path(os.environ["OMNI_PLUGIN_ROOT"]) / "skills"
+      ledger = skills / "lane-brief/scripts/lane_brief.py"
+      watcher = skills / "merge-drain/scripts/pr_state_local.py"
+      output = subprocess.check_output(
+          [sys.executable, ledger, "grep", "verdict=CLEAN", "--tail", "0"], text=True
+      )
+      clean_rows = []
+      for line in output.splitlines():
+          fields = line.rstrip().split(" | ")
+          if fields[1:2] == ["STATUS"] and "verdict=CLEAN" in fields[2:]:
+              clean_rows.append(fields[2:])
+
+      for pr_number in ("6335", "6353"):
+          record = subprocess.check_output(
+              [sys.executable, watcher, "--pr", f"OmniNode-ai/omnimarket#{pr_number}", "--json"]
+          )
+          head = json.loads(record)["facts"]["head_sha"]
+          if not isinstance(head, str) or not re.fullmatch("[0-9a-f]{40}", head):
+              sys.exit(f"Invalid head in watcher record for #{pr_number}")
+          heads = {f"head={head}", f"head={head[:12]}"}
+          lane_prefix = f"lane=fable-omnimarket-{pr_number}-"
+          if not any(
+              heads.intersection(cells) and any(cell.startswith(lane_prefix) for cell in cells)
+              for cells in clean_rows
+          ):
+              sys.exit(f"No CLEAN STATUS row for #{pr_number} at {head[:12]}")
+      '
     cwd: .
 - id: dod-omn24874-reading-commands-behaviour
   description: The behavioural tests of the live reading commands in this contract (the R9 and R8 and R9 readings over success, failure, refused, stale and wrong-host records, the running-revision reading over a temporary repository with ssh and hostname shims, the CLEAN verdict reading over ledger rows at the head of each pull request) run as the whole file, so no selection can shrink the evidence. This item binds no criterion, because a hosted test of a reading command passes whether or not R9 reads passed or the fix is deployed; the readings themselves are the unbound local_done_gate items above.
