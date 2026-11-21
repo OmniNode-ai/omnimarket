@@ -2,29 +2,44 @@
 # SPDX-License-Identifier: MIT
 """Evidence checks of the OMN-24829 and OMN-23518 contracts for omnimarket PR 5737.
 
-The ledger reads of ``contracts/OMN-24829.yaml`` are scoped ``local_done_gate``: the
+The ledger read of ``contracts/OMN-24829.yaml`` is scoped ``local_done_gate``: the
 ledger is not on the hosted runner, and a bound ``local_done_gate`` item is refused by
-the verifier. So AC3 is bound to a check that runs those same ledger commands, as the
-contract spells them, against ledgers this test builds: an empty ledger must be refused,
-and so must a ledger whose rows do not match. The criterion is then bound to a real
-STATUS-row read, not to the contract's own text.
+the verifier. The contract reads STATUS rows through the ledger query node
+(``onex ledger query --stdin``) and asserts on the answer. So AC3 is bound to a check
+that runs that same read as the contract spells it: the query the contract prints is
+answered by the real query handler over an in-memory ledger this test builds, and the
+contract's own assertion is run on that answer. An empty ledger must be refused, and so
+must a ledger whose rows do not match. The criterion is then bound to a real STATUS-row
+read, not to the contract's own text.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import pytest
 import yaml
+
+from omnimarket.models.work_ledger_query import ModelWorkLedgerQueryRequest
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger_query import (
+    HandlerWorkLedgerQuery,
+)
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_inmemory import (
+    InMemoryWorkLedgerQueryReader,
+)
 
 pytestmark = pytest.mark.unit
 
 _REPO = Path(__file__).resolve().parents[2]
 _THIS = "tests/contracts/test_omn24829_contract_evidence.py"
+_NOW = datetime(2026, 11, 17, 12, 0, 0, tzinfo=UTC)
 
 
 def _contract(ticket: str) -> dict[str, Any]:
@@ -38,76 +53,103 @@ def _items_binding(contract: dict[str, Any], label: str) -> list[dict[str, Any]]
 
 
 def _ledger_commands(contract: dict[str, Any]) -> list[str]:
-    """Every check the contract scopes local_done_gate that reads STATUS rows from a ledger file."""
+    """Every check the contract scopes local_done_gate that reads STATUS rows through the ledger query node."""
     return [
         c["check_value"]
         for item in contract["dod_evidence"]
         if item.get("execution_scope") == "local_done_gate"
         for c in item["checks"]
-        if "| STATUS |" in c["check_value"]
+        if "onex ledger query" in c["check_value"] and "STATUS" in c["check_value"]
     ]
 
 
-def _path_variable(command: str) -> str:
-    """The variable a ledger command reads the ledger file path from, taken from the command."""
-    named = re.search(r'"\$([A-Z][A-Z0-9_]*)"', command)
-    assert named is not None, command
-    return named.group(1)
+def _query_of(command: str) -> dict[str, Any]:
+    """The JSON query the command prints into the query node, with the clock fixed."""
+    printed = re.search(r"printf '(\{.*?\})'", command)
+    assert printed is not None, command
+    query: dict[str, Any] = json.loads(printed.group(1).replace("%s", _NOW.isoformat()))
+    return query
 
 
-def _run(command: str, ledger: Path) -> int:
+def _assertion_of(command: str) -> str:
+    """The Python the command pipes the query node's answer into."""
+    script = re.search(r"python3 -c '(.*)'\s*$", command, re.DOTALL)
+    assert script is not None, command
+    return script.group(1)
+
+
+def _answer(command: str, raw_rows: list[str], row_type: str = "STATUS") -> str:
+    """The query node's answer to the command's own query over a ledger holding ``raw_rows`` of ``row_type``."""
+    reader = InMemoryWorkLedgerQueryReader()
+    for number, raw_row in enumerate(raw_rows):
+        reader.ingest(
+            {"row_id": f"row-{number}", "row_type": row_type, "raw_row": raw_row}
+        )
+    request = ModelWorkLedgerQueryRequest(correlation_id=uuid4(), **_query_of(command))
+    result = HandlerWorkLedgerQuery(reader=reader, now=lambda: _NOW).handle(request)
+    return result.model_dump_json()
+
+
+def _run(command: str, raw_rows: list[str], row_type: str = "STATUS") -> int:
+    """The exit code of the contract's own assertion on the query node's answer."""
     return subprocess.run(
-        ["bash", "-c", command],
-        cwd=_REPO,
-        env={
-            "PATH": "/usr/bin:/bin:/usr/local/bin",
-            _path_variable(command): str(ledger),
-        },
+        [sys.executable, "-c", _assertion_of(command)],
+        input=_answer(command, raw_rows, row_type),
         check=False,
         capture_output=True,
         text=True,
     ).returncode
 
 
-def _status_row(*, pr: str, check: str, shared: str) -> str:
+def _status_row(*, pr: str, check: str, shared: str, row_type: str = "STATUS") -> str:
     return (
-        "2026-11-16T19:03:41Z | STATUS | lane=fixture | ticket=OMN-24960 | "
-        f"pr={pr} | check={check} | shared={shared} | fixture row\n"
+        f"2026-11-16T19:03:41Z | {row_type} | lane=fixture | ticket=OMN-24960 | "
+        f"pr={pr} | check={check} | shared={shared} | fixture row"
     )
 
 
-def test_omn24829_ledger_status_commands_refuse_an_empty_ledger(tmp_path: Path) -> None:
+def test_omn24829_ledger_status_commands_refuse_a_msg_row_quoting_the_cells() -> None:
+    """The old grep required ``| STATUS |``: a MSG row that quotes the same cells must still be refused."""
     commands = _ledger_commands(_contract("OMN-24829"))
     assert commands, "the contract carries no ledger read"
-    empty = tmp_path / "empty.md"
-    empty.write_text("", encoding="utf-8")
     for command in commands:
-        assert _run(command, empty) != 0, command
+        named = re.search(r"check=([a-z-]+)", command)
+        assert named is not None, command
+        pr = _query_of(command)["pr"]
+        quoted = _status_row(pr=pr, check=named.group(1), shared="yes", row_type="MSG")
+        assert "| MSG |" in quoted
+        assert f"pr={pr} | check={named.group(1)} | shared=yes" in quoted, quoted
+        assert _run(command, [quoted], row_type="MSG") != 0, command
+        control = _status_row(pr=pr, check=named.group(1), shared="yes")
+        assert _run(command, [control]) == 0, command
 
 
-def test_omn24829_ledger_status_commands_read_the_matching_row(tmp_path: Path) -> None:
-    for command in _ledger_commands(_contract("OMN-24829")):
+def test_omn24829_ledger_status_commands_refuse_an_empty_ledger() -> None:
+    commands = _ledger_commands(_contract("OMN-24829"))
+    assert commands, "the contract carries no ledger read"
+    for command in commands:
+        assert _run(command, []) != 0, command
+
+
+def test_omn24829_ledger_status_commands_read_the_matching_row() -> None:
+    commands = _ledger_commands(_contract("OMN-24829"))
+    assert commands, "the contract carries no ledger read"
+    for command in commands:
         named = re.search(r"check=([a-z-]+)", command)
         assert named is not None, command
         check = named.group(1)
-        hit = tmp_path / "hit.md"
-        hit.write_text(
-            _status_row(pr="omnimarket#5737", check=check, shared="yes"),
-            encoding="utf-8",
-        )
-        assert _run(command, hit) == 0, command
+        pr = _query_of(command)["pr"]
+        assert pr == "omnimarket#5737", command
+        hit = _status_row(pr=pr, check=check, shared="yes")
+        assert _run(command, [hit]) == 0, command
         for label, row in {
             "another pull request": _status_row(
                 pr="omnimarket#5738", check=check, shared="yes"
             ),
-            "not shared": _status_row(pr="omnimarket#5737", check=check, shared="no"),
-            "another check": _status_row(
-                pr="omnimarket#5737", check="lint", shared="yes"
-            ),
+            "not shared": _status_row(pr=pr, check=check, shared="no"),
+            "another check": _status_row(pr=pr, check="lint", shared="yes"),
         }.items():
-            miss = tmp_path / "miss.md"
-            miss.write_text(row, encoding="utf-8")
-            assert _run(command, miss) != 0, (label, command)
+            assert _run(command, [row]) != 0, (label, command)
 
 
 def test_omn24829_ac3_bound_checks_exercise_the_ledger_commands() -> None:
