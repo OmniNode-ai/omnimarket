@@ -15,6 +15,9 @@ from omnimarket.models.landing_decision import (
 )
 from omnimarket.nodes.node_pr_landing_decision_compute import decide_landing
 from omnimarket.nodes.node_pr_landing_tick_compute import decide_landing_fair_share
+from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator import (
+    ModelTickLivenessRead,
+)
 
 
 class ProtocolTickDecider(Protocol):
@@ -33,6 +36,12 @@ class ProtocolTickWriter(Protocol):
 
 class ProtocolTickPublisher(Protocol):
     def publish(self, topic: str, event: BaseModel) -> None: ...
+
+
+class ProtocolTickLivenessReader(Protocol):
+    """The liveness read of one pull request head; observation only, it never changes a decision (OMN-26024)."""
+
+    def read(self, pr: str, head_sha: str) -> ModelTickLivenessRead: ...
 
 
 class NodePathDecider:
@@ -70,6 +79,7 @@ __all__: list[str] = [
     "InMemoryTickWriter",
     "NodePathDecider",
     "ProtocolTickDecider",
+    "ProtocolTickLivenessReader",
     "ProtocolTickPublisher",
     "ProtocolTickWriter",
 ]

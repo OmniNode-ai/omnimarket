@@ -18,6 +18,7 @@ class ModelTopicProvisionOverlay(BaseModel):
     profile: str | None = None
     lane_manifest: tuple[str, ...] = ()
     contract_roots: tuple[str, ...] = ()
+    overlay_roots: tuple[str, ...] = ()  # where the declared service logins are read
     lane: str | None = (
         None  # a declared lane whose broker and identity the dry run reads
     )

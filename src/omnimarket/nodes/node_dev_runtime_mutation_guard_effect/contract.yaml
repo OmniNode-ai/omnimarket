@@ -139,8 +139,10 @@ guard_policy:
     target_prefix: "compose:"
     until_cell: until
     max_grant_hours: 24
-    ledger_path_env: ONEX_LEDGER_PATH
-    tail_bytes: 4000000
+    # The ledger reader node's name for this read (the deployed reader overlay
+    # lists it as moved). It answers from the bus-fed projection over a window of
+    # ceil(max_grant_hours) hours, which covers every row that can still be live.
+    reader: dev-runtime-mutation-guard-grants
   # Named in every refusal: how a lane gets a recreate without a grant.
   deployment_route: >-
     ask the deploy agent for it (a rebuild request on the deploy command topic,
