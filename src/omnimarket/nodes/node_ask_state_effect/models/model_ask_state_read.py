@@ -11,15 +11,13 @@ from pydantic import BaseModel, ConfigDict
 
 
 class ModelAskStateReadRequest(BaseModel):
-    """The capture store, the ledger file, the window start and the time the report is judged at."""
+    """The capture store, the window start and the time the report is judged at; the ledger rows come from the bus reader."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     captures_dir: Path
-    ledger_path: Path
     since: datetime
     now: datetime
-    archives: bool = True
 
 
 __all__ = ["ModelAskStateReadRequest"]

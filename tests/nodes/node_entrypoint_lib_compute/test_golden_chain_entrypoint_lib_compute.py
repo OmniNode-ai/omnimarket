@@ -149,13 +149,13 @@ def test_dry_run_outside_a_sandbox_refuses_before_any_read(
         ),
         (
             {"registry_root": "/h"},
-            "ONEX_LEDGER_PATH is required",
-            "set ONEX_LEDGER_PATH to the rolling work ledger",
+            "ONEX_LEDGER_BUS_APPEND_COMMAND is required",
+            "set ONEX_LEDGER_BUS_APPEND_COMMAND to the ledger bus append command",
         ),
         (
-            {"registry_root": "/h", "ledger_path": ""},
-            "ONEX_LEDGER_PATH is required",
-            "set ONEX_LEDGER_PATH to the rolling work ledger",
+            {"registry_root": "/h", "bus_append_command": ""},
+            "ONEX_LEDGER_BUS_APPEND_COMMAND is required",
+            "set ONEX_LEDGER_BUS_APPEND_COMMAND to the ledger bus append command",
         ),
     ],
 )
@@ -168,7 +168,11 @@ def test_require_env_refuses_each_missing_variable_in_order(
 
 
 def test_require_env_passes_when_both_are_set() -> None:
-    result = ask(operation="require_env", registry_root="/h", ledger_path="/h/l.md")
+    result = ask(
+        operation="require_env",
+        registry_root="/h",
+        bus_append_command="uv run python -m omnibase_core",
+    )
     assert (result.stdout, result.exit_code) == ([], None)
 
 
@@ -379,8 +383,8 @@ async def _run(tmp_path: Path, payload: dict[str, Any]) -> RuntimeLocal:
             {
                 "operation": "require_env",
                 "stdout": [
-                    "REFUSED 2 env: ONEX_LEDGER_PATH is required",
-                    "FIX: set ONEX_LEDGER_PATH to the rolling work ledger",
+                    "REFUSED 2 env: ONEX_LEDGER_BUS_APPEND_COMMAND is required",
+                    "FIX: set ONEX_LEDGER_BUS_APPEND_COMMAND to the ledger bus append command",
                 ],
                 "stderr": [],
                 "exit_code": 2,
