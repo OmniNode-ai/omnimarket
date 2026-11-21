@@ -42,6 +42,8 @@
 #                           fewest valid comparisons (clean, from Memgraph) the comparison's verdict
 #                           part one needs; fewer is "insufficient", never a pass. Fixed before the week
 #                           starts and not changed during it.
+#   record_check_name_prefix the check run that carries a night's published attribution record is named
+#                           <prefix>:<slot date>, on the tested head commit the receipt names for that night.
 target_shard_seconds: 571
 max_narrowed_shards: 5
 narrowed_bound_seconds: 1800
@@ -62,3 +64,4 @@ stage_clean_nights: 7
 stage_min_pr_records: 10
 graph_compared_stage: 0
 graph_min_valid_comparisons: 20
+record_check_name_prefix: nightly-attribution

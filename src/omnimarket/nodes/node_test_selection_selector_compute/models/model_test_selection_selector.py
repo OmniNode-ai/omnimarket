@@ -58,6 +58,10 @@ class ModelSelectorPolicy(BaseModel):
     #: Fewest valid comparisons the comparison's verdict part one needs; fewer is ``insufficient``.
     #: Absent in the frozen replay tree, which predates it.
     graph_min_valid_comparisons: int | None = Field(default=None, ge=1)
+    #: A night's record is the check run ``<prefix>:<slot date>`` on the tested head commit (same default rule).
+    record_check_name_prefix: str = Field(
+        default="nightly-attribution", pattern=r"^[a-z0-9][a-z0-9-]*$"
+    )
 
     @model_validator(mode="after")
     def _ladder_is_ordered(self) -> ModelSelectorPolicy:
