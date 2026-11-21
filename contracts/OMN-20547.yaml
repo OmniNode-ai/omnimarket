@@ -1,0 +1,100 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-20547
+title: 'Move omnimarket code readers of the rolling ledger file to the ledger reader node: the lab fill''s fixer HOLDs and live CLAIMs, and the clone dirty-converge CLAIM check'
+summary: 'Three code readers of the rolling work ledger file read through node_work_ledger_reader_effect instead: the lab fill''s fixer HOLD read (reader idle-fill-holds), its live-CLAIM read (drain_map with no ledger path, reader drain-map) and the canonical clone dirty-converge tick''s open-CLAIM check (reader clone-dirty-converge-claims). A shared port and adapter run the reader module under the ledger interpreter.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn20547-ac1
+  statement: the lab fill reads the fixer HOLD and RELEASE rows through the ledger reader node under the reader name idle-fill-holds, and opens no ledger file.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the lab fill reads the fixer HOLD and RELEASE rows through the ledger reader node under the reader name idle-fill-holds, and opens no ledger file -- falsifier: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_fixer_holds_fill_omn21396.py exits non-zero'
+- id: req-omn20547-ac2
+  statement: the lab fill's live-CLAIM and readback read passes drain_map no ledger path, so the rows come from the bus loader under the reader name drain-map.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the lab fill''s live-CLAIM and readback read passes drain_map no ledger path, so the rows come from the bus loader under the reader name drain-map -- falsifier: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py -k "ledger_reader or bus_reader" exits non-zero'
+- id: req-omn20547-ac3
+  statement: the canonical clone dirty-converge tick reads the open CLAIMs through the ledger reader node under the reader name clone-dirty-converge-claims, once per tick, and an unreadable ledger leaves the clone alone.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the canonical clone dirty-converge tick reads the open CLAIMs through the ledger reader node under the reader name clone-dirty-converge-claims, once per tick, and an unreadable ledger leaves the clone alone -- falsifier: uv run pytest tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py -k "open_claim or ledger" exits non-zero'
+- id: req-omn20547-ac4
+  statement: the production rows reader adapter runs the reader module under the first word of ONEX_LEDGER_BUS_APPEND_COMMAND and raises on every exit but 0 and 1.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the production rows reader adapter runs the reader module under the first word of ONEX_LEDGER_BUS_APPEND_COMMAND and raises on every exit but 0 and 1 -- falsifier: uv run pytest tests/unit/handlers/test_adapter_work_ledger_rows_reader.py exits non-zero'
+evidence_requirements:
+- kind: tests
+  description: 'AC1: the focused tests of AC1.'
+  command: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_fixer_holds_fill_omn21396.py -q --no-cov
+- kind: tests
+  description: 'AC2: the focused tests of AC2.'
+  command: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py -k "ledger_reader or bus_reader" -q --no-cov
+- kind: tests
+  description: 'AC3: the focused tests of AC3.'
+  command: uv run pytest tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py -k "open_claim or ledger" -q --no-cov
+- kind: tests
+  description: 'AC4: the focused tests of AC4.'
+  command: uv run pytest tests/unit/handlers/test_adapter_work_ledger_rows_reader.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn20547-ac1-fixer-holds
+  description: 'AC1: the focused tests pass on the branch. The hosted runner runs them from the repository root with no lab host, no ledger and no network.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_fixer_holds_fill_omn21396.py -q --no-cov
+    cwd: .
+- id: dod-omn20547-ac2-bus-reader
+  description: 'AC2: the focused tests pass on the branch. The hosted runner runs them from the repository root with no lab host, no ledger and no network.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py -k "ledger_reader or bus_reader" -q --no-cov
+    cwd: .
+- id: dod-omn20547-ac3-clone-claims
+  description: 'AC3: the focused tests pass on the branch. The hosted runner runs them from the repository root with no lab host, no ledger and no network.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py -k "open_claim or ledger" -q --no-cov
+    cwd: .
+- id: dod-omn20547-ac4-adapter
+  description: 'AC4: the focused tests pass on the branch. The hosted runner runs them from the repository root with no lab host, no ledger and no network.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_adapter_work_ledger_rows_reader.py -q --no-cov
+    cwd: .
+- id: dod-omn20547-integration-proof
+  description: Run the focused test files of the three moved readers and the adapter on a lab host at the pushed revision. This local completion proof carries no hosted AC bindings.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+      --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+      --lane dod-integration-proof-20547 --kind test --
+      env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+      tests/nodes/node_idle_slot_fill_effect/test_fixer_holds_fill_omn21396.py
+      tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py
+      tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py
+      tests/unit/handlers/test_adapter_work_ledger_rows_reader.py
+      -q -n 0 --no-cov --refuse-skips
+    cwd: .
