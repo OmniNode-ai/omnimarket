@@ -29,7 +29,7 @@ class ModelsGroup(click.Group):
     def resolve_command(
         self, ctx: click.Context, args: list[str]
     ) -> tuple[str | None, click.Command | None, list[str]]:
-        if args:
+        if args and not ctx.resilient_parsing:
             name = args[0].lower()
             if name in provider_labels.LISTED_PROVIDERS and name not in self.commands:
                 raise click.UsageError(

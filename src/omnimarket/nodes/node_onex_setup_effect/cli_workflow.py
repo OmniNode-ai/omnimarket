@@ -119,10 +119,11 @@ def run_workflow_cli(
             if not provider and (model or url):
                 raise ValueError("Name the provider for inline model selections")
             reuse = saved is not None and workspace == saved.workspace
-            if added_to is not None and reuse and providers:
+            if added_to is not None and providers:
                 # OMN-23825: a configure re-run adds the chosen provider to the
                 # saved ones: the same provider is replaced in place, a new one
-                # is appended, and every other saved provider is kept.
+                # is appended, and every other saved provider is kept, whatever
+                # folder the re-run starts in (the providers are this machine's).
                 chosen = {(p["provider"], p["connection_id"]) for p in providers}
                 had = {(s.provider, s.connection_id) for s in added_to.providers}
                 providers = [
