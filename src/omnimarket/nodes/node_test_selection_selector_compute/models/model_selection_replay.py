@@ -11,9 +11,9 @@ same input answers the same way on any checkout.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
     ModelAdjacencyMap,
@@ -24,6 +24,8 @@ from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_sel
 
 _HEX40 = r"^[0-9a-f]{40}$"
 _HEX64 = r"^[0-9a-f]{64}$"
+#: Unread by the selector; a frozen policy that never declared a tolerance gets one inside the field's range.
+_LEGACY_RECORD_TOLERANCE_RATIO = 0.5
 
 
 class EnumReplayKind(StrEnum):
@@ -59,6 +61,29 @@ class ModelTreeSnapshot(BaseModel):
     """Every ``.py`` file under ``src/omnimarket`` and ``tests``."""
     yaml_names: dict[str, tuple[str, ...]]
     """Node names spelled by each YAML file of a node-scoped module's node packages."""
+
+    @field_validator("policy", mode="before")
+    @classmethod
+    def _legacy_policy_fields(cls, value: Any) -> Any:
+        """Read a frozen snapshot's policy that predates the narrowed-run bound fields.
+
+        A snapshot is frozen at a tree id, so one committed before ``narrowed_bound_seconds``,
+        ``untimed_file_seconds``, ``record_tolerance_ratio`` and ``comparison_bounds_seconds`` existed
+        still names the policy it was taken under. Each missing field takes the value that leaves that
+        policy's decisions as they were: the bound is the shard cap's own reach, an untimed file costs
+        nothing and no comparison bound is priced. The live policy file declares every field and
+        ``ModelSelectorPolicy`` still requires them, so this only widens what a frozen snapshot may omit.
+        """
+        if not isinstance(value, dict) or "narrowed_bound_seconds" in value:
+            return value
+        return {
+            **value,
+            "narrowed_bound_seconds": value["max_narrowed_shards"]
+            * value["target_shard_seconds"],
+            "untimed_file_seconds": 0.0,
+            "record_tolerance_ratio": _LEGACY_RECORD_TOLERANCE_RATIO,
+            "comparison_bounds_seconds": (),
+        }
 
 
 class ModelDataFileTexts(BaseModel):
