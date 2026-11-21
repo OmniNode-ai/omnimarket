@@ -184,13 +184,14 @@ class TestSetupWalk:
         assert (home / ".onex/setup.json").is_file()
         assert "Setup complete" in result.output
 
-    def test_omni_home_bridge_is_a_derivation_source(
+    def test_omni_home_is_not_a_derivation_source(
         self, home: Path, tmp_path: Path
     ) -> None:
         workspace = tmp_path / "bridge"
         result = _run(["--no-interactive"], OMNI_HOME=str(workspace))
-        assert result.exit_code == 0, result.output
-        assert (workspace / handler_onex_setup.RUNTIME_CONFIG_RELPATH).is_file()
+        assert result.exit_code == 1
+        assert "--workspace is missing" in result.output
+        assert not (workspace / handler_onex_setup.RUNTIME_CONFIG_RELPATH).exists()
 
     def test_scripted_empty_environment_prompts_once_for_the_workspace(
         self, home: Path, tmp_path: Path
@@ -371,7 +372,7 @@ def _fix_runtime_config(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> 
 
 def _break_model(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> list[str]:
     def refuse(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
-        raise handler_onex_setup._StepFailedError(
+        raise handler_onex_setup.StepFailedError(
             "model", "the provider refused the key", "check the key"
         )
 

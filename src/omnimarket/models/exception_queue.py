@@ -129,7 +129,6 @@ class ModelStopEventResult:
 @dataclass(frozen=True)
 class ModelOpenStopsRequest:
     state_dir: Path
-    ledger_path: Path | None = None
     now: datetime | None = None
 
 

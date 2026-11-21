@@ -13,7 +13,6 @@ class ModelAndonLedgerHoldsRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     state_dir: Path
-    ledger_path: Path
     now: AwareDatetime
 
 
