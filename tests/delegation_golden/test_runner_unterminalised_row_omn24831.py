@@ -756,7 +756,9 @@ class TestContractTextAnswersTheReview:
         for contract, value in pinned:
             assert f"b={_BASE_PIN}" in value, contract
             assert "I(1|10|3|5|6|7|8|9)" in value, contract
-            assert "(^| )9 failed" in value, contract
+            # OMN-24851 pins the ten failures its tree produces; the rest still pin nine.
+            count = 10 if contract == "contracts/OMN-24851.yaml" else 9
+            assert f"(^| ){count} failed" in value, contract
             assert "origin/dev" not in value, contract
 
     def test_the_nightly_ticket_contract_keeps_its_ac2_unmet(self) -> None:
