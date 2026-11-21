@@ -1285,9 +1285,9 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             base="${{ github.event.pull_request.base.sha }}"
             git fetch --no-tags --depth=1 origin "$base" || true
-            git diff --name-only "$base"...HEAD > changed.txt
+            git diff --name-only --no-renames "$base"...HEAD > changed.txt
           else
-            git diff --name-only HEAD~1 HEAD > changed.txt || echo "" > changed.txt
+            git diff --name-only --no-renames HEAD~1 HEAD > changed.txt || echo "" > changed.txt
           fi
           echo "Changed files:"
           cat changed.txt
