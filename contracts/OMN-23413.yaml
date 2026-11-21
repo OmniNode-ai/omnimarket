@@ -167,6 +167,16 @@ requirements:
   acceptance:
   - id: AC38
     statement: '`onex delegation status` reports on only when the prompt hook (UserPromptSubmit) is installed and bit 11 is set; an older install that has only the subagent hook reports off and names the missing prompt hook. The prompt hook can be paused on its own (operator 2026-11-15); Amendment 14a (2026-11-17) removed the subagent hook.'
+- id: req-omn23413-ac49
+  statement: Leave a repeatable installed-package E2E artifact and standing regression check.
+  acceptance:
+  - id: AC49
+    statement: >-
+      Independently review the final candidate before installation. Exercise fresh and existing
+      isolated settings, a real unpaid model success, OFF, skip, action fallback, decline, an
+      unreachable model, timeout and invalid output. Retain the matching browser record, versions,
+      source revisions, and evidence that configuration was preserved. Deliberately induce a
+      failure and retain the standing check's alarm.
 evidence_requirements:
 - kind: tests
   description: Run fixture controls plus required installed-wheel and actual model/Claude evidence; preserve
@@ -492,8 +502,9 @@ dod_evidence:
     command also checks the TUI and joins a captured real prompt receipt to exactly one measured-usage
     delegation_events row and the actual native Claude result with zero native turns or cost.
     ONEX_PROMPT_PROOF_RECEIPT, ONEX_PROMPT_PROOF_DATABASE, ONEX_PROMPT_PROOF_CLAUDE and
-    ONEX_PROMPT_PROOF_MODEL are mandatory. The capture readback runs no new inference; deterministic
-    fixtures alone cannot pass this binding. Hosted CI has neither the companion bundle nor a real
+    ONEX_PROMPT_PROOF_MODEL are mandatory. The reader checks consistency across the supplied
+    captures. Internally consistent synthetic captures also pass. AC49 separately requires evidence
+    from the reviewed installed candidate running the vendor and unpaid model. Hosted CI has neither the companion bundle nor a real
     receipt, so only the local Done gate runs this unbound check; AC33 is bound by
     dod-omn23413-ac33-prompt-routing above.
   source: manual
