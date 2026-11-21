@@ -8,10 +8,15 @@ envelope ``node_integration_reading_publish_effect`` publishes: its payload is
 the whole ``ModelIntegrationProjection`` (one reading per merged change, keyed
 ``repository#number``, with the pass's counts). The table holds the newest pass:
 every row of it is upserted, carrying the pass's counts and ``as_of``, and rows
-of an older pass that the newest no longer names are deleted. A pass older than
-the one held writes nothing, so a replay or an out-of-order delivery leaves the
-same rows. The dashboard's Running figure is the number of rows whose ``state``
-is ``running``, which equals the ``seen_running`` every row carries.
+of an older pass that the newest no longer names are deleted, all in one
+transaction (``apply_pass``), so a write that fails part-way leaves the held
+pass as it was. A pass not newer than the one held (older, or the same
+``as_of``) writes and publishes nothing, so a replay or an out-of-order
+delivery leaves the same rows. An empty newer pass leaves no rows. A payload
+that is not a pass is refused before the store is opened, so it goes to the
+contract's DLQ topic whether or not the database answers. The dashboard's
+Running figure is the number of rows whose ``state`` is ``running``, which
+equals the ``seen_running`` every row carries.
 """
 
 from __future__ import annotations
@@ -34,6 +39,7 @@ from omnimarket.models.integration_reading import (
 )
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_floor_integration.ports.floor_integration_store import (
+    PostgresFloorIntegrationStore,
     ProtocolFloorIntegrationStore,
     SqliteFloorIntegrationStore,
     StoreValue,
@@ -195,7 +201,7 @@ class FloorIntegrationProjectionWriter(BaseProjectionRunner):
             url = binding.resolve_database_url()
             if urlsplit(url).scheme.lower() in SQLITE_SCHEMES:
                 return SqliteFloorIntegrationStore(sqlite_path_from_dsn(url))
-        return self.db
+        return PostgresFloorIntegrationStore(self.db)
 
     def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """RuntimeLocal shim: one injected message, one pass, one write."""
@@ -229,10 +235,11 @@ class FloorIntegrationProjectionWriter(BaseProjectionRunner):
     async def _project_one_message(
         self, data: dict[str, Any], meta: MessageMeta
     ) -> dict[str, Any]:
+        projection = projection_from_payload(data)
         store = self._store()
         await store.connect()
         try:
-            return await self._project(store, data, meta)
+            return await self._project(store, projection, meta)
         finally:
             await self._stop_producer()
             await store.close()
@@ -240,11 +247,12 @@ class FloorIntegrationProjectionWriter(BaseProjectionRunner):
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
-        """Standalone entrypoint: connect, project, report consumed."""
+        """Standalone entrypoint: validate, connect, project, report consumed."""
+        projection = projection_from_payload(data)
         store = self._store()
         await store.connect()
         try:
-            await self._project(store, data, meta)
+            await self._project(store, projection, meta)
         finally:
             await store.close()
         return True
@@ -252,31 +260,44 @@ class FloorIntegrationProjectionWriter(BaseProjectionRunner):
     async def _project(
         self,
         store: ProtocolFloorIntegrationStore,
-        data: dict[str, Any],
+        projection: ModelIntegrationProjection,
         meta: MessageMeta,
     ) -> dict[str, Any]:
-        projection = projection_from_payload(data)
         relation = (
             TABLE
             if isinstance(store, SqliteFloorIntegrationStore)
             else f"{SCHEMA}.{TABLE}"
         )
         incoming = _iso(projection.as_of)
-        held = await store.execute(held_as_of_statement(relation))
-        held_as_of = held[0].get("as_of") if held else None
-        if isinstance(held_as_of, datetime):
-            held_as_of = _iso(held_as_of)
-        if isinstance(held_as_of, str) and held_as_of > incoming:
+
+        def is_current(held_as_of: object) -> bool:
+            """The held pass is this one or newer: nothing to write."""
+            if isinstance(held_as_of, datetime):
+                held_as_of = _iso(held_as_of)
+            return isinstance(held_as_of, str) and held_as_of >= incoming
+
+        projected_at = datetime.now(UTC)
+        values = {
+            key: _row(key, reading, projection, projected_at)
+            for key, reading in projection.rows.items()
+        }
+        outcome = await store.apply_pass(
+            lock_key=f"{SCHEMA}.{TABLE}",
+            held_statement=held_as_of_statement(relation),
+            upsert_statement=upsert_statement(relation),
+            prune_statement=prune_statement(relation),
+            incoming_as_of=incoming,
+            rows=[tuple(row[c] for c in COLUMNS) for row in values.values()],
+            is_current=is_current,
+        )
+        if outcome.skipped:
             return {"rows_upserted": 0, "rows_deleted": 0, "skipped_older_pass": True}
 
-        statement = upsert_statement(relation)
-        projected_at = datetime.now(UTC)
+        # Published only after the pass committed, so a subscriber never sees a
+        # delta for a pass the table does not hold.
         written: list[dict[str, Any]] = []
-        for key, reading in projection.rows.items():
-            values = _row(key, reading, projection, projected_at)
-            if not await store.execute(statement, *(values[c] for c in COLUMNS)):
-                continue
-            served = {**values, "projected_at": projected_at.isoformat()}
+        for key in outcome.written_keys:
+            served = {**values[key], "projected_at": projected_at.isoformat()}
             written.append(served)
             if self._exposure is not None:
                 await self.publish_snapshot_delta(
@@ -288,14 +309,13 @@ class FloorIntegrationProjectionWriter(BaseProjectionRunner):
                     source_partition=meta.partition,
                     source_offset=meta.offset,
                 )
-        deleted = await store.execute(prune_statement(relation), incoming)
-        for gone in deleted:
+        for gone in outcome.deleted_keys:
             if self._exposure is not None:
                 await self.publish_snapshot_delta(
                     self._exposure,
                     op="delete",
                     row=None,
-                    key={"key": gone["key"]},
+                    key={"key": gone},
                     source_event_id=meta.fallback_id,
                     source_topic=meta.topic,
                     source_partition=meta.partition,
@@ -303,7 +323,7 @@ class FloorIntegrationProjectionWriter(BaseProjectionRunner):
                 )
         return {
             "rows_upserted": len(written),
-            "rows_deleted": len(deleted),
+            "rows_deleted": len(outcome.deleted_keys),
             "floor_integration_rows": written,
         }
 

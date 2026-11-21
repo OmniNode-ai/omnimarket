@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -19,6 +20,7 @@ from urllib.parse import quote_plus
 import asyncpg
 import pytest
 
+from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.models.floor_projection import ModelFloorProjectionEnvelope
 from omnimarket.models.integration_reading import (
     ModelIntegrationProjection,
@@ -30,6 +32,10 @@ from omnimarket.nodes.node_integration_projection_compute.handlers import (
 from omnimarket.nodes.node_projection_floor_integration.handlers.handler_floor_integration_writer import (
     FloorIntegrationProjectionWriter,
     upsert_statement,
+)
+from omnimarket.nodes.node_projection_floor_integration.ports.floor_integration_store import (
+    PassOutcome,
+    PostgresFloorIntegrationStore,
 )
 from tests.nodes.node_integration_reading_publish_effect.test_integration_reading_publish import (
     _batch,
@@ -104,28 +110,41 @@ async def _served() -> list[asyncpg.Record]:
         await conn.close()
 
 
-class _AsyncpgFloorIntegrationStore:
-    """The writer's store port over a real asyncpg connection, pointed at the test schema."""
+class _AsyncpgFloorIntegrationStore(PostgresFloorIntegrationStore):
+    """The runtime's own Postgres store over a real asyncpg pool; only the
+    schema name is moved to the test schema, so apply_pass's transaction is the
+    code under test."""
 
     def __init__(self, dsn: str) -> None:
-        self._dsn = dsn
-        self._conn: asyncpg.Connection | None = None
-
-    async def connect(self) -> None:
-        self._conn = await asyncpg.connect(self._dsn)
-
-    async def close(self) -> None:
-        if self._conn is not None:
-            await self._conn.close()
-            self._conn = None
+        super().__init__(AsyncpgAdapter(dsn, min_size=1, max_size=2))
 
     async def execute(self, query: str, *params: object) -> list[dict[str, object]]:
-        if self._conn is None:
-            raise RuntimeError("_AsyncpgFloorIntegrationStore is not connected")
-        rows = await self._conn.fetch(
-            query.replace("omninode_internal.", f"{_SCHEMA}."), *params
+        return await super().execute(_in_test_schema(query), *params)
+
+    async def apply_pass(
+        self,
+        *,
+        lock_key: str,
+        held_statement: str,
+        upsert_statement: str,
+        prune_statement: str,
+        incoming_as_of: str,
+        rows: list[tuple[object, ...]],
+        is_current: Callable[[object], bool],
+    ) -> PassOutcome:
+        return await super().apply_pass(
+            lock_key=lock_key,
+            held_statement=_in_test_schema(held_statement),
+            upsert_statement=_in_test_schema(upsert_statement),
+            prune_statement=_in_test_schema(prune_statement),
+            incoming_as_of=incoming_as_of,
+            rows=rows,
+            is_current=is_current,
         )
-        return [dict(row) for row in rows]
+
+
+def _in_test_schema(query: str) -> str:
+    return query.replace("omninode_internal.", f"{_SCHEMA}.")
 
 
 def _envelope(
@@ -179,6 +198,58 @@ def test_real_postgres_writer_holds_the_newest_pass() -> None:
         )
         assert stale.get("skipped_older_pass") is True
         assert {r["key"] for r in asyncio.run(_served())} == set(newer.rows)
+    finally:
+        asyncio.run(_drop())
+
+
+async def _execute_in_test_db(statement: str) -> None:
+    conn = await _connect_or_skip()
+    try:
+        await conn.execute(statement)
+    finally:
+        await conn.close()
+
+
+@pytest.mark.integration
+def test_real_postgres_failed_write_keeps_the_held_pass() -> None:
+    """A newer pass whose last upsert fails leaves the held pass row for row."""
+    dsn = _dsn_or_skip()
+    asyncio.run(_prepare())
+    try:
+        writer = FloorIntegrationProjectionWriter(
+            store=_AsyncpgFloorIntegrationStore(dsn)
+        )
+        first_batch = _batch()
+        newer_batch = first_batch.model_copy(
+            update={"as_of": first_batch.as_of + timedelta(hours=1)}
+        )
+        _, first_payload = _envelope(first_batch)
+        newer, newer_payload = _envelope(newer_batch)
+        assert len(newer.rows) > 1, "the pass must write rows before the failing one"
+        last_key = list(newer.rows)[-1]
+
+        writer.handle({**first_payload, "_topic": EVENT, "_partition": 0, "_offset": 0})
+        held = sorted(tuple(r) for r in asyncio.run(_served()))
+
+        asyncio.run(
+            _execute_in_test_db(
+                f"CREATE FUNCTION {_SCHEMA}.fail_one() RETURNS trigger LANGUAGE plpgsql AS "
+                f"$$ BEGIN IF NEW.key = '{last_key}' THEN "
+                "RAISE EXCEPTION 'injected write failure'; END IF; RETURN NEW; END $$"
+            )
+        )
+        asyncio.run(
+            _execute_in_test_db(
+                f"CREATE TRIGGER fail_one BEFORE UPDATE ON {_SCHEMA}.floor_integration_rows "
+                f"FOR EACH ROW EXECUTE FUNCTION {_SCHEMA}.fail_one()"
+            )
+        )
+        with pytest.raises(asyncpg.PostgresError, match="injected write failure"):
+            writer.handle(
+                {**newer_payload, "_topic": EVENT, "_partition": 0, "_offset": 1}
+            )
+
+        assert sorted(tuple(r) for r in asyncio.run(_served())) == held
     finally:
         asyncio.run(_drop())
 
