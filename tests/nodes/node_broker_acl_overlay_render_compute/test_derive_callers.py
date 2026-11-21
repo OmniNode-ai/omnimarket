@@ -218,3 +218,35 @@ def test_a_called_node_reacting_to_an_event_topic_is_refused(tmp_path: Path) -> 
     _contract(tmp_path, "node_alpha_effect", [CMD], [EVT])
     derived = _derive(tmp_path, _overlay(roles=[_role(calls=["node_alpha_effect"])]))
     assert derived.status == "derived"
+
+
+def test_a_called_node_whose_terminal_is_not_an_event_topic_refuses(
+    tmp_path: Path,
+) -> None:
+    """Error chain: a terminal_event outside the event prefix would grant a read on another node's topics; it refuses.
+
+    A caller's read lands on the called node's terminal_event, so a command or snapshot terminal would let a login open
+    topics no caller may read. Failing control: the same node under an event terminal still derives.
+    """
+    command_terminal = "onex.cmd.omnimarket.alpha-answered.v1"
+    _contract(tmp_path, "node_alpha_effect", [CMD], [EVT], terminal=command_terminal)
+    refused = _derive(tmp_path, _overlay(roles=[_role(calls=["node_alpha_effect"])]))
+    assert refused.status == "refused"
+    assert _CODES.CALLED_NODE_TERMINAL_NOT_AN_EVENT_TOPIC in {
+        f.code for f in refused.findings
+    }
+    assert refused.rows == ()
+    snapshot_terminal = "onex.snapshot.projection.alpha-state.v1"
+    _contract(tmp_path, "node_alpha_effect", [CMD], [EVT], terminal=snapshot_terminal)
+    snapshot_refused = _derive(
+        tmp_path, _overlay(roles=[_role(calls=["node_alpha_effect"])])
+    )
+    assert snapshot_refused.status == "refused"
+    assert _CODES.CALLED_NODE_TERMINAL_NOT_AN_EVENT_TOPIC in {
+        f.code for f in snapshot_refused.findings
+    }
+    assert snapshot_refused.rows == ()
+    _contract(tmp_path, "node_alpha_effect", [CMD], [EVT])
+    derived = _derive(tmp_path, _overlay(roles=[_role(calls=["node_alpha_effect"])]))
+    assert derived.status == "derived"
+    assert derived.findings == ()
