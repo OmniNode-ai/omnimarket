@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The deployment overlay of node_test_selector_miss_collect_effect (synthetic values).
+# owner_role has no default: the effect refuses to start while it is unset.
+repo: example-org/example-repo
+workflow_file: nightly-full-suite.yml
+# The role the alarm is addressed to; a role, never a person's name.
+owner_role: example-test-selection-owner
+# The alarm routing condition the alarm is raised under.
+alarm_route: test_selector_miss
+# False stops the collector; the slot check still raises the dead-man alarm for the night.
+collector_enabled: true
+# The lab status tick that invokes the slot check as its own process.
+status_tick: example-lab-status-tick
