@@ -168,6 +168,7 @@ SCHEDULABLE_VERBS = (
     "container-unhealthy",
     "lab-pass-receipt",
     "stale-indeterminate",
+    "container-restarts",
     "alarm-digest",
 )
 
