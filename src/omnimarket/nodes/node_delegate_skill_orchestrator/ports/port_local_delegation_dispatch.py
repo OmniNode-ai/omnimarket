@@ -3239,7 +3239,7 @@ class LocalDelegationDispatchPort:
                         _AttemptUsage.of(
                             transport_result,
                             model_id=backend.model_id,
-                            backend=backend.backend_id,
+                            backend=backend,
                         )
                     )
                     attempts.append(
@@ -3358,7 +3358,7 @@ class LocalDelegationDispatchPort:
                     _AttemptUsage.of(
                         transport_result,
                         model_id=backend.model_id,
-                        backend=backend.backend_id,
+                        backend=backend,
                     )
                 )
                 attempts.append(
@@ -3628,7 +3628,7 @@ class LocalDelegationDispatchPort:
                 _AttemptUsage.of(
                     result,
                     model_id=result.served_model_id or backend.model_id,
-                    backend=backend.backend_id,
+                    backend=backend,
                 )
             )
 
@@ -6684,9 +6684,10 @@ class _AttemptUsage:
     """What one banked effect call consumed, on the model that served it."""
 
     model_id: str
-    # OMN-25861: the id of the backend the dispatcher resolved for this attempt (the
-    # attempt record's backend_id), which the usage row serves as how its model was
-    # reached. Required, so no build site can leave it out.
+    # OMN-25861: the alias the attempt reached its model through: the backend_id of a
+    # customer's own BYOK route (byok-reflection, a registered named connection), else
+    # the model itself, which the usage row counts as direct and lists nothing for (D1).
+    # Required, so no build site can leave it out.
     backend: str
     tokens_in: int
     tokens_out: int
@@ -6696,11 +6697,17 @@ class _AttemptUsage:
 
     @classmethod
     def of(
-        cls, result: ModelLlmDelegationCallResult, *, model_id: str, backend: str
+        cls,
+        result: ModelLlmDelegationCallResult,
+        *,
+        model_id: str,
+        backend: ModelResolvedDelegationBackend,
     ) -> _AttemptUsage:
         return cls(
             model_id=model_id,
-            backend=backend,
+            backend=(
+                backend.backend_id if _is_customer_byok_route(backend) else model_id
+            ),
             tokens_in=result.tokens_in,
             tokens_out=result.tokens_out,
             cost_usd=result.actual_cost_usd,

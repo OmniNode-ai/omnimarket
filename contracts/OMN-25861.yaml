@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-25861
 title: usage-by-model-day rows serve no backend, so the Usage page cannot show a model reached through an alias
-summary: 'usage-by-model-day.v1 grouped calls by the model called and served no backend per model, so it could not show that a model was reached through a backend alias such as byok-reflection. Each usage call now carries the backend it was reached through (the local delegate path records the id of the backend it resolved for each attempt), the per-call table stores it, and each usage row serves backends: the sorted distinct backends its calls were reached through where the backend differs from the model, an empty list when every call was direct, and NULL when any call stated no backend. Migration 0004 adds the two nullable columns on Postgres and the writer writes them only where they are in force; the local store gains them through a one-time store step.'
+summary: 'usage-by-model-day.v1 grouped calls by the model called and served no backend per model, so it could not show that a model was reached through a backend alias such as byok-reflection. Each usage call now carries the backend it was reached through: the local delegate path records the backend_id of a customer''s own BYOK route (byok-reflection, a registered named connection) and otherwise the model itself, which counts as direct (the ruling of 2026-11-21 on the spec''s D1); the per-call table stores it, and each usage row serves backends: the sorted distinct backends its calls were reached through where the backend differs from the model, an empty list when every call was direct, and NULL when any call stated no backend. Migration 0004 adds the two nullable columns on Postgres and the writer writes them only where they are in force; the local store gains them through a one-time store step.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -21,11 +21,14 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn25861-ac1
-  description: 'AC1: two calls to one model, one through byok-reflection and one direct, are served by the local dashboard as one row whose backends is ["byok-reflection"]; fails when the row serves no backends or lists the direct call.'
+  description: 'AC1: two calls to one model, one through byok-reflection and one direct, are served by the local dashboard as one row whose backends is ["byok-reflection"]; and two real local delegate runs on one model, one through byok-reflection and one on the house route, give that row ["byok-reflection"]. Fails when the row serves no backends or lists the direct call.'
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/projection/test_omn25861_usage_backends.py -q -p no:randomly --no-cov -k a_model_reached_through_byok_reflection_serves_it
+    cwd: "${OMNI_HOME}/omnimarket"
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_omn25861_local_dispatch_usage_backend.py -q -p no:randomly --no-cov -k serves_it_from_the_real_producer
     cwd: "${OMNI_HOME}/omnimarket"
