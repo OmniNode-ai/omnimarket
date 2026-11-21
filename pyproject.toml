@@ -1482,6 +1482,7 @@ node_test_duration_record_check_effect = "omnimarket.nodes.node_test_duration_re
 node_test_generator = "omnimarket.nodes.node_test_generator"
 node_test_generator_compute = "omnimarket.nodes.node_test_generator_compute"
 node_test_selection_selector_compute = "omnimarket.nodes.node_test_selection_selector_compute"
+node_test_selector_miss_collect_effect = "omnimarket.nodes.node_test_selector_miss_collect_effect"
 node_test_selector_reading_compute = "omnimarket.nodes.node_test_selector_reading_compute"
 node_thread_reply_effect = "omnimarket.nodes.node_thread_reply_effect"
 node_throughput_goal_check_compute = "omnimarket.nodes.node_throughput_goal_check_compute"
