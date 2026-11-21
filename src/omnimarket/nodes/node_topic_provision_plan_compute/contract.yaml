@@ -66,6 +66,8 @@ handler_routing:
       handler:
         name: "HandlerTopicProvisionPlan"
         module: "omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_provision_plan"
+# The topic the runtime's result applier publishes the returned plan on, and the topic `onex run-node` polls for the answer.
+terminal_event: "onex.evt.omnimarket.topic-provision-plan-completed.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.topic-provision-plan-requested.v1"
   terminal_events:
@@ -78,9 +80,23 @@ consumed_events:
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.topic-provision-plan-requested.v1
-  # Terminal events stay under runtime_dispatch: publishing them from here needs broker permission rows in the overlays
-  # repository (broker-acl-coverage-gate); add the topics and the rows together.
-  publish_topics: []
+  # The completed event is declared here with its broker permission rows (broker_acl_grants below), so the runtime wires a
+  # result applier and the returned plan reaches the topic. The failure terminal stays under runtime_dispatch: it has no
+  # published_events entry and no permission rows yet; add them together.
+  publish_topics:
+    - onex.evt.omnimarket.topic-provision-plan-completed.v1
+# The event type the returned model maps to, read by the runtime's result applier to route the returned plan to its topic.
+published_events:
+  - event_type: ModelTopicProvisionPlan
+    topic: onex.evt.omnimarket.topic-provision-plan-completed.v1
+    description: "The returned plan: the topics to provision, the contracts loaded and skipped, and the live topic counts."
+# The dev runtime login publishes the completed event; the principal is the placeholder the broker permission derivation fills
+# for the runtime's own login (overlays: broker_acl_principals). Write and describe on that one topic, literal, nothing else.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.topic-provision-plan-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.topic-provision-plan-completed.v1, operation: DESCRIBE}
 descriptor:
   node_archetype: compute
   purity: pure
