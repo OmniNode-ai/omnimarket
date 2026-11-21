@@ -7,7 +7,7 @@
 ``index``    ``[--repo R ...]``: write the version of each named declared repository (every one by default) into Memgraph; no row, no verdict.
 ``check``    ``--repo R --base REF --head REF``: name the modules the head adds that no root reaches.
 ``shadow``   check every open pull request of the overlay's shadow repositories, append one row, hold nothing.
-``lookup``   ``--question Q --repo R`` and the question's argument: one MATCH row per answer, then a LOOKUP line.
+``lookup``   ``--question Q --repo R`` and the question's argument (locate: ``--target``, a node name, contract path or workflow path): one MATCH row per answer, then a LOOKUP line.
 ``schedule`` install | uninstall | status | run-now, for a host in the overlay; ``--unit shadow`` is the shadow's timer.
 
 ``--fault`` on nightly, probe or shadow injects a declared fault; the row then carries ``drill=yes``.
@@ -52,6 +52,7 @@ from omnimarket.models.model_code_graph import (
 )
 from omnimarket.models.model_code_graph_lookup import (
     EnumCodeGraphQuestion,
+    EnumRemovalKind,
     ModelCodeGraphLookupCommand,
     ModelCodeGraphLookupResult,
 )
@@ -447,6 +448,14 @@ def _lookup(arguments: argparse.Namespace) -> int:
             paths=tuple(arguments.paths),
             archetype=arguments.archetype,
             hint=arguments.hint,
+            removal_kind=EnumRemovalKind(arguments.kind) if arguments.kind else None,
+            identity=arguments.identity,
+            star_export_list=(
+                tuple(arguments.star_export) if arguments.star_export else None
+            ),
+            head_all_lists_name=arguments.head_all_lists,
+            rebound_submodules=tuple(arguments.rebound_submodule),
+            target=arguments.target,
             as_of=arguments.as_of,
         )
     )
@@ -577,6 +586,35 @@ def main(argv: Sequence[str] | None = None) -> int:
             "--archetype", help="exemplar: the archetype (effect, compute, ...)"
         )
         lookup.add_argument("--hint", help="exemplar: words that rank the nodes")
+        lookup.add_argument(
+            "--kind",
+            choices=[kind.value for kind in EnumRemovalKind],
+            help="users: what the removal took out",
+        )
+        lookup.add_argument(
+            "--identity", help="users: the dotted identity (a.mod.f, or a.mod)"
+        )
+        lookup.add_argument(
+            "--star-export",
+            nargs="+",
+            default=[],
+            help="users: the names the base revision's star import exposed",
+        )
+        lookup.add_argument(
+            "--head-all-lists",
+            action="store_true",
+            help="users: the head's literal __all__ still lists the removed name",
+        )
+        lookup.add_argument(
+            "--rebound-submodule",
+            action="append",
+            default=[],
+            help="users: a dotted submodule whose name the package binds to another object",
+        )
+        lookup.add_argument(
+            "--target",
+            help="locate: a node name, a contract path or a workflow path",
+        )
         lookup.add_argument(
             "--as-of",
             dest="as_of",

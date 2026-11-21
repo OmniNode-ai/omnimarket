@@ -1,0 +1,66 @@
+schema_version: 1.0.0
+ticket_id: OMN-25055
+title: Route node_validator_workflow_orchestrator on the runtime so omnimarket PR 5404 runs on the dev runtime
+summary: The orchestrator and the verdict reducer from omnimarket PR 5404 were loaded by the dev runtime with no subscription and no handler route, so no request reached them. The orchestrator
+  contract now subscribes to its requested topic and routes it to HandlerValidatorWorkflowRuntime, a handler the runtime builds with no arguments that loads the node overlays on its first request
+  and runs the workflow, with the verdict reducer running in process.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25055-runtime-route
+  statement: A validator-workflow-requested message reaches the orchestrator on the runtime and is handled.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: node_validator_verdict_reducer, node_validator_workflow_orchestrator is handled once in the dev runtime on h201 and the lane itself reads it as one log line, dispatch, health read
+      or job record -- falsifier: a read of the dev runtime log or job record on h201 for node_validator_verdict_reducer, node_validator_workflow_orchestrator at the read time returns no handled run'
+  - id: AC2
+    statement: 'AC2: the install of omnimarket PR 5404 goes through the declared installer, with no hand edit of a host file, unit or plist, and the installed revision is read back -- falsifier: the
+      declared installer''s own status read names no omnimarket revision for it'
+  - id: AC3
+    statement: 'AC3: a STATUS row kv pr=omnimarket#5404 installed=<host>:<revision> observed=<what ran> read_at=<UTC> is on the work ledger, so the next integration pass marks it SEEN RUNNING -- falsifier:
+      lane_brief.py grep pr=omnimarket#5404 returns no row with installed= and observed= newer than 2026-11-16T21:00:00Z'
+evidence_requirements:
+- kind: tests
+  description: The runtime route tests and the orchestrator's existing tests.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_validator_workflow_orchestrator -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25055-ac1-runtime-route
+  description: The contract routes the requested topic to a handler the runtime builds with no arguments, and the handler handles a request; the dev runtime read on h201 is the unbound proof below.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_validator_workflow_orchestrator/test_validator_workflow_runtime.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25055-ac2-contract-route
+  description: The orchestrator contract declares the subscription, the publish topics and the handler route the runtime reads.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_validator_workflow_orchestrator/test_validator_workflow_runtime.py -k contract_routes -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25055-ac3-row
+  description: The STATUS row is a ledger write after the dev runtime read, which hosted CI cannot make; the route tests are the hosted reading.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_validator_workflow_orchestrator -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25055-ac1-integration-proof
+  description: Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check. It reads the dev runtime log on h201 and fails while no line says node_validator_workflow_orchestrator handled a request.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: sh -c 'ssh -o BatchMode=yes "$ONEX_RUNTIME_SSH_HOST" "docker logs omninode-runtime 2>&1" | grep -q "node_validator_workflow_orchestrator handled"'
+    cwd: .
