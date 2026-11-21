@@ -7,8 +7,9 @@
     {
       "pr": 5375,
       "sha": "0b0c45e11276ab22ac5d8c90a83d50783d73e2c6",
-      "verdicts": {"pull_request:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "52b628c42c2e43fe86f68d2b583af348d935211801d2ad69ff2b61bf6459dbe9"}, "merge_group:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "79c0958dbf8d54b968e4c81c7c78faa0349393d297b5550d0238cb07e16b318d"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "6ed60073e5cb325b5e884469d8af9d6e00c1e91341d087051ba2279229a20086"}},
+      "verdicts": {"pull_request:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "576912f31ba885be6bccac4c17164b23eca0750ec6dd9db64a07a4c20381f287"}, "merge_group:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "101f65c1f8c78126bc4f655fda26df1f288536e21c521af4055566b035fc4a52"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "eac010980e75d0ebde9f6f7b48bb40a601a0cb7baffc1d19b09270f5967b86e9"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:18Z", "started_at": "2026-11-08T02:21:18Z", "id": 128699999001},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T02:21:18Z", "started_at": "2026-11-08T02:21:18Z", "id": 128601453810},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:24:17Z", "started_at": "2026-11-08T02:24:17Z", "id": 128601996635},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:46Z", "started_at": "2026-11-08T02:21:46Z", "id": 128601483725},
@@ -168,8 +169,9 @@
     {
       "pr": 5382,
       "sha": "808536f285661b93bf3604681e0a282d550aa160",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "0b6ee7fe39382fdfb1095f9f9361f7b931dcedf154b01b67c4befd5cde1026df"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "734a71d2f9038472df4de5adb13aad090a90169e0a7e3ef26095286e7b6828a5"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "1b5c0afd9ae5ca5232402b13ae669ac9df7b0cb6098b00bcebc7d4d07394558c"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "81c970297dd7907bed07a1f780b546aec6bbfd17a484622ea3e4dd57a27029f2"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "27131eea4dc84c9fc0fb9b376fd41d8fa70aa85845e0a88356c9fad0ef873cc0"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "e0c91ebd48912ba3a28fa84fc0c15853aea8e79bb16fe3b67c8ba01f4be6f505"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:51:48Z", "started_at": "2026-11-08T04:51:48Z", "id": 128699999002},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:51:48Z", "started_at": "2026-11-08T04:51:48Z", "id": 128632429137},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:52:17Z", "started_at": "2026-11-08T04:52:17Z", "id": 128632468497},
         {"name": "BYOK Catalogue No House Entry", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:52:26Z", "started_at": "2026-11-08T04:52:26Z", "id": 128632427857},
@@ -274,8 +276,9 @@
     {
       "pr": 5383,
       "sha": "f0ff9238311b32bdc791e7b50cc4ae601507f927",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "b4c2749834b5083aaca2ee45228c2125da67221c8eb942ae806ee75fa6417392"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "6c6c9e3affe379ca339d520e75a93221f224e6ab465b8634542dbf68c6e0fa08"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "2be8b4bf0451eb9b384817a2db8eea181c2a5d06a0530bf7ad592566bd4eec3d"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "d73930a70af6208fd187dcabebf565163fea24ad94dfe2dc13b7a1d5f6879276"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "6d28bd14aff4e95464ded8b74723b0b5abfd5a5e583dbedf10a6d343e055470b"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "3b9b2e8c0a8fc8fed268fa784f3e81e44acbf21e5952ae1f33782668e896433a"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:43Z", "started_at": "2026-11-08T04:45:43Z", "id": 128699999003},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:45:43Z", "started_at": "2026-11-08T04:45:43Z", "id": 128631228834},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:54Z", "started_at": "2026-11-08T04:47:54Z", "id": 128631545714},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:46:07Z", "started_at": "2026-11-08T04:46:07Z", "id": 128631259382},
@@ -410,8 +413,9 @@
     {
       "pr": 5384,
       "sha": "6a0dde94e04bedeeec651f9a2f152b51e58f2cb7",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "aeba8bd90b3f59491daf34c009f39e711a65a0d0f1c9f82c9fa4730afba514e7"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "ee4dccf7322b0ff5fa2f7170984c4b2827d568a1484f6e8679c832039226e321"}, "push:dev": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "c7061cc7272e0282f5f3ca4b01821e0130b25c1985671e6eacf2151140a15a15"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "65feacd4f6b5249b48db107f2405bb275540d86adf57affb44a7bf288b1f6e1b"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "5a4676921cbfceadbd6a358c8fc3a10cff7ce87e63a303fb22f6bd618fcba517"}, "push:dev": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "8ac2b234b2851e3c15350a4cc9564dfa82cd36b60a3d59b06e4e64c797264761"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:03Z", "started_at": "2026-11-08T04:53:03Z", "id": 128699999004},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:53:03Z", "started_at": "2026-11-08T04:53:03Z", "id": 128632668388},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:26Z", "started_at": "2026-11-08T04:53:26Z", "id": 128632692280},
         {"name": "BYOK Catalogue No House Entry", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:34Z", "started_at": "2026-11-08T04:53:34Z", "id": 128632667593},
@@ -492,8 +496,9 @@
     {
       "pr": 5385,
       "sha": "bb637ecedd986e136442d0112323b1bce505432a",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "c4379438b3c708941aa47b0196c1b1de96d75f2596ebe406fef84d6a3c3d69c5"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "08660d723107c867eb277026356b0b5e40db62924e59de01fac66114cf526ef1"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "55c6c57ec15c499b3616c5252a69f4a416f38fb1618fdfbe46417c1d4b93fca0"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "389faf4bad922cae013f3678cd87328d03d78127436b5c27d1edd0771b4b6068"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "eae7454d32b7cda8dc89cb55268f4437ef9f1fe3c4b9991f6bd9d21c8ac37523"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "8fc2a2e2c4dd77976817ff3c8825153d544f8b91c76ed55129da7412361dda20"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:16Z", "started_at": "2026-11-08T04:47:16Z", "id": 128699999005},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:47:16Z", "started_at": "2026-11-08T04:47:16Z", "id": 128631541593},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:50:24Z", "started_at": "2026-11-08T04:50:24Z", "id": 128632031835},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:37Z", "started_at": "2026-11-08T04:47:37Z", "id": 128631563643},
@@ -647,8 +652,9 @@
     {
       "pr": 5386,
       "sha": "afcf58c713b910e950c14d4669b80d46011eeace",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "34cd1b5507708b227e9490c8c823da79e8734272fd28897e21b5197ef63b5e75"}, "merge_group:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "7c032a1fae2b318febf3a179b1c374ec7b5126736825f9b7a4d73e98173be3ba"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "428a6170e91c6fcf0ec815299e6810a9a71552abe5288da66d89efe57bd52bda"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "66b056f8bea4789759bc5cb5b514d5161a0817ab791c03319ee3a21426d0721a"}, "merge_group:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "69752d799f88049b6455f3ce5d1e66380622983cf9e2c40a4d9102ccf391f433"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "b4e831364d7864ea6673a64febac0a3139b86315befe5279e7ea375b001094ff"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:46:22Z", "started_at": "2026-11-08T03:46:22Z", "id": 128699999006},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T03:46:22Z", "started_at": "2026-11-08T03:46:22Z", "id": 128619273518},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:48:51Z", "started_at": "2026-11-08T03:48:51Z", "id": 128619656276},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:46:50Z", "started_at": "2026-11-08T03:46:50Z", "id": 128619306175},
@@ -807,8 +813,9 @@
     {
       "pr": 5387,
       "sha": "3089a0191b93e6e73129090a539051d3f1893382",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "219f706c955c2f1bbe050d226848bfa7d4ff3fe576799fd9877083fc8b8e7fa8"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "49be96bb6dd4053d98a96608b21f8452aa70ee6485d632d8bc8adcf35d36614d"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "56384f438b74489684b26ed0654c6189465d85a4d53c0e56f9891298113336fa"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "bb6496d0503138b76bac973c2a66403c1d9ec22414961fed3e7fff45bfe9e94a"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "dfdc312c5acf0c54924832713511ef722cc6e6b5998ca1652ea7884ee99e7378"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "e35e22f6a928137720ad4a04d2c346f0aa1445d460a7521428c0fce20d1d0340"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:53:39Z", "started_at": "2026-11-08T03:53:39Z", "id": 128699999007},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T03:53:39Z", "started_at": "2026-11-08T03:53:39Z", "id": 128620718211},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:57:18Z", "started_at": "2026-11-08T03:57:18Z", "id": 128621301995},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:54:00Z", "started_at": "2026-11-08T03:54:00Z", "id": 128620719242},
@@ -968,8 +975,9 @@
     {
       "pr": 5388,
       "sha": "96516f0fb24f479eb24e1e72da4913afdc0b7c3d",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "c76a7fa2a7f6f8d92f9f7e4e9bf4db5c98eb06bf75c3eb0a81ff60b7f38dbcf9"}, "merge_group:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "23f016ba4101adf5c93b3a16ec5e440cd8112098a643c213fbef87449b832976"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "40b72f7365d14091f3202757a6e4f16f623c7b29162564741a55397f555e79cd"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "e9c41ac265cf5bb9fde4566658e0051a6b9abd7c97f825b411d7d3279fc56256"}, "merge_group:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "9872740dfbb9c145615b6c83ea74de4f854142b64436f09060237839b31e3856"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "743f998ee9253790ebce8df71f7c7a5876f7b38fe471adf06399f6665f765299"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:11:26Z", "started_at": "2026-11-08T04:11:26Z", "id": 128699999008},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:11:26Z", "started_at": "2026-11-08T04:11:26Z", "id": 128624302580},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:14:15Z", "started_at": "2026-11-08T04:14:15Z", "id": 128624794593},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:11:51Z", "started_at": "2026-11-08T04:11:51Z", "id": 128624326835},
@@ -1109,8 +1117,9 @@
     {
       "pr": 5389,
       "sha": "331d81e5857a04e9cc89d3c497649bf0847070b7",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "df96c2717f1850ccb7d50c930ea835655a6164903c83e48b7173050a3c599b45"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "5a6f6894dfe6ccbdeb4b0d416880573a93c69c4c9bb1c075f33de297187499a5"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "97acc8eb8b317954752c4f327efb3247cff7101e3c55400bc3a0be4676f78ec4"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "18839c348483415fc3377759b5adcc407b55514e92612ee1b0ec1a5a8b0587e2"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "68bc0b8d381d3505b00774ec93af99cf4bfd9e267b6f2f5e49e234a683cbee96"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "0bf1bcd83e5f9ffb779c35ff14dd59c16ff755d4b2ccbe63e52737058da5b377"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:45Z", "started_at": "2026-11-08T04:53:45Z", "id": 128699999009},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:53:45Z", "started_at": "2026-11-08T04:53:45Z", "id": 128632805016},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:54:10Z", "started_at": "2026-11-08T04:54:10Z", "id": 128632831327},
         {"name": "BYOK Catalogue No House Entry", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:48Z", "started_at": "2026-11-08T04:53:48Z", "id": 128632804174},
@@ -1214,8 +1223,9 @@
     {
       "pr": 5390,
       "sha": "bee0521217f19edf949d2199c84d76cd21689d90",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "aaef212a2d4533da21b386d8d8b9db6ba5eb8cfd7aa249ee05f576a26fe162d2"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "c995e77aba09000a90f3cdd78265c5233769fd4d2a9deeb266a084e38dc797c5"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "169b1a18c0e8fe4116e9b2aa944005e3a572db171fbc25e6ecaf1b5d7f7a22c8"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "5b8f7992db905592768bfa9ac8212e12b4ee6173b5a3742de8f0b87085125764"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "4a5b1a1ac9be41ccab1e90b2adba7deb3c0ef033170a89fc9af59e9c4b0f33d7"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "6c76cd161d1f825b49a48de6e96bfc4ebacd12129ced046b0ac645dc299dcc46"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:20:55Z", "started_at": "2026-11-08T04:20:55Z", "id": 128699999010},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:20:55Z", "started_at": "2026-11-08T04:20:55Z", "id": 128626262060},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:25:30Z", "started_at": "2026-11-08T04:25:30Z", "id": 128627104963},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:24:32Z", "started_at": "2026-11-08T04:24:32Z", "id": 128626727782},
@@ -1371,8 +1381,9 @@
     {
       "pr": 5391,
       "sha": "7101e23cf733189b1ff5e1d20a85192a3cff366e",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "158369351caf9fcda97f18a27649d80ab9c2225c65b491675189d2a472cc2307"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "403f4e4380d3dbceee208e4d46d8373b1ccdd35bcbeba8149f953ceb475130de"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "66e1aa48e5044f6afd4ef32bff2d37707c7fdfdee76746071e4062e1158a2d6e"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "2d5d1c6e3cbb31e37f31e0a497013d621d96ac29b5efcc5edc20a6454badbdbc"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "d2628f1b03cb22bb27dd9d0fa3bb344a99e69cbd6a6aecaa0deff2ca04ba8701"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "0f04cc53263ff2abfa319edbc8924be12a4317e144aed2b5eb7fab283b1fb363"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:39:44Z", "started_at": "2026-11-08T04:39:44Z", "id": 128699999011},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:39:44Z", "started_at": "2026-11-08T04:39:44Z", "id": 128630057022},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:41:22Z", "started_at": "2026-11-08T04:41:22Z", "id": 128630287785},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:40:13Z", "started_at": "2026-11-08T04:40:13Z", "id": 128630089283},
@@ -1511,8 +1522,9 @@
     {
       "pr": 5392,
       "sha": "36ef6b9dd813cfdfd272f87ad177c8dee69e3ae3",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "511bf6c9daf035a02d1d8bba1bdec3eb8a258f3e8db2da813b820f5e26f32eab"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "c2cfc1baa083a3b5a5ff2da0b97721f37a209b9b21ef4870f23d3aad610b1859"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "7d95b3705512529881a9fa5f2a11a7811ca4d11af3ae332308dd23d94ecf0b50"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "8d72dc363916769f3aec08ebb60741d211708c71b11a6ff53a2561d165afb86a"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "bd130a16e89bb1620e580dcf7d07c2e4021f5b8eb806750ecd275df23a94e49b"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "1af15c624f49816189b4b2c429a8096df6b43d21776fa78601da8b86887ab59e"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:44:30Z", "started_at": "2026-11-08T04:44:30Z", "id": 128699999012},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:44:30Z", "started_at": "2026-11-08T04:44:30Z", "id": 128630985447},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:00Z", "started_at": "2026-11-08T04:47:00Z", "id": 128631351149},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:44:59Z", "started_at": "2026-11-08T04:44:59Z", "id": 128631007646},

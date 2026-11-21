@@ -73,6 +73,7 @@ config:
     excluded_classes: ["held-excluded"]
     red_classes: ["red"]
     claim_quiet_hours: 2.0
+    claim_window_hours: 168
 metadata:
   transport_type: local
   description: "Admits or refuses the start of work against the started-but-unlanded count."
