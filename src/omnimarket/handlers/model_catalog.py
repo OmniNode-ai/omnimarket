@@ -308,7 +308,7 @@ def models_dev_price_per_1m(
 
 
 def _positive(value: Any) -> int | None:
-    return value if isinstance(value, int) and value > 0 else None
+    return value if type(value) is int and value > 0 else None
 
 
 def _capabilities(metadata: Mapping[str, Any] | None) -> dict[str, CapabilityState]:

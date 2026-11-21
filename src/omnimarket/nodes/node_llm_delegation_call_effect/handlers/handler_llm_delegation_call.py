@@ -1037,7 +1037,9 @@ class HandlerLlmDelegationCall:
             provider = byok_backend_provider(request.provider)
             if provider is not None and provider in catalog_config()["provider_ids"]:
                 # What the explorer last read, never a live listing per call.
-                model_entry = runtime_catalog_entry(provider, request.model_id)
+                model_entry = request.local_model_entry(
+                    provider
+                ) or runtime_catalog_entry(provider, request.model_id)
                 if model_entry.max_output_tokens is not None:
                     token_field = (
                         "max_tokens"

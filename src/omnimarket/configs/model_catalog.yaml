@@ -34,6 +34,13 @@ provider_listing:
   cache_file: cache/provider_models_{provider}.json
   max_age_hours: 24
 
+# These routes size the request from the selected model's combined entry.
+# If both sources omit the limit, use this operational request budget. The
+# model table still reports that the provider's output limit is unknown.
+output_budget:
+  providers: [reflection]
+  fallback_tokens: 65536
+
 # ONEX provider id -> models.dev provider id, for the hosted providers /config
 # offers (setup_provider_traits.yaml). Ollama and vLLM run on the user's own
 # server, so models.dev states nothing about them: their unknowns stay unknown.

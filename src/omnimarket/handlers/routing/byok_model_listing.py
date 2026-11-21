@@ -65,6 +65,8 @@ class ModelByokModelListing(BaseModel):
 
 
 def _positive_int(value: Any) -> int | None:
+    if isinstance(value, bool) or (isinstance(value, float) and not value.is_integer()):
+        return None
     try:
         number = int(value)
     except (TypeError, ValueError):
@@ -111,9 +113,9 @@ def _listed(entry: dict[str, Any]) -> ModelByokListedModel | None:
             or top.get("context_length")
             or entry.get("inputTokenLimit")
         ),
-        max_output_tokens=_positive_int(
-            entry.get("outputTokenLimit") or top.get("max_completion_tokens")
-        ),
+        max_output_tokens=_positive_int(entry.get("max_output_tokens"))
+        or _positive_int(entry.get("outputTokenLimit"))
+        or _positive_int(top.get("max_completion_tokens")),
         input_usd_per_million=_per_million(pricing.get("prompt")),
         output_usd_per_million=_per_million(pricing.get("completion")),
     )

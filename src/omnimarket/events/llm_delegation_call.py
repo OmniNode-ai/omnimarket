@@ -14,12 +14,13 @@ from __future__ import annotations
 
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from omnimarket.models.delegation.prompt_text_block import (
     ModelPromptMessage,
     ModelPromptTextBlock,
 )
+from omnimarket.models.model_catalog_entry import ModelCatalogEntry
 from omnimarket.models.review_cost.model_review_call_provenance import (
     ModelReviewCallProvenance,
 )
@@ -42,6 +43,19 @@ class ModelLlmDelegationCallRequest(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    # The local effect uses the same catalogue snapshot for its budget and cost.
+    # It is set inside the worker and is absent from the external wire schema.
+    _local_model_entry: ModelCatalogEntry | None = PrivateAttr(default=None)
+
+    def bind_local_model_entry(self, entry: ModelCatalogEntry) -> None:
+        self._local_model_entry = entry
+
+    def local_model_entry(self, provider: str) -> ModelCatalogEntry | None:
+        entry = self._local_model_entry
+        if entry and entry.provider == provider and entry.model_id == self.model_id:
+            return entry
+        return None
 
     request_id: str
     correlation_id: str
