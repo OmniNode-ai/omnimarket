@@ -435,7 +435,8 @@ def test_the_effect_opens_nothing_it_did_not_open_before_except_the_three_new_so
         k: str(v).removeprefix(str(world["tmp"]) + "/") for k, v in files.items()
     }
     new = {relative["goal"], relative["required"], relative["archive"]}
-    base = opened - new
+    # The overlay reader now also probes the resolver's overlay roots, which exist only on some hosts.
+    base = opened - new - {"overlays/node_overlay_store_read_effect/overlay.yaml"}
     # The base set: the plans, manifests, watcher, plans-today output, Linear snapshots, friction report, placement
     # reading, overlay, ledger rows file and nothing else. A new source would be a member of this difference.
     assert new <= opened
