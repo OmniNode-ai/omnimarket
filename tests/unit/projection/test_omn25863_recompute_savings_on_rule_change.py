@@ -17,7 +17,8 @@ Failure modes, each with a test below:
   R5  a store that cannot be written fails to open instead of being read as it is
   R6  a reverted rule or price change is not recomputed (an earlier digest is still recorded)
   R7  a manifest that cannot be loaded breaks the open, or records a recompute against the empty fallback table;
-      R7b the same for a manifest that goes after the process cached it
+      R7b the same for a manifest that goes after the process cached it; R7c for an empty table cached from a
+      failed load while the file is back on disk
   R8  a manifest version change leaves the stored manifest version stale
   R9  a store with neither recompute recorded prices every run twice on one open, holding the write lock longer
 
@@ -454,3 +455,33 @@ def test_recompute_savings_a_store_with_neither_recompute_recorded_recomputes_on
             "SELECT 1 FROM omnimarket_sqlite_store_steps WHERE step = ?",
             (_EARLIER_STEP,),
         ).fetchone()
+
+
+def test_recompute_savings_an_empty_table_cached_from_a_failed_load_recomputes_nothing(
+    tmp_path: Path, manifest: _Manifest
+) -> None:
+    """R7c: the process's first manifest load failed, so pricing cached its empty fallback table, and the file is
+    back on disk. Priced from that table every run would lose its saving, so the store is read as it is and nothing
+    is recorded; a process that loads the manifest recomputes."""
+    path = _earlier_store(
+        tmp_path, model=_PAID_MODEL, alias=_FREE_ALIAS, cost_usd=_PAID_COST
+    )
+    _open(path)
+    priced = _saving_and_cost(path)[0]
+    assert priced is not None
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "DELETE FROM omnimarket_sqlite_store_steps WHERE step LIKE 'omn25863_%'"
+        )
+    manifest.remove()
+    assert not pricing._load_table().models  # the empty fallback, now cached
+    manifest.path.write_text(
+        manifest._text, encoding="utf-8"
+    )  # back on disk, cache untouched
+    _open(path)
+    assert _saving_and_cost(path)[0] == priced
+    assert _recorded_rule_steps(path) == []
+    manifest.restore()
+    _open(path)
+    assert _saving_and_cost(path)[0] == priced
+    assert len(_recorded_rule_steps(path)) == 1
