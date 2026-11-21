@@ -61,6 +61,14 @@ class EvalResultsNotMaterializedError(RuntimeError):
         self.limit = limit
 
 
+class EvalResultsDeadLetterNotPublishedError(RuntimeError):
+    """A record owed a dead letter did not get one confirmed published; the offset must not advance."""
+
+    def __init__(self, subject: str, reason: str) -> None:
+        super().__init__(f"dead letter not published for {subject}: {reason}")
+        self.subject = subject
+
+
 async def bounded[T](stage: str, awaitable: Awaitable[T], limit_s: float) -> T:
     """Await ``awaitable`` for at most ``limit_s`` seconds; a breach is a typed refusal naming ``stage``."""
     try:
@@ -90,6 +98,7 @@ __all__ = [
     "REFUSAL_DEADLINE",
     "REFUSAL_NOT_MATERIALIZED",
     "STAGE_DEADLINE_S",
+    "EvalResultsDeadLetterNotPublishedError",
     "EvalResultsDeadlineError",
     "EvalResultsNotMaterializedError",
     "bounded",
