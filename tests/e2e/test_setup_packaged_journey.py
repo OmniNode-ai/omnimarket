@@ -938,7 +938,9 @@ def _launcher_owners(site: Path) -> dict[str, list[tuple[str, str]]]:
 
     owners: dict[str, list[tuple[str, str]]] = {name: [] for name in CUSTOMER_LAUNCHERS}
     for dist in importlib_metadata.distributions(path=[str(site)]):
-        name = dist.metadata["Name"]
+        from packaging.utils import canonicalize_name
+
+        name = str(canonicalize_name(dist.metadata["Name"]))
         for entry in dist.entry_points:
             if (
                 entry.group in {"console_scripts", "gui_scripts"}
@@ -1164,6 +1166,9 @@ def _customer_installs(
                 "PIPX_HOME": str(pipx_home),
                 "PIPX_BIN_DIR": str(bin_dir),
                 "PIPX_DEFAULT_PYTHON": py311,
+                # pipx installs through uv here, as it does by default when uv is on PATH;
+                # uv keeps PIPX_DEFAULT_PYTHON, so a line without --python 3.12 fails.
+                "PIPX_DEFAULT_BACKEND": "uv",
             }
             command = ["pipx", "install"]
             command += ["--python", "3.12"] if pipx_python_flag else []
