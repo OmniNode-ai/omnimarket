@@ -15,6 +15,10 @@ Failure modes:
   F9. An unreadable store crashes setup instead of falling back to the hidden prompt.
   G1. A configure re-run replaces the saved providers with the one chosen, dropping the others.
   G2. A provider added on a re-run is not kept beside the saved ones, or the kept ones are asked for keys they stored.
+  G3. A re-run from another folder (the usual way) replaces the saved providers, because the
+      workspace it runs in differs from the saved one.
+  G4. The real Action and Components prompts of a re-run do not lead to the provider question.
+  F10. An explicit --provider on a configure re-run reuses the stored key, so a rotated key cannot be entered.
 """
 
 from __future__ import annotations
@@ -128,20 +132,13 @@ def rerun(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
         ),
     )
 
-    def run(*args: str, input: str) -> tuple[Any, _Recorder]:
+    def run(*args: str, input: str, prompts: bool = False) -> tuple[Any, _Recorder]:
+        flags = (
+            [] if prompts else ["--action", "configure", "--component", "delegation"]
+        )
         result = CliRunner().invoke(
             setup_cli.setup_command,
-            [
-                "--interactive",
-                "--yes",
-                "--workspace",
-                str(workspace),
-                "--action",
-                "configure",
-                "--component",
-                "delegation",
-                *args,
-            ],
+            ["--interactive", "--yes", "--workspace", str(workspace), *flags, *args],
             input=input,
         )
         return result, recorder
@@ -296,3 +293,35 @@ def test_a_configure_rerun_adds_a_new_provider_to_the_saved_ones(
     assert rec.plan is not None, result.output
     assert [p.provider for p in rec.plan.providers] == ["openai", "gemini", "anthropic"]
     assert rec.keys == ["anthropic"]
+
+
+def test_a_rerun_from_another_folder_keeps_the_saved_providers(
+    rerun: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G3: the providers are kept whatever folder the re-run starts in."""
+    _two_providers(tmp_path, monkeypatch)
+    result, rec = rerun(
+        "--workspace", str(tmp_path / "elsewhere"), input="anthropic\nclaude-sonnet-4\n"
+    )
+    assert rec.plan is not None, result.output
+    assert [p.provider for p in rec.plan.providers] == ["openai", "gemini", "anthropic"]
+    assert rec.keys == ["anthropic"]
+
+
+def test_the_action_and_components_prompts_lead_to_the_new_provider(
+    rerun: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G4: answering the re-run's own prompts adds the provider and asks only its key."""
+    _two_providers(tmp_path, monkeypatch)
+    result, rec = rerun(
+        input="configure\ndelegation\nanthropic\nclaude-sonnet-4\n", prompts=True
+    )
+    assert rec.plan is not None, result.output
+    assert [p.provider for p in rec.plan.providers] == ["openai", "gemini", "anthropic"]
+    assert rec.keys == ["anthropic"]
+
+
+def test_an_explicit_provider_on_configure_is_asked_for_its_key(rerun: Any) -> None:
+    """F10: a named provider takes a new key even on a configure re-run."""
+    result, rec = rerun("--provider", "openai", input="gpt-4.1-mini\n")
+    assert rec.keys == ["openai"], result.output

@@ -48,3 +48,11 @@ def test_models_help_mentions_add() -> None:
     result = runner.invoke(models_group, ["--help"])
     assert result.exit_code == 0
     assert "onex models add" in result.output
+
+
+def test_shell_completion_after_a_bare_provider_does_not_raise() -> None:
+    """Completion parses resiliently: the hint is for a run, not for <TAB>."""
+    from click.shell_completion import ShellComplete
+
+    completer = ShellComplete(models_group, {}, "onex models", "_ONEX_COMPLETE")
+    completer.get_completions(["gemini"], "")
