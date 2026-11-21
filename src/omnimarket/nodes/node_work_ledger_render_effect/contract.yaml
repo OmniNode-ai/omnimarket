@@ -36,30 +36,11 @@ runtime_dispatch:
 # The row topics are subscribed by the host process that owns the file, not by a shared
 # runtime, so they are declared under `subscriptions` and `event_bus` carries only what the
 # node publishes.
+# OMN-25630, L12: the one accepted-row topic. Its single partition's offset order is the ledger order; history
+# before the first sequenced row (source=bootstrap, no ledger_seq) has nothing to render and is acknowledged.
 subscriptions:
   topics:
-    - onex.evt.omnimarket.work-ledger-claim.v1
-    - onex.evt.omnimarket.work-ledger-status.v1
-    - onex.evt.omnimarket.work-ledger-terminal.v1
-    - onex.evt.omnimarket.work-ledger-hold.v1
-    - onex.evt.omnimarket.work-ledger-release.v1
-    - onex.evt.omnimarket.work-ledger-msg.v1
-    - onex.evt.omnimarket.work-ledger-ack.v1
-    - onex.evt.omnimarket.work-ledger-ruling.v1
-    - onex.evt.omnimarket.work-ledger-operator-consent.v1
-    - onex.evt.omnimarket.work-ledger-friction.v1
-    - onex.evt.omnimarket.work-ledger-correction.v1
-    - onex.evt.omnimarket.work-ledger-claim.v2
-    - onex.evt.omnimarket.work-ledger-status.v2
-    - onex.evt.omnimarket.work-ledger-terminal.v2
-    - onex.evt.omnimarket.work-ledger-hold.v2
-    - onex.evt.omnimarket.work-ledger-release.v2
-    - onex.evt.omnimarket.work-ledger-msg.v2
-    - onex.evt.omnimarket.work-ledger-ack.v2
-    - onex.evt.omnimarket.work-ledger-ruling.v2
-    - onex.evt.omnimarket.work-ledger-operator-consent.v2
-    - onex.evt.omnimarket.work-ledger-friction.v2
-    - onex.evt.omnimarket.work-ledger-correction.v2
+    - onex.evt.omnimarket.work-ledger-row-accepted.v1
 event_bus:
   publish_topics:
     - onex.evt.omnimarket.work-ledger-markdown-rendered.v1

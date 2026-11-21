@@ -107,6 +107,7 @@ registry_only onex.evt.omnimarket.work-ledger-ruling.v1
 registry_only onex.evt.omnimarket.work-ledger-operator-consent.v1
 registry_only onex.evt.omnimarket.work-ledger-friction.v1
 registry_only onex.evt.omnimarket.work-ledger-correction.v1
+registry_only onex.evt.omnimarket.work-ledger-row-accepted.v1
 event_registry_only work.ledger.claim
 event_registry_only work.ledger.status
 event_registry_only work.ledger.terminal
@@ -118,6 +119,7 @@ event_registry_only work.ledger.ruling
 event_registry_only work.ledger.operator_consent
 event_registry_only work.ledger.friction
 event_registry_only work.ledger.correction
+event_registry_only work.ledger.row_accepted
 
 # OMN-19999: emitted by the PR watcher, not a Claude lifecycle hook.
 registry_only onex.evt.omnimarket.pr-state-observed.v1

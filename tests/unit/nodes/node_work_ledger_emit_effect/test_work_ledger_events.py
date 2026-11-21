@@ -169,11 +169,16 @@ def test_the_typed_topics_are_the_eleven_v2_row_topics() -> None:
     assert {t.typed_topic for t in EnumLedgerRowType} == EXPECTED_TYPED_ROW_TOPICS
 
 
-def test_contract_publishes_the_eleven_row_topics_and_its_two_terminals() -> None:
+def test_contract_publishes_the_row_topics_the_accepted_row_topic_and_its_two_terminals() -> (
+    None
+):
     contract = yaml.safe_load((_NODE / "contract.yaml").read_text())
     published = set(contract["event_bus"]["publish_topics"])
     assert (
         published
-        == EXPECTED_ROW_TOPICS | EXPECTED_TYPED_ROW_TOPICS | EXPECTED_TERMINAL_TOPICS
+        == EXPECTED_ROW_TOPICS
+        | EXPECTED_TYPED_ROW_TOPICS
+        | EXPECTED_TERMINAL_TOPICS
+        | {"onex.evt.omnimarket.work-ledger-row-accepted.v1"}
     )
     assert contract["terminal_event"] in EXPECTED_TERMINAL_TOPICS
