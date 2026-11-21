@@ -23,23 +23,33 @@ __all__ = ["historical_unpriced_zero", "priced_spend"]
 
 
 def historical_unpriced_zero(
-    amount: object, source: object, tier: object, *models: object
+    amount: object, source: object, tier: object, tier_type: object, *models: object
 ) -> bool:
     """True for a stored zero that no price stood behind. Never reprices a run.
 
-    A run is free when its tier is declared free_local by the routing registry,
-    its model id ends in ":free", or the pricing manifest declares its model's
-    price zero. A charged amount or a recorded cost source is
-    served as stored, and so is a row that records no tier or names no model,
-    since nothing in it shows a priced cloud call. Only a zero on a recorded
-    non-free tier with none of those is unknown.
+    A charged amount, or a cost source other than no_cost_model, is served as
+    stored. The row's own record comes first: a recorded free_local tier type
+    is free, and a recorded no_cost_model source or non-free tier type is not
+    made free by today's routing registry. Only a row that records neither is
+    read against the registry, and only a tier it declares free_local is free;
+    a tier with no cost model is not a free tier. A row that records no tier,
+    tier type or source, or names no model, is served as stored, since nothing
+    in it shows a priced cloud call. Otherwise the run is free only when its
+    model id ends in ":free" or the pricing manifest declares its price zero.
     """
-    tier_name = str(tier or "").strip().casefold()
-    if source not in (None, "", "no_cost_model") or not tier_name:
+    recorded_source = str(source or "").strip()
+    tier_cost_type = str(tier_type or "").strip().casefold()
+    if recorded_source not in ("", "no_cost_model"):
         return False
-    cost = resolve_tier_cost(tier_name)
-    if cost is None or cost.cost_type is EnumTierCostType.FREE_LOCAL:
+    if tier_cost_type == EnumTierCostType.FREE_LOCAL.value:
         return False
+    if not recorded_source and not tier_cost_type:
+        tier_name = str(tier or "").strip().casefold()
+        if not tier_name:
+            return False
+        cost = resolve_tier_cost(tier_name)
+        if cost is not None and cost.cost_type is EnumTierCostType.FREE_LOCAL:
+            return False
     if amount is None or isinstance(amount, bool):
         return False
     try:

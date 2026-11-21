@@ -68,6 +68,7 @@ def _local_select_list(cfg: ProjectionTableConfig, available: tuple[str, ...]) -
             "cost_usd",
             "cost_measurement_source",
             "cost_tier_name",
+            "cost_tier_type",
             "model_name",
             "delegated_to",
             "routed_model",
@@ -300,7 +301,7 @@ class SqliteTableRowSource:
             columns = _require_relation(conn, cfg, order_spec)
             conn.create_function(
                 "onex_historical_unpriced_zero",
-                6,
+                7,
                 historical_unpriced_zero,
                 deterministic=True,
             )

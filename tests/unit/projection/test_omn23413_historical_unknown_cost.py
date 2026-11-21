@@ -72,14 +72,15 @@ _CASES: dict[
         _MEASURED,
         False,
     ),
-    # A tier the routing registry does not declare has no cost model: served as stored.
+    # A tier the routing registry does not declare has no cost model, which is
+    # not a free tier: an unpriced model's zero on it is unknown.
     "unregistered-tier": (
         "no_such_tier",
         "Beam-1.0-501B-A23B",
         0.0,
         None,
         _MEASURED,
-        False,
+        True,
     ),
     # Free: a local tier, whatever its attempts say.
     "local-tier": ("local", "qwen3.5:0.8b", 0.0, None, _UNKNOWN, False),
@@ -192,6 +193,41 @@ def test_a_positive_manifest_price_does_not_make_a_stored_zero_free(
         },
     )
     assert served == {"priced": _UNKNOWN_SPEND, "declared-zero": _FREE}
+
+
+def test_the_row_s_own_cost_record_wins_over_today_s_tier_registry(
+    tmp_path: Path,
+) -> None:
+    # A tier with no cost model (the tenant overlay always resolves to none) is
+    # not a free tier, and a row that records no cost model priced it is not
+    # made free by its tier; a row recording a free_local tier type is free
+    # whatever today's registry says of its tier name.
+    beam = {"model_name": "Beam-1.0-501B-A23B", "delegated_to": "byok-reflection"}
+    served = _served(
+        tmp_path,
+        {
+            "overlay": {
+                **beam,
+                "cost_tier_name": "tenant_overlay",
+                "cost_measurement_source": "no_cost_model",
+            },
+            "no-tier": {
+                **beam,
+                "cost_tier_name": None,
+                "cost_measurement_source": "no_cost_model",
+            },
+            "recorded-free": {
+                **beam,
+                "cost_tier_name": "cheap_cloud",
+                "cost_tier_type": "free_local",
+            },
+        },
+    )
+    assert served == {
+        "overlay": _UNKNOWN_SPEND,
+        "no-tier": _UNKNOWN_SPEND,
+        "recorded-free": _FREE,
+    }
 
 
 def test_the_run_detail_serves_no_saving_for_an_unknown_cost(tmp_path: Path) -> None:
