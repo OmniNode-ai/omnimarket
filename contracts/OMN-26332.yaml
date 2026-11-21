@@ -34,22 +34,22 @@ dod_evidence:
         check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_omn24658.py -q --no-cov --tb=line -k "bus_append or refused_append or no_bus_lane or bus_lane"
         cwd: .
   - id: dod-omn26332-ac2
-    description: The census exits zero with the probe handler and the tailnet example dropped from the per-file table.
+    description: The census holds no hit in the probe handler and the tailnet example, their ratchet rows are gone, the copy example row is lowered, and the live census passes; the cases fail on the merge base, where the rows and the hits still stand.
     source: manual
     binds_ac:
       - AC2
     checks:
-      - check_type: command
-        check_value: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=. --per-file
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group4_first_part_omn26332.py -q --no-cov --tb=line
         cwd: .
   - id: dod-omn26332-ac3
-    description: The tailnet and copy node suites pass with the new overlay examples.
+    description: The tailnet and copy node suites pass with the new overlay examples, together with the case that reads the examples' append command; that case fails on the merge base, where both examples still carry the ledger file path.
     source: manual
     binds_ac:
       - AC3
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/unit/nodes/node_tailnet_https_serve_effect tests/unit/nodes/node_work_ledger_copy_effect -q --no-cov --tb=line
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group4_first_part_omn26332.py tests/unit/nodes/node_tailnet_https_serve_effect tests/unit/nodes/node_work_ledger_copy_effect -q --no-cov --tb=line
         cwd: .
   - id: dod-omn26332-integration-proof
     description: "Run the probe and the two node suites on a lab host at the pushed head; the local Done gate runs this unbound check."

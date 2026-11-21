@@ -333,10 +333,7 @@ async def _register_on_declared_bus[T](
     if injected is not None or lane is None or _environment_names_broker():
         return await register(injected)
     from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
-    from omnimarket.delegated_test_loop.lane_bus import (
-        LabRunBusError,
-        open_lab_run_bus,
-    )
+    from omnimarket.delegated_test_loop.lane_bus import LabRunBusError, open_lab_run_bus
 
     workspace = os.environ.get("OMNIBASE_PATH") or os.environ.get("OMNI_HOME")
     # The opener's fourth keyword (the workspace root) carries the private
