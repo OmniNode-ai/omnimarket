@@ -142,6 +142,58 @@ def _read(
     return list(result.rows)
 
 
+def _served(
+    tmp_path: Path, rows: dict[str, dict[str, object]]
+) -> dict[str, tuple[object, object, object]]:
+    """Each stored zero-cost run's served (cost, saving, measurement), keyed by correlation id."""
+    stored = {
+        "cost_usd": 0.0,
+        "modelled_savings_usd": _SAVED,
+        "savings_measurement": "measured",
+    }
+    path = _store(
+        tmp_path,
+        tuple(_delegation(key, **{**stored, **fields}) for key, fields in rows.items()),
+    )
+    return {
+        str(r["correlation_id"]): (
+            r["cost_usd"],
+            r["modelled_savings_usd"],
+            r["savings_measurement"],
+        )
+        for r in _read(path)
+    }
+
+
+_FREE = (0.0, _SAVED, "measured")
+_UNKNOWN_SPEND = (None, None, "unknown_spend")
+
+
+def test_a_positive_manifest_price_does_not_make_a_stored_zero_free(
+    tmp_path: Path,
+) -> None:
+    # The manifest prices gpt-4o above zero, so 213 tokens in and 6 out cost
+    # more than nothing: a stored zero that no cost model priced is unknown.
+    # Only a declared zero price (Qwen3.8-27B) shows the run was free.
+    served = _served(
+        tmp_path,
+        {
+            "priced": {
+                "cost_tier_name": "cheap_cloud",
+                "model_name": "gpt-4o",
+                "delegated_to": "gpt-4o",
+                "cost_measurement_source": "no_cost_model",
+            },
+            "declared-zero": {
+                "cost_tier_name": "cheap_cloud",
+                "model_name": "Qwen3.8-27B",
+                "delegated_to": "Qwen3.8-27B",
+            },
+        },
+    )
+    assert served == {"priced": _UNKNOWN_SPEND, "declared-zero": _FREE}
+
+
 def test_the_run_detail_serves_no_saving_for_an_unknown_cost(tmp_path: Path) -> None:
     # The run-detail exposure serves the legacy cost_savings_usd, not
     # modelled_savings_usd; an unknown cost must not carry a saving there either.

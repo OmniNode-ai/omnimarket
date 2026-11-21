@@ -28,8 +28,8 @@ def historical_unpriced_zero(
     """True for a stored zero that no price stood behind. Never reprices a run.
 
     A run is free when its tier is declared free_local by the routing registry,
-    its model id ends in ":free", or the pricing manifest prices its model (a
-    declared zero included). A charged amount or a recorded cost source is
+    its model id ends in ":free", or the pricing manifest declares its model's
+    price zero. A charged amount or a recorded cost source is
     served as stored, and so is a row that records no tier or names no model,
     since nothing in it shows a priced cloud call. Only a zero on a recorded
     non-free tier with none of those is unknown.
@@ -53,7 +53,14 @@ def historical_unpriced_zero(
     if not name or name.casefold().endswith(":free"):
         return False
     table = _load_table()
-    return table.get_entry(name) is None and table.get_entry(name.lower()) is None
+    entry = table.get_entry(name) or table.get_entry(name.lower())
+    # Only a declared zero price shows the run was free; a positive price does
+    # not make a stored zero free, and the run is not repriced here.
+    return not (
+        entry is not None
+        and entry.input_cost_per_1k == 0
+        and entry.output_cost_per_1k == 0
+    )
 
 
 def priced_spend(row: Mapping[str, object]) -> Decimal | None:
