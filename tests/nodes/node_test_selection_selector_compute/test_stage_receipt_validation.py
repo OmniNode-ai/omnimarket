@@ -285,7 +285,7 @@ def test_error_chain_an_incomplete_night_is_never_a_clean_night() -> None:
 def test_published_record_is_frozen_and_refuses_an_extra_or_negative_field() -> None:
     record = _records("records_valid.json")[0]
     with pytest.raises(ValidationError):
-        record.miss_count = 3  # type: ignore[misc]
+        record.__setattr__("miss_count", 3)
     payload = record.model_dump(mode="json")
     with pytest.raises(ValidationError):
         ModelPublishedAttributionRecord.model_validate({**payload, "owner": "someone"})
@@ -322,7 +322,7 @@ def test_error_chain_a_malformed_receipt_is_a_typed_validation_error(
 def test_receipt_and_result_are_frozen() -> None:
     receipt = ModelStageReceipt(stage=0)
     with pytest.raises(ValidationError):
-        receipt.stage = 1  # type: ignore[misc]
+        receipt.__setattr__("stage", 1)
     with pytest.raises(ValidationError):
         ModelStageReceiptValidationResult(
             valid=True,
