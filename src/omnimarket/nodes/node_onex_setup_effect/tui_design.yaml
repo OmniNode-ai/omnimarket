@@ -60,7 +60,7 @@ banner:
 
 # Shortcuts lead the / palette in this order; every onex CLI command follows.
 shortcuts:
-  - {path: [config], action: config, help: "Providers, keys and models for delegation."}
+  - {path: [config], action: config, help: "Manage providers, keys and models or run guided setup."}
   - {path: [model], action: model, help: Pick the model every task tries first.}
   - {path: [delegation], action: delegation, help: Turn delegation on or off for Claude Code.}
   - {path: [dashboard], action: dashboard, help: "Start, open or stop the local dashboard."}
@@ -73,8 +73,7 @@ aliases:
   exit: quit
 
 # CLI commands a shortcut replaces in the TUI: neither listed nor typed here.
-# /config collects the choices and runs `onex setup` with them, so /setup is
-# not a second way in (operator decision 2026-11-12). The CLI command itself stays.
+# /config offers the guided setup CLI and a separate Save for model changes.
 replaced_commands:
   - [setup]
   # /dashboard is a tab: it starts, opens and stops the dashboard.
@@ -191,7 +190,7 @@ model_table:
   bar_ticked: "  ·  {count} ticked"
   auto_label: "Auto: ONEX picks per task (cost and availability)"
   help:
-    config: "Tab next screen · Space ticks · Enter moves on · I details · / search · F filter · S sort · Ctrl+S saves · Esc back"
+    config: "Tab next screen · Space ticks · Enter moves on · I details · / search · F filter · S sort · Ctrl+S saves · Ctrl+G guided setup · Esc back"
     model: "Tab next screen · Enter selects · A auto · R remove · I details · / search · F filter · S sort · Esc back"
     delegation: "Tab next screen · Space switches · I details · Ctrl+S saves · Esc back"
     dashboard: "Tab next screen · S start · Enter opens · X stop · Esc back"
@@ -342,6 +341,10 @@ words:
   status_unavailable: "status unavailable: {error}"
   # Buttons on /config and /delegation.
   button_add: Add
+  button_guided_setup: Guided setup
+  guided_setup_pending: "Save or clear your pending model selections before starting guided setup."
+  guided_setup_exit: "Guided setup exited with code {code}."
+  guided_setup_done: "Guided setup finished."
   button_save: Save
   button_cancel: Cancel
   button_start: Start

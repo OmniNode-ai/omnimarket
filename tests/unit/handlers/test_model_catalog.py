@@ -85,7 +85,9 @@ def test_provider_values_win_and_models_dev_fills_only_the_gaps() -> None:
     )
     assert entry.context_tokens == 200_000
     assert entry.input_usd_per_million == Decimal(3)
-    assert entry.sources == {
+    assert {
+        key: entry.sources[key] for key in ("model", "context", "price", "capabilities")
+    } == {
         "model": "OpenRouter",
         "context": "OpenRouter",
         "price": "OpenRouter",
@@ -93,6 +95,68 @@ def test_provider_values_win_and_models_dev_fills_only_the_gaps() -> None:
     }
     assert entry.max_output_tokens == 64_000  # not stated by the provider
     assert entry.tiered_price is True
+
+
+@pytest.mark.parametrize("provider_field", ["input", "output"])
+def test_details_attribute_each_model_fact_to_its_source(provider_field: str) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.cli_model_table import _detail_rows
+    from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+        tui_design,
+    )
+
+    entry = catalog_entry(
+        "openrouter",
+        "vendor/big",
+        deployment="cloud",
+        index=_index(),
+        provider_label="OpenRouter",
+        context_tokens=200_000,
+        input_usd_per_million=0 if provider_field == "input" else None,
+        output_usd_per_million=0 if provider_field == "output" else None,
+        capabilities={"Tools": "no"},
+    )
+    words = tui_design().model_table
+    labels = words.details
+    rows = dict(_detail_rows(entry, "OpenRouter"))
+    assert (
+        rows[labels[provider_field]] == f"$0.00 {labels['per_million']}  (OpenRouter)"
+    )
+    other, amount = (
+        ("output", "$25.00") if provider_field == "input" else ("input", "$5.00")
+    )
+    assert rows[labels[other]] == f"{amount} {labels['per_million']}  (models.dev)"
+    assert rows[labels["context"]] == "200K  (OpenRouter)"
+    assert rows[labels["max_output"]] == "64K  (models.dev)"
+    assert rows[labels["name"]] == "Big  (models.dev)"
+    assert rows[labels["cache_read"]] == "$0.50  (models.dev)"
+    assert rows[labels["cache_write"]] == words.unknown_mark
+    assert rows[labels["pricing"]] == f"{labels['tiered']}  (models.dev)"
+    assert rows["Tools"] == f"{labels['no']}  (OpenRouter)"
+    assert rows["Reason"] == f"{labels['no']}  (models.dev)"
+    assert entry.sources["price"] == "OpenRouter + models.dev"
+
+
+@pytest.mark.parametrize("legacy_source", ["models.dev", "OpenRouter + models.dev"])
+def test_details_use_legacy_prices_only_when_the_source_is_unambiguous(
+    legacy_source: str,
+) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.cli_model_table import _detail_rows
+    from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+        tui_design,
+    )
+
+    entry = catalog_entry(
+        "openrouter",
+        "vendor/big",
+        deployment="cloud",
+        index=_index(),
+        provider_label="OpenRouter",
+    ).model_copy(update={"sources": {"price": legacy_source}})
+    labels = tui_design().model_table.details
+    rows = dict(_detail_rows(entry, "OpenRouter"))
+    for field, value in (("input", "$5.00"), ("output", "$25.00")):
+        source_note = "  (models.dev)" if legacy_source == "models.dev" else ""
+        assert rows[labels[field]] == f"{value} {labels['per_million']}{source_note}"
 
 
 def test_models_dev_supplies_what_the_provider_did_not_state() -> None:
@@ -189,6 +253,10 @@ def test_a_local_model_never_gets_a_hosted_price() -> None:
     )
     assert entry.input_usd_per_million is None
     assert price_text(entry) == tui_design().model_table.price_local
+    assert entry.cache_read_usd_per_million is None
+    assert entry.cache_write_usd_per_million is None
+    assert not entry.tiered_price
+    assert entry.capabilities["Cache"] == "unknown"
 
 
 def test_prices_are_exact_decimals_and_print_in_dollars() -> None:
@@ -276,6 +344,64 @@ def test_stored_entries_keep_the_users_order_and_test_status() -> None:
         ("vendor/big", "untested", None),
         ("vendor/other", "failed", "timeout"),
     ]
+
+
+@pytest.mark.parametrize("fresh", [True, False])
+def test_saved_model_facts_follow_the_fresh_provider_listing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fresh: bool
+) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import selected_models
+
+    monkeypatch.setattr(model_catalog, "_onex_home", lambda: tmp_path)
+    model = ModelByokListedModel(
+        id="vendor/big",
+        name="Provider display",
+        context_tokens=16_000,
+        input_usd_per_million=0,
+        output_usd_per_million=23,
+    )
+    model_catalog.remember_provider_listing(
+        ModelByokModelListing(
+            provider="openrouter",
+            outcome="listed",
+            models=(model, ModelByokListedModel(id="unsaved", name="Unsaved")),
+        )
+    )
+    if not fresh:
+        path = tmp_path / str(
+            catalog_config()["provider_listing"]["cache_file"]
+        ).format(provider="openrouter")
+        os.utime(path, (0, 0))
+    entries = selected_models(
+        [
+            {
+                "provider": "openrouter",
+                "set_up": True,
+                "models": ["other", model.id],
+                "last_test": {
+                    "model": model.id,
+                    "status": "failed",
+                    "reason": "timeout",
+                },
+            }
+        ],
+        [],
+        _index(),
+    ).entries
+    assert [entry.model_id for entry in entries] == ["other", model.id]
+    saved = entries[1]
+    assert (saved.status, saved.status_reason) == ("failed", "timeout")
+    if fresh:
+        assert (saved.display_name, saved.context_tokens) == (
+            "Provider display",
+            16_000,
+        )
+        assert (saved.input_usd_per_million, saved.output_usd_per_million) == (0, 23)
+        assert saved.sources["input"] == saved.sources["output"] == "OpenRouter"
+    else:
+        assert (saved.display_name, saved.context_tokens) == ("Big", 1_000_000)
+        assert (saved.input_usd_per_million, saved.output_usd_per_million) == (5, 25)
+        assert saved.sources["input"] == saved.sources["output"] == "models.dev"
 
 
 def _string_literals(path: Path) -> set[str]:

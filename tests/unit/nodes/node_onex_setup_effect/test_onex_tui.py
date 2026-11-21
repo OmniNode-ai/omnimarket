@@ -497,6 +497,11 @@ async def test_config_finds_server_models_and_saves_the_ticked_ones(
         )
         assert [e.model_id for e in _found(app).entries] == ["llama3.2", "qwen3:8b"]
         _tick(app, "llama3.2", "qwen3:8b")
+        await pilot.press("ctrl+g")
+        await pilot.pause()
+        assert runner.terminal_calls == []
+        assert "Save" in str(app.screen.query_one("#note").render())
+        assert [e.model_id for e in _found(app).ticked] == ["llama3.2", "qwen3:8b"]
         await _press(pilot, app, "save")
         for _ in range(6):
             await pilot.pause()
@@ -1023,6 +1028,32 @@ async def test_setup_is_not_a_tui_command_config_is() -> None:
         assert not isinstance(app.screen, SetupScreen)
         assert "no onex command matches '/setup'" in _log_text(app)
         assert not [call for call in runner.calls if call[0] == "setup"]
+
+
+@pytest.mark.parametrize("code", [0, 3])
+async def test_guided_setup_uses_the_cli_terminal_from_the_config_tab(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: int
+) -> None:
+    from textual.widgets import Button
+
+    class WorkspaceRunner(_Runner):
+        def in_terminal(self, argv: tuple[str, ...]) -> int:
+            assert Path.cwd() == tmp_path
+            super().in_terminal(argv)
+            return code
+
+    monkeypatch.chdir(tmp_path)
+    runner = WorkspaceRunner([])
+    app = _app(runner)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await _type(pilot, "/config")
+        await pilot.press("enter", "ctrl+g")
+        await pilot.pause()
+        assert runner.terminal_calls == [("setup",)]
+        assert app.screen.query_one("#guided-setup", Button).display
+        if code:
+            assert "3" in str(app.screen.query_one("#note").render())
+        assert not [call for call in runner.calls if call[:2] == ("models", "add")]
 
 
 async def test_the_banner_sits_in_the_middle_of_a_wide_screen() -> None:

@@ -83,6 +83,42 @@ def _read(path: Path) -> str | None:
     return raw.decode()
 
 
+def _owned_runtime_config(plan: ModelSetupPlan) -> str | None:
+    """Read only a setup-owned runtime config beneath real workspace directories."""
+    workspace = plan.workspace
+    relative = original.RUNTIME_CONFIG_RELPATH
+    path = workspace / relative
+    for parent in reversed(relative.parents):
+        directory = workspace / parent
+        if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
+            raise SetupStepRefusedError(
+                f"Setup needs a directory at {directory}. Review that path or choose another workspace."
+            )
+    try:
+        content = _read(path)
+    except (OSError, ValueError):
+        raise SetupStepRefusedError(
+            f"Setup cannot read {path} as a regular runtime config. Review the existing path."
+        ) from None
+    if content is not None:
+        lines = content.splitlines()
+        if not lines or lines[0] not in (
+            original.SETUP_MARKER,
+            original.INSTALL_SH_MARKER,
+        ):
+            raise SetupStepRefusedError(
+                f"The runtime config at {path} belongs to the user. Review it before selecting a setup-managed configuration."
+            )
+        mode = "docker" if "docker" in plan.components else "local"
+        if original.runtime_config_install_path(
+            content
+        ) != mode and not original.runtime_config_can_switch(content):
+            raise SetupStepRefusedError(
+                f"Setup preserved the existing runtime config at {path}. Review or move it aside before changing the install path."
+            )
+    return content
+
+
 class HandlerSetupEnvironment:
     """One native component adapter; all observations are read-only."""
 
@@ -149,22 +185,17 @@ class HandlerSetupEnvironment:
             return self._result(True, evidence={"path": str(path)})
         if self.name == "runtime_config":
             path = plan.workspace / original.RUNTIME_CONFIG_RELPATH
-            content = _read(path)
+            try:
+                content = _owned_runtime_config(plan)
+            except SetupStepRefusedError as refused:
+                return ModelSetupObservation(
+                    step=self.name, status="action_required", fix=str(refused)
+                )
             if content is None:
                 return self._result(False)
-            lines = content.splitlines()
-            if not lines or lines[0] not in (
-                original.SETUP_MARKER,
-                original.INSTALL_SH_MARKER,
-            ):
-                return ModelSetupObservation(
-                    step=self.name,
-                    status="action_required",
-                    fix="The runtime config belongs to the user. Review it before selecting a setup-managed configuration.",
-                )
             mode = "docker" if "docker" in plan.components else "local"
             return self._result(
-                original.recorded_install_path(path) == mode,
+                original.runtime_config_install_path(content) == mode,
                 evidence={"path": str(path), "install_path": mode},
             )
         if self.name == "identity":
@@ -314,24 +345,13 @@ class HandlerSetupEnvironment:
                     "the workspace. The file was preserved."
                 )
             owned = _read(plan.workspace / ".onex-setup-workspace")
-            legacy = _read(plan.workspace / ".omninode-dev-setup")
             if owned is not None and owned != "onex setup\n":
                 raise SetupStepRefusedError(
                     f"{plan.workspace} is marked by another tool, so setup will not "
                     "use it as an ONEX workspace. Start onex in your workspace "
                     "folder or an empty one, then save again."
                 )
-            if (
-                plan.workspace.exists()
-                and any(plan.workspace.iterdir())
-                and owned != "onex setup\n"
-                and legacy != "This workspace was created by omninode-dev-setup.\n"
-            ):
-                raise SetupStepRefusedError(
-                    f"{plan.workspace} already holds other files, so setup will not "
-                    "make it an ONEX workspace. Start onex in your workspace folder "
-                    "or an empty one, then save again."
-                )
+            _owned_runtime_config(plan)
             original.ensure_workspace(plan.workspace)
             original.write_if_changed(
                 plan.workspace / ".onex-setup-workspace", "onex setup\n"
@@ -339,6 +359,7 @@ class HandlerSetupEnvironment:
         elif self.name == "user_config":
             original.ensure_user_config(self._home)
         elif self.name == "runtime_config":
+            _owned_runtime_config(plan)
             original.ensure_runtime_config(
                 plan.workspace,
                 "docker" if "docker" in plan.components else "local",
