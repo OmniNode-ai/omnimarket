@@ -8,10 +8,17 @@ Failure modes:
   F3. The recorder that stands in for the hidden key prompt never fires, so a green F1 would prove nothing.
   F4. The fix widens past configure, so a repair or upgrade re-run stops keeping the saved provider and asks again.
   F5. A finished setup never says how to add a provider later (AC3, the completion half).
+  F6. Looking up a stored key writes the credential store: it chmods a world-readable
+      file to 0600 and so reads a key the store itself refuses (OMN-18695).
+  F7. An explicit --provider run reuses the stored key, so a rotated key cannot be entered.
+  F8. A server provider reuses the provider-wide key for an endpoint it was never stored for.
+  F9. An unreadable store crashes setup instead of falling back to the hidden prompt.
 """
 
 from __future__ import annotations
 
+import os
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -178,3 +185,64 @@ def test_completed_setup_names_the_command_to_add_a_provider(rerun: Any) -> None
     assert result.exit_code == 0, result.output
     assert "Setup complete." in result.output
     assert "onex models add" in result.output
+
+
+def _store() -> Path:
+    from omnimarket.inference import local_byok_credential_adapter
+
+    return local_byok_credential_adapter.default_evidence_db_path()
+
+
+def test_a_world_readable_store_is_neither_changed_nor_read(rerun: Any) -> None:
+    """F6: the lookup reads read-only; the store's refusal stands and the prompt asks."""
+    os.chmod(_store(), 0o644)
+    before = _store().stat()
+    result, rec = rerun(input="openai\ngpt-4.1-mini\n")
+    after = _store().stat()
+    assert stat.S_IMODE(after.st_mode) == 0o644
+    assert after.st_mtime_ns == before.st_mtime_ns
+    assert rec.keys == ["openai"], result.output
+
+
+def test_an_explicit_provider_is_asked_for_its_key(rerun: Any) -> None:
+    """F7: only a configure re-run reuses a stored key; a named provider can take a new one."""
+    result, rec = rerun(
+        "--action", "install", "--provider", "openai", input="gpt-4.1-mini\n"
+    )
+    assert rec.keys == ["openai"], result.output
+
+
+def test_a_server_provider_does_not_reuse_the_provider_wide_key(
+    rerun: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F8: a key is stored per provider, not per endpoint, so a URL provider asks."""
+    register_local_byok_credential(
+        "openai_compatible", "sk-stored-server", models=["m1"]
+    )
+    server = ModelSetupPlan.model_validate(
+        {
+            "workspace": tmp_path / "ws",
+            "components": ("delegation",),
+            "providers": (
+                {
+                    "provider": "openai_compatible",
+                    "models": ("m1",),
+                    "url": "http://127.0.0.1:9",
+                    "api_key_required": True,
+                },
+            ),
+        }
+    )
+    monkeypatch.setattr(
+        setup_cli.HandlerSetupWorkflow, "saved_plan", staticmethod(lambda _h: server)
+    )
+    result, rec = rerun(input="openai_compatible\nhttp://127.0.0.1:9\nm1\n")
+    assert "openai_compatible" in rec.keys, result.output
+
+
+def test_an_unreadable_store_falls_back_to_the_prompt(rerun: Any) -> None:
+    """F9: a corrupt store is not a crash; the hidden prompt asks instead."""
+    _store().write_bytes(b"not a database")
+    result, rec = rerun(input="openai\ngpt-4.1-mini\n")
+    assert result.exit_code == 0, result.output
+    assert rec.keys == ["openai"]
