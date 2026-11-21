@@ -96,7 +96,9 @@ class _Message:
     value = json.dumps({"payload": {"not": "a ledger row"}}).encode()
 
 
-async def test_done_items_malformed_event_goes_to_the_contract_dlq() -> None:
+async def test_done_items_malformed_event_goes_to_the_contract_dlq(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     dlq = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))["event_bus"][
         "dlq_topics"
     ]
@@ -108,7 +110,7 @@ async def test_done_items_malformed_event_goes_to_the_contract_dlq() -> None:
     async def capture(topic: str, value: bytes) -> None:
         published.append((topic, value))
 
-    writer.publish_dlq = capture  # type: ignore[method-assign]
+    monkeypatch.setattr(writer, "publish_dlq", capture)
 
     await writer._handle_message(_Message())
 
