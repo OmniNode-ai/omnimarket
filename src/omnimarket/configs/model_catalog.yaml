@@ -48,12 +48,16 @@ provider_ids:
 # Capability shown in the table -> how models.dev states it. `field`: a boolean
 # on the model; `input`: a value in modalities.input; `cost`: a priced field
 # (present means supported). Absent in models.dev means unknown, never "no".
+# A provider's own list wins where it states one: `provider_parameter` is a
+# value in the row's supported_parameters, `provider_input` a value in its
+# architecture.input_modalities. A value it lists means yes; one it does not
+# list stays unknown, so models.dev can still fill it.
 capabilities:
-  - {label: Tools, field: tool_call}
-  - {label: Reason, field: reasoning}
-  - {label: Vision, input: image}
-  - {label: JSON, field: structured_output}
-  - {label: Files, field: attachment}
+  - {label: Tools, field: tool_call, provider_parameter: tools}
+  - {label: Reason, field: reasoning, provider_parameter: reasoning}
+  - {label: Vision, input: image, provider_input: image}
+  - {label: JSON, field: structured_output, provider_parameter: structured_outputs}
+  - {label: Files, field: attachment, provider_input: file}
   - {label: Cache, cost: cache_read}
 
 # A server the user runs (Ollama, vLLM) is asked directly what it is and what it

@@ -455,6 +455,18 @@ def catalog_entry(
     )
 
 
+def _provider_capabilities(model: ModelByokListedModel) -> dict[str, CapabilityState]:
+    """What the provider's own row lists. Not listing a capability is not a "no"."""
+    stated: dict[str, CapabilityState] = {}
+    for spec in catalog_config()["capabilities"]:
+        if (
+            spec.get("provider_parameter") in model.supported_parameters
+            or spec.get("provider_input") in model.input_modalities
+        ):
+            stated[str(spec["label"])] = "yes"
+    return stated
+
+
 def listed_catalog_entry(
     provider: str,
     model: ModelByokListedModel,
@@ -474,6 +486,7 @@ def listed_catalog_entry(
         max_output_tokens=model.max_output_tokens,
         input_usd_per_million=model.input_usd_per_million,
         output_usd_per_million=model.output_usd_per_million,
+        capabilities=_provider_capabilities(model),
     )
 
 

@@ -136,6 +136,31 @@ def test_details_attribute_each_model_fact_to_its_source(provider_field: str) ->
     assert entry.sources["price"] == "OpenRouter + models.dev"
 
 
+def test_capabilities_a_provider_lists_reach_the_details_from_its_own_list() -> None:
+    """The real listing path: a captured OpenRouter body, no models.dev entry."""
+    from omnimarket.handlers.routing.byok_model_listing import list_byok_models
+    from omnimarket.nodes.node_onex_setup_effect.cli_model_table import _detail_rows
+    from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+        tui_design,
+    )
+
+    capture = Path(__file__).parents[2] / "fixtures/openrouter_models_2026_11_20.json"
+    body = json.loads(capture.read_text(encoding="utf-8"))
+    listing = list_byok_models("openrouter", "key", get=lambda **_: body)
+    model = next(
+        m for m in listing.models if m.id == "nvidia/nemotron-3.5-super-vl:free"
+    )
+    entry = model_catalog.listed_catalog_entry(
+        "openrouter", model, EMPTY_INDEX, provider_label="OpenRouter"
+    )
+    words = tui_design().model_table
+    rows = dict(_detail_rows(entry, "OpenRouter"))
+    # The row lists "tools" and an "image" input; it states nothing about files.
+    assert rows["Tools"] == f"{words.details['yes']}  (OpenRouter)"
+    assert rows["Vision"] == f"{words.details['yes']}  (OpenRouter)"
+    assert rows["Files"] == words.unknown_mark
+
+
 @pytest.mark.parametrize("legacy_source", ["models.dev", "OpenRouter + models.dev"])
 def test_details_use_legacy_prices_only_when_the_source_is_unambiguous(
     legacy_source: str,
