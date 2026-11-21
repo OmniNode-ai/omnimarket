@@ -20,7 +20,11 @@ import pytest
 
 from omnimarket.handlers.bus_binding import outbox, recovery, select
 from omnimarket.handlers.bus_binding.guard_port_types import GuardPorts
-from omnimarket.handlers.bus_binding.guard_ports import local_guard_ports
+from omnimarket.handlers.bus_binding.guard_ports import (
+    LANE_ROWS_READER,
+    LANE_ROWS_WINDOW_HOURS,
+    local_guard_ports,
+)
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
@@ -32,6 +36,7 @@ from omnimarket.nodes.node_exception_queue_effect.container.container_exception_
 from omnimarket.nodes.node_exception_queue_effect.models import (
     ModelExceptionQueueRequest,
 )
+from tests.helpers.fake_ledger_rows import FakeLedgerRows
 from tests.unit.bus_binding.test_bus_binding_fallback import LANE, _Switch
 from tests.unit.bus_binding.test_bus_binding_fallback import (
     workspace as workspace,
@@ -87,15 +92,17 @@ def _open(state: Path) -> list[dict[str, object]]:
     return [r for r in rows if r["cls"] == recovery.REFUSED_CLASS]
 
 
-def _ledger(root: Path, rows: list[str]) -> dict[str, str]:
-    """A ledger whose replayed rows sit in an archive roll, as the 2026-11-02 split put them."""
-    ledger = root / "tracking" / "ROLLING_WORK_LEDGER.md"
-    (ledger.parent / "archive").mkdir(parents=True, exist_ok=True)
-    ledger.write_text("2026-11-02T15:00:00Z | STATUS | lane=other | unrelated\n")
-    (ledger.parent / "archive" / "ROLLING_WORK_LEDGER_2026-11-02-split.md").write_text(
-        "\n".join(rows) + "\n"
+def _ports(root: Path, state: Path, rows: list[str]) -> GuardPorts:
+    """The actor's ports with the ledger answered through the bus reader, as the 2026-11-02 split left it."""
+    ports = local_guard_ports(
+        state,
+        env={"OMNI_HOME": str(root)},
+        ledger_reader=FakeLedgerRows(
+            ["2026-11-02T15:00:00Z | STATUS | lane=other | unrelated", *rows]
+        ),
     )
-    return {"ONEX_LEDGER_PATH": str(ledger), "OMNI_HOME": str(root)}
+    assert ports is not None
+    return ports
 
 
 async def _replay(workspace: Path, state: Path, *, guard: GuardPorts | None) -> None:
@@ -122,15 +129,15 @@ async def test_the_replay_settles_the_two_recorded_rows_and_appends_nothing(
         outbox.queue_request(state, _request(request_id))
     # 06:33Z: the replay finds both refused while the ledger holds only the CLAIM; the cause stands, so both
     # are reported once, as they were.
-    env = _ledger(tmp_path, [CLAIM])
-    await _replay(workspace, state, guard=local_guard_ports(state, env=env))
+    ports = _ports(tmp_path, state, [CLAIM])
+    await _replay(workspace, state, guard=ports)
     assert sorted(str(r["key"]) for r in _open(state)) == sorted(
         f"lane={WRITER} request={r}" for r in REQUESTS
     )
     # Later the FRICTION row and the TERMINAL land in the ledger. The next replay settles both rows in code,
     # appends nothing a second time and emits nothing.
-    env = _ledger(tmp_path, [CLAIM, FRICTION, TERMINAL])
-    await _replay(workspace, state, guard=local_guard_ports(state, env=env))
+    ports = _ports(tmp_path, state, [CLAIM, FRICTION, TERMINAL])
+    await _replay(workspace, state, guard=ports)
     assert _open(state) == []
     assert outbox.pending_count(state) == 0
 
@@ -140,8 +147,8 @@ async def test_a_refusal_whose_cause_is_gone_is_never_emitted(
 ) -> None:
     state = tmp_path / "state"
     outbox.queue_request(state, _request(REQUESTS[0]))
-    env = _ledger(tmp_path, [CLAIM, FRICTION, TERMINAL])
-    await _replay(workspace, state, guard=local_guard_ports(state, env=env))
+    ports = _ports(tmp_path, state, [CLAIM, FRICTION, TERMINAL])
+    await _replay(workspace, state, guard=ports)
     assert _open(state) == []
     kept = list((outbox.outbox_dir(state) / outbox.REFUSED_DIRNAME).glob("*.json"))
     assert len(kept) == 1
@@ -153,10 +160,10 @@ async def test_a_cause_that_stands_is_emitted_once_and_not_again(
 ) -> None:
     state = tmp_path / "state"
     outbox.queue_request(state, _request(REQUESTS[0]))
-    env = _ledger(tmp_path, [CLAIM])
-    await _replay(workspace, state, guard=local_guard_ports(state, env=env))
+    ports = _ports(tmp_path, state, [CLAIM])
+    await _replay(workspace, state, guard=ports)
     first = _open(state)
-    await _replay(workspace, state, guard=local_guard_ports(state, env=env))
+    await _replay(workspace, state, guard=ports)
     assert _open(state) == first
     assert len(first) == 1
     assert outbox.pending_count(state) == 0
@@ -168,10 +175,10 @@ async def test_a_friction_row_that_landed_alone_requeues_the_terminal(
     """The cause is made good but the TERMINAL is still lost: it is queued again, as a new request."""
     state = tmp_path / "state"
     outbox.queue_request(state, _request(REQUESTS[0]))
-    env = _ledger(tmp_path, [CLAIM])
-    await _replay(workspace, state, guard=local_guard_ports(state, env=env))
-    env = _ledger(tmp_path, [CLAIM, FRICTION])
-    await _replay(workspace, state, guard=local_guard_ports(state, env=env))
+    ports = _ports(tmp_path, state, [CLAIM])
+    await _replay(workspace, state, guard=ports)
+    ports = _ports(tmp_path, state, [CLAIM, FRICTION])
+    await _replay(workspace, state, guard=ports)
     assert _open(state) == []
     queued = outbox.pending(state)
     assert [q.rows for _, q in queued] == [f"{TERMINAL} | req={REQUESTS[0]}"]
@@ -179,14 +186,53 @@ async def test_a_friction_row_that_landed_alone_requeues_the_terminal(
     assert queued[0][1].requested_by_lane == WRITER
 
 
-def test_no_readable_ledger_binds_no_ports(tmp_path: Path) -> None:
-    assert local_guard_ports(tmp_path, env={}) is None
-    assert (
-        local_guard_ports(
-            tmp_path, env={"ONEX_LEDGER_PATH": str(tmp_path / "absent.md")}
-        )
-        is None
+async def test_an_unreadable_ledger_never_settles_a_refusal(
+    workspace: Path, tmp_path: Path
+) -> None:
+    """The ledger cannot be read: the cause is unknown, so the case is reported as it was and nothing is appended."""
+    state = tmp_path / "state"
+    for request_id in REQUESTS:
+        outbox.queue_request(state, _request(request_id))
+    reader = FakeLedgerRows(
+        [CLAIM, FRICTION, TERMINAL], error="reader exited 69: bus unreachable"
     )
+    ports = local_guard_ports(
+        state, env={"OMNI_HOME": str(tmp_path)}, ledger_reader=reader
+    )
+    assert ports is not None
+    await _replay(workspace, state, guard=ports)
+    assert sorted(str(r["key"]) for r in _open(state)) == sorted(
+        f"lane={WRITER} request={r}" for r in REQUESTS
+    )
+    assert outbox.pending_count(state) == 0
+    assert reader.calls
+    kept = list((outbox.outbox_dir(state) / outbox.REFUSED_DIRNAME).glob("*.json"))
+    assert len(kept) == 2
+    assert all("settled" not in k.read_text(encoding="utf-8") for k in kept)
+
+
+def test_the_lane_rows_come_from_the_named_reader_and_window_only(
+    tmp_path: Path,
+) -> None:
+    reader = FakeLedgerRows(
+        [CLAIM, FRICTION, TERMINAL, "2026-11-02T15:00:00Z | STATUS | lane=other | x"]
+    )
+    ports = local_guard_ports(tmp_path, env={}, ledger_reader=reader)
+    assert ports is not None
+    assert list(ports.lane_rows(WRITER)) == [CLAIM, FRICTION, TERMINAL]
+    assert list(ports.lane_rows("other")) == [
+        "2026-11-02T15:00:00Z | STATUS | lane=other | x"
+    ]
+    # One read answers every lane asked about.
+    assert reader.calls == [(LANE_ROWS_READER, LANE_ROWS_WINDOW_HOURS, ())]
+    assert LANE_ROWS_READER == "bus-binding-guard-lane-rows"
+    assert LANE_ROWS_WINDOW_HOURS == 168
+
+
+def test_the_contract_names_no_ledger_file() -> None:
+    from omnimarket.handlers.bus_binding.guard_ports import settlement_policy
+
+    assert settlement_policy() == {"worktree_root_env": "OMNI_HOME"}
 
 
 def test_the_actor_does_not_append_a_terminal_the_ledger_already_holds(

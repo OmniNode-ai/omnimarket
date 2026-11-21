@@ -470,7 +470,11 @@ def _stopped_by(out: str, err: str) -> str:
     for document in reversed(_json_rows(out)):
         steps = document.get("observations")
         for step in steps if isinstance(steps, list) else ():
-            if isinstance(step, dict) and step.get("status") not in ("success", None):
+            if isinstance(step, dict) and step.get("status") not in (
+                "success",
+                "skipped",
+                None,
+            ):
                 fix = str(step.get("fix") or "").split(". The ")[0]
                 return f"{step.get('step')} — {fix or step.get('status')}"
     return _last_line(out, err)

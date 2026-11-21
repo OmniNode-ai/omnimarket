@@ -29,7 +29,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.handlers.wip_admission_brief_gate import LEDGER_ENV
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
     WorkLedgerReadError,
 )
@@ -76,6 +75,15 @@ MEASURED_NODE_SERIAL_MEDIAN_S = 6.8
 FIXTURE_READ_S = 0.25
 
 SENTINEL = "FILE-ONLY-SENTINEL-ROW"
+# The ledger path variable the census governs, read from its overlay: the reader must answer from the
+# projection while this variable points at a poisoned or missing file.
+_CENSUS_OVERLAY = (
+    Path(__file__).resolve().parents[4]
+    / "src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml"
+)
+LEDGER_ENV = yaml.safe_load(_CENSUS_OVERLAY.read_text(encoding="utf-8"))[
+    "path_variables"
+][0]
 
 CASES = {
     "inbox": ("ledger-msg-inbox", "inbox", {"lane": "lane-x"}, BUDGET_HOLDS_INBOX_S),
