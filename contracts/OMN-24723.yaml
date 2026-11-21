@@ -138,7 +138,6 @@ dod_evidence:
       This Mac execution is not a governed lab bus-runner receipt.
     source: manual
     execution_scope: local_done_gate
-    binds_ac: [AC2]
     checks:
       - check_type: command
         check_value: >-
