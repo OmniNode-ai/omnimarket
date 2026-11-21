@@ -13,6 +13,8 @@ Failure modes:
   F7. An explicit --provider run reuses the stored key, so a rotated key cannot be entered.
   F8. A server provider reuses the provider-wide key for an endpoint it was never stored for.
   F9. An unreadable store crashes setup instead of falling back to the hidden prompt.
+  G1. A configure re-run replaces the saved providers with the one chosen, dropping the others.
+  G2. A provider added on a re-run is not kept beside the saved ones, or the kept ones are asked for keys they stored.
 """
 
 from __future__ import annotations
@@ -154,7 +156,7 @@ def test_rerun_choosing_a_new_provider_asks_for_its_key(rerun: Any) -> None:
         f"no key prompt for the new provider; keys read: {rec.keys}; output: {result.output}"
     )
     assert rec.plan is not None
-    assert [p.provider for p in rec.plan.providers] == ["gemini"]
+    assert [p.provider for p in rec.plan.providers] == ["openai", "gemini"]
     assert rec.credentials["gemini"].get_secret_value() == "sk-typed-gemini"
 
 
@@ -246,3 +248,51 @@ def test_an_unreadable_store_falls_back_to_the_prompt(rerun: Any) -> None:
     result, rec = rerun(input="openai\ngpt-4.1-mini\n")
     assert result.exit_code == 0, result.output
     assert rec.keys == ["openai"]
+
+
+def _two_providers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Save openai and gemini, each with a stored key."""
+    register_local_byok_credential(
+        "gemini", "sk-stored-gemini", models=["gemini-2.5-flash"]
+    )
+    plan = ModelSetupPlan.model_validate(
+        {
+            "workspace": tmp_path / "ws",
+            "components": ("delegation",),
+            "providers": (
+                {"provider": "openai", "models": ("gpt-4.1-mini",)},
+                {"provider": "gemini", "models": ("gemini-2.5-flash",)},
+            ),
+        }
+    )
+    monkeypatch.setattr(
+        setup_cli.HandlerSetupWorkflow,
+        "saved_plan",
+        staticmethod(lambda _h: plan),
+    )
+
+
+def test_a_configure_rerun_keeps_every_saved_provider(
+    rerun: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """G1: re-choosing a saved provider keeps the others and asks for no stored key."""
+    _two_providers(tmp_path, monkeypatch)
+    result, rec = rerun(input="openai\ngpt-4.1-mini\n")
+    assert rec.plan is not None, result.output
+    assert [p.provider for p in rec.plan.providers] == ["openai", "gemini"]
+    assert rec.keys == []
+
+
+def test_a_configure_rerun_adds_a_new_provider_to_the_saved_ones(
+    rerun: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """G2: a new provider is added after the saved ones; only it is asked for a key."""
+    _two_providers(tmp_path, monkeypatch)
+    result, rec = rerun(input="anthropic\nclaude-sonnet-4\n")
+    assert rec.plan is not None, result.output
+    assert [p.provider for p in rec.plan.providers] == ["openai", "gemini", "anthropic"]
+    assert rec.keys == ["anthropic"]
