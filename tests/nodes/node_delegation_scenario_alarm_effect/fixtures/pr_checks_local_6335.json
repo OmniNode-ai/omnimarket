@@ -1,0 +1,1682 @@
+{
+ "bus": null,
+ "node": "node_github_repo_gateway_effect",
+ "operation": "ci_checks",
+ "outcome": "completed",
+ "repo": "OmniNode-ai/omnimarket",
+ "result": {
+  "cancelled": [],
+  "class": "red",
+  "detail": [
+   [
+    "AC1 exact revision row on PostgreSQL 16",
+    "134018096985",
+    "2026-11-17T11:47:32Z"
+   ],
+   [
+    "Aislop Sweep (strict, PR diff)",
+    "134021235713",
+    "2026-11-17T11:53:42Z"
+   ],
+   [
+    "Architectural Compliance Lint",
+    "134018162846",
+    "2026-11-17T11:47:42Z"
+   ],
+   [
+    "BYOK Catalogue No House Entry",
+    "134018096255",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "BYOK Customer Chooses Model (OMN-20844)",
+    "134021084186",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "Bus Model Seam Gate (OMN-23995)",
+    "134021084145",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "CI Naming Convention",
+    "134018093674",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "CI Summary",
+    "134021084073",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "Canonical File Shape (OMN-20304)",
+    "134021083988",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "Canonical Inference Gate",
+    "134018094194",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "CodeQL Security Analysis (python)",
+    "134018093010",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "Compliance Sweep",
+    "134021235686",
+    "2026-11-17T11:53:43Z"
+   ],
+   [
+    "Contract Compliance Check",
+    "134021235456",
+    "2026-11-17T11:53:43Z"
+   ],
+   [
+    "Contract Sweep Gate",
+    "134021235783",
+    "2026-11-17T11:53:42Z"
+   ],
+   [
+    "Core-Only Install Gate",
+    "134021235401",
+    "2026-11-17T11:53:42Z"
+   ],
+   [
+    "Customer Clean-Install Delegate Gate",
+    "134021235620",
+    "2026-11-17T11:53:43Z"
+   ],
+   [
+    "Customer Path Boundary (OMN-18012)",
+    "134021084290",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "Dep Provenance Gate",
+    "134018092274",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "Dependency Findings Baseline One-way (OMN-19677) / anti-growth-baseline",
+    "134021083870",
+    "2026-11-17T11:53:24Z"
+   ],
+   [
+    "Dependency Health Gate",
+    "134021235587",
+    "2026-11-17T11:53:42Z"
+   ],
+   [
+    "Dependency Security Scan",
+    "134018092985",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "Dependency Topic Allowlist One-way (OMN-19677) / anti-growth-baseline",
+    "134021084157",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "Deployment Fact Gate",
+    "134018091800",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "Detect Changes",
+    "134021409093",
+    "2026-11-17T11:54:03Z"
+   ],
+   [
+    "Dev Full Suite Reuse",
+    "134021085208",
+    "2026-11-17T11:53:22Z"
+   ],
+   [
+    "Dev Push Full Suite Reuse",
+    "134021087045",
+    "2026-11-17T11:53:22Z"
+   ],
+   [
+    "Direct Model Call Gate (OMN-20287)",
+    "134021083346",
+    "2026-11-17T11:53:24Z"
+   ],
+   [
+    "Docs-Only Marker (OMN-16662)",
+    "134021410982",
+    "2026-11-17T11:54:01Z"
+   ],
+   [
+    "E2E Workflow Runner (inmemory bus)",
+    "134021409063",
+    "2026-11-17T11:54:03Z"
+   ],
+   [
+    "Ecosystem Integration Validation",
+    "134018093646",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "Effect Bypass Ratchet (OMN-24432)",
+    "134021083903",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "Enforce validator-requirements.yaml (OMN-13291)",
+    "134018093607",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "Event Chain Gate",
+    "134021083882",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "Event Registry Drift",
+    "134021235287",
+    "2026-11-17T11:53:42Z"
+   ],
+   [
+    "Generated Event Chains (walker paths)",
+    "134021409171",
+    "2026-11-17T11:54:03Z"
+   ],
+   [
+    "Generated-Node Golden Chain Gate (OMN-13624)",
+    "134021409111",
+    "2026-11-17T11:54:03Z"
+   ],
+   [
+    "Git env scrub gate",
+    "134018091662",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "Golden Chain Suite (inmemory bus)",
+    "134021409058",
+    "2026-11-17T11:54:03Z"
+   ],
+   [
+    "Integration Silent-Skip Guard (OMN-14172)",
+    "134021409176",
+    "2026-11-17T11:54:03Z"
+   ],
+   [
+    "Internal Release Path Guard (OMN-19998)",
+    "134021084081",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "JS Toolchain Hermetic (OMN-18012)",
+    "134021298646",
+    "2026-11-17T11:53:50Z"
+   ],
+   [
+    "Leaked Literals Gate",
+    "134018097051",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "Legacy Compatibility Check",
+    "134018093451",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "Merge Hold Gate (OMN-15483)",
+    "134021084072",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "Merge Reason-Code Gate",
+    "134021084030",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "No Coding Plan Endpoint",
+    "134018088093",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "No Faked Boundary Gate",
+    "134018090264",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "ONEX Change Control Schema Compatibility",
+    "134018086379",
+    "2026-11-17T11:47:33Z"
+   ],
+   [
+    "Omni Standards Gate",
+    "134018241103",
+    "2026-11-17T11:47:52Z"
+   ],
+   [
+    "Overlay Main Load (OMN-23963)",
+    "134021084099",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "PR Arch Review Gate",
+    "134018315923",
+    "2026-11-17T11:48:00Z"
+   ],
+   [
+    "Precommit Fail-Loud Gate",
+    "134018086232",
+    "2026-11-17T11:47:33Z"
+   ],
+   [
+    "Projection Exposure Drift Gate",
+    "134018093154",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "Public Runner Placement (OMN-19998)",
+    "134021084074",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "Release Identity Gate",
+    "134021083898",
+    "2026-11-17T11:53:24Z"
+   ],
+   [
+    "Release Staleness (OMN-18010)",
+    "134021083753",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "Repo Evidence Dependency",
+    "134021083860",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "Repository Structure Validation",
+    "134018093768",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "Resolve Bot Token",
+    "134018097275",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "Routing Tier Bindability",
+    "134018092614",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "Runner Route (OMN-18031) / route",
+    "134021084626",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "Runtime Sweep",
+    "134021235508",
+    "2026-11-17T11:53:43Z"
+   ],
+   [
+    "SEA E2E Acceptance + Error Chains (OMN-12660)",
+    "134021409239",
+    "2026-11-17T11:54:03Z"
+   ],
+   [
+    "Secret Scanning",
+    "134018093317",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "Shape-Gate Independence (OMN-20298)",
+    "134021083660",
+    "2026-11-17T11:53:24Z"
+   ],
+   [
+    "Sibling Release Compatibility Gate (OMN-20381)",
+    "134021235527",
+    "2026-11-17T11:53:43Z"
+   ],
+   [
+    "Stale TODO Gate",
+    "134018097383",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "State Coverage Baseline One-way (OMN-19677) / anti-growth-baseline",
+    "134021083888",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "Tests (Split 1/20)",
+    "134021610120",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 10/20)",
+    "134021610292",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 11/20)",
+    "134021610196",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 12/20)",
+    "134021610184",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 13/20)",
+    "134021610117",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 14/20)",
+    "134021610351",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 15/20)",
+    "134021610308",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 16/20)",
+    "134021610341",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 17/20)",
+    "134021610264",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 18/20)",
+    "134021610122",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 19/20)",
+    "134021610133",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 2/20)",
+    "134021610237",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 20/20)",
+    "134021610195",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 3/20)",
+    "134021610119",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 4/20)",
+    "134021610227",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 5/20)",
+    "134021610246",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 6/20)",
+    "134021610075",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 7/20)",
+    "134021610316",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 8/20)",
+    "134021610217",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 9/20)",
+    "134021610639",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Topic Drift Check",
+    "134021235225",
+    "2026-11-17T11:53:42Z"
+   ],
+   [
+    "Topic Enum Drift Check",
+    "134021235253",
+    "2026-11-17T11:53:42Z"
+   ],
+   [
+    "Topic Naming Lint",
+    "134021235256",
+    "2026-11-17T11:53:42Z"
+   ],
+   [
+    "URL Authority Gate",
+    "134018097043",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "Wire Compatibility Gate",
+    "134021084086",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "Workflow Module Resolution",
+    "134021235730",
+    "2026-11-17T11:53:43Z"
+   ],
+   [
+    "advisory-job-gate / advisory-job-gate",
+    "134018096184",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "call / validate-docs",
+    "134018094841",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "call-reject-skip-token / scan / reject-skip-gate-token",
+    "134018096165",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "redacted-check-name",
+    "134018091515",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "composed-runtime-boot (omnimarket on infra)",
+    "134018091601",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "contract-topic-graph",
+    "134021083982",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "contract-validation",
+    "134018087402",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "delegation-health-check / Delegation Health Check",
+    "134018093380",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "dep-health / scan",
+    "134019570933",
+    "2026-11-17T11:50:29Z"
+   ],
+   [
+    "deploy-gate / deploy-gate",
+    "134018095029",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "dispatcher-route-coverage",
+    "134018088791",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "fsm-handler-drift",
+    "134018086165",
+    "2026-11-17T11:47:33Z"
+   ],
+   [
+    "handler-event-type-source",
+    "134018089498",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "hook-push-rehearsal / rehearse",
+    "134018095835",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "imperative-contract-guard / Imperative Contract Guard",
+    "134018097065",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "internal-sibling-pins / Internal Sibling Pins",
+    "134018095827",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "kb-doc-gate / kb-doc-gate",
+    "134018094017",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "key-grain-declared",
+    "134018089327",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "lint",
+    "134021235545",
+    "2026-11-17T11:53:43Z"
+   ],
+   [
+    "lint (shadow)",
+    "134018097592",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "local-ingress-alias-collision",
+    "134018089325",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "main-target-guard",
+    "134018086632",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "market-skill-baseline",
+    "134019625854",
+    "2026-11-17T11:50:35Z"
+   ],
+   [
+    "merge-hold-gate / evaluate",
+    "134021083784",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "mixed-category-routing",
+    "134018089480",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "no-baseline-refreeze",
+    "134018089338",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "no-literal-event-type-in-tests",
+    "134018088962",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "no-noncanonical-lifecycle-classes",
+    "134021084170",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "node-drift-gate",
+    "134018087435",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "node-migration-vendor-parity-gate",
+    "134018088302",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "non-dev-base-guard",
+    "134018092900",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "pr-title / check-title",
+    "134018092696",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "prompt-cost-estimate-contract",
+    "134018086858",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "public-repo-hygiene / deployment-config",
+    "134018094858",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "public-repo-hygiene / public-repo-hygiene",
+    "134018095227",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "pypi-pin-resolvability",
+    "134018092136",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "receipt-honesty",
+    "134018093956",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "repo-evidence / dod-verify",
+    "134018077495",
+    "2026-11-17T11:47:33Z"
+   ],
+   [
+    "repo-evidence / verify",
+    "134018077341",
+    "2026-11-17T11:47:33Z"
+   ],
+   [
+    "required-check-skip-guard / check-skip-vectors",
+    "134018094924",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "reviewer-eval",
+    "134018086272",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "routing-input-model-fit",
+    "134018089591",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "shell-hygiene",
+    "134018087196",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "skill-mapping-input-coverage-gate",
+    "134018090781",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "state-coverage-gate",
+    "134018087985",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "subscriber-dispatcher-resolution",
+    "134018093945",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "tests+coverage (shadow)",
+    "134018097090",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "typecheck",
+    "134021409193",
+    "2026-11-17T11:54:03Z"
+   ],
+   [
+    "typecheck (shadow)",
+    "134018097554",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "uv.lock Pin Reachability",
+    "134021235697",
+    "2026-11-17T11:53:43Z"
+   ],
+   [
+    "validate",
+    "134019589037",
+    "2026-11-17T11:50:31Z"
+   ],
+   [
+    "wheel-content-parity",
+    "134018087183",
+    "2026-11-17T11:47:34Z"
+   ],
+   [
+    "zone-filter / Zone Filter (docs-only check)",
+    "134021235911",
+    "2026-11-17T11:53:42Z"
+   ]
+  ],
+  "head_sha": "6e066b452268f22384b20f38be938a85d06b156b",
+  "number": 6335,
+  "pending": [
+   "CI Summary",
+   "CodeQL Security Analysis (python)",
+   "Direct Model Call Gate (OMN-20287)",
+   "Event Chain Gate",
+   "Golden Chain Suite (inmemory bus)",
+   "Integration Silent-Skip Guard (OMN-14172)",
+   "Tests (Split 1/20)",
+   "Tests (Split 10/20)",
+   "Tests (Split 11/20)",
+   "Tests (Split 12/20)",
+   "Tests (Split 13/20)",
+   "Tests (Split 14/20)",
+   "Tests (Split 15/20)",
+   "Tests (Split 16/20)",
+   "Tests (Split 17/20)",
+   "Tests (Split 18/20)",
+   "Tests (Split 19/20)",
+   "Tests (Split 2/20)",
+   "Tests (Split 20/20)",
+   "Tests (Split 3/20)",
+   "Tests (Split 4/20)",
+   "Tests (Split 5/20)",
+   "Tests (Split 6/20)",
+   "Tests (Split 7/20)",
+   "Tests (Split 8/20)",
+   "Tests (Split 9/20)",
+   "composed-runtime-boot (omnimarket on infra)",
+   "lint",
+   "tests+coverage (shadow)",
+   "typecheck"
+  ],
+  "read_at": "2026-11-17T11:58:18Z",
+  "red": [
+   "delegation-health-check / Delegation Health Check"
+  ],
+  "red_facts": [
+   [
+    "delegation-health-check / Delegation Health Check",
+    "failure",
+    "44077174903",
+    "2026-11-17T11:48:15Z"
+   ]
+  ],
+  "repo": "OmniNode-ai/omnimarket",
+  "runs": [
+   [
+    "AC1 exact revision row on PostgreSQL 16",
+    "completed",
+    "skipped",
+    "2026-11-17T11:47:32Z"
+   ],
+   [
+    "Aislop Sweep (strict, PR diff)",
+    "completed",
+    "success",
+    "2026-11-17T11:54:13Z"
+   ],
+   [
+    "Architectural Compliance Lint",
+    "completed",
+    "success",
+    "2026-11-17T11:47:57Z"
+   ],
+   [
+    "BYOK Catalogue No House Entry",
+    "completed",
+    "success",
+    "2026-11-17T11:48:05Z"
+   ],
+   [
+    "BYOK Customer Chooses Model (OMN-20844)",
+    "completed",
+    "success",
+    "2026-11-17T11:54:00Z"
+   ],
+   [
+    "Bus Model Seam Gate (OMN-23995)",
+    "completed",
+    "success",
+    "2026-11-17T11:54:20Z"
+   ],
+   [
+    "CI Naming Convention",
+    "completed",
+    "success",
+    "2026-11-17T11:47:44Z"
+   ],
+   [
+    "CI Summary",
+    "in_progress",
+    "",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "Canonical File Shape (OMN-20304)",
+    "completed",
+    "success",
+    "2026-11-17T11:54:53Z"
+   ],
+   [
+    "Canonical Inference Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:49:10Z"
+   ],
+   [
+    "CodeQL Security Analysis (python)",
+    "in_progress",
+    "",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "Compliance Sweep",
+    "completed",
+    "success",
+    "2026-11-17T11:54:59Z"
+   ],
+   [
+    "Contract Compliance Check",
+    "completed",
+    "success",
+    "2026-11-17T11:54:23Z"
+   ],
+   [
+    "Contract Sweep Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:54:13Z"
+   ],
+   [
+    "Core-Only Install Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:53:56Z"
+   ],
+   [
+    "Customer Clean-Install Delegate Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:54:35Z"
+   ],
+   [
+    "Customer Path Boundary (OMN-18012)",
+    "completed",
+    "success",
+    "2026-11-17T11:55:16Z"
+   ],
+   [
+    "Dep Provenance Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:47:57Z"
+   ],
+   [
+    "Dependency Findings Baseline One-way (OMN-19677) / anti-growth-baseline",
+    "completed",
+    "success",
+    "2026-11-17T11:53:42Z"
+   ],
+   [
+    "Dependency Health Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:54:55Z"
+   ],
+   [
+    "Dependency Security Scan",
+    "completed",
+    "success",
+    "2026-11-17T11:48:09Z"
+   ],
+   [
+    "Dependency Topic Allowlist One-way (OMN-19677) / anti-growth-baseline",
+    "completed",
+    "success",
+    "2026-11-17T11:53:41Z"
+   ],
+   [
+    "Deployment Fact Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:48:44Z"
+   ],
+   [
+    "Detect Changes",
+    "completed",
+    "success",
+    "2026-11-17T11:54:24Z"
+   ],
+   [
+    "Dev Full Suite Reuse",
+    "completed",
+    "skipped",
+    "2026-11-17T11:53:22Z"
+   ],
+   [
+    "Dev Push Full Suite Reuse",
+    "completed",
+    "skipped",
+    "2026-11-17T11:53:22Z"
+   ],
+   [
+    "Direct Model Call Gate (OMN-20287)",
+    "in_progress",
+    "",
+    "2026-11-17T11:53:24Z"
+   ],
+   [
+    "Docs-Only Marker (OMN-16662)",
+    "completed",
+    "skipped",
+    "2026-11-17T11:54:00Z"
+   ],
+   [
+    "E2E Workflow Runner (inmemory bus)",
+    "completed",
+    "success",
+    "2026-11-17T11:54:38Z"
+   ],
+   [
+    "Ecosystem Integration Validation",
+    "completed",
+    "success",
+    "2026-11-17T11:47:49Z"
+   ],
+   [
+    "Effect Bypass Ratchet (OMN-24432)",
+    "completed",
+    "success",
+    "2026-11-17T11:54:40Z"
+   ],
+   [
+    "Enforce validator-requirements.yaml (OMN-13291)",
+    "completed",
+    "success",
+    "2026-11-17T11:47:58Z"
+   ],
+   [
+    "Event Chain Gate",
+    "in_progress",
+    "",
+    "2026-11-17T11:53:25Z"
+   ],
+   [
+    "Event Registry Drift",
+    "completed",
+    "success",
+    "2026-11-17T11:54:23Z"
+   ],
+   [
+    "Generated Event Chains (walker paths)",
+    "completed",
+    "success",
+    "2026-11-17T11:54:46Z"
+   ],
+   [
+    "Generated-Node Golden Chain Gate (OMN-13624)",
+    "completed",
+    "success",
+    "2026-11-17T11:54:35Z"
+   ],
+   [
+    "Git env scrub gate",
+    "completed",
+    "success",
+    "2026-11-17T11:48:03Z"
+   ],
+   [
+    "Golden Chain Suite (inmemory bus)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:03Z"
+   ],
+   [
+    "Integration Silent-Skip Guard (OMN-14172)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:03Z"
+   ],
+   [
+    "Internal Release Path Guard (OMN-19998)",
+    "completed",
+    "success",
+    "2026-11-17T11:53:59Z"
+   ],
+   [
+    "JS Toolchain Hermetic (OMN-18012)",
+    "completed",
+    "success",
+    "2026-11-17T11:54:43Z"
+   ],
+   [
+    "Leaked Literals Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:50:34Z"
+   ],
+   [
+    "Legacy Compatibility Check",
+    "completed",
+    "success",
+    "2026-11-17T11:47:44Z"
+   ],
+   [
+    "Merge Hold Gate (OMN-15483)",
+    "completed",
+    "success",
+    "2026-11-17T11:53:38Z"
+   ],
+   [
+    "Merge Reason-Code Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:53:33Z"
+   ],
+   [
+    "No Coding Plan Endpoint",
+    "completed",
+    "success",
+    "2026-11-17T11:48:54Z"
+   ],
+   [
+    "No Faked Boundary Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:48:31Z"
+   ],
+   [
+    "ONEX Change Control Schema Compatibility",
+    "completed",
+    "success",
+    "2026-11-17T11:48:03Z"
+   ],
+   [
+    "Omni Standards Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:47:54Z"
+   ],
+   [
+    "Overlay Main Load (OMN-23963)",
+    "completed",
+    "success",
+    "2026-11-17T11:54:19Z"
+   ],
+   [
+    "PR Arch Review Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:48:03Z"
+   ],
+   [
+    "Precommit Fail-Loud Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:47:53Z"
+   ],
+   [
+    "Projection Exposure Drift Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:48:13Z"
+   ],
+   [
+    "Public Runner Placement (OMN-19998)",
+    "completed",
+    "success",
+    "2026-11-17T11:54:07Z"
+   ],
+   [
+    "Release Identity Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:53:52Z"
+   ],
+   [
+    "Release Staleness (OMN-18010)",
+    "completed",
+    "success",
+    "2026-11-17T11:53:44Z"
+   ],
+   [
+    "Repo Evidence Dependency",
+    "completed",
+    "success",
+    "2026-11-17T11:53:39Z"
+   ],
+   [
+    "Repository Structure Validation",
+    "completed",
+    "success",
+    "2026-11-17T11:47:44Z"
+   ],
+   [
+    "Resolve Bot Token",
+    "completed",
+    "success",
+    "2026-11-17T11:47:40Z"
+   ],
+   [
+    "Routing Tier Bindability",
+    "completed",
+    "success",
+    "2026-11-17T11:48:14Z"
+   ],
+   [
+    "Runner Route (OMN-18031) / route",
+    "completed",
+    "success",
+    "2026-11-17T11:53:47Z"
+   ],
+   [
+    "Runtime Sweep",
+    "completed",
+    "success",
+    "2026-11-17T11:54:40Z"
+   ],
+   [
+    "SEA E2E Acceptance + Error Chains (OMN-12660)",
+    "completed",
+    "success",
+    "2026-11-17T11:54:40Z"
+   ],
+   [
+    "Secret Scanning",
+    "completed",
+    "success",
+    "2026-11-17T11:48:17Z"
+   ],
+   [
+    "Shape-Gate Independence (OMN-20298)",
+    "completed",
+    "success",
+    "2026-11-17T11:53:43Z"
+   ],
+   [
+    "Sibling Release Compatibility Gate (OMN-20381)",
+    "completed",
+    "success",
+    "2026-11-17T11:55:32Z"
+   ],
+   [
+    "Stale TODO Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:47:49Z"
+   ],
+   [
+    "State Coverage Baseline One-way (OMN-19677) / anti-growth-baseline",
+    "completed",
+    "success",
+    "2026-11-17T11:53:41Z"
+   ],
+   [
+    "Tests (Split 1/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 10/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 11/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 12/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 13/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 14/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 15/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 16/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 17/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 18/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 19/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 2/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 20/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 3/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 4/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 5/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 6/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 7/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 8/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Tests (Split 9/20)",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:27Z"
+   ],
+   [
+    "Topic Drift Check",
+    "completed",
+    "success",
+    "2026-11-17T11:54:15Z"
+   ],
+   [
+    "Topic Enum Drift Check",
+    "completed",
+    "success",
+    "2026-11-17T11:54:07Z"
+   ],
+   [
+    "Topic Naming Lint",
+    "completed",
+    "success",
+    "2026-11-17T11:55:04Z"
+   ],
+   [
+    "URL Authority Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:48:34Z"
+   ],
+   [
+    "Wire Compatibility Gate",
+    "completed",
+    "success",
+    "2026-11-17T11:54:07Z"
+   ],
+   [
+    "Workflow Module Resolution",
+    "completed",
+    "success",
+    "2026-11-17T11:53:52Z"
+   ],
+   [
+    "advisory-job-gate / advisory-job-gate",
+    "completed",
+    "success",
+    "2026-11-17T11:47:57Z"
+   ],
+   [
+    "call / validate-docs",
+    "completed",
+    "success",
+    "2026-11-17T11:48:01Z"
+   ],
+   [
+    "call-reject-skip-token / scan / reject-skip-gate-token",
+    "completed",
+    "success",
+    "2026-11-17T11:47:39Z"
+   ],
+   [
+    "redacted-check-name",
+    "completed",
+    "success",
+    "2026-11-17T11:48:18Z"
+   ],
+   [
+    "composed-runtime-boot (omnimarket on infra)",
+    "in_progress",
+    "",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "contract-topic-graph",
+    "completed",
+    "success",
+    "2026-11-17T11:54:51Z"
+   ],
+   [
+    "contract-validation",
+    "completed",
+    "success",
+    "2026-11-17T11:48:36Z"
+   ],
+   [
+    "delegation-health-check / Delegation Health Check",
+    "completed",
+    "failure",
+    "2026-11-17T11:48:15Z"
+   ],
+   [
+    "dep-health / scan",
+    "completed",
+    "success",
+    "2026-11-17T11:52:00Z"
+   ],
+   [
+    "deploy-gate / deploy-gate",
+    "completed",
+    "success",
+    "2026-11-17T11:47:54Z"
+   ],
+   [
+    "dispatcher-route-coverage",
+    "completed",
+    "success",
+    "2026-11-17T11:47:58Z"
+   ],
+   [
+    "fsm-handler-drift",
+    "completed",
+    "success",
+    "2026-11-17T11:48:23Z"
+   ],
+   [
+    "handler-event-type-source",
+    "completed",
+    "success",
+    "2026-11-17T11:48:15Z"
+   ],
+   [
+    "hook-push-rehearsal / rehearse",
+    "completed",
+    "success",
+    "2026-11-17T11:47:57Z"
+   ],
+   [
+    "imperative-contract-guard / Imperative Contract Guard",
+    "completed",
+    "success",
+    "2026-11-17T11:49:11Z"
+   ],
+   [
+    "internal-sibling-pins / Internal Sibling Pins",
+    "completed",
+    "success",
+    "2026-11-17T11:47:57Z"
+   ],
+   [
+    "kb-doc-gate / kb-doc-gate",
+    "completed",
+    "success",
+    "2026-11-17T11:48:10Z"
+   ],
+   [
+    "key-grain-declared",
+    "completed",
+    "success",
+    "2026-11-17T11:48:50Z"
+   ],
+   [
+    "lint",
+    "in_progress",
+    "",
+    "2026-11-17T11:53:43Z"
+   ],
+   [
+    "lint (shadow)",
+    "completed",
+    "success",
+    "2026-11-17T11:48:04Z"
+   ],
+   [
+    "local-ingress-alias-collision",
+    "completed",
+    "success",
+    "2026-11-17T11:48:24Z"
+   ],
+   [
+    "main-target-guard",
+    "completed",
+    "success",
+    "2026-11-17T11:47:36Z"
+   ],
+   [
+    "market-skill-baseline",
+    "completed",
+    "success",
+    "2026-11-17T11:51:28Z"
+   ],
+   [
+    "merge-hold-gate / evaluate",
+    "completed",
+    "success",
+    "2026-11-17T11:54:02Z"
+   ],
+   [
+    "mixed-category-routing",
+    "completed",
+    "success",
+    "2026-11-17T11:48:16Z"
+   ],
+   [
+    "no-baseline-refreeze",
+    "completed",
+    "success",
+    "2026-11-17T11:48:06Z"
+   ],
+   [
+    "no-literal-event-type-in-tests",
+    "completed",
+    "success",
+    "2026-11-17T11:48:03Z"
+   ],
+   [
+    "no-noncanonical-lifecycle-classes",
+    "completed",
+    "success",
+    "2026-11-17T11:54:01Z"
+   ],
+   [
+    "node-drift-gate",
+    "completed",
+    "success",
+    "2026-11-17T11:48:18Z"
+   ],
+   [
+    "node-migration-vendor-parity-gate",
+    "completed",
+    "success",
+    "2026-11-17T11:47:57Z"
+   ],
+   [
+    "non-dev-base-guard",
+    "completed",
+    "success",
+    "2026-11-17T11:47:39Z"
+   ],
+   [
+    "pr-title / check-title",
+    "completed",
+    "success",
+    "2026-11-17T11:47:44Z"
+   ],
+   [
+    "prompt-cost-estimate-contract",
+    "completed",
+    "success",
+    "2026-11-17T11:47:51Z"
+   ],
+   [
+    "public-repo-hygiene / deployment-config",
+    "completed",
+    "success",
+    "2026-11-17T11:47:53Z"
+   ],
+   [
+    "public-repo-hygiene / public-repo-hygiene",
+    "completed",
+    "success",
+    "2026-11-17T11:49:41Z"
+   ],
+   [
+    "pypi-pin-resolvability",
+    "completed",
+    "success",
+    "2026-11-17T11:47:50Z"
+   ],
+   [
+    "receipt-honesty",
+    "completed",
+    "success",
+    "2026-11-17T11:48:05Z"
+   ],
+   [
+    "repo-evidence / dod-verify",
+    "completed",
+    "success",
+    "2026-11-17T11:50:20Z"
+   ],
+   [
+    "repo-evidence / verify",
+    "completed",
+    "success",
+    "2026-11-17T11:47:36Z"
+   ],
+   [
+    "required-check-skip-guard / check-skip-vectors",
+    "completed",
+    "success",
+    "2026-11-17T11:47:48Z"
+   ],
+   [
+    "reviewer-eval",
+    "completed",
+    "success",
+    "2026-11-17T11:48:10Z"
+   ],
+   [
+    "routing-input-model-fit",
+    "completed",
+    "success",
+    "2026-11-17T11:48:18Z"
+   ],
+   [
+    "shell-hygiene",
+    "completed",
+    "success",
+    "2026-11-17T11:47:48Z"
+   ],
+   [
+    "skill-mapping-input-coverage-gate",
+    "completed",
+    "success",
+    "2026-11-17T11:48:09Z"
+   ],
+   [
+    "state-coverage-gate",
+    "completed",
+    "success",
+    "2026-11-17T11:48:07Z"
+   ],
+   [
+    "subscriber-dispatcher-resolution",
+    "completed",
+    "success",
+    "2026-11-17T11:48:15Z"
+   ],
+   [
+    "tests+coverage (shadow)",
+    "in_progress",
+    "",
+    "2026-11-17T11:47:35Z"
+   ],
+   [
+    "typecheck",
+    "in_progress",
+    "",
+    "2026-11-17T11:54:03Z"
+   ],
+   [
+    "typecheck (shadow)",
+    "completed",
+    "success",
+    "2026-11-17T11:50:20Z"
+   ],
+   [
+    "uv.lock Pin Reachability",
+    "completed",
+    "success",
+    "2026-11-17T11:54:00Z"
+   ],
+   [
+    "validate",
+    "completed",
+    "success",
+    "2026-11-17T11:51:02Z"
+   ],
+   [
+    "wheel-content-parity",
+    "completed",
+    "success",
+    "2026-11-17T11:47:59Z"
+   ],
+   [
+    "zone-filter / Zone Filter (docs-only check)",
+    "completed",
+    "success",
+    "2026-11-17T11:54:00Z"
+   ]
+  ]
+ },
+ "source": "watcher",
+ "verb": "pr-checks",
+ "watcher_tick": "2026-11-17T12:02:18Z"
+}

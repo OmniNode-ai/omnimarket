@@ -48,7 +48,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # b0b00a52dd57: omnibase_infra#5906 (OMN-23932) moves infra to core a85cb916d4c1, which carries ModelDevTagLineageFacts.version_derived the moved dev-tag lineage handler fills.
 # 2b0c3eacdf4d: omnibase_infra#5924 (OMN-24048) adds failed_phase to the dev roll incident; core is unchanged.
 # 6cea249fb8cf: omnibase_infra#5925 (OMN-24063) moves infra to core a09066caf945, which carries the task_type field of the inference intent (omnibase_core#2316).
-# b6f27747506c: omnibase_infra#6063 (OMN-25545) moves infra to core e9f061dc9b4c, which carries model_ingest_contract (omnibase_core#2336) the forward node https publisher imports (OMN-25546).
+# b6f27747506c: omnibase_infra#6063 (OMN-25545) moves infra to core e9f061dc9b4c, which carries omnibase_core#2335 (ModelRunNodeHosted.run replaces the removed in-process hosting function of cli_run_node, OMN-26115).
 INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("091013fd7adb", "dev-20261030152335-66d35d2283c3"),
     ("4284f5bf5587", "dev-20261031000524-fc6159b98026"),
@@ -70,6 +70,7 @@ INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("6cea249fb8cf", "dev-20261113013358-a09066caf945"),
     ("a679b44e2cfe", "dev-20261113013358-a09066caf945"),
     ("b6f27747506c", "dev-20261118065911-e9f061dc9b4c"),
+    ("e1c7b1f075d2", "dev-20261120075721-2a9efbda3548"),
 )
 
 _GIT_SOURCE = re.compile(
@@ -139,8 +140,8 @@ def test_the_core_pin_is_the_one_the_infra_pin_names() -> None:
 
 
 def test_omnimarket_pins_the_newest_recorded_infra_and_core_pair() -> None:
-    """The lock moves with the newest recorded row: infra b6f27747506c and core e9f061dc9b4c."""
+    """The lock moves with the newest recorded row: infra e1c7b1f075d2 and core 2a9efbda3548."""
     infra_tag, infra_sha = _locked_dev_tag("omnibase-infra")
     core_tag, _ = _locked_dev_tag("omnibase-core")
     assert (infra_sha[:12], core_tag) == INFRA_CORE_TAGS[-1]
-    assert infra_tag == "dev-20261119220033-b6f27747506c"
+    assert infra_tag == "dev-20261120235610-e1c7b1f075d2"

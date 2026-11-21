@@ -6729,7 +6729,7 @@
     "src/omnimarket/nodes/node_pr_landing_liveness_read_effect/handlers/liveness_read_ports.py",
     "src/omnimarket/nodes/node_pr_landing_liveness_read_effect/metadata.yaml",
     "src/omnimarket/nodes/node_pr_landing_liveness_read_effect/models/__init__.py",
-    "src/omnimarket/nodes/node_pr_landing_liveness_read_effect/models/model_liveness_read.py",
+    "src/omnimarket/models/pr_landing_liveness_read.py",
     "src/omnimarket/nodes/node_pr_landing_liveness_read_effect/overlay.example.yaml",
     "src/omnimarket/nodes/node_pr_landing_liveness_read_effect/overlay.py",
     "src/omnimarket/nodes/node_pr_landing_liveness_read_effect/protocols/__init__.py",
