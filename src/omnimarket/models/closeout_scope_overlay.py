@@ -65,6 +65,10 @@ class ModelCloseoutScopeOverlay(BaseModel):
     # The PR reader (OMN-20655): the repositories whose squash merges name a ticket's work, each
     # with the branch its merges land on, and what the watcher state must look like to be read.
     pr_repositories: list[ModelPrRepository] = Field(min_length=1)
+    # OMN-25459: the GitHub owner of those repositories, for the closer's open-pull-request read
+    # through the GitHub gateway (which names a repository OWNER/NAME). A default so a deployed
+    # overlay written before this key still loads; the packaged overlay.yaml states it.
+    github_owner: str = Field(default="OmniNode-ai", min_length=1)
     # A merged-commit ref for a repository not listed above (a check naming none, or another one).
     binding_default_branch: str = Field(min_length=1)
     evidence_repository: str = Field(min_length=1)
