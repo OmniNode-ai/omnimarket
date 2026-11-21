@@ -1,0 +1,90 @@
+schema_version: 1.0.0
+ticket_id: OMN-26412
+title: A lab host launches onex_remote_lane run, and h202 is the standing lane dispatcher, so the operator's Mac places no lanes itself
+summary: node_lane_dispatch_intake_effect reads the MSG rows addressed to labdispatch over the ledger bus, places each requested lane strictly one at a time through the lane-brief skill and the remote-lane runner detached, and writes one STATUS row per placement; lane-dispatch-systemd declares the host unit that ticks it, and tests/nodes/node_lane_dispatch_intake_effect/data/lane-dispatch-msg-format.md documents the MSG format with a worked example the node's own parser accepts.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26412-ac1
+  statement: what stops a lab host from being the launching host for onex_remote_lane run is named, and each missing piece is fixed through declared config
+  acceptance:
+  - id: AC1
+    statement: 'AC1: what stops a lab host from being the launching host for onex_remote_lane run is named, and each missing piece (plugin set, pool read through landing_placement.read_pool, CLAIM and TERMINAL over the bus) is fixed through declared config, never by hand on the host -- falsifier: the declared installer run on h202 reproduces the working state, and a readback of the host''s installed tree shows no hand edit'
+- id: req-omn26412-ac2
+  statement: one small probe lane launched from h202 onto h201 writes a CLAIM and a TERMINAL row that read back from the ledger of record
+  acceptance:
+  - id: AC2
+    statement: 'AC2: one small probe lane launched from h202 onto h201 writes a CLAIM and a TERMINAL row that read back from the ledger of record -- falsifier: onex-work-ledger read of the probe lane name after the launch shows both rows'
+- id: req-omn26412-ac3
+  statement: h202 runs a standing dispatcher that places MSG requests one at a time and writes one STATUS row per placement
+  acceptance:
+  - id: AC3
+    statement: 'AC3: h202 runs a standing dispatcher that reads ledger MSG rows to=labdispatch carrying placement requests (lane name, ticket, host hint, task text), places them one at a time through omni:lane-brief and onex_remote_lane.py run --detach, and writes one STATUS row per placement -- falsifier: uv run pytest on the dispatcher''s request parser and one-at-a-time loop, then a live MSG with two requests on h202 reads back as two CLAIM rows and two STATUS rows'
+- id: req-omn26412-ac4
+  statement: the exact MSG format the orchestrator sends is documented with one worked example that the dispatcher's own parser accepts
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the exact MSG format the orchestrator sends is documented with one worked example that the dispatcher''s own parser accepts -- falsifier: uv run pytest -k worked_example parses the example from the document and returns two valid requests'
+evidence_requirements:
+- kind: tests
+  description: The node's tests pass at the pushed head.
+  command: uv run --frozen pytest -q tests/nodes/node_lane_dispatch_intake_effect/test_lane_dispatch_intake.py -p no:cacheprovider --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26412-ac1
+  description: 'Local done gate: the declared installer run on h202 from the pushed branch renders the lane-dispatch-systemd unit, and the unit reads running; the installed tree carries no hand edit. The read is the pull request''s Lab line.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: ssh h202 'systemctl --user is-active onex-lane-dispatch.timer'
+    cwd: .
+- id: dod-omn26412-ac2
+  description: 'Local done gate: the probe lane launched from h202 onto h201 shows a CLAIM and a TERMINAL row in the ledger of record.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'onex-work-ledger read --lane labdispatch-probe-2205 | grep -c "CLAIM\\|TERMINAL"'
+    cwd: .
+- id: dod-omn26412-ac3
+  description: 'Hosted proxy: the parser reads MSG rows to the dispatcher and the loop places two requests one at a time with two STATUS rows; the unit declaration is serial and bounded. The live read of two CLAIM rows and two STATUS rows on h202 is the pull request''s Lab line.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q tests/nodes/node_lane_dispatch_intake_effect/test_lane_dispatch_intake.py -p no:cacheprovider --no-cov -k 'one_at_a_time or unit or rejected or no_host'
+    cwd: .
+- id: dod-omn26412-ac4
+  description: The worked example is parsed from the document through the dispatcher's own parser and returns two valid requests; a mangled copy is rejected.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q tests/nodes/node_lane_dispatch_intake_effect/test_lane_dispatch_intake.py -p no:cacheprovider --no-cov -k worked_example
+    cwd: .
+- id: dod-omn26412-deploy
+  description: 'Deploy probe the hosted runner can run: the installer contract at the checked-out commit on GitHub declares the lane-dispatch-systemd unit; the unit does not exist at the merge base, so the probe fails there.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "lane-dispatch-systemd:" > /dev/null'
+    cwd: .
+- id: dod-omn26412-integration-proof
+  description: The pushed head ran the node tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane labdispatch-2205 --kind test -- uv run --frozen pytest -q tests/nodes/node_lane_dispatch_intake_effect/test_lane_dispatch_intake.py --no-cov
+    cwd: .
