@@ -1,0 +1,134 @@
+schema_version: 1.0.0
+ticket_id: OMN-24560
+title: Worktree reconcile removes dead and stale-locked working copies and runs on the Mac
+summary: The worktree reconcile node keeps and reports a worktree whose gitdir cannot be read, unlocks and removes a stale-locked one only when the lock is a lane's own, a fresh bounded ledger read shows the owning lane finished and the tree is clean, pushed and merged, restores the lock when a removal fails, names every removal in the run-completed event, and its schedule installer can install a launchd agent (a reference to the environment file, never its values) so the Mac runs the node in place of the frozen triage runner.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24560-dead-and-stale-lock
+  statement: A tree is removed only when its git metadata is readable, it has no uncommitted or untracked work, its branch is pushed and, for a locked tree, the ledger was read fresh and shows the owning lane finished; anything unreadable is kept and reported, and every removal is listed in the run-completed event.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a linked worktree whose .git file names a gitdir that no longer exists (a dead or unmounted gitdir) is never removed on any policy: past stale_hours it is needs_human (reason gitdir_unreadable) and named, a young one is kept, and the policy no longer accepts prune_dead_worktrees -- falsifier: uv run pytest tests/test_worktree_reconcile_dead_and_stale_lock.py tests/test_worktree_reconcile_safety_rules.py tests/test_worktree_reconcile_safety_probe.py -q'
+  - id: AC2
+    statement: 'AC2: a locked tree is unlocked and removed only when its lock reason is one of the policy lane lock reasons, the ledger read is fresh (newest row inside ledger_max_age_hours, bounded by ledger_max_bytes, archive rolls read for ledger_lookback_days) and shows the owning lane finished, no live CLAIM of a successor on the same ticket maps to it, no process, unit or ref lock holds it, it is quiet past stale_lock_hours, clean, pushed and merged; a person lock, a lagging or empty ledger, a successor, uncommitted work, an unpushed branch and a dry run each keep the tree, each with a failing control, and a failed removal restores the lock -- falsifier: uv run pytest tests/test_worktree_reconcile_ledger_read.py tests/test_worktree_reconcile_safety_rules.py tests/test_worktree_reconcile_safety_probe.py tests/test_worktree_reconcile_dead_and_stale_lock.py -q'
+  - id: AC3
+    statement: 'AC3: the run-completed event lists every removal (removed_paths, unlocked_paths, live_locked_paths), old receipts still load, the per-host projection still writes its row, and golden and error chain event tests pass -- falsifier: uv run pytest tests/test_golden_chain_worktree_reconcile.py tests/test_worktree_reconcile_projection.py -q'
+  - id: AC4
+    statement: 'AC4: the schedule installer renders and installs a launchd agent for a host the overlay declares as launchd, resolves per-host paths with the registry root variable, writes the host environment file by reference and never by value into the world-readable plist, and leaves the systemd render unchanged -- falsifier: uv run pytest tests/test_worktree_reconcile_schedule.py tests/test_worktree_reconcile_schedule_launchd.py tests/test_worktree_reconcile_schedule_paths.py -q'
+  - id: AC5
+    statement: 'AC5: integrated: a dry-run tick of the branch build on a lab host reads the host''s real worktrees, removes none, and names each locked tree with the decision the rules gave it (a person lock and a live lane kept, a dead tree needs_human); the orchestrator''s dry-run command on the launching Mac names each of the 12 stuck trees the same way, with the Mac row at execute false until that first reading is taken -- falsifier: the dry-run receipt latest.json of the host (removed 0, every locked tree with a reason) and the Mac dry-run output'
+- id: req-omn24560-unlocked-proof
+  statement: No tree, locked or not, leaves the disk without a fresh bounded ledger read that shows no live CLAIM names it; merged work then goes, any other work only when the read also shows its owner finished, an unread ledger keeps every tree, the run says why the ledger was unread, and a CLAIM rolled into an archive file stays visible.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: an unlocked tree is removed or pinned only with the same proof a locked tree needs: the ledger read is fresh (ledger_known), and pushed or unpushed work also needs the owning lane shown finished; with the ledger unread the tree is kept with reason ledger_unread, with the owner not shown finished it is kept with reason owner_unfinished, the model cannot pin such a tree, and the revalidation just before the removal refuses it -- falsifier: uv run pytest tests/test_worktree_reconcile_unlocked_proof.py -q'
+  - id: AC7
+    statement: 'AC7: a ledger that cannot be read (missing, empty, frozen, too large, in the future) is reported as unread in the run-completed event (ledger_unread, and the run error ledger_unread:<reason> when the host names a ledger), never as a deferred probe error; a host that names no ledger reports not_declared; the archive lookback is never 0 and always read, so a CLAIM rolled into an archive file still keeps its tree; a failed relock after a failed removal raises RelockFailedError; the claim fold is the one `live_claims` shares with the ledger read -- falsifier: uv run pytest tests/test_worktree_reconcile_unlocked_proof.py tests/test_golden_chain_worktree_reconcile.py tests/test_worktree_reconcile_safety_probe.py tests/test_worktree_reconcile_ledger_read.py -q'
+- id: req-omn24560-finished-owner-and-source
+  statement: An owner counts as finished only when a TERMINAL ends the work on its tree (worktree removed or released, or an outcome of done, merged or handed-off with no kept worktree); a partial outcome with the worktree kept and a RELEASE of a surface lease never do. The pre-removal recheck reads the ledger once per run, not once per tree. The lab hosts read the work_ledger_rows projection through the work-ledger query node and use it only when its parity verdict shows CLAIM, TERMINAL and RELEASE complete; otherwise the ledger is unread and every tree is kept.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: owner_finished is true only for a TERMINAL that ends the work on the tree; a partial TERMINAL with the worktree kept and a RELEASE of a surface lease leave it false; the recheck before a removal reads the ledger once per run for all its trees -- falsifier: uv run pytest tests/test_worktree_reconcile_finished_claims.py tests/test_worktree_reconcile_ledger_once.py -q'
+  - id: AC9
+    statement: 'AC9: a host that names ledger_source projection reads the work_ledger_rows projection through the work-ledger query node and the read counts only when the window parity shows CLAIM, TERMINAL and RELEASE complete (the newest day may be unmeasured, no earlier day may be); otherwise it is unread with the reason projection_<why> and every tree is kept; the seam against the real query node, the golden chain event test and the error chain event test pass -- falsifier: uv run pytest tests/test_worktree_reconcile_ledger_projection.py tests/test_join_worktree_ledger_source.py tests/test_work_ledger_parity_exact_kinds.py tests/test_golden_chain_worktree_reconcile.py -q'
+evidence_requirements:
+- kind: tests
+  description: The node's focused tests at the pushed head; the new test file fails on the code before this change (it imports stale_lock, which did not exist).
+  command: uv run --frozen pytest tests/test_worktree_reconcile_dead_and_stale_lock.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24560-ac1
+  description: 'AC1: a dead worktree is kept and reported to a person, never removed, on any policy; against the code before this change the file fails at import.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_dead_and_stale_lock.py tests/test_worktree_reconcile_safety_rules.py tests/test_worktree_reconcile_safety_probe.py -q --no-cov
+    cwd: .
+- id: dod-omn24560-ac2
+  description: 'AC2: a stale lock is unlocked and removed only when the lock is a lane lock, the ledger read is fresh and shows the owner finished, and the tree is clean, pushed and merged; a person lock, a successor, a lagging ledger, uncommitted work, an unpushed branch and a dry run keep the tree.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_ledger_read.py tests/test_worktree_reconcile_safety_rules.py tests/test_worktree_reconcile_safety_probe.py tests/test_worktree_reconcile_dead_and_stale_lock.py -q --no-cov
+    cwd: .
+- id: dod-omn24560-ac3
+  description: 'AC3: the completed event names every removal; golden and error chain tests and the projection tests pass.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_golden_chain_worktree_reconcile.py tests/test_worktree_reconcile_projection.py -q --no-cov
+    cwd: .
+- id: dod-omn24560-ac4
+  description: 'AC4: the launchd and path-override schedule tests pass and the systemd render tests are unchanged.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_schedule.py tests/test_worktree_reconcile_schedule_launchd.py tests/test_worktree_reconcile_schedule_paths.py -q --no-cov
+    cwd: .
+- id: dod-omn24560-ac6
+  description: 'AC6: an unlocked tree needs the same fresh ledger proof; unread keeps it, an owner not shown finished keeps unmerged work, the model cannot pin it and the revalidation refuses it; each has a failing control.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_unlocked_proof.py -q --no-cov
+    cwd: .
+- id: dod-omn24560-ac7
+  description: 'AC7: an unread ledger is named in the run-completed event, the lookback is always read and never 0, a failed relock is named, and the golden and error chain event tests pass.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_unlocked_proof.py tests/test_golden_chain_worktree_reconcile.py tests/test_worktree_reconcile_safety_probe.py tests/test_worktree_reconcile_ledger_read.py -q --no-cov
+    cwd: .
+- id: dod-omn24560-integration-proof
+  description: 'AC5 lab proxy: the node tests run on a lab host at the pushed head; the h202 unit read and the Mac run after the orchestrator install are read by the orchestrator and are not claimed here.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24560 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_worktree_reconcile_dead_and_stale_lock.py -q
+    cwd: .
+- id: dod-omn24560-ac5-hosted-proxy
+  description: 'hosted proxy for AC5: the rendered launchd agent is read by the Mac unit reader, and the node removes or names each tree in a run; the Mac and h202 readings themselves are read by the unbound integration proof item above.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_schedule_launchd.py -q --no-cov -k "unit_root"
+    cwd: .
+- id: dod-omn24560-ac8
+  description: 'AC8: a TERMINAL that keeps the worktree, a partial outcome and a RELEASE of a surface lease do not finish an owner; the recheck reads the ledger once per run; each rule has a failing control.'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_finished_claims.py tests/test_worktree_reconcile_ledger_once.py tests/test_worktree_reconcile_effect.py -q --no-cov
+    cwd: .
+- id: dod-omn24560-ac9
+  description: 'AC9: the projection ledger source is used only while the parity verdict shows CLAIM, TERMINAL and RELEASE complete; the seam test runs the real query node; golden and error chain event tests pass.'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_ledger_projection.py tests/test_join_worktree_ledger_source.py tests/test_work_ledger_parity_exact_kinds.py tests/test_golden_chain_worktree_reconcile.py -q --no-cov
+    cwd: .

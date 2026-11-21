@@ -103,7 +103,13 @@ def test_factory_floor_runtime_ledger_projection_comment_matches_its_readers() -
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         )
     )
-    assert readers == []
+    # The worktree reconcile command carries its own, unrelated ``ledger_projection`` field
+    # (OMN-24560); those two modules read that field, not the factory floor overlay's.
+    worktree_command_readers = [
+        "models/model_worktree_ledger_projection.py",
+        "nodes/node_worktree_reconcile_effect/handlers/adapter_ledger_projection.py",
+    ]
+    assert [r for r in readers if r not in worktree_command_readers] == []
     source = Path(model_factory_floor_runtime.__file__).read_text(encoding="utf-8")
     comment = next(
         line

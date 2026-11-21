@@ -23,7 +23,7 @@ from collections.abc import Collection, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from omnimarket.handlers.handler_ledger_claims import live_claims
+from omnimarket.handlers.rules_ledger_claims import live_claims
 from omnimarket.models.wip_admission import (
     EnumWipFixClass,
     EnumWipItemKind,

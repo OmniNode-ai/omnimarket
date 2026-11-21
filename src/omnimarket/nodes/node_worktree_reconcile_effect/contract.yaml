@@ -53,6 +53,7 @@ runtime_dispatch:
 # handler under a host-local lock and writes latest.json after event publication.
 schedule:
   unit_name: onex-worktree-reconcile
+  launchd_label: ai.omninode.worktree-reconcile
   interval_seconds: 1800
   on_boot_seconds: 120
   timeout_seconds: 3600
@@ -110,6 +111,18 @@ inputs:
     type: str
     required: false
     description: Optional lane ledger path, parsed once per run.
+  ledger_source:
+    type: str
+    required: false
+    description: 'file reads ledger_path; projection reads the work_ledger_rows
+      projection through the work-ledger query node, used only when its parity
+      verdict shows the required kinds complete, otherwise the ledger is unread
+      and every tree is kept.'
+  ledger_projection:
+    type: object
+    required: false
+    description: Bus lane, timeout, page size, page cap, required kinds and
+      unmeasured days allowed for the projection source.
   execute:
     type: bool
     required: false
@@ -147,7 +160,12 @@ outputs:
     description: Per-path facts, final decision and outcome.
   completed_event:
     type: object
-    description: Run counts, freed bytes and paths requiring a human.
+    description: Run counts, freed bytes and paths requiring a human, and every
+      removal named in decision order (removed_paths), split out by how the tree
+      left the disk (unlocked_paths for stale-locked trees unlocked before their
+      removal) plus the live locked trees the run kept (live_locked_paths). A tree
+      whose gitdir cannot be read is kept and named in needs_human_paths, never
+      removed.
   errors:
     type: list[str]
     description: Run-level discovery or decider failures.

@@ -17,7 +17,8 @@ Two sources, both fail closed:
 
 A command that fails, a definition that cannot be parsed or a loaded job that cannot be printed
 raises :class:`UnitSnapshotError`, and the facts probe turns that into a probe error, which keeps
-every tree.
+every tree. The one exception: a definition the run user cannot read or parse falls back to the
+paths the host overlay declared it holds.
 """
 
 from __future__ import annotations
@@ -25,7 +26,8 @@ from __future__ import annotations
 import os
 import plistlib
 import re
-from collections.abc import Sequence
+import xml.parsers.expat
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from omnimarket.handlers.rules_unit_roots import UnitRoots, plist_paths
@@ -62,10 +64,12 @@ class LaunchdUnitRootReader:
         directories: Sequence[str] = LAUNCHD_DIRECTORIES,
         run: Runner = run_command,
         uid: int | None = None,
+        declared_definitions: Mapping[str, Sequence[str]] | None = None,
     ) -> None:
         self._directories = tuple(Path(d).expanduser() for d in directories)
         self._run = run
         self._uid = os.getuid() if uid is None else uid
+        self._declared = declared_definitions
 
     def _loaded_labels(self) -> list[str]:
         listing = self._run(["launchctl", "list"])
@@ -92,7 +96,18 @@ class LaunchdUnitRootReader:
                     data = entry.read_bytes()
                     document = plistlib.loads(data)
                     paths = plist_paths(data)
-                except (OSError, ValueError, plistlib.InvalidFileException) as exc:
+                except (
+                    OSError,
+                    ValueError,
+                    plistlib.InvalidFileException,
+                    xml.parsers.expat.ExpatError,
+                ) as exc:
+                    # A definition the run user cannot read or parse: use the paths the host overlay declared it holds.
+                    if self._declared is not None and str(entry) in self._declared:
+                        per_unit[entry.stem] = {
+                            path.rstrip("/") for path in self._declared[str(entry)]
+                        }
+                        continue
                     raise UnitSnapshotError(f"{entry}: {type(exc).__name__}") from exc
                 label = str(document.get("Label") or entry.stem)
                 per_unit.setdefault(label, set()).update(paths)

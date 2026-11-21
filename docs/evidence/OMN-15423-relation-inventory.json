@@ -11543,7 +11543,8 @@
         "node_work_ledger_emit_effect",
         "node_work_ledger_query_effect",
         "node_work_ledger_seq_gap_effect",
-        "node_work_progress_alert_effect"
+        "node_work_progress_alert_effect",
+        "node_worktree_reconcile_effect"
       ],
       "target_schema": "omninode_internal",
       "writers": [

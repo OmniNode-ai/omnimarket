@@ -20,7 +20,11 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeFacts,
     ModelWorktreeReconcileCommand,
 )
-from omnimarket.handlers.handler_ledger_claims import claimed, live_claims
+from omnimarket.handlers.rules_ledger_claims import (
+    ModelLedgerRead,
+    claimed,
+    owner_finished,
+)
 from omnimarket.handlers.rules_unit_roots import UnitRoots
 from omnimarket.models.model_skipped_unit import ModelSkippedUnit
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
@@ -32,6 +36,7 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers.probe_classes impo
     PROBE_NEEDS_HUMAN_PREFIX,
 )
 from omnimarket.nodes.node_worktree_reconcile_effect.protocols import (
+    ProtocolLedgerReader,
     ProtocolMergedPrReader,
     ProtocolUnitRootReader,
 )
@@ -191,14 +196,40 @@ def repo_slug(url: str) -> str | None:
     )
 
 
+def _dead_gitdir(path: Path) -> bool:
+    """Whether a linked worktree's .git file names a gitdir that no longer exists.
+
+    Git writes the tree's .git file as ``gitdir: <path>``; the path is relative
+    to the tree when the tree sits near its clone. When the named gitdir is
+    gone, no git command can read the tree: it is dead work left on the disk.
+    """
+    try:
+        text = (path / ".git").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    lines = text.splitlines()
+    if not lines or not lines[0].startswith("gitdir: "):
+        return False
+    named = lines[0][len("gitdir: ") :].strip()
+    if not named:
+        return False
+    gitdir = Path(named)
+    return not (gitdir if gitdir.is_absolute() else path / gitdir).exists()
+
+
 class GitWorktreeFactsProbe:
     def __init__(
         self,
         *,
         unit_reader: ProtocolUnitRootReader,
+        ledger_reader: ProtocolLedgerReader,
         merged_pr_reader: ProtocolMergedPrReader | None = None,
     ) -> None:
         self._merged_pr_reader = merged_pr_reader
+        self._ledger_reader = ledger_reader
+        self._recheck_ledger_value: ModelLedgerRead | None = None
+        self._recheck_ledger_done = False
+        self._recheck_ledger_lock = threading.Lock()
         # What installed units name, read per run and again before each removal. A tree a unit
         # names is live; a snapshot that cannot be read is a probe error, which keeps every tree.
         self._unit_reader = unit_reader
@@ -214,7 +245,7 @@ class GitWorktreeFactsProbe:
         # a sandbox's leftover under a registry root) is counted and never removed.
         self._standalone: frozenset[Path] = frozenset()
         self._cwds: tuple[Path, ...] = ()
-        self._claims: tuple[str, ...] = ()
+        self._ledger: ModelLedgerRead | None = None
         self._errors: tuple[str, ...] = ()
         # Remote refs are refreshed once per canonical clone per run, not once per
         # worktree: keyed by the clone's common git dir, True when the fetch worked.
@@ -239,13 +270,15 @@ class GitWorktreeFactsProbe:
         except Exception:
             self._units = UnitRoots()
             errors.append("unit_snapshot_failed")
-        # A shared ledger is appended to every few seconds, so a changed ledger is
-        # the normal state, not an error: claims are re-read before each removal.
-        try:
-            self._claims = self._read_claims(now)
-        except OSError:
-            self._claims = ()
-            errors.append("ledger_unreadable")
+        # The ledger is read here at discovery, and once more at the first
+        # revalidation of the run (_recheck_ledger), never once per tree. A shared
+        # ledger is appended to every few seconds, so a changed ledger is the normal
+        # state, not an error. An unread ledger is not a deferral either (nothing
+        # resolves by waiting): its reason rides the facts as ledger_unread_reason
+        # and keeps every tree.
+        self._recheck_ledger_value = None
+        self._recheck_ledger_done = False
+        self._ledger = self._ledger_reader.read(command, now)
         excluded = tuple(Path(p).resolve() for p in command.exclude_paths)
         self._fetched = {}
         candidates: dict[Path, Path] = {}
@@ -373,12 +406,21 @@ class GitWorktreeFactsProbe:
             heads = self._merged_heads[slug]
         return None if heads is None else head in heads
 
-    def _read_claims(self, now: datetime) -> tuple[str, ...]:
-        assert self._command is not None
-        if not self._command.ledger_path:
-            return ()
-        text = Path(self._command.ledger_path).read_text(encoding="utf-8")
-        return live_claims(text, now, self._command.policy.quiet_hours)
+    def _recheck_ledger(self, now: datetime) -> ModelLedgerRead | None:
+        """The ledger read once at the first revalidation of a run, then cached.
+
+        The pre-removal recheck must not re-read the whole ledger per tree: the
+        first revalidation of a run reads through the reader and every later
+        revalidation returns that same read.
+        """
+        with self._recheck_ledger_lock:
+            if not self._recheck_ledger_done:
+                assert self._command is not None
+                self._recheck_ledger_value = self._ledger_reader.read(
+                    self._command, now
+                )
+                self._recheck_ledger_done = True
+            return self._recheck_ledger_value
 
     def revalidate(
         self, facts: ModelWorktreeFacts, now: datetime
@@ -390,15 +432,11 @@ class GitWorktreeFactsProbe:
         fresh = self._probe(Path(facts.path), Path(facts.root), now, measure_size=False)
         errors = list(self._errors)
         cwds = self._cwds
-        claims = self._claims
         try:
             cwds = process_cwds()
         except (OSError, subprocess.SubprocessError, RuntimeError):
             errors.append("process_revalidation_failed")
-        try:
-            claims = self._read_claims(now)
-        except OSError:
-            errors.append("ledger_unreadable")
+        read = self._recheck_ledger(now)
         # A unit may have been installed since discovery: ask again just before removal.
         try:
             units = self._unit_reader.read()
@@ -412,7 +450,20 @@ class GitWorktreeFactsProbe:
                 "live_process": any(
                     cwd == path or cwd.is_relative_to(path) for cwd in cwds
                 ),
-                "live_claim": claimed(path, Path(facts.root), claims),
+                "live_claim": (
+                    claimed(path, Path(facts.root), read.live_claims)
+                    if read is not None
+                    else False
+                ),
+                "ledger_known": read is not None and read.fresh,
+                "ledger_unread_reason": (
+                    read.reason
+                    if read is not None and not read.fresh
+                    else "not_declared"
+                    if read is None
+                    else ""
+                ),
+                "owner_finished": owner_finished(path, Path(facts.root), read),
                 "live_unit": units.naming(str(path)),
                 # Size is not re-measured; keep what discovery measured rather
                 # than a 0 that could read as an empty tree.
@@ -449,7 +500,20 @@ class GitWorktreeFactsProbe:
             live_process=any(
                 cwd == path or cwd.is_relative_to(path) for cwd in self._cwds
             ),
-            live_claim=claimed(path, root, self._claims),
+            live_claim=(
+                claimed(path, root, self._ledger.live_claims)
+                if self._ledger is not None
+                else False
+            ),
+            ledger_known=self._ledger is not None and self._ledger.fresh,
+            ledger_unread_reason=(
+                self._ledger.reason
+                if self._ledger is not None and not self._ledger.fresh
+                else "not_declared"
+                if self._ledger is None
+                else ""
+            ),
+            owner_finished=owner_finished(path, root, self._ledger),
             live_unit=self._units.naming(str(path)),
             probe_errors=self._errors,
         )
@@ -467,9 +531,13 @@ class GitWorktreeFactsProbe:
             names: list[str] = []
             size = 0
             newest = 0.0
+            # A linked worktree whose gitdir is gone is dead: git cannot read
+            # it, so before any git command it is walked like an orphan
+            # directory (a nested repository inside still goes to a person).
+            dead = kind == Kind.LINKED_WORKTREE and _dead_gitdir(path)
             walk = (
                 ()
-                if kind == Kind.LINKED_WORKTREE
+                if kind == Kind.LINKED_WORKTREE and not dead
                 else os.walk(path, followlinks=False, onerror=_raise_walk_error)
             )
             for base, dirs, files in walk:
@@ -496,6 +564,18 @@ class GitWorktreeFactsProbe:
                     if ".git" not in Path(relative).parts and not is_junk(relative):
                         names.append(relative)
                         newest = max(newest, stat.st_mtime)
+            if dead:
+                return facts.model_copy(
+                    update={
+                        "gitdir_missing": True,
+                        "size_bytes": size,
+                        "file_names": tuple(sorted(names)),
+                        "last_activity_age_hours": (
+                            now.timestamp() - (newest or path.stat().st_mtime)
+                        )
+                        / 3600,
+                    }
+                )
             if kind == Kind.ORPHAN_DIR:
                 empty = not any(path.iterdir())
                 return facts.model_copy(
@@ -622,10 +702,11 @@ class GitWorktreeFactsProbe:
                     break
             # This tree's own locks only. A lock elsewhere in the shared common dir
             # belongs to a sibling worktree and says nothing about this one.
-            locked = any(
-                (gitdir / marker).exists()
-                for marker in ("index.lock", "HEAD.lock", "locked")
-            )
+            lock_marker = gitdir / "locked"
+            worktree_locked = lock_marker.is_file()
+            ref_locked = (gitdir / "index.lock").exists() or (
+                gitdir / "HEAD.lock"
+            ).exists()
             merged = False
             # Merged means merged into this repository's own default branch. A
             # clone may also carry remotes of other repositories (unrelated
@@ -707,7 +788,14 @@ class GitWorktreeFactsProbe:
                     "untracked_nonjunk_count": nonjunk,
                     "unpushed_stash_count": stash_count,
                     "in_progress_operation": operation,
-                    "git_locked": locked,
+                    "git_locked": worktree_locked or ref_locked,
+                    "worktree_locked": worktree_locked,
+                    "worktree_lock_reason": (
+                        lock_marker.read_text(encoding="utf-8", errors="replace")[:200]
+                        if worktree_locked
+                        else ""
+                    ),
+                    "ref_locked": ref_locked,
                     "head_on_remote": on_remote(head),
                     "content_merged": merged,
                     "commits_not_on_remote": int(

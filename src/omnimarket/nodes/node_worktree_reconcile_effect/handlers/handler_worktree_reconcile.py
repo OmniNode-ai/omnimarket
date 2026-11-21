@@ -20,6 +20,12 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileRequest,
     ModelWorktreeReconcileRunCompletedEvent,
 )
+from omnimarket.handlers.rules_worktree_lock import (
+    live_reason,
+    removal_unproven,
+    stale_lock,
+)
+from omnimarket.models.model_worktree_removal import WorktreeOutcome
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.probe_classes import (
     probe_class,
     route_needs_human,
@@ -35,11 +41,7 @@ from omnimarket.nodes.node_worktree_reconcile_effect.protocols import (
     ProtocolWorktreePinner,
     ProtocolWorktreeRemover,
 )
-from omnimarket.worktree_reconcile.rules import (
-    apply_model_verdicts,
-    live_reason,
-    reconcile,
-)
+from omnimarket.worktree_reconcile.rules import apply_model_verdicts, reconcile
 
 # Repositories acted on at once. Trees of one repository stay serial (they share
 # its git metadata and locks); different repositories are independent, and on a
@@ -87,6 +89,14 @@ class HandlerWorktreeReconcile:
         except Exception as exc:
             facts = ()
             errors.append(f"discovery_failed:{type(exc).__name__}:{str(exc)[:200]}")
+        ledger_unread = next(
+            (f.ledger_unread_reason for f in facts if f.ledger_unread_reason), ""
+        )
+        if ledger_unread and ledger_unread != "not_declared":
+            # A declared ledger that cannot be read is a failure a person must
+            # see; a host that names none is a configuration the receipt
+            # reports without failing.
+            errors.append(f"ledger_unread:{ledger_unread}")
         decisions = route_needs_human(
             reconcile(
                 ModelWorktreeReconcileRequest(facts=facts, policy=command.policy)
@@ -180,6 +190,25 @@ class HandlerWorktreeReconcile:
             deferred_paths=tuple(
                 e.facts.path for e in events if probe_class(e.facts) == "deferred"
             ),
+            # Every removal is named, in decision order, so a receipt says what
+            # left the disk and how: stale-locked trees that had to be unlocked first.
+            removed_paths=tuple(
+                e.facts.path
+                for e in events
+                if e.outcome in ("removed", "pinned_and_removed")
+            ),
+            unlocked_paths=tuple(
+                e.facts.path
+                for e in events
+                if e.outcome in ("removed", "pinned_and_removed")
+                and e.facts.worktree_locked
+            ),
+            live_locked_paths=tuple(
+                e.facts.path
+                for e in events
+                if e.facts.worktree_locked and not stale_lock(e.facts, command.policy)
+            ),
+            ledger_unread=ledger_unread,
         )
         self._publisher.publish(self._completed_topic, completed)
         return ModelWorktreeReconcileRunReport(
@@ -195,9 +224,7 @@ class HandlerWorktreeReconcile:
         facts: ModelWorktreeFacts,
         row: ModelWorktreeDecisionRecord,
     ) -> ModelWorktreeReconcileDecidedEvent:
-        outcome: Literal[
-            "dry_run", "removed", "pinned_and_removed", "kept", "needs_human", "failed"
-        ] = "kept"
+        outcome: WorktreeOutcome = "kept"
         error = None
         if row.decision == Decision.NEEDS_HUMAN:
             outcome = "needs_human"
@@ -271,6 +298,12 @@ class HandlerWorktreeReconcile:
         require_remote: bool,
     ) -> bool:
         if not new.facts_complete or new.dirty or live_reason(new, command.policy):
+            return False
+        if old.gitdir_missing or new.gitdir_missing:
+            return False
+        if new.worktree_locked and not (new.ledger_known and new.owner_finished):
+            return False
+        if removal_unproven(new) is not None:
             return False
         if (old.path, old.root, old.kind, old.head_sha, old.branch) != (
             new.path,
