@@ -9,3 +9,12 @@ CREATE TABLE IF NOT EXISTS omninode_internal.floor_integration_pass (
     as_of TEXT NOT NULL,
     projected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- CREATE TABLE IF NOT EXISTS is a no-op against a pre-existing table, so each
+-- declared column is reconciled on its own.
+ALTER TABLE omninode_internal.floor_integration_pass
+    ADD COLUMN IF NOT EXISTS id SMALLINT DEFAULT 1;
+ALTER TABLE omninode_internal.floor_integration_pass
+    ADD COLUMN IF NOT EXISTS as_of TEXT;
+ALTER TABLE omninode_internal.floor_integration_pass
+    ADD COLUMN IF NOT EXISTS projected_at TIMESTAMPTZ DEFAULT NOW();
