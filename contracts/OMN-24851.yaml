@@ -46,6 +46,15 @@ dod_evidence:
     check_value: |-
       bash -c 'b=6efbe3ee5027f6efb67d0b81a1421f0dda32b4e5; h=e3818d33b0b31eb0c80d599a0f4c135cbd4a5a5d; t=tests/delegation_golden/test_runner_unterminalised_row_omn24831.py; d="$(mktemp -d)" && git archive "$h" | tar -x -C "$d" && git show "$b:tests/delegation_golden/runner.py" > "$d/tests/delegation_golden/runner.py" && cd "$d" && out="$(env -u PYTHONPATH uv run --frozen pytest $t -q --no-cov -n 0 -p no:randomly -p no:cacheprovider 2>&1)"; printf "%s\n" "$out" | tail -3; [ "$(printf "%s\n" "$out" | grep -cE "^FAILED .*test_one_failure_names_the_null_terminal_ok\[I(1|10|3|5|6|7|8|9)\]")" = 8 ] && printf "%s\n" "$out" | grep -q "^FAILED .*test_an_absent_terminal_ok_key_is_reported_as_absent" && printf "%s\n" "$out" | grep -q "^FAILED .*test_it_does_not_report_telemetry_misses_it_cannot_judge" && printf "%s\n" "$out" | grep -qE "(^| )10 failed"'
     cwd: .
+- id: dod-omn24851-ac2-fails-on-base-check-text
+  description: The check text of the local Done gate item dod-omn24851-ac2-fails-on-base is run against a throwaway repo and a stub uv, so a wrong id list, count or tree pin fails here on the hosted runner too.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn24851_contract_checks.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
 - id: dod-omn24851-ac3-gate-and-message
   description: The gate reads terminal_ok NULL and the message says so; the row with terminal unknown and terminal_ok set keeps the old line.
   source: manual
