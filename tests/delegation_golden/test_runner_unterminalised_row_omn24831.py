@@ -737,13 +737,14 @@ _SK_WORD = "ski" + "p"
 
 
 _BASE_PIN = "6efbe3ee5027f6efb67d0b81a1421f0dda32b4e5"
+_TREE_PIN = "e3818d33b0b31eb0c80d599a0f4c135cbd4a5a5d"
 
 
 @pytest.mark.unit
 class TestContractTextAnswersTheReview:
     """What the contracts say about the base, the review heads and the diff checks."""
 
-    def test_the_fails_on_base_checks_pin_the_base_and_require_the_nine_ids(
+    def test_the_fails_on_base_checks_pin_the_base_and_require_the_ten_ids(
         self,
     ) -> None:
         pinned = [
@@ -756,7 +757,13 @@ class TestContractTextAnswersTheReview:
         for contract, value in pinned:
             assert f"b={_BASE_PIN}" in value, contract
             assert "I(1|10|3|5|6|7|8|9)" in value, contract
-            assert "(^| )9 failed" in value, contract
+            assert "(^| )10 failed" in value, contract
+            assert "test_an_absent_terminal_ok_key_is_reported_as_absent" in value, (
+                contract
+            )
+            assert f"h={_TREE_PIN}" in value, contract
+            assert 'git archive "$h"' in value, contract
+            assert "git archive HEAD" not in value, contract
             assert "origin/dev" not in value, contract
 
     def test_the_nightly_ticket_contract_keeps_its_ac2_unmet(self) -> None:

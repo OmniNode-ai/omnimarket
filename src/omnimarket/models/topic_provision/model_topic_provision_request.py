@@ -10,10 +10,13 @@ from omnimarket.models.topic_provision.model_topic_provision_contract import (
 from omnimarket.models.topic_provision.model_topic_provision_rule import (
     ModelTopicProvisionRule,
 )
+from omnimarket.models.topic_provision.model_topic_provision_write_grant import (
+    ModelTopicProvisionWriteGrant,
+)
 
 
 class ModelTopicProvisionRequest(BaseModel):
-    """The contracts, active profile, lane manifest and live topics to plan."""
+    """The contracts, active profile, lane manifest, live topics and declared service logins to plan."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -22,3 +25,5 @@ class ModelTopicProvisionRequest(BaseModel):
     lane_manifest: tuple[str, ...] = ()
     live_topics: tuple[str, ...] = ()
     rule: ModelTopicProvisionRule
+    service_logins: tuple[str, ...] = ()
+    acl_write_grants: tuple[ModelTopicProvisionWriteGrant, ...] = ()
