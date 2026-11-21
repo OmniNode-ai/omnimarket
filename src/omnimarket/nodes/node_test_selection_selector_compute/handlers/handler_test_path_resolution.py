@@ -355,6 +355,44 @@ def _reads_data_file(text: str, data_files: list[str]) -> bool:
     return False
 
 
+def _fixture_directory_names(files: list[str], config: ModelAdjacencyMap) -> set[str]:
+    """Names of the directories between a ``data_reader_fixture_roots`` entry and each file."""
+    return {
+        directory
+        for path in files
+        for root in config.data_reader_fixture_roots
+        if path.startswith(root)
+        for directory in path[len(root) :].split("/")[:-1]
+    }
+
+
+def _source_seeds(
+    files: list[str],
+    graph: _ImportGraph,
+    node_scoped: frozenset[str],
+    repo_root: Path,
+    source: ProtocolSourceText,
+) -> set[str]:
+    """Vertices of the ``src/`` files whose text spells a changed data file's path or name.
+
+    The importers of these vertices read the file through them; the caller follows the reverse import
+    closure. A path built at run time with no literal part is invisible here, by design: the nightly's.
+    """
+    # A file name inside a longer name (``setup_step_inventory.yaml`` for ``inventory.yaml``) is another file.
+    names = re.compile(
+        "|".join(
+            rf"(?<![\w.\-]){re.escape(path.rsplit('/', 1)[-1])}(?!\w)" for path in files
+        )
+    )
+    seeds: set[str] = set()
+    for path in sorted((repo_root / "src" / PACKAGE).rglob("*.py")):
+        text = source.read_text(path)
+        if any(file in text for file in files) or names.search(text):
+            rel = path.relative_to(repo_root).as_posix()
+            seeds.add(_vertex(_dotted(rel), node_scoped))
+    return {seed for seed in seeds if seed in graph.dependents or "/" in seed}
+
+
 def _data_readers(
     data_files: list[str],
     config: ModelAdjacencyMap,
@@ -365,18 +403,38 @@ def _data_readers(
 
     A test whose own text spells the file or enumerates its directory is a reader. So is every test
     that imports (transitively) a helper under ``tests/`` whose text does. The adjacency file's
-    ``data_reader_overrides`` adds the readers no text shows.
+    ``data_reader_overrides`` adds the readers no text shows. Where ``data_file_readers_enabled`` is
+    true a data file under a ``data_reader_roots`` entry is also read by a test whose text names a
+    directory between ``tests/fixtures/`` and the file, and through a ``src/`` file that names it, with
+    the importers of that file.
     """
-    graph = _import_graph(repo_root, frozenset(config.node_scoped_modules), source)
+    node_scoped = frozenset(config.node_scoped_modules)
+    graph = _import_graph(repo_root, node_scoped, source)
+    reader_files = [path for path in data_files if config.is_reader_data_file(path)]
+    directory_names = _fixture_directory_names(reader_files, config)
     selected: set[str] = set()
     helpers: set[str] = set()
     for vertex, rel in graph.paths.items():
-        if not _reads_data_file(source.read_text(repo_root / rel), data_files):
+        text = source.read_text(repo_root / rel)
+        if not (
+            _reads_data_file(text, data_files)
+            or any(name in text for name in directory_names)
+        ):
             continue
         if _is_test_file(rel):
             selected.add(rel)
         else:
             helpers.add(vertex)
+    if reader_files:
+        for seed in _source_seeds(reader_files, graph, node_scoped, repo_root, source):
+            helpers.add(seed)
+            module, _, node = seed.partition("/")
+            if node and module in node_scoped:
+                if (repo_root / TEST_PREFIX / module / node).is_dir():
+                    selected.add(f"{TEST_PREFIX}{module}/{node}/")
+                selected.update(
+                    p for p in graph.test_namers.get(node, ()) if _is_test_file(p)
+                )
     affected = set(helpers)
     frontier = list(helpers)
     while frontier:
@@ -486,7 +544,18 @@ def _resolve(
     scoped_test_modules: set[str] = set()
     root_level: list[str] = []
 
+    reader_files = [p for p in changed_files if config.is_reader_data_file(p)]
+    # a fixture under tests/fixtures/ has no tests beside it to select as a directory; its
+    # readers are found by text below, and a file with none selects the always set only.
+    fixture_files = {
+        p
+        for p in reader_files
+        if p.startswith(tuple(config.data_reader_gated_infrastructure_paths))
+    }
+
     for path in changed_files:
+        if path in fixture_files:
+            continue
         if path.startswith(SRC_PREFIX):
             module = path[len(SRC_PREFIX) :].split("/", 1)[0]
             if module in config.adjacency:
@@ -526,17 +595,26 @@ def _resolve(
                 continue
         selected.add(f"{TEST_PREFIX}{module}/")
 
-    data_files = [p for p in changed_files if _is_data_file(p, config)]
-    data_only = (
-        config.data_only_selection_enabled
-        and bool(changed_files)
-        and len(data_files) == len(changed_files)
+    data_files = (
+        [p for p in changed_files if _is_data_file(p, config)]
+        if config.data_only_selection_enabled
+        else []
     )
+    # a data file under a reader root is looked up as well; one outside src/ and tests/
+    # (a contract) or under tests/fixtures/ selects nothing of its own, so a diff of only these
+    # stands alone like the T3 data files.
+    standalone = {
+        p
+        for p in reader_files
+        if p in fixture_files or not p.startswith(_NOT_DATA_PREFIXES)
+    }
+    lookup = list(dict.fromkeys([*data_files, *reader_files]))
+    data_only = bool(changed_files) and {*data_files, *standalone} >= set(changed_files)
     result = sorted(p for p in selected if (repo_root / p).exists())
     # Readers join a selection the change already has, or stand alone for a diff of only data
     # files. A data file beside an unattributable one (a Dockerfile) keeps the full escalation.
-    if config.data_only_selection_enabled and data_files and (result or data_only):
-        readers = _data_readers(data_files, config, repo_root, source)
+    if lookup and (result or data_only):
+        readers = _data_readers(lookup, config, repo_root, source)
         result = sorted(p for p in {*result, *readers} if (repo_root / p).exists())
     return result, data_only
 
