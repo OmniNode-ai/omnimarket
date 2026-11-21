@@ -139,9 +139,9 @@ def test_f4_a_measured_cost_is_summed_and_a_measured_zero_is_zero(
     gemini = tiers["cheap_cloud"]["models"][0]
     assert gemini["cost_usd"] == pytest.approx(0.009)
     assert gemini["unmeasured_cost_count"] == 0
-    qwen_a = tiers["local"]["models"][0]
-    assert qwen_a["cost_usd"] == 0
-    assert qwen_a["unmeasured_cost_count"] == 0
+    qwen_7b = tiers["local"]["models"][0]
+    assert qwen_7b["cost_usd"] == 0
+    assert qwen_7b["unmeasured_cost_count"] == 0
 
 
 def test_f5_another_tenant_never_enters_this_tenant(client: TestClient) -> None:

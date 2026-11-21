@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-25862
 title: A $0 run on a model the pricing manifest does not list is unpriced in the metering headline but a measured zero in the savings and model-routing views
-summary: 'The metering headline counts a run as unpriced by priced_spend: a run on a model the pricing manifest does not list is unpriced at any cost, $0 included. The savings view (revision 6) and model-routing view v4 kept such a $0 run as a measured zero, so one store served two unpriced counts. This change adds savings view revision 7 and model-routing view v5, each a new one-time store step, whose unpriced rule is priced_spend''s. Money totals do not change; only the unpriced count does.'
+summary: 'The metering headline counts a run as unpriced by priced_spend: a run on a model the pricing manifest does not list is unpriced at any cost, $0 included. The savings view (revision 6) and model-routing view v4 kept such a $0 run as a measured zero, so one store served two unpriced counts. This change adds savings view revision 7 and model-routing view v5, each a new one-time store step, whose unpriced rule is priced_spend''s. Money totals do not change. Per row, a model whose runs are all unpriced now serves its cost as null (not measured), not 0.0: model-routing''s tier-model cost_usd and the savings view''s per-session local_cost_usd.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
