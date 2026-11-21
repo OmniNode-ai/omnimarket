@@ -26,6 +26,7 @@ Failure modes:
   L2. A configure re-run that names another --workspace drops the other saved choices.
   K1. A provider the saved setup does not use reuses a key stored outside setup (onex models add).
   K2. A saved hosted provider on its own endpoint reuses the provider-wide key.
+  D1. Pressing Enter at the provider question does not keep the saved provider.
 """
 
 from __future__ import annotations
@@ -471,3 +472,11 @@ def test_a_saved_provider_on_its_own_endpoint_is_asked_for_its_key(
     )
     result, rec = rerun(input="openai\ngpt-4.1-mini\n")
     assert rec.keys == ["openai"], result.output
+
+
+def test_enter_at_the_provider_question_keeps_the_saved_provider(rerun: Any) -> None:
+    """D1: the saved provider is the default, so Enter keeps it and asks for no key."""
+    result, rec = rerun(input="\ngpt-4.1-mini\n")
+    assert rec.plan is not None, result.output
+    assert [p.provider for p in rec.plan.providers] == ["openai"]
+    assert rec.keys == []
