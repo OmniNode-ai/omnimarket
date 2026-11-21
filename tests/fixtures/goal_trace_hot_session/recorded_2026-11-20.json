@@ -1,0 +1,38 @@
+{
+  "ticket": "OMN-26152",
+  "recorded_at": "2026-11-20T08:47Z/08:51Z",
+  "host": "h201",
+  "process": "omninode-runtime (python -m omnibase_infra.runtime.entrypoint_preflight onex-runtime)",
+  "profile": {
+    "source": "py-spy record --pid <python pid> --duration 60 --rate 100 --gil --threads --format raw",
+    "gil_samples": 5708,
+    "samples_possible": 6000,
+    "top_holders_share_of_wall": {
+      "goal_trace writer pool (node_projection_goal_trace)": 0.410,
+      "MainThread (event loop)": 0.311,
+      "message_dispatch_engine (inclusive)": 0.112,
+      "aiokafka protocol and conn (inclusive)": 0.102,
+      "metering_summary (inclusive)": 0.098
+    },
+    "goal_trace_hot_frames": [
+      "handler_goal_trace_writer._event_from_record:161",
+      "handler_projection_goal_trace.resolve_agent_goals:152",
+      "handler_projection_goal_trace.resolve_agent_goals:156",
+      "handler_projection_goal_trace._dedupe:109"
+    ]
+  },
+  "stored_state": {
+    "source": "read-only SELECT on omninode_internal.goal_trace_events, dev lane database",
+    "rows": 288419,
+    "kinds": {"hook": 288419},
+    "hot_session": {
+      "events": 94501,
+      "kinds": {"hook": 94501},
+      "rows_with_goal": 0,
+      "assignment": {"unassigned": 94501},
+      "distinct_agent_keys": 1888,
+      "ingested_last_hour": 491
+    }
+  },
+  "log_gaps_ge_4s_last_hour_before": 49
+}

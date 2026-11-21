@@ -56,6 +56,15 @@ def _three_tier_contract(
         "DELEGATION_ROI_WINDOW_SECONDS",
     ):
         monkeypatch.delenv(name, raising=False)
+    # The reducer caches its loaded config in four module attributes that belong together; an earlier test can
+    # leave them set, and restoring only _config makes the loader treat a stale config as explicitly installed.
+    for name in (
+        "_config",
+        "_config_binding",
+        "_config_spread_peers",
+        "_config_spread_weights",
+    ):
+        monkeypatch.setattr(routing, name, None)
     routing._load_bifrost_endpoints.cache_clear()
     try:
         yield

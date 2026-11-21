@@ -11,7 +11,7 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
 lifecycle: experimental
-runtime_profiles: [effects]
+runtime_profiles: [main, effects]
 
 description: >
   Delivers what one lab alarm condition read in one run. A subject that ENTERS the alarm state is posted once to
@@ -26,17 +26,29 @@ description: >
   channel and the ledger bus) comes from the overlay.
 
 handler:
-  module: omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver
-  class: HandlerLabAlarmDeliver
+  module: omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver_route
+  class: HandlerLabAlarmDeliverRoute
   input_model: omnimarket.models.lab_alarm_delivery.ModelLabAlarmDeliveryRequest
+  output_model: omnimarket.models.lab_alarm_delivery.ModelLabAlarmDeliveryResult
 
 # HandlerLabAlarmDeliver takes the overlay settings, the channel, the ledger, the episode state store and the
-# clock as constructor parameters, so it is built by its caller (node_lab_alarm's runtime, or the node's own
-# runtime module) and declares no handler_routing.
+# clock as constructor parameters, so node_lab_alarm's runtime builds it in process. The runtime attaches a node
+# through the topics its contract declares and builds a handler from its class, so HandlerLabAlarmDeliverRoute
+# (no required constructor parameter) builds the delivery from this node's overlay on its first request, and a
+# command on command_topic is handled by it. The runtime login's broker grants below are this node's own.
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerLabAlarmDeliverRoute
+        module: omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver_route
+      event_model:
+        name: ModelLabAlarmDeliveryRequest
+        module: omnimarket.models.lab_alarm_delivery
 
 descriptor:
   node_archetype: effect
-  runtime_profiles: [effects]
+  runtime_profiles: [main, effects]
   purity: impure
   idempotent: true
   side_effects: [alert-channel-post, ledger-append, state-file-write]
@@ -54,7 +66,6 @@ output_model:
 terminal_event: onex.evt.omnimarket.lab-alarm-delivery-completed.v1
 
 runtime_dispatch:
-  external_trigger: true
   command_topic: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1
 
 topics:
@@ -65,14 +76,27 @@ topics:
   delivery_failed: onex.evt.omnimarket.lab-alarm-delivery-failed.v1
 
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.lab-alarm-delivery-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lab-alarm-delivery-completed.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.lab-alarm-delivery-started.v1
   - onex.evt.omnimarket.lab-alarm-delivery-alarm.v1
   - onex.evt.omnimarket.lab-alarm-delivery-completed.v1
   - onex.evt.omnimarket.lab-alarm-delivery-failed.v1
+
+# The broker grants of the node's two topics (the broker ACL coverage gate): the runtime login reads the request and
+# writes the completed event. The started, alarm and failed events are published by node_lab_alarm's own runtime
+# module, not by this attachment.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-alarm-delivery-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-alarm-delivery-completed.v1, operation: DESCRIBE}
 
 overlay:
   node: node_lab_alarm_deliver_effect
@@ -91,6 +115,13 @@ secrets:
     description: "Slack channel id of the alerts channel the alarm is posted to."
     required: false
 
+# The delivery itself is built by the route handler above (and by node_lab_alarm's CLI) with its overlay, channel, ledger,
+# state store and clock, so it is bound here by module and has no handler_routing entry of its own.
+delivery_binding:
+  handler:
+    name: HandlerLabAlarmDeliver
+    module: omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver
+
 metadata:
   ticket: OMN-23906
-  transport_type: inmemory
+  transport_type: kafka
