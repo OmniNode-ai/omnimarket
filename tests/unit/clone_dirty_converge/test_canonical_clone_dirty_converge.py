@@ -1035,6 +1035,7 @@ def _decide(
         env=planted.env(**{AGE_ENV: str(AGE)}),
         engine_argv=planted.engine_argv,
         delivery=delivery,
+        ledger_reader=FakeLedgerRows(),
     )
     return handler.raise_alarms([handler.converge_clone(planted.clone, refused_for)])
 
@@ -1340,6 +1341,7 @@ def test_the_command_exits_one_when_a_refusal_was_not_alarmed_and_zero_when_it_w
             env=clean_case.env(**{AGE_ENV: str(AGE)}),
             engine_argv=clean_case.engine_argv,
             delivery=delivery,
+            ledger_reader=FakeLedgerRows(),
         )
         clean_case.refuse_for(handler, 3 * AGE)
         return handler

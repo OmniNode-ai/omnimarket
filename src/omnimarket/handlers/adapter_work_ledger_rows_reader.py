@@ -5,7 +5,8 @@
 The interpreter is the first word of ``ONEX_LEDGER_BUS_APPEND_COMMAND`` (the ledger interpreter every
 moved reader runs under). The reader module answers from the bus-fed projection and prints one row per
 line; exit 0 is a fresh answer, exit 1 a stale one (printed, and the reader's own line is kept on stderr),
-every other exit (3 not-moved, 69 unreadable) is a ``LedgerReadError``. No ledger file is opened.
+every other exit (3 not-moved, 69 unreadable, and an exit 1 whose stderr carries no ``status=stale`` reader line, such as an
+interpreter that cannot import the module) is a ``LedgerReadError``. No ledger file is opened.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ __all__ = ["READER_MODULE", "SubprocessLedgerRowsReader"]
 
 READER_MODULE = "omnimarket.nodes.node_work_ledger_reader_effect"
 INTERPRETER_ENV = "ONEX_LEDGER_BUS_APPEND_COMMAND"
-_ANSWERED = (0, 1)
+_STALE = "status=stale"
 
 
 class SubprocessLedgerRowsReader:
@@ -86,9 +87,11 @@ class SubprocessLedgerRowsReader:
             raise LedgerReadError(
                 f"reader {reader} could not run ({type(exc).__name__})"
             ) from exc
-        if done.returncode not in _ANSWERED:
-            tail = " ".join(str(done.stderr or "").split())[-200:]
+        stderr = str(done.stderr or "")
+        stale = done.returncode == 1 and _STALE in stderr
+        if done.returncode != 0 and not stale:
+            tail = " ".join(stderr.split())[-200:]
             raise LedgerReadError(f"reader {reader} exited {done.returncode}: {tail}")
-        if done.returncode != 0:
-            sys.stderr.write(str(done.stderr or ""))
+        if stale:
+            sys.stderr.write(stderr)
         return tuple(line for line in str(done.stdout).splitlines() if line.strip())

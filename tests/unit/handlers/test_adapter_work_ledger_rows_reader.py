@@ -63,6 +63,13 @@ def test_a_stale_answer_is_returned_and_its_reader_line_is_kept(
     assert "status=stale" in capsys.readouterr().err
 
 
+def test_an_exit_one_that_is_not_the_stale_reader_line_raises() -> None:
+    # An interpreter that cannot import the module exits 1 too: that is no answer, never "no rows".
+    run = Runner(1, "", "ModuleNotFoundError: No module named 'omnimarket'\n")
+    with pytest.raises(LedgerReadError, match="exited 1: ModuleNotFoundError"):
+        SubprocessLedgerRowsReader(ENV, run=run).rows(reader="r", window_hours=1)
+
+
 @pytest.mark.parametrize("code", [3, 69, 2])
 def test_not_moved_unreadable_and_other_exits_raise_never_an_empty_read(
     code: int,
