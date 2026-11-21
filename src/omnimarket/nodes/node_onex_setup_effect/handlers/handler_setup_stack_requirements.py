@@ -11,16 +11,17 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Coroutine, Mapping
 from typing import Any
-from uuid import uuid4
 
-from omnibase_core.models.container.model_onex_container import ModelONEXContainer
 from omnibase_core.utils.util_run_coro_sync import run_coro_sync
 from omnibase_infra.nodes.node_setup_local_provision_effect.handlers.handler_local_provision import (
     compose_base_command,
 )
 
+from omnimarket.nodes.node_onex_setup_effect.adapters.adapter_local_engine_info import (
+    read_engine_capacity,
+)
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_command import (
     HandlerSetupCommand,
 )
@@ -36,6 +37,8 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_stack_requirements import (
     ModelSetupStackRequirementsRequest,
 )
+
+EngineCapacityReader = Callable[[], Coroutine[Any, Any, tuple[float, int]]]
 
 
 def _bytes(value: object) -> int:
@@ -57,36 +60,12 @@ class HandlerSetupStackRequirements:
 
     name = "local-stack"
 
-    def __init__(self) -> None:
+    def __init__(
+        self, engine_reader: EngineCapacityReader = read_engine_capacity
+    ) -> None:
+        """The engine reader is injected so the adapter, not this handler, builds the infra handler."""
         self._commands = HandlerSetupCommand()
-
-    @staticmethod
-    async def _engine_capacity() -> tuple[float, int]:
-        # Older supported infra builds lack this optional local-stack operation.
-        from omnibase_infra.handlers.handler_local_engine_info import (
-            HandlerLocalEngineInfo,
-        )
-        from omnibase_infra.models.model_local_engine_info_request import (
-            ModelLocalEngineInfoRequest,
-        )
-
-        owner = HandlerLocalEngineInfo(ModelONEXContainer())
-        await owner.initialize({})
-        try:
-            result = await owner.handle_async(
-                ModelLocalEngineInfoRequest(correlation_id=uuid4(), timeout_seconds=20)
-            )
-        finally:
-            await owner.shutdown()
-        if result.engine_status == "unavailable":
-            raise OSError("Docker observation unavailable")
-        if (
-            result.engine_status != "read"
-            or result.engine_cpus is None
-            or result.engine_memory_bytes is None
-        ):
-            raise ValueError("Invalid engine resources")
-        return float(result.engine_cpus), result.engine_memory_bytes
+        self._engine_reader = engine_reader
 
     def _read(self, argv: tuple[str, ...]) -> str:
         result = self._commands.handle(
@@ -125,7 +104,7 @@ class HandlerSetupStackRequirements:
                 fix="Select explicit compose/topology services before checking Docker.",
             )
         try:
-            available_cpu, available_memory = run_coro_sync(self._engine_capacity())
+            available_cpu, available_memory = run_coro_sync(self._engine_reader())
             base = tuple(compose_base_command(selection.compose_file, None))
             config = json.loads(self._read((*base, "config", "--format", "json")))
             if not isinstance(config, dict) or not isinstance(

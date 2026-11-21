@@ -220,3 +220,27 @@ def test_selected_stack_with_older_infra_reports_install_action(
     assert result.status == "action_required"
     assert "omnibase-infra" in result.fix
     assert "upgrade" in result.fix.lower()
+
+
+def test_selected_stack_reads_the_engine_through_the_injected_reader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_stack_requirements import (
+        HandlerSetupStackRequirements,
+    )
+
+    calls: list[str] = []
+
+    async def unavailable_engine() -> tuple[float, int]:
+        calls.append("read")
+        raise OSError("Docker observation unavailable")
+
+    def unexpected_command(self, request) -> None:
+        pytest.fail(f"An unavailable engine must stop before {request.argv}")
+
+    monkeypatch.setattr(HandlerSetupCommand, "handle", unexpected_command)
+    result = HandlerSetupStackRequirements(engine_reader=unavailable_engine).observe(
+        _plan(tmp_path), ("worker",)
+    )
+    assert calls == ["read"]
+    assert result.status == "action_required"
