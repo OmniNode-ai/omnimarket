@@ -38,12 +38,14 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn26275-ac1
-  description: 'AC1, replayed with fixtures and not with the T1 receipt (omnimarket#6532 is not on dev): the 18 dev merges of the 60-merge baseline window that changed pyproject.toml are in
-    tests/nodes/node_test_selection_selector_compute/pyproject_merges.json with the verbatim base and head statements of every changed key (and the differing uv.lock tables where the merge changed the lock).
-    cdbc99eb4a, d970dcb251 and c62d5b24d5 stay full (dependency keys, a uv source tag, an override); of the other 15, 79f31e93f5 stays full (its lock changes revision, certifi and more than the own version line),
-    ae69d56977 narrows (its lock change is the own version line alone), 84bd917586 and b28b1c210e narrow in the handler and take the full suite by the .github/ and scripts/ rules, and 11 more narrow. The assertion
-    on the T1 receipt''s expected outcomes waits for the receipt. Measured on the current dev tree with the switch on, a narrowed pyproject change selects tests/ through tests/conftest.py (its import chain reaches
-    a source file that opens pyproject.toml), so it ends as narrowed_selection_too_heavy; the switch ships off for that reason.'
+  description: 'AC1: the T1 receipt is on dev (config/test_selection_replay_receipt.json) and lists the 60 merges of the baseline window; 18 of them changed pyproject.toml, the same 18 as the rows of
+    tests/nodes/node_test_selection_selector_compute/pyproject_merges.json. The receipt and its replay input name the changed files but hold no pyproject text, so the test replays the fixture, which keeps
+    the verbatim base and head statements of every changed key (and the differing uv.lock tables); the fixture is the named fallback for the missing base and head texts. A one-off replay of the same 18 merges
+    through the git adapter over the full base and head texts from history (lab host h051, 2026-11-21) gave the same split as the test: cdbc99eb4a, d970dcb251 and c62d5b24d5 stay full (dependency keys, a uv
+    source tag, an override), 79f31e93f5 stays full (its lock changes revision, certifi and more than the own version line), the other 14 narrow (ae69d56977 narrows because its lock change is the own version
+    line alone; 84bd917586 and b28b1c210e narrow in the handler and take the full suite by the .github/ and scripts/ rules). The receipt itself records every one of the 18 as full_suite (the pre-change rule),
+    so the expected split comes from the rule and not from the receipt. Measured on the current dev tree with the switch on, a narrowed pyproject change selects tests/ through tests/conftest.py (its import
+    chain reaches a source file that opens pyproject.toml), so it is too heavy to ship on; the switch stays off and selection_stage stays 0.'
   source: manual
   binds_ac:
   - AC1
