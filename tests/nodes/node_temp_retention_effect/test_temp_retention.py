@@ -16,14 +16,18 @@ import stat
 import subprocess
 import time
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 import pytest
 
+from omnimarket.nodes.node_temp_retention_effect import runtime_temp_retention
+from omnimarket.nodes.node_temp_retention_effect.handlers import handler_temp_retention
 from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention import (
     ProcessReferences,
     RefusalError,
     load_bounds,
+    load_schedule,
     read_process_references,
     run_pass,
 )
@@ -33,6 +37,7 @@ from omnimarket.nodes.node_temp_retention_effect.models.model_temp_retention imp
     ModelRetentionWindows,
     ModelStoreCeiling,
     ModelTempRetentionHost,
+    ModelTempRetentionOverlay,
     ModelTempRoot,
 )
 
@@ -60,7 +65,11 @@ def age(path: Path, hours: float) -> None:
 
 
 def host(
-    tmp_path: Path, *, patterns: tuple[str, ...] = (), ceiling_mib: int = 1
+    tmp_path: Path,
+    *,
+    temp_root: Path | None = None,
+    patterns: tuple[str, ...] = (),
+    ceiling_mib: int = 1,
 ) -> ModelTempRetentionHost:
     return ModelTempRetentionHost(
         name="pool-a",
@@ -68,7 +77,8 @@ def host(
         windows=WINDOWS,
         temp_roots=(
             ModelTempRoot(
-                path=str(tmp_path / "runs" / ".tmp"), protected_name_patterns=patterns
+                path=str(temp_root or tmp_path / "runs" / ".tmp"),
+                protected_name_patterns=patterns,
             ),
         ),
         store_ceilings=(
@@ -125,6 +135,169 @@ def test_old_unheld_entry_directly_under_tmp_is_removed(tmp_path: Path) -> None:
     assert report.removed == (str(old),)
     assert report.removed_count == 1
     assert report.freed_mib >= 0
+
+
+@pytest.mark.parametrize(
+    ("budget_seconds", "removed_count"),
+    [(2.0, 2), (None, 5)],
+    ids=["budget", "no-budget"],
+)
+def test_pass_budget_stops_between_entries(
+    tmp_path: Path, budget_seconds: float | None, removed_count: int
+) -> None:
+    root = make_tmp(tmp_path)
+    entries = [root / f"old-{index}" for index in range(5)]
+    for entry in entries:
+        entry.mkdir()
+        age(entry, 72)
+
+    def clock() -> float:
+        assert budget_seconds is not None
+        return float(sum(not entry.exists() for entry in entries))
+
+    report = run_pass(
+        host(tmp_path),
+        bounds(),
+        now=NOW,
+        uid=UID,
+        references=nothing_held,
+        used_percent=used(10.0),
+        budget_seconds=budget_seconds,
+        clock=clock,
+    )
+
+    assert sorted(root.iterdir()) == entries[removed_count:]
+    assert report.removed_count == removed_count
+    assert report.deferred_count == 5 - removed_count
+    assert report.budget_exhausted is (budget_seconds is not None)
+    assert not report.errors
+
+
+@pytest.mark.parametrize("first_root_pending", [0, 1])
+def test_exhausted_budget_skips_later_roots_and_stores(
+    tmp_path: Path, first_root_pending: int
+) -> None:
+    root = make_tmp(tmp_path)
+    first = root / "first"
+    first.mkdir()
+    age(first, 72)
+    if first_root_pending:
+        pending = root / "pending"
+        pending.mkdir()
+        age(pending, 72)
+    later = root.with_name("tmp") / "old"
+    later.mkdir(parents=True)
+    age(later, 72)
+    store = root.with_name(".pnpm-store")
+    fill_store(store, 3)
+    h = host(tmp_path)
+    h = h.model_copy(
+        update={"temp_roots": (*h.temp_roots, ModelTempRoot(path=str(later.parent)))}
+    )
+
+    def first_root_usage(path: Path) -> float:
+        assert path == root
+        return 85.0
+
+    report = run_pass(
+        h,
+        bounds(),
+        now=NOW,
+        uid=UID,
+        references=nothing_held,
+        used_percent=first_root_usage,
+        budget_seconds=1.0,
+        clock=lambda: float(not first.exists()),
+    )
+
+    assert report.removed == (str(first),)
+    assert later.is_dir()
+    assert (store / "v11").is_dir()
+    assert report.deferred_count == first_root_pending + 1
+    assert report.budget_exhausted
+    assert report.stores == (f"{store}: skipped, the pass budget ended",)
+    assert not report.errors
+
+
+@pytest.mark.parametrize(
+    ("budget_override", "removed_count"),
+    [(None, 1), ("0", 2), ("1.5", 0)],
+    ids=["default", "disabled", "overridden"],
+)
+def test_run_applies_the_pass_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    budget_override: str | None,
+    removed_count: int,
+) -> None:
+    root = make_tmp(tmp_path)
+    for name in ("first", "second"):
+        entry = root / name
+        entry.mkdir()
+        age(entry, 72)
+    h = host(tmp_path).model_copy(update={"store_ceilings": ()})
+    overlay = tmp_path / "overlay.json"
+    overlay.write_text(ModelTempRetentionOverlay(hosts=(h,)).model_dump_json())
+    default_budget = 0.8 * load_schedule().cadence.timeout_start_seconds
+    clock = iter((0.0, default_budget - 0.01, default_budget)).__next__
+    monkeypatch.setattr(
+        handler_temp_retention, "run_pass", partial(run_pass, clock=clock)
+    )
+    monkeypatch.setattr(
+        runtime_temp_retention,
+        "HandlerTempRetention",
+        partial(
+            handler_temp_retention.HandlerTempRetention,
+            now=lambda: NOW,
+            references=nothing_held,
+        ),
+    )
+
+    argv = ["run", "--host", h.name, "--overlay", str(overlay), "--dry-run"]
+    if budget_override is not None:
+        argv.extend(["--budget-seconds", budget_override])
+    assert runtime_temp_retention.main(argv) == 0
+    report = ModelRetentionPass.model_validate_json(capsys.readouterr().out)
+    assert report.removed_count == removed_count
+    assert report.deferred_count == 2 - removed_count
+    assert report.budget_exhausted is (removed_count < 2)
+    assert not report.errors
+
+
+def test_old_unheld_run_under_a_pytest_root_is_removed(tmp_path: Path) -> None:
+    root = tmp_path / "pytest-of-someone"
+    old = root / "pytest-3"
+    new = root / "pytest-4"
+    old.mkdir(parents=True)
+    new.mkdir()
+    age(old, 20)
+    age(new, 1)
+
+    report = go(host(tmp_path, temp_root=root))
+
+    assert not old.exists()
+    assert new.is_dir()
+    assert report.removed == (str(old),)
+    assert report.windows[str(root)] == 12.0
+
+
+@pytest.mark.parametrize("leaf_name", ["pytest-of-", "pytest-off-someone"])
+def test_a_root_with_an_invalid_pytest_leaf_name_is_refused(
+    tmp_path: Path, leaf_name: str
+) -> None:
+    root = tmp_path / leaf_name
+    root.mkdir()
+
+    with pytest.raises(RefusalError) as exc_info:
+        go(host(tmp_path, temp_root=root))
+
+    assert "leaf names ('tmp', '.tmp')" in str(exc_info.value)
+    assert "leaf patterns ('pytest-of-?*',)" in str(exc_info.value)
+
+
+def test_the_contract_loads_the_pytest_root_leaf_pattern() -> None:
+    assert load_bounds().temp_root_leaf_patterns == ("pytest-of-?*",)
 
 
 def test_old_unheld_entry_with_a_read_only_directory_inside_is_removed(

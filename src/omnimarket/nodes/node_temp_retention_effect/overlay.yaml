@@ -21,6 +21,10 @@ hosts:
         protected_name_patterns: ['claude-[0-9]+']
       - path: /tmp
         protected_name_patterns: ['claude-[0-9]+']
+      # pytest keeps its run folders under /tmp/pytest-of-<user> (OMN-26097): the folder itself changes whenever a run starts, so the /tmp rule above never
+      #   reached an old pytest-N folder inside it (h051 read 2026-11-19T21:33Z: 25 of 34 folders older than 12 hours, 3.9 GiB, root disk 87 percent used).
+      #   The same windows apply to each pytest-N folder; the pytest-current link is an entry like any other and pytest makes it again.
+      - path: /tmp/pytest-of-jonah
     store_ceilings:
       - {path: /data/lab-run/runs/.pnpm-store, kind: pnpm, ceiling_mib: 2048}
   - name: h053
@@ -32,5 +36,22 @@ hosts:
         protected_name_patterns: ['claude-[0-9]+']
       - path: /tmp
         protected_name_patterns: ['claude-[0-9]+']
+      # pytest keeps its run folders under /tmp/pytest-of-<user> (OMN-26097): the folder itself changes whenever a run starts, so the /tmp rule above never
+      #   reached an old pytest-N folder inside it (h051 read 2026-11-19T21:33Z: 25 of 34 folders older than 12 hours, 3.9 GiB, root disk 87 percent used).
+      #   The same windows apply to each pytest-N folder; the pytest-current link is an entry like any other and pytest makes it again.
+      - path: /tmp/pytest-of-jonah
     store_ceilings:
       - {path: /data/lab-run/runs/.pnpm-store, kind: pnpm, ceiling_mib: 2048}
+  # h201 and h202 (OMN-26097): pytest temp only. Their /tmp is covered by the per-lane cache reaper (onex-tmp-reaper), and a whole-/tmp rule is a separate decision.
+  #   Read 2026-11-19T21:35Z: /tmp/pytest-of-jonah held 174 MiB on h201 and 427 MiB on h202; the point of the row is that a host holding pytest
+  #   temp has an age rule for it, so a lane that leaves 11 GB (h051) is bounded on every host.
+  - name: h201
+    scheduler: systemd-user
+    windows: {retain_hours: 12, pressure_percent: 80, pressure_retain_hours: 2}
+    temp_roots:
+      - path: /tmp/pytest-of-jonah
+  - name: h202
+    scheduler: systemd-user
+    windows: {retain_hours: 12, pressure_percent: 80, pressure_retain_hours: 2}
+    temp_roots:
+      - path: /tmp/pytest-of-jonah

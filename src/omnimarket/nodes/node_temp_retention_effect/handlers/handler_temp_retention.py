@@ -23,10 +23,12 @@ Without a readable ``/proc`` nothing is removed, because a held entry cannot be 
 from __future__ import annotations
 
 import contextlib
+import fnmatch
 import os
 import re
 import shutil
 import stat
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -202,14 +204,21 @@ def host_row(
 # ---------------------------------------------------------------------------------------- reading
 
 
-def _check_declared_path(path: str, leaf_names: tuple[str, ...], what: str) -> Path:
+def _check_declared_path(
+    path: str,
+    leaf_names: tuple[str, ...],
+    what: str,
+    leaf_patterns: tuple[str, ...] = (),
+) -> Path:
     declared = Path(path)
     if not declared.is_absolute() or os.path.normpath(path) != path or path == "/":
         raise RefusalError(f"{what} {path!r} must be an absolute, normalised path")
-    if declared.name not in leaf_names:
+    if declared.name not in leaf_names and not any(
+        fnmatch.fnmatchcase(declared.name, pattern) for pattern in leaf_patterns
+    ):
         raise RefusalError(
-            f"{what} {path!r} is named {declared.name!r}; the contract allows only "
-            f"{', '.join(leaf_names)}"
+            f"{what} {path!r} is named {declared.name!r}. The contract allows only "
+            f"leaf names {leaf_names!r} or leaf patterns {leaf_patterns!r}"
         )
     if declared.is_symlink() or os.path.realpath(path) != path:
         raise RefusalError(f"{what} {path!r} is a symlink or sits under one")
@@ -226,7 +235,10 @@ def validate_declarations(
     patterns: list[list[re.Pattern[str]]] = []
     for declared in row.temp_roots:
         _check_declared_path(
-            declared.path, bounds.temp_root_leaf_names, "temp directory"
+            declared.path,
+            bounds.temp_root_leaf_names,
+            "temp directory",
+            bounds.temp_root_leaf_patterns,
         )
         compiled: list[re.Pattern[str]] = []
         for pattern in declared.protected_name_patterns:
@@ -386,10 +398,15 @@ def _pass_root(
     dry_run: bool,
     refs: ProcessReferences,
     used: Callable[[Path], float],
+    deadline: float | None,
+    clock: Callable[[], float],
     out: dict[str, Any],
 ) -> None:
     root = _check_declared_path(
-        declared.path, bounds.temp_root_leaf_names, "temp directory"
+        declared.path,
+        bounds.temp_root_leaf_names,
+        "temp directory",
+        bounds.temp_root_leaf_patterns,
     )
     if not root.is_dir():
         out["refused"].append(f"{root}: not a directory, so nothing was read")
@@ -400,7 +417,12 @@ def _pass_root(
     cutoff = now - hours * 3600
     held = _held_names(root, refs)
     device = root.lstat().st_dev
-    for entry in sorted(root.iterdir(), key=lambda item: item.name):
+    entries = sorted(root.iterdir(), key=lambda item: item.name)
+    for index, entry in enumerate(entries):
+        if deadline is not None and clock() >= deadline:
+            out["deferred"] += len(entries) - index
+            out["budget_exhausted"] = True
+            break
         try:
             info = entry.lstat()
         except OSError:
@@ -495,8 +517,11 @@ def run_pass(
     references: Callable[[], ProcessReferences | None] = read_process_references,
     used_percent: Callable[[Path], float] = used_percent,
     list_cap: int = LIST_CAP,
+    budget_seconds: float | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> ModelRetentionPass:
     """One pass over one host's declared temp directories and stores."""
+    deadline = clock() + budget_seconds if budget_seconds is not None else None
     out: dict[str, Any] = {
         "removed": [],
         "busy": [],
@@ -505,6 +530,8 @@ def run_pass(
         "stores": [],
         "windows": {},
         "kept": 0,
+        "deferred": 0,
+        "budget_exhausted": False,
         "freed": 0,
         "unreadable": 0,
     }
@@ -514,6 +541,21 @@ def run_pass(
     # long scan of an earlier one is seen by the next.
     roots = list(zip(row.temp_roots, protected, strict=True))
     for index in range(len(roots) + len(row.store_ceilings)):
+        # The first root checks the deadline before its first entry. Check it here before
+        # preparing any subsequent root or store, even if the previous root finished.
+        if out["budget_exhausted"] or (
+            index > 0 and deadline is not None and clock() >= deadline
+        ):
+            out["budget_exhausted"] = True
+            if index < len(roots):
+                declared, _ = roots[index]
+                # Count names without inspecting any of the entries in this root.
+                with contextlib.suppress(OSError), os.scandir(declared.path) as entries:
+                    out["deferred"] += sum(1 for _ in entries)
+            else:
+                ceiling = row.store_ceilings[index - len(roots)]
+                out["stores"].append(f"{ceiling.path}: skipped, the pass budget ended")
+            continue
         refs = references()
         if refs is None:
             out["errors"].append(
@@ -533,6 +575,8 @@ def run_pass(
                 dry_run=dry_run,
                 refs=refs,
                 used=used_percent,
+                deadline=deadline,
+                clock=clock,
                 out=out,
             )
         else:
@@ -555,6 +599,8 @@ def run_pass(
         busy=tuple(out["busy"][:list_cap]),
         busy_count=len(out["busy"]),
         kept_count=out["kept"],
+        deferred_count=out["deferred"],
+        budget_exhausted=out["budget_exhausted"],
         unreadable_count=out["unreadable"],
         refused=tuple(out["refused"]),
         windows=out["windows"],
@@ -572,8 +618,6 @@ class HandlerTempRetention:
         now: Callable[[], float] | None = None,
         references: Callable[[], ProcessReferences | None] = read_process_references,
     ) -> None:
-        import time
-
         self.now = now or time.time
         self.references = references
 
@@ -586,4 +630,5 @@ class HandlerTempRetention:
             uid=os.getuid(),
             dry_run=request.dry_run,
             references=self.references,
+            budget_seconds=request.budget_seconds,
         )
