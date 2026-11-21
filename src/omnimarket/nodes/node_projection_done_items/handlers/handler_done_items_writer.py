@@ -26,8 +26,8 @@ from urllib.parse import urlsplit
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.events.ledger_row_parser import parse_ledger_row
 from omnimarket.handlers.done_items_fold import fold_done_items
+from omnimarket.handlers.ledger_row_parser import parse_ledger_row
 from omnimarket.models.done_items import ModelDoneItem, ModelDoneItemsRequest
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.models.model_work_ledger_projection_inbound import (

@@ -6,7 +6,7 @@
   another node's private handler or model package (omnimarket CLAUDE.md: promote
   shared types instead).
 - test_ledger_row_parser_owner_is_shared: the ledger row parser is still defined
-  in a node's private handler module instead of the shared events package.
+  in a node's private handler module instead of the shared handlers package.
 - test_old_row_parser_path_is_the_same_objects: a copy instead of a move makes
   two LedgerRowRefusalError classes, so an except clause in an importer still on
   the old path stops catching the shared parser's refusal.
@@ -52,13 +52,13 @@ def test_done_items_nodes_import_no_other_node_package() -> None:
 
 
 def test_ledger_row_parser_owner_is_shared() -> None:
-    from omnimarket.events.ledger_row_parser import parse_ledger_row
+    from omnimarket.handlers.ledger_row_parser import parse_ledger_row
 
-    assert parse_ledger_row.__module__ == "omnimarket.events.ledger_row_parser"
+    assert parse_ledger_row.__module__ == "omnimarket.handlers.ledger_row_parser"
 
 
 def test_old_row_parser_path_is_the_same_objects() -> None:
-    from omnimarket.events import ledger_row_parser as shared
+    from omnimarket.handlers import ledger_row_parser as shared
     from omnimarket.nodes.node_work_ledger_emit_effect.handlers import (
         row_parser as old,
     )

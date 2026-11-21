@@ -23,12 +23,12 @@ from typing import Any
 import pytest
 import yaml
 
-from omnimarket.events.ledger_row_parser import (
-    parse_ledger_row,
-)
 from omnimarket.events.model_ledger_row_event import (
     work_ledger_event_id,
     work_ledger_row_id,
+)
+from omnimarket.handlers.ledger_row_parser import (
+    parse_ledger_row,
 )
 from omnimarket.nodes.node_projection_done_items.handlers.handler_done_items_writer import (
     DoneItemsProjectionWriter,

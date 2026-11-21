@@ -10,12 +10,12 @@ import pytest
 import yaml
 from pydantic import TypeAdapter
 
-from omnimarket.events.ledger_row_parser import (
-    parse_ledger_row,
-)
 from omnimarket.events.model_ledger_row_event import (
     ModelLedgerRowEvent,
     ModelLedgerTerminalEvent,
+)
+from omnimarket.handlers.ledger_row_parser import (
+    parse_ledger_row,
 )
 from omnimarket.models.done_items import ModelDoneItemsRequest
 from omnimarket.nodes.node_done_items_compute.handlers.handler_done_items import (
