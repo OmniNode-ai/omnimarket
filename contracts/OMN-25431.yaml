@@ -1,0 +1,99 @@
+schema_version: 1.0.0
+ticket_id: OMN-25431
+title: Review findings 1 to 10 on omnimarket PR 6373 at head 1530b9a05211 are fixed or argued
+summary: The second review of the draft that empties subscribe_topics of node_ci_checkout_effect returned CHANGES NEEDED. The ledger checks of contracts/OMN-24951.yaml now tie the row to an h201 deploy at a revision whose node contract declares no subscribe_topics and to a read after it, reject an observed cell naming h201, carry ledger row 2214 as a failing fixture, bind a done-gate check to the h201 read, and anchor the receipt cell with a revision comparison. The golden chain reads consumers on the Kafka bus and asserts the published terminals on redpanda, and the serve test stops through an injected stop event.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25431-review-findings
+  statement: Every blocking finding of the review of omnimarket PR 6373 at head 1530b9a05211 is fixed with a test that is red before and green after, or argued with evidence in a PR comment.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the ledger checks of contracts/OMN-24951.yaml tie the row to a revision holding the contract and a read after the deploy, reject an observed cell naming h201, carry row 2214 as a fixture that must fail, and bind a done-gate check to the h201 read -- falsifier: `uv run pytest tests -k omn_24951_contract -q` run at the merge base shows the new tests red and at the new head shows them green'
+  - id: AC2
+    statement: 'AC2: the receipt check anchors `| receipt=` so it cannot match inside installer_receipt, and compares the receipt revision with the unit''s read, with a fixture that fails on a hand-typed receipt -- falsifier: `uv run pytest tests -k omn_24951_contract -q` fails at the merge base and passes at the new head'
+  - id: AC3
+    statement: 'AC3: the redpanda golden test asserts the published terminal, the subscriber count call exists on the kafka bus, and the test runs with CI_CHECKOUT_REDPANDA_BOOTSTRAP set with its output posted -- falsifier: `uv run pytest tests -k ci_checkout_golden --refuse-skips -q` exits non-zero when the redpanda test is skipped or published is not asserted'
+  - id: AC4
+    statement: 'AC4: the control asserts the built handlers are non-empty, the serve test stops through an injected stop event instead of a SIGTERM to the pytest process, and the PATH, the empty-all and the AC1 proxy checks are fixed or argued -- falsifier: `uv run pytest tests -k ci_checkout_serve -q` fails at the merge base and passes at the new head'
+  - id: AC5
+    statement: 'AC5: each finding is fixed or argued in its own PR comment with its lab output, the grep of earlier finding 6 is posted with the real provisioner read, the PR body says Refs and reports the current pass count, and a comment starting `Lab: head=<full head sha>` names the new head -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6373` shows no comment naming the new head and a body that still says Closes'
+evidence_requirements:
+- kind: tests
+  description: The node's tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_ci_checkout_effect -q -p no:cacheprovider --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25431-ac1
+  description: The contract tests run every ledger check of contracts/OMN-24951.yaml as the done gate runs it, in a scratch repository with a revision that still subscribes and one that does not; row 2214 fails every check and the h201 done-gate check needs no consumer and no failed terminal.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ci_checkout_effect/test_omn_24951_contract.py -k "row_2214 or ties_the_row_to_the_deploy or observed_cell_naming_h201 or h201_done_gate" -q -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn25431-ac2
+  description: The receipt check reads the receipt= cell itself, not installer_receipt=, and fails a receipt with no revisions or with a unit read at another revision.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ci_checkout_effect/test_omn_24951_contract.py -k ac3_receipt_check -q -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn25431-ac3
+  description: The consumer read used by the golden chain answers on an unstarted Kafka bus, which has no get_subscriber_count.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ci_checkout_effect/test_golden_chain_node_ci_checkout_effect.py -k consumer_read -q -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn25431-ac3-redpanda
+  description: The golden selection with the redpanda test runs against a broker named in CI_CHECKOUT_REDPANDA_BOOTSTRAP and refuses a skip. Hosted CI has no broker, so only the local Done gate runs it.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'test -n "$CI_CHECKOUT_REDPANDA_BOOTSTRAP" && uv run --frozen pytest tests/nodes/node_ci_checkout_effect -k ci_checkout_golden --refuse-skips -q -p no:cacheprovider --no-cov'
+    cwd: .
+- id: dod-omn25431-ac4
+  description: The serve entry point tests stop the serve through its own stop event with os.kill refused, and the golden control asserts the handler was built.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ci_checkout_effect/test_ci_checkout_serve.py tests/nodes/node_ci_checkout_effect/test_golden_chain_node_ci_checkout_effect.py -k "ci_checkout_serve or control_a_non_empty" -q -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn25431-ac5
+  description: The node tests pass at the pushed head on the hosted runner; the PR comments and the Lab comment at the new head are the PR's own comments, read by the orchestrator.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ci_checkout_effect -q -p no:cacheprovider --no-cov -m "not kafka"
+    cwd: .
+- id: dod-omn25431-ac5-head
+  description: The PR's head as the watcher reads it is the pushed head.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'onex scm pr-view OmniNode-ai/omnimarket#6373 | grep -F "\"head_sha\":\"$(git rev-parse HEAD)\""'
+    cwd: .
+- id: dod-omn25431-integration-proof
+  description: The node tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25431 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_ci_checkout_effect -q --no-cov
+    cwd: .

@@ -10,10 +10,17 @@ host's, and ends an unreadable request on the failed terminal.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import os
 import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
+import yaml
+from click.testing import CliRunner
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.delegated_test_loop.lab_run_bus import (
@@ -26,6 +33,10 @@ from omnimarket.handlers.bus_binding.select import positional_opener
 from omnimarket.handlers.scm.handler_scm_dispatch import ScmBusCaller
 from omnimarket.lab_work.bus import _bytes
 from omnimarket.models.scm import ModelScmTerminal
+from omnimarket.nodes.node_ci_checkout_effect.handlers import (
+    adapter_ci_checkout_cli,
+    adapter_ci_checkout_serve,
+)
 from omnimarket.nodes.node_ci_checkout_effect.handlers.adapter_ci_checkout_cli import (
     load_topics,
     result_from_terminal,
@@ -34,6 +45,7 @@ from omnimarket.nodes.node_ci_checkout_effect.handlers.adapter_ci_checkout_serve
     CiCheckoutHost,
     bus_options,
     host_group_id,
+    serve_group,
 )
 from omnimarket.nodes.node_ci_checkout_effect.handlers.handler_ci_checkout import (
     HandlerCiCheckout,
@@ -196,3 +208,118 @@ def test_the_bus_options_come_from_the_overlay_profile_and_the_named_variable() 
         "omnibase_path": Path("/workspace"),
     }
     assert bus_options(deployment, "inmemory", {})["bus"] == "inmemory"
+
+
+COMMAND_TOPIC_LITERAL = "onex.cmd.omnimarket.ci-checkout-requested.v1"
+
+
+class _InjectedStop(asyncio.Event):
+    """The serve's stop event, recorded as it is made so the test sets it instead of signalling a process."""
+
+    made: list[_InjectedStop] = []
+
+    def __init__(self) -> None:
+        super().__init__()
+        _InjectedStop.made.append(self)
+
+
+class _RecordingBus:
+    """An open bus that records each subscription, then sets the serve's own stop event (what SIGTERM sets)."""
+
+    def __init__(self, bus: ProtocolLabRunBus) -> None:
+        self._bus = bus
+        self.subscribed: list[str] = []
+
+    async def publish(self, topic: str, key: bytes | None, value: bytes) -> None:
+        await self._bus.publish(topic, key, value)
+
+    async def subscribe(self, topic: str, on_message: Any, group_id: str) -> Any:
+        unsubscribe = await self._bus.subscribe(
+            topic, on_message=on_message, group_id=group_id
+        )
+        self.subscribed.append(topic)
+        assert len(_InjectedStop.made) == 1, (
+            "serve made no stop event before it subscribed"
+        )
+        _InjectedStop.made[0].set()
+        return unsubscribe
+
+
+def _run_serve_entry_point(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[int, list[str]]:
+    """Run ``ci-checkout serve`` through its click entry point on an in-memory bus; return the exit code and subscribed topics."""
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text(yaml.safe_dump(deployment_document(tmp_path / "mirrors")))
+    recorders: list[_RecordingBus] = []
+
+    @contextlib.asynccontextmanager
+    async def open_bus(_opts: dict[str, object]) -> AsyncIterator[_RecordingBus]:
+        async with positional_opener(open_lab_run_bus)(
+            "inmemory", None, None, None
+        ) as bus:
+            recorder = _RecordingBus(bus)
+            recorders.append(recorder)
+            yield recorder
+
+    monkeypatch.setattr(adapter_ci_checkout_serve, "_open_bus", open_bus)
+
+    def refuse_signal(pid: int, sig: int) -> None:
+        raise AssertionError(f"the test sent signal {sig} to process {pid}")
+
+    # A signal sent to the pytest process kills the whole run when it lands before serve installs its
+    # handler; the serve is stopped through its own stop event instead.
+    monkeypatch.setattr(os, "kill", refuse_signal)
+    _InjectedStop.made.clear()
+    # Only the serve module's own name for asyncio sees the recording Event; asyncio itself is untouched.
+    monkeypatch.setattr(
+        adapter_ci_checkout_serve,
+        "asyncio",
+        SimpleNamespace(**{**vars(asyncio), "Event": _InjectedStop}),
+    )
+    result = CliRunner().invoke(
+        serve_group,
+        ["serve", "--overlay", str(overlay), "--host-name", HOST],
+        catch_exceptions=False,
+    )
+    assert len(recorders) == 1, "the serve entry point opened no bus"
+    return result.exit_code, recorders[0].subscribed
+
+
+def test_ci_checkout_serve_entry_point_subscribes_the_contract_command_topic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``ci-checkout serve`` listens on runtime_dispatch.command_topic, now the only place the topic is declared."""
+    contract = yaml.safe_load(
+        (
+            Path(adapter_ci_checkout_cli.__file__).resolve().parents[1]
+            / "contract.yaml"
+        ).read_text()
+    )
+    assert contract["event_bus"]["subscribe_topics"] == []
+    exit_code, subscribed = _run_serve_entry_point(tmp_path, monkeypatch)
+    assert exit_code == 0
+    assert subscribed == [contract["runtime_dispatch"]["command_topic"]]
+    assert subscribed == [COMMAND_TOPIC_LITERAL]
+
+
+def test_ci_checkout_serve_entry_point_follows_the_command_topic_of_the_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Failing control for a hard-coded topic: change runtime_dispatch.command_topic and the serve follows it."""
+    package_dir = Path(adapter_ci_checkout_cli.__file__).resolve().parents[1]
+    contract = yaml.safe_load((package_dir / "contract.yaml").read_text())
+    contract["runtime_dispatch"]["command_topic"] = (
+        "onex.cmd.omnimarket.ci-checkout-requested-probe.v1"
+    )
+    (tmp_path / "package").mkdir()
+    (tmp_path / "package" / "contract.yaml").write_text(yaml.safe_dump(contract))
+    monkeypatch.setattr(
+        adapter_ci_checkout_cli,
+        "resources",
+        SimpleNamespace(files=lambda _package: tmp_path / "package"),
+    )
+    exit_code, subscribed = _run_serve_entry_point(tmp_path, monkeypatch)
+    assert exit_code == 0
+    assert subscribed == ["onex.cmd.omnimarket.ci-checkout-requested-probe.v1"]
+    assert COMMAND_TOPIC_LITERAL not in subscribed

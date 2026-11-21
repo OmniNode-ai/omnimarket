@@ -66,6 +66,29 @@ def test_command_and_terminal_topics() -> None:
     )
 
 
+def test_contract_declares_an_empty_subscribe_topics_and_keeps_the_command_topic() -> (
+    None
+):
+    """The contract text only: empty subscribe_topics, the command topic kept in runtime_dispatch.
+
+    This mirrors the YAML. That the shared runtime then wires nothing is proven by the golden chain tests
+    (test_ci_checkout_golden_*), which run the runtime's own wiring over this contract.
+
+    A non-empty subscribe_topics made the dev runtime build the handler with no host name or
+    overlay, so each request failed there and a failed terminal raced the serve host's answer.
+    """
+    node = resources.files("omnimarket.nodes.node_ci_checkout_effect")
+    contract = yaml.safe_load(node.joinpath("contract.yaml").read_text())
+    assert contract["event_bus"]["subscribe_topics"] == []
+    assert contract["runtime_dispatch"]["command_topic"] == (
+        "onex.cmd.omnimarket.ci-checkout-requested.v1"
+    )
+    assert set(contract["event_bus"]["publish_topics"]) == {
+        "onex.evt.omnimarket.ci-checkout-completed.v1",
+        "onex.evt.omnimarket.ci-checkout-failed.v1",
+    }
+
+
 ACTION = (
     Path(__file__).resolve().parents[3]
     / ".github"

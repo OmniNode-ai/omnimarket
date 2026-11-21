@@ -1,0 +1,97 @@
+schema_version: 1.0.0
+ticket_id: OMN-25397
+title: Review findings 1 to 10 on omnimarket PR 6373 at head 9c8f6b3c3757 are fixed or argued
+summary: The review of the draft that empties subscribe_topics of node_ci_checkout_effect returned CHANGES NEEDED. The ticket contract of the draft now names the per-host serve on h051 and binds its criteria to ledger and receipt checks, the golden test proves the node is loaded and wired to nothing (with a control that attaches), collects every terminal for the correlation id, stops the host in a finally, and a test through the ci-checkout serve entry point shows the command topic comes from runtime_dispatch.command_topic. The readers of event_bus.subscribe_topics are read and tested on the empty list.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25397-review-findings
+  statement: Every blocking finding of the review of omnimarket PR 6373 at head 9c8f6b3c3757 is fixed with a test that is red before and green after, or argued with evidence in a PR comment.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: AC1 of contracts/OMN-24951.yaml is reworded to the per-host serve on h051 with a ledger row check that can fail, and AC2 and AC3 bind to ledger and receipt checks instead of a pytest run -- falsifier: `uv run pytest tests -k OMN_24951_contract -q` run at the merge base shows the new tests red and at the new head shows them green'
+  - id: AC2
+    statement: 'AC2: the golden test asserts the node is loaded in the manifest and the bus has zero command-topic subscribers before host.start(), with a control where a non-empty subscribe_topics does attach -- falsifier: `uv run pytest tests -k ci_checkout_golden -q` fails when the contract keeps a non-empty subscribe_topics or when the node is not discovered'
+  - id: AC3
+    statement: 'AC3: the golden test collects every terminal for the correlation id and asserts exactly one terminal and none on ci-checkout-failed, and a test through the `ci-checkout serve` entry point shows the topic comes from runtime_dispatch.command_topic -- falsifier: `uv run pytest tests -k ci_checkout_serve -q` fails at the merge base and passes at the new head'
+  - id: AC4
+    statement: 'AC4: the readers of event_bus.subscribe_topics (the serve adapter, load_topics, topic provisioning, any lint requiring a non-empty list, and any auto-wired path with ONEX_CI_CHECKOUT_HOST_NAME set) are grepped with the result posted and any reader that breaks on an empty list is repaired with a test -- falsifier: `uv run pytest tests -k subscribe_topics_readers -q` fails on an empty list at the merge base and passes at the new head'
+  - id: AC5
+    statement: 'AC5: the contract command is run on the lab at the new head with its output showing the golden test ids (in parts, with the parts named, if the whole run times out) in a comment that starts `Lab: head=<full head sha>` -- falsifier: `uv run pytest tests -k ci_checkout --refuse-skips -q` on the lab exits non-zero when any selected test is skipped'
+  - id: AC6
+    statement: 'AC6: findings 8, 9 and 10 are each fixed or argued in a PR comment that names the evidence, host.stop() sits in a try/finally, and the PR comment names the new head -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6373` shows no comment naming the new head and none answering findings 8, 9 and 10'
+evidence_requirements:
+- kind: tests
+  description: The node's tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_ci_checkout_effect -q -p no:cacheprovider --no-cov -m "not kafka" --refuse-skips
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25397-ac1
+  description: The new contract tests read contracts/OMN-24951.yaml; against the file as it stood at the reviewed head they are red, against the reworded file green.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ci_checkout_effect/test_omn_24951_contract.py -k OMN_24951_contract -q -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn25397-ac2
+  description: The golden chain tests assert the node is in the manifest, the runtime's own report skipped it, nothing attached and zero subscribers on the command topic before host.start(), and a control with a non-empty subscribe_topics attaches.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ci_checkout_effect/test_golden_chain_node_ci_checkout_effect.py -k ci_checkout_golden -q -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn25397-ac3
+  description: The golden chains collect every terminal for the correlation id and the serve entry point is run through its click command, with a probe contract whose command topic differs.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ci_checkout_effect/test_ci_checkout_serve.py tests/nodes/node_ci_checkout_effect/test_golden_chain_node_ci_checkout_effect.py -k "ci_checkout_serve or ci_checkout_golden" -q -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn25397-ac4
+  description: Each repo reader of event_bus.subscribe_topics (the contract topic helper, the serve adapter's topic loader, topic provisioning, the topic graph, the seam extraction, the golden chain generator) is run on the node's empty list.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ci_checkout_effect/test_ci_checkout_subscribe_topics_readers.py -k subscribe_topics_readers -q -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn25397-ac5-integration-proof
+  description: The contract's own command (no marker filter) is run on the lab at the pushed head and its output, with the golden test ids, is the PR's Lab comment. Hosted CI cannot read the lab, so only the local Done gate runs it. The broker-backed golden test is kafka-marked and skips without a lab broker, so the refuse-skips run deselects that marker.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25397 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_ci_checkout_effect -q --no-cov -m "not kafka" --refuse-skips
+    cwd: .
+- id: dod-omn25397-ac5-hosted
+  description: The same node tests run on the hosted runner without the broker-backed test.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ci_checkout_effect -q -p no:cacheprovider --no-cov -m "not kafka" --refuse-skips
+    cwd: .
+- id: dod-omn25397-ac6
+  description: host.stop() sits in a finally in the golden chain helper, and the golden tests pass; the PR comment answering findings 8, 9 and 10 at the new head is the PR's own comment, read by the orchestrator.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'grep -B3 -F "await host.stop()" tests/nodes/node_ci_checkout_effect/test_golden_chain_node_ci_checkout_effect.py | grep -F "finally:"'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ci_checkout_effect/test_golden_chain_node_ci_checkout_effect.py -k ci_checkout_golden -q -p no:cacheprovider --no-cov
+    cwd: .
