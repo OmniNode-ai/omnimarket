@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Adapters of the lane dispatcher: the lane-brief skill through ``claude -p``, the remote-lane runner and the ledger append command.
+"""Adapters of the lane dispatcher: the lane-brief skill's scripts, the remote-lane runner and the ledger bus publisher.
 
 Every external call carries a timeout of ``CALL_TIMEOUT_SECONDS`` (600 s, the longest a Bash call may name), and the
 adapters run one call at a time because the handler does.
@@ -8,6 +8,7 @@ adapters run one call at a time because the handler does.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import uuid
@@ -46,69 +47,99 @@ def _run(
     )
 
 
-class SkillBriefBuilder:
-    """Builds a lane brief through the lane-brief skill in one ``claude -p`` call, then runs the skill's own check on the file."""
+class ScriptBriefBuilder:
+    """Builds a lane brief from the lane-brief skill's own scripts, then runs the skill's check on the file.
+
+    The five parts are the skill's order: premise table, task, the committed standing rules block
+    (``scripts/lane_rules_block.py``), the generated 3a constraints (``lane_brief.py constraints``) and the report. No model
+    writes any of it, so the dispatcher needs no Claude login of its own. The landing ruling, model, effort, repository and
+    scope sentence are the dispatcher's declared defaults below; a request carries only lane, ticket, host and task.
+    """
+
+    LANDING_LANE = "landing-controller"
+    LANDING_RULING_LANE = "orchestrator-83"
+    LANDING_RULING = "2026-09-29T06:34:17Z"
+    MODEL = "claude-sonnet-5-5"
+    EFFORT = "medium"
+    REPO = "omnimarket"
+    OUT_OF_SCOPE = "prod, any manual restart of dev, hand edits on a lab host outside declared config, merging or arming any PR"
 
     def __init__(
-        self,
-        claude: str,
-        plugin_root: Path,
-        scratch: Path,
-        model: str = "sonnet",
-        run: Run = subprocess.run,
+        self, plugin_root: Path, scratch: Path, run: Run = subprocess.run
     ) -> None:
-        self._claude, self._plugin_root, self._scratch, self._model, self._run = (
-            claude,
-            plugin_root,
-            scratch,
-            model,
-            run,
-        )
+        self._plugin_root, self._scratch, self._run = plugin_root, scratch, run
 
-    def build(self, request: ModelPlacementRequest) -> Path:
+    def _script(self, relative: str, *args: str) -> subprocess.CompletedProcess[str]:
+        env = {**os.environ, "CLAUDE_PLUGIN_ROOT": str(self._plugin_root)}
+        try:
+            return _run(
+                ["python3", str(self._plugin_root / relative), *args],
+                self._run,
+                env=env,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise BriefError(f"{relative} ran over {CALL_TIMEOUT_SECONDS} s") from exc
+
+    def build(self, request: ModelPlacementRequest, parent: str) -> Path:
         self._scratch.mkdir(parents=True, exist_ok=True)
         path = self._scratch / f"{request.lane}-brief.md"
-        prompt = (
-            f"Use the omni:lane-brief skill to write the brief for lane {request.lane} on ticket {request.ticket}"
-            + (
-                f", pinned to host {request.host}"
-                if request.host not in ("", "any")
-                else ""
-            )
-            + f". Write it to {path} and run the skill's check on it until it prints PASS. "
-            f"The lane's task, verbatim:\n\n{request.task}\n"
+        constraints = self._scratch / f"{request.lane}-constraints.md"
+        rules = self._script("scripts/lane_rules_block.py")
+        if rules.returncode != 0 or not rules.stdout.strip():
+            raise BriefError(f"lane_rules_block.py exit {rules.returncode}")
+        made = self._script(
+            "skills/lane-brief/scripts/lane_brief.py",
+            "constraints",
+            "--lane",
+            request.lane,
+            "--parent",
+            parent,
+            "--landing-lane",
+            self.LANDING_LANE,
+            "--landing-ruling-lane",
+            self.LANDING_RULING_LANE,
+            "--landing-ruling",
+            self.LANDING_RULING,
+            "--ticket",
+            request.ticket,
+            "--model",
+            self.MODEL,
+            "--effort",
+            self.EFFORT,
+            "--out-of-scope",
+            self.OUT_OF_SCOPE,
+            "--repo",
+            self.REPO,
+            "--actor",
+            "claude:sonnet:labdispatch",
+            "--out",
+            str(constraints),
         )
-        try:
-            done = _run(
-                [
-                    self._claude,
-                    "-p",
-                    "--model",
-                    self._model,
-                    "--permission-mode",
-                    "acceptEdits",
-                    "--allowedTools",
-                    "Bash Read Write Skill",
-                    prompt,
-                ],
-                self._run,
+        if made.returncode != 0 or not constraints.is_file():
+            raise BriefError(
+                f"lane_brief.py constraints exit {made.returncode}: {(made.stderr or made.stdout).strip()[-200:]}"
             )
-        except subprocess.TimeoutExpired as exc:
-            raise BriefError(f"claude -p ran over {CALL_TIMEOUT_SECONDS} s") from exc
-        if done.returncode != 0 or not path.is_file():
+        pin = (
+            f"Required host: {request.host}\n\n"
+            if request.host not in ("", "any")
+            else ""
+        )
+        path.write_text(
+            f"# Lane brief: {request.lane}\n\nLane: {request.lane}\nLane kind: ticket.\nTicket: {request.ticket}.\n\n{pin}"
+            "## 1. Premise table\n\n| # | Premise | Status |\n| -- | -- | -- |\n"
+            "| P1 | The task in section 2 was sent to labdispatch in a ledger MSG row. "
+            "| verified by: the dispatcher parsed the requests cell of that row |\n\n"
+            f"## 2. Task\n\n{request.task}\n\n## 3. Rules (standing block, pasted)\n\n{rules.stdout}\n"
+            f"{constraints.read_text(encoding='utf-8')}\n"
+            "## 4. Report\n\nEnd with `LANE_RESULT outcome=<value>` on its own line and the DELEGATION line the runner asks for.\n",
+            encoding="utf-8",
+        )
+        check = self._script(
+            "skills/lane-brief/scripts/lane_brief.py", "check", str(path)
+        )
+        if check.returncode != 0 or "REFUSED" in check.stdout:
             raise BriefError(
-                f"claude -p exit {done.returncode}; brief file {'present' if path.is_file() else 'absent'}"
-            )
-        checker = self._plugin_root / "skills/lane-brief/scripts/lane_brief.py"
-        try:
-            check = _run(["python3", str(checker), "check", str(path)], self._run)
-        except subprocess.TimeoutExpired as exc:
-            raise BriefError(
-                f"lane_brief.py check ran over {CALL_TIMEOUT_SECONDS} s"
-            ) from exc
-        if check.returncode != 0:
-            raise BriefError(
-                f"lane_brief.py check exit {check.returncode}: {check.stdout.strip()[-200:]}"
+                f"lane_brief.py check refused: {check.stdout.strip()[-300:]}"
             )
         return path
 

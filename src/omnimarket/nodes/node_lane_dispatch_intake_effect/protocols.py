@@ -14,7 +14,7 @@ from omnimarket.nodes.node_lane_dispatch_intake_effect.models.model_lane_dispatc
 
 
 class ProtocolBriefBuilder(Protocol):
-    def build(self, request: ModelPlacementRequest) -> Path:
+    def build(self, request: ModelPlacementRequest, parent: str) -> Path:
         """Write and check the lane's brief; return its path. Raises ``BriefError`` when no brief passes the check."""
         ...
 

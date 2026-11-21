@@ -191,7 +191,7 @@ class HandlerLaneDispatchIntake:
         self, item: ModelPlacementRequest, key: str, parent: str
     ) -> ModelPlacementOutcome:
         try:
-            brief = self._briefs.build(item)
+            brief = self._briefs.build(item, parent)
         except BriefError as exc:
             return ModelPlacementOutcome(
                 key=key,

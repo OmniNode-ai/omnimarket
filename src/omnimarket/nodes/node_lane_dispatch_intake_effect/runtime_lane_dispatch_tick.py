@@ -14,7 +14,6 @@ import argparse
 import json
 import os
 import shlex
-import shutil
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -22,7 +21,7 @@ from pathlib import Path
 from omnimarket.nodes.node_lane_dispatch_intake_effect.handlers.adapter_lane_dispatch import (
     BusRowWriter,
     RemoteLanePlacer,
-    SkillBriefBuilder,
+    ScriptBriefBuilder,
 )
 from omnimarket.nodes.node_lane_dispatch_intake_effect.handlers.handler_lane_dispatch_intake import (
     HandlerLaneDispatchIntake,
@@ -98,9 +97,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 3
     plugin_root = Path(os.environ[PLUGIN_ROOT_ENV])
-    claude = shutil.which("claude") or ""
     handler = HandlerLaneDispatchIntake(
-        SkillBriefBuilder(claude, plugin_root, args.state_dir / "briefs"),
+        ScriptBriefBuilder(plugin_root, args.state_dir / "briefs"),
         RemoteLanePlacer(
             plugin_root / RUNNER_RELATIVE,
             os.environ.get("ONEX_LANE_DISPATCH_PARENT", "labdispatch"),

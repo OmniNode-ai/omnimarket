@@ -132,7 +132,7 @@ class Ports:
         self.statuses = statuses or {}
         self.brief_fails = brief_fails or set()
 
-    def build(self, request: ModelPlacementRequest) -> Path:
+    def build(self, request: ModelPlacementRequest, parent: str) -> Path:
         self._enter(f"build:{request.lane}")
         try:
             if request.lane in self.brief_fails:
@@ -307,25 +307,64 @@ def test_the_placer_reads_exit_75_as_no_host_and_a_timeout_as_failed() -> None:
     assert slow.exit_code == 124
 
 
-def test_the_brief_builder_runs_claude_then_the_skill_check_each_with_the_timeout(
+def test_the_brief_builder_uses_the_skill_scripts_in_order_with_the_timeout_and_no_model(
     tmp_path: Path,
 ) -> None:
     calls: list[tuple[list[str], dict[str, object]]] = []
 
     def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append((argv, kwargs))
-        if argv[0] == "claude":
-            (tmp_path / "lane-a-brief.md").write_text("brief")
-        return subprocess.CompletedProcess(argv, 0, "PASS", "")
+        name = Path(argv[1]).name
+        if name == "lane_rules_block.py":
+            return subprocess.CompletedProcess(argv, 0, "# Standing rules\n", "")
+        if argv[2] == "constraints":
+            Path(argv[argv.index("--out") + 1]).write_text(
+                "## 3a. Constraints (pasted, never paraphrased)\n"
+            )
+            return subprocess.CompletedProcess(argv, 0, "wrote", "")
+        return subprocess.CompletedProcess(argv, 0, "check x: PASS", "")
 
-    path = adapter.SkillBriefBuilder(
-        "claude", Path("/plugin"), tmp_path, run=run
-    ).build(_req("lane-a"))
-    assert path == tmp_path / "lane-a-brief.md"
-    assert calls[0][0][0] == "claude"
-    assert "omni:lane-brief" in calls[0][0][-1]
-    assert calls[1][0][-2:] == ["check", str(path)]
-    assert all(k["timeout"] == 600 for _, k in calls)
+    request = _req("lane-a", "h201")
+    path = adapter.ScriptBriefBuilder(Path("/plugin"), tmp_path, run=run).build(
+        request, "orch"
+    )
+    text = path.read_text()
+    assert [Path(argv[1]).name for argv, _ in calls] == [
+        "lane_rules_block.py",
+        "lane_brief.py",
+        "lane_brief.py",
+    ]
+    assert [argv[2] for argv, _ in calls[1:]] == ["constraints", "check"]
+    assert all(kwargs["timeout"] == 600 for _, kwargs in calls)
+    assert all("claude" not in argv[0] for argv, _ in calls)
+    assert calls[1][0][calls[1][0].index("--parent") + 1] == "orch"
+    assert "Required host: h201" in text
+    assert "print the hostname" in text
+    assert (
+        text.index("## 2. Task")
+        < text.index("# Standing rules")
+        < text.index("## 3a. Constraints")
+        < text.index("## 4. Report")
+    )
+
+
+def test_the_brief_builder_refuses_a_brief_the_skill_check_refuses(
+    tmp_path: Path,
+) -> None:
+    def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if Path(argv[1]).name == "lane_rules_block.py":
+            return subprocess.CompletedProcess(argv, 0, "# rules\n", "")
+        if argv[2] == "constraints":
+            Path(argv[argv.index("--out") + 1]).write_text("## 3a\n")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        return subprocess.CompletedProcess(
+            argv, 0, "REFUSED OMN-10001 is held by lane x", ""
+        )
+
+    with pytest.raises(BriefError, match="check refused"):
+        adapter.ScriptBriefBuilder(Path("/plugin"), tmp_path, run=run).build(
+            _req("lane-a"), "orch"
+        )
 
 
 def test_the_tick_exits_3_when_the_unit_declares_no_ledger_or_append_command(
