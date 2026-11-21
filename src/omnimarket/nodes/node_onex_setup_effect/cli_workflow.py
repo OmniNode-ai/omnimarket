@@ -66,9 +66,9 @@ def _refuse_a_shared_credential_slot(
             raise click.ClickException(
                 f"{owners[slot]} and {name} would share the {slot} credential slot, "
                 "which holds one key. Run setup again and give the server you are "
-                "adding a named connection with --connection NAME (a named "
-                "connection becomes the default route), or choose a provider that "
-                "does not use this slot."
+                "adding a new named connection with --connection NEW_NAME, a name "
+                "no saved connection uses (it becomes the default route), or "
+                "choose a provider that does not use this slot."
             )
         owners[slot] = name
 
