@@ -70,6 +70,7 @@ from omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_d
     HandlerLabAlarmDeliver,
 )
 from omnimarket.nodes.node_lab_alarm_deliver_effect.overlay import ModelDeliveryOverlay
+from tests.helpers.fake_ledger_rows import FakeLedgerRows
 
 pytestmark = pytest.mark.unit
 
@@ -206,9 +207,17 @@ class Planted:
         env.update(extra)
         return env
 
-    def handler(self, **extra: str) -> HandlerCanonicalCloneDirtyConvergeEffect:
+    def handler(
+        self,
+        ledger: FakeLedgerRows | None = None,
+        **extra: str,
+    ) -> HandlerCanonicalCloneDirtyConvergeEffect:
+        """The handler; its CLAIMs come from ``ledger`` (the reader node's rows), none by default."""
         return HandlerCanonicalCloneDirtyConvergeEffect(
-            self.home, env=self.env(**extra), engine_argv=self.engine_argv
+            self.home,
+            env=self.env(**extra),
+            engine_argv=self.engine_argv,
+            ledger_reader=ledger if ledger is not None else FakeLedgerRows(),
         )
 
     def refuse_for(
@@ -368,31 +377,66 @@ def test_local_commits_on_a_dirty_clone_are_refused_and_named(
 def test_a_clone_an_open_claim_names_is_left_alone(
     staged_case: Planted, tmp_path: Path
 ) -> None:
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text(
+    # The ledger file says nothing about the clone: the CLAIM reaches the tick only through the reader node.
+    file_ledger = tmp_path / "ledger.md"
+    file_ledger.write_text("")
+    claim = (
         "2026-10-31T10:00:00Z | CLAIM | lane=other-lane | ticket=OMN-1 | works in "
-        f"{staged_case.clone} right now\n"
+        f"{staged_case.clone} right now"
     )
+    ledger = FakeLedgerRows([claim])
     handler = staged_case.handler(
-        **{AGE_ENV: str(AGE), "ONEX_LEDGER_PATH": str(ledger)}
+        ledger, **{AGE_ENV: str(AGE), "ONEX_LEDGER_PATH": str(file_ledger)}
     )
     staged_case.refuse_for(handler, 3 * AGE)
     (outcome,) = handler.tick()
     assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
     assert "other-lane" in outcome.reason
+    assert ledger.calls == [("clone-dirty-converge-claims", 168, ("CLAIM", "TERMINAL"))]
     assert (
         _git("diff", "--cached", "--name-only", cwd=staged_case.clone) == "a.txt\nb.txt"
     )
-    ledger.write_text(
-        ledger.read_text()
-        + "2026-10-31T11:00:00Z | TERMINAL | lane=other-lane | ticket=OMN-1 | done\n"
+    ledger.lines.append(
+        "2026-10-31T11:00:00Z | TERMINAL | lane=other-lane | ticket=OMN-1 | done"
     )
     assert (
-        staged_case.handler(
-            **{AGE_ENV: str(AGE), "ONEX_LEDGER_PATH": str(ledger)}
-        )._open_claim_naming(staged_case.clone)
+        staged_case.handler(ledger, **{AGE_ENV: str(AGE)})._open_claim_naming(
+            staged_case.clone
+        )
         == ""
     )
+
+
+def test_a_ledger_the_reader_cannot_read_leaves_the_clone_alone(
+    staged_case: Planted,
+) -> None:
+    ledger = FakeLedgerRows(
+        error="reader clone-dirty-converge-claims exited 3: not-moved"
+    )
+    handler = staged_case.handler(ledger, **{AGE_ENV: str(AGE)})
+    staged_case.refuse_for(handler, 3 * AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert "ledger could not be read" in outcome.reason
+    assert "not-moved" in outcome.reason
+    assert (
+        _git("diff", "--cached", "--name-only", cwd=staged_case.clone) == "a.txt\nb.txt"
+    )
+
+
+def test_an_unset_ledger_interpreter_leaves_the_clone_alone(
+    staged_case: Planted,
+) -> None:
+    handler = HandlerCanonicalCloneDirtyConvergeEffect(
+        staged_case.home,
+        env=staged_case.env(**{AGE_ENV: str(AGE)})
+        | {"ONEX_LEDGER_BUS_APPEND_COMMAND": ""},
+        engine_argv=staged_case.engine_argv,
+    )
+    staged_case.refuse_for(handler, 3 * AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert "ONEX_LEDGER_BUS_APPEND_COMMAND is not set" in outcome.reason
 
 
 def test_a_clone_a_process_works_inside_is_left_alone(staged_case: Planted) -> None:
@@ -509,17 +553,14 @@ def test_lab_clone_detached_reconcile_that_cannot_fails_loud(
 def test_a_detached_clone_an_open_claim_names_is_left_alone(
     detached_case: Planted, tmp_path: Path
 ) -> None:
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text(
-        "2026-11-03T10:00:00Z | CLAIM | lane=other-lane | ticket=OMN-1 | works in "
-        f"{detached_case.clone} right now\n"
+    ledger = FakeLedgerRows(
+        [
+            "2026-11-03T10:00:00Z | CLAIM | lane=other-lane | ticket=OMN-1 | works in "
+            f"{detached_case.clone} right now"
+        ]
     )
     handler = detached_case.handler(
-        **{
-            AGE_ENV: str(AGE),
-            DETACHED_AGE_ENV: str(DETACHED_AGE),
-            "ONEX_LEDGER_PATH": str(ledger),
-        }
+        ledger, **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
     )
     _report_detached(handler, detached_case, 2 * DETACHED_AGE)
     (outcome,) = handler.tick()
@@ -865,17 +906,14 @@ def test_a_bare_flagged_clone_below_the_age_is_left_alone(
 def test_a_bare_flagged_clone_an_open_claim_names_is_left_alone(
     bare_flagged_case: Planted, tmp_path: Path
 ) -> None:
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text(
-        "2026-11-03T10:00:00Z | CLAIM | lane=other-lane | ticket=OMN-1 | works in "
-        f"{bare_flagged_case.clone} right now\n"
+    ledger = FakeLedgerRows(
+        [
+            "2026-11-03T10:00:00Z | CLAIM | lane=other-lane | ticket=OMN-1 | works in "
+            f"{bare_flagged_case.clone} right now"
+        ]
     )
     handler = bare_flagged_case.handler(
-        **{
-            AGE_ENV: str(AGE),
-            DETACHED_AGE_ENV: str(DETACHED_AGE),
-            "ONEX_LEDGER_PATH": str(ledger),
-        }
+        ledger, **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
     )
     _report_bare(handler, bare_flagged_case, 2 * DETACHED_AGE)
     (outcome,) = handler.tick()
