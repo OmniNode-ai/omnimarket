@@ -1,0 +1,117 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Test Selector Nightly Sender Scheduled Effect
+#
+# Sends the nightly collector's two commands on the runtime tick, in place of a lab host poller or timer unit. Shape of
+# node_c32_probe_scheduled_effect: it subscribes to the runtime scheduler's tick, gates on its own overlay and returns its
+# terminal event for the runtime to publish. After the nightly workflow's scheduled run for a slot date is terminal it sends
+# collect_nightly for that date and, only when the answer is collected, publish_attribution_record for the same date.
+name: node_test_selector_nightly_sender_scheduled_effect
+contract_name: node_test_selector_nightly_sender_scheduled_effect
+node_name: node_test_selector_nightly_sender_scheduled_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  On the runtime's tick, finds the nightly workflow's scheduled run for the current slot date through the repository
+  gateway, sends the collect command for that date once the run is terminal and the publish command only after a collected
+  answer, and keeps a record of the nights it has settled under the runtime's state directory. A night that cannot be sent
+  within the collector's lag of its slot is a failed run event that names the date and the reason, never a silent skip.
+
+handler:
+  module: omnimarket.nodes.node_test_selector_nightly_sender_scheduled_effect.handlers.handler_nightly_sender_scheduled
+  class: HandlerNightlySenderScheduled
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: nightly_sender.scheduled_tick
+      handler:
+        name: HandlerNightlySenderScheduled
+        module: omnimarket.nodes.node_test_selector_nightly_sender_scheduled_effect.handlers.handler_nightly_sender_scheduled
+      handler_module: omnimarket.nodes.node_test_selector_nightly_sender_scheduled_effect.handlers.handler_nightly_sender_scheduled
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: >
+        Gate on the overlay's run_interval_seconds, look for the slot's nightly run, send the collect and publish commands
+        when it is terminal and return the run event.
+
+input_model:
+  name: ModelRuntimeTick
+  module: omnibase_infra.runtime.models.model_runtime_tick
+  description: The runtime scheduler's tick.
+output_model:
+  name: ModelScheduleRunEvent
+  module: omnimarket.models.schedule_trigger.model_schedule_trigger
+  description: "One scheduled job run, with when it was scheduled, when it fired and how it went."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  # One tick sends at most two commands, each awaited up to the overlay's command_timeout_seconds, after one gateway read.
+  timeout_ms: 480000
+  side_effects:
+    - reads the nightly workflow's runs through the repository gateway node
+    - publishes the collect and publish commands of the nightly collector and awaits their terminal events
+    - writes the record of settled nights under the runtime's state directory
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "nightly_sender.scheduled_tick"
+
+terminal_event: onex.evt.omnimarket.schedule-run.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.intent.platform.runtime-tick.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.schedule-run.v1"
+    - "onex.cmd.omnimarket.test-selector-collect-nightly-requested.v1"
+    - "onex.cmd.omnimarket.test-selector-publish-record-requested.v1"
+
+published_events:
+  - event_type: ModelScheduleRunEvent
+    topic: onex.evt.omnimarket.schedule-run.v1
+    description: "One scheduled nightly sender run."
+
+# The two commands this node sends and the terminal event that answers each. The topics are the nightly collector's own
+# contract's (its externally produced command topics and its two published events); the collector is a separate node.
+command_sends:
+  - operation: collect_nightly
+    command_topic: onex.cmd.omnimarket.test-selector-collect-nightly-requested.v1
+    terminal_topic: onex.evt.omnimarket.test-selector-collect-completed.v1
+  - operation: publish_attribution_record
+    command_topic: onex.cmd.omnimarket.test-selector-publish-record-requested.v1
+    terminal_topic: onex.evt.omnimarket.test-selector-record-published.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.schedule-run.v1
+
+# Where the schedule reads its settings. The overlays are found under ONEX_SKILL_OVERLAY_ROOTS or the file the env var names.
+runtime:
+  schedule_overlay: {overlay_id: node_test_selector_nightly_sender_scheduled_effect, model: omnimarket.nodes.node_test_selector_nightly_sender_scheduled_effect.models.model_nightly_sender_schedule_overlay.ModelNightlySenderScheduleOverlay}
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-collect-nightly-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-collect-nightly-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-publish-record-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-publish-record-requested.v1, operation: DESCRIBE}
+      # The terminal events are read to find the answer to each command.
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-selector-collect-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-selector-collect-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-selector-record-published.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-selector-record-published.v1, operation: DESCRIBE}
+
+metadata:
+  transport_type: kafka
