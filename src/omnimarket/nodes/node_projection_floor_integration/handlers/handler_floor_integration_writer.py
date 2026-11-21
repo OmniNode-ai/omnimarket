@@ -15,7 +15,9 @@ pass as it was. An older pass, or the held pass re-sent with the same content
 or an out-of-order delivery leaves the same rows; a pass with the held
 ``as_of`` but corrected content replaces the held rows. A delta whose publish
 fails after the pass committed is not published again: the redelivered pass
-matches what the table holds and is skipped. An empty newer pass leaves no rows. A payload
+matches what the table holds and is skipped. An empty newer pass leaves no rows, and
+the held pass is kept in table floor_integration_pass, so a late older pass after it
+still changes nothing. A payload
 that is not a pass is refused before the store is opened, so it goes to the
 contract's DLQ topic whether or not the database answers. The dashboard's
 Running figure is the number of rows whose ``state`` is ``running``, which
@@ -62,6 +64,8 @@ from omnimarket.projection.sqlite_database import (
 
 SCHEMA = "omninode_internal"
 TABLE = "floor_integration_rows"
+#: One row: the newest applied pass, kept even when that pass had no rows (AC6).
+MARKER_TABLE = "floor_integration_pass"
 COLUMNS = (
     "key",
     "repository",
@@ -103,9 +107,21 @@ def upsert_statement(relation: str) -> str:
     )
 
 
-def held_as_of_statement(relation: str) -> str:
-    """The newest pass the table holds."""
-    return f"SELECT MAX(as_of) AS as_of FROM {relation}"
+def held_as_of_statement(relation: str, marker: str) -> str:
+    """The pass the table holds: the marker's, or, before any pass wrote one, the rows' newest."""
+    return (
+        f"SELECT COALESCE((SELECT as_of FROM {marker} WHERE id = 1), "
+        f"(SELECT MAX(as_of) FROM {relation})) AS as_of"
+    )
+
+
+def marker_statement(marker: str) -> str:
+    """Record the applied pass as the held one, in the same transaction as its rows."""
+    return (
+        f"INSERT INTO {marker} (id, as_of, projected_at) VALUES (1, $1, CURRENT_TIMESTAMP) "
+        "ON CONFLICT (id) DO UPDATE SET as_of = EXCLUDED.as_of, "
+        "projected_at = EXCLUDED.projected_at"
+    )
 
 
 #: Every column but the projection time: two passes with these equal are the same pass.
@@ -280,11 +296,9 @@ class FloorIntegrationProjectionWriter(BaseProjectionRunner):
         projection: ModelIntegrationProjection,
         meta: MessageMeta,
     ) -> dict[str, Any]:
-        relation = (
-            TABLE
-            if isinstance(store, SqliteFloorIntegrationStore)
-            else f"{SCHEMA}.{TABLE}"
-        )
+        sqlite = isinstance(store, SqliteFloorIntegrationStore)
+        relation = TABLE if sqlite else f"{SCHEMA}.{TABLE}"
+        marker = MARKER_TABLE if sqlite else f"{SCHEMA}.{MARKER_TABLE}"
         incoming = _iso(projection.as_of)
 
         def held_text(held_as_of: object) -> str | None:
@@ -318,7 +332,7 @@ class FloorIntegrationProjectionWriter(BaseProjectionRunner):
 
         outcome = await store.apply_pass(
             lock_key=f"{SCHEMA}.{TABLE}",
-            held_statement=held_as_of_statement(relation),
+            held_statement=held_as_of_statement(relation, marker),
             upsert_statement=upsert_statement(relation),
             prune_statement=prune_statement(relation),
             incoming_as_of=incoming,
@@ -329,6 +343,7 @@ class FloorIntegrationProjectionWriter(BaseProjectionRunner):
             held_rows_statement=held_rows_statement(relation),
             unchanged=unchanged,
             delete_key_statement=delete_key_statement(relation),
+            marker_statement=marker_statement(marker),
         )
         if outcome.skipped:
             return {"rows_upserted": 0, "rows_deleted": 0, "skipped_older_pass": True}
@@ -371,10 +386,12 @@ class FloorIntegrationProjectionWriter(BaseProjectionRunner):
 __all__ = [
     "COLUMNS",
     "CONTENT_COLUMNS",
+    "MARKER_TABLE",
     "FloorIntegrationProjectionWriter",
     "delete_key_statement",
     "held_as_of_statement",
     "held_rows_statement",
+    "marker_statement",
     "projection_from_payload",
     "prune_statement",
     "upsert_statement",

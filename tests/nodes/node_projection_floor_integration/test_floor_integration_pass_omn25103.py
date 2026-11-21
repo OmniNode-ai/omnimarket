@@ -30,6 +30,7 @@ from tests.nodes.node_projection_floor_integration.test_floor_integration_projec
     CONTRACT,
     EVENT,
     Payload,
+    Rows,
     Served,
     _project,
     _read,
@@ -118,35 +119,64 @@ async def test_floor_integration_equal_as_of_pass_changes_nothing(
     await reader.close()
 
 
+def _content(rows: Rows) -> Rows:
+    return {
+        key: {field: value for field, value in row.items() if field != "projected_at"}
+        for key, row in rows.items()
+    }
+
+
+@pytest.mark.parametrize(
+    "field", ["title", "target", "step", "running_path", "running_line"]
+)
 async def test_floor_integration_same_as_of_with_corrected_content_is_applied(
-    served: Served,
+    served: Served, monkeypatch: pytest.MonkeyPatch, field: str
 ) -> None:
-    """A pass re-sent with the held as_of but corrected content replaces the held rows."""
+    """A pass re-sent with the held as_of but one corrected column replaces the held row.
+
+    One case per column, so a comparison that left any of them out would skip
+    the corrected pass; the other rows keep their content and the change is
+    published as upsert deltas.
+    """
     writer, reader = served
     batch = _batch()
     _, first = _project(batch)
     _handle(writer, first, 0)
+    before = _content(await _read(reader))
 
-    corrected_reading = batch.readings[0].model_copy(
-        update={"title": "corrected title"}
-    )
+    corrected_reading = batch.readings[0].model_copy(update={field: "corrected value"})
     corrected = batch.model_copy(
         update={"readings": [corrected_reading, *batch.readings[1:]]}
     )
     projection, envelope = _project(corrected)
     keys = [
-        key for key, row in projection.rows.items() if row.title == "corrected title"
+        key
+        for key, row in projection.rows.items()
+        if getattr(row, field) == "corrected value"
     ]
     assert len(keys) == 1
-    result = _handle(writer, envelope, 1)
+    deltas: list[dict[str, Any]] = []
 
-    assert result["rows_upserted"] >= 1
-    assert (await _read(reader))[keys[0]]["title"] == "corrected title"
+    async def record(*args: Any, **kwargs: Any) -> None:
+        deltas.append(kwargs)
+
+    monkeypatch.setattr(writer, "publish_snapshot_delta", record)
+    _handle(writer, envelope, 1)
+
+    after = _content(await _read(reader))
+    assert after[keys[0]][field] == "corrected value"
+    assert {k: v for k, v in after.items() if k != keys[0]} == {
+        k: v for k, v in before.items() if k != keys[0]
+    }
+    assert any(
+        d.get("op") == "upsert" and (d.get("row") or {}).get("key") == keys[0]
+        for d in deltas
+    )
     await reader.close()
 
 
 async def test_floor_integration_same_as_of_without_a_key_removes_it(
-    served: Served,
+    served: Served, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A corrected pass with the held as_of that no longer names a change drops its row."""
     writer, reader = served
@@ -159,10 +189,19 @@ async def test_floor_integration_same_as_of_without_a_key_removes_it(
     )
     dropped = set(full.rows) - set(corrected.rows)
     assert len(dropped) == 1
+    deltas: list[dict[str, Any]] = []
+
+    async def record(*args: Any, **kwargs: Any) -> None:
+        deltas.append(kwargs)
+
+    monkeypatch.setattr(writer, "publish_snapshot_delta", record)
     result = _handle(writer, envelope, 1)
 
     assert set(await _read(reader)) == set(corrected.rows)
     assert result["rows_deleted"] == 1
+    assert [d.get("key") for d in deltas if d.get("op") == "delete"] == [
+        {"key": next(iter(dropped))}
+    ]
     await reader.close()
 
 
@@ -180,6 +219,27 @@ async def test_floor_integration_empty_newer_pass_clears_the_rows(
     assert await _read(reader) == {}
     assert result["rows_upserted"] == 0
     assert result["rows_deleted"] > 0
+    await reader.close()
+
+
+async def test_floor_integration_older_pass_after_empty_pass_is_ignored(
+    served: Served,
+) -> None:
+    """AC6: an empty newer pass is still the held pass, so a late older pass changes nothing.
+
+    With no rows left, MAX(as_of) over the table is NULL; the held pass has to
+    be remembered somewhere that an empty pass still writes.
+    """
+    writer, reader = served
+    _, older = _project(_batch())
+    _handle(writer, older, 0)
+    _, empty = _project(_newer(1, readings=[]))
+    _handle(writer, empty, 1)
+
+    result = _handle(writer, older, 2)
+
+    assert await _read(reader) == {}
+    assert result.get("skipped_older_pass") is True
     await reader.close()
 
 

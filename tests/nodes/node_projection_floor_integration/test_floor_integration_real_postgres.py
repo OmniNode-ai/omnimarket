@@ -78,14 +78,19 @@ async def _prepare() -> None:
     try:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
-        migration = (
+        migrations = (
             Path(__file__).resolve().parents[3]
             / "src/omnimarket/nodes/node_projection_floor_integration/migrations"
-            / "0000_create_floor_integration_rows.sql"
         )
-        await conn.execute(
-            migration.read_text().replace("omninode_internal.", f"{_SCHEMA}.")
-        )
+        for name in (
+            "0000_create_floor_integration_rows.sql",
+            "0002_create_floor_integration_pass.sql",
+        ):
+            await conn.execute(
+                (migrations / name)
+                .read_text()
+                .replace("omninode_internal.", f"{_SCHEMA}.")
+            )
     finally:
         await conn.close()
 
@@ -136,6 +141,7 @@ class _AsyncpgFloorIntegrationStore(PostgresFloorIntegrationStore):
         held_rows_statement: str,
         unchanged: Callable[[list[dict[str, object]]], bool],
         delete_key_statement: str,
+        marker_statement: str,
     ) -> PassOutcome:
         return await super().apply_pass(
             lock_key=lock_key,
@@ -150,6 +156,7 @@ class _AsyncpgFloorIntegrationStore(PostgresFloorIntegrationStore):
             held_rows_statement=_in_test_schema(held_rows_statement),
             unchanged=unchanged,
             delete_key_statement=_in_test_schema(delete_key_statement),
+            marker_statement=_in_test_schema(marker_statement),
         )
 
 
@@ -299,5 +306,71 @@ def test_real_postgres_refuses_a_non_positive_change_number() -> None:
     try:
         with pytest.raises(asyncpg.CheckViolationError):
             asyncio.run(insert_bad())
+    finally:
+        asyncio.run(_drop())
+
+
+def _handle(
+    writer: FloorIntegrationProjectionWriter, payload: dict[str, object], offset: int
+) -> dict[str, object]:
+    result: dict[str, object] = writer.handle(
+        {**payload, "_topic": EVENT, "_partition": 0, "_offset": offset}
+    )
+    return result
+
+
+@pytest.mark.integration
+def test_real_postgres_older_pass_after_empty_pass_is_ignored() -> None:
+    """AC6 on Postgres: the marker keeps an empty pass held."""
+    dsn = _dsn_or_skip()
+    asyncio.run(_prepare())
+    try:
+        writer = FloorIntegrationProjectionWriter(
+            store=_AsyncpgFloorIntegrationStore(dsn)
+        )
+        first_batch = _batch()
+        _, older = _envelope(first_batch)
+        _, empty = _envelope(
+            first_batch.model_copy(
+                update={"as_of": first_batch.as_of + timedelta(hours=1), "readings": []}
+            )
+        )
+        _handle(writer, older, 0)
+        _handle(writer, empty, 1)
+        assert asyncio.run(_served()) == []
+
+        result = _handle(writer, older, 2)
+
+        assert result.get("skipped_older_pass") is True
+        assert asyncio.run(_served()) == []
+    finally:
+        asyncio.run(_drop())
+
+
+@pytest.mark.integration
+def test_real_postgres_same_as_of_corrected_pass_is_applied() -> None:
+    """A corrected pass with the held as_of: new content written, a dropped key removed."""
+    dsn = _dsn_or_skip()
+    asyncio.run(_prepare())
+    try:
+        writer = FloorIntegrationProjectionWriter(
+            store=_AsyncpgFloorIntegrationStore(dsn)
+        )
+        batch = _batch()
+        full, first = _envelope(batch)
+        _handle(writer, first, 0)
+        changed = batch.readings[1].model_copy(update={"title": "corrected title"})
+        corrected, envelope = _envelope(
+            batch.model_copy(update={"readings": [changed, *batch.readings[2:]]})
+        )
+        assert set(full.rows) - set(corrected.rows)
+
+        result = _handle(writer, envelope, 1)
+
+        assert result.get("skipped_older_pass") is not True
+        rows = asyncio.run(_served())
+        assert {r["key"] for r in rows} == set(corrected.rows)
+        again = _handle(writer, envelope, 2)
+        assert again.get("skipped_older_pass") is True
     finally:
         asyncio.run(_drop())

@@ -3,10 +3,13 @@
 """Floor integration rows store port.
 
 One integration pass is applied in one transaction (``apply_pass``): the held
-pass is read, and unless it is already current the pass's rows are upserted and
-the rows of older passes are pruned, all committed together or not at all. A
-failure part-way through leaves the held pass exactly as it was, so the served
-Running figure never mixes two passes.
+pass is read from the floor_integration_pass marker, and unless the held pass is
+newer, or is the same pass with the same content, the pass's rows are upserted,
+the rows it no longer names are removed, and the marker records its as_of, all
+committed together or not at all. A failure part-way through leaves the held
+pass exactly as it was, so the served Running figure never mixes two passes; the
+marker keeps an empty pass held, so a late older pass changes nothing. Limit: a
+delta whose publish fails after the pass committed is not published again.
 """
 
 from __future__ import annotations
@@ -57,6 +60,7 @@ class ProtocolFloorIntegrationStore(Protocol):
         held_rows_statement: str,
         unchanged: Callable[[list[dict[str, object]]], bool],
         delete_key_statement: str,
+        marker_statement: str,
     ) -> PassOutcome:
         """Apply one pass in one transaction.
 
@@ -99,6 +103,11 @@ class SqliteFloorIntegrationStore:
             "reading_owed INTEGER NOT NULL, unintegrated INTEGER NOT NULL, as_of TEXT NOT NULL, "
             "projected_at TEXT NOT NULL)"
         )
+        self._conn.execute(
+            "CREATE TABLE IF NOT EXISTS floor_integration_pass ("
+            "id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1), as_of TEXT NOT NULL, "
+            "projected_at TEXT NOT NULL)"
+        )
         self._conn.commit()
 
     async def close(self) -> None:
@@ -132,6 +141,7 @@ class SqliteFloorIntegrationStore:
         held_rows_statement: str,
         unchanged: Callable[[list[dict[str, object]]], bool],
         delete_key_statement: str,
+        marker_statement: str,
     ) -> PassOutcome:
         conn = self._connected()
         # BEGIN IMMEDIATE takes the write lock before the held pass is read, so
@@ -172,6 +182,7 @@ class SqliteFloorIntegrationStore:
                         delete_key_statement, _sqlite_binding((key,))
                     ).fetchall()
                 )
+            conn.execute(marker_statement, _sqlite_binding((incoming_as_of,)))
             conn.execute("COMMIT")
         except BaseException:
             if conn.in_transaction:
@@ -211,6 +222,7 @@ class PostgresFloorIntegrationStore:
         held_rows_statement: str,
         unchanged: Callable[[list[dict[str, object]]], bool],
         delete_key_statement: str,
+        marker_statement: str,
     ) -> PassOutcome:
         # The pool is used directly so one pass is one transaction. That skips
         # AsyncpgAdapter.execute's tenant guard, which does not apply here:
@@ -243,6 +255,7 @@ class PostgresFloorIntegrationStore:
                     str(gone["key"])
                     for gone in await conn.fetch(delete_key_statement, key)
                 )
+            await conn.execute(marker_statement, incoming_as_of)
         return PassOutcome(skipped=False, written_keys=written, deleted_keys=deleted)
 
 
