@@ -33,14 +33,14 @@ def _scripts_on_path(tmp_path: Path) -> None:
         sys.path.insert(0, str(repo_root))
 
 
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record import (  # noqa: E402
+    EnumFullSuiteReason,
+    ModelTestSelection,
+)
 from scripts.ci.detect_test_paths import (  # noqa: E402
     REPO_ROOT,
     compute_selection,
     resolve_test_paths,
-)
-from scripts.ci.test_selection_models import (  # noqa: E402
-    EnumFullSuiteReason,
-    ModelTestSelection,
 )
 
 _REMOTE_LANE_HANDLER = (

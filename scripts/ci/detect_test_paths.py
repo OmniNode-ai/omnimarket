@@ -19,14 +19,14 @@ from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
     ModelPathResolutionRequest,
 )
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record import (
+    EnumFullSuiteReason,
+    ModelTestSelection,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector import (
     ModelSelectorRequest,
 )
 from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
-from scripts.ci.test_selection_models import (
-    EnumFullSuiteReason,
-    ModelTestSelection,
-)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -162,13 +162,7 @@ def compute_selection(
 
 
 def _full_suite(reason: EnumFullSuiteReason) -> ModelTestSelection:
-    return ModelTestSelection(
-        selected_paths=["tests/"],
-        split_count=20,
-        is_full_suite=True,
-        full_suite_reason=reason,
-        matrix=list(range(1, 21)),
-    )
+    return ModelTestSelection.full_suite(reason, load_policy().full_split_count)
 
 
 def main(argv: list[str] | None = None) -> int:
