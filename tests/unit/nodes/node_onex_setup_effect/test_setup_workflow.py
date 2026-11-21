@@ -395,21 +395,128 @@ def test_a_refusal_shows_its_own_reason_and_other_errors_stay_generic(
     assert result.observations[-1].fix == "Use an empty folder for the workspace."
 
 
-def test_a_folder_with_other_files_is_refused_by_name(tmp_path: Path) -> None:
-    """The real workspace step names the folder and writes nothing into it."""
+def test_setup_in_an_existing_project_preserves_customer_files(tmp_path: Path) -> None:
+    """A normal project may contain files before ONEX is installed."""
     from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
         HandlerSetupEnvironment,
-    )
-    from omnimarket.nodes.node_onex_setup_effect.protocols.protocol_setup_step import (
-        SetupStepRefusedError,
     )
 
     folder = tmp_path / "work root"
     folder.mkdir()
-    (folder / "notes.txt").write_text("mine")
-    step = HandlerSetupEnvironment(name="workspace", onex_home=tmp_path / "onex")
-    with pytest.raises(SetupStepRefusedError) as refused:
-        step.apply(ModelSetupPlan(workspace=folder))
-    assert str(folder) in str(refused.value)
-    assert "already holds other files" in str(refused.value)
-    assert sorted(p.name for p in folder.iterdir()) == ["notes.txt"]
+    note = folder / "notes.txt"
+    note.write_bytes(b"my project\r\n")
+    engine = HandlerSetupWorkflow(
+        onex_home=tmp_path / "onex",
+        steps=(HandlerSetupEnvironment(name="workspace"),),
+    )
+    plan = ModelSetupPlan(workspace=folder)
+    for changed in (True, False):
+        outcome = engine.handle(plan).observations[-1]
+        assert outcome.status == "success", outcome.fix
+        assert outcome.changed is changed
+        assert note.read_bytes() == b"my project\r\n"
+        assert (folder / ".onex-setup-workspace").read_text() == "onex setup\n"
+
+
+@pytest.mark.parametrize(
+    "collision", ["workspace_marker", "runtime_config", "config_directory"]
+)
+def test_setup_refuses_a_collision_in_a_customer_project(
+    tmp_path: Path, collision: str
+) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
+        RUNTIME_CONFIG_RELPATH,
+    )
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
+        HandlerSetupEnvironment,
+    )
+
+    folder = tmp_path / "project"
+    folder.mkdir()
+    marker = folder / ".onex-setup-workspace"
+    runtime = folder / RUNTIME_CONFIG_RELPATH
+    user_path = {
+        "workspace_marker": marker,
+        "runtime_config": runtime,
+        "config_directory": folder / RUNTIME_CONFIG_RELPATH.parts[0],
+    }[collision]
+    user_path.parent.mkdir(parents=True, exist_ok=True)
+    user_path.write_bytes(b"owned by the customer\n")
+    result = HandlerSetupWorkflow(
+        onex_home=tmp_path / "onex",
+        steps=(
+            HandlerSetupEnvironment(name="workspace"),
+            HandlerSetupEnvironment(name="runtime_config"),
+        ),
+    ).handle(ModelSetupPlan(workspace=folder))
+    assert result.observations[-1].status in ("failure", "action_required")
+    assert user_path.read_bytes() == b"owned by the customer\n"
+    if user_path != marker:
+        assert not marker.exists()
+
+
+def test_repair_does_not_follow_a_link_in_an_existing_workspace(tmp_path: Path) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
+        RUNTIME_CONFIG_RELPATH,
+    )
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
+        HandlerSetupEnvironment,
+    )
+
+    plan = plan_at(tmp_path, action="repair")
+    plan.workspace.mkdir()
+    (plan.workspace / ".onex-setup-workspace").write_text("onex setup\n")
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    link = plan.workspace / RUNTIME_CONFIG_RELPATH.parts[0]
+    link.symlink_to(shared, target_is_directory=True)
+    engine = HandlerSetupWorkflow(
+        onex_home=tmp_path / "onex",
+        steps=(
+            HandlerSetupEnvironment(name="workspace"),
+            HandlerSetupEnvironment(name="runtime_config"),
+        ),
+    )
+    outcome = engine.handle(plan).observations[-1]
+    assert outcome.status == "action_required"
+    assert str(link) in (outcome.fix or "")
+    assert list(shared.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "edited", [False, True], ids=["clean-generated", "customer-edited"]
+)
+def test_switch_install_path_preserves_customer_edits(
+    tmp_path: Path, edited: bool
+) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
+        ensure_runtime_config,
+    )
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
+        HandlerSetupEnvironment,
+    )
+
+    plan = plan_at(tmp_path)
+    config, _ = ensure_runtime_config(plan.workspace, "docker")
+    if edited:
+        with config.open("a") as stream:
+            stream.write("# customer addition made after setup\n")
+    before = config.read_bytes()
+    outcome = (
+        HandlerSetupWorkflow(
+            onex_home=tmp_path / "onex",
+            steps=(
+                HandlerSetupEnvironment(name="workspace"),
+                HandlerSetupEnvironment(name="runtime_config"),
+            ),
+        )
+        .handle(plan)
+        .observations[-1]
+    )
+    if edited:
+        assert config.read_bytes() == before
+        assert outcome.status in ("action_required", "failure")
+        assert str(config) in (outcome.fix or "")
+    else:
+        assert outcome.status == "success", outcome.fix
+        assert b"# install-path: local" in config.read_bytes()

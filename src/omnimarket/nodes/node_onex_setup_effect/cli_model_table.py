@@ -401,28 +401,41 @@ def _detail_rows(
     def sourced(text: str, field: str) -> str:
         return f"{text}  ({source[field]})" if field in source else text
 
+    def token_price(value: Decimal | None, field: str) -> str:
+        text = f"{priced(value)} {say['per_million']}"
+        if value is None:
+            return text
+        # Older entries kept one source for both prices, even when it was mixed.
+        if field not in source and " + " not in source.get("price", ""):
+            return sourced(text, "price")
+        return sourced(text, field)
+
     rows = [
         (say["provider"], provider_label),
         *([(say["server"], entry.server_url)] if entry.server_url else []),
         (say["model"], entry.model_id),
-        (say["name"], entry.display_name),
+        (say["name"], sourced(entry.display_name, "name")),
         (say["runs"], _table().deployment[entry.deployment].text),
         (say["context"], sourced(context_text(entry.context_tokens), "context")),
-        (say["max_output"], context_text(entry.max_output_tokens)),
         (
-            say["input"],
-            sourced(
-                f"{priced(entry.input_usd_per_million)} {say['per_million']}", "price"
-            ),
+            say["max_output"],
+            sourced(context_text(entry.max_output_tokens), "max_output"),
         ),
-        (say["output"], f"{priced(entry.output_usd_per_million)} {say['per_million']}"),
-        (say["cache_read"], priced(entry.cache_read_usd_per_million)),
-        (say["cache_write"], priced(entry.cache_write_usd_per_million)),
+        (say["input"], token_price(entry.input_usd_per_million, "input")),
+        (say["output"], token_price(entry.output_usd_per_million, "output")),
+        (
+            say["cache_read"],
+            sourced(priced(entry.cache_read_usd_per_million), "cache_read"),
+        ),
+        (
+            say["cache_write"],
+            sourced(priced(entry.cache_write_usd_per_million), "cache_write"),
+        ),
     ]
     if entry.tiered_price:
-        rows.append((say["pricing"], say["tiered"]))
+        rows.append((say["pricing"], sourced(say["tiered"], "pricing")))
     for label, state in entry.capabilities.items():
-        rows.append((label, say.get(state, unknown)))
+        rows.append((label, sourced(say.get(state, unknown), f"capability.{label}")))
     rows.append((say["status"], _table().status[entry.status].text))
     if entry.status_reason:
         rows.append((say["why"], entry.status_reason))

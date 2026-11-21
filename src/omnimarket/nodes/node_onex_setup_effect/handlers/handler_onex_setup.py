@@ -89,14 +89,19 @@ STATE_FILE_NAME = "setup.json"
 USER_CONFIG_FILE_NAME = "config.yaml"
 _OWNED_MARKERS = (SETUP_MARKER, INSTALL_SH_MARKER)
 
+_PREVIOUS_EDIT_NOTE = (
+    "# Hand edits are kept only if you delete the first line, after which onex setup\n"
+    "# never touches it."
+)
+_EDIT_NOTE = "# Setup keeps hand edits. Review or move an edited file before changing install paths."
+
 _RUNTIME_CONFIG_TEMPLATE = """\
 {marker}
 # install-path: {path}
 #
 # This workspace's runtime configuration, written for the install path above.
 # Rewrite it for another path with:  onex setup --path <local|docker>
-# Hand edits are kept only if you delete the first line, after which onex setup
-# never touches it.
+{edit_note}
 name: "omnibase-{path}"
 description: "{description}"
 input_topic: "requests"
@@ -171,7 +176,11 @@ def recorded_state(onex_home: Path) -> ModelOnexSetupState | None:
 def recorded_install_path(runtime_config: Path) -> str | None:
     if not runtime_config.is_file():
         return None
-    lines = runtime_config.read_text(encoding="utf-8").splitlines()
+    return runtime_config_install_path(runtime_config.read_text(encoding="utf-8"))
+
+
+def runtime_config_install_path(content: str) -> str | None:
+    lines = content.splitlines()
     if not lines or lines[0] not in _OWNED_MARKERS:
         return None
     for line in lines[1:4]:
@@ -351,26 +360,39 @@ def ensure_user_config(onex_home: Path) -> tuple[str, bool]:
     return str(config), True
 
 
-def ensure_runtime_config(workspace: Path, install_path: str) -> tuple[Path, bool]:
-    runtime_config = workspace / RUNTIME_CONFIG_RELPATH
-    if runtime_config.exists():
-        lines = runtime_config.read_text(encoding="utf-8").splitlines()
-        if not lines or lines[0] not in _OWNED_MARKERS:
-            raise _StepFailedError(
-                "runtime_config",
-                f"{runtime_config} exists and was not written by onex setup or "
-                "install.sh; it is left untouched",
-                f"move {runtime_config} aside so setup can write the {install_path} "
-                "configuration",
-            )
+def _generated_runtime_config(install_path: str, edit_note: str = _EDIT_NOTE) -> str:
     bus_type, description = _PATH_SHAPES[install_path]
-    content = _RUNTIME_CONFIG_TEMPLATE.format(
+    return _RUNTIME_CONFIG_TEMPLATE.format(
         marker=SETUP_MARKER,
+        edit_note=edit_note,
         path=install_path,
         description=description,
         bus_type=bus_type,
     )
-    written = write_if_changed(runtime_config, content)
+
+
+def runtime_config_can_switch(content: str) -> bool:
+    """Only a known generator's complete output can be replaced automatically."""
+    return any(
+        content == _generated_runtime_config(mode, note)
+        for mode in INSTALL_PATHS
+        for note in (_EDIT_NOTE, _PREVIOUS_EDIT_NOTE)
+    )
+
+
+def ensure_runtime_config(workspace: Path, install_path: str) -> tuple[Path, bool]:
+    runtime_config = workspace / RUNTIME_CONFIG_RELPATH
+    if runtime_config.exists():
+        existing = runtime_config.read_bytes().decode()
+        if runtime_config_install_path(existing) == install_path:
+            return runtime_config, False
+        if not runtime_config_can_switch(existing):
+            raise _StepFailedError(
+                "runtime_config",
+                f"{runtime_config} contains an existing configuration that setup cannot replace.",
+                f"Review {runtime_config} or move it aside before changing the install path.",
+            )
+    written = write_if_changed(runtime_config, _generated_runtime_config(install_path))
     return runtime_config, written
 
 
