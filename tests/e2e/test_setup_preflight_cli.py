@@ -69,16 +69,21 @@ def test_actual_preflight_is_readonly_and_never_prompts(
         text=True,
         timeout=30,
     )
-    assert result.returncode in (0, 3), result.stdout + result.stderr
+    # Ubuntu is the contract's reviewed distribution: a refusal there is a defect.
+    ubuntu_host = (
+        platform.system() == "Linux"
+        and platform.freedesktop_os_release().get("ID") == "ubuntu"
+    )
+    assert result.returncode in ((0,) if ubuntu_host else (0, 3)), (
+        result.stdout + result.stderr
+    )
     if json_output:
         observation = ModelSetupObservation.model_validate(json.loads(result.stdout))
         assert observation.step == "preflight"
-        assert observation.status in (
-            "success",
-            "unavailable",
-            "action_required",
-            "failure",
-        )
+        # A failed observation carries no evidence; say so instead of a KeyError.
+        assert observation.status != "failure", observation.fix
+        if ubuntu_host:
+            assert observation.status == "success", observation
         assert observation.evidence["platform"] == platform.system()
         assert "Welcome" not in result.stdout
         expected_fields = {
@@ -97,6 +102,8 @@ def test_actual_preflight_is_readonly_and_never_prompts(
     else:
         assert "Welcome To OmniNode Delegation Onboarding" in result.stdout
         assert "preflight" in result.stdout.lower()
+        if ubuntu_host:
+            assert "[success] preflight" in result.stdout, result.stdout
         for prompt in ("Provider:", "Model:", "Paste your", "Password:"):
             assert prompt not in result.stdout
     assert _snapshot(tmp_path) == before
