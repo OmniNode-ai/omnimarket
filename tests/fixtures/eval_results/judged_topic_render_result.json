@@ -1,0 +1,49 @@
+{
+  "recorded": {
+    "topic": "onex.evt.omnimarket.delegation-acceptance-judged.v1",
+    "lane": "dev",
+    "partition": 0,
+    "offset": 135468,
+    "broker_timestamp": "2026-11-20T13:12:25.432Z",
+    "headers": {
+      "event_type": "onex.evt.omnimarket.delegation-acceptance-judged.v1",
+      "source": "local",
+      "schema_version": "1.0.0"
+    },
+    "envelope_event_type": "omnimarket.delegation-acceptance-judged",
+    "how": "read through the group-less topic reader (node_topic_archive_effect) from the dev broker; 5600 records sampled across offsets 113686 to 135646 had this same payload shape, none had judge_run_id",
+    "scrubbed": "the two judge prompts (6749 characters each, task text) are replaced by a length note, the item id and the tenant id by fixed placeholder uuids; every key, type and the other values are as recorded"
+  },
+  "payload": {
+    "operation": "render",
+    "rubric_version": "delegation-acceptance-judge.v1",
+    "status": "passed",
+    "issues": [],
+    "batches": [
+      {
+        "batch_id": "primary-001",
+        "role": "primary",
+        "item_ids": ["00000000-0000-4000-8000-0000000000e1"],
+        "prompt": "<scrubbed: judge prompt, 6749 characters>"
+      },
+      {
+        "batch_id": "secondary-001",
+        "role": "secondary",
+        "item_ids": ["00000000-0000-4000-8000-0000000000e1"],
+        "prompt": "<scrubbed: judge prompt, 6749 characters>"
+      }
+    ],
+    "excluded_probe_ids": [],
+    "dropped_item_ids": [],
+    "double_judge_item_ids": ["00000000-0000-4000-8000-0000000000e1"],
+    "verdicts": [],
+    "agreement": null,
+    "matrix": [],
+    "events_counted": 0,
+    "volume_weighted_accept_rate": null,
+    "volume_terminal_ok_rate": null,
+    "receipts_joined": 0,
+    "report_markdown": "",
+    "judged_events": []
+  }
+}
