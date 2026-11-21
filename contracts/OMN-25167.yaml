@@ -1,0 +1,135 @@
+schema_version: 1.0.0
+ticket_id: OMN-25167
+title: Review findings 1 to 11 on omnimarket PR 6344 at head bea1dfa44a43 are fixed or argued
+summary: 'Review follow-up of omnimarket#6344: the OMN-24980 contract records a captured reproduction of a missing terminal
+  and lists AC2 and AC3 as open; the integration proof is unbound from AC1 and reads the real onex delegate --json envelope;
+  the ceiling test keeps packaged pin flags, derives its pairs from the packaged ladder, checks the served window and an overlay
+  above the reserve; the health tests no longer treat a local rung as pin-only. The missing-terminal fix, the dev ladder mount
+  and the local-share alarm remain open.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25167-review-follow-up
+  statement: Every blocking finding of the second review of omnimarket#6344 is fixed or argued with evidence.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: contracts/OMN-24980.yaml records the owner''s re-scope of AC1 or a captured reproduction of the missing
+      terminal, lists AC2 and AC3 as entries, and the title no longer claims evidence is on the bus -- falsifier: `uv run
+      pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q -p no:cacheprovider` fails when
+      the AC1 entry has neither a re-scope nor a reproduction or when AC2 or AC3 is absent'
+  - id: AC2
+    statement: 'AC2: the integration proof is unbound from AC1 and a test asserts that no routing check binds AC1, for any
+      check id and not only ids containing "ceiling" -- falsifier: `uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py
+      -q -p no:cacheprovider` fails when a routing check is bound to AC1'
+  - id: AC3
+    statement: 'AC3: the ceiling test keeps the packaged explicit_pin_only flags and the unpinned proof of contracts/OMN-24980.yaml
+      can pass, with local-heavy-reasoning handled as the packaged flag says -- falsifier: `uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py
+      -q -p no:cacheprovider` fails when explicit_pin_only is forced False on a backend whose packaged flag is true'
+  - id: AC4
+    statement: 'AC4: with an overlay ceiling of 131072 a pinned prompt of 65537 tokens is refused, with the clamp in the handler
+      if the test first fails, and the ladder pairs are derived from the packaged ladder with the served maximum length of
+      both rungs checked -- falsifier: `uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py
+      -q -p no:cacheprovider` fails when the overlay widens the ceiling past the reserve'
+  - id: AC5
+    statement: 'AC5: the receipt in the contract proof test is a recorded `onex delegate --json` receipt matching the schema
+      in omnibase_infra, and a case with terminal status not completed under top-level success fails the proof -- falsifier:
+      `uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q -p no:cacheprovider` fails
+      when the terminal status is not completed under top-level success'
+  - id: AC6
+    statement: 'AC6: each blocking finding has a test that fails at head 53e3cd0f6050 and passes at the new head, the non-blocking
+      findings (the cannot-fail test, the swallowed ProtocolConfigurationError, the owner tickets for the dev mount and the
+      split-out alarm, the xdist and random-order runs) are fixed or argued, and a PR comment starting `Lab: head=<full new
+      head sha>` names each command with exit 0 -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6344` shows no comment
+      starting `Lab: head=` with the new head sha, or the comment lacks a command or exit 0, checked with `uv run pytest`
+      of each changed file'
+evidence_requirements:
+- kind: tests
+  description: Focused tests of every file the change touches.
+  command: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25167-ac1
+  description: The contract of OMN-24980 carries a captured reproduction of a missing terminal (run, topic, consumer group,
+    terminal class), lists AC2 and AC3, and its titles no longer claim bus evidence; no owner re-scope exists.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov
+    cwd: .
+  binds_ac:
+  - AC1
+- id: dod-omn25167-ac2
+  description: Each of AC1, AC2 and AC3 of the OMN-24980 contract is bound only to a check that runs at the local Done gate and fails until the criterion is met, because a passing bound check counts as met at the Done gate; the integration proof binds no criterion.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov
+    cwd: .
+  binds_ac:
+  - AC2
+- id: dod-omn25167-ac3
+  description: The ceiling test loads the packaged explicit_pin_only flags unchanged and the local rungs stay eligible without
+    a pin.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py -q
+      --no-cov
+    cwd: .
+  binds_ac:
+  - AC3
+- id: dod-omn25167-ac4
+  description: With an overlay ceiling of 131072 a pinned 65537-token prompt is refused for every packaged local pair; pairs
+    and the served window are read from the packaged ladder and a recorded model-list read. No handler clamp was needed.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py -q
+      --no-cov
+    cwd: .
+  binds_ac:
+  - AC4
+- id: dod-omn25167-ac5
+  description: The proof reads a recorded onex delegate --json stdout validated through the omnibase_infra runtime summary
+    and terminal models; a terminal not completed under top-level success fails it.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov
+    cwd: .
+  binds_ac:
+  - AC5
+- id: dod-omn25167-ac6
+  description: Each changed test file passes; the cannot-fail health tests are replaced; the Lab comment of the new head is
+    posted after the push.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov
+    cwd: .
+  binds_ac:
+  - AC6
+- id: dod-omn25167-hosted-deploy-config
+  description: Hosted-runner check that the packaged ladder and the declared local model serve each other. Configuration validation
+    only; it does not claim a runtime mount was updated.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: uv run pytest tests/test_omn19442_declared_local_model_serves_the_ladder.py -q --no-cov
+    cwd: .
+- id: dod-omn25167-integration-proof
+  description: Run the focused routing, contract-proof and delegation-health tests on a lab host at the pushed head. Hosted
+    CI cannot reach the lab, so only the local Done gate runs this unbound check; it binds no acceptance criterion.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+      --lane dod-integration-proof-25167 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py
+      tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py
+      -q --no-cov
+    cwd: .

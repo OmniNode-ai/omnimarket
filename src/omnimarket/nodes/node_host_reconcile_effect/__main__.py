@@ -75,6 +75,9 @@ def main(argv: list[str] | None = None) -> int:
             dispatch_venv=os.environ.get("ONEX_DISPATCH_VENV"),
             ledger=os.environ.get("ONEX_LEDGER_PATH", ""),
             alert_command=os.environ.get("ONEX_RECONCILE_ALERT_CMD", ""),
+            ledger_append_command=os.environ.get(
+                "ONEX_RECONCILE_LEDGER_APPEND_CMD", ""
+            ),
         )
     except (ValueError, ValidationError) as exc:
         sys.stderr.write(f"INDETERMINATE: {exc}\n")

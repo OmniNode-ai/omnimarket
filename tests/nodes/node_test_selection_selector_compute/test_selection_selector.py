@@ -44,6 +44,9 @@ POLICY = ModelSelectorPolicy(
     durations_path="durations.json",
     path_count_shards=((2, 1), (5, 2)),
     path_count_max_shards=3,
+    selection_stage=0,
+    full_split_count=20,
+    record_retention_days=14,
 )
 DURATIONS = {
     "tests/a/test_x.py": 250.0,
@@ -129,6 +132,9 @@ def test_selection_selector_policy_refuses_a_ladder_over_the_narrowed_maximum() 
             durations_path="d.json",
             path_count_shards=((2, 1), (5, 3)),
             path_count_max_shards=2,
+            selection_stage=0,
+            full_split_count=20,
+            record_retention_days=14,
         )
 
 
