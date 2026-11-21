@@ -11,8 +11,12 @@ import hashlib
 import logging
 import sqlite3
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import yaml
+
+if TYPE_CHECKING:
+    from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 
 # OMN-19988: the latest environment report per (tenant, mode, service), with the
 # verdict and open alert the alert compute gave it. A row changes in place, so its
@@ -377,14 +381,9 @@ RUN_SAVINGS_RULE_VERSION = "2026-11-19: priced by the model that ran (model_name
 _RUN_SAVINGS_RULE_STEP_PREFIX = "omn25863_run_savings_rule_"
 
 
-def _manifest_price_lines() -> list[str] | None:
-    """The manifest's version and every model it prices, with both rates, sorted: what a stored saving was priced
-    from. None when the manifest did not load (pricing._load_table's empty fallback table prices no model)."""
-    from omnimarket.pricing import (
-        _load_table,
-    )
-
-    table = _load_table()
+def _price_lines(table: "ModelPricingTable") -> list[str] | None:
+    """A table's version and every model it prices, with both rates, sorted: what a stored saving is priced from.
+    None when it prices no model (pricing._load_table's empty fallback table, or a manifest cut short)."""
     if not table.models:
         return None
     return [
@@ -394,6 +393,15 @@ def _manifest_price_lines() -> list[str] | None:
             for key, entry in table.models.items()
         ),
     ]
+
+
+def _manifest_price_lines() -> list[str] | None:
+    """The price lines of the table this process priced from (pricing's cached load)."""
+    from omnimarket.pricing import (
+        _load_table,
+    )
+
+    return _price_lines(_load_table())
 
 
 def run_savings_rule_step() -> str | None:
@@ -448,20 +456,23 @@ def _noting_it_ran(
 def _warn_manifest_unloaded() -> None:
     """Said once per process, not on every connection a reader opens."""
     logging.getLogger(__name__).warning(
-        "the pricing manifest did not load, so stored run savings are read as they are, not recomputed"
+        "the pricing manifest did not load, or the file differs from the prices this process loaded, so stored run "
+        "savings are read as they are, not recomputed"
     )
 
 
-def _manifest_loads() -> bool:
-    """Whether the manifest on disk loads now. The recompute prices each run from it (resolve_baseline reads it
-    uncached), so a file that went after this process cached its table would fail the recompute and the open."""
+def _manifest_on_disk_matches(prices: list[str]) -> bool:
+    """Whether the manifest on disk loads now and prices exactly what the digest was taken from. The recompute prices
+    each run from the file (resolve_baseline reads it uncached), so a file that went, was torn or was cut short, or
+    that changed under this process, would otherwise fail the open, or price every run from other prices than the
+    digest it records -- a record no later open would correct."""
     from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 
     try:
-        ModelPricingTable.from_yaml()
+        on_disk = ModelPricingTable.from_yaml()
     except (OSError, ValueError, yaml.YAMLError):
         return False
-    return True
+    return _price_lines(on_disk) == prices
 
 
 def pending_local_run_steps(
@@ -474,7 +485,7 @@ def pending_local_run_steps(
         _warn_manifest_unloaded()
     elif recorded(conn, rule):
         pass
-    elif not _manifest_loads():
+    elif not _manifest_on_disk_matches(_manifest_price_lines() or []):
         # Checked only when the recompute is pending, so an open with nothing to do reads no file.
         _warn_manifest_unloaded()
     else:

@@ -330,11 +330,14 @@ def test_recompute_savings_a_manifest_that_cannot_load_leaves_the_store_as_it_is
     assert _recorded_rule_steps(path) == recorded
 
 
-@pytest.mark.parametrize("damage", ["missing", "malformed"])
+@pytest.mark.parametrize(
+    "damage", ["missing", "malformed", "cut_before_models", "cut_before_baseline"]
+)
 def test_recompute_savings_a_manifest_gone_after_it_was_cached_leaves_the_store_as_it_is(
     tmp_path: Path, manifest: _Manifest, damage: str
 ) -> None:
-    """R7b: the process cached a good manifest, then the file went or was torn (an upgrade under a running process).
+    """R7b: the process cached a good manifest, then the file went, was torn or was cut short (an upgrade under a
+    running process).
     A store with the recompute pending still opens, keeps its saving and records no step, and recomputes once the
     file is back."""
     path = _earlier_store(
@@ -343,10 +346,21 @@ def test_recompute_savings_a_manifest_gone_after_it_was_cached_leaves_the_store_
     pricing._load_table()  # the cached table this process priced from
     if damage == "missing":
         manifest.path.unlink()  # gone on disk, still cached in the process
-    else:
+    elif damage == "malformed":
         manifest.path.write_text(
             "models: [unclosed\n", encoding="utf-8"
         )  # torn, not YAML
+    else:
+        # A partial copy cut at a line boundary: still YAML, and it may even load, but it is not the cached table.
+        cut_at = (
+            "\nmodels:"
+            if damage == "cut_before_models"
+            else f"\n  {_baseline_model()}:"
+        )
+        manifest.path.write_text(
+            manifest._text[: manifest._text.index(cut_at) + 1], encoding="utf-8"
+        )
+        yaml.safe_load(manifest.path.read_text(encoding="utf-8"))  # it parses
     _open(path)
     assert _saving_and_cost(path)[0] is None  # as the earlier build left it
     assert _recorded_rule_steps(path) == []
