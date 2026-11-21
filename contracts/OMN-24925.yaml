@@ -89,7 +89,7 @@ dod_evidence:
     check_value: uv run pytest tests/delegation_golden -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -m "not e2e"
     cwd: .
 - id: dod-omn24925-ac6-findings-6-7-8
-  description: 'Findings 6, 7 and 8: the fails-on-base checks pin the base 6efbe3ee5027 and require the nine failing ids, and none of them names the landing-branch tip. A hosted test reads the pins and the ids from the contracts; the red run at the pinned base (nine failing ids) is the local Done gate item that follows.'
+  description: 'Findings 6, 7 and 8: the fails-on-base checks pin the base 6efbe3ee5027 and require the nine failing ids, and none of them names the landing-branch tip. A hosted test reads the pins and the ids from the contracts; the red run at the pinned base (ten failing ids) is the local Done gate item that follows.'
   source: manual
   binds_ac:
   - AC6
@@ -98,15 +98,15 @@ dod_evidence:
     check_value: bash -c '! grep -nE "origin/dev" contracts/OMN-24902.yaml contracts/OMN-24831.yaml contracts/OMN-24851.yaml'
     cwd: .
   - check_type: test_passes
-    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestContractTextAnswersTheReview::test_the_fails_on_base_checks_pin_the_base_and_require_the_nine_ids -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestContractTextAnswersTheReview::test_the_fails_on_base_checks_pin_the_base_and_require_the_ten_ids -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
     cwd: .
 - id: dod-omn24925-ac6-red-at-pinned-base
-  description: 'The red run at the pinned base: the new test file is run against a copy of the head tree whose runner is the file at the pinned base, and the check passes only when exactly the nine failing ids fail. It needs the pinned base object in the clone, so only the local Done gate runs it; it is bound to no criterion.'
+  description: 'The red run at the pinned base: the new test file is run against a copy of the tree at the pinned commit e3818d33b0b3 whose runner is the file at the pinned base, and the check passes only when exactly the ten failing ids fail. It needs both pinned objects in the clone, so only the local Done gate runs it; it is bound to no criterion.'
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: bash -c 'b=6efbe3ee5027f6efb67d0b81a1421f0dda32b4e5; t=tests/delegation_golden/test_runner_unterminalised_row_omn24831.py; d="$(mktemp -d)" && git archive HEAD | tar -x -C "$d" && git show "$b:tests/delegation_golden/runner.py" > "$d/tests/delegation_golden/runner.py" && cd "$d" && out="$(env -u PYTHONPATH uv run --frozen pytest $t -q --no-cov -n 0 -p no:randomly -p no:cacheprovider 2>&1)"; printf "%s\n" "$out" | tail -3; [ "$(printf "%s\n" "$out" | grep -cE "^FAILED .*test_one_failure_names_the_null_terminal_ok\[I(1|10|3|5|6|7|8|9)\]")" = 8 ] && printf "%s\n" "$out" | grep -q "^FAILED .*test_it_does_not_report_telemetry_misses_it_cannot_judge" && printf "%s\n" "$out" | grep -qE "(^| )9 failed"'
+    check_value: bash -c 'b=6efbe3ee5027f6efb67d0b81a1421f0dda32b4e5; h=e3818d33b0b31eb0c80d599a0f4c135cbd4a5a5d; t=tests/delegation_golden/test_runner_unterminalised_row_omn24831.py; d="$(mktemp -d)" && git archive "$h" | tar -x -C "$d" && git show "$b:tests/delegation_golden/runner.py" > "$d/tests/delegation_golden/runner.py" && cd "$d" && out="$(env -u PYTHONPATH uv run --frozen pytest $t -q --no-cov -n 0 -p no:randomly -p no:cacheprovider 2>&1)"; printf "%s\n" "$out" | tail -3; [ "$(printf "%s\n" "$out" | grep -cE "^FAILED .*test_one_failure_names_the_null_terminal_ok\[I(1|10|3|5|6|7|8|9)\]")" = 8 ] && printf "%s\n" "$out" | grep -q "^FAILED .*test_an_absent_terminal_ok_key_is_reported_as_absent" && printf "%s\n" "$out" | grep -q "^FAILED .*test_it_does_not_report_telemetry_misses_it_cannot_judge" && printf "%s\n" "$out" | grep -qE "(^| )10 failed"'
     cwd: .
 - id: dod-omn24925-ac7-findings-9-10
   description: 'Findings 9 and 10: the omn-24831 ledger check of AC1, which grepped ticket= and job= cells the ledger rows lack, is removed, and its AC4 check still reads the pull request body for a line starting Lab:; the omn-24851 check reads a comment for Lab: head= instead of discarding pr-checks output.'
