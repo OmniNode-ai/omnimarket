@@ -50,6 +50,7 @@ def _plan(tmp_path: Path) -> ModelSetupPlan:
     ("case", "expected"),
     [
         ("tiny", "success"),
+        ("roomy", "success"),
         ("memory", "action_required"),
         ("cpu", "action_required"),
         ("terms", "action_required"),
@@ -68,6 +69,9 @@ def test_selected_stack_requirements_and_health(
     commands = []
     sentinel = "planted-stack-private-diagnostic"
     info = {"NCPU": 1, "MemTotal": 256 * 1024 * 1024, "OSType": "linux"}
+    if case == "roomy":
+        # Both above the tiny engine, so a reader that drops real values fails here.
+        info = {"NCPU": 4, "MemTotal": 1024 * 1024 * 1024, "OSType": "linux"}
     engine_timeouts: list[float] = []
 
     async def read_engine(timeout_seconds: float) -> tuple[int, str, str]:
@@ -96,6 +100,11 @@ def test_selected_stack_requirements_and_health(
         )
     if case == "cpu":
         services["worker"]["deploy"]["resources"]["reservations"]["cpus"] = "2"
+    if case == "roomy":
+        services["worker"]["deploy"]["resources"]["reservations"] = {
+            "cpus": "2",
+            "memory": 512 * 1024 * 1024,
+        }
     rows = (
         []
         if case == "missing"
@@ -130,6 +139,9 @@ def test_selected_stack_requirements_and_health(
     )
     result = asyncio.run(HandlerSetupStackRequirements().handle(request))
     assert result.status == expected
+    if expected == "success":
+        assert result.evidence["engine_cpus"] == str(float(info["NCPU"]))
+        assert result.evidence["engine_memory_bytes"] == str(info["MemTotal"])
     from uuid import uuid4
 
     from omnibase_infra.nodes.node_setup_local_provision_effect.models.model_local_provision_effect_output import (
