@@ -36,7 +36,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: >-
-          uv run pytest tests -k release_relock -q --no-cov
+          uv run pytest tests/unit/scripts/test_release_relock.py tests/ci/test_release_cut_workflow.py -q --no-cov
   - id: dod-omn26166-ac2
     description: "A non-release fixture with a registry source for a sibling is refused and the same fixture marked as a release commit passes; the dev finding codes are unchanged."
     source: manual
