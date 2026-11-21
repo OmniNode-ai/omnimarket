@@ -96,6 +96,6 @@ async def test_topic_rules_refusal_publishes_nothing() -> None:
 
 def test_overlay_topics_refuse_a_tenant_prefixed_topic() -> None:
     document = copy.deepcopy(overlay_document())
-    document["topics"][0]["topic"] = "tenant-a." + TOPIC_A  # type: ignore[index]
+    document["topics"][0]["topic"] = "tenant-a." + TOPIC_A
     with pytest.raises(ValidationError):
         ModelBatchIngestOverlay.model_validate(document)

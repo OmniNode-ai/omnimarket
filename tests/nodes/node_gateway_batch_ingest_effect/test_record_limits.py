@@ -51,9 +51,13 @@ async def test_record_limits_base64_is_never_decoded_on_an_over_length_string(
     lengths: list[int] = []
     real = base64.b64decode
 
-    def spy(data: str | bytes, *args: object, **kwargs: object) -> bytes:
+    def spy(
+        data: str | bytes,
+        altchars: str | bytes | None = None,
+        validate: bool = False,
+    ) -> bytes:
         lengths.append(len(data))
-        return real(data, *args, **kwargs)  # type: ignore[arg-type]
+        return real(data, altchars, validate)
 
     monkeypatch.setattr(
         record_admission, "base64", types.SimpleNamespace(b64decode=spy)

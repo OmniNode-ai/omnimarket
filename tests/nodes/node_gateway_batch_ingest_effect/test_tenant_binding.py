@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import copy
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -41,7 +42,7 @@ async def test_tenant_binding_refuses_t2_signed_with_slug_a() -> None:
     ],
 )
 async def test_tenant_binding_refuses_unknown_id_and_slug_mismatch(
-    claim: dict[str, str],
+    claim: dict[str, Any],
 ) -> None:
     app, publisher = make_app()
     result = await post(app, batch(record()), token=mint(**claim))

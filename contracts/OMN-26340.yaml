@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-26340
+title: unblock omnimarket PR 6473 so its required check CI Summary reads green, with the in-PR causes fixed and no check widened
+summary: 'Fixes the in-PR cause of the Canonical File Shape red (suppression comments in the added gateway batch ingest test files, replaced by typed fixes) and carries the post-release version bump that the dev-wide Release Identity Gate red needs.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26340-unblock
+  statement: The gateway batch ingest door pull request clears its in-PR required-check reds without widening, skipping or bypassing a check.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the canonical file shape ratchet reads no suppression growth in tests/nodes/node_gateway_batch_ingest_effect and the typed test files pass mypy strict -- falsifier: grep -rn "type: ignore" tests/nodes/node_gateway_batch_ingest_effect prints a line, or mypy --strict over that directory reports an error'
+  - id: AC2
+    statement: 'AC2: no check is widened, skipped or bypassed, so the diff against origin/dev touches no workflow file and no ratchet baseline -- falsifier: git diff origin/dev HEAD -- .github .onex_ratchets is non-empty'
+evidence_requirements:
+- kind: tests
+  description: The gateway batch ingest tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_gateway_batch_ingest_effect -q -n 0 --no-cov -m "not kafka"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26340-ac1
+  description: 'AC1: no suppression comment remains in the gateway batch ingest test directory; at 7913cb80c1f3 the ratchet listed 11 files with suppression growth.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: 'test -z "$(grep -rln ''type: ignore'' tests/nodes/node_gateway_batch_ingest_effect)"'
+    cwd: .
+- id: dod-omn26340-ac2
+  description: 'AC2: the diff against origin/dev touches nothing under .github or .onex_ratchets.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: test -z "$(git diff --name-only origin/dev HEAD -- .github .onex_ratchets)"
+    cwd: .
+- id: dod-omn26340-integration-proof
+  description: 'Run the gateway batch ingest tests on a lab host at the pushed revision. This local completion proof carries no hosted AC bindings.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+      --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+      --lane dod-integration-proof-26340 --kind test --
+      env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+      tests/nodes/node_gateway_batch_ingest_effect
+      -q -n 0 --no-cov -m "not kafka" --refuse-skips
+    cwd: .

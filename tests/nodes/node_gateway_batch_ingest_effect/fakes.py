@@ -8,10 +8,10 @@ import asyncio
 import base64
 import json
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, MutableMapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import jwt
 import yaml
@@ -173,19 +173,22 @@ def batch(*records: dict[str, object]) -> bytes:
     return json.dumps({"records": list(records)}).encode()
 
 
+PublishStatus = Literal["published", "publish-refused", "delivery-unconfirmed"]
+
+
 @dataclass
 class FakePublisher:
     """Records every call; ``script`` maps a call number to the outcome of that call (default published)."""
 
     message_max_bytes: int = 4096
-    script: dict[int, str] = field(default_factory=dict)
+    script: dict[int, PublishStatus] = field(default_factory=dict)
     calls: list[ModelWireRecord] = field(default_factory=list)
 
     async def publish(self, record: ModelWireRecord) -> ModelPublishOutcome:
         number = len(self.calls)
         self.calls.append(record)
         status = self.script.get(number, "published")
-        return ModelPublishOutcome(status=status)  # type: ignore[arg-type]
+        return ModelPublishOutcome(status=status)
 
 
 def make_app(
@@ -250,9 +253,9 @@ async def post(
         await asyncio.sleep(3600)
         return {"type": "http.disconnect"}
 
-    sent: list[dict[str, Any]] = []
+    sent: list[MutableMapping[str, Any]] = []
 
-    async def send(message: dict[str, Any]) -> None:
+    async def send(message: MutableMapping[str, Any]) -> None:
         sent.append(message)
 
     total = sum(len(c) for c in (chunks if chunks is not None else [body]))

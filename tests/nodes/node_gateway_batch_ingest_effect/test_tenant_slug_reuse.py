@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import copy
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -24,9 +25,9 @@ from tests.nodes.node_gateway_batch_ingest_effect.fakes import (
 )
 
 
-def _retired_document() -> dict[str, object]:
+def _retired_document() -> dict[str, Any]:
     document = copy.deepcopy(overlay_document())
-    document["tenants"][0]["status"] = "retired"  # type: ignore[index]
+    document["tenants"][0]["status"] = "retired"
     return document
 
 
@@ -48,9 +49,9 @@ async def test_slug_reuse_later_tenant_with_the_retired_slug_is_refused() -> Non
 
 def test_slug_reuse_load_refuses_a_reused_retired_slug_or_rebound_id() -> None:
     reused = _retired_document()
-    reused["tenants"][1]["tenant_slug"] = "a"  # type: ignore[index]
+    reused["tenants"][1]["tenant_slug"] = "a"
     rebound = _retired_document()
-    rebound["tenants"].append({"tenant_id": T1, "tenant_slug": "c", "status": "active"})  # type: ignore[attr-defined]
+    rebound["tenants"].append({"tenant_id": T1, "tenant_slug": "c", "status": "active"})
     for document in (reused, rebound):
         with pytest.raises(ValidationError):
             ModelBatchIngestOverlay.model_validate(document)

@@ -11,6 +11,7 @@ comment (it needs a runtime that carries the body cap, which the locked omnibase
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from typing import Any
 
 import pytest
@@ -59,9 +60,9 @@ async def _post_understated(
             "more_body": position < len(BODY),
         }
 
-    sent: list[dict[str, Any]] = []
+    sent: list[MutableMapping[str, Any]] = []
 
-    async def send(message: dict[str, Any]) -> None:
+    async def send(message: MutableMapping[str, Any]) -> None:
         sent.append(message)
 
     headers = [(b"host", b"d"), (b"authorization", b"Bearer " + mint().encode())]

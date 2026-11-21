@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from tests.nodes.node_gateway_batch_ingest_effect.fakes import (
@@ -35,9 +37,9 @@ async def test_claims_lab_jwks_accepts_the_lab_token() -> None:
         ({"kid": "unknown-kid"}, "token-unknown-kid"),
     ],
 )
-async def test_claims_lab_jwks_refuses(kwargs: dict[str, object], reason: str) -> None:
+async def test_claims_lab_jwks_refuses(kwargs: dict[str, Any], reason: str) -> None:
     app, publisher = make_app()
-    result = await post(app, batch(record()), token=mint(**kwargs))  # type: ignore[arg-type]
+    result = await post(app, batch(record()), token=mint(**kwargs))
     assert (result.status, result.body["error"]) == (401, reason)
     assert publisher.calls == []
 

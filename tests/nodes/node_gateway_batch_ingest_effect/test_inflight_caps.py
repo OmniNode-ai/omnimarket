@@ -10,6 +10,10 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_gateway_batch_ingest_effect.ingress import InflightGate
+from omnimarket.nodes.node_gateway_batch_ingest_effect.models.model_batch_ingest import (
+    ModelPublishOutcome,
+    ModelWireRecord,
+)
 from omnimarket.nodes.node_gateway_batch_ingest_effect.overlay import (
     ModelBatchIngestOverlay,
 )
@@ -107,7 +111,7 @@ async def test_inflight_caps_total_upload_deadline_beats_a_trickle() -> None:
 
 
 class _Raising(FakePublisher):
-    async def publish(self, record: object) -> object:  # type: ignore[override]
+    async def publish(self, record: ModelWireRecord) -> ModelPublishOutcome:
         raise RuntimeError("boom")
 
 

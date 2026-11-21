@@ -14,6 +14,7 @@ from omnimarket.nodes.node_gateway_batch_ingest_effect.models.model_batch_ingest
     ModelWireRecord,
 )
 from tests.nodes.node_gateway_batch_ingest_effect.fakes import (
+    FakePublisher,
     batch,
     make_app,
     make_overlay,
@@ -78,10 +79,9 @@ def test_stateless_door_has_no_store_claim_or_lease_module_or_key() -> None:
     )  # admitted as a header, never a key
 
 
-class _Counting:
-    message_max_bytes = 4096
-
+class _Counting(FakePublisher):
     def __init__(self) -> None:
+        super().__init__()
         self.count = 0
 
     async def publish(self, record: ModelWireRecord) -> ModelPublishOutcome:
@@ -93,7 +93,7 @@ async def test_stateless_door_memory_does_not_grow_over_1000_batches() -> None:
     publisher = _Counting()
     app, _ = make_app(
         make_overlay(read_idle_timeout_s=0.05, total_upload_deadline_s=0.1), publisher
-    )  # type: ignore[arg-type]
+    )
     body = _three()
     for _ in range(100):
         await post(app, body)

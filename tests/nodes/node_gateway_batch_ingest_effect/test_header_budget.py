@@ -62,6 +62,6 @@ async def test_header_budget_undeclared_name_is_431_with_receive_never_called() 
 
 def test_header_budget_load_refuses_a_count_below_the_declared_names() -> None:
     document = overlay_document()
-    document["limits"]["max_header_count"] = len(CLIENT_HEADER_SET) + 1  # type: ignore[index]
+    document["limits"]["max_header_count"] = len(CLIENT_HEADER_SET) + 1
     with pytest.raises(ValidationError):
         ModelBatchIngestOverlay.model_validate(document)

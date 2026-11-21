@@ -70,13 +70,13 @@ def test_topic_length_over_long_wire_input_is_refused_before_any_prefix_is_remov
 )
 def test_topic_length_load_refuses_the_inequalities(limits: dict[str, int]) -> None:
     document = copy.deepcopy(overlay_document())
-    document["limits"].update(limits)  # type: ignore[attr-defined]
+    document["limits"].update(limits)
     with pytest.raises(ValidationError):
         ModelBatchIngestOverlay.model_validate(document)
 
 
 def test_topic_length_load_accepts_the_boundary() -> None:
     document = copy.deepcopy(overlay_document())
-    document["limits"].update({"max_topic_chars": 109, "max_wire_topic_chars": 149})  # type: ignore[attr-defined]
-    document["topics"] = [t for t in document["topics"] if len(t["topic"]) <= 109]  # type: ignore[index]
+    document["limits"].update({"max_topic_chars": 109, "max_wire_topic_chars": 149})
+    document["topics"] = [t for t in document["topics"] if len(t["topic"]) <= 109]
     ModelBatchIngestOverlay.model_validate(document)

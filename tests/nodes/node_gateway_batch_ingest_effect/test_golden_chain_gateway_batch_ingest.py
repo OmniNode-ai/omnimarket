@@ -55,7 +55,7 @@ async def test_golden_chain_gateway_batch_ingest_token_to_wire_topic() -> None:
         chunk_headroom_bytes=asgi.mount_ceiling()[1] + 1,
         max_inflight_bytes=8_000_000,
     )
-    document["tenants"].append(  # type: ignore[attr-defined]
+    document["tenants"].append(
         {"tenant_id": PROOF_TENANT, "tenant_slug": PROOF_SLUG, "status": "active"}
     )
     overlay = ModelBatchIngestOverlay.model_validate(document)

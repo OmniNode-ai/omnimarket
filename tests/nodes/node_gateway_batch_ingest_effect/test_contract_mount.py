@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -28,12 +29,15 @@ from tests.nodes.node_gateway_batch_ingest_effect.fakes import (
 NODE = Path(asgi.__file__).parent
 
 
-def _contract() -> dict[str, object]:
-    return yaml.safe_load((NODE / "contract.yaml").read_text(encoding="utf-8"))
+def _contract() -> dict[str, Any]:
+    loaded: dict[str, Any] = yaml.safe_load(
+        (NODE / "contract.yaml").read_text(encoding="utf-8")
+    )
+    return loaded
 
 
 def test_contract_mount_declares_the_http_mount_the_runtime_loads() -> None:
-    block = dict(_contract()["http_mount"])  # type: ignore[call-overload]
+    block = dict(_contract()["http_mount"])
     assert block["max_body_bytes"] == asgi.mount_ceiling()[1]
     if "max_body_bytes" not in ModelHttpMount.model_fields:
         # The locked omnibase-infra predates the runtime body cap (omnibase_infra#6079): its loader would refuse the
@@ -59,15 +63,15 @@ def test_contract_mount_removing_the_http_mount_block_fails_the_loader() -> None
 def test_contract_mount_is_the_only_serving_path() -> None:
     contract = _contract()
     assert contract.get("http_ingress") is None
-    assert contract["event_bus"]["subscribe_topics"] == []  # type: ignore[index]
+    assert contract["event_bus"]["subscribe_topics"] == []
 
 
 def test_contract_mount_publishes_exactly_the_two_canonical_topics() -> None:
-    assert _contract()["event_bus"]["publish_topics"] == [  # type: ignore[index]
+    assert _contract()["event_bus"]["publish_topics"] == [
         "onex.evt.omnimarket.pool-usage-verdict-evaluated.v1",
         "onex.evt.omniclaude.tool-executed.v1",
     ]
-    assert [e["topic"] for e in _contract()["published_events"]] == [  # type: ignore[attr-defined]
+    assert [e["topic"] for e in _contract()["published_events"]] == [
         "onex.evt.omnimarket.pool-usage-verdict-evaluated.v1",
         "onex.evt.omniclaude.tool-executed.v1",
     ]
@@ -75,14 +79,14 @@ def test_contract_mount_publishes_exactly_the_two_canonical_topics() -> None:
 
 def test_contract_mount_binds_the_handler_by_name_and_module() -> None:
     bound = _contract()["handler"]
-    assert bound == {  # type: ignore[comparison-overlap]
+    assert bound == {
         "name": "HandlerGatewayBatchIngest",
         "module": "omnimarket.nodes.node_gateway_batch_ingest_effect.handlers.handler_gateway_batch_ingest",
     }
 
 
 def test_contract_mount_declares_every_overlay_topic() -> None:
-    declared = set(_contract()["event_bus"]["publish_topics"])  # type: ignore[index]
+    declared = set(_contract()["event_bus"]["publish_topics"])
     example = yaml.safe_load(
         (NODE / "overlay.example.yaml").read_text(encoding="utf-8")
     )
