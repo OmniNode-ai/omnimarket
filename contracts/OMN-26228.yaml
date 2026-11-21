@@ -1,0 +1,74 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-26228"
+title: "Two omnimarket tests fail on pull requests that do not touch them: a runtime terminal wait times out on loaded CI runners, and a routing test inherits state from earlier tests"
+summary: "The routing test and the routing-order reader test now reset the routing reducer's module-level _config, so the routing test no longer routes with a ladder an earlier test left behind. The runtime terminal test runs the run-step topic scan once before its 10 s deadline, because omnibase_infra's 256-entry cache cannot hold omnimarket's 878 routed contracts and each scan takes about 3 s; the cache itself is OMN-26297. Test-only change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26228-terminal-test-holds-under-load"
+    statement: |-
+      The runtime terminal test times only dispatch and terminal delivery, so it holds on a loaded runner and still fails without a terminal.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the runtime case of the pre-dispatch terminal test passes 20 of 20 runs while the host is loaded, and still fails when the terminal is never published -- falsifier: twenty runs of uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py -q, while uv run pytest tests/unit/delegation -n 8 runs alongside, include a failure, or the planted no-terminal mutant passes
+  - id: "req-omn26228-routing-test-owns-its-state"
+    statement: |-
+      The routing test resets the reducer configuration it depends on, and the test that loads it stops leaking it.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: test_handler_routing_intent_dod_overlay passes when run after those two files in that order, because the state it depends on is reset where it is created -- falsifier: uv run pytest -p no:randomly tests/unit/handlers/test_delegation_routing_order_reader.py tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py tests/unit/routing/test_handler_routing_intent_dod_overlay.py -q fails
+  - id: "req-omn26228-controls-kept"
+    statement: |-
+      Neither fix weakens what the tests prove.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: neither fix weakens what the tests prove: each keeps a negative control that fails on the defect it guards -- falsifier: the routing test still passes when the static decision is wrong, or the terminal test still passes when no terminal is published
+evidence_requirements:
+  - kind: "tests"
+    description: "The routing reproduction in CI order and the runtime terminal test."
+    command: "uv run pytest -p no:randomly tests/unit/handlers/test_delegation_routing_order_reader.py tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py tests/unit/routing/test_handler_routing_intent_dod_overlay.py tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py -q -n 0 --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26228-ac2-routing-order"
+    description: "The routing test runs after the routing-order reader and the BYOK escalation test, in that order, and routes with a fresh configuration. Fails at the merge base with 7 failures ('cheap_cloud' == 'local')."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest -p no:randomly tests/unit/handlers/test_delegation_routing_order_reader.py tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py tests/unit/routing/test_handler_routing_intent_dod_overlay.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26228-ac1-ac3-terminal-and-controls"
+    description: "The runtime and market cases of the pre-dispatch terminal test pass with the run-step scan outside the deadline, and the routing test asserts the static local decision. The planted mutants (terminal never published: 2 failed; tier order reversed: 7 failed) and the 20 loaded runs are recorded in the pull request; at the merge base the timeout appears only on loaded CI runners."
+    source: "manual"
+    binds_ac: ["AC1", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest -p no:randomly tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py tests/unit/routing/test_handler_routing_intent_dod_overlay.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26228-integration-proof"
+    description: >-
+      Run the routing reproduction and the runtime terminal test on a lab host at the pushed revision.
+      This local completion proof carries no hosted AC bindings.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-26228 --kind test --
+          env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest -p no:randomly
+          tests/unit/handlers/test_delegation_routing_order_reader.py
+          tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py
+          tests/unit/routing/test_handler_routing_intent_dod_overlay.py
+          tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py
+          -q -n 0 --no-cov --refuse-skips
+        cwd: "."
