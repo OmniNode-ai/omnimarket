@@ -3,16 +3,14 @@
 """Interactive model selection for the shared setup command."""
 
 import asyncio
+import sqlite3
 from collections.abc import Callable
 
 import click
 from pydantic import SecretStr
 
 from omnimarket.handlers.routing import byok_provider_backends
-from omnimarket.inference.local_byok_credential_adapter import (
-    LocalByokCredentialStore,
-    resolve_local_byok_credential_ref,
-)
+from omnimarket.inference import local_byok_credential_adapter as credential_store
 from omnimarket.models.model_endpoint_models import (
     ModelEndpointModelsResult,
 )
@@ -35,24 +33,55 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits 
 def stored_key_for_unchanged_provider(
     saved: ModelSetupPlan | None, provider: str, url: str | None
 ) -> SecretStr | None:
-    """A stored key for a provider the saved setup already uses at the same endpoint.
+    """A stored key for a hosted provider the saved setup already uses.
 
-    A configure re-run that keeps a provider reuses the key the participant
-    stored, never asking for it again; a new provider, or a changed endpoint,
-    still asks. Only reads the store; never writes it.
+    A configure re-run that keeps a hosted provider reuses the key the
+    participant stored, never asking for it again; a new provider asks. A key
+    is stored per provider, not per endpoint, so a server given by URL or a
+    named connection always asks. The store is opened read-only: it is never
+    created, migrated or chmodded, its own refusal of a world-readable file
+    stands, and anything unreadable means no stored key, so the prompt asks.
     """
-    if saved is None or not any(
-        selection.provider == provider
-        and not selection.connection_id
-        and (selection.url or None) == (url or None)
-        for selection in saved.providers
+    if (
+        saved is None
+        or url is not None
+        or provider in URL_PROVIDERS
+        or not any(
+            selection.provider == provider
+            and not selection.connection_id
+            and not selection.url
+            for selection in saved.providers
+        )
     ):
         return None
-    ref = resolve_local_byok_credential_ref(setup_provider_traits().key_name(provider))
-    if not ref:
+    try:
+        ref = _stored_ref(setup_provider_traits().key_name(provider))
+        if ref is None:
+            return None
+        value = asyncio.run(credential_store.LocalByokCredentialStore().get_secret(ref))
+    except (OSError, sqlite3.Error, credential_store.LocalByokCredentialError):
         return None
-    value = asyncio.run(LocalByokCredentialStore().get_secret(ref))
     return SecretStr(value) if value else None
+
+
+def _stored_ref(provider: str) -> str | None:
+    """The newest provider-wide credential reference, read without writing."""
+    from omnimarket.nodes.node_model_setup_effect import credential_read_adapter
+
+    path = credential_store.default_evidence_db_path()
+    if not path.is_file():
+        return None
+    conn = credential_read_adapter.read_credentials(path)
+    try:
+        row = conn.execute(
+            f"SELECT secret_ref FROM {credential_store.LOCAL_CREDENTIAL_TABLE} "
+            f"WHERE provider = ? AND {credential_read_adapter.legacy_scope(conn)} "
+            "ORDER BY registered_at DESC LIMIT 1",
+            (provider.strip().lower(),),
+        ).fetchone()
+    finally:
+        conn.close()
+    return str(row["secret_ref"]) if row is not None else None
 
 
 def _suggested_order(

@@ -26,7 +26,7 @@ requirements:
           AC3: `onex models --help` and the `onex setup` completion output name the command for adding a provider after setup -- falsifier: neither output contains "onex models add"
 evidence_requirements:
   - kind: tests
-    description: "The new test files prove AC1, AC2 and AC3 on the branch and fail at dev."
+    description: "The models and setup re-run test files prove AC1, AC2 and AC3 on the branch and fail at dev; the TUI /config test pins AC2 behaviour that already held at dev."
     command: "uv run pytest tests/unit/cli/test_models_bare_provider_omn23825.py tests/unit/nodes/node_onex_setup_effect/test_setup_rerun_new_provider_omn23825.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui_config_new_provider_omn23825.py -q -p no:randomly"
 emergency_bypass:
   enabled: false

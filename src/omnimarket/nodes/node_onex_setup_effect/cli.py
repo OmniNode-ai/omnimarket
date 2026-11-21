@@ -536,7 +536,9 @@ def setup_command(
                     endpoint_auth=endpoint_auth,
                     credentials=prepared_credentials,
                     connection_id=connection_id,
-                    saved=saved,
+                    # Only a configure re-run reuses a stored key: a named
+                    # --provider can always take a new (rotated) key.
+                    saved=saved if provider is None and action == "configure" else None,
                 )
     if (
         not interactive
