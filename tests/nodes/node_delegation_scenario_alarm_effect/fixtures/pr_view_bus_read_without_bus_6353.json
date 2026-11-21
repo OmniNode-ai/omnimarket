@@ -1,0 +1,29 @@
+{
+ "bus": null,
+ "node": "node_github_repo_gateway_effect",
+ "operation": "pr_text",
+ "outcome": "completed",
+ "repo": "OmniNode-ai/omnimarket",
+ "result": {
+  "armed": false,
+  "author": "redacted-author",
+  "base": "dev",
+  "class": "held-excluded",
+  "created_at": "2026-11-17T01:02:37Z",
+  "draft": true,
+  "head_ref": "omn-25071-delegation-scenario-alarm",
+  "head_sha": "37fe44a7a8ef2cd854b5a173f2493b088815c9ae",
+  "labels": [],
+  "merged_at": "",
+  "node_id": "PR_kwDOR6jjtc8AAAABPshdpg",
+  "number": 6353,
+  "reason": "draft",
+  "repo": "OmniNode-ai/omnimarket",
+  "state": "OPEN",
+  "title": "OMN-25071: add the delegation scenario alarm node with run-stable request ids",
+  "updated_at": "2026-11-17T11:50:59Z"
+ },
+ "source": "watcher",
+ "verb": "pr-view",
+ "watcher_tick": "2026-11-17T12:04:18Z"
+}
