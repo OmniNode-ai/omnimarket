@@ -64,12 +64,14 @@ def test_contract_binds_the_handler_with_the_canonical_signature() -> None:
     assert hints["request"] is request_class
     assert hints["return"] is result_class
     assert contract["name"] == "node_test_selector_reading_compute"
-    assert contract["metadata"]["related_tickets"] == ["OMN-22951"]
+    assert contract["metadata"]["related_tickets"] == ["OMN-22951", "OMN-26271"]
     assert contract["event_bus"]["subscribe_topics"] == [
-        "onex.cmd.omnimarket.test-selector-read-requested.v1"
+        "onex.cmd.omnimarket.test-selector-read-requested.v1",
+        "onex.cmd.omnimarket.test-selector-attribute-requested.v1",
     ]
     assert contract["event_bus"]["publish_topics"] == [
-        "onex.evt.omnimarket.test-selector-read.v1"
+        "onex.evt.omnimarket.test-selector-read.v1",
+        "onex.evt.omnimarket.test-selector-attributed.v1",
     ]
 
 

@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The settings of node_test_selector_miss_collect_effect. No value is set in code.
+#
+#   nightly_shard_count      junit artifacts (nightly-test-results-<n>) a complete night holds. It
+#                            equals NIGHTLY_SPLIT_COUNT in .github/workflows/nightly-full-suite.yml; a test pins the two together.
+#   nightly_min_test_files   test files a complete night reports at least; fewer is an incomplete night.
+#   collector_max_lag_hours  hours after the nightly's scheduled slot by which the collector must have
+#                            recorded a result; later, the slot check raises the dead-man alarm.
+#   nightly_slot_time_utc    the nightly's scheduled time of day (its cron), which the slot date and the lag are counted from.
+#   record_retention_days    commits further back than this are not candidates (the record artifacts expire).
+nightly_shard_count: 10
+nightly_min_test_files: 2000
+collector_max_lag_hours: 6
+nightly_slot_time_utc: "02:30"
+record_retention_days: 14
