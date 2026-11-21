@@ -1,0 +1,101 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-25070
+title: The customer package omninode-onex declares the customer launchers and pins its distributions
+summary: >-
+  omnimarket now holds the customer package omninode-onex under packages/omninode-onex. It carries
+  no code, declares onex and omni-agent with omnibase_core's CLI as their target, and pins
+  omnibase-core, omnibase-infra, omnibase-spi, omnimarket and omninode-memory with ==. A customer runs uv tool install
+  omninode-onex, which links only the named package's launchers, so exactly onex and omni-agent
+  land on PATH. During the testing phase omnibase-core keeps declaring the same two launchers.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn25070-customer-package
+    statement: The customer package declares exactly onex and omni-agent, pins each distribution with ==,
+      and its wheel carries no code.
+    acceptance:
+      - id: AC2
+        statement: >-
+          AC2 (testing-phase form, package part): the package declares exactly onex and omni-agent with
+          omnibase_core's target, pins omnibase-core, omnibase-infra, omnibase-spi, omnimarket and omninode-memory with ==, pins
+          omnimarket no newer than this repository's version, and its built wheel holds only its dist-info --
+          falsifier: uv run pytest tests/ci/test_omninode_onex_package_omn25070.py fails on omnimarket
+          dev, where packages/omninode-onex does not exist. The install part (uv tool install puts
+          exactly onex and omni-agent on PATH and onex runs) is the opt-in
+          tests/e2e/test_setup_packaged_journey.py -k customer_launchers_only, run with
+          ONEX_TEST_ONEX_WHEEL set.
+  - id: req-omn25070-curl-installer
+    statement: curl -fsSL https://omninode.ai/install.sh | bash installs omninode-onex on Apple Silicon macOS and
+      Linux with a checksum-verified uv, refuses unsupported platforms and foreign launchers, and is safe to rerun.
+    acceptance:
+      - id: AC4
+        statement: >-
+          AC4 (testing-phase form): the installer node_onex_installer_render_compute renders from
+          packages/omninode-onex/installer.json, piped into bash, maps Apple Silicon macOS (also under
+          Rosetta) and Linux x86_64 and arm64 to the right uv build and refuses, before installing
+          anything, every platform not supported yet (Intel macOS, Windows, musl Linux, any other CPU or
+          system); never builds from source; never runs a uv archive whose sha256 differs from the value in the script; refuses,
+          naming the file and leaving it unchanged, when a launcher it did not install is in uv's bin
+          directory; and installs, reinstalls and upgrades leaving exactly onex and omni-agent on PATH --
+          falsifier: uv run pytest tests/ci/test_omninode_onex_install_sh_omn25070.py fails on omnimarket
+          dev, where neither the node nor its request exists; the real install cases run with ONEX_TEST_ONEX_WHEEL set,
+          on each platform in .github/workflows/onex-installer.yml.
+  - id: req-omn25070-run-by-lane-kept
+    statement: No infra change is required. The stack-shape baseline forbids re-commanding projection-api, so T1
+      removes no console script marked run_by_lane.
+    acceptance:
+      - id: AC5
+        statement: >-
+          AC5 (amended 2026-11-18): no infra change is required. The stack-shape baseline forbids re-commanding
+          projection-api, so T1 removes no console script marked run_by_lane, proved by the existing stack-shape
+          gate and a market-side run_by_lane_scripts_kept test -- falsifier: uv run pytest
+          tests/ci/test_omninode_onex_package_omn25070.py -k run_by_lane fails when omnimarket-projection-api is removed from,
+          or retargeted in, pyproject.toml [project.scripts], or declared by packages/omninode-onex.
+evidence_requirements:
+  - kind: tests
+    description: The package tests; the opt-in install check runs with ONEX_TEST_ONEX_WHEEL set.
+    command: uv run --frozen pytest tests/ci/test_omninode_onex_package_omn25070.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn25070-customer-package
+    description: The customer package declares the two launchers, pins its distributions with == and
+      ships no code. The bound test fails on dev, where the package does not exist.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omninode_onex_package_omn25070.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-curl-installer
+    description: The installer's platform, checksum and conflict cases, run through bash from stdin. The bound
+      test fails on dev, where the script does not exist.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omninode_onex_install_sh_omn25070.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-ac5-run-by-lane-kept
+    description: Every omnimarket console script the infra stack shape marks run_by_lane is still declared with
+      the same target, and the customer package declares none of them. The bound test fails when a script is
+      removed or retargeted.
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q --no-cov tests/ci/test_omninode_onex_package_omn25070.py -k run_by_lane
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-installer-integration-proof
+    description: The render node and the rendered installer run on a lab host at the pushed head. Hosted CI runs
+      the same tests per platform; only the local Done gate runs this unbound check on the lab.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25070 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_onex_installer_render_compute tests/ci/test_omninode_onex_install_sh_omn25070.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket

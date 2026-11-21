@@ -589,7 +589,7 @@ class TestProductionCallSitesRouteTheRepairedClassesCorrectly:
         local_tier = next(t for t in config.tiers if t.name == "local")
 
         assert routing._tier_can_route_task(
-            local_tier, "documentation", backends, contract
+            local_tier, "documentation", backends, contract, prompt=""
         )
 
         contract_model_ref = routing._get_contract_model_ref(
@@ -621,7 +621,7 @@ class TestProductionCallSitesRouteTheRepairedClassesCorrectly:
         local_tier = next(t for t in config.tiers if t.name == "local")
 
         assert routing._tier_can_route_task(
-            local_tier, "validator_generation", backends, contract
+            local_tier, "validator_generation", backends, contract, prompt=""
         )
 
         contract_model_ref = routing._get_contract_model_ref(
@@ -649,7 +649,7 @@ class TestProductionCallSitesRouteTheRepairedClassesCorrectly:
         local_tier = next(t for t in config.tiers if t.name == "local")
 
         assert routing._tier_can_route_task(
-            local_tier, "summarization", backends, contract
+            local_tier, "summarization", backends, contract, prompt=""
         )
 
         contract_model_ref = routing._get_contract_model_ref(
@@ -674,7 +674,9 @@ class TestProductionCallSitesRouteTheRepairedClassesCorrectly:
         backends = _synthetic_available_backends(config)
         claude_tier = next(t for t in config.tiers if t.name == "claude")
 
-        assert routing._tier_can_route_task(claude_tier, "refactor", backends, contract)
+        assert routing._tier_can_route_task(
+            claude_tier, "refactor", backends, contract, prompt=""
+        )
 
         contract_model_ref = routing._get_contract_model_ref(
             "refactor", contract=contract

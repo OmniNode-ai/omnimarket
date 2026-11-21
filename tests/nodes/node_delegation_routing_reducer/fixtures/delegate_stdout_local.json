@@ -1,0 +1,261 @@
+{
+  "skill_name": "node_delegate_skill_orchestrator",
+  "node_name": "node_delegate_skill_orchestrator",
+  "status": "success",
+  "correlation_id": "7b6325df-3fbc-4f0d-a5f7-155cbb0ecb60",
+  "run_id": "a5f1ef93-d5c1-4535-8211-dc8cedc83fda",
+  "exit_code": 0,
+  "duration_ms": 86340,
+  "result": {
+    "workflow_result": "completed",
+    "exit_code": 0,
+    "workflow": "<redacted-path>",
+    "terminal_payload": {
+      "payload": {
+        "status": "completed",
+        "operational_outcome": null,
+        "content_verdict": null,
+        "terminal_failure_reason": null,
+        "correlation_id": "7b6325df-3fbc-4f0d-a5f7-155cbb0ecb60",
+        "task_type": "summarization",
+        "tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+        "provider": "local",
+        "model_name": "Qwen3.8-27B",
+        "model_cloud_baseline": "claude-sonnet-5-5",
+        "baseline_source": "fixed_default",
+        "baseline_state": "RESOLVED",
+        "pricing_manifest_version": 1,
+        "prompt_text": "Summarize in one line: the sky is blue.",
+        "response": "The sky is blue.",
+        "quality_gate_passed": true,
+        "quality_score": 1.0,
+        "required_quality_bar": 0.8,
+        "score_vs_required_bar": "at_or_above_bar",
+        "response_contract_evidence": {
+          "conveyed": true,
+          "validated": true,
+          "output_shape": "markdown",
+          "contract_sha256": "eec0c6cf299fdcb0d413c031fd0676b376d343cdbb4c2e12e93971f8a8ef8084",
+          "channel": "messages[0].content",
+          "raw_response": {
+            "source_field": "choices[0].message.content",
+            "sha256": "9512928270fb6ffdcb73d3114c34e012a35849faf47d7ce9ef5ea5bbc8239657",
+            "utf8_bytes": 27,
+            "text": "### ANSWER\nThe sky is blue."
+          }
+        },
+        "budget_evidence": {
+          "requested_timeout_seconds": null,
+          "task_class_timeout_ceiling_seconds": 240,
+          "execution_timeout_seconds": 240,
+          "terminal_delivery_margin_seconds": 60,
+          "ceiling_source": "packaged",
+          "ceiling_overlay_ref": null
+        },
+        "budget_refusal": null,
+        "output_refusal": null,
+        "preamble_chars": 11,
+        "quality_gates_failed": [],
+        "metrics": {
+          "input_tokens": 373,
+          "output_tokens": 10,
+          "total_tokens": 383,
+          "tokens_to_compliance": 383,
+          "compliance_attempts": 1,
+          "cost_usd": 0.0,
+          "cost_measured": null,
+          "cost_savings_usd": 0.000846,
+          "frontier_costs_usd": {
+            "claude-opus-4-6": 0.002115,
+            "claude-sonnet-4-20250514": 0.001269,
+            "claude-haiku-3-5": 0.0003384,
+            "gpt-4o": 0.0010325
+          },
+          "premium_counterfactual": {
+            "model": "claude-sonnet-5-5",
+            "price_in_per_1k": "0.002",
+            "price_out_per_1k": "0.01",
+            "as_of": "2026-10-06",
+            "tokens_in": 373,
+            "tokens_out": 10,
+            "counterfactual_cost_usd": "0.000846",
+            "pricing_source": "pricing_manifest",
+            "measured": false
+          },
+          "latency_ms": 13944
+        },
+        "credential_refusal": null,
+        "credential_withheld": null,
+        "error_message": "",
+        "escalation_count": 0,
+        "attempts_count": 1,
+        "attempts": [
+          {
+            "tier": "local",
+            "backend_id": "local-heavy-reasoning",
+            "model_id": "Qwen3.8-27B",
+            "quality_gate_passed": true,
+            "quality_score": 1.0,
+            "cost_usd": 0.0,
+            "usage_source": null,
+            "finish_reason": "absent",
+            "truncated": false,
+            "failure_class": null,
+            "error_message": "",
+            "provider_id": "host:<redacted-ip>",
+            "http_status": 200,
+            "provider_code": null,
+            "acceptance_decision": "accept",
+            "acceptance_reason": "quality_bar_met",
+            "input_tokens_measured": null,
+            "input_token_budget": null,
+            "acceptance_detail": "",
+            "rubric_verdict": {
+              "rubric_version": "delegation-class-rubrics.v1",
+              "task_class": "summarization",
+              "outcome": "UNDETERMINED",
+              "failed_criteria": [],
+              "undetermined_criteria": [
+                "claims_traceable",
+                "id_coverage"
+              ]
+            },
+            "reasoning_preamble_rule": "no_boundary_found",
+            "reasoning_preamble": "",
+            "substituted_from_backend_id": null,
+            "attempt_id": "7685b578-bf76-5dc8-ac42-49e796448034",
+            "attempt_kind": "first_try",
+            "parent_attempt_id": null,
+            "split_id": null,
+            "host": "<redacted-ip>",
+            "size_band": null,
+            "configuration": null
+          }
+        ],
+        "finish_reason": "absent",
+        "truncated": false,
+        "reasoning_preamble_rule": "no_boundary_found",
+        "queue_wait_ms": 5307,
+        "execution_duration_ms": 77469,
+        "ticket_id": "OMN-25284",
+        "caller_lane": "fix6344-0708",
+        "session_id": "0e543fb3-9a59-4114-906b-fe6641811837",
+        "command_id": "1c2d2fd5-d7b1-4dcf-b64c-42de93678e04",
+        "trace_id": "104f37fb-bfc2-4dde-b1bc-897241169623",
+        "span_id": "eb46b437-8d70-4ff6-bad9-b92604c2300c",
+        "budget_source": "contract:task_class_contracts.v1.yaml#execution_budgets.summarization"
+      },
+      "envelope_id": "777bded6-db0a-5a96-9f80-621f934c3c33",
+      "envelope_timestamp": "2026-11-17T07:37:45.568972Z",
+      "correlation_id": "7b6325df-3fbc-4f0d-a5f7-155cbb0ecb60",
+      "parent_envelope_id": "1c2d2fd5-d7b1-4dcf-b64c-42de93678e04",
+      "source_tool": null,
+      "target_tool": null,
+      "metadata": {
+        "trace_id": null,
+        "span_id": null,
+        "parent_span_id": null,
+        "request_id": null,
+        "headers": {},
+        "tags": {}
+      },
+      "security_context": null,
+      "event_type": "omnimarket.delegate-skill-completed",
+      "payload_type": null,
+      "payload_schema_version": null,
+      "priority": 5,
+      "timeout_seconds": null,
+      "retry_count": 0,
+      "request_id": null,
+      "trace_id": null,
+      "span_id": null,
+      "tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+      "producer": null,
+      "provenance": null,
+      "onex_version": {
+        "major": 1,
+        "minor": 0,
+        "patch": 0,
+        "prerelease": null,
+        "build": null
+      },
+      "envelope_version": {
+        "major": 2,
+        "minor": 4,
+        "patch": 0,
+        "prerelease": null,
+        "build": null
+      }
+    },
+    "handler_result": null,
+    "error": "",
+    "runtime_error_type": "",
+    "runtime_error_is_transport": false,
+    "handler_locus": "dispatched",
+    "wire_correlation_id": "7b6325df-3fbc-4f0d-a5f7-155cbb0ecb60",
+    "orchestrator_distribution": "omnimarket 0.4.321 (<redacted-path>)",
+    "dispatch_target": "onex.cmd.omnimarket.delegate-skill.v1 via <redacted-bus-host>; live consumers: local.omnimarket.node_delegate_skill_orchestrator.consume.1.3.0.__i.runtime-main.__t.onex.cmd.omnimarket.delegate-skill.v1",
+    "capture_log": ""
+  },
+  "result_model": "omnibase_infra.cli.model_receipt_runtime_summary.ModelReceiptRuntimeSummary",
+  "metrics": {
+    "capture_log_bytes": 5290.0
+  },
+  "artifact_refs": [
+    {
+      "ref": "sha256:7d7bb2508ff572da9d8ecca825badd82222b5616821de12ecf3556f8ea91afd8"
+    }
+  ],
+  "runtime_identity": {
+    "host": "<redacted>",
+    "locus_kind": "venv",
+    "execution_locus": "<redacted>",
+    "interpreter": "<redacted>",
+    "packages": {
+      "omnibase_core": {
+        "name": "omnibase_core",
+        "version": "0.47.73.dev9+ga09066ca",
+        "commit": "a09066caf945cd79e13447d92ad42549f1019f78",
+        "source": "vcs",
+        "import_path": null
+      },
+      "omnibase_infra": {
+        "name": "omnibase_infra",
+        "version": "0.38.77",
+        "commit": null,
+        "source": "local_path",
+        "import_path": null
+      },
+      "omnibase_spi": {
+        "name": "omnibase_spi",
+        "version": "0.23.15",
+        "commit": null,
+        "source": "registry",
+        "import_path": null
+      },
+      "omnimarket": {
+        "name": "omnimarket",
+        "version": "0.4.321",
+        "commit": "13a7e30415faf3707eb4225d569fd1c31014efa9",
+        "source": "vcs",
+        "import_path": null
+      }
+    },
+    "config_source": "<redacted>",
+    "stamped_at": "2026-11-17T07:37:45.688410Z",
+    "schema_version": {
+      "major": 1,
+      "minor": 0,
+      "patch": 0,
+      "prerelease": null,
+      "build": null
+    }
+  },
+  "schema_version": {
+    "major": 1,
+    "minor": 1,
+    "patch": 0,
+    "prerelease": null,
+    "build": null
+  }
+}

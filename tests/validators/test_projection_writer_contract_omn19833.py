@@ -225,6 +225,9 @@ def _runtime_writers() -> list[tuple[str, type[BaseProjectionRunner]]]:
             if (
                 issubclass(cls, BaseProjectionRunner)
                 and getattr(cls, gate.INPROCESS_ATTR, False) is True
+                # A writer routed once per topic is one writer: the gate counts
+                # distinct classes per node, so the runtime side does too.
+                and (path.parent.name, cls) not in found
             ):
                 found.append((path.parent.name, cls))
     return found
