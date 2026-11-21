@@ -40,6 +40,10 @@ def collect_machine_facts(workspace: Path) -> ModelSetupMachineFacts:
     if system == "Linux":
         # Keep unreadable facts unknown; the preflight boundary refuses them.
         with suppress(OSError, ValueError):
+            # os-release(5) allows /usr/lib/os-release only when /etc/os-release
+            # is missing; the standard library also falls back when it is unreadable.
+            with suppress(FileNotFoundError):
+                open("/etc/os-release", "rb").close()
             linux_distribution = platform.freedesktop_os_release().get("ID", "")
     observations: dict[str, bool | None] = {}
     if system == "Darwin":

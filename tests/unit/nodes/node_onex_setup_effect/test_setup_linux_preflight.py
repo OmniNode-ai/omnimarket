@@ -7,6 +7,8 @@ ignoring an unreadable distribution identity, and misleading Windows advice.
 Only external platform observations are supplied; collection and verdicts are real.
 """
 
+import builtins
+import io
 from pathlib import Path
 
 import pytest
@@ -84,6 +86,34 @@ def test_unreadable_linux_identity_is_a_secret_free_failure(
     assert result.status == "failure"
     assert "private-release-sentinel" not in result.model_dump_json()
     assert "preflight" in (result.fix or "")
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("error", [PermissionError, IsADirectoryError])
+def test_unreadable_etc_os_release_is_not_answered_by_the_vendor_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: type[OSError]
+) -> None:
+    """os-release(5) reads /usr/lib/os-release only when /etc/os-release is missing.
+
+    The standard library falls back on any OSError, so an existing but unreadable
+    host file would be answered by the vendor copy's identity.
+    """
+    real_open = builtins.open
+
+    def host_open(file: object, *args: object, **kwargs: object) -> object:
+        if file == "/etc/os-release":
+            raise error(13, "unreadable", file)
+        if file == "/usr/lib/os-release":
+            return io.StringIO("ID=ubuntu\n")
+        return real_open(file, *args, **kwargs)  # type: ignore[call-overload]
+
+    monkeypatch.setattr(preflight.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(builtins, "open", host_open)
+    result = preflight.HandlerSetupPreflight().handle(
+        ModelSetupPlan(workspace=tmp_path)
+    )
+    assert result.status == "failure", result
+    assert "linux_distribution" not in result.evidence
     assert list(tmp_path.iterdir()) == []
 
 
