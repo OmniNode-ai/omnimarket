@@ -34,9 +34,7 @@ pytestmark = pytest.mark.unit
 
 ROOTS = "ONEX_SKILL_OVERLAY_ROOTS"
 UNIT = "job-log-filler"
-PINNED = (
-    "/Users/op/.claude/plugins/cache/omninode-internal/onex-overlays/0.1.30/overlays"
-)
+PINNED = "/Users/op/.claude/plugins/cache/omninode-internal/onex-overlays/0.1.30/overlays"  # test-literal-ok: synthetic plugin cache path, never read
 
 
 def environment_of(
@@ -86,7 +84,7 @@ def test_golden_an_override_naming_only_the_overlays_clone_is_accepted(
 def test_golden_a_plugin_cache_path_without_a_version_segment_is_accepted(
     tmp_path: Path,
 ) -> None:
-    current = "/Users/op/.claude/plugins/cache/omninode-internal/onex-overlays/current/overlays"
+    current = "/Users/op/.claude/plugins/cache/omninode-internal/onex-overlays/current/overlays"  # test-literal-ok: synthetic plugin cache path, never read
     assert environment_of(tmp_path, path_overrides={ROOTS: current})[ROOTS] == current
 
 
