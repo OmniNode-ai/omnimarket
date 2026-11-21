@@ -1,0 +1,143 @@
+schema_version: 1.0.0
+ticket_id: OMN-25376
+title: 'Review findings 1 to 7 on omnimarket PR 6353 at head 43bc9673d0c1 are fixed or argued: the alarm stamp comes from the record and bucket, the contract items name files that exist at the head, the
+  Lab comment and a real pr-view fixture are at the new head'
+summary: The alarm row stamp is a function of the record and the bucket, so a second tick is a duplicate; the OMN-25071 contract names only files that exist at the head and a test reads each named path;
+  the tick leaves a failure last-run record on exit 2 and on an appender exception; the comment check shim is compared to a committed answer of the gateway's own reader.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25376-ac1
+  statement: A failed record with a future ran_at, a fresh record concluding stale and a fractional ran_at each give the same alarm bytes on a second tick, which ends as a duplicate with exit 0 through
+    HandlerWorkLedgerAppendEffect.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a failed record with a future ran_at, a fresh record concluding stale and a fractional ran_at each give the same alarm bytes on a second tick, which ends as a duplicate with exit 0
+      through HandlerWorkLedgerAppendEffect -- falsifier: `uv run --frozen pytest tests/nodes -k "omn24874 and alarm and second_tick" -q` fails on the min(moment, now) stamp'
+- id: req-omn25376-ac2
+  statement: The OMN-25071 contract items AC3 to AC6 name only files that exist at the head, or they move to the contract of omnimarket 6335, and a test reads each named path.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the OMN-25071 contract items AC3 to AC6 name only files that exist at the head, or they move to the contract of omnimarket 6335, and a test reads each named path -- falsifier: `uv run
+      --frozen pytest tests/nodes -k "contract_checks_omn25071 and paths" -q` fails when a named path is absent at the head'
+- id: req-omn25376-ac3
+  statement: The Lab comment for the new head shows the output of the comment checks of the OMN-25071, OMN-25206 and OMN-25281 contracts at that head with the command and exit 0, and names the three tests
+    part 2 skipped.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the Lab comment for the new head shows the output of the comment checks of the OMN-25071, OMN-25206 and OMN-25281 contracts at that head with the command and exit 0, and names the three
+      tests part 2 skipped -- falsifier: `uv run --frozen pytest tests/nodes -k "contract_checks_omn25071 and lab" -q` fails on a Lab comment that names no exit'
+- id: req-omn25376-ac4
+  statement: A real `onex scm pr-view --source bus` answer with comments is committed as a fixture and the shim is compared to it.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: a real `onex scm pr-view --source bus` answer with comments is committed as a fixture and the shim is compared to it -- falsifier: `uv run --frozen pytest tests/nodes -k "pr_comment_check
+      and real_fixture" -q` fails with a hand-copied shape the real command never prints'
+- id: req-omn25376-ac5
+  statement: A tick_exit test asserts exit 0 on the rendered argv, the omn24874 token is in test or class names, the contract check fails on a missing falsifier path, and the discovery test calls the real
+    effects wiring.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: a tick_exit test asserts exit 0 on the rendered argv, the omn24874 token is in test or class names, the contract check fails on a missing falsifier path, and the discovery test calls
+      the real effects wiring -- falsifier: `uv run --frozen pytest tests/nodes -k "omn24874 and tick_exit" -q` collects no test or fails when the tick exits 1'
+- id: req-omn25376-ac6
+  statement: Non-blocking findings 6 and 7 are fixed with a test red then green each or argued with evidence in a PR comment.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: non-blocking findings 6 and 7 are fixed with a test red then green each or argued with evidence in a PR comment -- falsifier: `uv run --frozen pytest tests -k "omn24874 and alarm and
+      last_run" -q` fails when exit 2 leaves no last-run record'
+evidence_requirements:
+- kind: tests
+  description: The alarm node golden-chain tests and the contract check tests.
+  command: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25376-ac1
+  description: A failed record with a future ran_at, a fresh record concluding stale and a fractional ran_at give one id and the same bytes on a second tick, which the real append handler reads as a duplicate.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -k "omn24874 and alarm and second_tick" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25376-ac2
+  description: Every file the alarm contracts name exists at the head, and the path reader reports a contract that names a missing file. The cost pull request's items (OMN-25071 AC3 and AC4) are not in
+    this contract.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "contract_checks_omn25071 and paths" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25376-ac3
+  description: The Lab comment checks refuse a comment that names no exit, no lab command or an old head (hosted); the Lab comment of the new head names findings 1 to 7 of the review, the lab command and
+    exit 0 (local Done gate).
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "contract_checks_omn25071 and lab" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25376-ac3-comment
+  description: 'Local Done gate: the one comment of this pull request that opens with the Lab marker for the head the PR watcher records names each of findings 1 to 7 of the review of head 43bc9673d0c1
+    on a line tagged round 1345, and the lab command and exit 0.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: sh -c 'H=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6353 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]])"
+      facts head_sha) && test "${#H}" -eq 40 && test "$H" = "$(git rev-parse HEAD)" && onex scm pr-view --source bus OmniNode-ai/omnimarket#6353 | python3 tests/nodes/node_delegation_scenario_alarm_effect/pr_comment_check.py
+      --head "$H" --finding 1 --finding 2 --finding 3 --finding 4 --finding 5 --finding 6 --finding 7 --round 1345 --lab'
+    cwd: .
+- id: dod-omn25376-ac4
+  description: A bus answer with comments, printed by the gateway's own reader, is committed and regenerated by a test, and the shim of the comment checks has its keys.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "pr_comment_check and real_fixture" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25376-ac5
+  description: The tick asserts exit 0 on the rendered argv and exit 1 on a failed append, the omn24874 token is in the test names, the contract path reader reports a missing falsifier path, and the discovery
+    test runs infra's wiring.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -k "omn24874 and tick_exit" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -k "effects_runtime or would_be_unresolvable or runtime_discovery"
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "paths_check_fails" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25376-ac6
+  description: Exit 2, an appender exception and a timed-out append each leave a last-run record that says failure. Finding 6 (the cost-files test) is dropped with the cost files of the OMN-25071 contract.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -k "omn24874 and alarm and last_run" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25376-integration-proof
+  description: The alarm node tests and the installer registry unit tests run on a lab host at the pushed head through the lab work runner; hosted CI cannot reach the lab, so only the local Done gate runs
+    this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path "${OMNI_HOME:?}" --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25376
+      --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect tests/nodes/node_host_installer_registry_units -q --no-cov -n 0 -p no:randomly
+    cwd: .

@@ -21,7 +21,8 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
 
 _GATE = "Gate: C7"
 _CRITERION = (
-    "- [ ] AC1: the check works -- falsifier: uv run pytest tests/unit/test_x.py -q"
+    "- [ ] AC1: the check works -- falsifier: uv run pytest tests/unit/test_x.py -q\n"
+    "- [ ] AC2: integrated: the check runs on the dev lane -- falsifier: one request on the dev lane and its reply read back"
 )
 
 

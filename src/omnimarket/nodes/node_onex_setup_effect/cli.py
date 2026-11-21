@@ -21,9 +21,9 @@ from typing import Any
 import click
 import yaml
 from click.core import ParameterSource
-from omnibase_core.cli.cli_run_node import run_node_in_process
 from omnibase_core.cli.cli_user_config import user_config_path
 from omnibase_core.errors.model_onex_error import ModelOnexError
+from omnibase_core.models.event_bus.model_run_node_hosted import ModelRunNodeHosted
 from pydantic import SecretStr
 
 from omnimarket.handlers.handler_endpoint_catalog import HandlerEndpointCatalog
@@ -121,7 +121,7 @@ def _run_through_runtime(request: ModelOnexSetupRequest) -> ModelOnexSetupResult
     payload = request.model_dump(mode="json", exclude={"key"})
     payload["key_handoff"] = token
     try:
-        produced = run_node_in_process(NODE_NAME, contract_path, payload, timeout_s)
+        produced = ModelRunNodeHosted.run(NODE_NAME, contract_path, payload, timeout_s)
     except ModelOnexError as error:
         raise click.ClickException(error.message) from error
     finally:

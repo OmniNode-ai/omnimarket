@@ -3,7 +3,7 @@
 """Topic provision dry run effect: counts the live topics under the provision rule, read-only.
 
 It reads the contract tree and lists the broker's topics. It creates, alters and
-deletes nothing. Run it with `python -m omnimarket.nodes.node_topic_provision_dry_run_effect`.
+deletes nothing. Run it with `python -m omnimarket.nodes.node_topic_provision_dry_run_effect.runtime_topic_provision_dry_run`.
 """
 
 from omnimarket.nodes.node_topic_provision_dry_run_effect.handlers.handler_topic_provision_dry_run import (
