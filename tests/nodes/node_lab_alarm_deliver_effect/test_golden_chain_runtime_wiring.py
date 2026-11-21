@@ -50,6 +50,8 @@ def test_contract_declares_one_command_topic_and_one_terminal_event() -> None:
     assert contract["runtime_dispatch"]["command_topic"] == subscribe[0]
     assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
     assert contract["runtime_profiles"] == ["main", "effects"]
+    assert contract["runtime_profiles"] == contract["descriptor"]["runtime_profiles"]
+    assert "main" in contract["runtime_profiles"], "the dev runtime must own the node"
 
 
 async def test_probe_and_alarm_on_the_declared_topic_are_handled_and_answered(
