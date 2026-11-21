@@ -9,11 +9,15 @@ package ships ``overlay.example.yaml`` with synthetic values. Nothing here has a
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Literal
+from math import isfinite
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.nodes.node_runtime_bus_forward_effect.models.model_https_event_bus import (
+    ModelHttpsEventBus,
+)
 
 NODE_NAME = "node_runtime_bus_forward_effect"
 
@@ -39,9 +43,11 @@ class ModelRuntimeBusForwardOverlay(BaseModel):
     whole allow-list — an event whose topic is under none of the prefixes is refused before any publish.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", hide_input_in_errors=True)
 
-    event_bus: ModelHostedEventBus
+    event_bus: Annotated[
+        ModelHostedEventBus | ModelHttpsEventBus, Field(discriminator="type")
+    ]
     max_events: int = Field(ge=1)
     flush_timeout_seconds: float = Field(gt=0)
     allowed_topic_prefixes: tuple[str, ...] = Field(min_length=1)
@@ -53,6 +59,16 @@ class ModelRuntimeBusForwardOverlay(BaseModel):
                 raise ValueError("an allowed topic prefix is empty")
             if not prefix.endswith("."):
                 raise ValueError("an allowed topic prefix ends with a dot")
+        if isinstance(self.event_bus, ModelHttpsEventBus):
+            minimum = self.event_bus.minimum_flush_seconds(self.max_events)
+            if (
+                not isfinite(self.flush_timeout_seconds)
+                or self.flush_timeout_seconds < minimum
+            ):
+                raise ValueError(
+                    f"flush_timeout_seconds must be finite and at least {minimum:g} "
+                    "for two full HTTPS attempts per worst-case sub-batch"
+                )
         return self
 
 
