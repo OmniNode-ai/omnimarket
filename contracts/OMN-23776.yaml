@@ -1,0 +1,95 @@
+schema_version: 1.0.0
+ticket_id: OMN-23776
+title: A hand edit of a standard ticket in Linear raises a typed error and an alarm within 5 minutes
+summary: A new effect node, node_ticket_hand_edit_alarm_effect, keeps the ticket node's newest written event per ticket, reads the issues Linear changed after its cursor on the runtime heartbeat (at most once per the overlay's check_interval_seconds), and compares each standard ticket with its newest write by the sha256 of its title and description and by the render node's parse. A difference, or a description revision by an actor other than the overlay's node identity, is ticket_hand_edit naming the ticket, both fingerprints, what differs and the editors; each finding is one typed error event, one slack-publish command under the same idempotency key and one open-findings row. An unreadable source is detector_unreadable with an alarm and the cursor does not move. A later written event matching the found content closes the finding.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn23776-hand-edit-alarm
+  statement: A ticket changed in Linear outside the ticket node raises a typed error and an alarm naming the ticket, the editor and both fingerprints, and an unreadable source is itself an alarm.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a ticket whose description differs from the newest write record yields one ticket_hand_edit event naming both fingerprints and one slack-publish command with the same idempotency key -- falsifier: uv run pytest tests/unit/nodes/node_ticket_hand_edit_alarm_effect -q -k hand_edit_raised'
+  - id: AC2
+    statement: 'AC2: a ticket whose current content equals the newest write record yields nothing, and a second run over the same edit publishes no second alarm -- falsifier: uv run pytest tests/unit/nodes/node_ticket_hand_edit_alarm_effect -q -k no_finding_when_matches'
+  - id: AC3
+    statement: 'AC3: a revision by an actor other than the overlay''s node identity yields ticket_hand_edit naming that actor -- falsifier: uv run pytest tests/unit/nodes/node_ticket_hand_edit_alarm_effect -q -k editor_not_node'
+  - id: AC4
+    statement: 'AC4: a failing Linear read yields detector_unreadable and leaves the cursor unchanged -- falsifier: uv run pytest tests/unit/nodes/node_ticket_hand_edit_alarm_effect -q -k unreadable_fails_closed'
+  - id: AC5
+    statement: 'AC5: a later written event that matches the current content closes the open finding -- falsifier: uv run pytest tests/unit/nodes/node_ticket_hand_edit_alarm_effect -q -k finding_closed_by_node_write'
+  - id: AC6
+    statement: 'AC6: integrated: done only when running and observed where it runs: on the dev lane a standard ticket edited by hand in Linear raises the error and the alarm within 5 minutes, the measured time recorded, and onex ticket pull closes it -- falsifier: the node''s error event, the alarm and the edit time read on the dev lane, the output pasted in the pull request'
+evidence_requirements:
+- kind: tests
+  description: The hand-edit, no-finding, editor, unreadable, closing and wiring tests pass at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_ticket_hand_edit_alarm_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23776-ac1
+  description: 'AC1: a description (or title) that differs from the newest write yields one ticket_hand_edit event naming the fingerprint written and the fingerprint found, and one slack-publish command under the same key; with the comparison removed the test fails.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_ticket_hand_edit_alarm_effect -q --no-cov -n 0 -p no:randomly -k hand_edit_raised
+    cwd: .
+- id: dod-omn23776-ac2
+  description: 'AC2: content equal to the newest write yields nothing, and the same edit read twice publishes one alarm.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_ticket_hand_edit_alarm_effect -q --no-cov -n 0 -p no:randomly -k no_finding_when_matches
+    cwd: .
+- id: dod-omn23776-ac3
+  description: 'AC3: with the node identity in the overlay, a description revision by another actor after the last write yields ticket_hand_edit naming that actor; with the editor check removed the test fails.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_ticket_hand_edit_alarm_effect -q --no-cov -n 0 -p no:randomly -k editor_not_node
+    cwd: .
+- id: dod-omn23776-ac4
+  description: 'AC4: a failing Linear read yields detector_unreadable with one alarm and the cursor unchanged; with the cursor advanced on failure the test fails.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_ticket_hand_edit_alarm_effect -q --no-cov -n 0 -p no:randomly -k unreadable_fails_closed
+    cwd: .
+- id: dod-omn23776-ac5
+  description: 'AC5: a later written event whose content hash equals the found content closes the open finding; a write of other content closes nothing.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_ticket_hand_edit_alarm_effect -q --no-cov -n 0 -p no:randomly -k finding_closed_by_node_write
+    cwd: .
+- id: dod-omn23776-ac6
+  description: 'hosted proxy for AC6: the node tests pass; the dev-lane hand edit, its error event, its alarm and the measured time are taken after the merged revision is installed and the ticket node publishes its written event, and are pasted in a pull request comment.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_ticket_hand_edit_alarm_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23776-integration-proof
+  description: the node's tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23776 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_ticket_hand_edit_alarm_effect -q --no-cov
+    cwd: .
