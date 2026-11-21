@@ -204,6 +204,7 @@ def _tick(
         ModelLabFillRequest(
             now=now,
             request={
+                "codex_ruling_allows": True,
                 "lab_headroom": {
                     "hosts": [
                         {
@@ -214,7 +215,7 @@ def _tick(
                             },
                         }
                     ]
-                }
+                },
             },
             lines=["MISSING lab-headroom:host-a | free slots"],
             launch=None,
@@ -367,6 +368,7 @@ def test_shared_capacity_is_consumed_once_and_codex_reservations_hold_it(
             ],
             lines=["MISSING lab-headroom:host-a | free slots"],
             generated=items,
+            codex_ruling_allows=True,
             placing={"codex": reserved},
         )
         result = HandlerIdleSlotFill().handle(request)

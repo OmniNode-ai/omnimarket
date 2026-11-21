@@ -183,6 +183,9 @@ def detect_relaunches(
                 "fact": terminal["text"],
                 "brief": brief,
                 "required_engine": "codex",
+                # The relaunched work was ruled onto Codex by the cited RULING; the fill still needs the request's
+                # codex_ruling_allows before it places the lane on Codex (OMN-26214).
+                "codex_ok": True,
                 "branch": branch,
                 "patch": patch,
                 "run_directory": run,

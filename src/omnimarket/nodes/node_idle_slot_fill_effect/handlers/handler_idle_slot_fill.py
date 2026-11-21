@@ -1108,6 +1108,15 @@ class HandlerIdleSlotFill:
                 "risk_class": item.get("risk_class"),
                 "required_engine": required or brief_engine,
                 "required_model": required_model,
+                # OMN-26214: Codex needs the brief's codexOk AND a RULING that allows it; neither is assumed.
+                "codex_ok": bool(item.get("codex_ok"))
+                or re.search(
+                    r"^\s*codexOk:\s*(?:true|yes)\b",
+                    str(item.get("brief", "")),
+                    re.IGNORECASE | re.MULTILINE,
+                )
+                is not None,
+                "codex_ruling_allows": request.codex_ruling_allows,
             }
             preflights = [resolve_lane_model(**policy_facts)]
             preflights.extend(
@@ -2385,6 +2394,7 @@ class HandlerLabFill:
                 completed=completed,
                 fixer_holds=holds,
                 fixer_holds_unread=holds_unread,
+                codex_ruling_allows=request.request.get("codex_ruling_allows") is True,
                 repo_required_kinds=overlay.repo_required_kinds(),
                 wip_refusal=wip_refusal,
             )
@@ -2463,6 +2473,8 @@ class HandlerLabFill:
                         completed=completed,
                         fixer_holds=holds,
                         fixer_holds_unread=holds_unread,
+                        codex_ruling_allows=request.request.get("codex_ruling_allows")
+                        is True,
                         repo_required_kinds=overlay.repo_required_kinds(),
                         wip_refusal=wip_refusal,
                     )

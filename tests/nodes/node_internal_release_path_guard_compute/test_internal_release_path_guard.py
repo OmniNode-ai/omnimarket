@@ -208,7 +208,7 @@ def test_lab_fill_checks_before_writing_or_launching(
             launch=ModelLabFillLaunch(
                 lane="policy-test",
                 ticket="OMN-19998",
-                engine="codex",
+                engine="sonnet",
                 parent="parent",
                 timeout_min=15,
             ),

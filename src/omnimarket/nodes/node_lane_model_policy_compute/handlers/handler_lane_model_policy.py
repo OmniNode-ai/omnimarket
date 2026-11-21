@@ -119,6 +119,17 @@ class HandlerLaneModelPolicy:
             if required in p.order and p.order.index(required) > p.order.index(ceiling):
                 return answer(None, disabled(required))
         exact = canonical(request.required_model) if request.required_model else None
+        codex_admitted = request.codex_ok and request.codex_ruling_allows
+        codex_refusal = (
+            "codex-refused: needs the brief's codexOk and a RULING that allows "
+            f"Codex (codex_ok={request.codex_ok}, "
+            f"codex_ruling_allows={request.codex_ruling_allows})"
+        )
+        if not codex_admitted and (
+            (exact is not None and p.engines.get(exact) == "codex")
+            or required_family == "codex"
+        ):
+            return answer(None, codex_refusal)
         if exact is not None:
             if exact not in p.order:
                 return answer(None, f"unknown-required-model: {request.required_model}")
@@ -147,6 +158,8 @@ class HandlerLaneModelPolicy:
             if family != "auto" and model_family != family:
                 continue
             if required_family and model_family != required_family:
+                continue
+            if model_family == "codex" and not codex_admitted:
                 continue
             if request.lane_kind in p.claude_only_kinds and model_family != "claude":
                 continue
