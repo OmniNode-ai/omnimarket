@@ -52,8 +52,9 @@ dod_evidence:
     description: "AC3, the part the hosted runner can read: the checked-out tree holds the drain logic in omnimarket and no source file outside src/omnimarket. The closed state of the frozen repository's pull request 1597 and its link comment are read with onex scm pr-view after the pull request is opened and are recorded in a pull request comment that names the head."
     source: "manual"
     checks:
-      - check_type: "command"
-        check_value: "test -f src/omnimarket/nodes/node_ledger_outbox_drain_effect/handlers/handler_outbox_drain.py && test -z \"$(git ls-files 'src/*.py' | grep -v ^src/omnimarket/)\""
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ledger_outbox_drain_effect/test_logic_lives_in_omnimarket.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn25565-node-entry"
     description: "The node runs through its entry point with a publisher from the request, the adapter passes the request id and the lane of the first row, and the node's contract loads."
