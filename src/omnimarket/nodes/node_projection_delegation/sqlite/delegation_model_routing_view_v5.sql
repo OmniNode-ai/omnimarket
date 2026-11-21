@@ -3,7 +3,8 @@
 -- OMN-25862: the revision of delegation_model_routing_view_v4.sql. One change, nothing else: each tier model's cost is
 -- unpriced by priced_spend's rule, the metering headline's, so unmeasured_cost_count counts the same runs: a run on a
 -- model the pricing manifest does not list adds no cost at any cost, $0 included, and a positive cost on a model it
--- lists as free is a flat rate, not a price. Money sums do not change; only the unmeasured count does.
+-- lists as free is a flat rate, not a price. Besides the unmeasured count, one money field changes: a tier model whose
+-- runs are all unpriced serves cost_usd as null (not measured) where v4 served 0.0 for its $0 runs.
 --
 -- Applied once per local store by SqliteDatabaseAdapter as the store step omn25862_model_routing_one_unpriced_rule;
 -- a revision is a new step, never an edit here.

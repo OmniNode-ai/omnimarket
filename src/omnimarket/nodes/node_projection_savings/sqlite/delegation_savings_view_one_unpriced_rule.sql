@@ -4,7 +4,8 @@
 -- else: a run's cost is unpriced by priced_spend's rule, the metering headline's, so both count the same runs. A cost
 -- is spend only when the model that ran is in the pricing manifest (exact, then lower-case key) and, if the manifest
 -- lists it as free, the cost is not positive; a run on a model the manifest does not list is unpriced at any cost,
--- $0 included. Money totals do not change (an excluded $0 adds nothing); only the unpriced count does.
+-- $0 included. Money totals do not change (an excluded $0 adds nothing). Besides the unpriced count, one per-row field
+-- changes: such a run's per-session local_cost_usd is null (not measured) where revision 6 served 0.0.
 --
 -- Applied as the store step omn25862_delegation_savings_one_unpriced_rule after
 -- omn24615_delegation_savings_priced_spend_view; a later revision is a new step.
