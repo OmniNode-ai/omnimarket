@@ -27,6 +27,7 @@ import yaml
 from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
 from omnimarket.models.landing_decision import (
     EnumLandingActionKind,
+    EnumLivenessRead,
     ModelLandingAction,
     ModelLandingControllerState,
     ModelLandingDecision,
@@ -52,6 +53,7 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports impo
     InMemoryTickWriter,
     NodePathDecider,
     ProtocolTickDecider,
+    ProtocolTickLivenessReader,
     ProtocolTickPublisher,
     ProtocolTickWriter,
 )
@@ -65,6 +67,7 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orches
     EnumTickStatus,
     ModelTickComparedEvent,
     ModelTickFailedEvent,
+    ModelTickLivenessRead,
     ModelTickRequest,
     ModelTickResult,
 )
@@ -121,6 +124,8 @@ class HandlerPrLandingTickOrchestrator:
         rerun_limit: int | None = None,
         rerun_ledger: ProtocolRerunLedger | None = None,
         rerun_decider: HandlerPrLandingRerunRequest | None = None,
+        liveness_reader: ProtocolTickLivenessReader | None = None,
+        max_liveness_reads: int = 0,
     ) -> None:
         self._decider: ProtocolTickDecider = decider or NodePathDecider()
         self._reducer = reducer or HandlerPrLandingTickReducer()
@@ -140,6 +145,9 @@ class HandlerPrLandingTickOrchestrator:
         self._rerun_ledger: ProtocolRerunLedger = rerun_ledger or InMemoryRerunLedger()
         self._rerun_decider = rerun_decider or HandlerPrLandingRerunRequest()
         self._rerun_completed_topic, self._rerun_failed_topic = rerun_topics()
+        # the liveness read is the trigger of node_pr_landing_liveness_read_effect (OMN-26024): observation only
+        self._liveness_reader = liveness_reader
+        self._max_liveness_reads = max_liveness_reads
 
     def _performed_in(
         self, request: ModelTickRequest, decision: ModelLandingDecision
@@ -210,6 +218,12 @@ class HandlerPrLandingTickOrchestrator:
             result = result.model_copy(
                 update={"rerun_answers": self._answer_reruns(request)}
             )
+        if self._liveness_reader is not None and (
+            result.status is EnumTickStatus.COMPARED
+        ):
+            result = result.model_copy(
+                update={"liveness_reads": self._read_liveness(request, result)}
+            )
         if chain is not None:
             if result.status is EnumTickStatus.COMPARED:
                 chain.success(
@@ -227,6 +241,42 @@ class HandlerPrLandingTickOrchestrator:
                     result.failure_detail,
                 )
         return result
+
+    def _read_liveness(
+        self, request: ModelTickRequest, result: ModelTickResult
+    ) -> tuple[ModelTickLivenessRead, ...]:
+        """Read the liveness of each compared pull request head, after the comparison is final (OMN-26024).
+
+        Observation only: the comparison in ``result`` is already settled and nothing here is written back into
+        the facts or the decision, so a read, its failure or its published event cannot change a landing decision.
+        The compared scope is the cutover repository's pull requests (every one when none is named), at most
+        ``max_liveness_reads`` of them, in pull request order.
+        """
+        reader = self._liveness_reader
+        if reader is None:
+            return ()
+        scope = self._cutover_repository
+        heads = sorted(
+            (pr.pr, pr.head_sha)
+            for pr in request.facts.prs
+            if scope is None or pr.pr.partition("#")[0] == scope
+        )
+        reads: list[ModelTickLivenessRead] = []
+        for pr, head in heads[: self._max_liveness_reads]:
+            try:
+                reads.append(reader.read(pr, head))
+            except (
+                Exception
+            ) as exc:  # a reader that raises is an unreadable read, never a failed tick
+                reads.append(
+                    ModelTickLivenessRead(
+                        pr=pr,
+                        head_sha=head,
+                        read=EnumLivenessRead.UNREADABLE,
+                        detail=f"the liveness read raised {type(exc).__name__}",
+                    )
+                )
+        return tuple(reads)
 
     def _answer_reruns(
         self, request: ModelTickRequest
