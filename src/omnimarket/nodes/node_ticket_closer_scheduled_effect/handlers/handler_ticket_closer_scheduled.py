@@ -191,9 +191,7 @@ class HandlerTicketCloserScheduled:
         ):
             try:
                 if self._bound is None:
-                    self._bound = bound_closer_parts(
-                        schedule, self._env(), lambda: datetime.now(UTC)
-                    )
+                    self._bound = bound_closer_parts(schedule, self._env())
             except BoundProfileRefusedError as exc:
                 self._last_run = now
                 unread_reason = f"bound profile refused: {exc}"
