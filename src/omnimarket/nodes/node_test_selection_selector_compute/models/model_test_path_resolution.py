@@ -102,6 +102,32 @@ class ModelAdjacencyMap(BaseModel):
     the whole ``tests/<module>/`` directory.
     """
 
+    data_only_selection_enabled: bool = False
+    """Whether a diff of only data files narrows instead of taking the full suite.
+
+    A change whose files lie outside ``src/`` and ``tests/`` and all match ``data_only_globs`` used to
+    reach no test directory and escalate as ``no_narrowable_selection``. With this on it selects the
+    always set plus the tests that read the files. The rule changes what a pull request runs, so it is
+    a switch the change that turns it on owns.
+    """
+
+    data_only_globs: list[str] = Field(default_factory=list)
+    """Repo-relative fnmatch patterns of the data files the rule covers (ticket contracts, markdown)."""
+
+    data_reader_overrides: dict[str, list[str]] = Field(default_factory=dict)
+    """Data glob -> test files (or directories) that read a matching file in a way no test text shows."""
+
+    @model_validator(mode="after")
+    def validate_data_reader_overrides(self) -> ModelAdjacencyMap:
+        for glob, paths in self.data_reader_overrides.items():
+            for path in paths:
+                if not path.startswith("tests/") or not path.endswith(("/", ".py")):
+                    raise ValueError(
+                        f"data_reader_overrides['{glob}'] entry '{path}' must be a directory "
+                        "under tests/ with a trailing slash, or a test file ending in .py"
+                    )
+        return self
+
     @model_validator(mode="after")
     def validate_node_scoped_modules(self) -> ModelAdjacencyMap:
         for module in self.node_scoped_modules:
@@ -165,3 +191,9 @@ class ModelPathResolutionResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     selected_paths: tuple[str, ...]
+    data_only: bool = False
+    """True when every changed file is a data file the adjacency map's data-only rule covers.
+
+    Such a change may select no test of its own (the always set is added by the caller), so an empty
+    ``selected_paths`` is a narrowed answer, not an unattributable one.
+    """

@@ -18,15 +18,16 @@ from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
     ModelPathResolutionRequest,
+    ModelPathResolutionResult,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record import (
+    EnumFullSuiteReason,
+    ModelTestSelection,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector import (
     ModelSelectorRequest,
 )
 from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
-from scripts.ci.test_selection_models import (
-    EnumFullSuiteReason,
-    ModelTestSelection,
-)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -48,56 +49,29 @@ def resolve_test_paths(
         except for a module in node_scoped_modules, where the tests of the
         nodes the change can reach by the import graph are selected instead
         (OMN-23719; see ModelAdjacencyMap.node_scoped_modules).
-      - Test-only changes under tests/: include the changed test directory.
+      - Test-only changes under tests/: include the changed test directory; a
+        root-level tests/*.py file selects itself and the tests that import it,
+        and a deleted or renamed one the tests that still name its old path or
+        dotted name (OMN-26272).
       - Files outside src/ and tests/: no contribution.
       - Mapped paths that do not exist on disk are dropped, so pytest never
         receives a non-existent test directory.
     """
     config = load_adjacency_map(adjacency_path)
-    return _resolve(changed_files, config, repo_root=repo_root or REPO_ROOT)
+    result = _resolve_result(changed_files, config, repo_root or REPO_ROOT)
+    return list(result.selected_paths)
 
 
-def _requires_unnarrowable_full_suite(changed_files: list[str]) -> bool:
-    """True when a changed path directly under tests/ cannot be narrowed.
-
-    A path is "root-level" when it has exactly one path separator after the
-    `tests/` prefix (i.e. `parts[1]` is the file itself, not a subdirectory
-    name) -- `tests/test_foo.py`, not `tests/nodes/test_foo.py`. Such a path
-    has no containing directory below `tests/` itself.
-
-    Before this check, `_resolve()` built the string `tests/<parts[1]>/` for
-    every tests/-prefixed change regardless of whether `parts[1]` names a
-    directory or a file. For a root-level file that construction is wrong:
-    it is either a non-existent pseudo-directory the on-disk filter silently
-    drops (changed file absent at selection time -- e.g. deleted), or a
-    `TestPath` value that is file-shaped rather than the directory-only shape
-    the model documents (changed file present at selection time). Escalating
-    to the real full suite, attributed by reason, replaces both outcomes with
-    one deterministic and provable answer -- it does not depend on whether
-    the file happens to exist on disk when the selector runs.
-    """
-    for path in changed_files:
-        if not path.startswith(TEST_PREFIX) or not path.endswith(".py"):
-            continue
-        parts = path.split("/")
-        if len(parts) == 2:
-            return True
-    return False
-
-
-def _resolve(
-    changed_files: list[str],
-    config: ModelAdjacencyMap,
-    repo_root: Path,
-) -> list[str]:
-    result = HandlerTestPathResolution().handle(
+def _resolve_result(
+    changed_files: list[str], config: ModelAdjacencyMap, repo_root: Path
+) -> ModelPathResolutionResult:
+    return HandlerTestPathResolution().handle(
         ModelPathResolutionRequest(
             changed_files=tuple(changed_files),
             adjacency=config,
             repo_root=str(repo_root),
         )
     )
-    return list(result.selected_paths)
 
 
 def compute_selection(
@@ -149,13 +123,6 @@ def compute_selection(
     ):
         return _full_suite(EnumFullSuiteReason.UNMAPPED_MODULE)
 
-    # OMN-15277: a changed test path directly under tests/ root (no
-    # subdirectory) cannot be narrowed below tests/ itself. Checked after the
-    # test-infrastructure loop so paths already declared there (e.g.
-    # tests/conftest.py) keep reporting TEST_INFRASTRUCTURE, not this reason.
-    if _requires_unnarrowable_full_suite(changed_files):
-        return _full_suite(EnumFullSuiteReason.CHANGED_TEST_UNNARROWABLE)
-
     changed_modules = {path.split("/", 1)[0] for path in source_paths}
     if changed_modules & set(config.shared_modules):
         return _full_suite(EnumFullSuiteReason.SHARED_MODULE)
@@ -163,8 +130,8 @@ def compute_selection(
     if len(changed_modules) >= config.thresholds.modules_changed_for_full_suite:
         return _full_suite(EnumFullSuiteReason.THRESHOLD_MODULES)
 
-    selected = _resolve(changed_files, config, repo_root=root)
-    if not selected:
+    resolved = _resolve_result(changed_files, config, repo_root=root)
+    if not (selected := list(resolved.selected_paths)) and not resolved.data_only:
         # OMN-20305: nothing narrowed, so the whole tests/ tree runs. Take the
         # full-suite shard matrix; an is_full_suite=False selection of tests/
         # became one serial Split 1/1 job (63 minutes on omnimarket#3175).
@@ -194,13 +161,7 @@ def compute_selection(
 
 
 def _full_suite(reason: EnumFullSuiteReason) -> ModelTestSelection:
-    return ModelTestSelection(
-        selected_paths=["tests/"],
-        split_count=20,
-        is_full_suite=True,
-        full_suite_reason=reason,
-        matrix=list(range(1, 21)),
-    )
+    return ModelTestSelection.full_suite(reason, load_policy().full_split_count)
 
 
 def main(argv: list[str] | None = None) -> int:

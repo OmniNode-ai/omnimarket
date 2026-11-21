@@ -58,6 +58,22 @@ class ModelRerunRequestsOverlay(BaseModel):
     )
 
 
+class ModelLivenessReadsOverlay(BaseModel):
+    """The liveness-read section (OMN-26024): the tick asks node_pr_landing_liveness_read_effect for each compared head.
+
+    Absent from an overlay, the tick makes no liveness read. The read's own settings (the reader command, the
+    checkouts and the timeouts) are that node's overlay, not repeated here. The reads are observation only: they
+    run after the comparison and change no decision.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    max_reads_per_pass: int = Field(
+        ge=1,
+        description="Pull request heads read in one pass; the compared pull requests past it are not read that pass.",
+    )
+
+
 class ModelTickOrchestratorOverlay(BaseModel):
     """<root>/node_pr_landing_tick_orchestrator/overlay.yaml."""
 
@@ -176,6 +192,10 @@ class ModelTickOrchestratorOverlay(BaseModel):
         default=None,
         description="The rerun-request section (OMN-23830); absent: no request is read.",
     )
+    liveness_reads: ModelLivenessReadsOverlay | None = Field(
+        default=None,
+        description="The liveness-read section (OMN-26024); absent: the tick makes no liveness read.",
+    )
 
     @model_validator(mode="after")
     def _act_needs_a_cutover(self) -> ModelTickOrchestratorOverlay:
@@ -292,6 +312,7 @@ def resolved_consumer_group(
 __all__: list[str] = [
     "OVERLAY_ID",
     "EnumTickBackend",
+    "ModelLivenessReadsOverlay",
     "ModelRerunRequestsOverlay",
     "ModelTickOrchestratorOverlay",
     "ModelTickTopicSelection",
