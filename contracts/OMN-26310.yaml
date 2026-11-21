@@ -68,6 +68,13 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_projection_eval_results -q --no-cov -p no:cacheprovider
         cwd: .
+  - id: dod-omn26310-tenant-stamp-dead-letter
+    description: "A judged or code-try delivery whose envelope tenant stamp is no uuid is dead-lettered once with a typed invalid_event refusal naming the tenant, a dead letter that is not confirmed published is raised, and a lane's own configured tenant that is no uuid still raises; the dev runtime logged this as ValueError badly formed hexadecimal UUID string and withheld the offset. It binds no acceptance criterion above."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_projection_eval_results/test_writer.py -k tenant -q --no-cov -p no:cacheprovider
+        cwd: .
   - id: dod-omn26310-integration-proof
     description: 'Run the node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion: the dev runtime install of the branch is read under AC5 after the deploy agent applies it.'
     source: manual
