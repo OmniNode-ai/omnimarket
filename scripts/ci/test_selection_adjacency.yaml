@@ -80,6 +80,26 @@ data_only_globs:
   - "*.md"
 data_reader_overrides: {}
 
+# A changed non-Python file under one of data_reader_roots (a fixture or data file in tests/, a contract, a file
+# beside a node) selects the tests that read it instead of the full suite: the tests whose text spells its
+# path, its file name or a directory between a data_reader_fixture_roots entry and the file, the tests that
+# enumerate its directory with glob, rglob or iterdir, the tests that import a helper among those, the tests
+# that import a src/ file naming it, and data_reader_overrides. Adding, changing, renaming and deleting are the
+# same, and a rename or delete looks up the old path. A file with no reader selects the always set only: a path
+# built at run time with no literal part is the nightly's to catch. This is the stage 2 entry, so it stays off
+# until a stage advance turns it on. Off, a fixture keeps the full-suite escalation it had
+# (data_reader_gated_infrastructure_paths); on, a Python file under those paths and every path in
+# test_infrastructure_paths still takes the full suite, a changed uv.lock beside a fixture included.
+data_file_readers_enabled: false
+data_reader_roots:
+  - tests/
+  - contracts/
+  - src/omnimarket/nodes/
+data_reader_fixture_roots:
+  - tests/fixtures/
+data_reader_gated_infrastructure_paths:
+  - tests/fixtures/
+
 # Test infrastructure — any change forces the full suite.
 test_infrastructure_paths:
   # OMN-19998: CI changes invalidate narrowing even in a mixed code diff.
@@ -89,7 +109,6 @@ test_infrastructure_paths:
   - .pre-commit-hooks/
   - uv.lock
   - tests/conftest.py
-  - tests/fixtures/
   - pytest.ini
   - pyproject.toml
 

@@ -213,7 +213,8 @@ def record_replay(
 
 def _refusal_evidence(body: dict[str, Any]) -> str:
     """What the writer needs to see: the host's words, the exit code, the host, and which rows were lost."""
-    refusal = body.get("refusal") or {}
+    raw = body.get("refusal")
+    refusal: dict[str, Any] = raw if isinstance(raw, dict) else {}
     message = " ".join(str(refusal.get("message", "")).split())[:300] or "unreadable"
     kinds: list[str] = []
     stamps: list[str] = []
@@ -253,54 +254,62 @@ def report_refused_to_writers(
         return count
     from omnimarket.handlers.bus_binding.guard_refusal import settle_guard_case
 
-    for path in sorted(directory.glob("*.json")):
-        try:
-            queued_ns = int(path.stem.split("_", 1)[0])
-            request_id = outbox.request_id_of(path)
-            body = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, IndexError):
-            continue
-        if (
-            queued_ns < since_ns
-            or not isinstance(body, dict)
-            or body.get("reported_at")
-        ):
-            continue
-        lane = str(body.get("requested_by_lane") or "unknown")
-        row = ModelExceptionRow(
-            cls=REFUSED_CLASS,
-            key=f"lane={lane} request={request_id}",
-            source=SOURCE,
-            evidence=_refusal_evidence(body),
-            tried=f"replayed the outbox; kept the refused request at {path}",
-            proposed_fix="correct the row and append it again; the refused request is final",
-            decision=False,
-        )
-        body["reported_at"] = observed_at.isoformat()
-        settled = (
-            settle_guard_case(
-                state_dir,
-                dataclasses.asdict(row),
-                guard,
-                now=observed_at,
-                emit_open=False,
+    with outbox.try_hold_drain_lock(state_dir) as held:
+        # A drain holds this lock while it rewrites a refused file's whole body; the reporter's stamp
+        # written between that read and replace would be lost and the writer told twice. While a drain
+        # holds it, the reporter leaves the pass to the next replay (a report is idempotent on
+        # ``reported_at``).
+        if not held:
+            _settle_open_guard_cases(state_dir, observed_at, guard)
+            return count
+        for path in sorted(directory.glob("*.json")):
+            try:
+                queued_ns = int(path.stem.split("_", 1)[0])
+                request_id = outbox.request_id_of(path)
+                body = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, IndexError):
+                continue
+            if (
+                queued_ns < since_ns
+                or not isinstance(body, dict)
+                or body.get("reported_at")
+            ):
+                continue
+            lane = str(body.get("requested_by_lane") or "unknown")
+            row = ModelExceptionRow(
+                cls=REFUSED_CLASS,
+                key=f"lane={lane} request={request_id}",
+                source=SOURCE,
+                evidence=_refusal_evidence(body),
+                tried=f"replayed the outbox; kept the refused request at {path}",
+                proposed_fix="correct the row and append it again; the refused request is final",
+                decision=False,
             )
-            if guard is not None
-            else None
-        )
-        if settled is not None and settled.resolved:
-            body["settled"] = settled.how
+            body["reported_at"] = observed_at.isoformat()
+            settled = (
+                settle_guard_case(
+                    state_dir,
+                    dataclasses.asdict(row),
+                    guard,
+                    now=observed_at,
+                    emit_open=False,
+                )
+                if guard is not None
+                else None
+            )
+            if settled is not None and settled.resolved:
+                body["settled"] = settled.how
+                _write_text_atomically(path, json.dumps(body, sort_keys=True))
+                continue
+            create_handler_exception_emit().handle(
+                ModelExceptionEmitRequest(
+                    state_dir=state_dir / "exception-queue",
+                    row=row,
+                    now=observed_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                )
+            )
             _write_text_atomically(path, json.dumps(body, sort_keys=True))
-            continue
-        create_handler_exception_emit().handle(
-            ModelExceptionEmitRequest(
-                state_dir=state_dir / "exception-queue",
-                row=row,
-                now=observed_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            )
-        )
-        _write_text_atomically(path, json.dumps(body, sort_keys=True))
-        count += 1
+            count += 1
     _settle_open_guard_cases(state_dir, observed_at, guard)
     return count
 
