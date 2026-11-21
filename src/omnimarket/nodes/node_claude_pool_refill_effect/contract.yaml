@@ -5,7 +5,8 @@
 # Fills each lab host's Claude token pool from the one pool in the secret store (operator RULING
 # 2026-10-31T01:21:16Z), probes the credential the host's lane runner draws and moves the host past an
 # expired, revoked or refused token. Reached by the onex-claude-pool-refill console script on the
-# launching host (runtime_claude_pool_refill); it declares no bus topics, so no shared runtime attaches it.
+# launching host (runtime_claude_pool_refill) and, read-only, by the declared registry module tick unit
+# claude-pool-refill-tick (runtime_claude_pool_refill_tick); it declares no bus topics, so no shared runtime attaches it.
 name: "node_claude_pool_refill_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
