@@ -1,0 +1,111 @@
+schema_version: 1.0.0
+ticket_id: OMN-25012
+title: Review findings 1 to 8 on omnimarket PR 6293 at head 6da92b22a4b7 are fixed or argued
+summary: The review of the pull request that creates the two repo-state answer topics at boot found eight problems. The provisioning test file now also runs the broker permission coverage gate over the installer contract, fails when discovery finds no contract, names the follow-up in its control; the ticket contract of the pull request binds AC2 to the gate and its AC3 check to a repo-state query of both hosts.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25012-review-findings
+  statement: Every blocking review finding of the pull request is fixed or argued with evidence.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: finding 1 is answered: AC2 of contracts/OMN-24612.yaml binds to the broker permission coverage gate command in its own falsifier, the gate exits 0 at the new head, and a test shows the gate refuses the installer contract with the grants block removed -- falsifier: `uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:cacheprovider` passes with the grants block deleted from the installer contract, or the gate command `uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref origin/dev` exits non-zero at the new head'
+  - id: AC2
+    statement: 'AC2: finding 2 is answered: the control test asserts `len(manifest.contracts) == 1` before its loop, and so does the test at the first read, so a discovery that returns no contracts fails the test -- falsifier: `uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:cacheprovider` passes when `discover_contracts_from_paths` is patched to return no contracts'
+  - id: AC3
+    statement: 'AC3: finding 3 is answered: the Done-gate check of AC3 in contracts/OMN-24612.yaml runs `repo-state query --host h053` and `--host h201` on the dev bus, AC3 stays open until those readings are posted, and the PR comment carries the broker-side topic listing, the querying login''s READ and DESCRIBE rows and the overlay scope `broker_acls_repo_state_serve` with its applied state -- falsifier: `grep -n ''repo-state query'' contracts/OMN-24612.yaml` lists no check naming both `--host h053` and `--host h201`, or `onex scm pr-view OmniNode-ai/omnimarket#6293` lists no comment carrying the three readings'
+  - id: AC4
+    statement: 'AC4: finding 4 is answered: the grant at C:76-82 holds only what the runtime does (CREATE, not WRITE), or the PR comment says the gate accepts nothing narrower for a `publish_topics` entry and shows the gate output, and names where the runtime''s CREATE right comes from -- falsifier: `grep -n ''WRITE'' src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml` lists a grant on the two answer topics and `onex scm pr-view OmniNode-ai/omnimarket#6293` lists no comment showing the gate output that justifies it'
+  - id: AC5
+    statement: 'AC5: findings 5, 6, 7 and 8 are answered: C:58, C:73 and T:3 name OMN-24612, the commit message counts 5 tests and the base-contract run is attached, T imports a public entry point where one exists, and the T:69-78 assertion message names the follow-up of removing the installer rows -- falsifier: `grep -n ''OMN-19998'' src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py` still matches'
+  - id: AC6
+    statement: 'AC6: a PR comment starting `Lab: head=<full new head sha>` names the sha, the command and exit 0 for the suites the PR requires, run on the lab in parts if a whole run times out with the parts named, and every required check-run of omnimarket#6293 reads success at the new head -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6293` lists a required context that is not success at the new head, or no PR comment matches `Lab: head=` with the full sha, the command and exit 0'
+evidence_requirements:
+- kind: tests
+  description: The answer topic provisioning tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25012-ac1
+  description: 'hosted: the provisioning test file, whose gate tests run the coverage gate over the real installer contract and over a copy with its grants block removed, passes at the head.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:randomly --no-cov -k gate
+    cwd: .
+- id: dod-omn25012-ac2
+  description: 'hosted: the provisioning test file, whose test patches discover_contracts_from_paths to return no contracts and expects the boot read to fail, passes at the head.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:randomly --no-cov -k discovery_that_finds_no_contract
+    cwd: .
+- id: dod-omn25012-ac3
+  description: 'hosted: a test reads the Done-gate AC3 check of contracts/OMN-24612.yaml and asserts it names both hosts of the repo-state query; the three readings in the pull request comment are read at the local Done gate.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:randomly --no-cov -k queries_both_hosts
+    cwd: .
+- id: dod-omn25012-ac4
+  description: 'hosted: the gate accepts nothing narrower than WRITE and DESCRIBE for a publish entry (the test removes each in turn and the gate refuses), which is the argument for the WRITE row.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:randomly --no-cov -k narrower
+    cwd: .
+- id: dod-omn25012-ac5
+  description: 'hosted: the three references to the wrong ticket id of the review are gone and the control test names the follow-up.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: "sh -c 'grep -q OMN-24612 src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml && ! grep -qE \"OMN-19998: the (two|permission)\" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml'"
+    cwd: .
+  - check_type: command
+    check_value: "sh -c 'grep -q OMN-24612 tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py && ! grep -q OMN-19998 tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py'"
+    cwd: .
+  - check_type: command
+    check_value: 'grep -n ''follow-up: remove the two answer rows'' tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn25012-ac6-lab-comment
+  description: the Lab comment of the new head and the required checks are read from the pull request, so only the local Done gate runs this.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex scm pr-checks OmniNode-ai/omnimarket#6293
+    cwd: .
+- id: dod-omn25012-ac6-hosted-proxy
+  description: 'hosted proxy for AC6, which does not close it: the provisioning test file passes at the head. AC6 stays open until the Lab comment of the new head is read at the local Done gate.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn25012-integration-proof
+  description: the provisioning test file runs on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25012 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q --no-cov -p no:randomly
+    cwd: .
