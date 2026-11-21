@@ -15,11 +15,13 @@ description: >-
   injected (in-memory default, durations file as the real backend). scripts/ci/detect_test_paths.py
   calls this node. HandlerTestPathResolution (OMN-23719) maps a change's files to the test paths it can
   affect, by the import graph for the modules the adjacency map lists as node-scoped; scripts/ci/detect_test_paths.py
-  calls it as a library handler. A diff of only data files (the adjacency map's data_only_globs) selects the tests
-  that read them, found by a text index of the test files and the data_reader_overrides, when
-  data_only_selection_enabled is set (OMN-26270). HandlerSelectionRecord builds the typed record of a pull request
-  run's selection (the executed selection and the selection of every stage) behind the stage gate in policy.yaml;
-  the workflow uploads it and builds the pytest matrix from the executed selection only.
+  calls it as a library handler. A changed root-level tests/*.py file selects itself and the tests that import it; a
+  deleted or renamed one selects the always set and the tests that still name its old path or dotted name (OMN-26272).
+  A diff of only data files (the adjacency map's data_only_globs) selects the tests that read them, found by a text
+  index of the test files and the data_reader_overrides, when data_only_selection_enabled is set (OMN-26270).
+  HandlerSelectionRecord builds the typed record of a pull request run's selection (the executed selection and the
+  selection of every stage) behind the stage gate in policy.yaml; the workflow uploads it and builds the pytest matrix
+  from the executed selection only.
 input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorRequest
 output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorDecision
 handler:

@@ -13,6 +13,9 @@ from omnibase_infra.tools.contract_topic_extractor import read_projection_api_to
 from omnimarket.models.topic_provision.model_topic_provision_contract import (
     ModelTopicProvisionContract,
 )
+from omnimarket.models.topic_provision.model_writer_topics_template import (
+    ModelWriterTopicsTemplate,
+)
 
 
 def _extract_topics(data: dict[str, object]) -> list[str]:
@@ -103,11 +106,19 @@ def read_contract_facts(
             # one the boot-side per-contract provisioner uses, so the two cannot disagree.
             topics = sorted({*_extract_topics(data), *read_projection_api_topics(path)})
 
+            # A malformed writer_topics template raises: a contract that declares one wrongly
+            # must not provision silently without its writer topics.
+            template = data.get("writer_topics")
             results.append(
                 ModelTopicProvisionContract(
                     contract_name=name,
                     runtime_profiles=tuple(sorted(profiles)),
                     topics=tuple(topics),
+                    writer_topics=(
+                        ModelWriterTopicsTemplate.model_validate(template)
+                        if template is not None
+                        else None
+                    ),
                 )
             )
 
