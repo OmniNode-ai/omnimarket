@@ -122,15 +122,44 @@ _CASES: dict[
 }
 
 
-def _read(path: Path) -> list[dict[str, object]]:
-    topic = "onex.snapshot.projection.delegation.decisions.v1"
+_DECISIONS = "onex.snapshot.projection.delegation.decisions.v1"
+_TRACE = "onex.snapshot.projection.delegation.correlation-trace.v1"
+
+
+def _read(
+    path: Path, topic: str = _DECISIONS, correlation_id: str | None = None
+) -> list[dict[str, object]]:
     result = asyncio.run(
         HandlerProjectionRead(
             topic_map=_TOPICS, row_source=SqliteTableRowSource(path)
-        ).handle(ModelProjectionReadRequest(topic=topic, tenant_id=_TENANT))
+        ).handle(
+            ModelProjectionReadRequest(
+                topic=topic, tenant_id=_TENANT, row_correlation_id=correlation_id
+            )
+        )
     )
     assert result.ok, result.response
     return list(result.rows)
+
+
+def test_the_run_detail_serves_no_saving_for_an_unknown_cost(tmp_path: Path) -> None:
+    # The run-detail exposure serves the legacy cost_savings_usd, not
+    # modelled_savings_usd; an unknown cost must not carry a saving there either.
+    path = _store(
+        tmp_path,
+        (
+            _delegation(
+                "beam",
+                cost_tier_name="cheap_cloud",
+                model_name="Beam-1.0-501B-A23B",
+                delegated_to="Beam-1.0-501B-A23B",
+                cost_usd=0.0,
+                cost_savings_usd=float(_SAVED),
+            ),
+        ),
+    )
+    [row] = _read(path, _TRACE, "beam")
+    assert (row["cost_usd"], row["cost_savings_usd"]) == (None, None)
 
 
 def test_a_zero_is_unknown_only_when_nothing_made_the_run_free_or_priced(

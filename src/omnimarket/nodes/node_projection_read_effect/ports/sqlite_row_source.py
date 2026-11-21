@@ -77,6 +77,8 @@ def _local_select_list(cfg: ProjectionTableConfig, available: tuple[str, ...]) -
     replacement = {
         "cost_usd": "NULL",
         "modelled_savings_usd": "NULL",
+        # The run-detail exposure serves the legacy saving column.
+        "cost_savings_usd": "NULL",
         "savings_measurement": "'unknown_spend'",
     }
     columns = available if cfg.columns == ("*",) else cfg.columns
