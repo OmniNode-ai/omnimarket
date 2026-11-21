@@ -64,6 +64,16 @@ def _step(name_part: str) -> dict[str, Any]:
     return matches[0]
 
 
+def _narrowed_selection() -> ModelTestSelection:
+    """A fixed narrowed stage-0 selection, so the flag tests do not walk the repository's import graph."""
+    return ModelTestSelection(
+        selected_paths=["tests/intelligence/"],
+        split_count=2,
+        is_full_suite=False,
+        matrix=[1, 2],
+    )
+
+
 @functools.cache
 def _stage0_selection(*, flag: bool = True) -> ModelTestSelection:
     return compute_selection(
@@ -114,7 +124,7 @@ def test_workflow_passes_the_flag_from_the_repository_variable() -> None:
 
 
 def test_flag_states_same_input() -> None:
-    narrowed = _stage0_selection()
+    narrowed = _narrowed_selection()
     assert narrowed.is_full_suite is False
     entries = {0: narrowed}
     on = _handler().handle(_request(entries, flag=True))
@@ -131,33 +141,42 @@ def test_flag_states_same_input() -> None:
 
 def test_flag_off_full_matrix() -> None:
     full_split_count = load_policy().full_split_count
-    off = _handler().handle(_request({0: _stage0_selection()}, flag=False))
+    off = _handler().handle(_request({0: _narrowed_selection()}, flag=False))
     assert off.executed_selection.split_count == full_split_count
     detect_off = _stage0_selection(flag=False)
     assert detect_off.split_count == full_split_count
     assert detect_off.matrix == list(range(1, full_split_count + 1))
 
 
+def _assert_executed_matches_decided(changed: list[str], ref: str) -> None:
+    decided = compute_selection(
+        changed_files=changed,
+        adjacency_path=ADJACENCY_DEFAULT,
+        ref_name=ref,
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    record = _handler().handle(_request({0: decided}, flag=True))
+    executed = record.executed_selection
+    assert executed.selected_paths == decided.selected_paths
+    assert executed.split_count == decided.split_count
+    assert (executed.kind == "full_suite") is decided.is_full_suite
+    assert executed.reason_code == decided.full_suite_reason
+
+
 def test_stage_zero_flag_on_runs_what_the_existing_selector_decides() -> None:
     for changed, ref in (
-        (NARROWABLE, "feature/branch"),
         (["src/omnimarket/models/x.py"], "feature/branch"),
         (["pyproject.toml"], "feature/branch"),
         (NARROWABLE, "main"),
     ):
-        decided = compute_selection(
-            changed_files=changed,
-            adjacency_path=ADJACENCY_DEFAULT,
-            ref_name=ref,
-            event_name="pull_request",
-            feature_flag_enabled=True,
-        )
-        record = _handler().handle(_request({0: decided}, flag=True))
-        executed = record.executed_selection
-        assert executed.selected_paths == decided.selected_paths
-        assert executed.split_count == decided.split_count
-        assert (executed.kind == "full_suite") is decided.is_full_suite
-        assert executed.reason_code == decided.full_suite_reason
+        _assert_executed_matches_decided(changed, ref)
+
+
+def test_stage_zero_narrowed_input_matches_the_graph_selector() -> None:
+    # Walks the repository's whole import graph (about a minute), so the Done gate's 30 s
+    # per-check ceiling cannot hold it; hosted CI runs it.
+    _assert_executed_matches_decided(NARROWABLE, "feature/branch")
 
 
 # -- the upload ---------------------------------------------------------------
@@ -197,7 +216,7 @@ def test_record_retention_comes_from_the_policy_not_the_workflow() -> None:
 
 
 def _record_with_differing_entries() -> ModelTestSelectionRecord:
-    narrowed = _stage0_selection()
+    narrowed = _narrowed_selection()
     stage_one = ModelTestSelection(
         selected_paths=["tests/a/"], split_count=1, is_full_suite=False, matrix=[1]
     )

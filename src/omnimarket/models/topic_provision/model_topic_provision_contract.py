@@ -4,6 +4,10 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.topic_provision.model_writer_topics_template import (
+    ModelWriterTopicsTemplate,
+)
+
 
 class ModelTopicProvisionContract(BaseModel):
     """The topics and runtime profiles one contract declares."""
@@ -13,3 +17,4 @@ class ModelTopicProvisionContract(BaseModel):
     contract_name: str = Field(min_length=1)
     runtime_profiles: tuple[str, ...] = ()
     topics: tuple[str, ...] = ()
+    writer_topics: ModelWriterTopicsTemplate | None = None

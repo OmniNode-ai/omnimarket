@@ -313,6 +313,81 @@ def _node_scoped_selection(
     return {p for p in selected if p.endswith("/") or not p.startswith(directories)}
 
 
+def _names_old_file(text: str, module: str, is_package: bool, old: str) -> bool:
+    """True when a file imports or spells a deleted file's dotted name or repo path."""
+    old_path = f"{old.replace('.', '/')}.py"
+    if old_path in text:
+        return True
+    return any(
+        name == old or name.startswith(f"{old}.")
+        for name in _references(text, module, is_package)
+    )
+
+
+def _root_level_selection(
+    paths: list[str],
+    config: ModelAdjacencyMap,
+    repo_root: Path,
+    source: ProtocolSourceText,
+) -> set[str]:
+    """Test paths a change to root-level ``tests/*.py`` files can affect (OMN-26272).
+
+    A changed root-level file selects itself (when it is a test file) and the tests that import it,
+    transitively, from the import graph. A deleted or renamed one is no longer in the graph, so the
+    surviving tests that still import its old dotted name (absolute or relative) or spell its old path
+    are selected instead, with the always set. Reading the head tree finds them all: a test that
+    named the old file and was not itself changed is unchanged at head, and one that was changed is
+    selected as a changed file. ``tests/__init__.py`` and ``tests/conftest.py`` run for every test, so
+    they keep the whole tree.
+    """
+    node_scoped = frozenset(config.node_scoped_modules)
+    graph = _import_graph(repo_root, node_scoped, source)
+    selected: set[str] = set()
+    seeds: set[str] = set()
+    removed: list[str] = []
+    for path in paths:
+        if path.rsplit("/", 1)[-1] in ("__init__.py", "conftest.py"):
+            selected.add(TEST_PREFIX)
+        elif (repo_root / path).is_file():
+            vertex = graph.resolve(_dotted(path))
+            if vertex is not None:
+                seeds.add(vertex)
+            if _is_test_file(path):
+                selected.add(path)
+        else:
+            removed.append(path)
+    if removed:
+        selected.update(config.always_selected_paths)
+        for test_vertex, known_path in graph.paths.items():
+            text = source.read_text(repo_root / known_path)
+            is_package = known_path.endswith("/__init__.py")
+            if any(
+                _names_old_file(text, test_vertex, is_package, _dotted(old))
+                for old in removed
+            ):
+                seeds.add(test_vertex)
+
+    affected = set(seeds)
+    frontier = list(seeds)
+    while frontier:
+        for dependent in graph.dependents.get(frontier.pop(), ()):
+            if dependent not in affected:
+                affected.add(dependent)
+                frontier.append(dependent)
+    for affected_vertex in affected:
+        test_path = graph.paths.get(affected_vertex)
+        if test_path is None:
+            continue
+        if _is_test_file(test_path):
+            selected.add(test_path)
+        elif test_path.rsplit("/", 1)[-1] in ("conftest.py", "__init__.py"):
+            selected.add(test_path.rsplit("/", 1)[0] + "/")
+    return {
+        p if p.endswith("/") or _TEST_FILE_PATH.match(p) else p.rsplit("/", 1)[0] + "/"
+        for p in selected
+    }
+
+
 def _resolve(
     changed_files: list[str],
     config: ModelAdjacencyMap,
@@ -323,6 +398,7 @@ def _resolve(
     selected: set[str] = set()
     node_scoped = frozenset(config.node_scoped_modules)
     scoped_test_modules: set[str] = set()
+    root_level: list[str] = []
 
     for path in changed_files:
         if path.startswith(SRC_PREFIX):
@@ -332,22 +408,10 @@ def _resolve(
         elif path.startswith(TEST_PREFIX):
             parts = path.split("/")
             if len(parts) == 2 and path.endswith(".py"):
-                # OMN-15277: a root-level test file (no subdirectory) has no
-                # containing directory below tests/ itself. Constructing
-                # tests/<file>.py/ here would produce a pseudo-directory that
-                # is either silently dropped by the on-disk filter below
-                # (file absent at resolution time) or a file-shaped TestPath
-                # value that only "works" via an accidental pathlib
-                # trailing-slash normalization (file present). This function
-                # has no full-suite-escalation concept of its own (that lives
-                # in compute_selection()'s CHANGED_TEST_UNNARROWABLE check,
-                # which short-circuits before ever reaching this function) --
-                # contribute the real containing scope, tests/ itself,
-                # instead of a malformed pseudo-path. CodeRabbit-flagged gap:
-                # this direct resolve_test_paths() API has no equivalent
-                # escalation of its own, so it must never emit the malformed
-                # shape either.
-                selected.add(TEST_PREFIX)
+                # OMN-26272: a root-level file has no containing directory below
+                # tests/, so it is selected as a file with its dependents below
+                # rather than as a tests/<file>.py/ pseudo-directory (OMN-15277).
+                root_level.append(path)
             elif (
                 len(parts) >= 4
                 and parts[1] in node_scoped
@@ -358,6 +422,9 @@ def _resolve(
                 scoped_test_modules.add(parts[1])
             elif len(parts) >= 2:
                 selected.add(f"{TEST_PREFIX}{parts[1]}/")
+
+    if root_level:
+        selected.update(_root_level_selection(root_level, config, repo_root, source))
 
     expanded: set[str] = set(direct_modules)
     for module in direct_modules:
