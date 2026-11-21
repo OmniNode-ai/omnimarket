@@ -910,3 +910,276 @@ def test_no_git_install(tmp_path: Path) -> None:
         "the control did not build the source-only fixture, so the check above proves nothing"
     )
     assert control.returncode != 0, control.stdout
+
+
+CUSTOMER_PACKAGE = "omninode-onex"
+CUSTOMER_LAUNCHERS = frozenset({"onex", "omni-agent"})
+LAUNCHER_TARGET = "omnibase_core.cli.cli_commands:cli"
+
+
+def _site_packages(venv: Path) -> Path:
+    found = sorted(venv.glob("lib/python*/site-packages"))
+    assert len(found) == 1, f"expected one site-packages under {venv}, found {found}"
+    return found[0]
+
+
+def _venv_python(venv: Path) -> str:
+    for line in (venv / "pyvenv.cfg").read_text(encoding="utf-8").splitlines():
+        key, _, value = line.partition("=")
+        if key.strip() in {"version", "version_info"}:
+            return value.strip()
+    raise AssertionError(f"no version in {venv / 'pyvenv.cfg'}")
+
+
+def _launcher_owners(site: Path) -> dict[str, list[tuple[str, str]]]:
+    """Every installed distribution that declares onex or omni-agent, with its target."""
+    from importlib import metadata as importlib_metadata
+
+    owners: dict[str, list[tuple[str, str]]] = {name: [] for name in CUSTOMER_LAUNCHERS}
+    for dist in importlib_metadata.distributions(path=[str(site)]):
+        for entry in dist.entry_points:
+            if entry.group == "console_scripts" and entry.name in owners:
+                owners[entry.name].append((dist.metadata["Name"], entry.value))
+    return owners
+
+
+def _assert_one_owner(owners: dict[str, list[tuple[str, str]]]) -> None:
+    for name in sorted(CUSTOMER_LAUNCHERS):
+        assert owners.get(name) == [(CUSTOMER_PACKAGE, LAUNCHER_TARGET)], (
+            f"{name} is declared by {owners.get(name)}; AC3's one-owner rule wants exactly "
+            f"{CUSTOMER_PACKAGE} with {LAUNCHER_TARGET}"
+        )
+
+
+def _customer_wheel(wheel: Path) -> tuple[list[str], list[str]]:
+    """The customer wheel's RECORD paths and its Requires-Dist lines."""
+    import zipfile
+
+    with zipfile.ZipFile(wheel) as archive:
+        names = archive.namelist()
+        info = next(n.split("/")[0] for n in names if n.endswith(".dist-info/METADATA"))
+        record = archive.read(f"{info}/RECORD").decode("utf-8")
+        metadata = archive.read(f"{info}/METADATA").decode("utf-8")
+    paths = [line.split(",")[0] for line in record.splitlines() if line.strip()]
+    requires = [
+        line.split(":", 1)[1].strip()
+        for line in metadata.splitlines()
+        if line.startswith("Requires-Dist:")
+    ]
+    return paths, requires
+
+
+def _assert_carries_no_code(paths: list[str]) -> None:
+    code = [path for path in paths if not path.split("/")[0].endswith(".dist-info")]
+    assert code == [], (
+        f"{CUSTOMER_PACKAGE} must carry no code of its own; its wheel holds {code}"
+    )
+
+
+def _assert_pins_match_installed(requires: list[str], site: Path) -> None:
+    from importlib import metadata as importlib_metadata
+
+    from packaging.requirements import Requirement
+    from packaging.utils import canonicalize_name
+
+    installed = {
+        canonicalize_name(dist.metadata["Name"]): dist.version
+        for dist in importlib_metadata.distributions(path=[str(site)])
+    }
+    for line in requires:
+        requirement = Requirement(line)
+        specifiers = list(requirement.specifier)
+        message = (
+            f"{CUSTOMER_PACKAGE} must pin {requirement.name} with ==, not {line!r}"
+        )
+        assert len(specifiers) == 1, message
+        assert specifiers[0].operator == "==", message
+        name = canonicalize_name(requirement.name)
+        assert installed.get(name) == specifiers[0].version, (
+            f"{requirement.name}: pinned {specifiers[0].version}, installed {installed.get(name)}"
+        )
+
+
+def _check_customer_install(venv: Path, bin_dir: Path, wheel: Path, home: Path) -> None:
+    """Everything AC3 asks of one installed customer environment."""
+    launchers = {entry.name for entry in bin_dir.iterdir()}
+    assert launchers == set(CUSTOMER_LAUNCHERS), f"on PATH: {sorted(launchers)}"
+    assert _venv_python(venv).startswith("3.12"), _venv_python(venv)
+    site = _site_packages(venv)
+    _assert_one_owner(_launcher_owners(site))
+    paths, requires = _customer_wheel(wheel)
+    _assert_carries_no_code(paths)
+    _assert_pins_match_installed(requires, site)
+    ran = _run(
+        [str(bin_dir / "onex"), "--version"],
+        {"HOME": str(home), "PATH": "/usr/bin:/bin", "LANG": "en_US.UTF-8"},
+        home,
+    )
+    assert ran.returncode == 0, ran.stdout + ran.stderr
+
+
+def _interpreter(version: str) -> str:
+    supplied = os.environ.get(f"ONEX_TEST_PYTHON{version.replace('.', '')}")
+    if supplied:
+        return supplied
+    found = subprocess.run(
+        [os.environ.get("ONEX_TEST_UV") or "uv", "python", "find", version],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert found.returncode == 0, f"no Python {version}: {found.stderr}"
+    return found.stdout.strip()
+
+
+def _customer_installs(
+    tmp_path: Path, wheel: Path, pipx_python_flag: bool = True
+) -> dict[str, tuple[Path, Path, Path, Path]]:
+    """Install the candidate with uv and with pipx into empty homes whose default Python is 3.11.
+
+    Returns installer -> (venv, bin dir, home, build-backend marker); links holds the customer
+    wheel and AC1's source-only fixture, so any build would write the marker.
+    """
+    py311, py312 = _interpreter("3.11"), _interpreter("3.12")
+    version = wheel.name.split("-")[1]
+    installs: dict[str, tuple[Path, Path, Path, Path]] = {}
+    for installer in ("uv", "pipx"):
+        root = tmp_path / installer
+        home, bin_dir, links = root / "home", root / "bin", root / "links"
+        for directory in (home, bin_dir, links):
+            directory.mkdir(parents=True)
+        (links / wheel.name).write_bytes(wheel.read_bytes())
+        # A candidate not yet on PyPI: its other wheels (for example omnibase-core) are
+        # served from the same links folder, still as wheels only.
+        extra = os.environ.get("ONEX_TEST_CANDIDATE_WHEELS")
+        for candidate in sorted(Path(extra).glob("*.whl")) if extra else []:
+            (links / candidate.name).write_bytes(candidate.read_bytes())
+        marker = root / "backend-invoked"
+        _source_only(links, "certifi", "2099.1.1", marker)
+        environment = {
+            "HOME": str(home),
+            "PATH": f"{Path(py312).parent}:{os.environ.get('PATH', '/usr/bin:/bin')}",
+            "LANG": "en_US.UTF-8",
+        }
+        if installer == "uv":
+            tools = root / "tools"
+            environment |= {
+                "UV_TOOL_DIR": str(tools),
+                "UV_TOOL_BIN_DIR": str(bin_dir),
+                "UV_PYTHON": py311,
+            }
+            command = [os.environ.get("ONEX_TEST_UV") or "uv", "tool", "install"]
+            command += ["--python", "3.12"]
+            command += [
+                "--no-build",
+                "--find-links",
+                str(links),
+                f"{CUSTOMER_PACKAGE}=={version}",
+            ]
+            venv = tools / CUSTOMER_PACKAGE
+        else:
+            pipx_home = root / "pipx"
+            environment |= {
+                "PIPX_HOME": str(pipx_home),
+                "PIPX_BIN_DIR": str(bin_dir),
+                "PIPX_DEFAULT_PYTHON": py311,
+            }
+            command = [os.environ.get("ONEX_TEST_PIPX") or "pipx", "install"]
+            command += ["--python", py312] if pipx_python_flag else []
+            command += [
+                f"--pip-args=--only-binary=:all: --find-links {links}",
+                f"{CUSTOMER_PACKAGE}=={version}",
+            ]
+            venv = pipx_home / "venvs" / CUSTOMER_PACKAGE
+        installed = _run(command, environment, root, timeout=900)
+        assert installed.returncode == 0, (
+            f"{installer}: {installed.stdout}{installed.stderr}"
+        )
+        assert not marker.exists(), f"{installer} built AC1's source-only fixture"
+        installs[installer] = (venv, bin_dir, home, marker)
+    return installs
+
+
+@pytest.mark.release_proof
+def test_one_package_uv_and_pipx(tmp_path: Path) -> None:
+    """AC3: uv and pipx each install only the customer package's launchers, under Python 3.12,
+    with each launcher declared once by omninode-onex, exact pins and no code of its own."""
+    supplied = os.environ.get("ONEX_TEST_ONEX_WHEEL")
+    if not supplied:
+        if os.environ.get("ONEX_E2E_REQUIRE_COMPLETE") == "1":
+            pytest.fail("AC3 check requires ONEX_TEST_ONEX_WHEEL")
+        pytest.skip("AC3 check requires ONEX_TEST_ONEX_WHEEL")
+    wheel = Path(supplied).resolve()
+    for installer, (venv, bin_dir, home, _) in _customer_installs(
+        tmp_path, wheel
+    ).items():
+        try:
+            _check_customer_install(venv, bin_dir, wheel, home)
+        except AssertionError as error:
+            raise AssertionError(f"{installer}: {error}") from error
+
+
+@pytest.mark.release_proof
+def test_one_package_uv_and_pipx_refuses_pipx_without_python_312(
+    tmp_path: Path,
+) -> None:
+    """AC3 control: a pipx line without --python 3.12 runs on the 3.11 default and fails."""
+    supplied = os.environ.get("ONEX_TEST_ONEX_WHEEL")
+    if not supplied:
+        pytest.skip("AC3 control requires ONEX_TEST_ONEX_WHEEL")
+    with pytest.raises(
+        AssertionError, match=r"(?s)pipx: .*(3\.12|[Rr]equires.[Pp]ython)"
+    ):
+        _customer_installs(tmp_path, Path(supplied).resolve(), pipx_python_flag=False)
+
+
+def _fake_dist(site: Path, name: str, scripts: dict[str, str]) -> None:
+    info = site / f"{name.replace('-', '_')}-1.0.dist-info"
+    info.mkdir(parents=True)
+    (info / "METADATA").write_text(
+        f"Metadata-Version: 2.1\nName: {name}\nVersion: 1.0\n"
+    )
+    lines = "".join(f"{key} = {value}\n" for key, value in scripts.items())
+    (info / "entry_points.txt").write_text(f"[console_scripts]\n{lines}")
+
+
+@pytest.mark.parametrize(
+    ("declarers", "fails"),
+    [
+        ({CUSTOMER_PACKAGE: True}, False),
+        ({"omnibase-core": True}, True),
+        ({CUSTOMER_PACKAGE: True, "omnibase-core": True}, True),
+        ({}, True),
+    ],
+    ids=["customer-only", "core-only", "both", "none"],
+)
+def test_one_package_uv_and_pipx_one_owner_rule(
+    tmp_path: Path, declarers: dict[str, bool], fails: bool
+) -> None:
+    """AC3 controls: launchers declared only by omnibase_core, by both, or by nobody fail."""
+    site = tmp_path / "site-packages"
+    site.mkdir()
+    for name in declarers:
+        _fake_dist(site, name, dict.fromkeys(CUSTOMER_LAUNCHERS, LAUNCHER_TARGET))
+    if fails:
+        with pytest.raises(AssertionError, match="one-owner rule"):
+            _assert_one_owner(_launcher_owners(site))
+    else:
+        _assert_one_owner(_launcher_owners(site))
+
+
+def test_one_package_uv_and_pipx_no_code_and_exact_pins(tmp_path: Path) -> None:
+    """AC3 controls: a module in the customer wheel, or a pin that is not ==, fails."""
+    _assert_carries_no_code(["omninode_onex-1.0.dist-info/METADATA"])
+    with pytest.raises(AssertionError, match="no code of its own"):
+        _assert_carries_no_code(
+            ["omninode_onex-1.0.dist-info/METADATA", "omninode_onex/__init__.py"]
+        )
+    site = tmp_path / "site-packages"
+    site.mkdir()
+    _fake_dist(site, "omnibase-core", {})
+    _assert_pins_match_installed(["omnibase-core==1.0"], site)
+    with pytest.raises(AssertionError, match="with =="):
+        _assert_pins_match_installed(["omnibase-core>=1.0"], site)
+    with pytest.raises(AssertionError, match=r"installed 1\.0"):
+        _assert_pins_match_installed(["omnibase-core==2.0"], site)

@@ -59,6 +59,12 @@ requirements:
       - id: AC1
         statement: >-
           AC1 (as written on the ticket, platforms as amended on 2026-11-18 and 2026-11-19: Apple Silicon macOS, Linux x86_64 and Linux arm64): the guide's install line, run as printed (with its --no-build) into an empty HOME with no UV_NO_BUILD in the environment, never calls git, creates no .git directory and gives an onex that runs, so every distribution of the dependency closure installs from a published wheel; with a build-backend stub that fails the test if invoked and a transitive dependency's newer release published only as a source distribution after the candidate, the line installs that dependency from a wheel or exits non-zero naming it, and a control line without --no-build invokes the stub and fails -- falsifier: uv run pytest tests/e2e/test_setup_packaged_journey.py -q -k no_git_install, on each of those runners (the onex installer workflow runs it on all three with the candidate wheel and ONEX_E2E_REQUIRE_COMPLETE=1).
+  - id: req-omn25070-one-package-uv-and-pipx
+    statement: The customer package is the only owner of onex and omni-agent, and uv and pipx each install it under Python 3.12 with exactly those two launchers.
+    acceptance:
+      - id: AC3
+        statement: >-
+          AC3 (as amended 2026-11-21, the omninode-claude clause dropped): uv tool install --python 3.12 --no-build omninode-onex==<candidate> and pipx install --python 3.12 --pip-args=--only-binary=:all: omninode-onex==<candidate>, each into an empty HOME whose default interpreter for uv and pipx is Python 3.11, install under Python 3.12, put exactly onex and omni-agent on PATH, onex runs, and each builds nothing in AC1's source-only fixture; each launcher is declared by exactly one installed distribution, omninode-onex, with the target omnibase_core.cli.cli_commands:cli; the customer package pins each other distribution with == to the installed version and carries no code of its own; controls in which the launchers are declared only by omnibase_core, by both or by nobody fail the one-owner rule, and a pipx line without --python 3.12 fails -- falsifier: uv run pytest tests/e2e/test_setup_packaged_journey.py -q -k one_package_uv_and_pipx.
 evidence_requirements:
   - kind: tests
     description: The package tests; the opt-in install check runs with ONEX_TEST_ONEX_WHEEL set.
@@ -116,4 +122,16 @@ dod_evidence:
       - check_type: command
         check_value: >-
           sh -c 'd="$(mktemp -d)" && uv build --wheel --out-dir "$d" packages/omninode-onex && ONEX_TEST_ONEX_WHEEL="$(ls "$d"/omninode_onex-*.whl)" ONEX_E2E_REQUIRE_COMPLETE=1 uv run --frozen pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k no_git_install'
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-one-package-uv-and-pipx
+    description: >-
+      Builds the candidate wheel at this commit and installs it with uv and with pipx into empty homes whose default Python is 3.11, with ONEX_E2E_REQUIRE_COMPLETE=1 so a missing wheel fails rather than skips. Red while omnibase-core still declares onex and omni-agent beside omninode-onex (released 0.47.76 and earlier); green once the candidate pins the core release that stops declaring them. Needs pipx and Python 3.11 and 3.12 on the host.
+    source: manual
+    binds_ac:
+      - AC3
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: >-
+          sh -c 'd="$(mktemp -d)" && uv build --wheel --out-dir "$d" packages/omninode-onex && ONEX_TEST_ONEX_WHEEL="$(ls "$d"/omninode_onex-*.whl)" ONEX_E2E_REQUIRE_COMPLETE=1 uv run --frozen pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k one_package_uv_and_pipx'
         cwd: ${OMNI_HOME}/omnimarket
