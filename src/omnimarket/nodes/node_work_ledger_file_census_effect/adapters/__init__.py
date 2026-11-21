@@ -4,14 +4,18 @@
 
 from omnimarket.nodes.node_work_ledger_file_census_effect.adapters.repository_sources import (
     GitRepositorySource,
+    InMemoryFileBaselineStore,
     InMemoryRatchetStore,
     InMemoryRepositorySource,
+    YamlFileBaselineStore,
     YamlRatchetStore,
 )
 
 __all__ = [
     "GitRepositorySource",
+    "InMemoryFileBaselineStore",
     "InMemoryRatchetStore",
     "InMemoryRepositorySource",
+    "YamlFileBaselineStore",
     "YamlRatchetStore",
 ]
