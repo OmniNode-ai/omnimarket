@@ -8,6 +8,9 @@
 - test_done_items_malformed_event_goes_to_the_contract_dlq: a payload that is
   not a ledger row is retried instead of quarantined when the database does not
   answer, because the store is opened before the payload is read.
+- test_done_items_replayed_event_writes_and_publishes_nothing: a newer-only
+  guard of ``<=`` instead of ``<`` rewrites a redelivered done event and
+  publishes a second delta for it.
 """
 
 from __future__ import annotations
@@ -135,3 +138,31 @@ def test_done_items_refused_payload_is_dead_lettered_in_process() -> None:
             {"not": "a ledger row", "_topic": V1, "_partition": 0, "_offset": 3}
         )
     assert is_content_failure(refused.value)
+
+
+async def test_done_items_replayed_event_writes_and_publishes_nothing(
+    served: Served, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A redelivered done event (same done_at and done_row_id) rewrites nothing.
+
+    The newer-only guard is strict, so the replay publishes no second delta and
+    leaves projected_at as it was; a ``<=`` guard would rewrite both.
+    """
+    writer, reader = served
+    captured: list[Any] = []
+
+    async def capture(*args: Any, **kwargs: Any) -> None:
+        captured.append(kwargs["row"])
+
+    monkeypatch.setattr(writer, "publish_snapshot_delta", capture)
+
+    first = _handle(writer, _v1(DONE1), 0)
+    held = (await _read(reader))["OMN-1"]
+    replay = _handle(writer, _v1(DONE1), 1)
+
+    assert first["rows_upserted"] == 1
+    assert replay["rows_upserted"] == 0
+    assert replay["done_items_rows"] == []
+    assert len(captured) == 1
+    assert (await _read(reader))["OMN-1"] == held
+    await reader.close()
