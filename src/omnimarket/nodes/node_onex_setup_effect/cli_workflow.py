@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import click
@@ -33,6 +33,9 @@ from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow imp
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
     ModelSetupPlan,
 )
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider import (
+    ModelSetupProvider,
+)
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
     setup_provider_traits,
 )
@@ -42,6 +45,30 @@ def _credential_key(selection: Mapping[str, object]) -> str:
     """The credential identity of an inline selection, as the setup plan keys it."""
     connection = selection.get("connection_id")
     return f"connection:{connection}" if connection else str(selection["provider"])
+
+
+def _refuse_a_shared_credential_slot(
+    selections: Sequence[Mapping[str, object]],
+) -> None:
+    """Name the slot when a configure re-run would put two keys in one (OMN-23825).
+
+    The plan refuses keyed providers that share a credential slot; without this the
+    participant saw only the generic refusal and no way out.
+    """
+    owners: dict[str, str] = {}
+    for raw in selections:
+        selection = ModelSetupProvider.model_validate(raw)
+        if not selection.needs_key or selection.connection_id:
+            continue
+        slot = str(selection.registration_provider)
+        name = selection.provider + (f" ({selection.url})" if selection.url else "")
+        if slot in owners:
+            raise click.ClickException(
+                f"{owners[slot]} and {name} would share the {slot} credential slot, "
+                "which holds one key. Give one of them a named connection with "
+                "--connection NAME, or choose the saved one again to replace it."
+            )
+        owners[slot] = name
 
 
 def run_workflow_cli(
@@ -142,6 +169,7 @@ def run_workflow_cli(
                     chosen.get(s.credential_identity, s.model_dump())
                     for s in added_to.providers
                 ] + [p for key, p in chosen.items() if key not in had]
+                _refuse_a_shared_credential_slot(providers)
             plan = ModelSetupPlan.model_validate(
                 {
                     "workspace": workspace or Path.home() / "Code" / "omnibase",

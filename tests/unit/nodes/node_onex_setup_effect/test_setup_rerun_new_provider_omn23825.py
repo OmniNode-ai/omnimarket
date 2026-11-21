@@ -28,6 +28,9 @@ Failure modes:
   K1. A provider the saved setup does not use reuses a key stored outside setup (onex models add).
   K2. A saved hosted provider on its own endpoint reuses the provider-wide key.
   D1. Pressing Enter at the provider question does not keep the saved provider.
+  G6. A saved keyed server and a new server for another URL share one credential slot,
+      and the refusal is the generic "Invalid or conflicting setup selections" instead
+      of naming the slot and the way out (a named connection).
 """
 
 from __future__ import annotations
@@ -484,3 +487,63 @@ def test_enter_at_the_provider_question_keeps_the_saved_provider(rerun: Any) -> 
     assert rec.plan is not None, result.output
     assert [p.provider for p in rec.plan.providers] == ["openai"]
     assert rec.keys == []
+
+
+def test_two_servers_in_one_credential_slot_name_the_slot(
+    rerun: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G6: a saved keyed server and a new one for another URL share a slot; say so."""
+    saved = ModelSetupPlan.model_validate(
+        {
+            "workspace": tmp_path / "ws",
+            "components": ("delegation",),
+            "providers": (
+                {
+                    "provider": "local",
+                    "models": ("m1",),
+                    "url": "http://127.0.0.1:9",
+                    "api_key_required": True,
+                },
+            ),
+        }
+    )
+    monkeypatch.setattr(
+        setup_cli.HandlerSetupWorkflow, "saved_plan", staticmethod(lambda _h: saved)
+    )
+    result, rec = rerun(input="openai_compatible\nhttp://127.0.0.1:8\nm2\n")
+    assert result.exit_code != 0, result.output
+    assert rec.plan is None, result.output
+    assert "credential slot" in result.output, result.output
+    assert "--connection" in result.output, result.output
+    assert "Invalid or conflicting setup selections" not in result.output, result.output
+
+
+def test_a_named_connection_gives_the_second_server_its_own_slot(
+    rerun: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G6: the way out the refusal names works: a named connection is kept beside."""
+    saved = ModelSetupPlan.model_validate(
+        {
+            "workspace": tmp_path / "ws",
+            "components": ("delegation",),
+            "providers": (
+                {
+                    "provider": "local",
+                    "models": ("m1",),
+                    "url": "http://127.0.0.1:9",
+                    "api_key_required": True,
+                },
+            ),
+        }
+    )
+    monkeypatch.setattr(
+        setup_cli.HandlerSetupWorkflow, "saved_plan", staticmethod(lambda _h: saved)
+    )
+    result, rec = rerun(
+        "--connection", "lab2", input="openai_compatible\nhttp://127.0.0.1:8\nm2\n"
+    )
+    assert rec.plan is not None, result.output
+    assert [(p.provider, p.connection_id) for p in rec.plan.providers] == [
+        ("local", None),
+        ("openai_compatible", "lab2"),
+    ]
