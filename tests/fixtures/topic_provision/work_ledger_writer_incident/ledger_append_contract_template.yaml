@@ -1,0 +1,20 @@
+# Recorded data of the incident read at ledger rows 2026-11-20T05:49:51Z and 2026-11-20T05:50:12Z of lane alarmprov-0550:
+# the head of the work ledger append node's contract and its writer_topics template, verbatim from
+# src/omnimarket/nodes/node_work_ledger_append_effect/contract.yaml at origin/dev 5f0d6e8c54 (lines 73-78 and 95-102).
+# The template is all that contract declares; nothing expanded it into a topic on the broker.
+# The login the rows name is synthetic here (lane-a): the public repository holds no lab login name.
+name: "node_work_ledger_append_effect"
+contract_name: "node_work_ledger_append_effect"
+runtime_profiles: [effects]
+writer_topics:
+  kind: "cmd"
+  producer: "omnimarket"
+  name_prefix: "work-ledger-append-from-"
+  version: 1
+  principal_pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+service_writers:
+  overlay_id: "node_work_ledger_append_effect"
+  roots_env: "ONEX_SKILL_OVERLAY_ROOTS"
+  config_root_env: "ONEX_WORKSPACE_CONFIG_ROOT"
+  config_root_relative: "../overlays/overlays"
+  schema_version: "service_writers.v1"
