@@ -76,6 +76,10 @@ class ModelMissCollectPolicy(_Frozen):
     shard_job_pattern: str = Field(min_length=1)
     artifact_max_bytes: int = Field(ge=1, le=524288)
     artifact_unzipped_max_bytes: int = Field(ge=1)
+    #: The check run that carries a night's attribution record is named ``<prefix>:<slot date>``.
+    record_check_name_prefix: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    #: Case-insensitive regular expressions a record's text fields must not match (hosts, addresses, mailboxes, paths).
+    record_denied_patterns: tuple[str, ...] = Field(min_length=1)
 
     @field_validator("nightly_slot_time_utc", mode="before")
     @classmethod
@@ -101,6 +105,10 @@ class ModelMissCollectSettings(_Frozen):
     alarm_route: str = Field(min_length=1)
     collector_enabled: bool
     status_tick: str = Field(min_length=1)
+    #: Repositories a published record may name. Empty refuses every record (fail closed).
+    public_repositories: tuple[str, ...] = ()
+    #: Names of private repositories, hosts or people the deployment refuses in a record; case-insensitive substrings.
+    private_terms: tuple[str, ...] = ()
 
     @classmethod
     def load(cls, document: dict[str, Any]) -> Self:
