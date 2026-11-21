@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-24479
+title: Ledger file reader and writer count may only fall in every repository
+summary: node_work_ledger_file_census_effect gains a shrink-only per-file baseline. The census already holds the number of files that read or write the ledger file; it now also holds which files and how many such lines each has, so a change that deletes one reader and adds another, or adds a reader line to a file that already has one, turns red. omnimarket's hook and CI step name the baseline file; the baseline lists today's 186 files.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24479-per-file-baseline
+  statement: New code that opens the ledger file fails the census, even when the per-repository file count stays under its ratchet.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a file that is not in the per-file baseline and holds an executable reader or writer of the ledger file turns the census red with failure new-file-reader, while the same repository without it is green -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_per_file_ratchet.py -q --no-cov -k "new_file_with"'
+  - id: AC2
+    statement: 'AC2: a baselined file that holds more executable reader or writer lines than its row, and a swap of one reader for another, each turn the census red -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_per_file_ratchet.py -q --no-cov -k "second_reader_line or swapping_one_reader"'
+  - id: AC3
+    statement: 'AC3: the baseline only shrinks: --lower drops a cleared file and lowers a row, and never raises a row or adds a file -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_per_file_ratchet.py -q --no-cov -k "lowers_the_baseline or yaml_baseline_lower"'
+  - id: AC4
+    statement: 'AC4: the census command exits 1 and prints NEW-READER for a new file under the baseline named on its command line -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_per_file_ratchet.py -q --no-cov -k cli_exits_red'
+evidence_requirements:
+- kind: tests
+  description: The per-file baseline tests, the existing census tests and the shipped baseline against the tree.
+  command: uv run pytest tests/unit/validators/test_ledger_file_census.py tests/unit/nodes/node_work_ledger_file_census_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24479-ac1
+  description: AC1 a new file holding a reader or a writer turns the census red under the per-file baseline though the count is under the ratchet. At the merge base the baseline store does not exist, so this fails.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_per_file_ratchet.py -q --no-cov --tb=line -k new_file_with
+    cwd: .
+- id: dod-omn24479-ac2
+  description: AC2 a second reader line in a baselined file and a swap of one reader for another turn the census red. At the merge base the baseline store does not exist, so this fails.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_per_file_ratchet.py -q --no-cov --tb=line -k "second_reader_line or swapping_one_reader"
+    cwd: .
+- id: dod-omn24479-ac3
+  description: AC3 the baseline file is lowered by --lower and never raised or added to. At the merge base the baseline store does not exist, so this fails.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_per_file_ratchet.py -q --no-cov --tb=line -k "lowers_the_baseline or yaml_baseline_lower"
+    cwd: .
+- id: dod-omn24479-ac4
+  description: AC4 the census command exits 1 with a NEW-READER line for a new file and 0 without it. At the merge base the command has no baseline option, so this fails.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_per_file_ratchet.py -q --no-cov --tb=line -k cli_exits_red
+    cwd: .
+- id: dod-omn24479-integration-proof
+  description: The pushed head runs the census CLI against the repository's own ratchet and baseline, and the census tests, on a lab host over the bus and exits 0.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24479 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/validators/test_ledger_file_census.py tests/unit/nodes/node_work_ledger_file_census_effect -q --no-cov
+    cwd: .
