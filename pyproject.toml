@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.323"
+version = "0.4.324"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -611,6 +611,7 @@ node_delegation_routing_order_compute = "omnimarket.nodes.node_delegation_routin
 node_delegation_routing_overlay_check_compute = "omnimarket.nodes.node_delegation_routing_overlay_check_compute"
 node_delegation_routing_reducer = "omnimarket.nodes.node_delegation_routing_reducer"
 node_delegation_rubric_check_compute = "omnimarket.nodes.node_delegation_rubric_check_compute"
+node_delegation_scenario_alarm_effect = "omnimarket.nodes.node_delegation_scenario_alarm_effect"
 node_delegation_scenario_days_compute = "omnimarket.nodes.node_delegation_scenario_days_compute"
 node_delegation_scenario_days_effect = "omnimarket.nodes.node_delegation_scenario_days_effect"
 node_delegation_scenario_r2_effect = "omnimarket.nodes.node_delegation_scenario_r2_effect"
@@ -1347,6 +1348,7 @@ node_review_gate_context_compute = "omnimarket.nodes.node_review_gate_context_co
 node_review_gate_context_effect = "omnimarket.nodes.node_review_gate_context_effect"
 node_review_gate_context_orchestrator = "omnimarket.nodes.node_review_gate_context_orchestrator"
 node_review_key_credit_probe_effect = "omnimarket.nodes.node_review_key_credit_probe_effect"
+node_review_lock_effect = "omnimarket.nodes.node_review_lock_effect"
 node_review_prompt_builder_compute = "omnimarket.nodes.node_review_prompt_builder_compute"
 node_review_quota_reducer = "omnimarket.nodes.node_review_quota_reducer"
 node_review_record_compute = "omnimarket.nodes.node_review_record_compute"
