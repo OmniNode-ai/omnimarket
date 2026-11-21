@@ -50,7 +50,8 @@ output_model:
   description: One done item per ticket, ordered by ticket, with their count.
 
 runtime_dispatch:
-  external_trigger: "Direct Python invocation: the done-items publish effect calls the handler in process."
+  external_trigger: "Direct Python invocation: the node_projection_done_items writer runs this node's fold,
+    omnimarket.handlers.done_items_fold.fold_done_items, in process once per work-ledger TERMINAL message."
 
 event_bus:
   subscribe_topics: []

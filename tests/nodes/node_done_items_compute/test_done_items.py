@@ -3,9 +3,16 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import pytest
+import yaml
 from pydantic import TypeAdapter
 
+from omnimarket.events.ledger_row_parser import (
+    parse_ledger_row,
+)
 from omnimarket.events.model_ledger_row_event import (
     ModelLedgerRowEvent,
     ModelLedgerTerminalEvent,
@@ -13,9 +20,6 @@ from omnimarket.events.model_ledger_row_event import (
 from omnimarket.models.done_items import ModelDoneItemsRequest
 from omnimarket.nodes.node_done_items_compute.handlers.handler_done_items import (
     HandlerDoneItems,
-)
-from omnimarket.events.ledger_row_parser import (
-    parse_ledger_row,
 )
 
 pytestmark = pytest.mark.unit
@@ -143,3 +147,31 @@ def test_outcome_done_with_extra_words_counts() -> None:
     assert len(projection.items) == 1
     assert projection.items[0].ticket == "OMN-1"
     assert projection.as_of == max(event.row_timestamp for event in events)
+
+
+def test_runtime_dispatch_names_a_real_caller() -> None:
+    """The contract's runtime_dispatch names a caller that exists and calls the fold.
+
+    The old text named a done-items publish effect that does not exist.
+    """
+    nodes = Path(__file__).resolve().parents[3] / "src" / "omnimarket" / "nodes"
+    contract = yaml.safe_load(
+        (nodes / "node_done_items_compute" / "contract.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    trigger = contract["runtime_dispatch"]["external_trigger"]
+    callers = sorted(
+        set(re.findall(r"node_[a-z0-9_]+", trigger)) - {"node_done_items_compute"}
+    )
+    modules = sorted(set(re.findall(r"omnimarket\.handlers\.[a-z0-9_]+", trigger)))
+    assert callers, trigger
+    assert modules, trigger
+    for caller in callers:
+        sources = [
+            py.read_text(encoding="utf-8") for py in (nodes / caller).rglob("*.py")
+        ]
+        assert sources, f"{caller} does not exist"
+        assert any(
+            f"from {module} import" in text for text in sources for module in modules
+        ), f"{caller} does not import {modules}"
