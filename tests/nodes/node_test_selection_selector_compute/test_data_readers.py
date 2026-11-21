@@ -509,7 +509,7 @@ def test_data_readers_a_contract_file_selects_its_readers_when_the_rule_is_on(
 ) -> None:
     selected = _selected(
         tmp_path,
-        ["contracts/OMN-1.yaml"],
-        tree={"tests/test_spells_contract.py": 'C = "contracts/OMN-1.yaml"\n'},
+        ["contracts/sample.yaml"],
+        tree={"tests/test_spells_contract.py": 'C = "contracts/sample.yaml"\n'},
     )
     assert selected == ALWAYS | {"tests/test_spells_contract.py"}
