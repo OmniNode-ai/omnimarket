@@ -116,3 +116,23 @@ async def test_done_items_malformed_event_goes_to_the_contract_dlq() -> None:
     assert [topic for topic, _ in published] == dlq
     assert json.loads(published[0][1])["original_message"]["not"] == "a ledger row"
     assert [list(offsets.values()) for offsets in consumer.commits] == [[8]]
+
+
+def test_done_items_refused_payload_is_dead_lettered_in_process() -> None:
+    """The in-process runtime dead-letters only failures it can tell are the event's.
+
+    omnibase_infra's projection callback routes a handler error to the contract
+    DLQ only when ``is_content_failure`` says so; anything else withholds the
+    offset and redelivers the same bytes forever. A payload with no ledger row
+    must therefore fail as a content failure on the handle() path too.
+    """
+    from omnibase_infra.handlers.projection_failure_classification import (
+        is_content_failure,
+    )
+
+    writer = DoneItemsProjectionWriter()
+    with pytest.raises(ValueError, match="raw_row") as refused:
+        writer.handle(
+            {"not": "a ledger row", "_topic": V1, "_partition": 0, "_offset": 3}
+        )
+    assert is_content_failure(refused.value)

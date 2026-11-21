@@ -41,7 +41,6 @@ from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
     parse_ledger_row,
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
-from omnimarket.projection.error_classification import PoisonEventError
 from omnimarket.projection.handler_shim import RUNTIME_INJECTED_KEYS
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import (
@@ -87,27 +86,31 @@ def _row(item: ModelDoneItem, projected_at: datetime) -> dict[str, StoreValue]:
     }
 
 
-class DoneItemsPayloadRefusedError(PoisonEventError, ValueError):
-    """A TERMINAL message whose ledger row cannot be read: it will never project.
-
-    A poison marker, so the runner routes it to the contract's DLQ and commits
-    its offset instead of retrying it forever; still a ValueError for callers
-    that read the parse failure as one.
-    """
-
-
 def done_items_from_payload(payload: dict[str, Any]) -> tuple[ModelDoneItem, ...]:
     """The done items one TERMINAL message makes, from the ledger row it carries.
 
-    A payload with no ledger row, or a row the ledger parser refuses, raises
-    DoneItemsPayloadRefusedError; a pydantic ValidationError is already poison.
+    A payload with no ledger row, or a row the ledger parser refuses, raises a
+    pydantic ValidationError: the one failure both omnimarket's consume loop
+    (POISON) and omnibase_infra's in-process projection callback (a content
+    failure) send to the contract's DLQ with the offset advanced. A plain
+    ValueError would be retried forever by the in-process callback.
     """
     try:
         return _done_items_from_payload(payload)
     except ValidationError:
         raise
     except ValueError as exc:
-        raise DoneItemsPayloadRefusedError(str(exc)) from exc
+        raise ValidationError.from_exception_data(
+            "WorkLedgerTerminalPayload",
+            [
+                {
+                    "type": "value_error",
+                    "loc": ("raw_row",),
+                    "input": payload.get("raw_row"),
+                    "ctx": {"error": str(exc)},
+                }
+            ],
+        ) from exc
 
 
 def _done_items_from_payload(payload: dict[str, Any]) -> tuple[ModelDoneItem, ...]:
@@ -283,7 +286,6 @@ class DoneItemsProjectionWriter(BaseProjectionRunner):
 
 __all__ = [
     "COLUMNS",
-    "DoneItemsPayloadRefusedError",
     "DoneItemsProjectionWriter",
     "done_items_from_payload",
     "upsert_statement",
