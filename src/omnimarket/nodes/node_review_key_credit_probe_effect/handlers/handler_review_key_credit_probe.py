@@ -9,7 +9,8 @@ run, appends one ledger STATUS row carrying ``alarm=review-key-credit``. The fir
 the baseline and writes no row. Only a key's display name is ever written, never its credential
 reference, its value or a provider message. A run in which no key gave a reading (no key bound,
 or every call failed for a reason that says nothing about a key) is a failed run, never a quiet one.
-Rows go through the ledger command the host units already carry (``ONEX_LEDGER_COMMAND``).
+Rows go to the ledger host's work-ledger serve over the bus lane the host's lab host table row declares; the probe
+names no ledger file (OMN-26332).
 
 The probe's token budget and prompt are declared in the node contract's ``config.probe`` and
 read from it (OMN-24727); the per-key read is the gateway's bus-free ``ReviewKeyProbe``, so no
@@ -20,8 +21,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import shlex
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -34,20 +33,18 @@ from omnimarket.handlers.handler_packaged_contract_loader import (
     load_packaged_contract_section,
 )
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
-from omnimarket.nodes.node_friction_rollup_tick_effect.protocols.protocol_ledger_appender import (
-    ProtocolLedgerAppender,
-    SubprocessLedgerAppender,
-)
 from omnimarket.nodes.node_review_key_credit_probe_effect.models.model_review_key_credit_probe import (
     ModelReviewKeyCreditProbeRequest,
     ModelReviewKeyCreditProbeResult,
     ModelReviewKeyProbeConfig,
 )
+from omnimarket.nodes.node_review_key_credit_probe_effect.protocols import (
+    ProtocolReviewKeyLedgerAppender,
+    ledger_appender_for_lane,
+)
 
 _NODE_NAME = "node_review_key_credit_probe_effect"
 _STATE_FILE = "key-states.json"
-LEDGER_COMMAND_VARIABLE = "ONEX_LEDGER_COMMAND"
-_APPEND_TIMEOUT_SECONDS = 60
 
 
 def load_probe_config() -> ModelReviewKeyProbeConfig:
@@ -120,28 +117,17 @@ def render_alarm_row(
     )
 
 
-def ledger_appender_from_environment() -> ProtocolLedgerAppender:
-    """The existing subprocess appender on the command the host units carry; no default."""
-    command = shlex.split(os.environ.get(LEDGER_COMMAND_VARIABLE, ""))
-    if not command:
-        raise RuntimeError(
-            f"set {LEDGER_COMMAND_VARIABLE} to the onex-ledger command line (no default)"
-        )
-    return SubprocessLedgerAppender(command, _APPEND_TIMEOUT_SECONDS)
-
-
 class NoReadingError(RuntimeError):
     """No key gave a reading, so the run saw nothing and must not look like a quiet one."""
 
 
-def record(
+async def record(
     states: Sequence[tuple[str, str]],
     *,
     state_dir: Path,
-    ledger: Path,
     host: str,
     model: str,
-    appender: ProtocolLedgerAppender | None = None,
+    appender: ProtocolReviewKeyLedgerAppender,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> list[tuple[str, str, str]]:
     """Compare this run with the last, write one row per flip, then keep the new states.
@@ -150,9 +136,6 @@ def record(
     A ledger that refuses a row keeps the state of every row already written and the old state
     of the refused one, so the next run retries that flip and writes no row twice.
     """
-    ledger_appender = (
-        appender if appender is not None else ledger_appender_from_environment()
-    )
     if all(state == "unreachable" for _, state in states):
         raise NoReadingError(
             f"no key gave a reading ({len(states)} bound to host {host}); "
@@ -164,8 +147,8 @@ def record(
     stamp = clock().strftime("%Y-%m-%dT%H:%M:%SZ")
     kept = {name: previous[name] for name in current if name in previous}
     for name, before, after in changed:
-        outcome = ledger_appender.append(
-            ledger, render_alarm_row(stamp, host, model, name, before, after)
+        outcome = await appender.append(
+            render_alarm_row(stamp, host, model, name, before, after)
         )
         if not outcome.ok:
             # Keep what was written so far: the next run retries only the refused flip.
@@ -190,7 +173,7 @@ class HandlerReviewKeyCreditProbe:
         call: Any,
         endpoint_url: str,
         config: ModelReviewKeyProbeConfig,
-        appender: ProtocolLedgerAppender | None = None,
+        appender: ProtocolReviewKeyLedgerAppender,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._catalog = catalog
@@ -226,10 +209,9 @@ class HandlerReviewKeyCreditProbe:
             clock=self._clock,
         )
         states = await probe.probe_keys(probe_payload(self._config))
-        changed = record(
+        changed = await record(
             states,
             state_dir=request.state_dir,
-            ledger=request.ledger,
             host=request.host,
             model=request.model,
             appender=self._appender,
@@ -244,11 +226,12 @@ def review_key_probe_command(
     *,
     resolve_host: Callable[[str | None], str | None],
     key_store: Callable[[], LocalByokCredentialStore],
+    resolve_bus_lane: Callable[[str | None], str | None],
 ) -> click.Command:
     """The ``models review-gateway-key-probe`` command, the body of the standing probe (OMN-24658).
 
-    The CLI owns how this machine's lab host row and credential store are found and passes
-    them in; the provider backend, the call effect and the ledger writer are imported on call.
+    The CLI owns how this machine's lab host row, credential store and bus lane are found and
+    passes them in; the provider backend, the call effect and the ledger writer are imported on call.
     """
 
     @click.command("review-gateway-key-probe")
@@ -270,20 +253,12 @@ def review_key_probe_command(
         required=True,
         help="Where the last state of each key is kept.",
     )
-    @click.option(
-        "--ledger",
-        type=click.Path(dir_okay=False, path_type=Path),
-        envvar="ONEX_LEDGER_PATH",
-        required=True,
-        help="The ledger a key's credit flip is appended to.",
-    )
     def probe(
         tenant: str,
         model_option: str,
         thinking_mode: str,
         host: str | None,
         state_dir: Path,
-        ledger: Path,
     ) -> None:
         """Probe each review key bound to this host with one token; ledger a credit flip."""
         from omnimarket.handlers.routing.byok_provider_backends import (
@@ -300,6 +275,16 @@ def review_key_probe_command(
         bound_host = resolve_host(host)
         if bound_host is None:
             raise click.ClickException("the probe needs this machine's lab host row.")
+        lane = resolve_bus_lane(bound_host)
+        if lane is None:
+            raise click.ClickException(
+                f"host {bound_host} declares no ledger_bus_lane in the lab host table; "
+                "a key's credit flip has no bus to reach the ledger on."
+            )
+        try:
+            appender = ledger_appender_for_lane(lane, bound_host)
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc)) from None
         backend = resolve_byok_provider_backend("anthropic", GATEWAY_PLAN)
         if backend is None:
             raise click.ClickException(
@@ -313,6 +298,7 @@ def review_key_probe_command(
                 call=HandlerLlmDelegationCall(),
                 endpoint_url=backend.endpoint_url,
                 config=load_probe_config(),
+                appender=appender,
             )
             result = asyncio.run(
                 handler.handle(
@@ -324,7 +310,6 @@ def review_key_probe_command(
                             Literal["disabled", "adaptive"], thinking_mode
                         ),
                         state_dir=state_dir,
-                        ledger=ledger,
                     )
                 )
             )
@@ -346,9 +331,14 @@ def attach_review_key_probe_command(
     *,
     resolve_host: Callable[[str | None], str | None],
     key_store: Callable[[], LocalByokCredentialStore],
+    resolve_bus_lane: Callable[[str | None], str | None],
 ) -> None:
     """Register ``review-gateway-key-probe`` on ``group``; the CLI module owns no hand wiring."""
     group.add_command(
-        review_key_probe_command(resolve_host=resolve_host, key_store=key_store),
+        review_key_probe_command(
+            resolve_host=resolve_host,
+            key_store=key_store,
+            resolve_bus_lane=resolve_bus_lane,
+        ),
         "review-gateway-key-probe",
     )

@@ -70,13 +70,11 @@ files:
     src/omnimarket/nodes/node_projection_work_ledger/parity.py: 2
     src/omnimarket/nodes/node_retention_cleanup/contract.yaml: 1
     src/omnimarket/nodes/node_retention_cleanup/handlers/handler_file_retention.py: 1
-    src/omnimarket/nodes/node_review_key_credit_probe_effect/handlers/handler_review_key_credit_probe.py: 1
     src/omnimarket/nodes/node_session_front_door_compute/handlers/entry.py: 1
     src/omnimarket/nodes/node_session_front_door_compute/handlers/receipt.py: 4
     src/omnimarket/nodes/node_session_resume_compute/handlers/dangling.py: 1
     src/omnimarket/nodes/node_silent_failure_alarm_effect/handlers/handler_silent_failure_alarm.py: 1
-    src/omnimarket/nodes/node_tailnet_https_serve_effect/overlay.example.yaml: 2
-    src/omnimarket/nodes/node_work_ledger_copy_effect/overlay.example.yaml: 3
+    src/omnimarket/nodes/node_work_ledger_copy_effect/overlay.example.yaml: 2
     src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml: 3
     src/omnimarket/nodes/node_work_state_projection_effect/contract.yaml: 1
     tests/fixtures/context_compaction/manifest.yaml: 8
@@ -192,4 +190,4 @@ files:
     tests/unit/validators/test_ledger_file_census.py: 27
     tests/unit/work_ledger_bus/test_work_ledger_append_cli.py: 1
 ratchet:
-  omnimarket: 186
+  omnimarket: 184
