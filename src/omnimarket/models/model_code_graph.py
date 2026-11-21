@@ -9,6 +9,7 @@ judges itself against a frozen sample with known-used controls and appends one r
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
@@ -170,6 +171,51 @@ class ModelCodeGraphResult(BaseModel):
     failure: str | None = None
     #: What the Memgraph version write did: ``not-configured``, ``skipped:<reason>``, ``written:<n>`` or ``failed:<reason>``.
     memgraph: str = "not-configured"
+
+
+class EnumRefreshOutcome(StrEnum):
+    """What the refresh on merge decided: build, skip, defer, or fail."""
+
+    #: Every declared head matches the last build: nothing to rebuild, nothing appended.
+    FRESH = "fresh"
+    #: A head moved and the build ran and completed.
+    REFRESHED = "refreshed"
+    #: A head moved but the last build or attempt is younger than the minimum interval, or another
+    #: build holds the state directory's lock.
+    DEFERRED = "deferred"
+    #: A head could not be read, the build failed, or it left no rewritten marker.
+    FAILED = "failed"
+
+
+class ModelCodeGraphRefreshResult(BaseModel):
+    """The refresh on merge's decision, and the build's result when it built.
+
+    ``built_at`` and ``built_heads`` are the last build's time and heads as the state directory's
+    marker holds them. After a ``refreshed`` build they are read back from the marker that build
+    rewrote, never taken from the refresh's own decision time or heads (the build re-snapshots the
+    heads, so they can differ); a build that left the marker unrewritten is ``failed``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    outcome: EnumRefreshOutcome
+    #: When the last build was, from the marker; none when it is absent or unreadable.
+    built_at: datetime | None = None
+    #: When the refresh last started a build, from its attempt record; none when it never did. A
+    #: failed build moves this and not ``built_at``, so the next ticks defer on it.
+    attempted_at: datetime | None = None
+    #: The heads the last build built, by repository, each truncated to 12 characters.
+    built_heads: dict[str, str] = Field(default_factory=dict)
+    #: The declared repositories' heads now, each truncated to 12 characters; empty when a head
+    #: could not be read.
+    current_heads: dict[str, str] = Field(default_factory=dict)
+    #: The repositories whose head differs from the last build, in overlay order; every declared
+    #: repository when the marker or a head could not be read.
+    changed: tuple[str, ...] = ()
+    #: Why the outcome is what it is, as one cell-safe token.
+    reason: str = Field(min_length=1)
+    #: The build's result when the refresh ran it; none when it did not.
+    result: ModelCodeGraphResult | None = None
 
 
 class ModelGraphCheckResult(BaseModel):

@@ -32,6 +32,17 @@ class ProtocolRepoSource(Protocol):
         ...
 
 
+class ProtocolRepoHeads(Protocol):
+    """The commit a repository's ref resolves to."""
+
+    def head(self, repo: str, ref: str) -> str:
+        """The commit sha ``ref`` resolves to.
+
+        Raises :class:`RepoSourceError` when the repository or the ref cannot be read.
+        """
+        ...
+
+
 class PullRequestSourceError(RuntimeError):
     """The open pull requests could not be read. Never an empty answer."""
 
@@ -80,6 +91,7 @@ __all__ = [
     "ProtocolCodeGraphVersionStore",
     "ProtocolCommitClock",
     "ProtocolPullRequestSource",
+    "ProtocolRepoHeads",
     "ProtocolRepoSource",
     "PullRequestSourceError",
     "RepoSourceError",

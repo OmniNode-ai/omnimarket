@@ -7,6 +7,10 @@
 ``index``    ``[--repo R ...]``: write the version of each named declared repository (every one by default) into Memgraph; no row, no verdict.
 ``check``    ``--repo R --base REF --head REF``: name the modules the head adds that no root reaches.
 ``shadow``   check every open pull request of the overlay's shadow repositories, append one row, hold nothing.
+``refresh``  the on-merge refresh: build only when a repository head moved since the last build and
+             neither that build nor the last attempt is less than 15 minutes old (what the refresh timer
+             runs; appends nothing when fresh). It and a writing nightly share one build lock in the state
+             directory: the second run defers.
 ``lookup``   ``--question Q --repo R`` and the question's argument (locate: ``--target``, a node name, contract path or workflow path): one MATCH row per answer, then a LOOKUP line.
 ``schedule`` install | uninstall | status | run-now, for a host in the overlay; ``--unit shadow`` is the shadow's timer.
 
@@ -15,7 +19,8 @@
 Exit codes: 0 the run was built and written (a NOT WORKING verdict is still 0: a reading changes
 nothing and refuses nothing), or the check found nothing; 1 the run failed (an unreadable
 repository, an append that did not land), or the check flagged a module or an allowlist entry
-past its date (the shadow verb exits 0 whatever it would refuse: it holds nothing); 3 a deployment fact is
+past its date (the shadow verb exits 0 whatever it would refuse: it holds nothing); the refresh exits
+0 fresh, deferred or refreshed and 1 when a head cannot be read, its build failed or left no rewritten marker; 3 a deployment fact is
 missing (INDETERMINATE). The lookup exits 0 on an answer (found or a clean not-found) and 1 on a
 lookup that could not be answered.
 """
@@ -45,6 +50,7 @@ from omnimarket.handlers.rules_overlay_root_declared import (
 )
 from omnimarket.models.model_code_graph import (
     EnumGraphFault,
+    EnumRefreshOutcome,
     EnumShadowOutcome,
     ModelCodeGraphCommand,
     ModelCodeGraphResult,
@@ -80,8 +86,16 @@ from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_lookup import (
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_lookup_routed import (
     MemgraphFirstLookup,
 )
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_refresh import (
+    CodeGraphRefresh,
+)
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
     CodeGraphRun,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_state import (
+    build_lock,
+    stage,
+    write_marker,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import (
     GraphRules,
@@ -115,11 +129,15 @@ SCHEDULE_BLOCKS = {
     "nightly": "schedule",
     "shadow": "shadow_schedule",
     "drill": "drill_schedule",
+    "refresh": "refresh_schedule",
 }
 
 
 def _source(
-    overlay: ModelCodeGraphOverlay, environ: Mapping[str, str] | None = None
+    overlay: ModelCodeGraphOverlay,
+    environ: Mapping[str, str] | None = None,
+    *,
+    max_fetch_age: timedelta | None = None,
 ) -> GitRepoSource:
     if overlay.graph_backend != "git":
         raise ValueError(
@@ -132,7 +150,11 @@ def _source(
             f"{overlay.repos_root_env} is not set; the overlay names it as the clones' root, "
             f"and neither {' nor '.join(REGISTRY_ROOT_ENVS)} names the registry root"
         )
-    return GitRepoSource(Path(root), max_file_bytes=overlay.graph_roots.max_file_bytes)
+    return GitRepoSource(
+        Path(root),
+        max_file_bytes=overlay.graph_roots.max_file_bytes,
+        max_fetch_age=max_fetch_age,
+    )
 
 
 #: The versions this process holds. The persistent, merge-refreshed projection replaces it (OMN-23648, later slice).
@@ -203,10 +225,65 @@ def _keep(result: ModelCodeGraphResult) -> None:
     if directory is None:
         return
     directory.mkdir(parents=True, exist_ok=True)
-    target = directory / LATEST_RESULT
-    staged = target.with_suffix(".tmp")
-    staged.write_text(result.model_dump_json(indent=1), encoding="utf-8")
-    staged.replace(target)
+    stage(directory / LATEST_RESULT, result.model_dump_json(indent=1))
+    # The built marker is what the refresh on merge reads: only a build whose row the ledger holds
+    # touches it, never a probe, a failed run or a drill (see handlers/code_graph_state.py).
+    write_marker(directory, result, datetime.now(UTC))
+
+
+def build_refresh_handler() -> tuple[CodeGraphRefresh, str]:
+    """The refresh on merge as the overlay and the environment name it, and this host's name."""
+    overlay = load_overlay()
+    host = os.environ.get(overlay.ledger_append.host_env, "").strip()
+    if not host:
+        raise ValueError(
+            f"{overlay.ledger_append.host_env} is not set; the overlay names it as this host"
+        )
+    directory = state_directory(dict(os.environ))
+    if directory is None:
+        raise ValueError(
+            "ONEX_CODE_GRAPH_STATE_DIR is not set; the refresh reads and writes the built marker there"
+        )
+
+    def run() -> ModelCodeGraphResult:
+        handler, run_host = build_handler(write=True)
+        now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        result = handler.handle(
+            ModelCodeGraphCommand(
+                correlation_id=f"code-graph-refresh-{run_host}-{now}",
+                write=True,
+                fault=EnumGraphFault.NONE,
+            )
+        )
+        _keep(result)
+        return result
+
+    refresh = CodeGraphRefresh(
+        overlay=overlay,
+        heads=_source(overlay, max_fetch_age=FETCH_MAX_AGE),
+        state_directory=directory,
+        run=run,
+        clock=lambda: datetime.now(UTC),
+    )
+    return refresh, host
+
+
+def _refresh(_arguments: argparse.Namespace) -> int:
+    handler, _host = build_refresh_handler()
+    result = handler.handle()
+    changed = ",".join(result.changed) if result.changed else "none"
+    built_at = result.built_at.isoformat() if result.built_at else "none"
+    built_heads = (
+        ",".join(f"{name}@{head}" for name, head in result.built_heads.items())
+        or "none"
+    )
+    attempted_at = result.attempted_at.isoformat() if result.attempted_at else "none"
+    sys.stdout.write(
+        f"REFRESH outcome={result.outcome.value} changed={changed} "
+        f"built_at={built_at} built_heads={built_heads} attempted_at={attempted_at} "
+        f"reason={result.reason}\n"
+    )
+    return 1 if result.outcome is EnumRefreshOutcome.FAILED else 0
 
 
 def build_handler(write: bool) -> tuple[CodeGraphRun, str]:
@@ -232,6 +309,13 @@ def build_handler(write: bool) -> tuple[CodeGraphRun, str]:
     return handler, host
 
 
+#: How long a writing run waits for another writing build of the state directory before it defers.
+BUILD_LOCK_WAIT = timedelta(minutes=15)
+#: How old a clone's last fetch may be before the refresh stops reading its head as current. The
+#: canonical clone sync fetches the host's clones every 3 minutes, so an hour is twenty missed ticks.
+FETCH_MAX_AGE = timedelta(hours=1)
+
+
 def _open_memgraph_store(overlay: ModelCodeGraphOverlay | None) -> MemgraphVersionStore:
     retention = (
         overlay.lookup.retention_versions
@@ -255,6 +339,24 @@ def _memgraph_writer(overlay: ModelCodeGraphOverlay) -> MemgraphVersionStore | N
 
 
 def _run(arguments: argparse.Namespace, write: bool) -> int:
+    # A writing run (nightly or a drill) shares the state directory and its staged files with the
+    # refresh, so it takes the one build lock; a probe appends nothing and holds no lock.
+    with build_lock(
+        state_directory(dict(os.environ)) if write else None, wait=BUILD_LOCK_WAIT
+    ) as held:
+        if not held:
+            # Exit 0 on purpose: the holder is a writing build whose row the ledger gets, and the
+            # drill unit counts exit 1 as success, so a nonzero code could not tell it apart. The
+            # line says that this run waited out the lock and for how long.
+            sys.stdout.write(
+                "RUN status=deferred reason=build-lock-held "
+                f"waited={int(BUILD_LOCK_WAIT.total_seconds())}s\n"
+            )
+            return 0
+        return _build_and_report(arguments, write)
+
+
+def _build_and_report(arguments: argparse.Namespace, write: bool) -> int:
     handler, host = build_handler(write)
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = handler.handle(
@@ -487,7 +589,7 @@ def _schedule(arguments: Sequence[str]) -> int:
             "--unit",
             choices=sorted(SCHEDULE_BLOCKS),
             default="nightly",
-            help="the nightly graph (default), the pull request check in shadow, or the scheduled drill",
+            help="the nightly graph (default), the pull request check in shadow, the scheduled drill, or the refresh on merge",
         )
         if verb == "install":
             sub.add_argument(
@@ -557,6 +659,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             choices=[fault.value for fault in EnumGraphFault],
             default=EnumGraphFault.NONE.value,
         )
+        verbs.add_parser("refresh")
         index = verbs.add_parser("index")
         index.add_argument(
             "--repo", action="append", help="a declared repository; default every one"
@@ -629,6 +732,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _lookup(args)
         if args.verb == "shadow":
             return _shadow(args)
+        if args.verb == "refresh":
+            return _refresh(args)
         return _run(args, write=args.verb == "nightly")
     except (
         NodeOverlayError,
