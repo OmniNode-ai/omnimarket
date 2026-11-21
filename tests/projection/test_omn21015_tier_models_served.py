@@ -52,16 +52,17 @@ _TOPICS = {
 }
 
 # (tenant, tier, model, cost) per run. None is a run whose cost was not recorded.
+# OMN-25862: the local $0 runs name a model the pricing manifest lists (as free), so they stay measured zeros.
 _RUNS: list[tuple[str, str, str, float | None]] = [
-    (_TENANT, "local", "qwen-a", 0.0),
-    (_TENANT, "local", "qwen-a", 0.0),
-    (_TENANT, "local", "qwen-a", 0.0),
+    (_TENANT, "local", "qwen2.5-7b", 0.0),
+    (_TENANT, "local", "qwen2.5-7b", 0.0),
+    (_TENANT, "local", "qwen2.5-7b", 0.0),
     (_TENANT, "local", "qwen-b", None),
     (_TENANT, "cheap_cloud", "gemini-2.5-flash", 0.004),
     (_TENANT, "cheap_cloud", "gemini-2.5-flash", 0.005),
     (_TENANT, "", "unrouted-model", 0.0),
-    (_OTHER, "local", "qwen-a", 0.0),
-    (_OTHER, "local", "qwen-a", 0.0),
+    (_OTHER, "local", "qwen2.5-7b", 0.0),
+    (_OTHER, "local", "qwen2.5-7b", 0.0),
 ]
 
 
@@ -106,7 +107,7 @@ def _tiers(client: TestClient) -> dict[str, dict[str, object]]:
 
 def test_f1_two_models_in_one_tier_are_two_entries(client: TestClient) -> None:
     local = _tiers(client)["local"]
-    assert [m["model_name"] for m in local["models"]] == ["qwen-a", "qwen-b"]
+    assert [m["model_name"] for m in local["models"]] == ["qwen2.5-7b", "qwen-b"]
     assert [m["count"] for m in local["models"]] == [3, 1]
 
 
