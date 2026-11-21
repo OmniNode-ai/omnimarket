@@ -18,7 +18,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    computed_field,
     model_validator,
 )
 
@@ -137,7 +136,6 @@ class ModelSelectionCompareRow(BaseModel):
             raise ValueError("graph_only_paths must name exactly graph_only files")
         return self
 
-    @computed_field  # type: ignore[prop-decorator]
     @property
     def valid_for_verdict(self) -> bool:
         """A clean comparison against Memgraph; a file-store answer is excluded from the graph verdict."""

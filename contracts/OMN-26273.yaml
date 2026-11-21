@@ -64,7 +64,7 @@ dod_evidence:
   - check_type: command
     check_value: 'set -eu;
 
-      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_code_graph_effect/handlers/code_graph_selection_compare.py" | grep -q ''^class SelectionCompare:''
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_code_graph_effect/handlers/code_graph_selection_compare.py" | grep ''^class SelectionCompare:'' > /dev/null
 
       '
     cwd: .

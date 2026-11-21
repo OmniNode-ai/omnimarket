@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import importlib
 import multiprocessing
 import os
 import signal
@@ -14,8 +15,8 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
-import neo4j  # noqa: F401 - imported here so the forked worker does not pay for it inside the deadline
 import pytest
 import yaml
 from pydantic import ValidationError
@@ -63,7 +64,10 @@ from omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph_request
     HandlerCodeGraphSelectionVerdictRequested,
 )
 from omnimarket.nodes.node_code_graph_effect.overlay import ModelCodeGraphOverlay
-from omnimarket.nodes.node_reading_writer_effect.protocols import ModelAppendOutcome
+from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ModelAppendOutcome,
+    ProtocolReadingAppender,
+)
 from tests.nodes.node_code_graph_effect.code_graph_support import (
     CORE,
     EXAMPLE,
@@ -79,6 +83,8 @@ POLICY = (
     Path(__file__).resolve().parents[3]
     / "src/omnimarket/nodes/node_test_selection_selector_compute/policy.yaml"
 )
+# Loaded here so the forked worker does not pay for the driver import inside the deadline.
+_NEO4J_PRELOADED = importlib.import_module("neo4j")
 BASE = "b" * 40
 HEAD = "h" * 40
 NOW = datetime(2026, 11, 21, 12, 0, tzinfo=UTC)
@@ -93,13 +99,13 @@ def _answer(
     paths: tuple[str, ...] = (),
     *,
     served_from: EnumLookupServedFrom = EnumLookupServedFrom.MEMGRAPH,
-    status: str = "found",
+    status: Literal["found", "not-found", "failed"] = "found",
 ) -> ModelCodeGraphLookupResult:
     return ModelCodeGraphLookupResult(
         correlation_id="c",
         question=EnumCodeGraphQuestion.REACH,
         repo="omnimarket",
-        status=status,  # type: ignore[arg-type]
+        status=status,
         answered_from=commit,
         matches=tuple(ModelLookupMatch(path=p) for p in paths),
         served_from=served_from,
@@ -137,7 +143,7 @@ def _compare(
     | None = None,
     lookup_deadline: float = 2.0,
     fallback_deadline: float = 2.0,
-    appender: object | None = None,
+    appender: ProtocolReadingAppender | None = None,
 ) -> SelectionCompare:
     return SelectionCompare(
         memgraph_lookup=memgraph,
@@ -146,7 +152,7 @@ def _compare(
         is_test=_is_test,
         lookup_deadline_seconds=lookup_deadline,
         fallback_deadline_seconds=fallback_deadline,
-        appender=appender,  # type: ignore[arg-type]
+        appender=appender,
         clock=lambda: NOW,
     )
 
@@ -348,9 +354,12 @@ def test_compare_selection_a_file_store_answer_is_excluded_from_the_verdict() ->
     def refused(_command: ModelCodeGraphLookupCommand) -> ModelCodeGraphLookupResult:
         raise MemgraphUnreachableError(EnumLookupFallbackReason.UNREACHABLE, "down")
 
-    files = lambda _c: _answer(  # noqa: E731
-        paths=("tests/b/test_three.py",), served_from=EnumLookupServedFrom.FILE_STORE
-    )
+    def files(_command: ModelCodeGraphLookupCommand) -> ModelCodeGraphLookupResult:
+        return _answer(
+            paths=("tests/b/test_three.py",),
+            served_from=EnumLookupServedFrom.FILE_STORE,
+        )
+
     row = _compare(memgraph=refused, files=files).compare(_command())
     assert row.outcome is EnumCompareOutcome.COMPARED
     assert row.graph_source is EnumGraphAnswerSource.FILE_STORE
@@ -378,13 +387,18 @@ def test_compare_selection_a_refused_statement_is_a_typed_failure_not_a_fallback
 
 
 class _Appender:
-    def __init__(self, status: str = "accepted") -> None:
+    def __init__(
+        self,
+        status: Literal[
+            "accepted", "duplicate", "refused", "pending", "error"
+        ] = "accepted",
+    ) -> None:
         self.rows: list[str] = []
         self._status = status
 
     def append(self, rows: str, request_id: str) -> ModelAppendOutcome:
         self.rows.append(rows)
-        return ModelAppendOutcome(status=self._status)  # type: ignore[arg-type]
+        return ModelAppendOutcome(status=self._status)
 
 
 def test_compare_selection_appends_one_row_through_the_appender() -> None:
