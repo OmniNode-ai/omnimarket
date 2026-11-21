@@ -300,6 +300,7 @@ class ModelPublishNames(BaseModel):
     delegation_tracker_page: str = Field(min_length=1)
     delegation_tracker_data: str = Field(min_length=1)
     delegation_history_data: str = Field(min_length=1)
+    cost_throughput_data: str = Field(min_length=1)
     floor_page: str = Field(min_length=1)
     data: str = Field(min_length=1)
     process_health: str = Field(min_length=1)
@@ -527,6 +528,7 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     delegation_tracker_page_relpath: str = Field(min_length=1)
     delegation_tracker_data_relpath: str = Field(min_length=1)
     delegation_history_data_relpath: str = Field(min_length=1)
+    cost_throughput_data_relpath: str = Field(min_length=1)
     # The age in seconds past which the Delegation tab draws the history as too old, with no number; the publisher writes it into the page.
     delegation_history_max_age_seconds: int = Field(gt=0)
     floor_page_relpath: str = Field(min_length=1)
