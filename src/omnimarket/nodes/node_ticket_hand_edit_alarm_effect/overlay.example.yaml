@@ -1,0 +1,11 @@
+# Example only. Copy to <root>/node_ticket_hand_edit_alarm_effect/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS and set your own values.
+# At most one Linear list read per interval; the rate-limit share is unmeasured.
+check_interval_seconds: 60
+# Where the cursor starts the first time the node reads Linear.
+initial_lookback_seconds: 3600
+max_pages: 10
+# The ticket node's own Linear user id. When set, a description revision by anyone else after the
+# node's last write is a finding, and revisions only by this id are the node's own write in flight.
+node_actor_id: example-linear-user-id
+# Rewrites Linear's markdown round trip makes, passed to the render node's parse.
+normalizations: []

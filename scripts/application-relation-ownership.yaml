@@ -359,6 +359,28 @@ db_io:
       migration: src/omnimarket/nodes/node_gate_store_effect/migrations/0000_create_gate_store.sql
       access: read_write
       role: gate_store_steps
+    # OMN-23776: the three relations of node_ticket_hand_edit_alarm_effect. The node opens its
+    # own connection from the overlay's DSN variable, so its contract declares no db_io
+    # projection binding (the topology grants no table to it); declared here for the same
+    # OMN-15361 SQL gate reason as the gate store above. Created directly in omninode_internal.
+    - name: ticket_hand_edit_written
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_ticket_hand_edit_alarm_effect/migrations/0001_create_ticket_hand_edit_tables.sql
+      access: read_write
+      role: ticket_hand_edit_written
+    - name: ticket_hand_edit_cursor
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_ticket_hand_edit_alarm_effect/migrations/0001_create_ticket_hand_edit_tables.sql
+      access: read_write
+      role: ticket_hand_edit_cursor
+    - name: ticket_hand_edit_open_findings
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_ticket_hand_edit_alarm_effect/migrations/0001_create_ticket_hand_edit_tables.sql
+      access: read_write
+      role: ticket_hand_edit_open_findings
     # OMN-17427: durable execution claims and the ordered transition outbox of
     # node_llm_delegation_call_effect's lab-job handler. Declared here for the
     # same OMN-15361 SQL gate reason as the lab job read models above. Created
