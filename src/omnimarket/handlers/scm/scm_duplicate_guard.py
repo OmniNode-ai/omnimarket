@@ -4,7 +4,7 @@
 
 One fix gets one pull request. Before a lane opens a pull request, the guard folds the new branch against
 the repository's open pull requests (PR watcher state plus ``git diff``) and the live ledger CLAIMs
-(``node_pr_duplicate_guard_compute``). A duplicate is refused with exit 4, naming the pull request to
+(read through the ledger reader node; ``node_pr_duplicate_guard_compute``). A duplicate is refused with exit 4, naming the pull request to
 adopt; a source the guard cannot read exits 3 and opens nothing. There is no switch that turns it off.
 
 A host with no fresh PR watcher state (a lab host) reads the open pull requests from the GitHub gateway instead
@@ -23,7 +23,6 @@ Exit codes: 0 clear, 3 unchecked (a source could not be read), 4 a pull request 
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any, Final
 
@@ -43,6 +42,7 @@ from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.handler_pr_dupl
 from omnimarket.nodes.node_pr_duplicate_snapshot_effect.ports.protocol_open_pr_facts_source import (
     ProtocolOpenPrFactsSource,
 )
+from omnimarket.protocols.protocol_ledger_rows_reader import ProtocolLedgerRowsReader
 
 EXIT_CLEAR: Final[int] = 0
 EXIT_UNCHECKED: Final[int] = 3
@@ -68,14 +68,14 @@ def check(
     lane: str | None,
     cause: str | None = None,
     watcher_state: str | None = None,
-    ledger: str | None = None,
     clone: str | None = None,
     worktree: str | None = None,
     open_prs_source: ProtocolOpenPrFactsSource | None = None,
+    ledger_reader: ProtocolLedgerRowsReader | None = None,
     replaces: tuple[str, ...] = (),
 ) -> tuple[int, dict[str, Any]]:
     """(exit code, the one JSON answer) for a pull request about to be opened."""
-    snapshot = HandlerPrDuplicateSnapshot(open_prs_source).handle(
+    snapshot = HandlerPrDuplicateSnapshot(open_prs_source, ledger_reader).handle(
         ModelPrDuplicateSnapshotRequest(
             repo=repo,
             head_ref=head.rsplit(":", 1)[-1],
@@ -85,7 +85,6 @@ def check(
             lane=lane,
             cause=cause,
             watcher_state=watcher_state,
-            ledger=ledger,
             clone=clone,
             worktree=worktree,
             replaces=replaces,
@@ -111,6 +110,7 @@ def refuse_or_continue(
     lane: str | None,
     watcher_state: str | None,
     open_prs_source: ProtocolOpenPrFactsSource | None = None,
+    ledger_reader: ProtocolLedgerRowsReader | None = None,
     replaces: tuple[str, ...] = (),
 ) -> int | None:
     """``onex scm pr-create``'s step: None to go on and create, else the exit code, with the refusal printed."""
@@ -123,6 +123,7 @@ def refuse_or_continue(
         lane=lane,
         watcher_state=watcher_state,
         open_prs_source=open_prs_source,
+        ledger_reader=ledger_reader,
         replaces=replaces,
     )
     click.echo(json.dumps(answer, separators=(",", ":")))
@@ -206,12 +207,6 @@ def _replaces(raw: tuple[str, ...]) -> tuple[str, ...]:
     help="A closed, unmerged pull request of this repository that this change replaces (repeatable).",
 )
 @click.option(
-    "--ledger",
-    type=click.Path(dir_okay=False),
-    default=None,
-    help="The rolling ledger (default $ONEX_LEDGER_PATH).",
-)
-@click.option(
     "--timeout-s",
     type=float,
     default=60.0,
@@ -237,7 +232,6 @@ def duplicate_check_command(
     clone: str | None,
     watcher_state: str | None,
     replaces: tuple[str, ...],
-    ledger: str | None,
 ) -> None:
     """Would this pull request duplicate an open one or a live CLAIM? Exit 0 clear, 4 duplicate, 3 unchecked."""
     if "/" not in target or "#" in target:
@@ -256,7 +250,6 @@ def duplicate_check_command(
         lane=lane,
         cause=cause,
         watcher_state=watcher_state,
-        ledger=ledger or os.environ.get("ONEX_LEDGER_PATH"),
         clone=clone,
         worktree=worktree,
         replaces=_replaces(replaces),

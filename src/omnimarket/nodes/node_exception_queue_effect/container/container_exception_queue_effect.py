@@ -5,7 +5,11 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
+
+from omnimarket.handlers.adapter_work_ledger_rows_reader import (
+    SubprocessLedgerRowsReader,
+)
+from omnimarket.protocols.protocol_ledger_rows_reader import ProtocolLedgerRowsReader
 
 from ..handler import (
     HandlerExceptionCli,
@@ -48,13 +52,25 @@ def create_handler_stop_event() -> HandlerStopEvent:
     return HandlerStopEvent()
 
 
-def create_handler_open_stops() -> HandlerOpenStops:
-    ledger_path = os.environ.get("ONEX_LEDGER_PATH")
-    return HandlerOpenStops(ledger_path=Path(ledger_path) if ledger_path else None)
+def create_handler_open_stops(
+    ledger_reader: ProtocolLedgerRowsReader | None = None,
+) -> HandlerOpenStops:
+    """Open-stops reads HOLD rows through the ledger reader node; the default runs it under the environment."""
+    return HandlerOpenStops(
+        ledger_reader=ledger_reader
+        if ledger_reader is not None
+        else SubprocessLedgerRowsReader(os.environ)
+    )
 
 
-def create_handler_andon_ledger_holds() -> HandlerAndonLedgerHolds:
-    return HandlerAndonLedgerHolds()
+def create_handler_andon_ledger_holds(
+    ledger_reader: ProtocolLedgerRowsReader | None = None,
+) -> HandlerAndonLedgerHolds:
+    return HandlerAndonLedgerHolds(
+        ledger_reader=ledger_reader
+        if ledger_reader is not None
+        else SubprocessLedgerRowsReader(os.environ)
+    )
 
 
 def create_handler_exception_queue_read(

@@ -21,6 +21,7 @@ import pytest
 
 from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
 from omnimarket.handlers.scm import scm_cli
+from tests.helpers.fake_ledger_rows import FakeLedgerRows
 from tests.unit.handlers.scm.test_scm_duplicate_guard import (
     commit_edit,
     git,
@@ -89,12 +90,6 @@ class World:
         self.lane = tmp_path / "lane"
         git(tmp_path, "clone", "-q", str(origin), str(self.lane))
         self.state = tmp_path / "watcher.json"
-        self.claims = tmp_path / "claims.md"
-        # The bundle is a draft; the orchestrator's live CLAIM on the ticket is what makes its overlap count.
-        stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        self.claims.write_text(
-            f"{stamp} | CLAIM | lane=orchestrator-31d9 | principal=p | ticket=OMN-19998 | carrier\n"
-        )
         self.write_state()
         git(self.lane, "checkout", "-q", "-b", NEW_BRANCH, "origin/main")
         commit_edit(self.lane, SKILL, SKILL_LINE, GLM_SKILL, message="lane route")
@@ -172,10 +167,14 @@ class World:
             LANE,
             "--worktree",
             str(self.lane),
-            "--ledger",
-            str(self.claims),
             *(arg for ref in replaces for arg in ("--replaces", ref)),
         ]
+
+
+def carrier_claim() -> str:
+    """The bundle is a draft; the orchestrator's live CLAIM on the ticket is what makes its overlap count."""
+    stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return f"{stamp} | CLAIM | lane=orchestrator-31d9 | principal=p | ticket=OMN-19998 | carrier"
 
 
 def _no_bus(_: dict[str, object]) -> Any:
@@ -183,8 +182,11 @@ def _no_bus(_: dict[str, object]) -> Any:
 
 
 @pytest.fixture
-def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
+def world(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ledger_rows: FakeLedgerRows
+) -> World:
     built = World(tmp_path)
+    ledger_rows.lines = [carrier_claim()]
     # The watcher state holds every pull request these tests name, so the gateway is never asked; a bus that
     # cannot be opened keeps a test that reaches for it from waiting on a real one.
     monkeypatch.setattr(scm_cli, "_open_bus", _no_bus)
