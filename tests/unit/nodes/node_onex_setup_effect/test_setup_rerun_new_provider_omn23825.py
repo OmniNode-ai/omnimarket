@@ -19,6 +19,8 @@ Failure modes:
       workspace it runs in differs from the saved one.
   G4. The real Action and Components prompts of a re-run do not lead to the provider question.
   F10. An explicit --provider on a configure re-run reuses the stored key, so a rotated key cannot be entered.
+  G5. A named connection re-chosen under another provider is appended beside its saved entry,
+      so two entries share one credential and the plan is refused.
 """
 
 from __future__ import annotations
@@ -325,3 +327,33 @@ def test_an_explicit_provider_on_configure_is_asked_for_its_key(rerun: Any) -> N
     """F10: a named provider takes a new key even on a configure re-run."""
     result, rec = rerun("--provider", "openai", input="gpt-4.1-mini\n")
     assert rec.keys == ["openai"], result.output
+
+
+def test_a_named_connection_is_replaced_not_duplicated(
+    rerun: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G5: one credential identity, one entry: the re-chosen connection replaces its own."""
+    saved = ModelSetupPlan.model_validate(
+        {
+            "workspace": tmp_path / "ws",
+            "components": ("delegation",),
+            "providers": (
+                {
+                    "provider": "local",
+                    "models": ("m1",),
+                    "url": "http://127.0.0.1:9",
+                    "connection_id": "lab",
+                },
+            ),
+        }
+    )
+    monkeypatch.setattr(
+        setup_cli.HandlerSetupWorkflow, "saved_plan", staticmethod(lambda _h: saved)
+    )
+    result, rec = rerun(
+        "--connection", "lab", input="openai_compatible\nhttp://127.0.0.1:9\nm1\n"
+    )
+    assert rec.plan is not None, result.output
+    assert [(p.provider, p.connection_id) for p in rec.plan.providers] == [
+        ("openai_compatible", "lab")
+    ]
