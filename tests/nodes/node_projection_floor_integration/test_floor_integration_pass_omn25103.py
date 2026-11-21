@@ -258,7 +258,9 @@ class _Message:
     value = json.dumps({"payload": {"not": "an envelope"}}).encode()
 
 
-async def test_floor_integration_malformed_pass_goes_to_the_contract_dlq() -> None:
+async def test_floor_integration_malformed_pass_goes_to_the_contract_dlq(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     dlq = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))["event_bus"][
         "dlq_topics"
     ]
@@ -270,7 +272,7 @@ async def test_floor_integration_malformed_pass_goes_to_the_contract_dlq() -> No
     async def capture(topic: str, value: bytes) -> None:
         published.append((topic, value))
 
-    writer.publish_dlq = capture  # type: ignore[method-assign]
+    monkeypatch.setattr(writer, "publish_dlq", capture)
 
     await writer._handle_message(_Message())
 
