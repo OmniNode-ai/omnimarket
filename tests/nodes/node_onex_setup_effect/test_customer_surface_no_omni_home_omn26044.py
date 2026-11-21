@@ -75,6 +75,8 @@ def test_walk_reaches_the_surfaces_the_probe_flagged() -> None:
     assert "onex repo-state unit render" in paths
     options = {p.name for _, c in _surface() for p in c.params}
     assert {"workspace", "omni_root"} <= options
+    # ...and, on those same surfaces, the OMNI_HOME binding and wording are gone.
+    assert _findings() == []
 
 
 def test_no_omni_home_on_the_customer_option_surface() -> None:
@@ -89,6 +91,11 @@ def test_the_seeded_control_is_caught() -> None:
     ctx = click.Context(seeded, info_name="seed")
     assert _BARE.search(seeded.params[0].help or "")
     assert _BARE.search(seeded.get_help(ctx))
+    # The scan is not blind and the options were fixed in place, not removed:
+    # the real surface still carries both options and reads zero findings.
+    options = {p.name for _, c in _surface() for p in c.params}
+    assert {"workspace", "omni_root"} <= options
+    assert _findings() == []
 
 
 def test_setup_workspace_still_reads_omnibase_path(
@@ -97,4 +104,4 @@ def test_setup_workspace_still_reads_omnibase_path(
     """The customer's workspace variable keeps working after OMNI_HOME is dropped."""
     option = next(p for p in setup_command.params if p.name == "workspace")
     envvars = option.envvar if isinstance(option.envvar, list) else [option.envvar]
-    assert "OMNIBASE_PATH" in envvars
+    assert envvars == ["OMNIBASE_PATH"]
