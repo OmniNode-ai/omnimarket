@@ -158,6 +158,20 @@ async def test_secret_env_file_write(
     )
 
 
+async def test_secret_env_file_write_home_relative(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """An overlay names the file as ``~/<directory>/<file>``, so no overlay carries a host's home path."""
+    target = tmp_path / "private" / "floor-fill.env"
+    handler, _ = _make_handler(tmp_path, monkeypatch, "~/private/floor-fill.env", value)
+
+    result = await handler.handle(_request())
+
+    assert result.ok
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+    assert target.read_bytes() == f"{_NAME}={value}\n".encode()
+
+
 @pytest.mark.parametrize("existing", [False, True])
 async def test_secret_env_file_refusal_missing(
     tmp_path: Path,
@@ -196,6 +210,8 @@ async def test_secret_env_file_refusal_missing(
         "relative",
         "outside",
         "traversal",
+        "home-no-directory",
+        "home-traversal",
         "symlink",
         "symlink-parent",
         "wide",
@@ -223,6 +239,10 @@ async def test_secret_env_file_refusal_unsafe_target(
         path = str(tmp_path.parent / "outside" / "floor-fill.env")
     elif case == "traversal":
         path = str(directory / ".." / "guard")
+    elif case == "home-no-directory":
+        path = "~/floor-fill.env"
+    elif case == "home-traversal":
+        path = "~/private/../guard"
     elif case == "symlink":
         target.symlink_to(sentinel)
     elif case == "symlink-parent":

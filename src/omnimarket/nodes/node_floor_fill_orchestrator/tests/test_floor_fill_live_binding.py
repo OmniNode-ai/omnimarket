@@ -389,3 +389,29 @@ def test_live_profile_env_file_without_variable_names_it(
     )
     assert code == FAILED
     assert "store-dsn-unset:EXAMPLE_FLOOR_FILL_DSN" in capsys.readouterr().out
+
+
+def test_live_profile_reads_dsn_variable_from_home_relative_env_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The overlay names the file as ``~/...``; the tick expands it against the unit's HOME."""
+    monkeypatch.delenv("EXAMPLE_FLOOR_FILL_DSN", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    directory = tmp_path / "private"
+    directory.mkdir()
+    (directory / "fill.env").write_text("EXAMPLE_FLOOR_FILL_DSN=postgresql://x\n")
+    overlay = full_overlay(tmp_path, store_dsn_env_file="~/private/fill.env")
+    main(
+        [
+            "--overlay-json",
+            json.dumps(overlay),
+            "--this-host",
+            "fill-host",
+            "--profile",
+            "live",
+            "tick",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert "overlay:" not in out
+    assert "store-dsn-unset" not in out

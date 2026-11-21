@@ -78,10 +78,13 @@ def run_entry(
 
 
 def read_env_file_value(path: str, name: str) -> str:
-    """The value of ``name`` in a KEY=VALUE env file, or an empty string when the file or key is absent."""
+    """The value of ``name`` in a KEY=VALUE env file, or an empty string when the file or key is absent.
+
+    A leading ``~/`` is the unit user's home, so an overlay names the file without a host's home path.
+    """
     try:
-        lines = Path(path).read_text(encoding="utf-8").splitlines()
-    except OSError:
+        lines = Path(path).expanduser().read_text(encoding="utf-8").splitlines()
+    except (OSError, RuntimeError):
         return ""
     for line in lines:
         key, separator, value = line.partition("=")

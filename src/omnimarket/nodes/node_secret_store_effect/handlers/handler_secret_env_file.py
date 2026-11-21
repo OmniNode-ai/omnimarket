@@ -51,6 +51,10 @@ class _Binding(BaseModel):
 
 
 def _destination(raw: object, home: Path) -> Path:
+    # An overlay carries no host's home path (the overlays repository refuses one), so it may name the file as
+    # ``~/<directory>/<file>``: the unit user's home, the same one the unit reads the file under.
+    if isinstance(raw, str) and raw.startswith("~/"):
+        raw = f"{home}/{raw[2:]}"
     if not isinstance(raw, str) or not _UNIT_PATH.fullmatch(raw):
         raise ValueError("invalid unit path")
     if any(part in ("", ".", "..") for part in raw[1:].split("/")):
