@@ -6687,8 +6687,9 @@ class _AttemptUsage:
     # OMN-25861: the alias the attempt reached its model through: the backend_id of a
     # customer's own BYOK route (byok-reflection, a registered named connection), else
     # the model itself, which the usage row counts as direct and lists nothing for (D1).
-    # Required, so no build site can leave it out.
-    backend: str
+    # Required, so no build site can leave it out; None when the route could not be
+    # classified, which the row serves as unknown, never as direct (JG-19).
+    backend: str | None
     tokens_in: int
     tokens_out: int
     cost_usd: Decimal
@@ -6703,11 +6704,22 @@ class _AttemptUsage:
         model_id: str,
         backend: ModelResolvedDelegationBackend,
     ) -> _AttemptUsage:
+        # The provider has answered and its cost is banked by now: classifying the route
+        # (which may read the credential store) must not break the run (OMN-25861).
+        alias: str | None
+        try:
+            alias = backend.backend_id if _is_customer_byok_route(backend) else model_id
+        except Exception:
+            logger.warning(
+                "could not tell whether backend %s is a customer BYOK route; its usage "
+                "call books no backend",
+                backend.backend_id,
+                exc_info=True,
+            )
+            alias = None
         return cls(
             model_id=model_id,
-            backend=(
-                backend.backend_id if _is_customer_byok_route(backend) else model_id
-            ),
+            backend=alias,
             tokens_in=result.tokens_in,
             tokens_out=result.tokens_out,
             cost_usd=result.actual_cost_usd,

@@ -40,24 +40,33 @@ _INSERT_CALL = """
     RETURNING call_id
 """
 
-# OMN-25861: migration 0004's columns, once they are in force. 0004 is authored here and
+# OMN-25861: migration 0004's columns, each once it is in force. 0004 is authored here and
 # vendored into omnibase_infra after this code merges, so a lane's database can be a step
 # behind the writer; like the key below, the writer follows the columns in force and
-# writes as before until both are there. A column is never dropped, so once in force they
-# stay. The calls table is locked before the read (_HOLD_CALLS): ROW EXCLUSIVE conflicts
-# with the ACCESS EXCLUSIVE lock 0004's ALTER TABLE takes, so the migration either
-# committed before the read, and is seen, or waits for this write to commit; it cannot
-# land between the read and the call's insert and leave a stated backend unstored.
+# writes as before until they are there. 0004's two ALTER TABLE statements can commit
+# separately (the forward runner wraps a file in no transaction), so each column is read
+# on its own: the call's backend is stored as soon as its column exists, and the row's
+# backends counted once the day table's column exists too. A column is never dropped, so
+# once in force it stays. Each table is locked before its column is read (_HOLD_CALLS
+# here, _HOLD_AGGREGATE_KEY below): ROW EXCLUSIVE conflicts with the ACCESS EXCLUSIVE lock
+# an ALTER TABLE takes, so the ALTER either committed before the read, and is seen, or
+# waits for this write to commit.
 _HOLD_CALLS = "LOCK TABLE public.usage_by_model_day_calls IN ROW EXCLUSIVE MODE"
 
-_BACKENDS_IN_FORCE = """
-    SELECT COUNT(*) = 2
-    FROM pg_attribute
-    WHERE NOT attisdropped
-      AND (
-          (attrelid = 'public.usage_by_model_day_calls'::regclass AND attname = 'backend')
-          OR (attrelid = 'public.usage_by_model_day'::regclass AND attname = 'backends')
-      )
+_CALLS_BACKEND_IN_FORCE = """
+    SELECT EXISTS (
+        SELECT 1 FROM pg_attribute
+        WHERE attrelid = 'public.usage_by_model_day_calls'::regclass
+          AND attname = 'backend' AND NOT attisdropped
+    )
+"""
+
+_DAY_BACKENDS_IN_FORCE = """
+    SELECT EXISTS (
+        SELECT 1 FROM pg_attribute
+        WHERE attrelid = 'public.usage_by_model_day'::regclass
+          AND attname = 'backends' AND NOT attisdropped
+    )
 """
 
 _INSERT_CALL_WITH_BACKEND = """
@@ -302,10 +311,9 @@ async def write_usage_call(
         delta.cost_tier_name,
         delta.usage_source.value,
     )
-    # OMN-25861: 0004's columns are written only where they exist (see _BACKENDS_IN_FORCE).
+    # OMN-25861: each of 0004's columns is written only once it exists (_CALLS_BACKEND_IN_FORCE).
     await conn.execute(sql(_HOLD_CALLS))
-    backends = bool(await conn.fetchval(sql(_BACKENDS_IN_FORCE)))
-    if backends:
+    if await conn.fetchval(sql(_CALLS_BACKEND_IN_FORCE)):
         inserted = await conn.fetch(
             sql(_INSERT_CALL_WITH_BACKEND), *call, delta.backend
         )
@@ -316,6 +324,11 @@ async def write_usage_call(
     key = (delta.tenant_id, usage_day, delta.model_id)
     removed: list[Any] = []
     await conn.execute(sql(_HOLD_AGGREGATE_KEY))
+    # A row's backends are counted only when the day table has the column and the calls
+    # table has the backends to count; 0004 adds the calls column first.
+    backends = bool(await conn.fetchval(sql(_DAY_BACKENDS_IN_FORCE))) and bool(
+        await conn.fetchval(sql(_CALLS_BACKEND_IN_FORCE))
+    )
     if await conn.fetchval(sql(_TIER_KEY_IN_FORCE)):
         recount = _RECOUNT_AGGREGATE_WITH_BACKENDS if backends else _RECOUNT_AGGREGATE
         await conn.execute(sql(recount), *key)

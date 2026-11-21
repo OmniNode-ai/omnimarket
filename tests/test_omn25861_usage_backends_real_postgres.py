@@ -20,7 +20,9 @@ R5  the rows the writer returns for the bus snapshot lack the backends, or the P
     rather than a list;
 R6  under the three-column key 0003 keeps, the model's day folded into one not_tier_routed row does not list the
     backends of every tier's calls;
-R7  the database's collation orders the list differently from the local store's code-point sort.
+R7  the database's collation orders the list differently from the local store's code-point sort;
+R8  with 0004 half applied (its calls-table ALTER committed, its day-table ALTER not yet), a stated backend is not
+    stored, so the row serves NULL for good once the day column arrives.
 
 Each case states which key is in force: 0003 keeps the three-column key and the contract migration (OMN-21161,
 copied below as tests/test_omn21015_usage_tier_share_real_postgres.py copies it) makes the tier part of it.
@@ -28,6 +30,7 @@ copied below as tests/test_omn21015_usage_tier_share_real_postgres.py copies it)
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import asyncpg
@@ -152,7 +155,11 @@ async def test_real_postgres_a_model_reached_through_byok_reflection_serves_it()
         (published,) = [dict(r) for r in written.rows]
         assert published["model_id"] == _BEAM
         assert published["call_count"] == 2
-        assert published["backends"] is not None
+        backends = published["backends"]
+        # asyncpg returns JSONB as its text; the snapshot publisher decodes it (json_columns).
+        assert (json.loads(backends) if isinstance(backends, str) else backends) == [
+            "byok-reflection"
+        ]
         assert await _backends(conn) == {(_BEAM, "cheap_cloud"): ["byok-reflection"]}
     finally:
         await _drop(conn)
@@ -263,5 +270,35 @@ async def test_real_postgres_backends_sort_by_code_point_as_the_local_store_does
         assert await _backends(conn) == {
             (_BEAM, "cheap_cloud"): ["cloud-glm", "cloudflare-x"]
         }
+    finally:
+        await _drop(conn)
+
+
+@pytest.mark.integration
+async def test_real_postgres_a_half_applied_0004_still_stores_the_stated_backend() -> (
+    None
+):
+    """R8: 0004's two ALTERs commit separately; the call stored between them keeps its backend."""
+    conn = await _connect_or_skip()
+    try:
+        await _fresh(conn, with_backends=False)
+        body = "\n".join(
+            line
+            for line in _scoped(
+                _BACKENDS_MIGRATION.read_text(encoding="utf-8")
+            ).splitlines()
+            if not line.lstrip().startswith("--")
+        )
+        first, second = [part for part in body.split(";") if part.strip()]
+        await conn.execute(first)
+        written = await _write(conn, "h1", "byok-reflection")
+        assert written is not None
+        (stored,) = await conn.fetch(
+            f"SELECT backend FROM {_SCHEMA}.usage_by_model_day_calls"
+        )
+        assert stored["backend"] == "byok-reflection"
+        await conn.execute(second)
+        await _write(conn, "h2", _BEAM)
+        assert await _backends(conn) == {(_BEAM, "cheap_cloud"): ["byok-reflection"]}
     finally:
         await _drop(conn)

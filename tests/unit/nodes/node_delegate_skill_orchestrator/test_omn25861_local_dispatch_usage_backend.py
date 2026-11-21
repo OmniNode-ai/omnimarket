@@ -13,7 +13,9 @@ the model's row serves ["byok-reflection"].
 Failure modes:
 P1  a call reached through a BYOK route does not carry that route's id, so the row serves no backends (AC1);
 P2  a call on the house's own route is listed as a backend, so no real call is ever direct;
-P3  an escalated run books every call to the route that answered last.
+P3  an escalated run books every call to the route that answered last;
+P4  a failure deciding whether a route is a BYOK route (the credential store it reads) breaks a run whose provider
+    already answered, or books the call as direct when nothing decided it (it stays unknown: NULL).
 """
 
 from __future__ import annotations
@@ -29,6 +31,9 @@ import pytest
 from omnimarket.handlers.routing import delegation_backend_resolution
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestSpec,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+    port_local_delegation_dispatch,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
@@ -134,3 +139,35 @@ def test_an_escalated_run_on_the_house_ladder_lists_no_backend(
         for r in _rows(db_path, "SELECT model_id, backends FROM usage_by_model_day")
     }
     assert rows == {"Qwen3.6-35B-A3B": [], "glm-5.2": []}
+
+
+@pytest.mark.usefixtures("_local_backend")
+def test_a_failed_byok_lookup_leaves_the_backend_unknown_and_the_run_whole(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P4: the route check raises after the provider answered; the run completes and the call's backend is NULL."""
+    db_path = tmp_path / "delegation.sqlite"
+    real = port_local_delegation_dispatch._is_customer_byok_route
+    usage_checks: list[str] = []
+
+    def failing(backend: object) -> bool:
+        # Only the usage booking's check fails; routing's own checks keep their answer.
+        import inspect
+
+        if any(f.function == "of" for f in inspect.stack()[1:3]):
+            usage_checks.append("raised")
+            raise OSError("credential store unreadable")
+        return real(backend)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        port_local_delegation_dispatch, "_is_customer_byok_route", failing
+    )
+    assert (
+        _dispatch_through(db_path, monkeypatch, "byok-reflection")["status"]
+        == "completed"
+    )
+    assert usage_checks == ["raised"]
+    (call,) = _rows(db_path, "SELECT backend FROM usage_by_model_day_calls")
+    assert call["backend"] is None
+    (row,) = _rows(db_path, "SELECT backends FROM usage_by_model_day")
+    assert row["backends"] is None

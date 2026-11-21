@@ -32,3 +32,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_omn25861_local_dispatch_usage_backend.py -q -p no:randomly --no-cov -k serves_it_from_the_real_producer
     cwd: "${OMNI_HOME}/omnimarket"
+  - check_type: test_passes
+    check_value: uv run pytest tests/projection/test_omn25861_usage_backends.py -q -p no:randomly --no-cov -k "no_stated_backend_makes_the_row_unknown or each_row_lists_only_its_own_calls_backends"
+    cwd: "${OMNI_HOME}/omnimarket"
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn25861_usage_backends_writer.py -q -p no:randomly --no-cov
+    cwd: "${OMNI_HOME}/omnimarket"
