@@ -21,6 +21,9 @@ Failure modes:
   F10. An explicit --provider on a configure re-run reuses the stored key, so a rotated key cannot be entered.
   G5. A named connection re-chosen under another provider is appended beside its saved entry,
       so two entries share one credential and the plan is refused.
+  L1. A configure re-run from another folder resets the saved workspace, developer profile,
+      completion name and local stack (its compose and topology files), so that step fails.
+  L2. A configure re-run that names another --workspace drops the other saved choices.
 """
 
 from __future__ import annotations
@@ -134,13 +137,16 @@ def rerun(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
         ),
     )
 
-    def run(*args: str, input: str, prompts: bool = False) -> tuple[Any, _Recorder]:
+    def run(
+        *args: str, input: str, prompts: bool = False, workspace_flag: bool = True
+    ) -> tuple[Any, _Recorder]:
         flags = (
             [] if prompts else ["--action", "configure", "--component", "delegation"]
         )
+        where = ["--workspace", str(workspace)] if workspace_flag else []
         result = CliRunner().invoke(
             setup_cli.setup_command,
-            ["--interactive", "--yes", "--workspace", str(workspace), *flags, *args],
+            ["--interactive", "--yes", *where, *flags, *args],
             input=input,
         )
         return result, recorder
@@ -357,3 +363,78 @@ def test_a_named_connection_is_replaced_not_duplicated(
     assert [(p.provider, p.connection_id) for p in rec.plan.providers] == [
         ("openai_compatible", "lab")
     ]
+
+
+def test_a_rerun_from_another_folder_keeps_every_saved_choice(
+    rerun: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """L1: with no --provider, only the added provider changes; every saved choice stays."""
+    saved = ModelSetupPlan.model_validate(
+        {
+            "workspace": tmp_path / "ws",
+            "components": ("delegation", "local-stack"),
+            "providers": ({"provider": "openai", "models": ("gpt-4.1-mini",)},),
+            "developer": True,
+            "completion_name": "Ada",
+            "local_stack": {
+                "compose_file": tmp_path / "stack" / "compose.yaml",
+                "topology_file": tmp_path / "stack" / "topology.yaml",
+            },
+        }
+    )
+    monkeypatch.setattr(
+        setup_cli.HandlerSetupWorkflow, "saved_plan", staticmethod(lambda _h: saved)
+    )
+    monkeypatch.setattr(
+        setup_cli.HandlerSetupWorkflow,
+        "supported_components",
+        staticmethod(lambda: {"delegation", "local-stack"}),
+    )
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    result, rec = rerun(
+        input="configure\n\nanthropic\nclaude-sonnet-4\n",
+        prompts=True,
+        workspace_flag=False,
+    )
+    assert rec.plan is not None, result.output
+    assert rec.plan.workspace == saved.workspace
+    assert rec.plan.components == ("delegation", "local-stack")
+    assert rec.plan.developer is True
+    assert rec.plan.completion_name == "Ada"
+    assert rec.plan.local_stack == saved.local_stack
+    assert [p.provider for p in rec.plan.providers] == ["openai", "anthropic"]
+    assert rec.keys == ["anthropic"]
+
+
+def test_a_named_workspace_keeps_the_other_saved_choices(
+    rerun: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """L2: --workspace changes the workspace only; the other saved choices stay."""
+    saved = ModelSetupPlan.model_validate(
+        {
+            "workspace": tmp_path / "ws",
+            "components": ("delegation",),
+            "providers": ({"provider": "openai", "models": ("gpt-4.1-mini",)},),
+            "developer": True,
+            "completion_name": "Ada",
+            "local_stack": {
+                "compose_file": tmp_path / "stack" / "compose.yaml",
+                "topology_file": tmp_path / "stack" / "topology.yaml",
+            },
+        }
+    )
+    monkeypatch.setattr(
+        setup_cli.HandlerSetupWorkflow, "saved_plan", staticmethod(lambda _h: saved)
+    )
+    elsewhere = tmp_path / "elsewhere"
+    result, rec = rerun(
+        "--workspace", str(elsewhere), input="anthropic\nclaude-sonnet-4\n"
+    )
+    assert rec.plan is not None, result.output
+    assert rec.plan.workspace == elsewhere.resolve()
+    assert rec.plan.developer is True
+    assert rec.plan.completion_name == "Ada"
+    assert rec.plan.local_stack == saved.local_stack
+    assert [p.provider for p in rec.plan.providers] == ["openai", "anthropic"]
