@@ -17,6 +17,7 @@ import math
 
 from omnimarket.handlers.adapter_test_selection_policy_file import load_policy
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_published_attribution_record import (
+    EnumRecordStatus,
     ModelPublishedAttributionRecord,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_stage_receipt import (
@@ -38,10 +39,11 @@ _Code = EnumStageReceiptViolation
 
 def _is_clean(record: ModelPublishedAttributionRecord) -> bool:
     return (
-        record.miss_count == 0
+        record.status is EnumRecordStatus.COMPLETE
+        and record.miss_count == 0
         and record.unattributable_count == 0
         and record.incomplete_count == 0
-        and record.pr_record_count >= 1
+        and record.pull_request_record_count >= 1
     )
 
 
@@ -205,12 +207,12 @@ class HandlerStageReceiptValidation:
                 )
                 continue
             counted.append(record)
-            if record.slot_date != night.slot_date:
+            if record.nightly_slot_date != night.slot_date:
                 found.append(
                     _violation(
                         _Code.RECORD_MISMATCH,
                         stage,
-                        f"nightly run {night.nightly_run_id} was published for slot {record.slot_date}, not {night.slot_date}",
+                        f"nightly run {night.nightly_run_id} was published for slot {record.nightly_slot_date}, not {night.slot_date}",
                     )
                 )
             if record.stage_entry_counted != stage:
@@ -251,7 +253,9 @@ class HandlerStageReceiptValidation:
         stage = receipt.stage
         recomputed = {
             "clean_nights": sum(1 for record in counted if _is_clean(record)),
-            "pr_record_count": sum(record.pr_record_count for record in counted),
+            "pr_record_count": sum(
+                record.pull_request_record_count for record in counted
+            ),
             "miss_total": sum(record.miss_count for record in counted),
             "unattributable_total": sum(
                 record.unattributable_count for record in counted

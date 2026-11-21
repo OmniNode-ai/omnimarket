@@ -35,6 +35,9 @@ from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_durat
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_selection_record import (
     HandlerSelectionRecord,
 )
+from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_selection_replay import (
+    HandlerSelectionReplay,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_stage_receipt_validation import (
     HandlerStageReceiptValidation,
 )
@@ -43,6 +46,10 @@ from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_published_attribution_record import (
     ModelPublishedAttributionRecord,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_selection_replay import (
+    ModelReplayRequest,
+    ModelReplayResult,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_stage_receipt import (
     EnumStageReceiptViolation as Code,
@@ -236,6 +243,21 @@ def test_selection_stage_zero_replay_equals_todays_decisions(
     assert executed.reason_code == decided.full_suite_reason
 
 
+def test_selection_stage_zero_replay_equals_the_baseline_receipt_exactly() -> None:
+    """Replaying the baseline receipt's pinned input at stage 0 gives its counterfactual, byte for byte."""
+    receipt = json.loads(
+        (REPO_ROOT / "config" / "test_selection_replay_receipt.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    request = ModelReplayRequest.model_validate(
+        json.loads((REPO_ROOT / receipt["replay_input_path"]).read_text("utf-8"))
+    )
+    result = HandlerSelectionReplay().handle(request)
+    assert isinstance(result, ModelReplayResult), result
+    assert result.model_dump(mode="json") == receipt["counterfactual"]
+
+
 # -- AC1: the figures are recomputed, a skipped stage is refused ------------------
 
 
@@ -311,7 +333,7 @@ def test_stage_receipt_recomputed_totals_come_from_the_source_not_the_supplied_f
     """A receipt that agrees with a records file the change supplies still fails against the source's records."""
     supplied = _records("records_valid.json")
     published = [
-        r.model_copy(update={"pr_record_count": 1}) for r in supplied
+        r.model_copy(update={"pull_request_record_count": 1}) for r in supplied
     ]  # the source says 7 records in all
     result = _validate(
         _baseline(),

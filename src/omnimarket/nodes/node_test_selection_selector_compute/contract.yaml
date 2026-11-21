@@ -21,7 +21,9 @@ description: >-
   index of the test files and the data_reader_overrides, when data_only_selection_enabled is set (OMN-26270).
   HandlerSelectionRecord builds the typed record of a pull request run's selection (the executed selection and the
   selection of every stage) behind the stage gate in policy.yaml; the workflow uploads it and builds the pytest matrix
-  from the executed selection only.
+  from the executed selection only. HandlerSelectionReplay (operation replay_selection) replays stage 0 of the selector
+  over a list of merges against a frozen tree snapshot and reports each merge's primary reason, every trigger, its
+  selected paths and recorded seconds, and the totals; it reuses the handlers above and changes what no pull request runs.
   HandlerStageReceiptValidation checks the stage receipts under config/test_selection_stage_receipts/ (operation
   validate_stage_receipt): a stage is entered one at a time, by a receipt that names stage_clean_nights consecutive
   nightly runs, and the receipt's totals and its selector and policy versions are recomputed from the nightly
@@ -64,6 +66,12 @@ handler_routing:
       handler:
         name: HandlerStageReceiptValidation
         module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_stage_receipt_validation
+    - operation: replay_selection
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_selection_replay.ModelReplayRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_selection_replay.ModelReplayResult
+      handler:
+        name: HandlerSelectionReplay
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_selection_replay
 descriptor:
   node_archetype: compute
   purity: pure

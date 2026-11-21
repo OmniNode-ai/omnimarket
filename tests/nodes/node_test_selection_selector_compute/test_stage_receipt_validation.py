@@ -131,12 +131,20 @@ def test_error_chain_a_receipt_with_no_identity_is_refused_before_any_record_is_
 def test_error_chain_nights_that_skip_a_day_are_not_consecutive() -> None:
     records = _records("records_valid.json")
     gapped = [
-        r.model_copy(update={"slot_date": r.slot_date + datetime.timedelta(days=i % 2)})
+        r.model_copy(
+            update={
+                "nightly_slot_date": r.nightly_slot_date
+                + datetime.timedelta(days=i % 2)
+            }
+        )
         for i, r in enumerate(records)
     ]
     raw = _load("receipt_valid.json")
     raw["nights"] = [
-        {"slot_date": r.slot_date.isoformat(), "nightly_run_id": r.nightly_run_id}
+        {
+            "slot_date": r.nightly_slot_date.isoformat(),
+            "nightly_run_id": r.nightly_run_id,
+        }
         for r in gapped
     ]
     result = _handler(gapped).handle(_request(receipts=[{"stage": 0}, raw]))
@@ -147,7 +155,9 @@ def test_error_chain_nights_that_skip_a_day_are_not_consecutive() -> None:
 
 def test_error_chain_a_slot_published_for_another_date_is_refused() -> None:
     records = _records("records_valid.json")
-    moved = [records[0].model_copy(update={"slot_date": datetime.date(2027, 1, 1)})]
+    moved = [
+        records[0].model_copy(update={"nightly_slot_date": datetime.date(2027, 1, 1)})
+    ]
     result = _handler([*moved, *records[1:]]).handle(_request())
     assert [v.code for v in result.violations] == [
         EnumStageReceiptViolation.RECORD_MISMATCH
@@ -156,7 +166,10 @@ def test_error_chain_a_slot_published_for_another_date_is_refused() -> None:
 
 def test_error_chain_a_night_with_no_pull_request_record_is_not_clean() -> None:
     records = _records("records_valid.json")
-    empty = [records[0].model_copy(update={"pr_record_count": 0}), *records[1:]]
+    empty = [
+        records[0].model_copy(update={"pull_request_record_count": 0}),
+        *records[1:],
+    ]
     raw = _load("receipt_valid.json")
     raw["pr_record_count"] = 12
     raw["clean_nights"] = 6
@@ -194,19 +207,77 @@ def test_error_chain_too_few_pull_request_records_is_refused() -> None:
 def test_published_record_holds_exactly_the_public_safe_fields() -> None:
     assert list(ModelPublishedAttributionRecord.model_fields) == [
         "repository",
-        "slot_date",
+        "nightly_slot_date",
         "nightly_run_id",
         "tested_head_sha",
         "selector_version",
         "policy_version",
         "stage_entry_counted",
-        "pr_record_count",
+        "pull_request_record_count",
         "miss_count",
         "interaction_count",
         "preexisting_count",
         "unattributable_count",
         "incomplete_count",
+        "status",
     ]
+
+
+def test_published_record_status_must_agree_with_the_counts() -> None:
+    payload = _records("records_valid.json")[0].model_dump(mode="json")
+    with pytest.raises(ValidationError):
+        ModelPublishedAttributionRecord.model_validate(
+            {**payload, "status": "incomplete"}
+        )
+    with pytest.raises(ValidationError):
+        ModelPublishedAttributionRecord.model_validate(
+            {**payload, "incomplete_count": 1}
+        )
+    with pytest.raises(ValidationError):
+        ModelPublishedAttributionRecord.model_validate(
+            {**payload, "status": "incomplete", "incomplete_count": 1}
+        )
+    incomplete = ModelPublishedAttributionRecord.model_validate(
+        {
+            **payload,
+            "status": "incomplete",
+            "incomplete_count": 1,
+            "interaction_count": 0,
+        }
+    )
+    assert incomplete.status.value == "incomplete"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("repository", "no-owner-part"),
+        ("tested_head_sha", "abc"),
+        ("selector_version", "has space"),
+        ("policy_version", ""),
+    ],
+)
+def test_published_record_refuses_values_outside_the_producers_patterns(
+    field: str, value: str
+) -> None:
+    payload = _records("records_valid.json")[0].model_dump(mode="json")
+    with pytest.raises(ValidationError):
+        ModelPublishedAttributionRecord.model_validate({**payload, field: value})
+
+
+def test_error_chain_an_incomplete_night_is_never_a_clean_night() -> None:
+    records = _records("records_valid.json")
+    payload = {
+        **records[2].model_dump(mode="json"),
+        "status": "incomplete",
+        "incomplete_count": 1,
+        "interaction_count": 0,
+    }
+    incomplete = ModelPublishedAttributionRecord.model_validate(payload)
+    result = _handler([*records[:2], incomplete, *records[3:]]).handle(_request())
+    assert EnumStageReceiptViolation.NIGHT_NOT_CLEAN in {
+        v.code for v in result.violations
+    }
 
 
 def test_published_record_is_frozen_and_refuses_an_extra_or_negative_field() -> None:
