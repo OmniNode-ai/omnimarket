@@ -3,7 +3,7 @@
 ---
 name: node_private_hosted_minutes_watch_effect
 version: 1.0.0
-description: Read monthly billing usage once, alert on billed hosted Actions minutes for a UTC day, and write a ledger STATUS row and heartbeat.
+description: Read monthly billing usage once, count only GitHub-reported private repositories against the overlay included minutes, alert at the overlay fraction, and write a ledger STATUS row and heartbeat.
 omnibase_core_compat: '>=0.39.0,<1.0.0'
 pack: core
 node_role: effect

@@ -1,0 +1,180 @@
+{
+ "read_at": "2026-11-17T05:40Z to 06:00Z",
+ "read_from": "a lab host; the shared local endpoint of both local rungs, POST /v1/chat/completions with max_tokens 1 and usage.prompt_tokens read back (host address left out). Densities are the raw user turn (the 53-token empty chat template removed).",
+ "wrapper": {
+  "method": "onex delegate --bus inmemory --locus in-process, task type per class, prompt 'Summarize in one line: the sky is blue.' (39 characters, 9 estimated tokens); metrics.input_tokens of the receipt (the failed-quality-gate code classes carry the same field)",
+  "prompt_characters": 39,
+  "metered_input_tokens_by_class": {
+   "brief_drafting": 279,
+   "code_generation": 222,
+   "complex_reasoning": 227,
+   "context_compaction": 291,
+   "context_selection": 291,
+   "document": 318,
+   "documentation": 227,
+   "escalation": 227,
+   "evidence_comment": 429,
+   "extraction_proposer": 291,
+   "planning": 288,
+   "reasoning": 316,
+   "refactor": 226,
+   "research": 227,
+   "review": 221,
+   "summarization": 374,
+   "tail_summary": 291,
+   "test": 223,
+   "validator_generation": 227
+  }
+ },
+ "density_samples": {
+  "method": "100000-character slices (the cjk and uuid rows are shorter by construction), metered through the endpoint",
+  "chars_per_token": {
+   "prose": 6.3,
+   "code": 4.4,
+   "git_diff": 2.63,
+   "ledger_text": 2.21,
+   "base64": 1.36,
+   "uuid_lines": 1.14,
+   "sha256_hex_lines": 1.13,
+   "json_floats": 1.0,
+   "digits": 1.0,
+   "cjk": 0.57
+  },
+  "natural_text": [
+   "prose",
+   "code",
+   "git_diff",
+   "ledger_text"
+  ],
+  "identifier_dense": [
+   "base64",
+   "uuid_lines",
+   "sha256_hex_lines",
+   "json_floats",
+   "digits",
+   "cjk"
+  ],
+  "near_budget_258048_characters": {
+   "x_repeated": 32308,
+   "code": 58682,
+   "prose": 40796
+  }
+ },
+ "x_repeated_proof_prompt": {
+  "characters": 44313,
+  "estimated_tokens": 11078,
+  "metered_input_tokens": 5597
+ },
+ "overflow_refusal": "HTTP 400: This model's maximum context length is 131072 tokens. However, you requested 65536 output tokens and your prompt contains at least 65537 input tokens",
+ "proof_prompt": {
+  "generator": "the python3 -c snippet inside the integration-proof command of contracts/OMN-24980.yaml (its stdout is the prompt)",
+  "characters": 40587,
+  "estimated_tokens": 10146,
+  "endpoint_metered_user_turn": 16602,
+  "runs": {
+   "branch_ladder_in_process": [
+    {
+     "run_id": "be2e4a4f-41a4-4d25-a6f7-dce7ca4f0597",
+     "backend_id": "local-heavy-reasoning",
+     "tier": "local",
+     "input_tokens": 16912
+    },
+    {
+     "run_id": "a329bd49-d6cb-489a-8d2e-f4e12a29c7c7",
+     "backend_id": "local-heavy-reasoning",
+     "tier": "local",
+     "input_tokens": 16912
+    }
+   ],
+   "dev_deployed_lane_old_ladder": {
+    "run_id": "872b24fa-6d5a-4d25-b3fa-f2fc0418e08c",
+    "backend_id": "openrouter-north-mini-code",
+    "tier": "cheap_frontier",
+    "input_tokens": 15335
+   }
+  },
+  "prompt_sha256": "64eac6d792ba9d88a91cea467a35226ad6c30c6e558d46b6f58c9245cc9edca0"
+ },
+ "dense_prompt_readings": {
+  "read_at": "2026-11-17T07:33Z to 07:36Z",
+  "read_from": "the shared local endpoint of both local rungs, POST /v1/chat/completions with max_tokens 1, usage.prompt_tokens minus the 52-token empty chat template; a refused read (HTTP 400) records the at-least count the endpoint names",
+  "generators": "tests/nodes/node_delegation_routing_reducer/dense_prompts_omn24980.py (pure; the sha256 pins the text)",
+  "window_tokens": 131072,
+  "samples": {
+   "code_digit_named_140000": {
+    "characters": 140000,
+    "sha256": "c92da4ee0ade5a37cc98563ce10e7b90e7c8ed23883c1bbd1069f3b5b48aeb29",
+    "metered_input_tokens": 69445
+   },
+   "code_digit_named_61000": {
+    "characters": 61000,
+    "sha256": "a56bbfe6ccfdf6cb83ec7cab653cd42bc32fe27f98d2ec3450aea48c0d83b13d",
+    "metered_input_tokens": 29945
+   },
+   "code_digit_named_58000": {
+    "characters": 58000,
+    "sha256": "06288a46d8d568766bd4ac4942aad6b11e059df4579bcf319457be345a673848",
+    "metered_input_tokens": 28445
+   },
+   "code_letter_named_140000": {
+    "characters": 140000,
+    "sha256": "32f0fc73c2a75717c49c8f8988e881c0dcdd61fa0c8d317ef2f6c5aeefb00e26",
+    "metered_input_tokens": 57171
+   },
+   "code_letter_named_61000": {
+    "characters": 61000,
+    "sha256": "92ea68a488e8ab643edea6da95e7be4fa77235b9cb0b9d96861ae0c078cb2b4c",
+    "metered_input_tokens": 24859
+   },
+   "digits_140000": {
+    "characters": 140000,
+    "sha256": "ae2a4d539b5b9c3cb46ae17ece5edc33bd218ee116dece91b7b32df09f8d2582",
+    "refused": "HTTP 400",
+    "at_least_input_tokens": 131020
+   },
+   "hex_lines_140000": {
+    "characters": 140000,
+    "sha256": "2afca7aa407cc692117109f47f8608e87553616411ab9e01838e0fc160a99b3d",
+    "metered_input_tokens": 124025
+   },
+   "uuid_lines_140000": {
+    "characters": 140000,
+    "sha256": "2e57dab3238be2f4179312f33b37f43a646d61f74551a65f63bea2e43dcaec40",
+    "metered_input_tokens": 124052
+   },
+   "base64_blob_140000": {
+    "characters": 140000,
+    "sha256": "c640c8b8708ac27a58ccf71c5764bda3c2a64d12ee0fb5e23f1569c3a6e46fb5",
+    "metered_input_tokens": 102870
+   },
+   "json_floats_140000": {
+    "characters": 140000,
+    "sha256": "173ebafd3f7d1157646ab852836fb585c7664fac64ffffd0c29a6b729a924902",
+    "refused": "HTTP 400",
+    "at_least_input_tokens": 131020
+   }
+  }
+ },
+ "spread_peer": {
+  "read_at": "2026-11-17",
+  "read_from": "overlays repository delegation_routing/overlay.yaml (local_endpoints.backends, backend local-omnipc2-chat) and node_delegation_code_budget_compute/overlay.yaml (input_ceilings comment), overlays head a951d8554d2f6dd3d78db46b04cc1184fef5c8bf; the host address is left out",
+  "backend_id": "local-omnipc2-chat",
+  "server": "llama.cpp, served Qwen3.8-27B",
+  "kv_pool_tokens": 131072,
+  "slots": 2,
+  "window_per_slot_tokens": 65536,
+  "max_tokens": 16384,
+  "input_ceiling_tokens": 49152,
+  "timeout_ms": 300000,
+  "placement": {
+   "tier": "local",
+   "fallback_for": [
+    "local-coder",
+    "local-heavy-reasoning"
+   ],
+   "max_context_tokens": 131072,
+   "mode": "spread",
+   "weight": 0.25
+  }
+ }
+}

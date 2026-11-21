@@ -26,6 +26,9 @@ from omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probe
     probe_projection_api,
     probe_runtime_health,
 )
+from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_record import (
+    ModelIntegrationRecord,
+)
 from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_request import (
     ModelIntegrationSweepOrchestratorRequest,
 )
@@ -194,16 +197,17 @@ class HandlerIntegrationSweepOrchestrator:
             census_dimensions_configured=census_dimensions_configured,
         )
 
-        payload = {
-            "artifact_type": "ModelIntegrationRecord",
-            "artifact_version": "1.0.0",
-            "date": artifact_date,
-            "scope": request.scope or "explicit",
-            "status": status,
-            "tickets": tickets,
-            "runtime_sha_match": runtime_sha_records,
-            "surfaces": surface_results,
-        }
+        # The record is built through its model (OMN-26223): a record the model refuses
+        # raises before anything is written.
+        payload = ModelIntegrationRecord(
+            artifact_version="1.0.0",
+            date=artifact_date,
+            scope=request.scope or "explicit",
+            status=status,
+            tickets=tickets,
+            runtime_sha_match=runtime_sha_records,
+            surfaces=surface_results,
+        ).to_document()
 
         artifact_written = False
         if not request.dry_run:
