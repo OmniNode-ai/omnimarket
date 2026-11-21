@@ -1688,6 +1688,79 @@ units:
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
     evidence_file: .local/state/omni/lab-disk-hygiene/last-run.json
     state_directory: .onex_state/lab-disk-hygiene
+  # The uv cache class of the host retention node (node_host_retention_effect) on a Linux pool host: the node is host-local
+  # (its contract forbids a shared runtime from subscribing to its command topic), so a host unit is its runner. Six hours,
+  # the cadence of the lab disk hygiene unit; only the uv cache class runs, the node's other classes stay unscheduled until
+  # their own change. The host's name comes from the ledger host name input; the retention overlay (the host's row, its cap)
+  # is found under the overlay roots.
+  host-retention-uv-cache-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-host-retention-uv-cache
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 21600
+      run_timeout_s: 3600
+      run_at_load: false
+      description: every 6 hours
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_host_retention_effect.runtime_host_retention_tick
+    entry_file: src/omnimarket/nodes/node_host_retention_effect/runtime_host_retention_tick.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/host-retention-uv-cache/last-run.json
+    state_directory: .onex_state/host-retention-uv-cache
+  # The same tick on a Mac host (h101, h105), as a launchd agent. The retention overlay declares no cadence for either Mac
+  # row, so the default is once a day (86400 s), which is less often than the six hours of the Linux unit. The pass runs
+  # `uv cache size`, which walks every file of a cache that held 245 GB on h101, so the run limit is the Linux unit's 3600 s;
+  # the agent does not run at load, so an install never starts a cache walk on its own. Only the uv cache class runs.
+  host-retention-uv-cache-launchd:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.host-retention-uv-cache
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 86400
+      run_at_load: false
+      description: every 24 hours
+    registry_project: omnimarket
+    run_timeout_s: 3600
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_host_retention_effect.runtime_host_retention_tick
+    entry_file: src/omnimarket/nodes/node_host_retention_effect/runtime_host_retention_tick.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/host-retention-uv-cache/last-run.json
+    state_directory: .onex_state/host-retention-uv-cache
   # The Temporal health alarm on the lab host that runs the self-hosted Temporal server (OMN-24900): every 60 s it reads
   # the server's cluster health and the worker's task queue pollers and appends one alarm row per episode.
   temporal-health-alarm-systemd:
