@@ -28,12 +28,26 @@ alike -- carried `source_offset 0`. First writer wins forever.
 from __future__ import annotations
 
 import importlib
-from typing import Any
+import json
+import pickle
+from pathlib import Path
+from typing import Any, ClassVar
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
+from omnimarket.handlers.handler_projection_runtime_writer import (
+    RuntimeProjectionWriter,
+)
+from omnimarket.models.model_message_meta import MessageMeta
+from omnimarket.models.model_projection_delivery_context_error import (
+    ProjectionDeliveryContextMissingError,
+)
 from omnimarket.models.model_projection_request import ModelProjectionRequest
+from omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer import (
+    SavingsProjectionWriter,
+)
 from omnimarket.projection.handler_shim import (
     INJECTED_OFFSET_KEY,
     INJECTED_PARTITION_KEY,
@@ -100,6 +114,15 @@ def test_every_inprocess_writer_reads_both_source_coordinates() -> None:
             assert writer.handle is BaseProjectionRunner.handle
             continue
         source = inspect.getsource(writer.handle)
+        if "require_delivery_context" in source:
+            # The typed read: the split carries both keys (the next test) and
+            # ``require_delivery_context`` refuses a request that lacks either,
+            # so the writer cannot publish a defaulted coordinate.
+            assert "ModelProjectionRequest.from_injected" in source, (
+                f"{writer.__name__}.handle requires a delivery context it did "
+                "not read through the shared split"
+            )
+            continue
         assert INJECTED_PARTITION_KEY in source, (
             f"{writer.__name__}.handle does not read {INJECTED_PARTITION_KEY!r}; "
             "its deltas would carry a fixed partition"
@@ -228,3 +251,265 @@ def test_both_keys_are_declared_consumer_first() -> None:
     # the release carrying the injection; the seam guard turns a stale entry
     # red rather than leaving it as a permanent exemption.
     assert PENDING_UPSTREAM_INJECTED_KEYS <= RUNTIME_INJECTED_KEYS
+
+
+# A delivery with no context (a runtime tick, a replay, a direct dispatch) arrives
+# without the two coordinates. Both writers refuse it with a typed error that names
+# the missing keys; the tests below carry ``partition_missing_delivery_context`` in
+# their names.
+
+SAVINGS_TOPIC = "onex.evt.omnibase-infra.savings-estimated.v1"
+HOOK_TOPIC = "onex.evt.omniclaude.hook-event.v1"
+FIXTURE = (
+    Path(__file__).parent
+    / "fixtures"
+    / "projection_writer_partition_missing_delivery_context_incident.json"
+)
+SAVINGS_CONTRACT = (
+    Path(__file__).parents[1]
+    / "src/omnimarket/nodes/node_projection_savings/contract.yaml"
+)
+
+
+class _RecordingRunner:
+    """Stands in for the runner: records what reached it, opens nothing."""
+
+    constructed: ClassVar[int] = 0
+    seen: ClassVar[list[tuple[str, dict[str, Any], MessageMeta]]] = []
+
+    def __init__(self) -> None:
+        type(self).constructed += 1
+
+    async def project_runtime_event(
+        self, topic: str, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
+        type(self).seen.append((topic, data, meta))
+        return True
+
+    async def close_runtime_resources(self) -> None:
+        return None
+
+
+class _BaseWriter(RuntimeProjectionWriter):
+    """The shared base writer, with the recording runner bound by ``base``."""
+
+
+@pytest.fixture(autouse=True)
+def _reset_runner() -> None:
+    _RecordingRunner.constructed = 0
+    _RecordingRunner.seen = []
+
+
+@pytest.fixture
+def base(monkeypatch: pytest.MonkeyPatch) -> _BaseWriter:
+    monkeypatch.setattr(_BaseWriter, "runner_type", _RecordingRunner, raising=False)
+    return _BaseWriter()
+
+
+@pytest.fixture
+def savings(monkeypatch: pytest.MonkeyPatch) -> SavingsProjectionWriter:
+    monkeypatch.setattr(SavingsProjectionWriter, "runner_type", _RecordingRunner)
+    return SavingsProjectionWriter()
+
+
+def _delivery_less(topic: str, **payload: Any) -> dict[str, Any]:
+    """The dict the runtime builds when it has no delivery: no coordinates at all."""
+    return {
+        "_db": object(),
+        "_event_type": "evt",
+        "_topic": topic,
+        "_envelope_id": "00000000-0000-4000-8000-000000000009",
+        **payload,
+    }
+
+
+@pytest.mark.parametrize(
+    ("present", "missing"),
+    [
+        ({}, ("_partition", "_offset")),
+        ({"_offset": 7}, ("_partition",)),
+        ({"_partition": 3}, ("_offset",)),
+    ],
+    ids=["neither", "no-partition", "no-offset"],
+)
+def test_partition_missing_delivery_context_base_writer_names_the_keys(
+    base: _BaseWriter, present: dict[str, int], missing: tuple[str, ...]
+) -> None:
+    with pytest.raises(ProjectionDeliveryContextMissingError) as raised:
+        base.handle(_delivery_less(SAVINGS_TOPIC, **present))
+    assert raised.value.missing_keys == missing
+    assert raised.value.topic == SAVINGS_TOPIC
+    for key in missing:
+        assert key in str(raised.value)
+    assert _RecordingRunner.seen == []
+
+
+@pytest.mark.parametrize("topic", [SAVINGS_TOPIC, HOOK_TOPIC])
+@pytest.mark.parametrize(
+    ("present", "missing"),
+    [
+        ({}, ("_partition", "_offset")),
+        ({"_offset": 7}, ("_partition",)),
+        ({"_partition": 3}, ("_offset",)),
+    ],
+    ids=["neither", "no-partition", "no-offset"],
+)
+def test_partition_missing_delivery_context_savings_writer_names_the_keys(
+    savings: SavingsProjectionWriter,
+    topic: str,
+    present: dict[str, int],
+    missing: tuple[str, ...],
+) -> None:
+    with pytest.raises(ProjectionDeliveryContextMissingError) as raised:
+        savings.handle(_delivery_less(topic, hook_event_name="PreToolUse", **present))
+    assert raised.value.missing_keys == missing
+    assert raised.value.topic == topic
+    assert _RecordingRunner.constructed == 0
+
+
+def test_partition_missing_delivery_context_names_a_missing_topic_too(
+    base: _BaseWriter,
+) -> None:
+    request = _delivery_less(SAVINGS_TOPIC)
+    del request["_topic"]
+    with pytest.raises(ProjectionDeliveryContextMissingError) as raised:
+        base.handle({**request, "_partition": 0, "_offset": 0})
+    assert raised.value.missing_keys == ("_topic",)
+    assert raised.value.topic is None
+
+
+def test_partition_missing_delivery_context_error_is_not_a_content_or_wiring_type(
+    base: _BaseWriter,
+) -> None:
+    """The consume boundary withholds on it: not a validation, key or type error."""
+    with pytest.raises(ProjectionDeliveryContextMissingError) as raised:
+        base.handle(_delivery_less(SAVINGS_TOPIC))
+    assert not isinstance(
+        raised.value, KeyError | TypeError | ValueError | ValidationError
+    )
+
+
+def test_partition_missing_delivery_context_message_is_stable_across_records(
+    base: _BaseWriter,
+) -> None:
+    """One record refused twice renders one message, so the withhold bound counts it."""
+    messages = set()
+    for event_id in ("a", "b"):
+        with pytest.raises(ProjectionDeliveryContextMissingError) as raised:
+            base.handle(_delivery_less(SAVINGS_TOPIC, event_id=event_id))
+        messages.add(str(raised.value))
+    assert len(messages) == 1
+
+
+def test_partition_missing_delivery_context_error_survives_pickling() -> None:
+    error = ProjectionDeliveryContextMissingError(("_partition",), SAVINGS_TOPIC)
+    clone = pickle.loads(pickle.dumps(error))
+    assert (clone.missing_keys, clone.topic, str(clone)) == (
+        error.missing_keys,
+        error.topic,
+        str(error),
+    )
+
+
+@pytest.mark.parametrize("coordinate", [0, 1])
+def test_partition_missing_delivery_context_zero_is_a_coordinate_not_an_absence(
+    base: _BaseWriter, coordinate: int
+) -> None:
+    out = base.handle(
+        _delivery_less(SAVINGS_TOPIC, _partition=coordinate, _offset=coordinate)
+    )
+    assert out == {"projected": True}
+    topic, data, meta = _RecordingRunner.seen[0]
+    assert topic == SAVINGS_TOPIC
+    assert meta.partition == coordinate
+    assert meta.offset == coordinate
+    for key in ("_db", "_topic", "_partition", "_offset", "_fallback_id"):
+        assert key not in data
+    assert data["_event_type"] == "evt"
+
+
+def test_partition_missing_delivery_context_supplied_fallback_id_is_kept(
+    base: _BaseWriter,
+) -> None:
+    base.handle(
+        _delivery_less(SAVINGS_TOPIC, _partition=1, _offset=2, _fallback_id="fb-1")
+    )
+    assert _RecordingRunner.seen[0][2].fallback_id == "fb-1"
+
+
+def test_partition_missing_delivery_context_savings_still_skips_ignored_hook_event(
+    savings: SavingsProjectionWriter,
+) -> None:
+    out = savings.handle(
+        _delivery_less(
+            HOOK_TOPIC, _partition=0, _offset=5, hook_event_name="PreToolUse"
+        )
+    )
+    assert out == {"projected": True}
+    assert _RecordingRunner.constructed == 0
+
+
+def test_partition_missing_delivery_context_request_reports_the_missing_keys() -> None:
+    both = ModelProjectionRequest.from_injected({"_topic": "t"})
+    assert both.missing_coordinates == ("_partition", "_offset")
+    assert not both.has_coordinates
+    only_offset = ModelProjectionRequest.from_injected({"_topic": "t", "_offset": 1})
+    assert only_offset.missing_coordinates == ("_partition",)
+    full = ModelProjectionRequest.from_injected(
+        {"_topic": "t", "_partition": 0, "_offset": 0}
+    )
+    assert full.missing_coordinates == ()
+    assert full.has_coordinates
+    assert full.require_delivery_context() is full
+
+
+def test_partition_missing_delivery_context_request_refuses_with_the_typed_error() -> (
+    None
+):
+    with pytest.raises(ProjectionDeliveryContextMissingError) as raised:
+        ModelProjectionRequest.from_injected(
+            {"_partition": 1}
+        ).require_delivery_context()
+    assert raised.value.missing_keys == ("_topic", "_offset")
+
+
+def _fixture() -> dict[str, Any]:
+    loaded: dict[str, Any] = json.loads(FIXTURE.read_text())
+    return loaded
+
+
+def _incident_requests() -> list[dict[str, Any]]:
+    requests: list[dict[str, Any]] = _fixture()["requests"]
+    return requests
+
+
+def test_partition_missing_delivery_context_incident_fixture_matches_the_contract() -> (
+    None
+):
+    """Every fixture topic is one the savings contract subscribes to."""
+    contract = yaml.safe_load(SAVINGS_CONTRACT.read_text())
+    subscribed = set(contract["event_bus"]["subscribe_topics"])
+    assert {request["_topic"] for request in _incident_requests()} <= subscribed
+    assert _fixture()["incident"]["keyerror_text"] == "KeyError: '_partition'"
+
+
+@pytest.mark.parametrize("recorded", _incident_requests(), ids=lambda r: str(r["name"]))
+def test_partition_missing_delivery_context_incident_dispatch_ends_typed(
+    savings: SavingsProjectionWriter, recorded: dict[str, Any]
+) -> None:
+    """The 2026-11-21 09:10Z wedge: a delivery-less dispatch reached the savings writer."""
+    request = {
+        "_db": object(),
+        "_event_type": recorded["_event_type"],
+        "_topic": recorded["_topic"],
+        "_envelope_id": recorded["_envelope_id"],
+        **recorded["payload"],
+    }
+    assert "_partition" not in request
+    assert "_offset" not in request
+    with pytest.raises(ProjectionDeliveryContextMissingError) as raised:
+        savings.handle(request)
+    assert not isinstance(raised.value, KeyError)
+    assert raised.value.missing_keys == ("_partition", "_offset")
+    assert raised.value.topic == recorded["_topic"]
+    assert _RecordingRunner.seen == []
