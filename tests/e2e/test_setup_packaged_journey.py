@@ -795,6 +795,9 @@ def test_no_git_install(tmp_path: Path) -> None:
     for flag in GUIDE_INSTALL_LINE:
         if flag.startswith("--"):
             assert any(flag in line for line in tool_install_lines)
+    config = json.loads(installer.read_text())
+    assert config["python"] == GUIDE_INSTALL_LINE[4], config
+    assert config["package"] == GUIDE_INSTALL_LINE[-1], config
 
     wheel_env = os.environ.get("ONEX_TEST_ONEX_WHEEL")
     if wheel_env is None:
