@@ -16,6 +16,7 @@ from omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results
 from omnimarket.nodes.node_projection_eval_results.models.model_eval_projection_io import (
     SOURCE_TOPICS,
     TOPIC_CODE_TRY,
+    TOPIC_JUDGED,
     TOPIC_RUN_CLOSED,
     TOPIC_SNAPSHOT,
     TOPIC_TICK,
@@ -28,8 +29,10 @@ from tests.nodes.node_projection_eval_results.support import (
     close_event,
     code_event,
     deliver,
+    judged_event,
     make_writer,
     overlay,
+    recorded_judged_render_result,
     try_row,
 )
 
@@ -163,3 +166,47 @@ async def test_a_control_row_is_skipped_by_design_not_sent_to_the_dlq() -> None:
     assert [r["reason"] for r in outcome["refused"]] == ["not_a_try"]
     assert store.items == {}
     assert all(topic == TOPIC_SNAPSHOT for topic, _ in published)
+
+
+DLQ_TOPIC = "onex.dlq.omnimarket.projection-eval-results-malformed.v1"
+CALL = "00000000-0000-0000-0000-00000000c001"
+
+
+async def test_a_judged_delivery_with_no_judge_run_id_goes_to_the_dlq_and_is_counted() -> (
+    None
+):
+    store = MemoryStore()
+    writer, published = make_writer(store)
+    payload = {k: v for k, v in judged_event(CALL).items() if k != "judge_run_id"}
+    outcome = await deliver(writer, TOPIC_JUDGED, payload, at(2))
+    assert outcome["dlq_routed"] == 1
+    assert [r["reason"] for r in outcome["refused"]] == ["invalid_event"]
+    assert "judge_run_id" in outcome["refused"][0]["detail"]
+    assert store.items == {}
+    ((topic, envelope),) = published
+    assert topic == DLQ_TOPIC
+    assert "invalid_event" in json.dumps(envelope)
+
+
+async def test_a_judged_delivery_of_the_recorded_dev_broker_event_goes_to_the_dlq() -> (
+    None
+):
+    store = MemoryStore()
+    writer, published = make_writer(store)
+    outcome = await deliver(
+        writer, TOPIC_JUDGED, recorded_judged_render_result(), at(2)
+    )
+    assert outcome["dlq_routed"] == 1
+    assert [r["reason"] for r in outcome["refused"]] == ["invalid_event"]
+    assert store.items == {}
+    assert [topic for topic, _ in published] == [DLQ_TOPIC]
+
+
+async def test_a_valid_judged_delivery_routes_nothing_to_the_dlq_control() -> None:
+    store = MemoryStore()
+    writer, published = make_writer(store)
+    outcome = await deliver(writer, TOPIC_JUDGED, judged_event(CALL), at(2))
+    assert outcome["dlq_routed"] == 0
+    assert outcome["refused"] == []
+    assert len(store.items) == 1
+    assert all(topic != DLQ_TOPIC for topic, _ in published)
