@@ -32,10 +32,15 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
 
 def collect_machine_facts(workspace: Path) -> ModelSetupMachineFacts:
     """Read bounded OS facts without starting services or probing stack ports."""
-    ancestor = workspace
-    while not ancestor.exists():
-        ancestor = ancestor.parent
     system = platform.system()
+    free_disk_bytes = None
+    if system in ("Darwin", "Linux"):
+        # Other platforms are refused on the platform alone: a Windows drive root
+        # can be missing and is its own parent, so its workspace is never walked.
+        ancestor = workspace
+        while not ancestor.exists():
+            ancestor = ancestor.parent
+        free_disk_bytes = shutil.disk_usage(ancestor).free
     linux_distribution = None
     if system == "Linux":
         # Keep unreadable facts unknown; the preflight boundary refuses them.
@@ -67,7 +72,7 @@ def collect_machine_facts(workspace: Path) -> ModelSetupMachineFacts:
         architecture=platform.machine(),
         macos_version=platform.mac_ver()[0],
         linux_distribution=linux_distribution,
-        free_disk_bytes=shutil.disk_usage(ancestor).free,
+        free_disk_bytes=free_disk_bytes,
         rosetta=observations.get("rosetta"),
         virtual_machine=observations.get("virtual_machine"),
     )

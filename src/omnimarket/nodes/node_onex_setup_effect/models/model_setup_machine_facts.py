@@ -14,7 +14,7 @@ class ModelSetupMachineFacts(BaseModel):
     linux_distribution: str | None = None
     cpus: int | None = Field(default=None, ge=1)
     ram_bytes: int | None = Field(default=None, ge=1)
-    free_disk_bytes: int = Field(ge=0)
+    free_disk_bytes: int | None = Field(default=None, ge=0)
     administrator: bool | None = None
     virtual_machine: bool | None = None
     rosetta: bool | None = None

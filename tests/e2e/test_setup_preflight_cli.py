@@ -113,12 +113,19 @@ def test_windows_without_unix_locks_reports_wsl_remedy(
     script = dedent(
         """\
         import platform
+        import shutil
         import sys
         from importlib.metadata import entry_points
         from unittest.mock import patch
 
+        def unreadable_disk(path):
+            raise PermissionError(13, "Access is denied", str(path))
+
         sys.modules["fcntl"] = None
-        with patch.object(platform, "system", return_value="Windows"):
+        with (
+            patch.object(platform, "system", return_value="Windows"),
+            patch.object(shutil, "disk_usage", unreadable_disk),
+        ):
             entry_points(group="console_scripts", name="onex")["onex"].load()(
                 prog_name="onex"
             )

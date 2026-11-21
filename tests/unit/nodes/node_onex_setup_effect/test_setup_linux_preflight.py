@@ -117,6 +117,36 @@ def test_unreadable_etc_os_release_is_not_answered_by_the_vendor_copy(
     assert list(tmp_path.iterdir()) == []
 
 
+@pytest.mark.parametrize("fault", ["missing_drive", "unreadable_disk"])
+def test_windows_remedy_needs_no_workspace_reading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    """A Windows workspace on a missing mapped drive (Z:\\ is its own parent) or an
+    unreadable disk must still give the WSL remedy, not a hang or a failure."""
+    plan = ModelSetupPlan(workspace=tmp_path / "Code" / "omnibase")
+    walked: list[Path] = []
+
+    def missing(self: Path, **_: object) -> bool:
+        walked.append(self)
+        if len(walked) > 100:
+            raise AssertionError("the workspace ancestor walk never stops")
+        return False
+
+    def unreadable(path: object) -> object:
+        raise PermissionError(13, "Access is denied", str(path))
+
+    # Path.exists is restored before pytest reports, which also reads paths.
+    with monkeypatch.context() as patched:
+        patched.setattr(preflight.platform, "system", lambda: "Windows")
+        if fault == "missing_drive":
+            patched.setattr(preflight.Path, "exists", missing)
+        else:
+            patched.setattr(preflight.shutil, "disk_usage", unreadable)
+        result = preflight.HandlerSetupPreflight().handle(plan)
+    assert result.status == "unavailable", result
+    assert "WSL 2" in (result.fix or "")
+
+
 @pytest.mark.parametrize("system", ["Windows", "FreeBSD"])
 def test_unlisted_operating_system_remains_unavailable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, system: str
