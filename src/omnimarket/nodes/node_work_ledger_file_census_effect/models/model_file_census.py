@@ -60,6 +60,12 @@ class ModelCensusOverlay(_Frozen):
         min_length=1,
         description="Path of the shrink-only ratchet file, relative to the working directory.",
     )
+    per_file: bool = Field(
+        default=False,
+        description="Hold the per-file rows (the ``files`` table of the ratchet file) as well as the count. "
+        "A file with no row that holds an executable reader or writer, or a file that holds more of "
+        "them than its row, fails the run (new code opening the ledger file).",
+    )
 
     @field_validator("names", "path_variables")
     @classmethod
@@ -90,7 +96,11 @@ class ModelRepositoryCount(_Frozen):
     hits: tuple[ModelCensusHit, ...] = ()
     ratchet: int | None = None
     state: str = Field(
-        description="ok, lowerable, grew, absent, unreadable or unratcheted"
+        description="ok, lowerable, grew, new-reader, absent, unreadable, unratcheted or unbaselined"
+    )
+    new_readers: tuple[str, ...] = Field(
+        default=(),
+        description="Files the per-file baseline does not allow: 'path (hits>allowed)', allowed 0 for a new file.",
     )
 
 
@@ -114,4 +124,9 @@ class ModelCensusResult(_Frozen):
     lowered_ratchet: dict[str, int] = Field(
         default_factory=dict,
         description="The ratchet with every lowerable count lowered; never one raised.",
+    )
+    lowered_baseline: dict[str, dict[str, int]] = Field(
+        default_factory=dict,
+        description="The per-file baseline with every file's row lowered to its count and every cleared "
+        "file dropped; never a row raised and never a file added.",
     )
