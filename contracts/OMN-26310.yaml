@@ -19,6 +19,8 @@ requirements:
         statement: "AC4: the dispatch deadline, the boot guard and the broker health check are unchanged, and the PR changes no compose file by hand; if the 3.22 GiB runtime memory ceiling is a declared compose setting the PR comment names the file, the value and the measured need -- falsifier: git diff origin/dev --stat on the PR branch lists no dispatch deadline setting, no boot guard file, no health check file and no compose file, run with uv run pytest tests/nodes/node_projection_eval_results -q"
       - id: AC5
         statement: "AC5: on the dev runtime after the deploy agent applies the branch, the group local.omnimarket.projection_eval_results.consume.1.0.0 reads STATE Stable with its committed offset advancing across two reads 10 minutes apart and dev /health event_bus reports orphaned dispatches at or below 3 -- falsifier: rpk group describe on the dev broker shows an unchanged committed offset across the two reads or /health event_bus still reads unhealthy"
+      - id: AC6
+        statement: "AC6: a judged or code-try delivery whose envelope tenant stamp is no uuid is dead-lettered once with a typed invalid_event refusal naming the tenant, and a dead letter that is not confirmed published raises so the offset stays -- falsifier: uv run pytest tests/nodes/node_projection_eval_results/test_writer.py -k tenant -q fails at omnimarket origin/dev and passes with the fix"
 evidence_requirements:
   - kind: tests
     description: The node tests, including the tick_deadline and not_materialized selections, pass at the pushed head.
@@ -69,8 +71,9 @@ dod_evidence:
         check_value: uv run pytest tests/nodes/node_projection_eval_results -q --no-cov -p no:cacheprovider
         cwd: .
   - id: dod-omn26310-tenant-stamp-dead-letter
-    description: "A judged or code-try delivery whose envelope tenant stamp is no uuid is dead-lettered once with a typed invalid_event refusal naming the tenant, a dead letter that is not confirmed published is raised, and a lane's own configured tenant that is no uuid still raises; the dev runtime logged this as ValueError badly formed hexadecimal UUID string and withheld the offset. It binds no acceptance criterion above."
+    description: "A judged or code-try delivery whose envelope tenant stamp is no uuid is dead-lettered once with a typed invalid_event refusal naming the tenant, a dead letter that is not confirmed published is raised, and a lane's own configured tenant that is no uuid still raises; the dev runtime logged this as ValueError badly formed hexadecimal UUID string and withheld the offset. It binds AC6."
     source: manual
+    binds_ac: [AC6]
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_projection_eval_results/test_writer.py -k tenant -q --no-cov -p no:cacheprovider
