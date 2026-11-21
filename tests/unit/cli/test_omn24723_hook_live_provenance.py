@@ -102,11 +102,13 @@ def test_extra_package_cannot_shadow_committed_module(
         "-c",
         "from omnimarket.behavior import ANSWER; print(ANSWER)",
     ]
-    assert subprocess.check_output(command, text=True).strip() == "current"
+    before = subprocess.check_output(command, text=True).strip()
+    assert before == "current"
     shadow = installed / "behavior"
     shadow.mkdir()
     (shadow / "__init__.py").write_text('ANSWER = "stale-extra-package"\n')
-    assert subprocess.check_output(command, text=True).strip() == "stale-extra-package"
+    after = subprocess.check_output(command, text=True).strip()
+    assert after == "stale-extra-package"
     with pytest.raises(AssertionError, match="installed package differs from revision"):
         installed_provenance(launcher, revision, repository)
 
