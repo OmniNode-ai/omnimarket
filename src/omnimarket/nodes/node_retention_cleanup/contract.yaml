@@ -145,6 +145,8 @@ retention_policy:
         readers: [onex-ledger verb output, live ledger, reports, lane outputs, session transcripts]
         reference_paths:
           - $OMNI_HOME/docs/tracking/ROLLING_WORK_LEDGER.md
+          # The ledger rolls; a row that cites a detail may now sit in a rolled archive of it.
+          - $OMNI_HOME/docs/tracking/archive/ROLLING_WORK_LEDGER_*.md
           - $OMNI_HOME/.claude_scratch/reports/*
           - ~/.local/state/omni/remote-lanes/*/*.out
           - ~/.claude/projects/*/*.jsonl

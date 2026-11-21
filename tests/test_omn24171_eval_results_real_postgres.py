@@ -101,9 +101,9 @@ class _SchemaAdapter:
 
 
 @asynccontextmanager
-async def _migrated_schema() -> AsyncIterator[
-    tuple[_SchemaAdapter, asyncpg.Connection]
-]:
+async def _migrated_schema(
+    *, migrate: bool = True
+) -> AsyncIterator[tuple[_SchemaAdapter, asyncpg.Connection]]:
     password = os.environ.get(
         "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
     )
@@ -125,7 +125,7 @@ async def _migrated_schema() -> AsyncIterator[
             )
         await admin.execute(f"CREATE SCHEMA {schema}")
         await admin.execute(f"SET search_path TO {schema}, public")
-        for migration in _MIGRATIONS:
+        for migration in _MIGRATIONS if migrate else ():
             await admin.execute(
                 for_isolated_schema(migration.read_text(encoding="utf-8"))
             )
@@ -348,3 +348,46 @@ async def test_a_judged_delivery_with_no_judge_run_id_writes_no_row_and_reaches_
         landed = await deliver_judged(judged_event(call))
         assert landed["dlq_routed"] == 0
         assert (await _counts(db))["eval_item_scores"] == 1
+
+
+@pytest.mark.integration
+async def test_not_materialized_a_missing_table_is_withheld_then_dead_lettered() -> (
+    None
+):
+    """The error Postgres raises for a table the migrations never created is the one the writer counts.
+
+    The schema is created and no migration is applied, so the first read of ``eval_item_scores``
+    raises asyncpg's ``UndefinedTableError`` (SQLSTATE 42P01) untouched by any adapter. The writer
+    withholds the offset twice, then dead-letters the record with the typed reason.
+    """
+    from omnimarket.nodes.node_projection_eval_results.handlers.eval_results_deadline import (
+        EvalResultsNotMaterializedError,
+    )
+
+    async with _migrated_schema(migrate=False) as (db, _admin):
+        writer = EvalResultsProjectionWriter(
+            overlay=overlay(),
+            clock=lambda: at(100),
+            not_materialized_max_deliveries=3,
+        )
+        cast(Any, writer)._db = db
+        published: list[tuple[str, dict[str, Any]]] = []
+
+        async def publish(topic: str, value: bytes) -> None:
+            published.append((topic, json.loads(value)))
+
+        writer._publish_fn = publish
+        payload = {
+            **judged_event("00000000-0000-0000-0000-0000000000c1"),
+            "_envelope_timestamp": at(2).isoformat(),
+            "_tenant_id": TENANT,
+        }
+        meta = MessageMeta(
+            partition=0, offset=137196, fallback_id="", topic=TOPIC_JUDGED
+        )
+        for _ in range(2):
+            with pytest.raises(EvalResultsNotMaterializedError):
+                await writer._project(TOPIC_JUDGED, dict(payload), meta)
+        outcome = await writer._project(TOPIC_JUDGED, dict(payload), meta)
+        assert outcome["refused"][0]["reason"] == "not_materialized"
+        assert [t for t, _ in published if t.startswith("onex.dlq.")]
