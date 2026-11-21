@@ -13,7 +13,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Protocol
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 
@@ -26,9 +26,6 @@ class ProtocolDoneItemsStore(Protocol):
 
     async def close(self) -> None:
         """Close the store's connection."""
-
-    async def execute(self, query: str, *params: object) -> list[dict[str, object]]:
-        """Run one statement and return its rows."""
 
     async def apply_rows(
         self, statement: str, rows: list[tuple[object, ...]]
@@ -73,12 +70,6 @@ class SqliteDoneItemsStore:
             raise RuntimeError("SqliteDoneItemsStore is not connected")
         return self._conn
 
-    async def execute(self, query: str, *params: object) -> list[dict[str, object]]:
-        conn = self._connected()
-        with conn:
-            rows = conn.execute(query, _sqlite_binding(params)).fetchall()
-        return [dict(row) for row in rows]
-
     async def apply_rows(
         self, statement: str, rows: list[tuple[object, ...]]
     ) -> list[dict[str, object]]:
@@ -110,10 +101,6 @@ class PostgresDoneItemsStore:
 
     async def close(self) -> None:
         await self._adapter.close()
-
-    async def execute(self, query: str, *params: object) -> list[dict[str, object]]:
-        rows: list[dict[str, Any]] = await self._adapter.execute(query, *params)
-        return rows
 
     async def apply_rows(
         self, statement: str, rows: list[tuple[object, ...]]

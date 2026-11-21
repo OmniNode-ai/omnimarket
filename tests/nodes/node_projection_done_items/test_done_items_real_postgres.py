@@ -221,9 +221,6 @@ class _AsyncpgDoneItemsStore(PostgresDoneItemsStore):
     def __init__(self, dsn: str) -> None:
         super().__init__(AsyncpgAdapter(dsn, min_size=1, max_size=2))
 
-    async def execute(self, query: str, *params: object) -> list[dict[str, object]]:
-        return await super().execute(_in_test_schema(query), *params)
-
     async def apply_rows(
         self, statement: str, rows: list[tuple[object, ...]]
     ) -> list[dict[str, object]]:
