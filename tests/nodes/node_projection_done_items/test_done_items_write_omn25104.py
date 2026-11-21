@@ -22,6 +22,7 @@ import yaml
 
 from omnimarket.nodes.node_projection_done_items.handlers.handler_done_items_writer import (
     DoneItemsProjectionWriter,
+    done_items_from_payload,
 )
 from tests.nodes.node_projection_done_items.test_done_items_projection import (
     CONTRACT,
@@ -53,6 +54,12 @@ async def test_done_items_failed_write_keeps_the_held_rows(
     served: Served, tmp_path: Path
 ) -> None:
     writer, reader = served
+    # The failing ticket must come after one that writes, or a write that is
+    # not atomic would never leave a row behind and the test would pass anyway.
+    assert [item.ticket for item in done_items_from_payload(_v1(DONE_TWO))] == [
+        "OMN-2",
+        "OMN-4",
+    ]
     _handle(writer, _v1(DONE1), 0)
     held = await _read(reader)
 

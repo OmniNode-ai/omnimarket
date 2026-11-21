@@ -119,6 +119,9 @@ class PostgresDoneItemsStore:
         self, statement: str, rows: list[tuple[object, ...]]
     ) -> list[dict[str, object]]:
         returned: list[dict[str, object]] = []
+        # The pool is used directly so one event is one transaction. That skips
+        # AsyncpgAdapter.execute's tenant guard, which does not apply here:
+        # done_items has no tenant column. A tenant-scoped table needs it back.
         async with self._adapter.pool.acquire() as conn, conn.transaction():
             for row in rows:
                 returned.extend(dict(r) for r in await conn.fetch(statement, *row))

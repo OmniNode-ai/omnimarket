@@ -28,6 +28,7 @@ from omnimarket.nodes.node_projection_done_items.ports.done_items_store import (
 )
 from tests.nodes.node_projection_done_items.test_done_items_projection import (
     DONE1,
+    DONE_TWO,
     V1,
     V2,
     _v1,
@@ -284,5 +285,44 @@ def test_real_postgres_writer_projects_v1_and_v2_terminal_events() -> None:
         assert rows[0]["ticket"] == "OMN-1"
         assert isinstance(rows[0]["projected_at"], datetime)
         assert rows[0]["projected_at"].tzinfo is not None
+    finally:
+        asyncio.run(_drop())
+
+
+async def _execute_in_test_db(statement: str) -> None:
+    conn = await _connect_or_skip()
+    try:
+        await conn.execute(statement)
+    finally:
+        await conn.close()
+
+
+@pytest.mark.integration
+def test_real_postgres_failed_write_keeps_the_held_rows() -> None:
+    """An event closing OMN-2 and OMN-4 whose OMN-4 write fails leaves only the held rows."""
+    dsn = _dsn_or_skip()
+    asyncio.run(_prepare())
+    try:
+        writer = DoneItemsProjectionWriter(store=_AsyncpgDoneItemsStore(dsn))
+        writer.handle({**_v1(DONE1), "_topic": V1, "_partition": 0, "_offset": 0})
+        held = sorted(tuple(r) for r in asyncio.run(_served_rows()))
+        asyncio.run(
+            _execute_in_test_db(
+                f"CREATE FUNCTION {_SCHEMA}.fail_one() RETURNS trigger LANGUAGE plpgsql AS "
+                "$$ BEGIN IF NEW.ticket = 'OMN-4' THEN "
+                "RAISE EXCEPTION 'injected write failure'; END IF; RETURN NEW; END $$"
+            )
+        )
+        asyncio.run(
+            _execute_in_test_db(
+                f"CREATE TRIGGER fail_one BEFORE INSERT ON {_SCHEMA}.done_items "
+                f"FOR EACH ROW EXECUTE FUNCTION {_SCHEMA}.fail_one()"
+            )
+        )
+        with pytest.raises(asyncpg.PostgresError, match="injected write failure"):
+            writer.handle(
+                {**_v1(DONE_TWO), "_topic": V1, "_partition": 0, "_offset": 1}
+            )
+        assert sorted(tuple(r) for r in asyncio.run(_served_rows())) == held
     finally:
         asyncio.run(_drop())
