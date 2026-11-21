@@ -23,6 +23,12 @@ Python carries ``terminal_failure_cause``: the runtime's failure-terminal guard
 publishes a result carrying one on that topic (OMN-20867). Without that field no
 result can reach the failure terminal, and it stays an offender.
 
+A topic a contract lists in the top-level ``provisioning_only_publish_topics``
+is also exempt: the node does not publish it from its own Python; it is listed
+in ``event_bus.publish_topics`` only so the topic is provisioned and granted at
+boot. The exemption covers only topics also present in
+``event_bus.publish_topics``; it never widens the baseline.
+
 The gate is a burn-down ratchet against
 ``scripts/ci/contract_publish_parity_baseline.py``: the frozen set may only
 shrink. A new offender hard-fails.
@@ -89,6 +95,9 @@ def scan_publish_parity(root: Path) -> list[ModelPublishParityFinding]:
         exempt = {str(raw.get("terminal_event"))}
         if _returns_failure_cause(node_dir):
             exempt |= _failure_terminals(raw)
+        provisioning_only = raw.get("provisioning_only_publish_topics") or []
+        if isinstance(provisioning_only, list):
+            exempt |= {str(topic) for topic in provisioning_only}
         candidates = sorted({str(topic) for topic in declared} - exempt)
         if not candidates:
             continue
