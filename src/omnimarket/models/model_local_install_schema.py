@@ -12,6 +12,8 @@ import logging
 import sqlite3
 from collections.abc import Callable
 
+import yaml
+
 # OMN-19988: the latest environment report per (tenant, mode, service), with the
 # verdict and open alert the alert compute gave it. A row changes in place, so its
 # cursor is re-stamped from a one-row sequence on every insert and update, as
@@ -412,15 +414,15 @@ def run_savings_rule_step() -> str | None:
 
 
 def _recompute_for_rule(
-    rule: str, recompute: bool = True
+    rule: str, earlier_ran: Callable[[], bool] = lambda: False
 ) -> Callable[[sqlite3.Connection], None]:
     """Recompute every stored saving, then forget every other rule step in the same transaction, so only the
-    current rule and prices stand recorded and a later return to earlier ones recomputes again. With recompute
-    False the step only records itself: the earlier recompute step, listed before it in the same open, has just
-    run the same recompute."""
+    current rule and prices stand recorded and a later return to earlier ones recomputes again. When the earlier
+    recompute step actually ran in this open (same function, same rule and prices) the step only records itself;
+    decided when it applies, because another process may record the earlier step between listing and applying."""
 
     def apply(conn: sqlite3.Connection) -> None:
-        if recompute:
+        if not earlier_ran():
             recompute_run_savings(conn)
         conn.execute(
             "DELETE FROM omnimarket_sqlite_store_steps WHERE step GLOB ? AND step != ?",
@@ -428,6 +430,18 @@ def _recompute_for_rule(
         )
 
     return apply
+
+
+def _noting_it_ran(
+    apply: Callable[[sqlite3.Connection], None], ran: list[bool]
+) -> Callable[[sqlite3.Connection], None]:
+    """The step as it was, also noting in `ran` that it ran (the runner skips it if another process recorded it)."""
+
+    def noted(conn: sqlite3.Connection) -> None:
+        apply(conn)
+        ran.append(True)
+
+    return noted
 
 
 @functools.cache
@@ -445,7 +459,7 @@ def _manifest_loads() -> bool:
 
     try:
         ModelPricingTable.from_yaml()
-    except (OSError, ValueError):
+    except (OSError, ValueError, yaml.YAMLError):
         return False
     return True
 
@@ -464,13 +478,16 @@ def pending_local_run_steps(
         # Checked only when the recompute is pending, so an open with nothing to do reads no file.
         _warn_manifest_unloaded()
     else:
-        # A store that has not run the earlier recompute either runs it first in this open (same function, same
-        # rule and prices), so the rule step does not price every run a second time under the write lock.
-        earlier = any(step[0] == RUN_SAVINGS_RECOMPUTE_STEP for step in pending)
+        # A store that has not run the earlier recompute either runs it first in this open, so the rule step does
+        # not price every run a second time under the write lock -- but only if that step really ran here.
+        ran: list[bool] = []
+        for index, (step, apply, lacking) in enumerate(pending):
+            if step == RUN_SAVINGS_RECOMPUTE_STEP:
+                pending[index] = (step, _noting_it_ran(apply, ran), lacking)
         pending.append(
             (
                 rule,
-                _recompute_for_rule(rule, recompute=not earlier),
+                _recompute_for_rule(rule, earlier_ran=lambda: bool(ran)),
                 "recomputed each run's modelled saving for the current rule and prices",
             )
         )

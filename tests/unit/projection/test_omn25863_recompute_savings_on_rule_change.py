@@ -21,6 +21,7 @@ Failure modes, each with a test below:
       failed load while the file is back on disk
   R8  a manifest version change leaves the stored manifest version stale
   R9  a store with neither recompute recorded prices every run twice on one open, holding the write lock longer
+  R10 skipping that second pricing leaves a store unpriced when another process records the earlier step meanwhile
 
 The model a run is priced by reaches its saving only through priced_spend: whether the manifest lists the model, and
 whether it lists it free while the run cost money. Where the alias and the model are both paid, the two orders give the
@@ -329,16 +330,23 @@ def test_recompute_savings_a_manifest_that_cannot_load_leaves_the_store_as_it_is
     assert _recorded_rule_steps(path) == recorded
 
 
+@pytest.mark.parametrize("damage", ["missing", "malformed"])
 def test_recompute_savings_a_manifest_gone_after_it_was_cached_leaves_the_store_as_it_is(
-    tmp_path: Path, manifest: _Manifest
+    tmp_path: Path, manifest: _Manifest, damage: str
 ) -> None:
-    """R7b: the process cached a good manifest, then the file went (an upgrade under a running process). A store with
-    the recompute pending still opens, keeps its saving and records no step, and recomputes once the file is back."""
+    """R7b: the process cached a good manifest, then the file went or was torn (an upgrade under a running process).
+    A store with the recompute pending still opens, keeps its saving and records no step, and recomputes once the
+    file is back."""
     path = _earlier_store(
         tmp_path, model=_PAID_MODEL, alias=_FREE_ALIAS, cost_usd=_PAID_COST
     )
     pricing._load_table()  # the cached table this process priced from
-    manifest.path.unlink()  # gone on disk, still cached in the process
+    if damage == "missing":
+        manifest.path.unlink()  # gone on disk, still cached in the process
+    else:
+        manifest.path.write_text(
+            "models: [unclosed\n", encoding="utf-8"
+        )  # torn, not YAML
     _open(path)
     assert _saving_and_cost(path)[0] is None  # as the earlier build left it
     assert _recorded_rule_steps(path) == []
@@ -484,4 +492,42 @@ def test_recompute_savings_an_empty_table_cached_from_a_failed_load_recomputes_n
     manifest.restore()
     _open(path)
     assert _saving_and_cost(path)[0] == priced
+    assert len(_recorded_rule_steps(path)) == 1
+
+
+def test_recompute_savings_the_earlier_recompute_recorded_by_another_process_meanwhile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R10: a store with neither recompute recorded. This process lists both steps; before it applies them another
+    process records the earlier recompute (it may be a build that prices by the alias). This process then skips the
+    earlier step, and its rule step must still re-price every run by the model that ran before it records itself."""
+    path = _earlier_store(
+        tmp_path, model=_PAID_MODEL, alias=_FREE_ALIAS, cost_usd=_PAID_COST
+    )
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "DELETE FROM omnimarket_sqlite_store_steps WHERE step = ?", (_EARLIER_STEP,)
+        )
+    real = (
+        schema.pending_local_run_steps
+    )  # the function sqlite_database calls by this name
+
+    def listed_then_raced(
+        conn: sqlite3.Connection, recorded: Any
+    ) -> list[tuple[str, Any, str]]:
+        pending = real(conn, recorded)
+        assert _EARLIER_STEP in [step[0] for step in pending]
+        with sqlite3.connect(
+            path
+        ) as other:  # the other process, between listing and applying
+            other.execute(
+                "INSERT INTO omnimarket_sqlite_store_steps (step, applied_at) VALUES (?, ?)",
+                (_EARLIER_STEP, "2026-11-21T00:00:00+00:00"),
+            )
+        return pending
+
+    monkeypatch.setattr(sqlite_database, "pending_local_run_steps", listed_then_raced)
+    _open(path)
+    monkeypatch.undo()
+    assert _saving_and_cost(path)[0] == _expected(path)
     assert len(_recorded_rule_steps(path)) == 1
