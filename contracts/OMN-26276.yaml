@@ -41,7 +41,7 @@ emergency_bypass:
 dod_evidence:
 - id: dod-omn26276-ac1
   description: 'AC1: the data files of the four fixture merges narrow with the rule on, and every test file whose text names a changed file is in the selection. Resolved over the data files, not each merge''s full
-    list: three of the four also change a shared module or a protected config surface, a full-suite reason this ticket does not touch. The replay over the 60 merges waits for the T1 receipt.'
+    list: three of the four also change a shared module or a protected config surface, a full-suite reason this ticket does not touch. Replayed over the frozen tree of the T1 baseline receipt with the rule on, none of the four hits the fixture trigger any more; the frozen tree holds no test text, so the reader containment is asserted over the live checkout.'
   source: manual
   binds_ac:
   - AC1
@@ -49,15 +49,21 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -q --no-cov -n 0 -p no:randomly -k "data_readers and four_fixture_merges"
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_readers_replay.py -q --no-cov -n 0 -p no:randomly -k "data_readers and four_fixture_merges"
+    cwd: .
 - id: dod-omn26276-ac2
   description: 'AC2: with the rule on, the changed files of 79f31e93f5 and ae69d56977 (fixtures, pyproject.toml and uv.lock) stay a full suite for test_infrastructure; the narrowing of the second, whose lock diff
-    is the package own version line, is asserted again after the pyproject rules merge.'
+    is the package own version line, is asserted again after the pyproject rules merge. The replay over the frozen tree of the T1 receipt gives the same decision for both: a full suite for the lock and pyproject.toml, with the fixtures beside them no longer a trigger.'
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -q --no-cov -n 0 -p no:randomly -k "data_readers and lock"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_readers_replay.py -q --no-cov -n 0 -p no:randomly -k "data_readers and lock"
     cwd: .
 - id: dod-omn26276-ac3
   description: 'AC3: a fixture read through a shared helper, through a src/ file and its importer facade, and a data file beside a node each select their readers; the controls remove the helper reference, the
