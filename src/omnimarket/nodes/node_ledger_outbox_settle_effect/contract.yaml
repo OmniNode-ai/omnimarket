@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ledger_outbox_settle_effect
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Settle the requests a host's bus-outbox replay moved to refused/ (moved from the private ledger bus writer). Each
+  refused request is sent again under its own request id: accepted or duplicate settles it, with a receipt in settled/
+  holding the refused body. A row stamped older than the stale bound was refused by the serve's clock guard, so it is
+  sent restamped under a deterministic new request id with resent-from and original-stamp cells marking the original.
+  A row-id clash, or a refusal of a fresh-stamped row, stays in refused/ with the serve's latest message as its text,
+  and an answer other than accepted or refused stops the run. A refusal younger than min_age_s is left alone, and the
+  due operation reads whether one has waited out the retry interval. The send is injected, so the node holds no bus
+  client.
+input_model:
+  name: ModelOutboxSettleRequest
+  module: omnimarket.nodes.node_ledger_outbox_settle_effect.models.model_outbox_settle
+output_model:
+  name: ModelOutboxSettleResult
+  module: omnimarket.nodes.node_ledger_outbox_settle_effect.models.model_outbox_settle
+handler:
+  class: HandlerOutboxSettle
+  name: HandlerOutboxSettle
+  module: omnimarket.nodes.node_ledger_outbox_settle_effect.handlers.handler_outbox_settle
+entrypoint:
+  name: NodeLedgerOutboxSettleEffect
+  module: omnimarket.nodes.node_ledger_outbox_settle_effect.node
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - event_model:
+        name: ModelOutboxSettleRequest
+        module: omnimarket.nodes.node_ledger_outbox_settle_effect.models.model_outbox_settle
+      handler:
+        name: HandlerOutboxSettle
+        module: omnimarket.nodes.node_ledger_outbox_settle_effect.handlers.handler_outbox_settle
+terminal_event: onex.evt.omnimarket.ledger-outbox-settle-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.ledger-outbox-settle-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.ledger-outbox-settle-requested.v1]
+  publish_topics: [onex.evt.omnimarket.ledger-outbox-settle-completed.v1]
+externally_consumed_topics: [onex.evt.omnimarket.ledger-outbox-settle-completed.v1]
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 600000
+  runtime_profiles: [effects]
+metadata:
+  transport_type: inmemory
+execution:
+  deterministic: false
+  side_effects: true
+# The broker grants the node's two topics need (coverage gate): the runtime login reads the command and writes the answer.
+broker_acl_grants:
+- principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+  grants:
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.ledger-outbox-settle-requested.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.ledger-outbox-settle-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ledger-outbox-settle-completed.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ledger-outbox-settle-completed.v1, operation: DESCRIBE}

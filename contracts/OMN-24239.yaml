@@ -17,6 +17,17 @@ requirements:
     statement: 'AC3: a second pass over the same open item starts no second lane (one dispatch per cause key per window) -- falsifier: the golden chain test fails when the dispatched record is not kept'
   - id: AC4
     statement: 'AC4: integrated: on lab host h053 one open drift item produces a lane placed (or the dry run naming the lane it would place) read from the node''s terminal event -- falsifier: the terminal event for a request on the dev broker names no lane for the open item'
+- id: req-omn24239-settle-refused-outbox
+  statement: A bus-outbox request the serve refused on replay keeps the serve's own refusal text, is sent again by a settle, and leaves refused/ with a receipt in settled/ when the serve takes it (moved from the private ledger bus writer into node_ledger_outbox_settle_effect).
+  acceptance:
+  - id: AC5
+    statement: 'AC5: a settle that the serve accepts removes the refused file and keeps a settled receipt, and a refusal stays with the serve text -- falsifier: uv run pytest tests/nodes/node_ledger_outbox_settle_effect -q --no-cov -p no:randomly -k "serve_now_accepts or serves_text"'
+  - id: AC6
+    statement: 'AC6: a row stamped past the clock guard tolerance is resent restamped under a deterministic new request id with resent-from and original-stamp cells, and a bus that cannot answer stops the settle -- falsifier: uv run pytest tests/nodes/node_ledger_outbox_settle_effect -q --no-cov -p no:randomly -k "stale_stamp or cannot_answer or restamp"'
+  - id: AC7
+    statement: 'AC7: a refusal younger than the retry interval is left alone until it has waited it out -- falsifier: uv run pytest tests/nodes/node_ledger_outbox_settle_effect -q --no-cov -p no:randomly -k "retry_interval"'
+  - id: AC8
+    statement: 'AC8: the settle node runs from its own entry point with a supplied sender and from the publisher adapter, and its tests carry no type-ignore comment -- falsifier: uv run pytest tests/nodes/node_ledger_outbox_settle_effect/test_main_outbox_settle.py -q --no-cov -p no:randomly fails on the head that has no entry point'
 evidence_requirements:
 - kind: tests
   description: The tests of the owner dispatch node and of its installer unit pass.
@@ -81,3 +92,32 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24239 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_drift_owner_dispatch_effect -q --no-cov
+- id: dod-omn24239-outbox-settle
+  description: The settle node tests pass, the settle cases failing at the merge base where the node does not exist.
+  source: manual
+  binds_ac:
+  - AC5
+  - AC6
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ledger_outbox_settle_effect -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24239-outbox-settle-entry
+  description: The settle node runs through its entry point with a supplied sender, and the publisher adapter answers the publisher's receipt.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ledger_outbox_settle_effect/test_main_outbox_settle.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24239-outbox-settle-auto-wired
+  description: The settle handler is built with no argument by the runtime (the publisher comes from the request's publisher_argv), the auto-wire test passes, and a handler built with no sender runs a settle; the added tests fail on the previous head where the sender was required.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ledger_outbox_settle_effect tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q --no-cov -p no:randomly
+    cwd: .
