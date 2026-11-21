@@ -140,3 +140,112 @@ def test_wheel_added_data_does_not_change_tracked_source_proof(
     after = installed_provenance(launcher, revision, repository)
     assert after["source_manifest_sha256"] == before["source_manifest_sha256"]
     assert after["files_checked"] == before["files_checked"]
+
+
+def test_unchecked_hash_bytecode_that_differs_from_source_is_refused(
+    candidate: tuple[Path, str, Path, Path],
+) -> None:
+    """Unchecked-hash bytecode differing from source is refused."""
+    repository, revision, launcher, installed = candidate
+    python = launcher.read_text().splitlines()[0][2:]
+    script = (
+        "import importlib.util, py_compile, pathlib, tempfile, sys; "
+        "installed = pathlib.Path(sys.argv[1]); "
+        "stale = pathlib.Path(tempfile.mkstemp()[1]); "
+        "stale.write_text('ANSWER = \"previous\"\\n'); "
+        "cache = importlib.util.cache_from_source("
+        "str(installed / 'behavior.py')); "
+        "pathlib.Path(cache).parent.mkdir(parents=True, exist_ok=True); "
+        "py_compile.compile(str(stale), cfile=cache, "
+        "invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH, "
+        "doraise=True); "
+        "stale.unlink()"
+    )
+    subprocess.run([python, "-c", script, str(installed)], check=True)
+    with pytest.raises(AssertionError, match="installed package differs from revision"):
+        installed_provenance(launcher, revision, repository)
+
+
+def test_unchecked_hash_bytecode_that_matches_source_is_accepted(
+    candidate: tuple[Path, str, Path, Path],
+) -> None:
+    """Unchecked-hash bytecode matching source is accepted."""
+    repository, revision, launcher, installed = candidate
+    python = launcher.read_text().splitlines()[0][2:]
+    script = (
+        "import importlib.util, py_compile, pathlib, sys; "
+        "installed = pathlib.Path(sys.argv[1]); "
+        "source = installed / 'behavior.py'; "
+        "cache = importlib.util.cache_from_source(str(source)); "
+        "pathlib.Path(cache).parent.mkdir(parents=True, exist_ok=True); "
+        "py_compile.compile(str(source), cfile=cache, "
+        "invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH, "
+        "doraise=True)"
+    )
+    subprocess.run([python, "-c", script, str(installed)], check=True)
+    proof = installed_provenance(launcher, revision, repository)
+    assert proof["files_checked"] == 2
+
+
+def test_sh_launcher_for_a_long_interpreter_path_is_read(
+    candidate: tuple[Path, str, Path, Path],
+) -> None:
+    """A sh launcher with a long interpreter path is read."""
+    repository, revision, launcher, _installed = candidate
+    python = launcher.read_text().splitlines()[0][2:]
+    launcher.write_text(f"#!/bin/sh\n'''exec' \"{python}\" \"$0\" \"$@\"\n' '''\n")
+    launcher.chmod(0o700)
+    proof = installed_provenance(launcher, revision, repository)
+    assert Path(proof["python"]).resolve() == Path(python).resolve()
+
+
+def test_export_ignore_attribute_does_not_change_the_manifest(
+    candidate: tuple[Path, str, Path, Path],
+) -> None:
+    """export-ignore does not alter the committed manifest."""
+    repository, revision, launcher, _installed = candidate
+    (repository / ".gitattributes").write_text(
+        "src/omnimarket/behavior.py export-ignore\n"
+    )
+    subprocess.run(
+        ["git", "-C", str(repository), "add", ".gitattributes"],
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
+    revision = subprocess.check_output(
+        ["git", "-C", str(repository), "write-tree"],
+        text=True,
+        env=scrub_git_location_env(os.environ),
+    ).strip()
+    proof = installed_provenance(launcher, revision, repository)
+    assert proof["files_checked"] == 2
+
+
+def test_checkout_root_does_not_depend_on_the_working_directory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Checkout root is independent of working directory."""
+    from omnimarket.nodes.node_hook_delegate_effect.tests.test_hook_live import (
+        checkout_root,
+    )
+
+    root = checkout_root()
+    monkeypatch.chdir(root / "src")
+    assert checkout_root() == root
+    assert (root / "src" / "omnimarket").is_dir()
+
+
+def test_answer_must_carry_the_run_nonce() -> None:
+    """An answer missing the run nonce is rejected."""
+    from omnimarket.nodes.node_hook_delegate_effect.tests.test_hook_live import (
+        answer_carries_nonce,
+        nonce_task,
+    )
+
+    task = nonce_task("omn24723-1a2b3c4d")
+    assert "omn24723-1a2b3c4d" in task
+    assert answer_carries_nonce("The code is omn24723-1a2b3c4d.", "omn24723-1a2b3c4d")
+    assert not answer_carries_nonce(
+        "The sky is blue because of Rayleigh scattering.",
+        "omn24723-1a2b3c4d",
+    )

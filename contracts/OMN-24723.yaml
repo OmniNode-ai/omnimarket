@@ -118,7 +118,7 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: >-
-          uv run --frozen python -B -c 'from pathlib import Path; import shlex, subprocess; from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract; c=ModelTicketContract.from_yaml(Path("contracts/OMN-24723.yaml").read_text()); assert c.ticket_id == "OMN-24723"; assert c.parent_ticket_id == "OMN-23413"; assert {a for item in c.dod_evidence for a in item.binds_ac} == {"AC1", "AC2", "AC3", "AC4"}; assert not subprocess.check_output(["git", "diff", "--name-only", "origin/dev...HEAD", "--", "contracts/OMN-23413.yaml"]).strip(); paths=[arg.split("::")[0] for item in c.dod_evidence for check in item.checks if check.check_type.value == "test_passes" for arg in shlex.split(str(check.check_value)) if arg.startswith("src/")]; assert paths and all(Path(path).exists() for path in paths)'
+          uv run --frozen python -B -c 'from pathlib import Path; import shlex, subprocess; from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract; c=ModelTicketContract.from_yaml(Path("contracts/OMN-24723.yaml").read_text()); assert c.ticket_id == "OMN-24723"; assert c.parent_ticket_id == "OMN-23413"; assert {a for item in c.dod_evidence for a in item.binds_ac} == {"AC1", "AC2", "AC3", "AC4"}; assert not subprocess.check_output(["git", "diff", "--name-only", "origin/dev...HEAD", "--", "contracts/OMN-23413.yaml"]).strip(); paths=[arg.split("::")[0] for item in c.dod_evidence for check in item.checks if check.check_type.value == "test_passes" for arg in shlex.split(str(check.check_value)) if arg.startswith(("src/", "tests/"))]; assert paths and all(Path(path).exists() for path in paths)'
         cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest src/omnimarket/nodes/node_hook_delegate_effect/tests -q --no-cov -n 0 -p no:randomly
@@ -138,6 +138,7 @@ dod_evidence:
       This Mac execution is not a governed lab bus-runner receipt.
     source: manual
     execution_scope: local_done_gate
+    binds_ac: [AC2]
     checks:
       - check_type: command
         check_value: >-

@@ -11,13 +11,13 @@ loads tests.refuse_skips explicitly, so an unexecuted proof fails closed.
 from __future__ import annotations
 
 import hashlib
-import io
 import json
 import os
+import re
+import secrets
 import socket
 import subprocess
 import sys
-import tarfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypedDict
@@ -47,6 +47,29 @@ class InstalledProvenance(TypedDict):
     source_manifest_sha256: str
 
 
+def checkout_root() -> Path:
+    return Path(
+        subprocess.check_output(
+            [
+                "git",
+                "-C",
+                str(Path(__file__).resolve().parent),
+                "rev-parse",
+                "--show-toplevel",
+            ],
+            text=True,
+        ).strip()
+    )
+
+
+def nonce_task(nonce: str) -> str:
+    return "Repeat this code exactly and say nothing else: " + nonce
+
+
+def answer_carries_nonce(answer: str, nonce: str) -> bool:
+    return nonce in answer
+
+
 def installed_provenance(
     launcher: Path,
     revision: str,
@@ -59,26 +82,78 @@ def installed_provenance(
     This verifies tracked package source; the complete wheel journey remains
     the separate packaged-journey check.
     """
-    shebang = launcher.read_text().splitlines()[0]
-    assert shebang.startswith("#!"), "installed CLI needs an interpreter shebang"
-    python = Path(shebang[2:].strip())
+    lines = launcher.read_text().splitlines()
+    if lines[0].strip() == "#!/bin/sh":
+        match = None
+        for line in lines:
+            match = re.match(r"^'''exec' \"([^\"]+)\" ", line)
+            if match:
+                break
+        assert match is not None, "installed CLI sh launcher names no interpreter"
+        python = Path(match.group(1))
+    else:
+        shebang = lines[0]
+        assert shebang.startswith("#!"), "installed CLI needs an interpreter shebang"
+        python = Path(shebang[2:].strip())
     assert python.is_absolute(), "installed CLI needs an absolute interpreter shebang"
     assert python.is_file(), "installed CLI interpreter does not exist"
-    archive = subprocess.check_output(
-        ["git", "-C", str(repository), "archive", revision, "src/omnimarket"],
+
+    ls_output = subprocess.check_output(
+        [
+            "git",
+            "-C",
+            str(repository),
+            "ls-tree",
+            "-r",
+            "-z",
+            revision,
+            "--",
+            "src/omnimarket",
+        ],
     )
-    with tarfile.open(fileobj=io.BytesIO(archive)) as tree:
-        expected = {}
-        for member in tree.getmembers():
-            if not member.isfile():
-                continue
-            content = tree.extractfile(member)
-            assert content is not None
-            relative = member.name.removeprefix("src/omnimarket/")
-            expected[relative] = hashlib.sha256(content.read()).hexdigest()
+    entries: list[tuple[str, str]] = []
+    for raw in ls_output.split(b"\0"):
+        if not raw:
+            continue
+        meta, separator, path_bytes = raw.partition(b"\t")
+        if not separator:
+            continue
+        raw_mode, raw_type, raw_oid = meta.split()
+        if raw_type != b"blob" or raw_mode not in {b"100644", b"100755"}:
+            continue
+        entries.append((raw_oid.decode(), path_bytes.decode()))
+
+    cat_input = "".join(f"{oid}\n" for oid, _ in entries).encode()
+    cat_output = subprocess.run(
+        ["git", "-C", str(repository), "cat-file", "--batch"],
+        input=cat_input,
+        stdout=subprocess.PIPE,
+        check=True,
+    ).stdout
+    contents: list[bytes] = []
+    offset = 0
+    for oid, _ in entries:
+        header_end = cat_output.index(b"\n", offset)
+        header = cat_output[offset:header_end].decode()
+        offset = header_end + 1
+        found_oid, obj_type, size_text = header.split()
+        assert found_oid == oid
+        assert obj_type == "blob"
+        size = int(size_text)
+        content = cat_output[offset : offset + size]
+        offset += size
+        assert cat_output[offset : offset + 1] == b"\n"
+        offset += 1
+        contents.append(content)
+
+    expected = {}
+    for (_oid, path), content in zip(entries, contents, strict=True):
+        relative = path.removeprefix("src/omnimarket/")
+        expected[relative] = hashlib.sha256(content).hexdigest()
     assert expected, "committed package source manifest is empty"
+
     inspect = """
-import hashlib, json, pathlib, sys
+import hashlib, importlib.util, json, pathlib, sys
 from importlib.machinery import all_suffixes
 import omnimarket
 root = pathlib.Path(omnimarket.__file__).resolve().parent
@@ -101,6 +176,19 @@ mismatches = [name for name, digest in expected.items()
               if not (root / name).is_file()
               or hashlib.sha256((root / name).read_bytes()).hexdigest() != digest]
 assert not mismatches, "package byte mismatch: " + ", ".join(mismatches[:5])
+stale = []
+for path in root.rglob("*.pyc"):
+    if path.parent.name != "__pycache__":
+        continue
+    data = path.read_bytes()
+    flags = int.from_bytes(data[4:8], "little")
+    if flags & 1 and not flags & 2:
+        source = path.parent.parent / (path.name.split(".")[0] + ".py")
+        if not source.is_file() or data[8:16] != importlib.util.source_hash(
+            source.read_bytes()
+        ):
+            stale.append(path.relative_to(root).as_posix())
+assert not stale, "stale unchecked bytecode: " + ", ".join(stale[:5])
 print(json.dumps({"python": sys.executable, "package_root": str(root)}))
 """
     manifest = json.dumps(expected, sort_keys=True)
@@ -146,14 +234,14 @@ def test_installed_hook_answers_with_a_local_model_and_missing_cli_passes_throug
     assert model, "name the existing local model"
     assert expected_sha, "name the pushed SHA"
     revision = subprocess.check_output(
-        ["git", "rev-parse", "HEAD"],
+        ["git", "-C", str(checkout_root()), "rev-parse", "HEAD"],
         text=True,
     ).strip()
     assert revision == expected_sha, "proof must run the exact pushed revision"
     onex = installed_onex()
     assert onex == Path(sys.executable).parent / "onex"
     assert onex.is_file(), "the branch installation must include its own CLI"
-    installed = installed_provenance(onex, expected_sha, Path.cwd())
+    installed = installed_provenance(onex, expected_sha, checkout_root())
 
     # No workspace overlay, provider key, user config or cached answer can leak
     # into this run. Local-only is set BEFORE onboarding's own pinned probe.
@@ -184,10 +272,11 @@ def test_installed_hook_answers_with_a_local_model_and_missing_cli_passes_throug
         )
         assert completed.returncode == 0, completed.stdout + completed.stderr
 
+    nonce = "omn24723-" + secrets.token_hex(4)
     request = ModelHookDelegateRequest(
-        task="In one short sentence, explain why the sky appears blue.",
+        task=nonce_task(nonce),
         timeout_seconds=90,
-        system_prompt="Answer the supplied question in one short sentence.",
+        system_prompt="Repeat the code you are given exactly and say nothing else.",
         criteria=("response_non_empty", "concise", "final_artifact_only"),
         criteria_mode="replace-task-class",
         max_tokens=128,
@@ -195,6 +284,9 @@ def test_installed_hook_answers_with_a_local_model_and_missing_cli_passes_throug
     result = build_handler().handle(request)
     assert result.outcome is EnumHookDelegateOutcome.ANSWERED
     assert result.answer.strip()
+    assert answer_carries_nonce(result.answer, nonce), (
+        "the answer does not carry this run's code, so no model read the request"
+    )
     assert result.model == model
     assert result.run_id
     missing = build_handler(HandlerDelegateCli(onex=tmp_path / "absent-onex"))
@@ -214,6 +306,7 @@ def test_installed_hook_answers_with_a_local_model_and_missing_cli_passes_throug
         "error_control": fallback.outcome.value,
         "answer": result.answer,
         "answer_sha256": hashlib.sha256(result.answer.encode()).hexdigest(),
+        "nonce": nonce,
     }
     (tmp_path / "hook-integration-proof.json").write_text(json.dumps(proof, indent=2))
     sys.stdout.write(
