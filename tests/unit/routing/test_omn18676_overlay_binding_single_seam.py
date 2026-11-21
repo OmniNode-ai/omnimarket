@@ -32,10 +32,26 @@ from __future__ import annotations
 
 import logging
 import textwrap
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _routing_prompt_set() -> Iterator[None]:
+    """These tests resolve backends outside a dispatch, so they set its prompt."""
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+        port_local_delegation_dispatch as _dispatch_port,
+    )
+
+    prompt_token = _dispatch_port._ACTIVE_PROMPT.set("route this short prompt")
+    try:
+        yield
+    finally:
+        _dispatch_port._ACTIVE_PROMPT.reset(prompt_token)
+
 
 _BACKEND_ID = "local-coder"
 _TASK_TYPE = "code_generation"

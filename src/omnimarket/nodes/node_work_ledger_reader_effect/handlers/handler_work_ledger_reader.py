@@ -125,8 +125,13 @@ class HandlerWorkLedgerReader:
         self._clock = clock
 
     def handle(self, request: ModelReaderRequest) -> ModelReaderResult:
+        started = self._clock().astimezone(UTC)
         try:
-            return self._handle(request)
+            result = self._handle(request)
+            if result.status is EnumReaderStatus.NOT_MOVED:
+                return result
+            elapsed = (self._clock().astimezone(UTC) - started).total_seconds()
+            return result.model_copy(update={"elapsed_s": max(0.0, elapsed)})
         finally:
             if isinstance(self._read, ProtocolClosable):
                 self._read.close()

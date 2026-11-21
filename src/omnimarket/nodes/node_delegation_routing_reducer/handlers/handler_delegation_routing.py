@@ -45,7 +45,6 @@ from __future__ import annotations
 import importlib
 import importlib.resources
 import logging
-import re
 from functools import lru_cache
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
@@ -92,6 +91,7 @@ from omnimarket.handlers.routing.customer_key_terminus import (
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
+from omnimarket.handlers.routing.input_token_bound import input_bound_members
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     exceeds_measured_correct_ceiling,
     grounded_input_budget,
@@ -108,6 +108,7 @@ from omnimarket.handlers.routing.paid_rungs import (
     paid_rung_gate_reason,
     with_registered_byok_tier,
 )
+from omnimarket.handlers.routing.prompt_waiver import prompt_waived_rules
 from omnimarket.handlers.routing.routing_tiers_path import (
     load_delegation_routing_overlay,
     resolve_routing_tiers_path,
@@ -1595,53 +1596,6 @@ def _class_declares_heuristic_for_shape(
     return isinstance(for_shape, dict) and isinstance(for_shape.get("heuristic"), list)
 
 
-def _prompt_waived_rules(
-    contract: dict[str, object] | None,
-    heuristic: tuple[str, ...],
-    prompt: str,
-) -> tuple[str, ...]:
-    """Heuristic rules whose own declaration says this prompt's layout waives them.
-
-    OMN-19432. A rule declares ``waived_when_prompt_matches`` (and, OMN-20844,
-    ``waived_unless_prompt_matches``: the input it needs) under
-    ``quality_rules`` in the SAME contract this resolver reads the DoD from, so
-    what the model is told and what the gate enforces stay one list. Returns the
-    waived names in band order. A rule the contract does not declare, or a
-    malformed declaration, waives nothing: an unreadable waiver must never
-    silently drop a veto (the fail-closed default of ``resolve_quality_rule``).
-    """
-    if not isinstance(contract, dict):
-        return ()
-    rules = contract.get("quality_rules")
-    if not isinstance(rules, dict):
-        return ()
-    waived: list[str] = []
-    for name in heuristic:
-        rule = rules.get(name)
-        if not isinstance(rule, dict):
-            continue
-        patterns = rule.get("waived_when_prompt_matches")
-        if isinstance(patterns, list) and any(
-            isinstance(pattern, str) and re.search(pattern, prompt, re.IGNORECASE)
-            for pattern in patterns
-        ):
-            waived.append(name)
-            continue
-        # OMN-20844: the input the rule judges. A rule that declares what its
-        # input looks like applies only to a prompt carrying some; a malformed
-        # declaration (no readable pattern) leaves the rule in force.
-        needed = rule.get("waived_unless_prompt_matches")
-        if not isinstance(needed, list):
-            continue
-        input_patterns = [pattern for pattern in needed if isinstance(pattern, str)]
-        if input_patterns and not any(
-            re.search(pattern, prompt, re.IGNORECASE | re.MULTILINE)
-            for pattern in input_patterns
-        ):
-            waived.append(name)
-    return tuple(waived)
-
-
 def resolve_task_class_dod_resolution(
     task_type: str,
     prompt: str | None = None,
@@ -1693,7 +1647,7 @@ def resolve_task_class_dod_resolution(
     # OMN-19432: a rule the prompt's own layout contradicts leaves the HEURISTIC
     # band, applied last so it holds whichever band (class, class shape override,
     # contract default) supplied the rule. The deterministic floor is untouched.
-    waived_rules = _prompt_waived_rules(contract, dod_heuristic, prompt)
+    waived_rules = prompt_waived_rules(contract, dod_heuristic, prompt)
     if waived_rules:
         dod_heuristic = tuple(
             name for name in dod_heuristic if name not in waived_rules
@@ -1783,6 +1737,7 @@ def _tier_can_route_task(
     task_type: str,
     bifrost_backends: dict[str, BifrostBackendRef],
     contract: dict[str, object] | None,
+    prompt: str,
     excluded_backend_refs: frozenset[str] = frozenset(),
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
 ) -> bool:
@@ -1810,7 +1765,7 @@ def _tier_can_route_task(
     # serve the task with a resolvable backend", not the final selection. delta()
     # re-selects with the real token estimate when it builds the decision.
     selected = _select_model_for_task(
-        tier.models,
+        input_bound_members(tier.name, tier.models, prompt),
         task_type,
         0,
         bifrost_backends,
@@ -1832,6 +1787,7 @@ def next_eligible_tier(
     excluded_backend_refs: frozenset[str] = frozenset(),
     correlation_id: object | None = None,
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
+    prompt: str,
 ) -> str | None:
     """Return the next tier name after current_tier_name, skipping excluded_tiers.
 
@@ -1897,6 +1853,7 @@ def next_eligible_tier(
                 task_type,
                 bifrost_backends,
                 contract,
+                prompt,
                 excluded_backend_refs,
                 byok_backends=byok_backends,
             ):
@@ -1915,6 +1872,7 @@ def first_eligible_tier(
     correlation_id: object | None = None,
     quota_state: ModelProviderQuotaSnapshot | None = None,
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
+    prompt: str,
 ) -> str | None:
     """Return the initial tier for ``task_type``, honoring its entry share.
 
@@ -1974,7 +1932,12 @@ def first_eligible_tier(
             if tier.name in skip:
                 continue
             if _tier_can_route_task(
-                tier, task_type, bifrost_backends, contract, byok_backends=byok_backends
+                tier,
+                task_type,
+                bifrost_backends,
+                contract,
+                prompt,
+                byok_backends=byok_backends,
             ):
                 return tier.name
         # Only a non-empty ROI suppression warrants a fail-safe second pass.
@@ -2013,10 +1976,7 @@ def _tier_skip_reason(
             return "cloud_routing_blocked"
         return "above_pricing_ceiling"
     if excluded_backend_refs and _tier_can_route_task(
-        tier,
-        task_type,
-        bifrost_backends,
-        contract,
+        tier, task_type, bifrost_backends, contract, prompt=""
     ):
         exhausted = sorted(
             model.backend_ref
@@ -2179,6 +2139,7 @@ def backend_id_for_tier(
     require_credential: bool = True,
     spread_key: str | None = None,
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
+    prompt: str,
 ) -> str | None:
     """Return the bifrost ``backend_id`` ``tier_name`` would select for ``task_type``.
 
@@ -2232,7 +2193,7 @@ def backend_id_for_tier(
     # 0-token availability probe: identifies which backend the tier WOULD select
     # for the task (delta re-selects with the real token estimate).
     selected = _select_model_for_task(
-        matching_tier.models,
+        input_bound_members(matching_tier.name, matching_tier.models, prompt),
         task_type,
         0,
         bifrost_backends,
@@ -2297,11 +2258,13 @@ def credential_withheld_rung(
     bifrost_backends = _load_bifrost_endpoints()
     blocked = quota_blocked_backend_refs(quota_state)
     for tier in _tier_order_from_contract(config, entry):
-        if backend_id_for_tier(tier.name, task_type) is not None:
+        if backend_id_for_tier(tier.name, task_type, prompt="") is not None:
             # The tier serves this task class today. Nothing is withheld here,
             # whatever the state of any OTHER backend the tier declares.
             continue
-        relaxed = backend_id_for_tier(tier.name, task_type, require_credential=False)
+        relaxed = backend_id_for_tier(
+            tier.name, task_type, require_credential=False, prompt=""
+        )
         if relaxed is None or relaxed in blocked:
             # Declined for a reason the credential term does not explain (for
             # OMN-20154, a provider quota block the caller's snapshot holds).
@@ -2326,6 +2289,7 @@ def sibling_backend_available_in_tier(
     tier_name: str,
     task_type: str,
     exclude_backend_refs: frozenset[str],
+    prompt: str,
 ) -> str | None:
     """Return the ``backend_ref`` of an untried sibling backend in ``tier_name``.
 
@@ -2367,7 +2331,7 @@ def sibling_backend_available_in_tier(
     # identifies which backend the tier WOULD select excluding the failed
     # backend(s); the real re-route re-selects with the actual token estimate.
     selected = _select_model_for_task(
-        matching_tier.models,
+        input_bound_members(matching_tier.name, matching_tier.models, prompt),
         task_type,
         0,
         bifrost_backends,
@@ -2683,6 +2647,17 @@ def build_routing_exclusion_report(
         if tier_reason is not None:
             candidates.append(
                 ModelRoutingCandidateExclusion(tier_name=tier.name, reason=tier_reason)
+            )
+            continue
+
+        if tier.models and not input_bound_members(
+            tier.name, tier.models, request.prompt
+        ):
+            candidates.append(
+                ModelRoutingCandidateExclusion(
+                    tier_name=tier.name,
+                    reason=EnumRoutingExclusionReason.TIER_INPUT_BOUND_EXCEEDED,
+                )
             )
             continue
 
@@ -3141,6 +3116,8 @@ def delta(
             ):
                 continue
 
+            bounded_models = input_bound_members(tier.name, tier.models, request.prompt)
+
             if requested_backend_ref is not None:
                 # Caller pin precedence is exact and intentionally bypasses
                 # ``use_for`` / task model overrides.  Endpoint, secret, context,
@@ -3149,7 +3126,7 @@ def delta(
                 selected = next(
                     (
                         model
-                        for model in tier.models
+                        for model in bounded_models
                         if model.backend_ref == requested_backend_ref
                         and model.backend_ref not in excluded_backend_refs
                         and estimated_tokens <= model.max_context_tokens
@@ -3163,7 +3140,7 @@ def delta(
                 )
             else:
                 selected = _select_model_for_task(
-                    tier.models,
+                    bounded_models,
                     task_type,
                     estimated_tokens,
                     bifrost_backends,

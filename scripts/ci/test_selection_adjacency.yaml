@@ -67,6 +67,19 @@ path_triggered_selected_paths:
 node_scoped_modules:
   - nodes
 
+# A diff whose files all lie outside src/ and tests/ and match data_only_globs (a ticket contract, a
+# markdown file) reaches no test directory and used to take the full suite as no_narrowable_selection.
+# With data_only_selection_enabled it selects the always set plus the tests that read the files: a test
+# whose text spells the file or enumerates its directory (through an imported helper too), and the
+# readers data_reader_overrides names (data glob -> test files) for a reader the text cannot show. Any
+# other unmatched file keeps the full escalation. The rule changes what a pull request runs, so it stays
+# off until the change that turns it on.
+data_only_selection_enabled: false
+data_only_globs:
+  - contracts/OMN-*.yaml
+  - "*.md"
+data_reader_overrides: {}
+
 # Test infrastructure — any change forces the full suite.
 test_infrastructure_paths:
   # OMN-19998: CI changes invalidate narrowing even in a mixed code diff.

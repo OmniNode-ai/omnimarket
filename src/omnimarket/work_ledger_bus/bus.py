@@ -42,6 +42,9 @@ from omnimarket.lab_work.bus import _bytes, _subscribe, _uuid_or_none
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
 )
+from omnimarket.models.topic_provision.model_writer_topics_template import (
+    ModelWriterTopicsTemplate,
+)
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
@@ -141,13 +144,10 @@ def load_work_ledger_append_topics() -> ModelWorkLedgerAppendTopics:
     published = {
         entry["event_type"]: entry["topic"] for entry in contract["published_events"]
     }
-    writer = contract["writer_topics"]
+    writer = ModelWriterTopicsTemplate.model_validate(contract["writer_topics"])
     return ModelWorkLedgerAppendTopics(
-        writer_command_topic_template=(
-            f"onex.{writer['kind']}.{writer['producer']}."
-            f"{writer['name_prefix']}{{principal}}.v{writer['version']}"
-        ),
-        writer_principal_pattern=writer["principal_pattern"],
+        writer_command_topic_template=writer.topic_template(),
+        writer_principal_pattern=writer.principal_pattern,
         command=dispatch["command_topic"],
         success=dispatch["terminal_events"]["success"],
         failure=dispatch["terminal_events"]["failure"],

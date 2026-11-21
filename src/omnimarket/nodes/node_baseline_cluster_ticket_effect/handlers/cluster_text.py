@@ -22,6 +22,10 @@ AC1_TEMPLATE = (
     "- [ ] AC1: the tests of cluster {cluster} in {repo} pass on dev"
     " -- falsifier: run the cluster's test module on dev and read it fail"
 )
+AC2_TEMPLATE = (
+    "- [ ] AC2: integrated: the cluster's tests pass on the dev lane"
+    " -- falsifier: run the cluster's test module on the dev lane and read the result back"
+)
 
 
 def ticket_description(
@@ -49,6 +53,7 @@ def ticket_description(
         ACCEPTANCE_HEADER,
         "",
         AC1_TEMPLATE.format(cluster=request.cluster, repo=request.repo),
+        AC2_TEMPLATE,
     ]
     return "\n".join(lines) + "\n"
 
