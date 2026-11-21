@@ -30,6 +30,7 @@ class EnumMemoryPilotBackend(StrEnum):
     IN_MEMORY = "in_memory"
     LEXICAL_LAB = "lexical_lab"
     COGNEE = "cognee"
+    GRAPHITI = "graphiti"
 
 
 class EnumMemoryPilotStatus(StrEnum):
@@ -181,6 +182,9 @@ BACKEND_REQUIREMENTS: Final[
     EnumMemoryPilotBackend.COGNEE: ModelBackendRequirements(
         chat=True, embeddings=True, ingest_batch=True, storage_root=True, answerer=False
     ),
+    EnumMemoryPilotBackend.GRAPHITI: ModelBackendRequirements(
+        chat=True, embeddings=True, ingest_batch=False, storage_root=True, answerer=True
+    ),
 }
 
 
@@ -212,6 +216,11 @@ class ModelMemoryPilotOverlay(BaseModel):
     cognee_site_packages: Path | None = None
     #: The daily run's settings; absent for a node that only serves ingest and query requests.
     run: ModelMemoryPilotRunSettings | None = None
+    lab_max_in_flight: int | None = Field(default=None, gt=0)
+    #: An import root appended to the END of sys.path so the optional Graphiti package is found.
+    graphiti_site_packages: Path | None = None
+    graphiti_chunk_chars: int | None = Field(default=None, gt=0)
+    graphiti_num_results: int | None = Field(default=None, gt=0)
 
     @field_validator("telemetry_disabled")
     @classmethod
@@ -245,6 +254,15 @@ class ModelMemoryPilotOverlay(BaseModel):
             self.storage_root is None or not self.storage_root.is_absolute()
         ):
             raise ValueError(f"{name} needs an absolute storage_root")
+        if self.backend is EnumMemoryPilotBackend.GRAPHITI:
+            if self.lab_max_in_flight is None:
+                raise ValueError(
+                    "graphiti needs lab_max_in_flight (how many model calls it may hold open on the shared lab model)"
+                )
+            if self.graphiti_chunk_chars is None or self.graphiti_num_results is None:
+                raise ValueError(
+                    "graphiti needs graphiti_chunk_chars and graphiti_num_results"
+                )
         return self
 
     def endpoints(self) -> tuple[ModelLabEndpoint, ...]:

@@ -14,7 +14,7 @@ import hashlib
 import json
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
@@ -38,6 +38,7 @@ from omnimarket.nodes.node_memory_pilot_effect.handlers.frozen_pilot import (
 from omnimarket.nodes.node_memory_pilot_effect.handlers.handler_memory_pilot import (
     LoggingFailureRecorder,
     _make_cognee,
+    _make_graphiti,
 )
 from omnimarket.nodes.node_memory_pilot_effect.handlers.lab_answerer import (
     LabChatAnswerer,
@@ -57,6 +58,7 @@ from omnimarket.nodes.node_memory_pilot_effect.handlers.result_file_sink import 
     FileResultSink,
 )
 from omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot import (
+    EnumMemoryPilotBackend,
     ModelMemoryPilotDocument,
     ModelMemoryPilotOverlay,
 )
@@ -355,8 +357,12 @@ class HandlerMemoryPilotRun:
                 / str(request.correlation_id)
             }
         )
-        factory = self._candidate_factory or _make_cognee
-        candidate_backend = factory(run_overlay, prompt)
+        if self._candidate_factory is not None:
+            candidate_backend = self._candidate_factory(run_overlay, prompt)
+        elif overlay.backend is EnumMemoryPilotBackend.GRAPHITI:
+            candidate_backend = _make_graphiti(run_overlay, answerer, prompt)
+        else:
+            candidate_backend = _make_cognee(run_overlay, prompt)
         dataset = run.dataset
 
         async def baseline_arm() -> list[ModelQuestionTrial]:
@@ -387,7 +393,20 @@ class HandlerMemoryPilotRun:
             )
             return trials, seconds
 
-        if run.parallel_arms:
+        try:
+            return await self._both_arms(run.parallel_arms, baseline_arm, candidate_arm)
+        finally:
+            closer = getattr(candidate_backend, "close", None)
+            if closer is not None:
+                await closer()
+
+    async def _both_arms(
+        self,
+        parallel: bool,
+        baseline_arm: Callable[[], Awaitable[list[ModelQuestionTrial]]],
+        candidate_arm: Callable[[], Awaitable[tuple[list[ModelQuestionTrial], float]]],
+    ) -> tuple[list[ModelQuestionTrial], list[ModelQuestionTrial], float]:
+        if parallel:
             gathered = await asyncio.gather(
                 baseline_arm(), candidate_arm(), return_exceptions=True
             )

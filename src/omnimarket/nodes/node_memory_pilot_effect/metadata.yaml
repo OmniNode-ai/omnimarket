@@ -3,7 +3,7 @@
 ---
 name: node_memory_pilot_effect
 version: 1.0.0
-description: Memory product pilot (stage one, Cognee) behind a backend protocol, in-memory by default, on a frozen bar and lab models only.
+description: Memory product pilot (stage one Cognee, stage two Graphiti, same bar) behind a backend protocol, in-memory by default, on a frozen bar and lab models only.
 omnibase_core_compat: '>=0.47.53,<1.0.0'
 pack: context
 node_role: effect
