@@ -6,6 +6,7 @@ These are data only. The SQLite adapter applies them through its recorded store
 steps, so readers of an initialized store do not acquire a write transaction.
 """
 
+import functools
 import hashlib
 import logging
 import sqlite3
@@ -424,6 +425,26 @@ def _recompute_for_rule(rule: str) -> Callable[[sqlite3.Connection], None]:
     return apply
 
 
+@functools.cache
+def _warn_manifest_unloaded() -> None:
+    """Said once per process, not on every connection a reader opens."""
+    logging.getLogger(__name__).warning(
+        "the pricing manifest did not load, so stored run savings are read as they are, not recomputed"
+    )
+
+
+def _manifest_loads() -> bool:
+    """Whether the manifest on disk loads now. The recompute prices each run from it (resolve_baseline reads it
+    uncached), so a file that went after this process cached its table would fail the recompute and the open."""
+    from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
+
+    try:
+        ModelPricingTable.from_yaml()
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def pending_local_run_steps(
     conn: sqlite3.Connection, recorded: Callable[[sqlite3.Connection, str], bool]
 ) -> list[tuple[str, Callable[[sqlite3.Connection], None], str]]:
@@ -431,10 +452,13 @@ def pending_local_run_steps(
     pending = [step for step in LOCAL_RUN_STORE_STEPS if not recorded(conn, step[0])]
     rule = run_savings_rule_step()
     if rule is None:
-        logging.getLogger(__name__).warning(
-            "the pricing manifest did not load, so stored run savings are read as they are, not recomputed"
-        )
-    elif not recorded(conn, rule):
+        _warn_manifest_unloaded()
+    elif recorded(conn, rule):
+        pass
+    elif not _manifest_loads():
+        # Checked only when the recompute is pending, so an open with nothing to do reads no file.
+        _warn_manifest_unloaded()
+    else:
         pending.append(
             (
                 rule,

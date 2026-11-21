@@ -16,7 +16,9 @@ Failure modes, each with a test below:
   R4  the recorded cost columns are rewritten
   R5  a store that cannot be written fails to open instead of being read as it is
   R6  a reverted rule or price change is not recomputed (an earlier digest is still recorded)
-  R7  a manifest that cannot be loaded breaks the open, or records a recompute against the empty fallback table
+  R7  a manifest that cannot be loaded breaks the open, or records a recompute against the empty fallback table;
+      R7b the same for a manifest that goes after the process cached it
+  R8  a manifest version change leaves the stored manifest version stale
 
 The model a run is priced by reaches its saving only through priced_spend: whether the manifest lists the model, and
 whether it lists it free while the run cost money. Where the alias and the model are both paid, the two orders give the
@@ -39,6 +41,7 @@ from omnibase_infra.models.pricing import (
 )
 
 from omnimarket import pricing
+from omnimarket.models import model_local_install_schema as schema
 from omnimarket.nodes.node_projection_delegation.handlers import handler_run_savings
 from omnimarket.projection import sqlite_database, sqlite_metering_summary
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
@@ -89,6 +92,13 @@ class _Manifest:
         entry = data["models"][model]
         for rate in rates:
             entry[rate] = entry[rate] * factor
+        self.path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+        self._reload()
+
+    def reversion(self, version: str) -> None:
+        """Move the manifest's schema_version and nothing else."""
+        data = yaml.safe_load(self._text)
+        data["schema_version"] = version
         self.path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
         self._reload()
 
@@ -288,7 +298,7 @@ def test_recompute_savings_a_reverted_price_change_recomputes_again(
 
 
 def test_recompute_savings_a_manifest_that_cannot_load_leaves_the_store_as_it_is(
-    tmp_path: Path, manifest: _Manifest
+    tmp_path: Path, manifest: _Manifest, caplog: pytest.LogCaptureFixture
 ) -> None:
     """R7: with no manifest, the store still opens, keeps its savings and records no recompute for the empty table."""
     path = _earlier_store(
@@ -299,19 +309,65 @@ def test_recompute_savings_a_manifest_that_cannot_load_leaves_the_store_as_it_is
     assert priced is not None
     recorded = _recorded_rule_steps(path)
     manifest.remove()
+    schema._warn_manifest_unloaded.cache_clear()
+    caplog.set_level(logging.WARNING, logger=schema.__name__)
+    _open(path)
     _open(path)
     assert _saving_and_cost(path)[0] == priced
     assert _recorded_rule_steps(path) == recorded
+    unloaded = [
+        record
+        for record in caplog.records
+        if record.name == schema.__name__ and "did not load" in record.getMessage()
+    ]
+    assert len(unloaded) == 1  # once per process, not once per connection
     manifest.restore()
     _open(path)
     assert _saving_and_cost(path)[0] == priced
     assert _recorded_rule_steps(path) == recorded
 
 
+def test_recompute_savings_a_manifest_gone_after_it_was_cached_leaves_the_store_as_it_is(
+    tmp_path: Path, manifest: _Manifest
+) -> None:
+    """R7b: the process cached a good manifest, then the file went (an upgrade under a running process). A store with
+    the recompute pending still opens, keeps its saving and records no step, and recomputes once the file is back."""
+    path = _earlier_store(
+        tmp_path, model=_PAID_MODEL, alias=_FREE_ALIAS, cost_usd=_PAID_COST
+    )
+    pricing._load_table()  # the cached table this process priced from
+    manifest.path.unlink()  # gone on disk, still cached in the process
+    _open(path)
+    assert _saving_and_cost(path)[0] is None  # as the earlier build left it
+    assert _recorded_rule_steps(path) == []
+    manifest.restore()
+    _open(path)
+    assert _saving_and_cost(path)[0] == _expected(path)
+
+
+def test_recompute_savings_a_manifest_version_change_recomputes(
+    tmp_path: Path, manifest: _Manifest
+) -> None:
+    """R8: a manifest whose version moves with no rate change re-prices once more, so the stored manifest version
+    each saving reports follows the manifest."""
+    path = _earlier_store(
+        tmp_path, model=_PAID_MODEL, alias=_FREE_ALIAS, cost_usd=_PAID_COST
+    )
+    _open(path)
+    manifest.reversion("9.9.9")
+    _open(path)
+    with sqlite3.connect(path) as conn:
+        version = conn.execute(
+            "SELECT savings_pricing_manifest_version FROM delegation_events WHERE correlation_id = 'aliased'"
+        ).fetchone()[0]
+    assert version == "9.9.9"
+
+
 def test_recompute_savings_runs_once_per_change(tmp_path: Path) -> None:
-    """R3: with nothing changed, a second open recomputes nothing."""
+    """R3: the first open recomputes; with nothing changed, a second open recomputes nothing."""
     path = _earlier_store(tmp_path)
     _open(path)
+    assert _saving_and_cost(path)[0] == _expected(path)  # the first open did recompute
     with sqlite3.connect(path) as conn:
         conn.execute(
             "UPDATE delegation_events SET modelled_savings_usd = ? WHERE correlation_id = 'aliased'",
