@@ -172,6 +172,7 @@ def test_the_contract_names_the_topics_the_chain_uses() -> None:
     assert CONTRACT["node_type"] == "orchestrator"
     assert CONTRACT["terminal_event"] == RUN_TOPIC
     assert set(CONTRACT["event_bus"]["subscribe_topics"]) == {
+        ROUTES["host_hygiene.run_requested"],
         READ_TOPIC,
         FAILED_TOPIC,
         TICK_TOPIC,
