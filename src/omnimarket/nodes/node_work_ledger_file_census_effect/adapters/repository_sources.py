@@ -106,7 +106,14 @@ class YamlRatchetStore:
             current = {}
         for repository, files in current.items():
             merged[repository] = min(files, merged.get(repository, files))
-        body = yaml.safe_dump({"ratchet": dict(sorted(merged.items()))}, sort_keys=True)
+        data: dict[str, object] = {"ratchet": dict(sorted(merged.items()))}
+        try:
+            rows = yaml.safe_load(self._path.read_text(encoding="utf-8")).get("files")
+        except (OSError, yaml.YAMLError, AttributeError):
+            rows = None
+        if rows:
+            data["files"] = rows
+        body = yaml.safe_dump(data, sort_keys=True)
         temporary = self._path.with_name(f".{self._path.name}.{os.getpid()}.tmp")
         try:
             temporary.write_text(header + body, encoding="utf-8")
@@ -123,3 +130,65 @@ class InMemoryRatchetStore:
         if self._table is None:
             raise OSError("ratchet file missing")
         return dict(self._table)
+
+
+class YamlFileBaselineStore:
+    """``{repository: {path: hits}}`` in the ``files`` table of the ratchet file, beside its ``ratchet`` table."""
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+
+    def read(self) -> dict[str, dict[str, int]]:
+        data = yaml.safe_load(self._path.read_text(encoding="utf-8"))
+        table = data.get("files") if isinstance(data, dict) else None
+        if not isinstance(table, dict) or not all(
+            isinstance(rows, dict)
+            and all(isinstance(v, int) and v > 0 for v in rows.values())
+            for rows in table.values()
+        ):
+            raise ValueError("ratchet file has no table of per-file counts")
+        return {
+            str(repo): {str(path): hits for path, hits in rows.items()}
+            for repo, rows in table.items()
+        }
+
+    def write(self, table: Mapping[str, Mapping[str, int]], header: str) -> None:
+        """Lower, never raise: a row is the lower of the table's and the file's, and a file the table lacks is dropped.
+
+        A path the file on disk lacks is never added, so a run that read the table before another run
+        lowered it cannot raise a row back. The ``ratchet`` table is kept as it is. The file is replaced
+        whole, so a write that dies midway leaves the earlier file in place.
+        """
+        current = self.read()
+        merged: dict[str, dict[str, int]] = {}
+        for repository, rows in current.items():
+            kept = table.get(repository, {})
+            merged[repository] = {
+                path: min(hits, kept[path])
+                for path, hits in sorted(rows.items())
+                if path in kept and kept[path] > 0
+            }
+        counts = yaml.safe_load(self._path.read_text(encoding="utf-8")).get(
+            "ratchet", {}
+        )
+        body = yaml.safe_dump({"files": merged, "ratchet": counts}, sort_keys=True)
+        temporary = self._path.with_name(f".{self._path.name}.{os.getpid()}.tmp")
+        try:
+            temporary.write_text(header + body, encoding="utf-8")
+            os.replace(temporary, self._path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+class InMemoryFileBaselineStore:
+    def __init__(self, table: Mapping[str, Mapping[str, int]] | None) -> None:
+        self._table = (
+            None
+            if table is None
+            else {repo: dict(rows) for repo, rows in table.items()}
+        )
+
+    def read(self) -> dict[str, dict[str, int]]:
+        if self._table is None:
+            raise OSError("baseline file missing")
+        return {repo: dict(rows) for repo, rows in self._table.items()}

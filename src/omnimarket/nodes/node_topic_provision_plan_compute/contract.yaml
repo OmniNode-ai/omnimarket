@@ -16,6 +16,10 @@
 #   profile_and_manifest - profile match AND the contract name is in the lane
 #                          manifest.
 #
+# A loaded contract that declares a writer_topics template (kind, producer, name_prefix,
+# version, principal_pattern) also provisions one writer topic per declared service login
+# (service_writer_topics), named by the same template the work ledger serve subscribes with.
+#
 # This node deletes nothing and creates nothing: it only decides which topics
 # to provision. The decision is a pure function of the request.
 name: "node_topic_provision_plan_compute"
