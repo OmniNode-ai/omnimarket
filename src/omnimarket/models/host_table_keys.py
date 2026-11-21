@@ -57,6 +57,16 @@ class ModelHostTableKeysDocument(_Frozen):
         return self
 
 
+class ModelHostTableKeysIngestResult(_Frozen):
+    """The outcome of one ingest."""
+
+    outcome: Literal["written", "ignored"]
+    key: str
+    digest: str
+    hosts: int
+    admitted: int
+
+
 class ModelHostTableKeysReading(_Frozen):
     """The state of a read of the host table keys."""
 
