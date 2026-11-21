@@ -15,9 +15,45 @@ from __future__ import annotations
 from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
 
-from omnimarket.pricing import _load_table
+from omnibase_core.enums.enum_tier_cost_type import EnumTierCostType
 
-__all__ = ["priced_spend"]
+from omnimarket.pricing import _load_table, resolve_tier_cost
+
+__all__ = ["historical_unpriced_zero", "priced_spend"]
+
+
+def historical_unpriced_zero(
+    amount: object, source: object, tier: object, *models: object
+) -> bool:
+    """True for a stored zero that no price stood behind. Never reprices a run.
+
+    A run is free when its tier is declared free_local by the routing registry,
+    its model id ends in ":free", or the pricing manifest prices its model (a
+    declared zero included). A charged amount or a recorded cost source is
+    served as stored, and so is a row that records no tier or names no model,
+    since nothing in it shows a priced cloud call. Only a zero on a recorded
+    non-free tier with none of those is unknown.
+    """
+    tier_name = str(tier or "").strip().casefold()
+    if source not in (None, "", "no_cost_model") or not tier_name:
+        return False
+    cost = resolve_tier_cost(tier_name)
+    if cost is None or cost.cost_type is EnumTierCostType.FREE_LOCAL:
+        return False
+    if amount is None or isinstance(amount, bool):
+        return False
+    try:
+        if Decimal(str(amount)) != 0:
+            return False
+    except (InvalidOperation, ValueError):
+        return False
+    name = next(
+        (str(m).strip() for m in models if m is not None and str(m).strip()), ""
+    )
+    if not name or name.casefold().endswith(":free"):
+        return False
+    table = _load_table()
+    return table.get_entry(name) is None and table.get_entry(name.lower()) is None
 
 
 def priced_spend(row: Mapping[str, object]) -> Decimal | None:
