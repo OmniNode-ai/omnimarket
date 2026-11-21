@@ -38,3 +38,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/test_omn25861_usage_backends_writer.py -q -p no:randomly --no-cov
     cwd: "${OMNI_HOME}/omnimarket"
+- id: dod-omn25861-integration-proof
+  description: 'Local Done gate only, so it binds no criterion here: on a lab host the usage backend tests run at the pushed head through onex lab-work (the served local-store row, two local delegate runs, the writer under each 0004 column state). The real-Postgres cases are left out because they skip where no server is configured, which would pass without proving anything; hosted CI runs them.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25861 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/projection/test_omn25861_usage_backends.py tests/unit/nodes/node_delegate_skill_orchestrator/test_omn25861_local_dispatch_usage_backend.py tests/test_omn25861_usage_backends_writer.py -q -p no:randomly --no-cov
+    cwd: .
