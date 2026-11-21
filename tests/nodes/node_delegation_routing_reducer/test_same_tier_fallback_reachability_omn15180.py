@@ -120,9 +120,9 @@ def test_default_unpinned_selection_still_prefers_local_coder() -> None:
     """Regression (CodeRabbit-requested assert): registering local-coder-mlx
     does NOT change the default first-choice backend for code_generation --
     local-coder (declared first) still wins because it is the first eligible backend."""
-    first_tier = first_eligible_tier("code_generation")
+    first_tier = first_eligible_tier("code_generation", prompt="")
     assert first_tier == "local"
-    assert backend_id_for_tier("local", "code_generation") == "local-coder"
+    assert backend_id_for_tier("local", "code_generation", prompt="") == "local-coder"
 
 
 @pytest.mark.unit
@@ -134,7 +134,7 @@ def test_code_generation_sibling_is_never_a_rung_no_lane_binds() -> None:
     this test checks the actual packaged contract for unbindable candidates.
     """
     sibling = sibling_backend_available_in_tier(
-        "local", "code_generation", frozenset({"local-coder"})
+        "local", "code_generation", frozenset({"local-coder"}), prompt=""
     )
 
     assert sibling is None or sibling in LANE_BOUND_LOCAL_BACKENDS, (
@@ -162,7 +162,9 @@ def test_retired_backend_is_never_offered_as_a_sibling() -> None:
             ),
         ):
             assert (
-                sibling_backend_available_in_tier("local", task_type, excluded)
+                sibling_backend_available_in_tier(
+                    "local", task_type, excluded, prompt=""
+                )
                 != "local-coder-mlx"
             )
 
@@ -174,6 +176,9 @@ def test_local_tier_sibling_chain_terminates_after_its_live_backends() -> None:
     the chain ends at a real boundary rather than dangling on a retired entry.
     """
     sibling = sibling_backend_available_in_tier(
-        "local", "code_generation", frozenset({"local-coder", "local-fixture-sibling"})
+        "local",
+        "code_generation",
+        frozenset({"local-coder", "local-fixture-sibling"}),
+        prompt="",
     )
     assert sibling is None
