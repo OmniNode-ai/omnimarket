@@ -78,12 +78,17 @@ class _Manifest:
         self.path.write_text(self._text, encoding="utf-8")
         self._reload()
 
-    def reprice(self, model: str, factor: float) -> None:
-        """Multiply one model's input and output rates, as a real price change would."""
+    def reprice(
+        self,
+        model: str,
+        factor: float,
+        rates: tuple[str, ...] = ("input_cost_per_1k", "output_cost_per_1k"),
+    ) -> None:
+        """Multiply one model's rates (both, or the ones named), as a real price change would."""
         data = yaml.safe_load(self._text)
         entry = data["models"][model]
-        entry["input_cost_per_1k"] = entry["input_cost_per_1k"] * factor
-        entry["output_cost_per_1k"] = entry["output_cost_per_1k"] * factor
+        for rate in rates:
+            entry[rate] = entry[rate] * factor
         self.path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
         self._reload()
 
@@ -241,17 +246,19 @@ def test_recompute_savings_an_alias_priced_differently_from_its_model(
     assert _saving_and_cost(path)[0] == expected
 
 
+@pytest.mark.parametrize("rate", ["input_cost_per_1k", "output_cost_per_1k"])
 def test_recompute_savings_a_price_manifest_change_recomputes(
-    tmp_path: Path, manifest: _Manifest
+    tmp_path: Path, manifest: _Manifest, rate: str
 ) -> None:
-    """R2: a real price change in the manifest (the baseline's rates doubled) re-prices the stored saving once more."""
+    """R2: a real price change in the manifest (one of the baseline's rates doubled, the other left alone) re-prices
+    the stored saving once more."""
     path = _earlier_store(
         tmp_path, model=_PAID_MODEL, alias=_FREE_ALIAS, cost_usd=_PAID_COST
     )
     _open(path)
     old_prices = _saving_and_cost(path)[0]
     assert old_prices == _expected(path)
-    manifest.reprice(_baseline_model(), 2.0)
+    manifest.reprice(_baseline_model(), 2.0, rates=(rate,))
     new_prices = _expected(path)
     assert new_prices is not None
     assert new_prices != old_prices  # the change moves this run's saving
