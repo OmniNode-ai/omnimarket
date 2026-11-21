@@ -14,7 +14,7 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 node_type: COMPUTE_GENERIC
 lifecycle: experimental
-runtime_profiles: [main]
+runtime_profiles: []
 
 description: >
   Flags broker topics that nothing produces to or consumes from, and after a second interval and quiet
@@ -26,6 +26,7 @@ handler:
   module: omnimarket.nodes.node_topic_reaper_compute.handlers.handler_topic_reaper
   class: HandlerTopicReaper
   input_model: omnimarket.nodes.node_topic_reaper_compute.models.model_topic_reaper.ModelTopicReaperRequest
+  output_model: omnimarket.nodes.node_topic_reaper_compute.models.model_topic_reaper.ModelTopicReaperResult
 
 handler_routing:
   routing_strategy: operation_match
@@ -38,6 +39,7 @@ handler_routing:
 descriptor:
   node_archetype: compute
   purity: pure
+  runtime_profiles: []
   idempotent: true
   side_effects: []
   timeout_ms: 10000
@@ -54,7 +56,7 @@ output_model:
 # The reaper takes its observation from the caller (the broker reading effects) and declares no bus topic of
 # its own: a topic would need a broker permission row, and the reaper is run in process by its caller.
 runtime_dispatch:
-  external_trigger: true
+  external_trigger: HandlerTopicReaper.handle, called in process by the broker reading effect with the injected clock and the observation
 
 event_bus:
   subscribe_topics: []
@@ -70,7 +72,7 @@ replay:
 
 metadata:
   ticket: OMN-21594
-  transport_type: inmemory
+  transport_type: local
 
 # The reaper lifecycle of hot-loading plan 3.11.9, run by core's FSM transition executor. The age guard reads the
 # injected `interval_elapsed` value, never a clock.

@@ -328,7 +328,7 @@ class HandlerTopicReaper:
                     None,
                 )
             flagged = self._fire(state, TRIGGER_FLAG, {})
-            if flagged is None:  # pragma: no cover - the machine declares the flag
+            if flagged is None:
                 return (
                     record(state, activity_at=activity_at, flagged_at=None, quiet=0),
                     "flag_refused",
