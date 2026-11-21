@@ -57,6 +57,7 @@ descriptor:
   timeout_ms: 600000
   side_effects:
     - the file_sources profile reads the projection's sources and writes the projection JSON atomically where the floor and the fill dispatcher read it; the schedule overlay's state_home, when set, replaces OMNI_HOME as the directory every one of those home-relative paths is read and written under (the runtime's own data volume, because its OMNI_HOME is not writable by the runtime user)
+    - after the run, the projection is published as the work_state floor projection on the snapshot topic node_work_state_projection_effect's contract names, on the bus its publish overlay (ONEX_FLOOR_WORK_STATE_OVERLAY) names; with no such overlay nothing is published, and a bus that refuses is logged and leaves the run and its event intact
 
 input_subscriptions:
   - topic: "onex.intent.platform.runtime-tick.v1"
