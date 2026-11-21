@@ -29,7 +29,10 @@ from pydantic import SecretStr
 from omnimarket.handlers.handler_endpoint_catalog import HandlerEndpointCatalog
 from omnimarket.handlers.handler_endpoint_probe import HandlerModelProbe
 from omnimarket.handlers.routing import byok_provider_backends
-from omnimarket.nodes.node_onex_setup_effect.cli_choices import ask_choices
+from omnimarket.nodes.node_onex_setup_effect.cli_choices import (
+    ask_choices,
+    stored_key_for_unchanged_provider,
+)
 from omnimarket.nodes.node_onex_setup_effect.cli_workflow import run_workflow_cli
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
     KEYLESS_PROVIDERS,
@@ -199,6 +202,7 @@ def _ask_choices(
     endpoint_auth: str | None = None,
     credentials: dict[str, SecretStr] | None = None,
     connection_id: str | None = None,
+    saved: ModelSetupPlan | None = None,
 ) -> tuple[str | None, str | None, str | None]:
     return ask_choices(
         provider,
@@ -210,6 +214,12 @@ def _ask_choices(
         discover=discover_models,
         read_key=_read_key,
         probe=probe_models,
+        default_provider=saved.providers[0].provider
+        if saved is not None and saved.providers
+        else None,
+        stored_key=lambda name, address: stored_key_for_unchanged_provider(
+            saved, name, address
+        ),
     )
 
 
@@ -517,7 +527,7 @@ def setup_command(
             if (
                 ("delegation" in (components or ("delegation",)))
                 and action != "verify"
-                and (provider is not None or saved is None)
+                and (provider is not None or saved is None or action == "configure")
             ):
                 provider, model, url = _ask_choices(
                     provider,
@@ -526,6 +536,7 @@ def setup_command(
                     endpoint_auth=endpoint_auth,
                     credentials=prepared_credentials,
                     connection_id=connection_id,
+                    saved=saved,
                 )
     if (
         not interactive
