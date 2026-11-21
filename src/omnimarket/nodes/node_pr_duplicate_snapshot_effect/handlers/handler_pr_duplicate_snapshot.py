@@ -67,6 +67,10 @@ logger = logging.getLogger(__name__)
 #: names no live lane). Every row type is asked for: a lane's heartbeat is any of its rows, not only its CLAIMs.
 LEDGER_READER: Final[str] = "pr-duplicate-guard-claims"
 LEDGER_WINDOW_HOURS: Final[int] = 168
+#: Seconds the reader subprocess may take for that window. The 168 hour read of 84,000 rows took 20 to 72 seconds on an idle
+#: lab host and 123 to 254 seconds on h051 at a load of 46 (2026-11-21), so the adapter's 120 second default refused three
+#: pull requests in a row with "unchecked".
+LEDGER_READ_TIMEOUT_S: Final[float] = 600.0
 #: Where a deployment's overlay for the guard is found: the roots every node overlay is read from, then the
 #: workspace configuration root's overlays directory.
 OVERLAY_ROOTS_ENV: Final[str] = "ONEX_SKILL_OVERLAY_ROOTS"
@@ -863,7 +867,10 @@ def read_request(
         {} if overlay is None else overlay.shared_catalog_lines
     )
     state = _open_pr_state(repo, watcher_state, moment, open_prs_source)
-    ledger_text = _load_ledger(ledger_reader or SubprocessLedgerRowsReader(os.environ))
+    ledger_text = _load_ledger(
+        ledger_reader
+        or SubprocessLedgerRowsReader(os.environ, timeout_seconds=LEDGER_READ_TIMEOUT_S)
+    )
     where = clone or default_clone_path(repo)
     lane_dir = worktree or Path.cwd()
     dirs = (lane_dir, where)
