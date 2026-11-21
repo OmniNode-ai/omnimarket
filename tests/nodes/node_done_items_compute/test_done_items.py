@@ -14,7 +14,7 @@ from omnimarket.models.done_items import ModelDoneItemsRequest
 from omnimarket.nodes.node_done_items_compute.handlers.handler_done_items import (
     HandlerDoneItems,
 )
-from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
+from omnimarket.events.ledger_row_parser import (
     parse_ledger_row,
 )
 

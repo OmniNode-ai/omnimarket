@@ -16,6 +16,10 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.events.ledger_row_parser import (
+    LedgerRowRefusalError,
+    parse_ledger_row,
+)
 from omnimarket.events.model_ledger_row_event import (
     work_ledger_event_id,
     work_ledger_row_id,
@@ -26,10 +30,6 @@ from omnimarket.nodes.node_projection_done_items.handlers.handler_done_items_wri
 )
 from omnimarket.nodes.node_projection_done_items.ports.done_items_store import (
     SqliteDoneItemsStore,
-)
-from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
-    LedgerRowRefusalError,
-    parse_ledger_row,
 )
 
 pytestmark = pytest.mark.unit

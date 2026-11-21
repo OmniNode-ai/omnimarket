@@ -23,6 +23,9 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.events.ledger_row_parser import (
+    parse_ledger_row,
+)
 from omnimarket.events.model_ledger_row_event import (
     work_ledger_event_id,
     work_ledger_row_id,
@@ -41,9 +44,6 @@ from omnimarket.nodes.node_projection_read_effect.models import (
 )
 from omnimarket.nodes.node_projection_work_ledger.models import (
     ModelWorkLedgerProjectionInbound,
-)
-from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
-    parse_ledger_row,
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.models import ProjectionTableConfig

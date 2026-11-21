@@ -4,7 +4,8 @@
 
 Each work-ledger TERMINAL message (v1 event body or v2 inbound envelope) carries
 the ledger row it came from. The writer re-parses that row, asks the pure fold
-``node_done_items_compute`` which tickets it makes done, and upserts one row per
+(``omnimarket.handlers.done_items_fold``, shared with
+``node_done_items_compute``) which tickets it makes done, and upserts one row per
 done ticket into ``done_items``. A held row is replaced only by a newer done
 event (by done_at, then done_row_id), so a replay or an out-of-order delivery
 leaves the same rows. A TERMINAL that is not done (handed-off, for one) writes
@@ -25,20 +26,18 @@ from urllib.parse import urlsplit
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.events.ledger_row_parser import parse_ledger_row
+from omnimarket.handlers.done_items_fold import fold_done_items
 from omnimarket.models.done_items import ModelDoneItem, ModelDoneItemsRequest
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.models.model_work_ledger_projection_inbound import (
     ModelWorkLedgerProjectionInbound,
 )
-from omnimarket.nodes.node_done_items_compute.handlers import HandlerDoneItems
 from omnimarket.nodes.node_projection_done_items.ports.done_items_store import (
     PostgresDoneItemsStore,
     ProtocolDoneItemsStore,
     SqliteDoneItemsStore,
     StoreValue,
-)
-from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
-    parse_ledger_row,
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.handler_shim import RUNTIME_INJECTED_KEYS
@@ -129,7 +128,7 @@ def _done_items_from_payload(payload: dict[str, Any]) -> tuple[ModelDoneItem, ..
             if isinstance(value := payload.get(key), str) and value
         }
         event = parse_ledger_row(raw_row, **options)
-    return HandlerDoneItems().handle(ModelDoneItemsRequest(events=(event,))).items
+    return fold_done_items(ModelDoneItemsRequest(events=(event,))).items
 
 
 class DoneItemsProjectionWriter(BaseProjectionRunner):
