@@ -10,8 +10,12 @@ only commands and typed outcomes, never the injected environment/diagnostic.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -64,6 +68,17 @@ def test_selected_stack_requirements_and_health(
     commands = []
     sentinel = "planted-stack-private-diagnostic"
     info = {"NCPU": 1, "MemTotal": 256 * 1024 * 1024, "OSType": "linux"}
+    engine_timeouts: list[float] = []
+
+    async def read_engine(timeout_seconds: float) -> tuple[int, str, str]:
+        engine_timeouts.append(timeout_seconds)
+        if case == "terms":
+            return 1, "accept terms " + sentinel, ""
+        return 0, "", "bad " + sentinel if case == "bad-json" else json.dumps(info)
+
+    monkeypatch.setattr(
+        "omnibase_infra.handlers.handler_local_engine_info._read_engine", read_engine
+    )
     services = {
         "worker": {
             "deploy": {
@@ -95,16 +110,7 @@ def test_selected_stack_requirements_and_health(
 
     def transport(self, request):
         commands.append(list(request.argv))
-        if "info" in request.argv:
-            if case == "terms":
-                return ModelSetupCommandResult(
-                    argv=request.argv,
-                    returncode=1,
-                    stdout="",
-                    stderr="accept terms " + sentinel,
-                )
-            raw = "bad " + sentinel if case == "bad-json" else json.dumps(info)
-        elif "config" in request.argv:
+        if "config" in request.argv:
             raw = json.dumps({"services": services})
         elif "ps" in request.argv:
             raw = "\n".join(json.dumps(row) for row in rows)
@@ -119,9 +125,10 @@ def test_selected_stack_requirements_and_health(
         ModelSetupStackRequirementsRequest,
     )
 
-    result = HandlerSetupStackRequirements().handle(
-        ModelSetupStackRequirementsRequest(plan=_plan(tmp_path), services=("worker",))
+    request = ModelSetupStackRequirementsRequest(
+        plan=_plan(tmp_path), services=("worker",)
     )
+    result = HandlerSetupStackRequirements().handle(request)
     assert result.status == expected
     from uuid import uuid4
 
@@ -148,10 +155,33 @@ def test_selected_stack_requirements_and_health(
         "running services must not hide resource or health failures"
     )
     assert sentinel not in result.model_dump_json()
+    assert sentinel not in integrated.model_dump_json()
+    assert engine_timeouts == [20, 20]
     assert not any("up" in cmd or "restart" in cmd for cmd in commands)
     assert not (tmp_path / "workspace").exists()
     if case == "tiny":
+        from omnibase_core.runtime.runtime_local_adapter import LocalRuntimeBusAdapter
+
+        bus = AsyncMock()
+        adapter = LocalRuntimeBusAdapter(
+            handler=HandlerSetupStackRequirements(),
+            handler_name="onex_setup.stack_requirements",
+            input_model_cls=ModelSetupStackRequirementsRequest,
+            output_topic="observations",
+            bus=bus,
+        )
+        asyncio.run(
+            adapter.on_message(
+                SimpleNamespace(value=request.model_dump_json().encode())
+            )
+        )
+        bus.publish.assert_awaited_once_with(
+            "observations", None, result.model_dump_json().encode()
+        )
+        assert engine_timeouts == [20, 20, 20]
         assert result.evidence["resource_basis"] == "selected service reservations only"
+        assert result.evidence["engine_cpus"] == "1.0"
+        assert result.evidence["engine_memory_bytes"] == str(256 * 1024 * 1024)
     (tmp_path / "stack-requirements-evidence.json").write_text(
         json.dumps(
             {
@@ -162,3 +192,28 @@ def test_selected_stack_requirements_and_health(
             indent=2,
         )
     )
+
+
+def test_selected_stack_with_older_infra_reports_install_action(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(
+        sys.modules, "omnibase_infra.handlers.handler_local_engine_info", None
+    )
+    monkeypatch.delitem(
+        sys.modules,
+        "omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_stack_requirements",
+        raising=False,
+    )
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_stack_requirements import (
+        HandlerSetupStackRequirements,
+    )
+
+    def unexpected_command(self, request):
+        pytest.fail(f"Older infra must refuse before executing {request.argv}")
+
+    monkeypatch.setattr(HandlerSetupCommand, "handle", unexpected_command)
+    result = HandlerSetupStackRequirements().observe(_plan(tmp_path), ("worker",))
+    assert result.status == "action_required"
+    assert "omnibase-infra" in result.fix
+    assert "upgrade" in result.fix.lower()
