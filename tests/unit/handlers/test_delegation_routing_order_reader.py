@@ -135,8 +135,14 @@ def _node_order(task_class: str) -> tuple[str, ...]:
 
 @pytest.fixture(autouse=True)
 def _fresh_routing_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The in-process answer loads the reducer's module-level config, so this resets it and monkeypatch restores the earlier value afterwards."""
-    monkeypatch.setattr(routing, "_config", None)
+    """The in-process answer loads the reducer's module-level config, so this resets its four globals together and monkeypatch restores them together afterwards."""
+    for name in (
+        "_config",
+        "_config_binding",
+        "_config_spread_peers",
+        "_config_spread_weights",
+    ):
+        monkeypatch.setattr(routing, name, None)
 
 
 @pytest.fixture(autouse=True)
