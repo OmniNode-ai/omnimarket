@@ -30,6 +30,7 @@ from omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_c
 pytestmark = pytest.mark.unit
 
 NODE = "omnimarket.nodes.node_test_selector_miss_collect_effect"
+TERMINAL_EVENT = "onex.evt.omnimarket.test-selector-collect-completed.v1"
 SLOT = date(2026, 11, 21)
 NOW = datetime(2026, 11, 22, 12, 0, tzinfo=UTC)
 OVERLAY: dict[str, Any] = {
@@ -65,6 +66,18 @@ def test_contract_binds_each_operation_with_the_canonical_signature() -> None:
         assert hints["return"] is getattr(
             importlib.import_module(result_module), result_name
         )
+
+
+def test_contract_publishes_the_collect_result_on_the_declared_terminal_event() -> None:
+    contract = _contract()
+    assert contract["terminal_event"] == TERMINAL_EVENT
+    assert contract["event_bus"]["publish_topics"] == [TERMINAL_EVENT]
+    grants = {
+        (grant["name"], grant["operation"])
+        for entry in contract["broker_acl_grants"]
+        for grant in entry["grants"]
+    }
+    assert (TERMINAL_EVENT, "WRITE") in grants
 
 
 def test_golden_a_night_with_no_gateway_run_records_nothing_and_the_slot_check_alarms() -> (
