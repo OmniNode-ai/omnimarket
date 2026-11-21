@@ -52,6 +52,11 @@ def _contract() -> dict[str, Any]:
     return loaded
 
 
+# Absent on a writer without the narrow path, so this file also runs there.
+_GOAL_FREE_SQL = getattr(writer_module, "_SELECT_GOAL_FREE_SESSION", object())
+_MARK_UNASSIGNED_SQL = getattr(writer_module, "_MARK_UNASSIGNED", object())
+
+
 class _FakeDb:
     """In-memory goal_trace_events, goal_traces and claude_agent_spans."""
 
@@ -70,6 +75,21 @@ class _FakeDb:
             return self._insert(params)
         if query is writer_module._SELECT_SCOPE:
             return self._scope(params[0], set(params[1]))
+        if query is _GOAL_FREE_SQL:
+            return [{"goal_free": self._goal_free(*params)}]
+        if query is _MARK_UNASSIGNED_SQL:
+            record = self.events[(params[0], params[1])]
+            if (
+                record["goal_id"] is None
+                and record["seq"] is None
+                and record["assignment"] == "unassigned"
+                and not record["id_conflict"]
+            ):
+                return []
+            record.update(
+                goal_id=None, seq=None, assignment="unassigned", id_conflict=False
+            )
+            return [{"event_id": params[0]}]
         if query is writer_module._UPDATE_ROW:
             record = self.events[(params[0], params[1])]
             record.update(
@@ -117,6 +137,19 @@ class _FakeDb:
             "id_conflict": False,
         }
         return [{"event_id": params[0], "event_inserted": True}]
+
+    def _goal_free(self, session: str, event_id: str, digest: str) -> bool:
+        in_session = [r for r in self.events.values() if r["session_id"] == session]
+        no_goal = not any(
+            r["raw_goal_id"] is not None
+            or r["goal_id"] is not None
+            or r["kind"] != "hook"
+            for r in in_session
+        )
+        no_other_digest = not any(
+            k[0] == event_id and k[1] != digest for k in self.events
+        )
+        return no_goal and no_other_digest
 
     def _scope(self, session: str | None, goals: set[UUID]) -> list[dict[str, Any]]:
         rows = []
@@ -475,3 +508,96 @@ def test_the_binding_fixture_binds_its_agent_to_the_stamped_goal() -> None:
     plain = to_trace_event(_fixture("PreToolUse.json"))
     assert plain is not None
     assert plain.goal_id is None
+
+
+# ---------------------------------------------------------------- OMN-26152
+
+
+_HOT_SESSION = json.loads(
+    (
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "goal_trace_hot_session"
+        / "recorded_2026-11-20.json"
+    ).read_text("utf-8")
+)["stored_state"]["hot_session"]
+
+
+def _hot_session_shaped_db(events: int = 300) -> _FakeDb:
+    """A session shaped like the recorded one: hook rows only, no goal, all unassigned."""
+    assert _HOT_SESSION["rows_with_goal"] == 0
+    assert set(_HOT_SESSION["kinds"]) == {"hook"}
+    db = _FakeDb()
+    _replay(db, [_hook(f"agent{i % 20}", i, session="hot") for i in range(events)])
+    return db
+
+
+def test_a_goal_less_hook_of_a_goal_free_session_reads_and_folds_no_scope() -> None:
+    """Regression (OMN-26152): the recorded saturated session re-read and re-folded
+    every row of the session for each new hook event; the narrow path reads none."""
+    db = _hot_session_shaped_db()
+    db.statements.clear()
+    result = _replay(db, [_hook("agent3", 1000, session="hot")])[0]
+    assert not any(
+        s.startswith("SELECT event_id, body_digest, kind") for s in db.statements
+    )
+    assert result["scope_skipped"] is True
+    assert result["event_inserted"] is True
+    assert result["rows_upserted"] == 2  # the event, and its own unassigned mark
+    assert result["goal_rows_written"] == 0
+    assert not db.traces
+
+
+def test_the_narrow_path_stores_the_same_rows_as_the_full_fold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    messages = [_hook(f"agent{i % 4}", i, session="hot") for i in range(40)]
+    narrow = _FakeDb()
+    _replay(narrow, messages)
+
+    async def never(self: Any, db: Any, event: Any) -> bool:
+        return False
+
+    monkeypatch.setattr(
+        GoalTraceProjectionWriter, "_is_goal_free_hook", never, raising=False
+    )
+    full = _FakeDb()
+    _replay(full, messages)
+    assert _state(narrow) == _state(full)
+    assert all(
+        (r["goal_id"], r["seq"], r["assignment"], r["id_conflict"])
+        == (None, None, "unassigned", False)
+        for r in narrow.events.values()
+    )
+
+
+def test_a_binding_after_a_goal_free_run_still_re_attaches_every_hook() -> None:
+    db = _hot_session_shaped_db(30)
+    results = _replay(db, [_hook("agent3", 2000, goal=GOAL, session="hot")])
+    assert "scope_skipped" not in results[0]
+    mine = [r for r in db.events.values() if r["agent_key"] == "hot:agent3"]
+    assert mine
+    assert all(r["goal_id"] == GOAL for r in mine)
+
+
+def test_a_redelivery_on_the_narrow_path_changes_nothing() -> None:
+    db = _hot_session_shaped_db(10)
+    message = _hook("agent1", 500, session="hot")
+    first, second = _replay(db, [message, message])
+    assert first["event_inserted"] is True
+    assert second["event_inserted"] is False
+    assert second["rows_upserted"] == 0
+    assert second["scope_skipped"] is True
+
+
+def test_an_id_conflict_leaves_the_narrow_path_for_the_full_fold() -> None:
+    db = _hot_session_shaped_db(5)
+    message = _hook("agent1", 600, session="hot")
+    other_digest = json.loads(json.dumps(message))
+    other_digest["lineage"]["tool_use_id"] = "a-different-body"
+    _replay(db, [message])
+    results = _replay(db, [other_digest])
+    pair = [r for r in db.events.values() if r["event_id"] == message["event_id"]]
+    assert len(pair) == 2
+    assert "scope_skipped" not in results[0]
+    assert all(r["id_conflict"] for r in pair)
