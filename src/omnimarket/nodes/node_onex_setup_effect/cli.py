@@ -482,6 +482,8 @@ def setup_command(
     # stays the one typed result.
     click.echo(LADDER_NOTICE, err=json_output)
     prepared_credentials: dict[str, SecretStr] = {}
+    # A configure re-run with no --provider adds to the saved providers (OMN-23825).
+    added_to: ModelSetupPlan | None = None
     if plan_file is None:
         if compose_file is not None or topology_file is not None:
             if compose_file is None or topology_file is None:
@@ -529,6 +531,8 @@ def setup_command(
                 and action != "verify"
                 and (provider is not None or saved is None or action == "configure")
             ):
+                if provider is None and action == "configure":
+                    added_to = saved
                 provider, model, url = _ask_choices(
                     provider,
                     model,
@@ -538,7 +542,7 @@ def setup_command(
                     connection_id=connection_id,
                     # Only a configure re-run reuses a stored key: a named
                     # --provider can always take a new (rotated) key.
-                    saved=saved if provider is None and action == "configure" else None,
+                    saved=added_to,
                 )
     if (
         not interactive
@@ -586,6 +590,7 @@ def setup_command(
         saved=saved,
         endpoint_auth=endpoint_auth,
         prepared_credentials=prepared_credentials,
+        added_to=added_to,
         connection_id=connection_id,
         native_messages=native_messages,
         compose_file=compose_file,
