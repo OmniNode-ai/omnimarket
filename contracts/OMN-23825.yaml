@@ -61,10 +61,10 @@ dod_evidence:
         check_value: "uv run pytest -q -p no:randomly -k \"help or completed_setup\" tests/unit/cli/test_models_bare_provider_omn23825.py tests/unit/nodes/node_onex_setup_effect/test_setup_rerun_new_provider_omn23825.py"
         cwd: .
   - id: "dod-omn23825-integration-proof"
-    description: "Integration proof and deploy probe: the installed onex CLI, invoked with a bare provider name, prints the onex models add hint."
+    description: "Integration proof and deploy probe: the installed onex CLI, invoked with a bare provider name, exits non-zero and prints the onex models add hint."
     source: manual
     execution_scope: local_done_gate
     checks:
       - check_type: command
-        check_value: "onex models gemini 2>&1 | grep -q \"onex models add gemini\""
+        check_value: "! onex models gemini >/dev/null 2>&1 && grep -qF \"onex models add gemini\" <(onex models gemini 2>&1)"
         cwd: .
