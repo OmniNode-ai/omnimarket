@@ -26,6 +26,7 @@ on:
       - packages/omninode-onex/**
       - src/omnimarket/nodes/node_onex_installer_render_compute/**
       - tests/ci/test_omninode_onex_install_sh_omn25070.py
+      - tests/e2e/test_setup_packaged_journey.py
       - .github/workflows/onex-installer.yml
   workflow_dispatch:
 
@@ -58,6 +59,14 @@ jobs:
           PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
             uvx --python 3.12 --with pytest --with pydantic pytest -o addopts="" --noconftest \
             -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py
+      - name: Run the guide's install line as a customer (no git, no build, only onex and omni-agent)
+        shell: bash
+        run: |
+          wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
+          PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest --with pydantic --with httpx pytest -o addopts="" --noconftest \
+            -p no:cacheprovider -q -rs tests/e2e/test_setup_packaged_journey.py \
+            -k "no_git_install or customer_launchers_only"
 
   linux-arm64:
     runs-on: ubuntu-24.04-arm
@@ -84,6 +93,14 @@ jobs:
           PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
             uvx --python 3.12 --with pytest --with pydantic pytest -o addopts="" --noconftest \
             -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py
+      - name: Run the guide's install line as a customer (no git, no build, only onex and omni-agent)
+        shell: bash
+        run: |
+          wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
+          PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest --with pydantic --with httpx pytest -o addopts="" --noconftest \
+            -p no:cacheprovider -q -rs tests/e2e/test_setup_packaged_journey.py \
+            -k "no_git_install or customer_launchers_only"
 
   macos-arm64:
     runs-on: macos-latest
@@ -110,6 +127,14 @@ jobs:
           PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
             uvx --python 3.12 --with pytest --with pydantic pytest -o addopts="" --noconftest \
             -p no:cacheprovider -q -rs tests/ci/test_omninode_onex_install_sh_omn25070.py
+      - name: Run the guide's install line as a customer (no git, no build, only onex and omni-agent)
+        shell: bash
+        run: |
+          wheel="$(ls "$RUNNER_TEMP"/onex-wheel/omninode_onex-*.whl)"
+          PYTHONPATH="$PWD/src" ONEX_TEST_ONEX_WHEEL="$wheel" ONEX_E2E_REQUIRE_COMPLETE=1 \
+            uvx --python 3.12 --with pytest --with pydantic --with httpx pytest -o addopts="" --noconftest \
+            -p no:cacheprovider -q -rs tests/e2e/test_setup_packaged_journey.py \
+            -k "no_git_install or customer_launchers_only"
 
   macos-intel:
     runs-on: macos-15-intel

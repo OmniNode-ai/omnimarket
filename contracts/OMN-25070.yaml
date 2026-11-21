@@ -53,6 +53,12 @@ requirements:
           gate and a market-side run_by_lane_scripts_kept test -- falsifier: uv run pytest
           tests/ci/test_omninode_onex_package_omn25070.py -k run_by_lane fails when omnimarket-projection-api is removed from,
           or retargeted in, pyproject.toml [project.scripts], or declared by packages/omninode-onex.
+  - id: req-omn25070-no-git-install
+    statement: The guide's install line, run as printed with --no-build into an empty HOME, never calls git, creates no .git directory, builds nothing and gives an onex that runs on each supported platform.
+    acceptance:
+      - id: AC1
+        statement: >-
+          AC1 (as written on the ticket, platforms as amended on 2026-11-18 and 2026-11-19: Apple Silicon macOS, Linux x86_64 and Linux arm64): the guide's install line, run as printed (with its --no-build) into an empty HOME with no UV_NO_BUILD in the environment, never calls git, creates no .git directory and gives an onex that runs, so every distribution of the dependency closure installs from a published wheel; with a build-backend stub that fails the test if invoked and a transitive dependency's newer release published only as a source distribution after the candidate, the line installs that dependency from a wheel or exits non-zero naming it, and a control line without --no-build invokes the stub and fails -- falsifier: uv run pytest tests/e2e/test_setup_packaged_journey.py -q -k no_git_install, on each of those runners (the onex installer workflow runs it on all three with the candidate wheel and ONEX_E2E_REQUIRE_COMPLETE=1).
 evidence_requirements:
   - kind: tests
     description: The package tests; the opt-in install check runs with ONEX_TEST_ONEX_WHEEL set.
@@ -98,4 +104,16 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25070 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_onex_installer_render_compute tests/ci/test_omninode_onex_install_sh_omn25070.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-no-git-install
+    description: >-
+      Builds the candidate wheel at this commit and runs the guide's install line test with ONEX_E2E_REQUIRE_COMPLETE=1, so a missing wheel fails rather than skips. Red while the candidate's pins resolve to a release without the onex setup fix.
+    source: manual
+    binds_ac:
+      - AC1
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: >-
+          sh -c 'd="$(mktemp -d)" && uv build --wheel --out-dir "$d" packages/omninode-onex && ONEX_TEST_ONEX_WHEEL="$(ls "$d"/omninode_onex-*.whl)" ONEX_E2E_REQUIRE_COMPLETE=1 uv run --frozen pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k no_git_install'
         cwd: ${OMNI_HOME}/omnimarket
