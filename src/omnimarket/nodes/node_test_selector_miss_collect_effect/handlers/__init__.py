@@ -8,5 +8,12 @@ from omnimarket.nodes.node_test_selector_miss_collect_effect.handlers.handler_ch
 from omnimarket.nodes.node_test_selector_miss_collect_effect.handlers.handler_collect_nightly import (
     HandlerCollectNightly,
 )
+from omnimarket.nodes.node_test_selector_miss_collect_effect.handlers.handler_publish_attribution_record import (
+    HandlerPublishAttributionRecord,
+)
 
-__all__: list[str] = ["HandlerCheckSlotResult", "HandlerCollectNightly"]
+__all__: list[str] = [
+    "HandlerCheckSlotResult",
+    "HandlerCollectNightly",
+    "HandlerPublishAttributionRecord",
+]

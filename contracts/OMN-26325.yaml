@@ -1,0 +1,96 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-26325
+title: The nightly collect effect publishes one public-safe attribution record per night through the repository gateway node, bound to the nightly run, for the hosted stage check to validate
+summary: Adds the public-safe attribution record model, the publish_attribution_record operation on node_test_selector_miss_collect_effect (a keyed record row, then an idempotent check-run write on the tested head commit through the repository gateway), a public-safety guard and a schedule declared in the node contract on the existing nightly poll. Stacked on the collect effect branch; the pull request base is dev only once that branch merges.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26325-model
+  statement: The public-safe attribution record model is frozen, extra forbid and carries exactly the listed fields.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the public-safe attribution record model is frozen with extra forbid, carries repository, nightly slot date, nightly run id, tested head sha, selector and policy versions, per-class counts (miss, interaction, preexisting, unattributable, incomplete), the pull request record count and the stage entry counted, and rejects any field outside that list -- falsifier: `uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_attribution_record.py -q --no-cov -k record_model`'
+- id: req-omn26325-dedup
+  statement: One record per night through the repository gateway survives reruns, overlap and crashes.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the publish operation writes one record per night through the repository gateway node keyed by repo and nightly slot date, so a rerun over the same night and two concurrent invocations publish one record and a crash between the write and its completion leaves one delivered record after the retry -- falsifier: `uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_attribution_record.py -q --no-cov -k record_dedup`'
+- id: req-omn26325-public-safe
+  statement: A record never names a private repository, host or person.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a record never names a private repository, host or person, and a payload that would is refused with a typed error -- falsifier: `uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_attribution_record.py -q --no-cov -k record_public_safe`'
+- id: req-omn26325-incomplete
+  statement: An incomplete night publishes an incomplete record, a night with no collector result publishes nothing.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: an incomplete night publishes a record that says incomplete and is never counted as a clean night, and a night with no collector result publishes nothing and raises the alarm after the declared lag -- falsifier: `uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_attribution_record.py -q --no-cov -k record_incomplete_night`'
+- id: req-omn26325-schedule
+  statement: The schedule is the existing nightly poll, with no new script.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: the nightly schedule invokes the publish through the existing nightly workflow or a node schedule declared in the node contract and no new script is added -- falsifier: `uv run pytest tests/ci/test_nightly_record_schedule.py -q --no-cov -k schedule`'
+evidence_requirements:
+- kind: tests
+  description: The record, golden chain and schedule tests.
+  command: uv run pytest tests/nodes/node_test_selector_miss_collect_effect tests/ci/test_nightly_record_schedule.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26325-ac1
+  description: The record model has exactly the 14 listed fields, is frozen, rejects an extra field, a malformed sha or run id, a status that disagrees with incomplete_count and an incomplete night that attributes a file.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_attribution_record.py -q --no-cov -k record_model
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn26325-ac2
+  description: 'A rerun, two concurrent invocations, a crash after the write and before completion, a crash after the upsert and before the write and a failed write each leave one check run on the tested head under the keyed name. Mutation: a gateway that always writes fails the concurrent and crash cases.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_attribution_record.py -q --no-cov -k record_dedup
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn26325-ac3
+  description: 'A repository outside the overlay''s public list (also an empty list), a version naming an internal host, an address or a private term raise PublicSafetyError naming the field and never the value, and nothing is stored or written. Mutation: a no-op repository check fails 2 tests.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_attribution_record.py -q --no-cov -k record_public_safe
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn26325-ac4
+  description: 'A night with nine of ten artifacts publishes status incomplete under a non-success conclusion and is not clean; with no collector result nothing is stored or written and the slot check past collector_max_lag_hours raises one alarm. Mutation: dropping the collector-result check fails 2 tests.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_attribution_record.py -q --no-cov -k record_incomplete_night
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn26325-ac5
+  description: The node contract's schedule block names nightly-full-suite.yml, runs collect_nightly then publish_attribution_record from the poller already declared, adds no script, workflow or timer, and the nightly workflow keeps its own triggers.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_nightly_record_schedule.py -q --no-cov -k schedule
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn26325-integration-proof
+  description: Run the node's directory and tests/ci on a lab host at the pushed revision. This local completion proof carries no hosted AC bindings; the hosted runner executes only the focused test_passes checks above, which need no lab host.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26325 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest -p no:randomly tests/nodes/node_test_selector_miss_collect_effect tests/ci/test_nightly_record_schedule.py -q -n 0 --no-cov --refuse-skips
+    cwd: .

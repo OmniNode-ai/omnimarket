@@ -14,3 +14,14 @@ nightly_min_test_files: 2000
 collector_max_lag_hours: 6
 nightly_slot_time_utc: "02:30"
 record_retention_days: 14
+#   record_check_name_prefix the check run that carries a night's public-safe attribution record is named
+#                            <prefix>:<slot date> and is written on the tested head commit.
+#   record_denied_patterns   case-insensitive regular expressions no text field of a published record may match: internal
+#                            host names, addresses, mailboxes and home paths. The overlay's private_terms and
+#                            public_repositories keys carry the deployment's own names.
+record_check_name_prefix: nightly-attribution
+record_denied_patterns:
+  - '\b\d{1,3}(?:\.\d{1,3}){3}\b'
+  - '[^\s@]+@[^\s@]+'
+  - '\b[a-z0-9-]+\.(?:internal|local|lan|corp|intranet|home)\b'
+  - '(?:^|[\s"=])(?:/home/|/users/|~/)'
