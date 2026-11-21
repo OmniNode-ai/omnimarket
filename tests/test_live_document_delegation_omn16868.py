@@ -95,11 +95,11 @@ def _restore_deployed_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.integration
 class TestDocumentTaskTypeResolvesLocal:
     def test_document_first_eligible_tier_is_local(self) -> None:
-        assert first_eligible_tier(DOCUMENT_TASK_TYPE) == "local"
+        assert first_eligible_tier(DOCUMENT_TASK_TYPE, prompt="") == "local"
 
     def test_document_resolves_to_a_local_backend_not_a_paid_one(self) -> None:
-        tier = first_eligible_tier(DOCUMENT_TASK_TYPE)
-        backend_id = backend_id_for_tier(tier, DOCUMENT_TASK_TYPE)
+        tier = first_eligible_tier(DOCUMENT_TASK_TYPE, prompt="")
+        backend_id = backend_id_for_tier(tier, DOCUMENT_TASK_TYPE, prompt="")
         resolved = resolve_delegation_backend(DOCUMENT_TASK_TYPE, backend_id=backend_id)
 
         assert resolved.tier == "local"
@@ -112,8 +112,8 @@ class TestDocumentTaskTypeResolvesLocal:
 
     def test_document_does_not_resolve_to_the_dead_reasoner_slot(self) -> None:
         """.201:8001 (local-reasoner) was removed with GPU1 — OMN-16419."""
-        tier = first_eligible_tier(DOCUMENT_TASK_TYPE)
-        backend_id = backend_id_for_tier(tier, DOCUMENT_TASK_TYPE)
+        tier = first_eligible_tier(DOCUMENT_TASK_TYPE, prompt="")
+        backend_id = backend_id_for_tier(tier, DOCUMENT_TASK_TYPE, prompt="")
         assert backend_id != "local-reasoner"
 
     def test_documentation_is_not_a_substitute_for_document(self) -> None:
@@ -140,14 +140,16 @@ class TestDocumentTaskTypeResolvesLocal:
         """
         assert DOCUMENT_TASK_TYPE != "documentation"
 
-        documentation_tier = first_eligible_tier("documentation")
+        documentation_tier = first_eligible_tier("documentation", prompt="")
         assert documentation_tier is not None, (
             "'documentation' resolves to no tier at all; it declares "
             "local -> cheap_cloud and both must stay reachable"
         )
         # Each class resolves through its OWN declared ladder — reaching a
         # backend that declares THAT task type, never the sibling's.
-        documentation_backend = backend_id_for_tier(documentation_tier, "documentation")
+        documentation_backend = backend_id_for_tier(
+            documentation_tier, "documentation", prompt=""
+        )
         assert documentation_backend, (
             "'documentation' resolved a tier but no backend within it"
         )
