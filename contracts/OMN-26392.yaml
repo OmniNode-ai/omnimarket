@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26392
+title: "omnimarket PR 6479 merges cleanly into dev and its connect deadline tests pass on the merged tree"
+summary: "The pull request's branch is merged with current dev. The one conflicting file, the lab alarm delivery node's contract, takes dev's version, so the pull request no longer carries a change to it. The bus connect deadline tests run on the merged tree. This contract binds AC1 to that test run; AC2 and AC3 are judged from the pull request itself (the diff against the previous head and the Lab comment on the new head)."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26392-merge-with-dev
+    statement: "The pull request has no merge conflict with dev and its own focused tests pass on the merged tree."
+    acceptance:
+      - id: AC1
+        statement: "AC1: omnimarket#6479 has no merge conflict with its base and its bus connect deadline tests pass on the merged tree -- falsifier: `uv run pytest tests/test_bus_connect_deadline.py -q` fails on the merged head, or the pull request reads a merge conflict"
+evidence_requirements:
+  - kind: tests
+    description: "The bus connect deadline and second address tests on the merged tree."
+    command: "uv run pytest tests/test_bus_connect_deadline.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26392-ac1-merged-tree-tests
+    description: "The bus connect deadline and second address tests pass on the head that merges dev."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/test_bus_connect_deadline.py -q --no-cov
+        cwd: .
