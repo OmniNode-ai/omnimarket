@@ -1,0 +1,65 @@
+schema_version: 1.0.0
+ticket_id: OMN-25629
+title: The reducer's guards replay the last 14 days of ledger rows and the logged refusals, and every verdict matches the file judge's
+summary: The work-ledger reducer node gains a window_replay operation and its command form. Every row the live judge accepted in the last N days is re-judged with the ledger as it stood before the row and must be accepted, and every request the serve refused in the same window is re-judged against the ledger at its time and must be refused under the rule name the file judge gave. The command prints differences=<n> and exits non-zero when the list is not empty; a planted guard break shows a non-empty list.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25629-window-replay
+  statement: The reducer's guards replay a trailing window of accepted rows and the window's refused requests, and list every changed verdict or rule name.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: over the last 14 days of rows every accepted row is accepted by the reducer''s guards with the state as of that row, and the difference list is empty -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reducer_compute -k guard_replay_14_days -q'
+  - id: AC2
+    statement: 'AC2: every refused request of the serve log''s window is refused with the same rule name as the file judge gave -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reducer_compute -k refused_request_replay -q'
+  - id: AC3
+    statement: 'AC3: a deliberately altered guard makes the difference list non-empty -- falsifier: the same replay run with the planted guard change prints a non-empty difference list and exits non-zero'
+  - id: AC4
+    statement: 'AC4: integrated: the replay runs on a lab host against the dev bus projection and prints its difference count -- falsifier: the replay command run on h053 prints differences=0 for the window, read from its stdout'
+evidence_requirements:
+- kind: tests
+  description: The window replay tests at the pushed head.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_work_ledger_reducer_compute -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25629-ac1
+  description: The fourteen-day replay over a recorded window comes back with an empty difference list.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reducer_compute -k guard_replay_14_days -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25629-ac2
+  description: Each refused request of the window is refused under the file judge's rule name, judged on the ledger at its time.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reducer_compute -k refused_request_replay -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25629-ac3
+  description: An altered guard makes the list non-empty and the command exits 1.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reducer_compute/test_window_replay.py -k "failing_control or planted_guard" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25629-ac4-integration-proof
+  description: The replay command runs on a lab host over the host's ledger rows for the 14-day window and prints its difference count; the dev bus projection source is not wired, so this reads the host's ledger copy and the check stays red until the real-window differences are resolved.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25629 --kind test -- sh -c 'uv run --frozen python -m omnimarket.nodes.node_work_ledger_reducer_compute --ledger "$REPLAY_LEDGER_FILE" --archive-dir "$REPLAY_LEDGER_ARCHIVE" --days 14 | tee /dev/stderr | grep -q "^differences=0 "'
+    cwd: .
