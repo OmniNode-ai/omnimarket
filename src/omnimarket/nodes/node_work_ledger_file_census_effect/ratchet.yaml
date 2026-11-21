@@ -19,18 +19,9 @@ files:
     contracts/OMN-22777.yaml: 1
     contracts/OMN-25723.yaml: 1
     src/omnimarket/handlers/ledger_row_grammar.py: 1
-    src/omnimarket/handlers/scm/scm_duplicate_guard.py: 2
-    src/omnimarket/handlers/wip_admission_brief_gate.py: 1
-    src/omnimarket/nodes/node_ask_state_effect/contract.yaml: 2
-    src/omnimarket/nodes/node_ask_state_effect/runtime_ask_state.py: 1
     src/omnimarket/nodes/node_branch_claim_check_effect/contract.yaml: 1
-    src/omnimarket/nodes/node_bus_binding_reducer/contract.yaml: 2
     src/omnimarket/nodes/node_canonical_clone_dirty_converge_effect/handlers/handler_canonical_clone_dirty_converge_effect.py: 1
     src/omnimarket/nodes/node_compaction_cost_compute/data/recovery_call_patterns.yaml: 2
-    src/omnimarket/nodes/node_context_source_repo_doctrine_effect/contract.yaml: 1
-    src/omnimarket/nodes/node_dev_runtime_mutation_guard_effect/contract.yaml: 1
-    src/omnimarket/nodes/node_entrypoint_lib_compute/handlers/handler_entrypoint_lib.py: 2
-    src/omnimarket/nodes/node_exception_queue_effect/container/container_exception_queue_effect.py: 1
     src/omnimarket/nodes/node_floor_simple_effect/contract.yaml: 1
     src/omnimarket/nodes/node_friction_rollup_compute/tests/fixtures/recorded_day_unit_output.json: 3
     src/omnimarket/nodes/node_friction_rollup_tick_effect/runtime_friction_rollup_tick.py: 1
@@ -61,8 +52,6 @@ files:
     src/omnimarket/nodes/node_patch_apply_dispatch_effect/runtime_patch_apply_dispatch_cli.py: 2
     src/omnimarket/nodes/node_plans_today_effect/handlers/handler_plans_today.py: 2
     src/omnimarket/nodes/node_pr_duplicate_guard_compute/contract.yaml: 1
-    src/omnimarket/nodes/node_pr_duplicate_snapshot_effect/contract.yaml: 1
-    src/omnimarket/nodes/node_pr_duplicate_snapshot_effect/handlers/handler_pr_duplicate_snapshot.py: 1
     src/omnimarket/nodes/node_private_hosted_minutes_watch_effect/handlers/handler_private_hosted_minutes_watch.py: 2
     src/omnimarket/nodes/node_process_health_effect/contract.yaml: 2
     src/omnimarket/nodes/node_process_health_effect/tests/test_runtime_process_health.py: 4
@@ -87,7 +76,6 @@ files:
     tests/fixtures/session_front_door/session_preflight/overlay.yaml: 11
     tests/fixtures/skill_exec_parity.json: 4
     tests/handlers/bus_binding/fixtures/outbox_refused_guard_rows.json: 7
-    tests/handlers/bus_binding/test_bus_binding_outbox_refused_wired.py: 3
     tests/handlers/claim_index/test_claim_index.py: 8
     tests/handlers/ledger_row_grammar/test_ledger_claim_contract_omn20029.py: 2
     tests/handlers/ledger_row_grammar/test_ledger_grammar_prompt_link_omn18531.py: 1
@@ -101,9 +89,6 @@ files:
     tests/nodes/node_compaction_cost_compute/test_golden_chain_compaction_cost.py: 2
     tests/nodes/node_context_compaction_manifest_compute/test_transcript_jsonl_manifest.py: 3
     tests/nodes/node_context_pack_orchestrator/test_session_source_projection_pack.py: 1
-    tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py: 9
-    tests/nodes/node_entrypoint_lib_compute/test_golden_chain_entrypoint_lib_compute.py: 6
-    tests/nodes/node_exception_queue_effect/test_andon_ledger_holds.py: 1
     tests/nodes/node_factory_floor_compute/fixtures/line_board_2026_11_03/s2_lab_fill_did_nothing/fixture.yaml: 8
     tests/nodes/node_factory_floor_compute/fixtures/line_board_2026_11_03/s2_lab_fill_did_nothing/repaired/fixture.yaml: 13
     tests/nodes/node_factory_floor_compute/fixtures/line_board_2026_11_03/s3_person_blocker_unverified/fixture.yaml: 5
@@ -148,7 +133,6 @@ files:
     tests/nodes/node_session_front_door_compute/test_member_host_mode_receipt.py: 1
     tests/nodes/node_session_resume_compute/test_golden_chain_session_resume_compute.py: 1
     tests/nodes/node_session_resume_compute/test_member_session_resume.py: 2
-    tests/nodes/node_wip_admission_compute/test_brief_gate.py: 2
     tests/nodes/test_file_retention_archive_safety.py: 1
     tests/nodes/test_omn17427_file_retention.py: 3
     tests/nodes/test_ruling_recovery.py: 2
@@ -161,15 +145,9 @@ files:
     tests/test_omn20708_branch_claim_check_handler.py: 1
     tests/test_omn22468_session_files_port.py: 1
     tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py: 5
-    tests/unit/handlers/scm/test_scm_duplicate_guard.py: 4
-    tests/unit/handlers/scm/test_scm_duplicate_guard_gateway_source.py: 1
-    tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py: 2
-    tests/unit/handlers/scm/test_scm_duplicate_guard_stack.py: 1
     tests/unit/handlers/test_work_ledger_roll_boundary.py: 4
-    tests/unit/nodes/node_ask_state_effect/test_handler_ask_state_report.py: 4
     tests/unit/nodes/node_context_source_ledger_effect/test_context_source_ledger.py: 2
     tests/unit/nodes/node_context_source_ledger_effect/test_ledger_fold_memo_omn21099.py: 1
-    tests/unit/nodes/node_context_source_repo_doctrine_effect/test_context_source_repo_doctrine.py: 1
     tests/unit/nodes/node_context_source_work_state_effect/test_context_source_work_state.py: 1
     tests/unit/nodes/node_dropped_work_audit_scheduled_effect/test_dropped_work_audit_scheduled.py: 1
     tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py: 1
@@ -188,8 +166,7 @@ files:
     tests/unit/nodes/node_work_ledger_copy_effect/test_adapters_work_ledger_copy_effect.py: 1
     tests/unit/nodes/node_work_ledger_file_census_effect/support.py: 6
     tests/unit/nodes/node_work_ledger_reader_effect/test_reader_chain_events.py: 2
-    tests/unit/nodes/test_golden_chain_ask_state.py: 3
     tests/unit/validators/test_ledger_file_census.py: 27
     tests/unit/work_ledger_bus/test_work_ledger_append_cli.py: 1
 ratchet:
-  omnimarket: 186
+  omnimarket: 163

@@ -1,0 +1,74 @@
+schema_version: 1.0.0
+ticket_id: OMN-26328
+title: 'Ledger-file census group 0: its src files read the work ledger through the bus or are left with a stated reason, and their census rows are lowered'
+summary: 'Nine of the twelve group 0 src files stop reading or requiring the ledger file: the wip admission brief gate, the PR duplicate guard (through its snapshot handler), the ask-state report, the exception queue open-stops read, the context-source repo doctrine rulings read, the dev runtime mutation guard grant read, the bus binding guard ports and the entrypoint library env check read through the ledger reader node (ProtocolLedgerRowsReader) or ask for the bus append command instead. Their census rows are lowered with the census node. Three files stay with a stated reason: the row grammar (the governed file name is its rule), the branch claim check parity witness (its job is to compare the file with the database) and the compaction recovery call patterns (a pattern that matches a model call on the file name).'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26328-moved-readers
+    statement: Each moved group 0 file reads ledger rows through the ledger reader node and holds no executable mention of the ledger file name or its path variable, and its ratchet row is lowered with the census node.
+    acceptance:
+      - id: AC1
+        statement: "AC1: after the change the nine moved group 0 files hold no executable reader or writer of the ledger file or its path variable -- falsifier: the census command with --per-file prints a hit for one of those nine files at the pushed head"
+      - id: AC2
+        statement: "AC2: the census ratchet rows of the cleared files are lowered with the census node, no row is raised or added, and the census run exits 0 -- falsifier: git diff origin/dev -- src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml shows a raised or added line, or the census run exits non-zero"
+      - id: AC3
+        statement: "AC3: each moved reader has a test that fails on the old code and passes on the change, and every node test of the group stays green -- falsifier: the focused test commands bound below exit non-zero at the pushed head, or exit zero at the merge base"
+evidence_requirements:
+  - kind: tests
+    description: The moved readers' focused tests pass at the pushed head.
+    command: uv run pytest tests/nodes/node_wip_admission_compute tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/unit/nodes/node_ask_state_effect tests/nodes/node_exception_queue_effect tests/unit/nodes/node_context_source_repo_doctrine_effect tests/nodes/node_dev_runtime_mutation_guard_effect tests/handlers/bus_binding/test_bus_binding_outbox_refused_wired.py tests/nodes/node_entrypoint_lib_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn26328-ac1-census
+    description: 'AC1: the census run over the tree prints no hit for any of the nine moved files and still prints the hits of a file that holds one; at the merge base the census prints a hit for each, so the test fails there.'
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group0_cleared_files.py -q --no-cov
+        cwd: .
+  - id: dod-omn26328-ac2-ratchet
+    description: 'AC2: the ratchet table lists none of the nine cleared files and its count equals its rows; at the merge base it lists each, so the test fails there.'
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group0_cleared_files.py -q --no-cov
+        cwd: .
+  - id: dod-omn26328-ac3-wip-and-guard
+    description: 'AC3: the wip admission gate and the PR duplicate guard read through an injected rows reader, open no ledger file and fail closed on a read error; the selections fail at the merge base.'
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_wip_admission_compute tests/unit/handlers/scm/test_scm_duplicate_guard.py -q --no-cov
+        cwd: .
+  - id: dod-omn26328-ac3-ask-state-and-queue
+    description: 'AC3: the ask-state report and the exception queue holds read through an injected rows reader and fail closed on a read error; the selections fail at the merge base.'
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_ask_state_effect tests/unit/nodes/test_golden_chain_ask_state.py tests/nodes/node_exception_queue_effect -q --no-cov
+        cwd: .
+  - id: dod-omn26328-ac3-doctrine-guard-bus-entrypoint
+    description: 'AC3: the doctrine rulings read, the dev runtime guard grant read, the bus binding guard lane rows and the entrypoint env check use the bus reader or the bus append command; the selections fail at the merge base.'
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_context_source_repo_doctrine_effect tests/nodes/node_dev_runtime_mutation_guard_effect tests/handlers/bus_binding/test_bus_binding_outbox_refused_wired.py tests/nodes/node_entrypoint_lib_compute -q --no-cov
+        cwd: .
+  - id: dod-omn26328-integration-proof
+    description: 'Run the group node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion.'
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26328 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_ask_state_effect tests/unit/nodes/test_golden_chain_ask_state.py tests/nodes/node_branch_claim_check_effect tests/nodes/node_bus_binding_reducer tests/handlers/bus_binding tests/nodes/node_compaction_cost_compute tests/unit/nodes/node_context_source_repo_doctrine_effect tests/nodes/node_dev_runtime_mutation_guard_effect tests/nodes/node_entrypoint_lib_compute tests/nodes/node_exception_queue_effect tests/nodes/node_wip_admission_compute tests/unit/handlers/scm -q --no-cov
+        cwd: .
