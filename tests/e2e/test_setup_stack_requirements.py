@@ -228,7 +228,19 @@ def test_selected_stack_with_older_infra_reports_install_action(
         pytest.fail(f"Older infra must refuse before executing {request.argv}")
 
     monkeypatch.setattr(HandlerSetupCommand, "handle", unexpected_command)
+    # subprocess.run and asyncio's create_subprocess_exec/shell all build a Popen,
+    # so this catches a launch on any path, not only the setup command transport.
+    import subprocess
+
+    launched: list[object] = []
+
+    def unexpected_process(argv, *args, **kwargs):
+        launched.append(argv)
+        pytest.fail(f"Older infra must refuse before launching {argv}")
+
+    monkeypatch.setattr(subprocess, "Popen", unexpected_process)
     result = HandlerSetupStackRequirements().observe(_plan(tmp_path), ("worker",))
+    assert launched == []
     assert result.status == "action_required"
     assert "omnibase-infra" in result.fix
     assert "upgrade" in result.fix.lower()
