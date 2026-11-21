@@ -937,9 +937,9 @@ def _launcher_owners(site: Path) -> dict[str, list[tuple[str, str]]]:
     from importlib import metadata as importlib_metadata
 
     owners: dict[str, list[tuple[str, str]]] = {name: [] for name in CUSTOMER_LAUNCHERS}
-    for dist in importlib_metadata.distributions(path=[str(site)]):
-        from packaging.utils import canonicalize_name
+    from packaging.utils import canonicalize_name
 
+    for dist in importlib_metadata.distributions(path=[str(site)]):
         name = str(canonicalize_name(dist.metadata["Name"]))
         for entry in dist.entry_points:
             if (
