@@ -51,6 +51,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_post_release_dev_bump_omn26315.py -q -p no:randomly --no-cov
     cwd: .
+- id: dod-omn26315-split12-ten-failures
+  description: 'AC3 support: CI Summary needs Tests (Split 12/20) green. The test that reads the fails-on-base checks of the delegation contracts required nine failures while the contracts, after the tenth test was added, require ten; the test and the four contracts that carry the check (OMN-24831, OMN-24851, OMN-24902, OMN-24925) now agree on ten failures and the pinned tree. At the branch head before this change the class had one failing test, and it passes after.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py tests/test_omn24851_contract_checks.py -q -p no:randomly --no-cov -n 0
+    cwd: .
 - id: dod-omn26315-no-workflow-touch
   description: 'The diff against dev touches nothing under .github or .pre-commit-config.yaml (second half of AC3). This item carries no hosted AC binding because it passes at the merge base by construction.'
   source: manual
