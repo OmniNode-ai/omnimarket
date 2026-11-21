@@ -44,6 +44,12 @@ class EnumDodEvidenceGithubOperation(StrEnum):
     LIST_CONTRACT_REPO_MERGED_PRS = "list_contract_repo_merged_prs"
     #: OMN-20886: ``contracts/<TICKET>.yaml`` of ``repo`` at ``commit_sha``.
     READ_REPO_CONTRACT = "read_repo_contract"
+    #: OMN-25366: every merged PR naming the ticket in ANY product clone, whether
+    #: or not that clone's default branch carries a contract for it.
+    LIST_TICKET_MERGED_PRS = "list_ticket_merged_prs"
+    #: OMN-25366: ``contracts/<TICKET>.yaml`` of ``repo`` at the head of its
+    #: default branch; the commit read is returned in ``read_commit_sha``.
+    READ_REPO_DEFAULT_BRANCH_CONTRACT = "read_repo_default_branch_contract"
     #: OMN-20886: the ``repo-evidence / dod-verify`` check runs on ``commit_sha``.
     READ_REPO_EVIDENCE_CHECK_RUNS = "read_repo_evidence_check_runs"
     #: OMN-20917: a PR's head sha, author, labels and title.
@@ -169,6 +175,10 @@ class ModelDodEvidenceGithubLookupResultEvent(BaseModel):
 
     # READ_REPO_CONTRACT (OMN-20886). Always set for that operation.
     repo_contract: ModelRepoContractRead | None = Field(default=None)
+
+    # READ_REPO_DEFAULT_BRANCH_CONTRACT (OMN-25366): the default-branch commit
+    # the contract was read at; empty when the clone or its branch is unreadable.
+    read_commit_sha: str = Field(default="")
 
     # READ_REPO_EVIDENCE_CHECK_RUNS (OMN-20886). ``resolved`` is False when the
     # check runs are unreadable.
