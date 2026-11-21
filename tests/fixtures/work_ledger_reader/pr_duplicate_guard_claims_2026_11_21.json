@@ -34,6 +34,15 @@
       "exit": 0,
       "stdout_rows": 83790,
       "stderr": "READER reader=pr-duplicate-guard-claims query=rows status=ok source=node reason=node-answered-fresh watermark_age_s=16 max_age_s=900 parity=unread matched=83790 file_read=no elapsed_s=25.816"
+    },
+    {
+      "host": "h051",
+      "state": "after-fix-loaded",
+      "recorded_at": "2026-11-21T19:47Z",
+      "exit": 0,
+      "stdout_rows": 83841,
+      "elapsed_s": 253.391,
+      "stderr": "READER reader=pr-duplicate-guard-claims query=rows status=ok source=node reason=node-answered-fresh watermark_age_s=1 max_age_s=900 parity=unread matched=83841 file_read=no elapsed_s=253.391"
     }
   ]
 }

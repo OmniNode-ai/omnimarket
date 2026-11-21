@@ -67,11 +67,13 @@ class ReplayedReader:
         self.recorded = recorded
         self.stdout = "\n".join(stdout)
         self.argvs: list[list[str]] = []
+        self.timeouts: list[object] = []
 
     def __call__(
-        self, argv: list[str], **_kwargs: object
+        self, argv: list[str], **kwargs: object
     ) -> subprocess.CompletedProcess[str]:
         self.argvs.append(argv)
+        self.timeouts.append(kwargs.get("timeout"))
         return subprocess.CompletedProcess(
             argv, self.recorded["exit"], self.stdout, self.recorded["stderr"]
         )
@@ -105,7 +107,9 @@ def use_reader(
     monkeypatch.setattr(
         snapshot_module,
         "SubprocessLedgerRowsReader",
-        lambda environ: SubprocessLedgerRowsReader(environ, run=replay),
+        lambda environ, **kwargs: SubprocessLedgerRowsReader(
+            environ, run=replay, **kwargs
+        ),
     )
     return replay
 
@@ -248,3 +252,24 @@ def test_the_recorder_sees_a_ledger_file_when_one_is_opened(
 
     with pytest.raises(AssertionError):
         assert_no_ledger_file_opened(opened_files)
+
+
+def test_the_guard_waits_for_the_reader_as_long_as_a_loaded_host_needed(
+    world: World,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+    opened_files: list[str],
+) -> None:
+    """The 168 hour read took 253 seconds on h051 under load, and a 120 second wait refused three pull requests as unchecked."""
+    world.lane_branch("src/metrics.py", 15)
+    loaded = record("h051", "after-fix-loaded")
+    replay = use_reader(
+        monkeypatch, ReplayedReader(loaded, [_row(5, "CLAIM", LANE, "mine")])
+    )
+
+    invoke(world.check_args())
+
+    assert loaded["elapsed_s"] > 120
+    assert len(replay.timeouts) == 1
+    timeout = replay.timeouts[0]
+    assert isinstance(timeout, int | float)
+    assert timeout > loaded["elapsed_s"]
