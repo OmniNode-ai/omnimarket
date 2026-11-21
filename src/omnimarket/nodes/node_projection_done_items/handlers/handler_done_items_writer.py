@@ -23,6 +23,7 @@ from typing import Any, TypeVar
 from urllib.parse import urlsplit
 
 import yaml
+from pydantic import ValidationError
 
 from omnimarket.models.done_items import ModelDoneItem, ModelDoneItemsRequest
 from omnimarket.models.model_projection_request import ModelProjectionRequest
@@ -31,6 +32,7 @@ from omnimarket.models.model_work_ledger_projection_inbound import (
 )
 from omnimarket.nodes.node_done_items_compute.handlers import HandlerDoneItems
 from omnimarket.nodes.node_projection_done_items.ports.done_items_store import (
+    PostgresDoneItemsStore,
     ProtocolDoneItemsStore,
     SqliteDoneItemsStore,
     StoreValue,
@@ -39,6 +41,7 @@ from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
     parse_ledger_row,
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
+from omnimarket.projection.error_classification import PoisonEventError
 from omnimarket.projection.handler_shim import RUNTIME_INJECTED_KEYS
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import (
@@ -84,8 +87,30 @@ def _row(item: ModelDoneItem, projected_at: datetime) -> dict[str, StoreValue]:
     }
 
 
+class DoneItemsPayloadRefusedError(PoisonEventError, ValueError):
+    """A TERMINAL message whose ledger row cannot be read: it will never project.
+
+    A poison marker, so the runner routes it to the contract's DLQ and commits
+    its offset instead of retrying it forever; still a ValueError for callers
+    that read the parse failure as one.
+    """
+
+
 def done_items_from_payload(payload: dict[str, Any]) -> tuple[ModelDoneItem, ...]:
-    """The done items one TERMINAL message makes, from the ledger row it carries."""
+    """The done items one TERMINAL message makes, from the ledger row it carries.
+
+    A payload with no ledger row, or a row the ledger parser refuses, raises
+    DoneItemsPayloadRefusedError; a pydantic ValidationError is already poison.
+    """
+    try:
+        return _done_items_from_payload(payload)
+    except ValidationError:
+        raise
+    except ValueError as exc:
+        raise DoneItemsPayloadRefusedError(str(exc)) from exc
+
+
+def _done_items_from_payload(payload: dict[str, Any]) -> tuple[ModelDoneItem, ...]:
     if payload.get("row_schema") == _V2_ROW_SCHEMA:
         inbound = ModelWorkLedgerProjectionInbound.model_validate(payload)
         event = parse_ledger_row(
@@ -158,7 +183,7 @@ class DoneItemsProjectionWriter(BaseProjectionRunner):
             url = binding.resolve_database_url()
             if urlsplit(url).scheme.lower() in SQLITE_SCHEMES:
                 return SqliteDoneItemsStore(sqlite_path_from_dsn(url))
-        return self.db
+        return PostgresDoneItemsStore(self.db)
 
     def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """RuntimeLocal shim: one injected message, one fold, one write."""
@@ -192,10 +217,11 @@ class DoneItemsProjectionWriter(BaseProjectionRunner):
     async def _project_one_message(
         self, data: dict[str, Any], meta: MessageMeta
     ) -> dict[str, Any]:
+        items = done_items_from_payload(data)
         store = self._store()
         await store.connect()
         try:
-            return await self._project(store, data, meta)
+            return await self._project(store, items, meta)
         finally:
             await self._stop_producer()
             await store.close()
@@ -203,29 +229,44 @@ class DoneItemsProjectionWriter(BaseProjectionRunner):
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
-        """Standalone entrypoint: connect, project, report consumed."""
+        """Standalone entrypoint: read the payload, connect, project, report consumed.
+
+        The payload is read before the store is opened, so a message that is not
+        a ledger row goes to the contract's DLQ whether or not the database answers.
+        """
+        items = done_items_from_payload(data)
         store = self._store()
         await store.connect()
         try:
-            await self._project(store, data, meta)
+            await self._project(store, items, meta)
         finally:
             await store.close()
         return True
 
     async def _project(
-        self, store: ProtocolDoneItemsStore, data: dict[str, Any], meta: MessageMeta
+        self,
+        store: ProtocolDoneItemsStore,
+        items: tuple[ModelDoneItem, ...],
+        meta: MessageMeta,
     ) -> dict[str, Any]:
         relation = (
             TABLE if isinstance(store, SqliteDoneItemsStore) else f"{SCHEMA}.{TABLE}"
         )
-        statement = upsert_statement(relation)
         projected_at = datetime.now(UTC)
+        values = {item.ticket: _row(item, projected_at) for item in items}
+        # Every row of one event in one transaction: a ticket written while
+        # another of the same event failed would leave the Done count wrong.
+        returned = await store.apply_rows(
+            upsert_statement(relation),
+            [tuple(row[c] for c in COLUMNS) for row in values.values()],
+        )
+        changed = {str(row["ticket"]) for row in returned}
         written: list[dict[str, Any]] = []
-        for item in done_items_from_payload(data):
-            values = _row(item, projected_at)
-            if not await store.execute(statement, *(values[c] for c in COLUMNS)):
+        # Published only after the event's rows committed.
+        for ticket, row in values.items():
+            if ticket not in changed:
                 continue
-            served = {**values, "projected_at": projected_at.isoformat()}
+            served = {**row, "projected_at": projected_at.isoformat()}
             written.append(served)
             if self._exposure is not None:
                 await self.publish_snapshot_delta(
@@ -242,6 +283,7 @@ class DoneItemsProjectionWriter(BaseProjectionRunner):
 
 __all__ = [
     "COLUMNS",
+    "DoneItemsPayloadRefusedError",
     "DoneItemsProjectionWriter",
     "done_items_from_payload",
     "upsert_statement",

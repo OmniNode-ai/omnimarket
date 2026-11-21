@@ -18,9 +18,13 @@ from urllib.parse import quote_plus
 import asyncpg
 import pytest
 
+from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.nodes.node_projection_done_items.handlers.handler_done_items_writer import (
     DoneItemsProjectionWriter,
     upsert_statement,
+)
+from omnimarket.nodes.node_projection_done_items.ports.done_items_store import (
+    PostgresDoneItemsStore,
 )
 from tests.nodes.node_projection_done_items.test_done_items_projection import (
     DONE1,
@@ -206,33 +210,27 @@ async def test_real_postgres_refuses_a_malformed_row_id() -> None:
         await _teardown(conn)
 
 
-class _AsyncpgDoneItemsStore:
-    """The writer's store port over a real asyncpg connection.
+class _AsyncpgDoneItemsStore(PostgresDoneItemsStore):
+    """The runtime's own Postgres store over a real asyncpg pool.
 
-    The writer opens and closes the store inside its own event loop, so the
-    connection is made in ``connect``. Each query is pointed at the test schema,
-    the same rewrite ``_setup`` applies to the migration.
+    Only the schema name moves to the test schema, the same rewrite ``_setup``
+    applies to the migration, so apply_rows's transaction is the code under test.
     """
 
     def __init__(self, dsn: str) -> None:
-        self._dsn = dsn
-        self._conn: asyncpg.Connection | None = None
-
-    async def connect(self) -> None:
-        self._conn = await asyncpg.connect(self._dsn)
-
-    async def close(self) -> None:
-        if self._conn is not None:
-            await self._conn.close()
-            self._conn = None
+        super().__init__(AsyncpgAdapter(dsn, min_size=1, max_size=2))
 
     async def execute(self, query: str, *params: object) -> list[dict[str, object]]:
-        if self._conn is None:
-            raise RuntimeError("_AsyncpgDoneItemsStore is not connected")
-        rows = await self._conn.fetch(
-            query.replace("omninode_internal.", f"{_SCHEMA}."), *params
-        )
-        return [dict(row) for row in rows]
+        return await super().execute(_in_test_schema(query), *params)
+
+    async def apply_rows(
+        self, statement: str, rows: list[tuple[object, ...]]
+    ) -> list[dict[str, object]]:
+        return await super().apply_rows(_in_test_schema(statement), rows)
+
+
+def _in_test_schema(query: str) -> str:
+    return query.replace("omninode_internal.", f"{_SCHEMA}.")
 
 
 async def _prepare() -> None:
