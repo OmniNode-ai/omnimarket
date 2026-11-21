@@ -86,6 +86,7 @@ SUPPLIED = frozenset(
         "limited_hosts",
         "codex_limited_hosts",
         "auth_expired_hosts",
+        "draining_hosts",
         "readings",
         "escalation_reason",
     }

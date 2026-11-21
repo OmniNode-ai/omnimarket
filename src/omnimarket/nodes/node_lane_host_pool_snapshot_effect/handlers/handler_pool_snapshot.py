@@ -25,6 +25,9 @@ from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
 from omnimarket.models.overlay_keys import ModelLabHostRow
+from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_host_reader import (
+    draining_until_from_tools,
+)
 from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.pool_snapshot_ports import (
     InMemoryHostAccountsSource,
     InMemoryHostAdvertisementSource,
@@ -119,6 +122,10 @@ def build_pool_snapshot(
             refusal = f"advertisement-stale: {int(_age_seconds(ad, read_at))}s > {overlay.advertisement_max_age_seconds}s"
         elif ad.capacity_refusal:
             refusal = f"capacity: {ad.capacity_refusal}"
+        elif (
+            until := draining_until_from_tools(ad.tools)
+        ) is not None and read_at < until:
+            refusal = f"draining: until {until.strftime('%Y-%m-%dT%H:%M:%SZ')}"
         elif acc and acc.unread_reason:
             refusal = f"accounts-unread: {acc.unread_reason}"
         elif not accounts_usable:

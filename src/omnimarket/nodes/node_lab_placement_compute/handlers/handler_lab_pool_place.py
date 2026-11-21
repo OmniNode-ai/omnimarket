@@ -17,6 +17,7 @@ from omnimarket.models.overlay_keys import ModelLabHostsTable
 from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_host_reader import (
     cpu_temp_from_tools,
     disk_watermark_paged,
+    draining_until_from_tools,
 )
 
 from ..models import (
@@ -46,8 +47,10 @@ def newest_per_host(
 class HandlerLabPoolPlace:
     """COMPUTE handler: table admission followed by capacity admission and ranking.
 
-    The hosts the drain verb stopped (OMN-22905) are read from the drain node at every placement, so no caller wires
-    them. A drain state that cannot be read refuses the placement; it never reads as no host draining.
+    The hosts the drain verb stopped (OMN-22905, OMN-24489) are read from the advertisements this placement already holds:
+    a host advertises its drain mark as the ``draining-until:`` pseudo-tool, so no second reader and no machine-local state
+    stands behind the answer. A mark past its expiry reads as not draining. ``draining_hosts`` on the request adds hosts the
+    caller knows of.
     """
 
     def __init__(
@@ -56,21 +59,12 @@ class HandlerLabPoolPlace:
         table_source: Callable[[], ModelLabHostsTable] = load_host_table,
         judge: HandlerLabPlacement | None = None,
         environ: Mapping[str, str] | None = None,
-        draining_hosts: Callable[[], tuple[str, ...]] | None = None,
         down_hosts: Callable[[], tuple[str, ...]] | None = None,
     ) -> None:
         self._table_source = table_source
         self._judge = judge
         self._environ = environ
-        self._draining_hosts = draining_hosts or self._drain_node_hosts
         self._down_hosts = down_hosts or self._down_node_hosts
-
-    def _drain_node_hosts(self) -> tuple[str, ...]:
-        from omnimarket.nodes.node_host_drain_effect.runtime_host_drain import (
-            read_draining_hosts,
-        )
-
-        return read_draining_hosts(self._environ)
 
     def _down_node_hosts(self) -> tuple[str, ...]:
         from omnimarket.nodes.node_host_down_reading_effect.runtime_host_down import (
@@ -88,17 +82,7 @@ class HandlerLabPoolPlace:
         return "COMPUTE"
 
     def handle(self, request: ModelLabPoolPlaceRequest) -> ModelPlacement:
-        try:
-            draining = frozenset(request.draining_hosts) | frozenset(
-                self._draining_hosts()
-            )
-        except (OSError, ValueError) as exc:
-            return ModelPlacement(
-                decision=EnumPlacementDecision.REFUSED,
-                refusal=EnumRefusalReason.COULD_NOT_CHECK,
-                verdicts=[],
-                detail=f"the drain state could not be read ({type(exc).__name__}: {exc})",
-            )
+        draining = frozenset(request.draining_hosts)
         down_detail = ""
         try:
             down = frozenset(request.down_hosts) | frozenset(self._down_hosts())
@@ -158,8 +142,18 @@ class HandlerLabPoolPlace:
                 reason = "not the requested host"
             else:
                 fresh_seen = True
-                if ad.host_name in draining:
-                    reason = "draining: the drain verb stopped placement on this host"
+                until = draining_until_from_tools(ad.tools)
+                if ad.host_name in draining or (
+                    until is not None and request.evaluated_at < until
+                ):
+                    reason = (
+                        "draining: the drain verb stopped placement on this host"
+                        + (
+                            ""
+                            if until is None
+                            else f" until {until.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+                        )
+                    )
                 elif disk_watermark_paged(ad.tools):
                     reason = (
                         "disk watermark: a volume is past its page mark, so this "

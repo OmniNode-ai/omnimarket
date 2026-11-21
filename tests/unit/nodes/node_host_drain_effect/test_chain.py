@@ -35,7 +35,8 @@ def _drain(
 ) -> HandlerHostDrain:
     return HandlerHostDrain(
         overlay.drain,
-        store=InMemoryDrainStore(),
+        # The store reads a mark's expiry by the same fixed clock the handler runs on.
+        store=InMemoryDrainStore(clock=lambda: NOW),
         lanes=FixedLaneSource({"example-host-a": 1}),
         sink=sink,
         clock=lambda: NOW,

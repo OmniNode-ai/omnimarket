@@ -84,6 +84,11 @@ capacity:
   # advertiser while the process and its command consumer stayed up, and the pool read no host
   # for hours (OMN-21811). Twelve cadences: a few failed beats are retried, a lost one is not.
   silent_exit_seconds: 120
+  # The lanes a host runs are read from its systemd user scopes (OMN-24489): the command lists the active onexlane scopes, the
+  # pattern pulls the lane name out of each scope's unit name, and the timeout bounds the read. A failed read advertises no lanes.
+  lane_scope_command: [systemctl, --user, list-units, --type=scope, --state=active, --no-legend, --plain, "onexlane-*.scope"]
+  lane_scope_pattern: '^onexlane-(?P<lane>.+)-[0-9a-f]{6}\.scope$'
+  lane_scope_timeout_seconds: 10
 # HOW THE CALLER READS. The caller (omnimarket.lab_work.bus.LabWorkCaller, behind
 # `onex lab-work run` and `onex lab-work hosts`) is a one-shot reader: it listens for
 # one capacity window and one receipt and leaves. It joins no consumer group

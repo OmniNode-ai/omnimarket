@@ -25,6 +25,7 @@ from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
     EnumDrainOp,
     EnumDrainOutcome,
     EnumRunnerActivity,
+    ModelDrainMark,
     ModelHostDrainRequest,
 )
 from omnimarket.nodes.node_host_drain_effect.overlay import (
@@ -123,7 +124,9 @@ def test_an_unreadable_lane_count_is_not_published_as_zero(
     overlay: ModelHostDrainOverlay,
 ) -> None:
     sink = InMemoryEmissionSink()
-    result = _drain(overlay, InMemoryDrainStore(), _UnreadableLanes(), sink)
+    result = _drain(
+        overlay, InMemoryDrainStore(clock=lambda: NOW), _UnreadableLanes(), sink
+    )
     assert result.lanes_running is None
     assert result.drained is False
     success = [e for e in sink.events if e.phase == "success"]
@@ -135,10 +138,14 @@ def test_an_unreadable_lane_count_is_not_published_as_zero(
 def test_a_measured_zero_is_still_a_zero(overlay: ModelHostDrainOverlay) -> None:
     sink = InMemoryEmissionSink()
     result = _drain(
-        overlay, InMemoryDrainStore(), FixedLaneSource({"example-host-a": 0}), sink
+        overlay,
+        InMemoryDrainStore(clock=lambda: NOW),
+        FixedLaneSource({"example-host-a": 0}),
+        sink,
     )
     assert result.lanes_running == 0
-    assert result.drained is True
+    # A measured zero of the runner receipts is a zero count, never SAFE by itself: the host was not read.
+    assert result.drained is False
     success = [e for e in sink.events if e.phase == "success"]
     assert success[0].counters["lanes_running"] == 0
     assert "lanes_unreadable" not in success[0].counters
@@ -151,6 +158,9 @@ class _WriteFailsStore(InMemoryDrainStore):
 
 class _ReadFailsStore(InMemoryDrainStore):
     def is_draining(self, host_name: str) -> bool:
+        raise RuntimeError("broker gone")
+
+    def mark_of(self, host_name: str) -> ModelDrainMark | None:
         raise RuntimeError("broker gone")
 
 

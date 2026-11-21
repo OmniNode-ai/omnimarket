@@ -44,6 +44,7 @@ def advertisement(
     advertised_at: datetime = T0,
     capacity_refusal: str = "",
     max_units: int = 4,
+    tools: tuple[str, ...] = (),
 ) -> ModelHostCapacityAdvertisement:
     return ModelHostCapacityAdvertisement(
         host_name=host,
@@ -54,6 +55,7 @@ def advertisement(
         cadence_seconds=15,
         max_units=max_units,
         capacity_refusal=capacity_refusal,
+        tools=list(tools),
     )
 
 
