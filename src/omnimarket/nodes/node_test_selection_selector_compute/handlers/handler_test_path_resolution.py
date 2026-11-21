@@ -8,6 +8,11 @@ calls it. A module listed in the adjacency map's ``node_scoped_modules`` is narr
 graph: the changed nodes' tests, the tests of every node that imports them (transitively), the tests
 of nodes whose YAML names them, and the tests that import or name them. A change the handler cannot
 attribute falls back to the whole ``tests/<module>/`` directory.
+
+A diff of only data files (the adjacency map's ``data_only_globs``: ticket contracts and markdown) selects
+the tests that read them: a text index of the test files finds a test that spells the file or enumerates
+its directory, directly or through an imported helper, and ``data_reader_overrides`` names the readers the
+text cannot show. The caller adds the always set.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ import ast
 import re
 from collections import defaultdict
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from functools import cache
 from pathlib import Path
 
@@ -40,6 +46,7 @@ NODE_PREFIX = "node_"
 _DOTTED_REFERENCE = re.compile(r"\b(?:omnimarket|tests)(?:\.[A-Za-z_]\w*)+")
 _NODE_NAME = re.compile(r"\bnode_[a-z0-9_]+\b")
 _TEST_FILE_PATH = re.compile(r"^tests/[\w/]+\.py$")
+_NOT_DATA_PREFIXES = ("src/", TEST_PREFIX)
 
 
 def _is_test_file(path: str) -> bool:
@@ -303,14 +310,93 @@ def _node_scoped_selection(
         for p in (repo_root / test_root).glob("*.py")
         if _is_test_file(p.name)
     )
-    # TestPath admits a file only as tests/[\w/]+.py; any other file name is
-    # selected through its directory rather than dropped.
+    return _admissible(selected)
+
+
+def _admissible(selected: set[str]) -> set[str]:
+    """Selected paths in the shape TestPath admits, with files under a selected directory folded in.
+
+    TestPath admits a file only as tests/[\\w/]+.py; any other file name is selected through its
+    directory rather than dropped.
+    """
     selected = {
         p if p.endswith("/") or _TEST_FILE_PATH.match(p) else p.rsplit("/", 1)[0] + "/"
         for p in selected
     }
     directories = tuple(p for p in selected if p.endswith("/"))
     return {p for p in selected if p.endswith("/") or not p.startswith(directories)}
+
+
+def _is_data_file(path: str, config: ModelAdjacencyMap) -> bool:
+    """A file outside src/ and tests/ that a ``data_only_globs`` pattern covers."""
+    return not path.startswith(_NOT_DATA_PREFIXES) and any(
+        fnmatchcase(path, pattern) for pattern in config.data_only_globs
+    )
+
+
+@cache
+def _enumeration(directory: str) -> re.Pattern[str]:
+    """Text that lists ``directory``: ``(root / "x").glob(``, ``x_dir.rglob(``, ``glob("x/..``."""
+    name = re.escape(directory)
+    return re.compile(
+        rf"""{name}\w{{0,20}}["']?\s*\)?\s*(?:/\s*["'][^"']*["']\s*\)?)?\s*\.(?:r?glob|iterdir)\("""
+        rf"""|(?:r?glob|listdir|scandir|walk)\(\s*[^)]{{0,80}}{name}"""
+    )
+
+
+def _reads_data_file(text: str, data_files: list[str]) -> bool:
+    """Whether a test file's text spells a changed data file or enumerates the directory it is in."""
+    for path in data_files:
+        if path in text or path.rsplit("/", 1)[-1] in text:
+            return True
+        directories = path.split("/")[:-1]
+        if any(_enumeration(directory).search(text) for directory in directories):
+            return True
+    return False
+
+
+def _data_readers(
+    data_files: list[str],
+    config: ModelAdjacencyMap,
+    repo_root: Path,
+    source: ProtocolSourceText,
+) -> set[str]:
+    """Test paths that read one of the changed data files.
+
+    A test whose own text spells the file or enumerates its directory is a reader. So is every test
+    that imports (transitively) a helper under ``tests/`` whose text does. The adjacency file's
+    ``data_reader_overrides`` adds the readers no text shows.
+    """
+    graph = _import_graph(repo_root, frozenset(config.node_scoped_modules), source)
+    selected: set[str] = set()
+    helpers: set[str] = set()
+    for vertex, rel in graph.paths.items():
+        if not _reads_data_file(source.read_text(repo_root / rel), data_files):
+            continue
+        if _is_test_file(rel):
+            selected.add(rel)
+        else:
+            helpers.add(vertex)
+    affected = set(helpers)
+    frontier = list(helpers)
+    while frontier:
+        for dependent in graph.dependents.get(frontier.pop(), ()):
+            if dependent not in affected:
+                affected.add(dependent)
+                frontier.append(dependent)
+    for vertex in affected:
+        test_path = graph.paths.get(vertex)
+        if test_path is None:
+            continue
+        if _is_test_file(test_path):
+            selected.add(test_path)
+        elif test_path.rsplit("/", 1)[-1] in ("conftest.py", "__init__.py"):
+            # pytest loads these for every test beneath them without an import.
+            selected.add(test_path.rsplit("/", 1)[0] + "/")
+    for pattern, paths in config.data_reader_overrides.items():
+        if any(fnmatchcase(path, pattern) for path in data_files):
+            selected.update(paths)
+    return _admissible(selected)
 
 
 def _names_old_file(text: str, module: str, is_package: bool, old: str) -> bool:
@@ -393,7 +479,7 @@ def _resolve(
     config: ModelAdjacencyMap,
     repo_root: Path,
     source: ProtocolSourceText,
-) -> list[str]:
+) -> tuple[list[str], bool]:
     direct_modules: set[str] = set()
     selected: set[str] = set()
     node_scoped = frozenset(config.node_scoped_modules)
@@ -440,7 +526,19 @@ def _resolve(
                 continue
         selected.add(f"{TEST_PREFIX}{module}/")
 
-    return sorted(p for p in selected if (repo_root / p).exists())
+    data_files = [p for p in changed_files if _is_data_file(p, config)]
+    data_only = (
+        config.data_only_selection_enabled
+        and bool(changed_files)
+        and len(data_files) == len(changed_files)
+    )
+    result = sorted(p for p in selected if (repo_root / p).exists())
+    # Readers join a selection the change already has, or stand alone for a diff of only data
+    # files. A data file beside an unattributable one (a Dockerfile) keeps the full escalation.
+    if config.data_only_selection_enabled and data_files and (result or data_only):
+        readers = _data_readers(data_files, config, repo_root, source)
+        result = sorted(p for p in {*result, *readers} if (repo_root / p).exists())
+    return result, data_only
 
 
 class HandlerTestPathResolution:
@@ -450,13 +548,26 @@ class HandlerTestPathResolution:
         self._source = source or _DEFAULT_SOURCE
 
     def handle(self, request: ModelPathResolutionRequest) -> ModelPathResolutionResult:
-        return ModelPathResolutionResult(
-            selected_paths=tuple(
-                _resolve(
-                    list(request.changed_files),
-                    request.adjacency,
-                    Path(request.repo_root),
-                    self._source,
-                )
-            )
+        selected, data_only = _resolve(
+            list(request.changed_files),
+            request.adjacency,
+            Path(request.repo_root),
+            self._source,
         )
+        return ModelPathResolutionResult(
+            selected_paths=tuple(selected), data_only=data_only
+        )
+
+
+# The graph's building blocks, public for the selection replay, which writes a frozen snapshot of
+# a tree and reads it back as a stub tree this handler resolves over unchanged.
+NODE_NAME = _NODE_NAME
+ImportGraph = _ImportGraph
+dotted_module = _dotted
+module_references = _references
+graph_vertex = _vertex
+
+
+def clear_import_graph_cache() -> None:
+    """Forget the import graphs built so far (one per checkout read)."""
+    _import_graph.cache_clear()
