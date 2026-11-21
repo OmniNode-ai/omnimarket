@@ -62,11 +62,26 @@ from omnimarket.routing.roi_overlay import (
 
 # --- Fixtures -------------------------------------------------------------------
 
+
 # Three routable tiers for code_generation (tier_order = local -> cheap_cloud ->
 # cheap_frontier -> claude): local-coder, cloud-gemini-2-5-flash (cheap_cloud AND
 # claude ceiling — OMN-14625 repointed both off cloud-glm, whose z.ai route is
 # DEAD from the deployed runtime), openrouter-north-mini-code (cheap_frontier).
 # Complete endpoint_urls so the tiers route in CI without a host overlay.
+@pytest.fixture(autouse=True)
+def _routing_prompt_set() -> Iterator[None]:
+    """These tests resolve backends outside a dispatch, so they set its prompt."""
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+        port_local_delegation_dispatch as _dispatch_port,
+    )
+
+    prompt_token = _dispatch_port._ACTIVE_PROMPT.set("route this short prompt")
+    try:
+        yield
+    finally:
+        _dispatch_port._ACTIVE_PROMPT.reset(prompt_token)
+
+
 _BIFROST_THREE_TIER = textwrap.dedent(
     """\
     config_version: "2.0.0"
@@ -605,8 +620,10 @@ def test_env_overrides_min_samples_and_floor(monkeypatch: pytest.MonkeyPatch) ->
 @pytest.mark.usefixtures("code_gen_routable")
 def test_first_eligible_tier_static_is_local() -> None:
     """Baseline: no overlay -> cheapest-first static tier (local)."""
-    assert first_eligible_tier("code_generation") == "local"
-    assert first_eligible_tier("code_generation", roi_overlay=None) == "local"
+    assert first_eligible_tier("code_generation", prompt="") == "local"
+    assert (
+        first_eligible_tier("code_generation", roi_overlay=None, prompt="") == "local"
+    )
 
 
 @pytest.mark.usefixtures("code_gen_routable")
@@ -616,7 +633,8 @@ def test_first_eligible_tier_roi_suppression_flips_to_cheap_frontier() -> None:
     paid cheap_cloud in code_generation's tier_order)."""
     overlay = _suppress("local")
     assert (
-        first_eligible_tier("code_generation", roi_overlay=overlay) == "cheap_frontier"
+        first_eligible_tier("code_generation", roi_overlay=overlay, prompt="")
+        == "cheap_frontier"
     )
 
 
@@ -637,14 +655,20 @@ def test_first_eligible_tier_overlay_present_but_not_suppressed_stays_static() -
             ),
         ),
     )
-    assert first_eligible_tier("code_generation", roi_overlay=overlay) == "local"
+    assert (
+        first_eligible_tier("code_generation", roi_overlay=overlay, prompt="")
+        == "local"
+    )
 
 
 @pytest.mark.usefixtures("code_gen_routable")
 def test_first_eligible_tier_all_suppressed_failsafe_to_static() -> None:
     """If every routable tier is suppressed, fail-safe returns the static first tier."""
     overlay = _suppress("local", "cheap_cloud", "cheap_frontier", "claude")
-    assert first_eligible_tier("code_generation", roi_overlay=overlay) == "local"
+    assert (
+        first_eligible_tier("code_generation", roi_overlay=overlay, prompt="")
+        == "local"
+    )
 
 
 @pytest.mark.usefixtures("code_gen_routable")
@@ -652,7 +676,7 @@ def test_next_eligible_tier_static_from_local_is_cheap_frontier() -> None:
     # OMN-14225 free-before-paid: after local, code_generation escalates to the
     # FREE cheap_frontier tier before the paid cheap_cloud.
     assert (
-        next_eligible_tier("local", frozenset(), task_type="code_generation")
+        next_eligible_tier("local", frozenset(), task_type="code_generation", prompt="")
         == "cheap_frontier"
     )
 
@@ -663,7 +687,11 @@ def test_next_eligible_tier_roi_suppression_flips_to_cheap_frontier() -> None:
     overlay = _suppress("cheap_cloud")
     assert (
         next_eligible_tier(
-            "local", frozenset(), task_type="code_generation", roi_overlay=overlay
+            "local",
+            frozenset(),
+            task_type="code_generation",
+            roi_overlay=overlay,
+            prompt="",
         )
         == "cheap_frontier"
     )
@@ -678,7 +706,11 @@ def test_next_eligible_tier_failsafe_when_only_next_tier_suppressed() -> None:
     overlay = _suppress("claude")
     assert (
         next_eligible_tier(
-            "cheap_cloud", frozenset(), task_type="code_generation", roi_overlay=overlay
+            "cheap_cloud",
+            frozenset(),
+            task_type="code_generation",
+            roi_overlay=overlay,
+            prompt="",
         )
         == "claude"
     )
@@ -816,7 +848,7 @@ def test_learning_loop_capture_to_decision_end_to_end() -> None:
     assert projection.rows_upserted == 6
 
     # 2. BASELINE — with no read-back, static routing picks the cheapest tier: local.
-    assert first_eligible_tier("code_generation") == "local"
+    assert first_eligible_tier("code_generation", prompt="") == "local"
 
     # 3. READ-BACK — the reader turns the captured rows into a tier-suppression overlay.
     overlay = resolve_roi_overlay(
@@ -834,7 +866,8 @@ def test_learning_loop_capture_to_decision_end_to_end() -> None:
     #    (OMN-14225 free-before-paid: cheap_frontier precedes the paid cheap_cloud).
     #    The loop is closed.
     assert (
-        first_eligible_tier("code_generation", roi_overlay=overlay) == "cheap_frontier"
+        first_eligible_tier("code_generation", roi_overlay=overlay, prompt="")
+        == "cheap_frontier"
     )
 
 

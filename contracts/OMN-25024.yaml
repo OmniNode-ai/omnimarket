@@ -1,0 +1,75 @@
+schema_version: 1.0.0
+ticket_id: OMN-25024
+title: Review findings 1 to 4 on omnimarket PR 5737 at head 8be8fff0a426 are fixed or argued - the PR no longer causes the pypi-pin-resolvability red, the padding is removed, AC3 reads the STATUS rows, and the Lab comment carries the full head
+summary: 'This change answers the third review of omnimarket pull request 5737. omnibase-spi 0.23.15 and 0.23.16 are published on PyPI, but the newest published omnibase-infra (0.38.76) pins omnibase-spi==0.23.7, so no published omnibase-infra admits the floor this pull request raises and pypi-pin-resolvability stays red; the pull request holds for an omnibase_infra release and contracts/OMN-24829.yaml carries its green criterion again, with no shared row logged for a red this change causes. The floors_agree padding is removed from contracts/OMN-23518.yaml, contracts/OMN-24911.yaml and contracts/OMN-24960.yaml; the one gated item that needed a failing control, AC2 of contracts/OMN-23518.yaml, carries a test of the declared floor instead. AC3 of contracts/OMN-24829.yaml is bound to a test that runs its ledger commands against an empty and a matching ledger. No check, ratchet or workflow file is touched.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn25024-pr5737-review-findings-1-to-4
+    statement: Blocking findings 1 to 4 of the review of omnimarket pull request 5737 at head 8be8fff0a426 are each fixed in the pull request or argued with evidence in a pull request comment.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: omnibase-spi 0.23.15 is read as published on PyPI and the diff either clears the pypi-pin-resolvability red by a published infra release that admits it, or the PR waits for it, and the row of contracts/OMN-24829.yaml is not logged as shared when the PR causes the red, with its green criterion restored -- falsifier: `uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q` passes while contracts/OMN-24829.yaml AC1 still reads no longer conflicts and the row still carries shared=yes'
+      - id: AC2
+        statement: 'AC2: the floors_agree padding is removed from the eleven items of contracts/OMN-23518.yaml, contracts/OMN-24911.yaml and contracts/OMN-24960.yaml and the merge-base control still passes by its real rule and exemption path -- falsifier: `grep -c pyproject_floors_agree contracts/OMN-23518.yaml contracts/OMN-24911.yaml contracts/OMN-24960.yaml` prints a number above 0 for any of the three files at the new head'
+      - id: AC3
+        statement: 'AC3: AC3 of contracts/OMN-24829.yaml is bound to a check that reads the STATUS rows and refuses a bound local_done_gate item with an empty ledger, the respelled floors grep is dropped, and the test inspects AC3''s bound check values -- falsifier: `uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q` passes with an empty ledger and AC3 bound only to the contract''s own text'
+      - id: AC4
+        statement: 'AC4: the PR carries a Lab comment that starts with Lab: head= and the full 40-character head, the output of uv lock --check (exit 0) and of the floor test at that head, and the read that delegation-health-check is red on dev -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#5737` lists no comment whose Lab line carries a 40-character sha equal to the new head'
+evidence_requirements:
+  - kind: tests
+    description: The omnibase-spi floor tests and the contract evidence tests pass at the head.
+    command: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py tests/contracts/test_omn24829_contract_evidence.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn25024-ac1-green-criterion-restored
+    description: AC1. The criterion of contracts/OMN-24829.yaml AC1 asks for green required checks and names pypi-pin-resolvability, and no ledger read of that contract names pypi-pin-resolvability as a shared row. Whether a published omnibase-infra admits the floor is read by the local_done_gate item dod-omn24829-ac1-published-infra-admits-floor of that contract.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/contracts/test_omn24829_contract_evidence.py -q --no-cov -n 0 -p no:randomly -k ac1_is_the_green_criterion
+        cwd: .
+  - id: dod-omn25024-ac2-padding-removed
+    description: AC2. No contract of the three carries the floors_agree padding, and the one gated item that needs a check that fails at the merge base, AC2 of contracts/OMN-23518.yaml, carries the declared-floor test, which fails there because both floors read 0.23.3 and admit 0.23.14.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k declared_floor_excludes
+        cwd: .
+      - check_type: command
+        check_value: test "$(cat contracts/OMN-23518.yaml contracts/OMN-24911.yaml contracts/OMN-24960.yaml | grep -c pyproject_floors_agree)" = 0
+        cwd: .
+  - id: dod-omn25024-ac3-status-rows-read
+    description: AC3. AC3 of contracts/OMN-24829.yaml is bound to the test that runs its ledger commands against an empty ledger, which they must refuse, and the test reads the values of AC3's bound checks and fails when one is a floors check.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/contracts/test_omn24829_contract_evidence.py -q --no-cov -n 0 -p no:randomly -k "ledger_status or ac3_bound"
+        cwd: .
+  - id: dod-omn25024-ac4-lab-comment-parser
+    description: AC4. The Lab comment parser accepts only a comment whose sha is the full 40-character head. The read of the pull request's comments is dod-omn25024-ac4-lab-comment-on-pr, scoped local_done_gate.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k lab_comment
+        cwd: .
+  - id: dod-omn25024-ac4-lab-comment-on-pr
+    description: AC4. The pull request lists a comment whose Lab line carries the 40-character sha of the checked-out head; the read needs the pull request's comments, which the hosted check cannot take, so it is scoped local_done_gate and carries no binds_ac.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'onex scm pr-view OmniNode-ai/omnimarket#5737 | grep -c "Lab: head=$(git rev-parse HEAD)"'
+        cwd: .

@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-26295
+title: omnimarket dev passes Tests (Split 12/20) - node_lab_alarm_deliver_effect declares one runtime profile set, so the conflicting top-level profile test exits 0 on dev
+summary: 'node_lab_alarm_deliver_effect declared top-level runtime_profiles [main] against descriptor.runtime_profiles [main, effects], so tests/validation/test_no_toplevel_runtime_profiles_shadow.py failed on dev itself. Its contract now declares [main, effects] at both levels: the descriptor keeps effects (test_runtime_profile_contracts requires it of a command-consuming effect node), the top-level value agrees with it, the dev runtime (profile main) still owns the node and the command topic route is unchanged.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26295-one-profile-set
+    statement: The contract of node_lab_alarm_deliver_effect declares one runtime profile set at both levels, and no test is weakened to get there.
+    acceptance:
+      - id: AC1
+        statement: "AC1: the contract of node_lab_alarm_deliver_effect declares one runtime profile set, the top-level and the descriptor value agree, and the routing that omnimarket#6421 added is kept -- falsifier: `uv run pytest tests/validation/test_no_toplevel_runtime_profiles_shadow.py -q --no-cov` exits non-zero at the new head, or `uv run pytest tests/nodes/node_lab_alarm_deliver_effect -q --no-cov` exits non-zero"
+      - id: AC2
+        statement: "AC2: the cause is fixed at its source and no test is weakened, so the diff removes no assertion, adds no skip or xfail marker and widens no allowlist in tests/validation/ -- falsifier: `git diff <base> <head> -- tests/validation/` shows a removed assertion, a new skip or xfail marker, or a rule that now accepts a contract it refused"
+      - id: AC3
+        statement: "AC3: a regression test built from the recorded contract text of node_lab_alarm_deliver_effect at 735d7604f6 (fixture path named in the pull request) fails on the broken declaration and passes on the fix -- falsifier: `uv run pytest tests/validation/test_no_toplevel_runtime_profiles_shadow.py -q --no-cov` shows the fixture test passing while the fixture still holds [main] against [main, effects]"
+      - id: AC4
+        statement: "AC4: the pull request is open and ready with a comment starting `Lab: head=<full head sha>`, its required check Tests (Split 12/20) reads success at that head, and the lane hands it to the landing lane by one ledger MSG -- falsifier: `onex scm commit-check-runs OmniNode-ai/omnimarket --head-sha <head> --check-name \"Tests (Split 12/20)\"` lists a conclusion other than success, or `grep -F 'landing-controller' \"$ONEX_LEDGER\x5FPATH\"` shows no MSG naming the pull request"
+evidence_requirements:
+  - kind: tests
+    description: The profile shadow rule and the node tests pass at the pushed head.
+    command: uv run pytest tests/validation/test_no_toplevel_runtime_profiles_shadow.py tests/nodes/node_lab_alarm_deliver_effect -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26295-ac1
+    description: "AC1: the new test reads the live contract and fails at the merge base, where the top-level [main] disagrees with the descriptor [main, effects]; the wiring test keeps the command topic route."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/validation/test_no_toplevel_runtime_profiles_shadow.py -k 'declares_one_runtime_profile_set or no_contract_has_conflicting' -q --no-cov -p no:cacheprovider
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_lab_alarm_deliver_effect -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26295-ac2
+    description: "AC2: the rule itself is unchanged and still runs over every contract; the only change under tests/validation/ is two added tests and one fixture. The diff check is read at review; the rule run fails at the merge base."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/validation/test_no_toplevel_runtime_profiles_shadow.py tests/validation/test_runtime_profile_contracts.py -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26295-ac3
+    description: "AC3: the fixture holds the contract text at 735d7604f6; the recorded-declaration test asserts the rule flags it, and the fixed-contract test fails at the merge base."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/validation/test_no_toplevel_runtime_profiles_shadow.py -k 'recorded_lab_alarm_deliver or declares_one_runtime_profile_set' -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26295-ac4
+    description: "AC4: the ready pull request, the head-specific Lab comment, the Split 12/20 conclusion and the handoff MSG are operational evidence read from the watcher and the ledger; the hosted proxy is the rule run the Split 12/20 job carries."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/validation/test_no_toplevel_runtime_profiles_shadow.py -k 'declares_one_runtime_profile_set or no_contract_has_conflicting' -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26295-integration-proof
+    description: 'Run the shadow rule and the node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion: the dev runtime install of the branch is not done by this change.'
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26295 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/validation/test_no_toplevel_runtime_profiles_shadow.py tests/nodes/node_lab_alarm_deliver_effect -q --no-cov
+        cwd: .
