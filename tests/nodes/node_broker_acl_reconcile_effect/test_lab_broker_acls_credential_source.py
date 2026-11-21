@@ -601,3 +601,41 @@ def test_superuser_env_file_declared_cell_reaches_every_reconcile_script(
     for script in remote.scripts:
         assert "F=/srv/custom/operator.env" in script.splitlines()
         assert 'F="$HOME"/.omnibase/.env' not in script
+
+
+TILDE_FORMS = ["~svc-user", "a:~svc", "svc~user", "~"]
+
+
+@pytest.mark.parametrize("name", driver.CREDENTIAL_NAMES)
+@pytest.mark.parametrize("value", TILDE_FORMS)
+def test_bare_word_value_holding_a_tilde_anywhere_fails_closed_with_the_marker(
+    tmp_path: Path, name: str, value: str
+) -> None:
+    lines = {
+        "DEV_KAFKA_SASL_USERNAME": f"DEV_KAFKA_SASL_USERNAME={SENTINEL_USER}\n",
+        "DEV_KAFKA_SASL_PASSWORD": f"DEV_KAFKA_SASL_PASSWORD={SENTINEL_PASS}\n",
+    }
+    lines[name] = f"{name}={value}\n"
+    done, log = _run_prologue(tmp_path, "".join(lines.values()), ARGV)
+    assert done.returncode == driver.CREDENTIAL_MISSING_EXIT, done.stderr
+    assert f"{driver.CREDENTIAL_MISSING_MARKER} {name}" in done.stderr
+    assert not _calls(log)
+    combined = done.stdout + done.stderr
+    assert SENTINEL_USER not in combined
+    assert SENTINEL_PASS not in combined
+    assert value not in combined
+
+
+def test_a_plain_word_value_without_a_tilde_still_reads(tmp_path: Path) -> None:
+    text = f"DEV_KAFKA_SASL_USERNAME={SENTINEL_USER}\nDEV_KAFKA_SASL_PASSWORD={SENTINEL_PASS}\n"
+    done, log = _run_prologue(tmp_path, text, ARGV)
+    assert done.returncode == 0, done.stderr
+    assert f"user={SENTINEL_USER}" in log.read_text(encoding="utf-8")
+
+
+def test_bare_word_docstring_lists_the_tilde() -> None:
+    docstring = driver.build_remote_script.__doc__
+    assert docstring is not None
+    _, _, bare_word_clause = docstring.partition("a bare word of no quote")
+    forbidden, _, _ = bare_word_clause.partition(", followed")
+    assert "tilde" in forbidden.split(", ")
