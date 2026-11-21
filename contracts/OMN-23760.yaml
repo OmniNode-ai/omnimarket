@@ -1,0 +1,74 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23760
+title: The ticket node creates a ticket from a typed draft, writes the rendered contract and publishes a write record
+summary: A typed draft has its own retry identity. The ticket node renders and guards its contract, checks the Linear readback, and emits a written event with the readback hash.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched: [public_api, topics]
+requirements:
+  - id: req-draft-create
+    statement: Create and certify the contract for a typed ticket draft.
+    acceptance:
+      - id: AC1
+        statement: "AC1: a draft create writes a body whose parsed block equals the draft plus id and repository, and whose fingerprint recomputes equal -- falsifier: uv run pytest src/omnimarket/nodes/node_create_ticket/tests -q -k draft_create"
+      - id: AC2
+        statement: "AC2: a failure after create, then a rerun, gives one issue -- falsifier: uv run pytest src/omnimarket/nodes/node_create_ticket/tests -q -k draft_create_retry_single_issue"
+      - id: AC3
+        statement: "AC3: a draft create publishes exactly one written event whose content hash equals the sha256 of the title and body Linear returned after the write -- falsifier: uv run pytest src/omnimarket/nodes/node_create_ticket/tests -q -k draft_create_publishes_written"
+      - id: AC4
+        statement: "AC4: integrated: done only when running and observed where it runs: one real ticket created through onex ticket create --draft on the dev lane is read back and its block parses, and Linear's markdown round trip is measured (any normalization goes into S2's overlay list) -- falsifier: onex ticket create --draft then onex ticket read on the dev lane, the output pasted in the pull request"
+evidence_requirements:
+  - kind: tests
+    description: Hosted tests exercise the contract-routed ticket write and verify readback hashing and event order using synthetic Linear responses.
+    command: uv run --frozen pytest src/omnimarket/nodes/node_create_ticket/tests/test_draft_create.py -q -k draft_create_publishes_written
+dod_evidence:
+  - id: dod-draft-contract
+    description: The guarded contract parses to the draft with the assigned ticket ID and requested repository, and its fingerprint recomputes.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest src/omnimarket/nodes/node_create_ticket/tests/test_draft_create.py -q -k draft_create
+        cwd: .
+  - id: dod-draft-single-issue
+    description: A run fails after the issue is created. A separate worker retries the draft and finishes the existing issue.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest src/omnimarket/nodes/node_create_ticket/tests/test_draft_create.py -q -k draft_create_retry_single_issue
+        cwd: .
+  - id: dod-draft-written-event
+    description: The in-memory command runtime routes one written event with the exact tracker-readback hash before the completion terminal. The tracker responses are synthetic.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest src/omnimarket/nodes/node_create_ticket/tests/test_draft_create.py -q -k draft_create_publishes_written
+        cwd: .
+      - check_type: command
+        check_value: >-
+          grep -Fx '    - onex.evt.omnimarket.ticket-contract-written.v1'
+          src/omnimarket/nodes/node_linear_ticket_write_effect/contract.yaml
+        cwd: .
+  - id: dod-draft-readback-parse-normalization
+    description: The hosted part of AC4. With synthetic Linear responses that normalize the Markdown, the readback parses and a drifted body is refused. The live dev-lane round trip stays open in dod-draft-live-linear-integration-proof, a local Done gate item.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest src/omnimarket/nodes/node_create_ticket/tests/test_draft_create.py -q -k draft_create_refuses_drift_after_assumed_linear_markdown_normalization
+        cwd: .
+  - id: dod-draft-live-linear-integration-proof
+    description: AC4 remains open. The orchestrator must arrange a session with Linear write access to create one real draft on dev, read it back, parse its contract block, measure the Markdown round trip, and attach the output to the pull request before closing the ticket.
+    source: manual
+    execution_scope: local_done_gate
+    status: pending
+    checks:
+      - check_type: command
+        check_value: >-
+          onex ticket read "${ONEX_DRAFT_CREATE_AC4_TICKET_ID:?set to the issue created for AC4}"
+          --lane "${ONEX_LANE:?}" --bus-lane dev
+          | jq -er '.payload.result.description_body'
+          | uv run --frozen python -c 'import sys; from omnimarket.nodes.node_ticket_contract_render_compute import NodeTicketContractRenderCompute; from omnimarket.nodes.node_ticket_contract_render_compute.models import ModelTicketContractRenderRequest; result = NodeTicketContractRenderCompute().handle(ModelTicketContractRenderRequest(operation="parse", body=sys.stdin.read())); assert result.contract is not None and not result.findings'
+        cwd: .

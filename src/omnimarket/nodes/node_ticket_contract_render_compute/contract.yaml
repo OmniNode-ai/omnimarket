@@ -12,13 +12,13 @@ description: >-
   name a block whose contract_fingerprint no longer recomputes (contract_not_synced) and text that
   differs from a fresh render of the block (rendered_text_drift). The filing lines are never compared.
   Render refuses text that does not parse back with the same fingerprint.
-input_model: omnimarket.nodes.node_ticket_contract_render_compute.models.model_ticket_contract_render.ModelTicketContractRenderRequest
-output_model: omnimarket.nodes.node_ticket_contract_render_compute.models.model_ticket_contract_render.ModelTicketContractRenderResult
+input_model: omnimarket.models.model_ticket_contract_render.ModelTicketContractRenderRequest
+output_model: omnimarket.models.model_ticket_contract_render.ModelTicketContractRenderResult
 handler:
   module: omnimarket.nodes.node_ticket_contract_render_compute.handlers.handler_ticket_contract_render
   class: HandlerTicketContractRender
-  input_model: omnimarket.nodes.node_ticket_contract_render_compute.models.model_ticket_contract_render.ModelTicketContractRenderRequest
-  output_model: omnimarket.nodes.node_ticket_contract_render_compute.models.model_ticket_contract_render.ModelTicketContractRenderResult
+  input_model: omnimarket.models.model_ticket_contract_render.ModelTicketContractRenderRequest
+  output_model: omnimarket.models.model_ticket_contract_render.ModelTicketContractRenderResult
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
@@ -27,7 +27,7 @@ handler_routing:
         module: omnimarket.nodes.node_ticket_contract_render_compute.handlers.handler_ticket_contract_render
       event_model:
         name: ModelTicketContractRenderRequest
-        module: omnimarket.nodes.node_ticket_contract_render_compute.models.model_ticket_contract_render
+        module: omnimarket.models.model_ticket_contract_render
 descriptor:
   node_archetype: compute
   purity: pure

@@ -7,10 +7,11 @@ description: >
   EFFECT: create, read, comment and transition Linear tickets over the bus.
   All create calls run node_create_ticket's installed ticket-creation guard,
   requiring Gate, labelled criteria with falsifiers, parent or epic, Backlog,
-  no project and the caller's first-line lane stamp. The description is sent
-  unchanged. No guard or an undecidable guard refuses before Linear is called.
+  no project and the first-line lane stamp. Free-text descriptions are sent
+  unchanged. Drafts use a stable issue UUID and a checked contract readback.
+  No guard or an undecidable guard refuses before Linear is called.
   Commands carry lane, run and idempotency identity as the SCM effect does.
-  Successful writes replay in-process (1024 records); concurrent requests are
+  Successful free-text writes replay in-process (1024 records); concurrent requests are
   serialized; caller cancellation cannot release the replay lock while the
   synchronous gateway still runs. After a worker restart or timeout read before retrying: replay
   records do not survive restart. Read results are always fresh.
@@ -22,7 +23,7 @@ output_model:
   module: omnimarket.models.ticket_write_io
 operations:
   - name: create
-    description: Guard the exact caller payload, create in Backlog without project.
+    description: Guard the final body, create in Backlog without project, and certify draft readbacks.
   - name: read
     description: Read the ticket through the Linear adapter; no local stub.
   - name: comment
@@ -48,6 +49,7 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.linear-ticket-write-completed.v1
     - onex.evt.omnimarket.linear-ticket-write-failed.v1
+    - onex.evt.omnimarket.ticket-contract-written.v1
 published_events:
   - event_type: TicketWriteCompleted
     topic: onex.evt.omnimarket.linear-ticket-write-completed.v1
@@ -55,6 +57,9 @@ published_events:
   - event_type: TicketWriteFailed
     topic: onex.evt.omnimarket.linear-ticket-write-failed.v1
     description: Typed refusal or failure; exception strings are never published.
+  - event_type: TicketContractWritten
+    topic: onex.evt.omnimarket.ticket-contract-written.v1
+    description: Checked draft contract and raw readback hash, deduplicated by payload event_id.
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
@@ -73,9 +78,16 @@ runtime_dispatch:
   terminal_events:
     success: onex.evt.omnimarket.linear-ticket-write-completed.v1
     failure: onex.evt.omnimarket.linear-ticket-write-failed.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.ticket-contract-written.v1", operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: "onex.evt.omnimarket.ticket-contract-written.v1", operation: DESCRIBE}
+
 externally_consumed_topics:
   - onex.evt.omnimarket.linear-ticket-write-completed.v1
   - onex.evt.omnimarket.linear-ticket-write-failed.v1
+  - onex.evt.omnimarket.ticket-contract-written.v1
 metadata:
   transport_type: kafka
   description: Guarded Linear ticket operations for workers over the event bus.

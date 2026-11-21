@@ -22,6 +22,20 @@ from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContrac
 from omnibase_core.validation import validator_base
 from omnibase_core.validation.checker_ticket_creation import check_ticket_creation
 
+from omnimarket.models.model_ticket_contract_render import (
+    EnumTicketContractRenderFinding as Finding,
+)
+from omnimarket.models.model_ticket_contract_render import (
+    EnumTicketContractRenderOperation as Operation,
+)
+from omnimarket.models.model_ticket_contract_render import (
+    EnumTicketContractRenderOutcome as Outcome,
+)
+from omnimarket.models.model_ticket_contract_render import (
+    ModelTicketContractRenderNormalization,
+    ModelTicketContractRenderRequest,
+    ModelTicketContractRenderResult,
+)
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
     contract_subscribe_topics,
@@ -32,20 +46,6 @@ from omnimarket.nodes.node_ticket_contract_render_compute import (
 from omnimarket.nodes.node_ticket_contract_render_compute.handlers.handler_ticket_contract_render import (
     BLOCK_INFO_STRING,
     HandlerTicketContractRender,
-)
-from omnimarket.nodes.node_ticket_contract_render_compute.models import (
-    EnumTicketContractRenderFinding as Finding,
-)
-from omnimarket.nodes.node_ticket_contract_render_compute.models import (
-    EnumTicketContractRenderOperation as Operation,
-)
-from omnimarket.nodes.node_ticket_contract_render_compute.models import (
-    EnumTicketContractRenderOutcome as Outcome,
-)
-from omnimarket.nodes.node_ticket_contract_render_compute.models import (
-    ModelTicketContractRenderNormalization,
-    ModelTicketContractRenderRequest,
-    ModelTicketContractRenderResult,
 )
 from tests.nodes.node_ticket_contract_render_compute.contract_fixtures import (
     IN_PROGRESS,

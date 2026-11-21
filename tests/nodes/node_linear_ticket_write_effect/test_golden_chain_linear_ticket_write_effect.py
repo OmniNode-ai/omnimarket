@@ -307,3 +307,16 @@ async def test_canceled_caller_cannot_release_replay_lock_while_write_runs():
     assert not duplicated, "caller cancellation let a second write start"
     assert result.replayed
     assert len(core.calls) == 1
+
+
+def test_contract_declares_ticket_contract_written_topic() -> None:
+    import yaml
+
+    contract = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
+    written = "onex.evt.omnimarket.ticket-contract-written.v1"
+    assert written in contract["event_bus"]["publish_topics"]
+    assert written in contract["externally_consumed_topics"]
+    assert any(
+        e["event_type"] == "TicketContractWritten" and e["topic"] == written
+        for e in contract["published_events"]
+    )
