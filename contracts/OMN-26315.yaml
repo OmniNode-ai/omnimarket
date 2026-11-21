@@ -1,0 +1,77 @@
+schema_version: 1.0.0
+ticket_id: OMN-26315
+title: omnimarket dev reads 0.4.324, equal to the published tag, so a post-release bump to the next dev version stops Release Identity Gate redding every open pull request
+summary: 'Post-release bump after the 0.4.324 cut: pyproject.toml and uv.lock move to 0.4.325, the work contracts that pin the uv.lock hash move to the new digest, and the CHANGELOG.md the release commit re-added is deleted again as the removed-prose test requires.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26315-post-release-bump
+  statement: dev is ahead of the published tag, the lockfile pins move with it, and CHANGELOG.md is absent.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: dev''s pyproject.toml version is the next dev version above the published tag v0.4.324, and uv.lock and every contract that pins it move with it exactly as scripts/ci/post_release_dev_bump.py declares -- falsifier: uv run pytest tests/ci/test_post_release_dev_bump_omn18010.py -q'
+  - id: AC2
+    statement: 'AC2: CHANGELOG.md is handled as the Release Identity Gate and the repository prose-removal test both require, with no check widened or skipped -- falsifier: uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q'
+  - id: AC3
+    statement: 'AC3: Release Identity Gate and CI Summary conclude success at the pull request head, and the diff touches nothing under .github or .pre-commit-config.yaml -- falsifier: onex scm commit-check-runs OmniNode-ai/omnimarket --head-sha <head> --check-name "Release Identity Gate" shows a conclusion other than success, or git diff origin/dev <head> -- .github .pre-commit-config.yaml is non-empty'
+evidence_requirements:
+- kind: tests
+  description: The named focused tests pass at the pushed head.
+  command: uv run pytest tests/ci/test_post_release_dev_bump_omn18010.py tests/ci/test_post_release_dev_bump_omn26315.py tests/ci/test_repository_prose_removed_omn17427.py tests/nodes/test_work_contract_pins_current.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26315-ac1
+  description: 'AC1: uv.lock pins the pyproject version, the version is ahead of every reachable release tag, and every work contract pin matches the uv.lock digest; at dev 9f421237 the version equals v0.4.324 and the strict release-identity check fails.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_post_release_dev_bump_omn18010.py tests/ci/test_post_release_dev_bump_omn26315.py tests/nodes/test_work_contract_pins_current.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn26315-ac2
+  description: 'AC2: test_removed_prose_file_is_absent[CHANGELOG.md] passes with the file removed; it fails at dev 9f421237, where release commit 2402b19144 re-added the file.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn26315-ac3
+  description: 'AC3: the bump script declares no bump left above the published v0.4.324, which is the condition the Release Identity Gate checks at the head; at dev 9f421237 the version equals v0.4.324 and the script declares bump. The Release Identity Gate and CI Summary conclusions are read at the head with onex scm commit-check-runs.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_post_release_dev_bump_omn26315.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn26315-no-workflow-touch
+  description: 'The diff against dev touches nothing under .github or .pre-commit-config.yaml (second half of AC3). This item carries no hosted AC binding because it passes at the merge base by construction.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: test -z "$(git diff --name-only origin/dev HEAD -- .github .pre-commit-config.yaml)"
+    cwd: .
+- id: dod-omn26315-integration-proof
+  description: 'Run the four focused test files on a lab host at the pushed revision. This local completion proof carries no hosted AC bindings.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+      --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+      --lane dod-integration-proof-26315 --kind test --
+      env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+      tests/ci/test_post_release_dev_bump_omn18010.py
+      tests/ci/test_post_release_dev_bump_omn26315.py
+      tests/ci/test_repository_prose_removed_omn17427.py
+      tests/nodes/test_work_contract_pins_current.py
+      -q -n 0 --no-cov --refuse-skips
+    cwd: .

@@ -19,8 +19,20 @@ from omnimarket.models.model_code_graph_lookup import (
     ModelCodeGraphLookupCommand,
     ModelCodeGraphLookupResult,
 )
+from omnimarket.models.model_code_graph_selection_compare import (
+    ModelSelectionCompareCommand,
+    ModelSelectionCompareResult,
+)
+from omnimarket.models.model_code_graph_selection_verdict import (
+    ModelSelectionVerdict,
+    ModelSelectionVerdictRequest,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_selection_verdict import (
+    SelectionVerdict,
+)
 from omnimarket.nodes.node_code_graph_effect.runtime_code_graph import (
     answer_lookup,
+    build_compare_handler,
     build_handler,
     build_shadow_handler,
 )
@@ -49,3 +61,19 @@ class HandlerCodeGraphLookupRequested:
         self, command: ModelCodeGraphLookupCommand
     ) -> ModelCodeGraphLookupResult:
         return answer_lookup(command)
+
+
+class HandlerCodeGraphCompareSelectionRequested:
+    """Compare the graph's reach with the parse selection of one merged pull request, in shadow."""
+
+    def handle(
+        self, command: ModelSelectionCompareCommand
+    ) -> ModelSelectionCompareResult:
+        return build_compare_handler(command.write).handle(command)
+
+
+class HandlerCodeGraphSelectionVerdictRequested:
+    """Write the two-part verdict over the comparison rows."""
+
+    def handle(self, request: ModelSelectionVerdictRequest) -> ModelSelectionVerdict:
+        return SelectionVerdict().handle(request)
