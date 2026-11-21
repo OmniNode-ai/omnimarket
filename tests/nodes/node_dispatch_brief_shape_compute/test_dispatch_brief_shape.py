@@ -21,6 +21,9 @@ pytestmark = pytest.mark.unit
 
 @pytest.fixture
 def readers(monkeypatch):
+    # Brief-reader cases do not depend on a host's live WIP snapshot. The WIP
+    # routing test below supplies its own refusal and checks the caller facts.
+    monkeypatch.setattr(handler, "dispatch_wip_refusal", lambda **_facts: None)
     # Shape tests must not inherit the launching host's live WIP or destination policy.
     monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
     module = ModuleType("fixture_brief_readers")
@@ -133,6 +136,52 @@ def test_a_lane_that_may_open_a_pr_waits_when_the_wip_admission_refuses(
     if asked:
         assert asked[0]["prs"] == ("repo-a#4",)
         assert asked[0]["repo"] == "repo-a"
+
+
+# The recorded case: Wave 1 tasks were dispatched at 2026-11-02T15:41Z while gate G0 read fail.
+@pytest.mark.parametrize(
+    ("required", "readings", "want"),
+    [
+        (("G0",), (("G0", "fail"),), ("gate-failed",)),
+        (("G0",), (("G0", "FAIL"),), ("gate-failed",)),
+        (("G0",), (), ("gate-failed",)),
+        (("G0", "G1a"), (("G0", "pass"), ("G1a", "fail")), ("gate-failed",)),
+        (("G0",), (("G0", "pass"),), ()),
+        ((), (("G0", "fail"),), ()),
+    ],
+)
+def test_a_lane_is_refused_while_a_gate_it_names_reads_fail(
+    readers, required, readings, want
+):
+    result = NodeDispatchBriefShapeCompute().handle(
+        ModelDispatchBriefShapeRequest(
+            "Build W1.1.",
+            "floor-w1-1",
+            (),
+            "unused.py",
+            required_gates=required,
+            gate_readings=readings,
+        )
+    )
+    assert tuple(status for status, _ in result.refusals) == want
+
+
+def test_the_gate_refusal_names_each_failing_gate_and_its_reading(readers):
+    result = NodeDispatchBriefShapeCompute().handle(
+        ModelDispatchBriefShapeRequest(
+            "Build W1.1.",
+            "floor-w1-1",
+            (),
+            "unused.py",
+            required_gates=("G0", "G1a"),
+            gate_readings=(("G0", "fail"),),
+        )
+    )
+    ((status, line),) = result.refusals
+    assert status == "gate-failed"
+    assert line.startswith("REMOTE-LANE-GATE-FAILED ")
+    assert "G0=fail" in line
+    assert "G1a=unread" in line
 
 
 @pytest.mark.parametrize(

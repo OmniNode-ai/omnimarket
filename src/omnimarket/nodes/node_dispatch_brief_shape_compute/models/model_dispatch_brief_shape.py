@@ -42,6 +42,10 @@ class ModelDispatchBriefShapeRequest:
         None  # the dispatch's --ticket; the brief's own CLAIM ticket is read from the brief
     )
     repo: str | None = None  # the dispatch's --repo; a lane with a repo may open a PR
+    # The gates the dispatched task waits for (a floor task's ``waits for`` gates); empty names none.
+    required_gates: tuple[str, ...] = ()
+    # (gate, reading) pairs as the caller read them; only ``pass`` admits, and a named gate with no reading refuses.
+    gate_readings: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
