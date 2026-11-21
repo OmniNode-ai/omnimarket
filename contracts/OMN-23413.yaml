@@ -470,15 +470,15 @@ dod_evidence:
   description: The evidence item check runs two unit-test files against the hook node handler. The hook
     node sends an eligible prompt to delegation and blocks Claude with the accepted answer. An action
     request such as "you can fix it" stays with Claude with no delegation call. A declined prompt and a
-    timed-out delegation pass the prompt to Claude with no hook output; for a decline the quality gate
-    vetoed, the check asserts only the declined outcome and its run id. A plain process failure is
-    covered by the local Done gate item below. The prompt switch pauses only prompts. Claude is told
-    once what delegation answered while blocked, and the history given to Claude is bounded. Amendment
-    14a requires onex delegation on to register only the prompt hook so that subagents stay on Claude.
-    This check does not verify which hooks an installation registers. This check calls the handler
-    directly, which still answers a subagent event, and does not observe a Claude session. The skip
-    prefix, the fixture installed-hook journey and the captured-receipt readback are covered by the
-    unbound local Done gate item below.
+    timed-out delegation pass the prompt to Claude, and with no pending history the check asserts empty
+    hook output; for a decline the quality gate vetoed, the check asserts only the declined outcome and
+    its run id. A plain process failure is covered by the local Done gate item below. The prompt switch
+    pauses only prompts. Claude is told once what delegation answered while blocked, and the history
+    given to Claude is bounded. Amendment 14a requires onex delegation on to register only the prompt
+    hook so that subagents stay on Claude. This check does not verify which hooks an installation
+    registers. This check calls the handler directly, which still answers a subagent request, and does
+    not observe a Claude session. The skip prefix, the fixture installed-hook journey and the
+    captured-receipt readback are covered by the unbound local Done gate item below.
   source: manual
   execution_scope: hosted_and_local
   binds_ac:
