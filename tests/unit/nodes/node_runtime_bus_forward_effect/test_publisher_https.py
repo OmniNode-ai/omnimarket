@@ -36,6 +36,7 @@ from omnimarket.nodes.node_runtime_bus_forward_effect.protocols import (
 
 from .https_test_door import (
     AUTH_REF,
+    EVENT_TOPIC_PREFIX,
     ROUTE,
     TOKEN,
     TOPIC,
@@ -965,3 +966,59 @@ def test_https_wall_clock_deadline_cancels_trickling_body_and_reserves_later_att
     record_property("early_retry_delay_ms", round(delay * 1000))
     assert 0.4 <= delay < 1.0
     assert elapsed <= flush_budget
+
+
+class _KafkaArmPublisher:
+    """The recorded stand-in for the Kafka publisher seam: it keeps what the adapter handed it."""
+
+    def __init__(self) -> None:
+        self.published: list[tuple[str, bytes | None, bytes, dict[str, str]]] = []
+
+    def publish(
+        self, topic: str, key: bytes | None, value: bytes, headers: dict[str, str]
+    ) -> None:
+        self.published.append((topic, key, value, headers))
+
+    def flush(self, timeout_s: float) -> int:
+        return 0
+
+    def failure_detail(self) -> str | None:
+        return None
+
+
+# AC17 (the Kafka path is unchanged): an overlay that declares the Kafka arm still reaches the Kafka publisher
+# seam through the broker factory and never builds the HTTPS sender -- falsifier: `pytest ... -k kafka_arm_unchanged`
+# with the adapter selecting the HTTPS publisher for every overlay turns the broker-factory assertion red
+def test_kafka_arm_unchanged_overlay_still_selects_the_kafka_publisher(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected_https(*args: object, **kwargs: object) -> None:
+        pytest.fail("a Kafka overlay built the HTTPS transport")
+
+    brokers: list[str] = []
+    stand_in = _KafkaArmPublisher()
+    monkeypatch.setattr(adapter, "broker_for_lane", lambda lane, _env: lane)
+    monkeypatch.setattr(httpx, "AsyncHTTPTransport", unexpected_https)
+    configuration = ModelRuntimeBusForwardOverlay.model_validate(
+        {
+            "event_bus": {"type": "kafka", "lane": "example-lane"},
+            "max_events": 5,
+            "flush_timeout_seconds": 10,
+            "allowed_topic_prefixes": [EVENT_TOPIC_PREFIX],
+        }
+    )
+
+    def kafka_publisher(broker: object) -> _KafkaArmPublisher:
+        brokers.append(str(broker))
+        return stand_in
+
+    result = adapter.CoreRuntimeBusForwarder(
+        overlay=configuration, publisher_for_broker=kafka_publisher
+    ).forward((event(b"one", key=b"k"), event(b"two")))
+
+    assert result == {"forwarded": 2, "failed": 0, "detail": None}
+    assert brokers == ["example-lane"]
+    assert [(topic, key, value) for topic, key, value, _ in stand_in.published] == [
+        (TOPIC, b"k", b"one"),
+        (TOPIC, None, b"two"),
+    ]

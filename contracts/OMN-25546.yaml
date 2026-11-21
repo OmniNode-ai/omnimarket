@@ -183,12 +183,12 @@ dod_evidence:
         check_value: "uv run --frozen pytest tests/unit/nodes/node_runtime_bus_forward_effect -q -k https_capture --no-cov -n 0"
         cwd: .
   - id: dod-omn25546-ac17
-    description: "The Kafka implementation has the same Git blob as the reference implementation and its existing publisher tests pass."
+    description: "The Kafka implementation has the same Git blob as the reference implementation, its existing publisher tests pass, and a Kafka overlay still selects the Kafka publisher without building the HTTPS sender."
     source: manual
     binds_ac: [AC17]
     checks:
       - check_type: test_passes
-        check_value: "uv run --frozen pytest tests/unit/nodes/node_runtime_bus_forward_effect/test_runtime_bus_publisher_kafka.py -q --no-cov -n 0"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_runtime_bus_forward_effect/test_runtime_bus_publisher_kafka.py tests/unit/nodes/node_runtime_bus_forward_effect/test_publisher_https.py -q -k kafka --no-cov -n 0"
         cwd: .
       - check_type: command
         check_value: "test \"$(git hash-object src/omnimarket/nodes/node_runtime_bus_forward_effect/publishers/publisher_kafka.py)\" = c18dd6d61974128be40ae3df5d3a114a2a2dae4a"
