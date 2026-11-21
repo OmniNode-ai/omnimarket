@@ -10,9 +10,12 @@ the whole ``ModelIntegrationProjection`` (one reading per merged change, keyed
 every row of it is upserted, carrying the pass's counts and ``as_of``, and rows
 of an older pass that the newest no longer names are deleted, all in one
 transaction (``apply_pass``), so a write that fails part-way leaves the held
-pass as it was. A pass not newer than the one held (older, or the same
-``as_of``) writes and publishes nothing, so a replay or an out-of-order
-delivery leaves the same rows. An empty newer pass leaves no rows. A payload
+pass as it was. An older pass, or the held pass re-sent with the same content
+(every column but ``projected_at``), writes and publishes nothing, so a replay
+or an out-of-order delivery leaves the same rows; a pass with the held
+``as_of`` but corrected content replaces the held rows. A delta whose publish
+fails after the pass committed is not published again: the redelivered pass
+matches what the table holds and is skipped. An empty newer pass leaves no rows. A payload
 that is not a pass is refused before the store is opened, so it goes to the
 contract's DLQ topic whether or not the database answers. The dashboard's
 Running figure is the number of rows whose ``state`` is ``running``, which
@@ -103,6 +106,20 @@ def upsert_statement(relation: str) -> str:
 def held_as_of_statement(relation: str) -> str:
     """The newest pass the table holds."""
     return f"SELECT MAX(as_of) AS as_of FROM {relation}"
+
+
+#: Every column but the projection time: two passes with these equal are the same pass.
+CONTENT_COLUMNS = tuple(c for c in COLUMNS if c != "projected_at")
+
+
+def held_rows_statement(relation: str) -> str:
+    """The held pass's content, to tell a re-sent pass from a corrected one."""
+    return f"SELECT {', '.join(CONTENT_COLUMNS)} FROM {relation}"
+
+
+def delete_key_statement(relation: str) -> str:
+    """Delete one held row that a corrected pass with the same as_of no longer names."""
+    return f"DELETE FROM {relation} WHERE key = $1 RETURNING key"
 
 
 def prune_statement(relation: str) -> str:
@@ -270,17 +287,35 @@ class FloorIntegrationProjectionWriter(BaseProjectionRunner):
         )
         incoming = _iso(projection.as_of)
 
-        def is_current(held_as_of: object) -> bool:
-            """The held pass is this one or newer: nothing to write."""
+        def held_text(held_as_of: object) -> str | None:
             if isinstance(held_as_of, datetime):
-                held_as_of = _iso(held_as_of)
-            return isinstance(held_as_of, str) and held_as_of >= incoming
+                return _iso(held_as_of)
+            return held_as_of if isinstance(held_as_of, str) else None
+
+        def held_is_newer(held_as_of: object) -> bool:
+            held = held_text(held_as_of)
+            return held is not None and held > incoming
+
+        def held_is_same_pass(held_as_of: object) -> bool:
+            return held_text(held_as_of) == incoming
 
         projected_at = datetime.now(UTC)
         values = {
             key: _row(key, reading, projection, projected_at)
             for key, reading in projection.rows.items()
         }
+        incoming_content = {
+            key: tuple(row[c] for c in CONTENT_COLUMNS) for key, row in values.items()
+        }
+
+        def unchanged(held_rows: list[dict[str, object]]) -> bool:
+            """The held rows are exactly this pass's rows, column for column."""
+            held = {
+                str(row["key"]): tuple(row[c] for c in CONTENT_COLUMNS)
+                for row in held_rows
+            }
+            return held == incoming_content
+
         outcome = await store.apply_pass(
             lock_key=f"{SCHEMA}.{TABLE}",
             held_statement=held_as_of_statement(relation),
@@ -288,7 +323,12 @@ class FloorIntegrationProjectionWriter(BaseProjectionRunner):
             prune_statement=prune_statement(relation),
             incoming_as_of=incoming,
             rows=[tuple(row[c] for c in COLUMNS) for row in values.values()],
-            is_current=is_current,
+            incoming_keys=set(values),
+            held_is_newer=held_is_newer,
+            held_is_same_pass=held_is_same_pass,
+            held_rows_statement=held_rows_statement(relation),
+            unchanged=unchanged,
+            delete_key_statement=delete_key_statement(relation),
         )
         if outcome.skipped:
             return {"rows_upserted": 0, "rows_deleted": 0, "skipped_older_pass": True}
@@ -330,8 +370,11 @@ class FloorIntegrationProjectionWriter(BaseProjectionRunner):
 
 __all__ = [
     "COLUMNS",
+    "CONTENT_COLUMNS",
     "FloorIntegrationProjectionWriter",
+    "delete_key_statement",
     "held_as_of_statement",
+    "held_rows_statement",
     "projection_from_payload",
     "prune_statement",
     "upsert_statement",

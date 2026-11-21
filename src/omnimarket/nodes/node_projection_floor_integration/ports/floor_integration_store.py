@@ -51,9 +51,19 @@ class ProtocolFloorIntegrationStore(Protocol):
         prune_statement: str,
         incoming_as_of: str,
         rows: list[tuple[object, ...]],
-        is_current: Callable[[object], bool],
+        incoming_keys: set[str],
+        held_is_newer: Callable[[object], bool],
+        held_is_same_pass: Callable[[object], bool],
+        held_rows_statement: str,
+        unchanged: Callable[[list[dict[str, object]]], bool],
+        delete_key_statement: str,
     ) -> PassOutcome:
-        """Apply one pass in one transaction; skip it when the held pass is current."""
+        """Apply one pass in one transaction.
+
+        Skipped when the held pass is newer, or is the same pass (same as_of) with
+        the same content. A same-as_of pass with corrected content is applied,
+        and held keys it no longer names are deleted.
+        """
 
 
 def _sqlite_binding(params: tuple[object, ...]) -> dict[str, object]:
@@ -116,7 +126,12 @@ class SqliteFloorIntegrationStore:
         prune_statement: str,
         incoming_as_of: str,
         rows: list[tuple[object, ...]],
-        is_current: Callable[[object], bool],
+        incoming_keys: set[str],
+        held_is_newer: Callable[[object], bool],
+        held_is_same_pass: Callable[[object], bool],
+        held_rows_statement: str,
+        unchanged: Callable[[list[dict[str, object]]], bool],
+        delete_key_statement: str,
     ) -> PassOutcome:
         conn = self._connected()
         # BEGIN IMMEDIATE takes the write lock before the held pass is read, so
@@ -124,9 +139,19 @@ class SqliteFloorIntegrationStore:
         conn.execute("BEGIN IMMEDIATE")
         try:
             held = conn.execute(held_statement).fetchone()
-            if is_current(held["as_of"] if held is not None else None):
+            held_as_of = held["as_of"] if held is not None else None
+            absent: list[str] = []
+            if held_is_newer(held_as_of):
                 conn.execute("ROLLBACK")
                 return PassOutcome(skipped=True)
+            if held_is_same_pass(held_as_of):
+                held_rows = [
+                    dict(r) for r in conn.execute(held_rows_statement).fetchall()
+                ]
+                if unchanged(held_rows):
+                    conn.execute("ROLLBACK")
+                    return PassOutcome(skipped=True)
+                absent = sorted({str(r["key"]) for r in held_rows} - incoming_keys)
             written: list[str] = []
             for row in rows:
                 returned = conn.execute(
@@ -140,6 +165,13 @@ class SqliteFloorIntegrationStore:
                     prune_statement, _sqlite_binding((incoming_as_of,))
                 ).fetchall()
             ]
+            for key in absent:
+                deleted.extend(
+                    str(gone["key"])
+                    for gone in conn.execute(
+                        delete_key_statement, _sqlite_binding((key,))
+                    ).fetchall()
+                )
             conn.execute("COMMIT")
         except BaseException:
             if conn.in_transaction:
@@ -173,7 +205,12 @@ class PostgresFloorIntegrationStore:
         prune_statement: str,
         incoming_as_of: str,
         rows: list[tuple[object, ...]],
-        is_current: Callable[[object], bool],
+        incoming_keys: set[str],
+        held_is_newer: Callable[[object], bool],
+        held_is_same_pass: Callable[[object], bool],
+        held_rows_statement: str,
+        unchanged: Callable[[list[dict[str, object]]], bool],
+        delete_key_statement: str,
     ) -> PassOutcome:
         # The pool is used directly so one pass is one transaction. That skips
         # AsyncpgAdapter.execute's tenant guard, which does not apply here:
@@ -183,8 +220,15 @@ class PostgresFloorIntegrationStore:
             # is read under the lock, so two passes cannot interleave.
             await conn.execute("SELECT pg_advisory_xact_lock(hashtext($1))", lock_key)
             held = await conn.fetchrow(held_statement)
-            if is_current(held["as_of"] if held is not None else None):
+            held_as_of = held["as_of"] if held is not None else None
+            absent: list[str] = []
+            if held_is_newer(held_as_of):
                 return PassOutcome(skipped=True)
+            if held_is_same_pass(held_as_of):
+                held_rows = [dict(r) for r in await conn.fetch(held_rows_statement)]
+                if unchanged(held_rows):
+                    return PassOutcome(skipped=True)
+                absent = sorted({str(r["key"]) for r in held_rows} - incoming_keys)
             written: list[str] = []
             for row in rows:
                 returned = await conn.fetchrow(upsert_statement, *row)
@@ -194,6 +238,11 @@ class PostgresFloorIntegrationStore:
                 str(gone["key"])
                 for gone in await conn.fetch(prune_statement, incoming_as_of)
             ]
+            for key in absent:
+                deleted.extend(
+                    str(gone["key"])
+                    for gone in await conn.fetch(delete_key_statement, key)
+                )
         return PassOutcome(skipped=False, written_keys=written, deleted_keys=deleted)
 
 

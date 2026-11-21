@@ -130,7 +130,12 @@ class _AsyncpgFloorIntegrationStore(PostgresFloorIntegrationStore):
         prune_statement: str,
         incoming_as_of: str,
         rows: list[tuple[object, ...]],
-        is_current: Callable[[object], bool],
+        incoming_keys: set[str],
+        held_is_newer: Callable[[object], bool],
+        held_is_same_pass: Callable[[object], bool],
+        held_rows_statement: str,
+        unchanged: Callable[[list[dict[str, object]]], bool],
+        delete_key_statement: str,
     ) -> PassOutcome:
         return await super().apply_pass(
             lock_key=lock_key,
@@ -139,7 +144,12 @@ class _AsyncpgFloorIntegrationStore(PostgresFloorIntegrationStore):
             prune_statement=_in_test_schema(prune_statement),
             incoming_as_of=incoming_as_of,
             rows=rows,
-            is_current=is_current,
+            incoming_keys=incoming_keys,
+            held_is_newer=held_is_newer,
+            held_is_same_pass=held_is_same_pass,
+            held_rows_statement=_in_test_schema(held_rows_statement),
+            unchanged=unchanged,
+            delete_key_statement=_in_test_schema(delete_key_statement),
         )
 
 

@@ -118,6 +118,54 @@ async def test_floor_integration_equal_as_of_pass_changes_nothing(
     await reader.close()
 
 
+async def test_floor_integration_same_as_of_with_corrected_content_is_applied(
+    served: Served,
+) -> None:
+    """A pass re-sent with the held as_of but corrected content replaces the held rows."""
+    writer, reader = served
+    batch = _batch()
+    _, first = _project(batch)
+    _handle(writer, first, 0)
+
+    corrected_reading = batch.readings[0].model_copy(
+        update={"title": "corrected title"}
+    )
+    corrected = batch.model_copy(
+        update={"readings": [corrected_reading, *batch.readings[1:]]}
+    )
+    projection, envelope = _project(corrected)
+    keys = [
+        key for key, row in projection.rows.items() if row.title == "corrected title"
+    ]
+    assert len(keys) == 1
+    result = _handle(writer, envelope, 1)
+
+    assert result["rows_upserted"] >= 1
+    assert (await _read(reader))[keys[0]]["title"] == "corrected title"
+    await reader.close()
+
+
+async def test_floor_integration_same_as_of_without_a_key_removes_it(
+    served: Served,
+) -> None:
+    """A corrected pass with the held as_of that no longer names a change drops its row."""
+    writer, reader = served
+    batch = _batch()
+    full, first = _project(batch)
+    _handle(writer, first, 0)
+
+    corrected, envelope = _project(
+        batch.model_copy(update={"readings": batch.readings[1:]})
+    )
+    dropped = set(full.rows) - set(corrected.rows)
+    assert len(dropped) == 1
+    result = _handle(writer, envelope, 1)
+
+    assert set(await _read(reader)) == set(corrected.rows)
+    assert result["rows_deleted"] == 1
+    await reader.close()
+
+
 async def test_floor_integration_empty_newer_pass_clears_the_rows(
     served: Served,
 ) -> None:
