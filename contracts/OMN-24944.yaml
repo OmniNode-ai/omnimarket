@@ -1,0 +1,127 @@
+schema_version: 1.0.0
+ticket_id: OMN-24944
+title: 'The standing rulings register runs hourly on h201 through the declared installer'
+summary: The register (omnimarket#6232) ran only by hand, inside the dev runtime container, where its ssh, ledger and repository reads cannot work, so every row read UNREAD. This adds a tick form of the register, a declared systemd unit for it, and a local read for a row whose host is the host's own name, so a pool host reads the register on a timer and records the reading.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24944-register-runs-where-its-reads-work
+  statement: The register runs on a timer on a host that holds its ssh trust, ledger reader and repository clones, and a run records its reading.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the register tick reads the register under the overlay roots, prints a MISSING line for each row that is not TRUE and writes last-run.json with the verdict counts; a probe reads nothing; a missing overlay ends it with 3 -- falsifier: pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_tick.py -q fails when the tick does not write last-run.json'
+  - id: AC2
+    statement: 'AC2: a row whose read host is the host''s own name (LAB_WORK_HOST_NAME) runs its argv locally and not through ssh to itself; an unset name changes nothing -- falsifier: pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k local_host_name -q fails when the row goes through the ssh prefix'
+  - id: AC3
+    statement: 'AC3: the declared installer renders the ruling-register-systemd unit with an hourly timer, the probe, and the environment the ledger-reading rows need -- falsifier: pytest tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -q fails when the unit is absent from the contract'
+  - id: AC4
+    statement: 'AC4: integrated: the unit is installed on h201 from the branch checkout through onex-host-install-units, the installer records the revision, and the unit''s run writes last-run.json and a journal line on h201 -- falsifier: onex-host-install-units ruling-register-systemd --status on h201 names no revision, or last-run.json on h201 is older than two intervals'
+  - id: AC5
+    statement: 'AC5: the register reads its rows concurrently under a cap of 8 and returns the readings and events in row order, except that the rows that run the ledger reader read one after another (eight at once were measured unanswered at 115 s, one alone 69 s), so a tick whose rows each wait the full route timeout ends in at most the longer of the ledger-reader chain (its row count x the route timeout) and ceil(rows / 8) timeouts, and that worst case (720 s for the 16 rows at the 90 s route timeout) stays under the unit''s run limit of 900 s -- falsifier: pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "concurrent or at_once or one_at_a_time or run_limit or each_input" -q fails when six reads that wait for each other do not all run at once, when ledger-reader rows overlap, or when the worst case reaches the unit''s limit'
+evidence_requirements:
+- kind: tests
+  description: The tick, the local host name and the unit tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24944-ac1
+  description: The tick tests, a probe, a run with an in-memory route that writes last-run.json with every row UNREAD, and a run with no overlay that ends 3 and writes nothing.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_tick.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24944-ac2
+  description: A row whose host equals local_host_name runs without the ssh prefix, and the same row with no local host name goes through it.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k local_host_name -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24944-ac3
+  description: The unit is declared, its module and entry file exist, and a dry run renders an hourly timer with the register's environment.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_ruling_register_unit.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24944-ac5
+  description: Six reads that wait for each other on a barrier all run at once, 17 gated reads peak at the cap of 8, the ledger-reader rows run one at a time beside the rest, the readings and events keep row order when the first read finishes last, and the worst case (read from the unit's run limit, the route's timeout and the register's rows) stays under the run limit.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_ruling_register_effect/test_ruling_register_effect.py -k "concurrent or at_once or one_at_a_time or run_limit or each_input or row_order or wave_bound" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24944-ac4-integration-proof
+  description: Read the installed unit on h201 through the declared installer and print what was read, the status output and last-run.json. The check passes only when the status read exits 0, names the installed revision equal to the checked-out head ("installed revision <sha> of "), its first "N s old" line is last-run.json and N is under 7200 (two intervals of the 3600 s timer), last-run.json holds fewer UNREAD rows than rows, and every row that runs the ledger reader (8) and every h201 row (4) reads TRUE or FALSE and none UNREAD (one row read with the rest UNREAD fails), and last-run.json names a journal file on h201 that was written within 120 minutes and ends in an event line. It also reads the dev runtime container on h201 and passes only when the container carries no LAB_WORK_HOST_NAME (the h201 rows would run inside it and read themselves), and when docker answers and curl is found on the unit's PATH for the unit's user (the PATH starts with the ssh user's .local/bin, the unit's own first entry, and the check fails unless the ssh user is the user that owns last-run.json, which is the unit's user). The check does not read the Lab line (its output is what the Lab comment of the head records, and the Lab line of the head is checked by its own check, contracts/OMN-25318.yaml AC8). Rerunning the unit tests proves nothing about the install, so the check does not; the unit tests run this same check against the installer's real status output and a real tick's record (every row UNREAD, one row read, a ledger row or an h201 row UNREAD, no journal, an old journal, another revision, a stale heartbeat, another first age line, a container that carries the host name, a docker that fails, an ssh user that is not the unit's user and a unit user's docker that fails first on the default PATH each fail it; and no Lab line is needed for it to pass). Hosted CI cannot reach h201, so only the local Done gate runs this unbound check; its output is recorded in the Lab line and a STATUS row.
+  source: manual
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      sh -c '
+      set -eu
+      head=$(git rev-parse HEAD)
+      host=${RULING_REGISTER_HOST:-h201}
+      installer=${RULING_REGISTER_INSTALLER:?set RULING_REGISTER_INSTALLER to the absolute path of onex-host-install-units on the host, under the installed checkout .venv/bin}
+      case "$installer" in /*) ;; *) echo "name the installer by its absolute path on the host, not $installer"; exit 1 ;; esac
+      on_host() { if [ "$host" = local ]; then "$@"; else ssh "$host" "$@"; fi; }
+      on_host true || { echo "$host does not answer from $(hostname): set RULING_REGISTER_HOST to the alias of h201 on this gate host (local on h201 itself)"; exit 1; }
+      out=$(on_host "$installer" ruling-register-systemd --status)
+      printf "%s\n" "$out"
+      printf "%s\n" "$out" | grep -qF "installed revision $head of "
+      line=$(printf "%s\n" "$out" | grep -m1 -E " [0-9]+ s old$")
+      path=${line%: *}
+      age=${line##*: }
+      age=${age% s old}
+      case "$path" in */last-run.json) ;; *) echo "the first age line is not last-run.json: $line"; exit 1 ;; esac
+      test "$age" -lt 7200
+      rec=$(on_host cat "$path")
+      printf "%s\n" "$rec"
+      rows=$(printf "%s" "$rec" | sed -n "s/.*\"rows\": \([0-9][0-9]*\).*/\1/p")
+      unread=$(printf "%s" "$rec" | sed -n "s/.*\"UNREAD\": \([0-9][0-9]*\).*/\1/p")
+      journal=$(printf "%s" "$rec" | sed -n "s/.*\"journal\": \"\([^\"]*\)\".*/\1/p")
+      test -n "$rows"
+      test -n "$unread"
+      test "$rows" -gt 0
+      test "$unread" -lt "$rows"
+      for id in new-work-lands-with-a-fable-verdict dev-holds-ready merged-means-running lanes-placed-bottom-up fable-reviews-run-on-the-mac holds-have-an-owner-and-an-unexpired-expiry plan-slice-round-four-needs-a-scope-cut lab-fill-skips-under-a-fifth one-runtime-no-foreign-containers no-onex-api-container-on-dev boot-wires-only-attached-contracts boot-joins-only-required-contracts; do
+        printf "%s" "$rec" | grep -qE "\"$id\": \"(TRUE|FALSE)\"" || { echo "row $id is not read: it is missing or reads UNREAD"; exit 1; }
+      done
+      read_at=$(printf "%s" "$rec" | sed -n "s/.*\"read_at\": \"\([^\"]*\)\".*/\1/p")
+      test -n "$journal"
+      installed=$(on_host cat "${journal%/*}/ruling-register-systemd.installed.json")
+      printf "%s\n" "$installed"
+      installed_at=$(printf "%s" "$installed" | tr -d "\n" | sed -n "s/.*\"installed_at\": \"\([^\"]*\)\".*/\1/p")
+      test -n "$read_at"
+      test -n "$installed_at"
+      read_n=$(printf "%s" "$read_at" | cut -c1-19 | tr -dc 0-9)
+      installed_n=$(printf "%s" "$installed_at" | cut -c1-19 | tr -dc 0-9)
+      if [ "$read_n" -lt "$installed_n" ]; then echo "last-run.json was written at $read_at, before the install at $installed_at"; exit 1; fi
+      on_host find "$journal" -mmin -120 | grep -q .
+      on_host tail -n 1 "$journal" | grep -q "\"row_id\":"
+      container_env=$(on_host docker exec omninode-runtime env)
+      if printf "%s\n" "$container_env" | grep -q "^LAB_WORK_HOST_NAME="; then echo "the dev runtime container carries LAB_WORK_HOST_NAME"; exit 1; fi
+      owner=$(on_host stat -c %U "$path")
+      ssh_user=$(on_host id -un)
+      if [ "$owner" != "$ssh_user" ]; then echo "the ssh user $ssh_user is not the user of the unit ($owner owns last-run.json)"; exit 1; fi
+      home=$(on_host printenv HOME)
+      unit_path=${RULING_REGISTER_UNIT_PATH:-$home/.local/bin:/usr/local/bin:/usr/bin:/bin}
+      on_host env PATH="$unit_path" docker ps -q > /dev/null
+      on_host env PATH="$unit_path" curl --version > /dev/null
+      '
+    cwd: .
