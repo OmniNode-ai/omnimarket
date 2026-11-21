@@ -24,7 +24,9 @@ description: >
   past its date as a finding. The shadow verb runs that check over every open pull request of the
   declared repositories, appends one row of what it would refuse, and holds no merge. The lookup verb
   answers from Memgraph by Cypher and falls back to the file store, with a typed reason on the answer,
-  only when Memgraph is unreachable. An unreadable
+  only when Memgraph is unreachable. Its locate question (OMN-26202) answers where a node, its
+  contract.yaml, metadata.yaml, overlay.yaml or overlay.example.yaml and the workflow files that name it
+  live, from the stored version, indexed through the overlay's contract_globs and command_globs. An unreadable
   repository, pull request source or an append that does not land are typed failures.
 
 handler:

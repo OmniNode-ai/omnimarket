@@ -1,0 +1,140 @@
+schema_version: 1.0.0
+ticket_id: OMN-25281
+title: 'Review findings 1 to 9 on the alarm pull request at head 38481c6661f2 are fixed or argued: the per-number and Lab checks read one comment, the golden chain reply comes from the command, and a duplicate
+  receipt returns zero'
+summary: The contract checks of the alarm pull request read each finding number and the Lab sha, command and exit 0 inside the one comment that opens with the Lab marker for the current head, from the bus
+  read of onex scm pr-view; the golden chain takes the accepted and the duplicate reply from the real append command run under CliRunner, and a duplicate receipt returns zero from the tick; a stale row is
+  stamped no earlier than the run it cites.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25281-ac1
+  statement: Each per-number check reads the number inside the fixer's comment for the current head only; the shim tests cover both contract files.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every per-number check in the contracts reads the number inside the fixer''s comment for the current head only, and the shim tests cover both contract files -- falsifier: `uv run
+      --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -q` passes with a review comment that quotes the number-8 pattern and no fixer comment'
+- id: req-omn25281-ac2
+  statement: The Lab segment is one comment; a failing marker comment followed by a later comment and a corrected second comment are both tested.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the Lab segment is bounded to one comment, with a test for a failing marker comment followed by a later comment holding the command and exit 0, and a test where a corrected second comment
+      is read -- falsifier: `uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -q` passes with the segment running to the next marker across comment ends'
+- id: req-omn25281-ac3
+  statement: Each dod item runs a file or selector that selects a test in the diff.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: each dod item runs a test file or selector that selects at least one test in the diff, and AC3 names the contract file the tests read -- falsifier: `uv run --frozen pytest tests -k
+      "omn24874 and alarm" --collect-only -q` collects no test'
+- id: req-omn25281-ac4
+  statement: The golden chain accepted reply comes from the append command under CliRunner, and a duplicate receipt makes the tick return zero.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the golden chain accepted reply comes from the append command run under CliRunner, and a duplicate-receipt case makes the tick return zero, each with a test -- falsifier: `uv run
+      --frozen pytest tests -k "omn24874 and golden_chain" -q` passes with the reply hand-built or with a duplicate mapped to a non-zero exit'
+- id: req-omn25281-ac5
+  statement: Contract items AC3 to AC6 are provable from the packet; the shim shapes equal the real tools' output.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: contract items AC3 to AC6 are provable from the packet (files on dev tip 13a7e30415fa, the state of omnimarket#6335, the Done gate output, and shim JSON shapes equal to the real pr-checks
+      and pr_state_local.py output) -- falsifier: `uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -q` passes with a shim JSON shape the real tool never prints'
+- id: req-omn25281-ac6
+  statement: Non-blocking findings 7, 8 and 9 are fixed or argued; a Lab comment names the head, the command and exit 0.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: non-blocking findings 7, 8 and 9 are fixed (R9 stale row stamped at max of bucket start and ran_at plus max_age, with a test) or argued with evidence in a PR comment, and a PR comment
+      starting `Lab: head=<full new head sha>` names the sha, the lab command and exit 0 -- falsifier: `uv run --frozen pytest tests -k "omn24874 and alarm" -q` passes with the stale row stamped at bucket
+      start for R9'
+evidence_requirements:
+- kind: tests
+  description: The alarm node golden-chain tests and the contract check tests.
+  command: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25281-ac1
+  description: A review that quotes a finding number and no fixer comment passes no per-number check; each number is read inside the one comment that opens with the Lab marker for the current head, for
+    the contracts of both pull request tickets.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "each_finding_number or old_head_comment or shape_the_real_tools" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25281-ac2
+  description: The Lab check reads one comment; a failing marker comment followed by a later comment holding the command and exit 0 fails, and a corrected second Lab comment for the head is the one read.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "lab_comment_check or corrected_second_lab_comment" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25281-ac3
+  description: Every hosted pytest check of the three alarm contracts names a file or selector that collects a test in this diff, and the ticket's own selectors collect a test.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "selector_selects_a_test or ticket_falsifier_selectors" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: command
+    check_value: sh -c 'uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -k "omn24874 and alarm" --collect-only -q --no-cov -n 0 -p no:randomly | grep -q "::test_"'
+    cwd: .
+- id: dod-omn25281-ac4
+  description: The accepted reply of the golden chain is the reply of the real append command run under CliRunner, and a duplicate receipt from the real handler makes the tick return zero.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -k "omn24874 and golden_chain" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25281-ac5
+  description: 'The shims of the contract checks print the shapes the real tools print: the typed bus answer of onex scm pr-view with result.comments, the watcher reading of onex scm pr-checks, and the
+    facts.head_sha of the PR watcher reader; a plain-text comment list, a flat head_sha and a cancelled check-run fail. The local Done gate items AC3 to AC6 of contracts/OMN-25071.yaml read live state.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_contract_checks_omn25071.py -k "shape or shims_print or check_runs or comment_checks_use" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25281-ac6-tests
+  description: A stale row is stamped at the later of the bucket start and ran_at plus max_age, tested for R9 and R8, each with the two cases where the bucket start and where ran_at plus max_age is the later.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -k "omn24874 and stale_row" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25281-ac6
+  description: 'Local Done gate: the one comment of this pull request that opens with the Lab marker for the head the PR watcher records names each of findings 1 to 9 (the first check), and the lab
+    command and exit 0 (the second).'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      sh -c 'H=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6353 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]])" facts head_sha) && test "${#H}" -eq 40 && test "$H" = "$(git rev-parse HEAD)" && onex scm pr-view --source bus OmniNode-ai/omnimarket#6353 | python3 tests/nodes/node_delegation_scenario_alarm_effect/pr_comment_check.py --head "$H" --finding 1 --finding 2 --finding 3 --finding 4 --finding 5 --finding 6 --finding 7 --finding 8 --finding 9 --round 0655'
+    cwd: .
+  - check_type: command
+    check_value: >-
+      sh -c 'H=$(python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6353 --json | python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]][sys.argv[2]])" facts head_sha) && test "${#H}" -eq 40 && test "$H" = "$(git rev-parse HEAD)" && onex scm pr-view --source bus OmniNode-ai/omnimarket#6353 | python3 tests/nodes/node_delegation_scenario_alarm_effect/pr_comment_check.py --head "$H" --lab'
+    cwd: .
+- id: dod-omn25281-integration-proof
+  description: The alarm node tests and the installer registry unit tests run on a lab host at the pushed head through the lab work runner; hosted CI cannot reach the lab, so only the local Done gate runs
+    this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path "${OMNI_HOME:?}" --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25281
+      --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect tests/nodes/node_host_installer_registry_units -q --no-cov -n 0 -p no:randomly
+    cwd: .

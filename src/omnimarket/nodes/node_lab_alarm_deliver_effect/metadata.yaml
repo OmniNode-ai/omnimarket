@@ -12,7 +12,7 @@ entry_points:
     node_lab_alarm_deliver_effect: omnimarket.nodes.node_lab_alarm_deliver_effect
 capabilities:
   standalone: true
-  full_runtime: false
+  full_runtime: true
   requires_network: true
   requires_repo: false
   requires_secrets: true
