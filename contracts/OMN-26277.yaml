@@ -1,0 +1,99 @@
+schema_version: 1.0.0
+ticket_id: OMN-26277
+title: Changes to shared, unmapped and heavy modules select their reverse import closure by file, and a collection gate runs once per pull request
+summary: 'The selector node gains the resolve_file_level_closure operation (HandlerFileLevelClosure): the import closure that ran for node packages runs for every changed file, a deleted or renamed file
+  seeds from the files that still name it, a nested conftest.py selects its directory, a source file the closure cannot place escalates as unresolved_source, and the root conftest edge is the policy key
+  root_conftest_edge (default cut, the plan recommendation, until decision D1 is answered; keep is built and tested). The rule is active only at policy file_level_closure_stage 3 while selection_stage stays
+  0, so no pull request runs a different selection. ci.yml gains one collection-gate job that needs the detect job. scripts/ci/test_selection_loader.py moves into the node. The replay assertions over the
+  pinned 60 merges (AC1) wait for the replay baseline receipt, which is not on dev. shared_modules, the module threshold and the unmapped escape stay in the adjacency file, read only below stage 3, because
+  removing them now would change what a stage-0 pull request runs.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26277-file-level-closure
+  statement: Every changed module selects its reverse import closure by file at stage 3, with a typed escalation for a file the closure cannot resolve and one collection gate per pull request.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: replay narrows, before the bound, the 18 merges of reasons shared_module (8), unmapped_module (4) and narrowed_selection_too_heavy (6), and the test-seconds total for the chosen D1
+      branch equals within 2% the total T7 lab step measures over the T1 pinned input and commits -- falsifier: `uv run pytest tests/nodes/node_test_selection_selector_compute -q --no-cov -k file_level_closure`
+      pins the committed total and fails outside tolerance'
+  - id: AC2
+    statement: 'AC2: a file the closure cannot resolve escalates with reason `unresolved_source` -- falsifier: fixture `src/omnimarket/_stray_dir/x.py` with no `__init__.py`; the test asserts the resolver
+      returns none before asserting the escalation'
+  - id: AC3
+    statement: 'AC3: a deleted model and a renamed model that a surviving test still imports select that test, and an added import of a changed model into a test selects it -- falsifier: fixtures for each;
+      remove the old-name seed or the import and the test must fail'
+  - id: AC4
+    statement: 'AC4: a change to a nested autouse fixture in `tests/<dir>/conftest.py` and to a module that fixture imports selects the tests under that directory, not the tree -- falsifier: a fixture of
+      each; ignore nested conftests and the test must fail'
+  - id: AC5
+    statement: 'AC5: the collection gate runs once for a multi-shard matrix -- falsifier: a `ci.yml` workflow test counts jobs that run `pytest --collect-only` (one) and fails on a collection step inside
+      the matrix job'
+evidence_requirements:
+- kind: tests
+  description: The file-level closure tests, the workflow gate tests and the existing selector tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute tests/ci/test_ci_collection_gate_file_level_closure.py tests/unit/scripts/test_detect_test_paths.py -q --no-cov -n 0 -p
+    no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26277-ac1
+  description: 'AC1, as built and not as worded: the closure narrows a shared model change (stage 3) where stage 2 escalates as shared_module, a file directly under handlers resolves, and six changed modules
+    do not escalate by count. The replay over the 18 merges and the committed seconds total for the chosen D1 branch need the replay baseline receipt (not on dev when this was built), so no total is pinned
+    here and the criterion is not met.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_file_level_closure.py -q --no-cov -n 0 -p no:randomly -k "models_change_selects or directly_under_handlers or
+      six_changed_modules or stage_gate_on_the_real_tree or root_conftest_edge"
+    cwd: .
+- id: dod-omn26277-ac2
+  description: 'AC2: the resolver returns none for a file in a directory with no __init__.py, then the closure escalates unresolved_source; with the marker the same file resolves.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_file_level_closure.py -q --no-cov -n 0 -p no:randomly -k "unresolved_source"
+    cwd: .
+- id: dod-omn26277-ac3
+  description: 'AC3: a deleted model, a renamed model (absolute and relative old-name references) and an added import each select the test, with a control that leaves it out.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_file_level_closure.py -q --no-cov -n 0 -p no:randomly -k "deleted_model or renamed_model or added_import"
+    cwd: .
+- id: dod-omn26277-ac4
+  description: 'AC4: a nested conftest change and a change to a module it imports select the conftest directory, not the tree; the root conftest edge cut and kept branches are each tested.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_file_level_closure.py -q --no-cov -n 0 -p no:randomly -k "nested_conftest or root_conftest"
+    cwd: .
+- id: dod-omn26277-ac5
+  description: 'AC5: ci.yml holds one job after the detect job that runs pytest --collect-only, it is not a matrix job, and no matrix job collects.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_ci_collection_gate_file_level_closure.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26277-integration-proof
+  description: the node directory and tests/ci run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26277 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/nodes/node_test_selection_selector_compute -q --no-cov
+    cwd: .
