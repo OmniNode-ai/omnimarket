@@ -40,6 +40,8 @@ from omnimarket.nodes.node_work_ledger_host_mirror_effect.protocols import (
 
 NODE_NAME = "node_lane_dispatch_intake_effect"
 PLUGIN_ROOT_ENV = "ONEX_LANE_DISPATCH_PLUGIN_ROOT"
+# The path the skill scripts and the runner take as an option; every read they make goes over the bus.
+NOMINAL_LEDGER = ".onex_state/ledger-mirror/host-ledger-mirror.md"
 RUNNER_RELATIVE = "skills/remote-lane/scripts/onex_remote_lane.py"
 READ_COMMAND_ENV = "ONEX_LEDGER_BUS_READ_COMMAND"
 APPEND_COMMAND_ENV = "ONEX_LANE_DISPATCH_BUS_APPEND"
@@ -97,8 +99,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 3
     plugin_root = Path(os.environ[PLUGIN_ROOT_ENV])
+    ledger = args.registry_root / NOMINAL_LEDGER
     handler = HandlerLaneDispatchIntake(
-        ScriptBriefBuilder(plugin_root, args.state_dir / "briefs"),
+        ScriptBriefBuilder(plugin_root, args.state_dir / "briefs", ledger),
         RemoteLanePlacer(
             plugin_root / RUNNER_RELATIVE,
             os.environ.get("ONEX_LANE_DISPATCH_PARENT", "labdispatch"),

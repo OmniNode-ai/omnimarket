@@ -460,3 +460,34 @@ def test_the_bus_writer_refuses_when_the_publisher_exits_nonzero(
         adapter.BusRowWriter(
             ["pub"], "labdispatch", "h202", tmp_path, run=FakeRun(1, "no")
         ).append("ROW")
+
+
+def test_the_builder_and_the_placer_pass_the_ledger_option_the_skill_scripts_and_the_runner_require(
+    tmp_path: Path,
+) -> None:
+    seen: list[list[str]] = []
+
+    def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        if argv[1].endswith("onex_remote_lane.py"):
+            return subprocess.CompletedProcess(
+                argv, 0, "placed lane=lane-a host=h201 x", ""
+            )
+        if Path(argv[1]).name == "lane_rules_block.py":
+            return subprocess.CompletedProcess(argv, 0, "# rules\n", "")
+        if "constraints" in argv:
+            Path(argv[argv.index("--out") + 1]).write_text("## 3a\n")
+        return subprocess.CompletedProcess(argv, 0, "PASS", "")
+
+    mirror = tmp_path / "mirror.md"
+    brief = adapter.ScriptBriefBuilder(
+        Path("/plugin"), tmp_path, mirror, run=run
+    ).build(_req("lane-a"), "orch")
+    adapter.RemoteLanePlacer(
+        Path("/r/onex_remote_lane.py"), "labdispatch", ledger=mirror, run=run
+    ).place(_req("lane-a"), brief, "m1#lane-a", "orch")
+    with_option = [argv for argv in seen if "--ledger" in argv]
+    assert len(with_option) == 3
+    assert all(argv[argv.index("--ledger") + 1] == str(mirror) for argv in with_option)
+    constraints = next(argv for argv in seen if "constraints" in argv)
+    assert constraints.index("--ledger") < constraints.index("constraints")

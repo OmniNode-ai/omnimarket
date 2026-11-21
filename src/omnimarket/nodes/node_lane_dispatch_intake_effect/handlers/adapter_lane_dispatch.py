@@ -65,9 +65,18 @@ class ScriptBriefBuilder:
     OUT_OF_SCOPE = "prod, any manual restart of dev, hand edits on a lab host outside declared config, merging or arming any PR"
 
     def __init__(
-        self, plugin_root: Path, scratch: Path, run: Run = subprocess.run
+        self,
+        plugin_root: Path,
+        scratch: Path,
+        ledger: Path | None = None,
+        run: Run = subprocess.run,
     ) -> None:
-        self._plugin_root, self._scratch, self._run = plugin_root, scratch, run
+        self._plugin_root, self._scratch, self._ledger = plugin_root, scratch, ledger
+        self._run = run
+
+    def _ledger_args(self) -> tuple[str, ...]:
+        # lane_brief.py takes the ledger path as a required option before its subcommand; its reads go over the bus.
+        return ("--ledger", str(self._ledger)) if self._ledger is not None else ()
 
     def _script(self, relative: str, *args: str) -> subprocess.CompletedProcess[str]:
         env = {**os.environ, "CLAUDE_PLUGIN_ROOT": str(self._plugin_root)}
@@ -89,6 +98,7 @@ class ScriptBriefBuilder:
             raise BriefError(f"lane_rules_block.py exit {rules.returncode}")
         made = self._script(
             "skills/lane-brief/scripts/lane_brief.py",
+            *self._ledger_args(),
             "constraints",
             "--lane",
             request.lane,
@@ -135,7 +145,10 @@ class ScriptBriefBuilder:
             encoding="utf-8",
         )
         check = self._script(
-            "skills/lane-brief/scripts/lane_brief.py", "check", str(path)
+            "skills/lane-brief/scripts/lane_brief.py",
+            *self._ledger_args(),
+            "check",
+            str(path),
         )
         if check.returncode != 0 or "REFUSED" in check.stdout:
             raise BriefError(
@@ -152,9 +165,11 @@ class RemoteLanePlacer:
         runner: Path,
         parent: str,
         model: str = "sonnet",
+        ledger: Path | None = None,
         run: Run = subprocess.run,
     ) -> None:
-        self._runner, self._parent, self._model, self._run = runner, parent, model, run
+        self._runner, self._parent, self._model = runner, parent, model
+        self._ledger, self._run = ledger, run
 
     def place(
         self, request: ModelPlacementRequest, brief: Path, key: str, parent: str
@@ -175,6 +190,8 @@ class RemoteLanePlacer:
             parent or self._parent,
             "--detach",
         ]
+        if self._ledger is not None:
+            argv += ["--ledger", str(self._ledger)]
         if request.host not in ("", "any"):
             argv += ["--host", request.host]
         base = {"key": key, "lane": request.lane, "ticket": request.ticket}
