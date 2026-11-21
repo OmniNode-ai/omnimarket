@@ -148,7 +148,8 @@ def _base_stage() -> int | None:
             env=scrub_git_location_env(os.environ),
         )
         if shown.returncode == 0:
-            return int(yaml.safe_load(shown.stdout)["selection_stage"])
+            # A base older than the stage gate has no key, which is stage 0.
+            return int(yaml.safe_load(shown.stdout).get("selection_stage", 0))
     return None
 
 
@@ -554,3 +555,18 @@ def test_selection_stage_comments_say_the_stage_sets_what_a_data_change_runs() -
         "selection_stage in the selector's policy.yaml rises one stage at a time"
         in text
     )
+
+
+def test_selection_stage_base_without_the_key_counts_as_stage_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A clone whose base branch predates the stage gate holds a policy.yaml with no selection_stage."""
+    shown = subprocess.CompletedProcess(
+        args=[], returncode=0, stdout="target_shard_seconds: 360\n"
+    )
+
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return shown
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert _base_stage() == 0
