@@ -8,9 +8,7 @@ Every key is a fixed fake string; no test reaches a provider.
 from __future__ import annotations
 
 import asyncio
-import json
 import re
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -22,15 +20,17 @@ from click.testing import CliRunner
 from omnimarket.cli import cli_secret
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
+from omnimarket.models.work_ledger_append import (
+    EnumWorkLedgerAppendStatus,
+    ModelWorkLedgerAppendReceipt,
+    ModelWorkLedgerAppendRequest,
+)
 from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
     ClaudeReviewGateway,
     ReviewKeyProbe,
 )
 from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
     ModelClaudeReviewGatewayRequest,
-)
-from omnimarket.nodes.node_friction_rollup_tick_effect.protocols.protocol_ledger_appender import (
-    InMemoryLedgerAppender,
 )
 from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
     apply_credential_registered,
@@ -39,11 +39,9 @@ from omnimarket.nodes.node_review_key_credit_probe_effect.handlers import (
     handler_review_key_credit_probe as probe_handler,
 )
 from omnimarket.nodes.node_review_key_credit_probe_effect.handlers.handler_review_key_credit_probe import (
-    LEDGER_COMMAND_VARIABLE,
     HandlerReviewKeyCreditProbe,
     NoReadingError,
     flips,
-    ledger_appender_from_environment,
     load_probe_config,
     probe_payload,
     read_states,
@@ -52,6 +50,11 @@ from omnimarket.nodes.node_review_key_credit_probe_effect.handlers.handler_revie
 )
 from omnimarket.nodes.node_review_key_credit_probe_effect.models.model_review_key_credit_probe import (
     ModelReviewKeyCreditProbeRequest,
+)
+from omnimarket.nodes.node_review_key_credit_probe_effect.protocols import (
+    BusReviewKeyLedgerAppender,
+    InMemoryReviewKeyLedgerAppender,
+    ledger_appender_for_lane,
 )
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from tests.unit.nodes.node_claude_review_gateway_effect.test_claude_review_gateway import (
@@ -70,6 +73,7 @@ from tests.unit.nodes.node_claude_review_gateway_effect.test_claude_review_gatew
 
 pytestmark = pytest.mark.unit
 _NOW = datetime(2026, 11, 15, 23, 0, tzinfo=UTC)
+_BUS_LANE = "lane-x"
 
 
 def _gateway(call: FakeCall, names: list[str]) -> ReviewKeyProbe:
@@ -134,26 +138,29 @@ _KEY_REFS = {name: str(_row(name)["api_key_ref"]) for name in ("key-a", "key-b")
 
 
 def _record(
-    tmp_path: Path, states: list[tuple[str, str]], appender: InMemoryLedgerAppender
+    tmp_path: Path,
+    states: list[tuple[str, str]],
+    appender: InMemoryReviewKeyLedgerAppender,
 ) -> list[tuple[str, str, str]]:
-    return record(
-        states,
-        state_dir=tmp_path / "state",
-        ledger=tmp_path / "ledger.md",
-        host="h200",
-        model=_MODEL,
-        appender=appender,
-        clock=lambda: _NOW,
+    return asyncio.run(
+        record(
+            states,
+            state_dir=tmp_path / "state",
+            host="h200",
+            model=_MODEL,
+            appender=appender,
+            clock=lambda: _NOW,
+        )
     )
 
 
 def test_first_run_is_a_baseline_and_a_flip_writes_one_row_each(tmp_path: Path) -> None:
-    ledger = InMemoryLedgerAppender()
+    ledger = InMemoryReviewKeyLedgerAppender()
     assert _record(tmp_path, [("a", "funded"), ("b", "out_of_credit")], ledger) == []
     assert ledger.rows == []
     states = [("a", "out_of_credit"), ("b", "out_of_credit")]
     assert _record(tmp_path, states, ledger) == [("a", "funded", "out_of_credit")]
-    (_, row) = ledger.rows[0]
+    row = ledger.rows[0]
     assert len(ledger.rows) == 1
     assert "| STATUS |" in row
     assert "alarm=review-key-credit" in row
@@ -170,36 +177,50 @@ def test_first_run_is_a_baseline_and_a_flip_writes_one_row_each(tmp_path: Path) 
 def test_a_ledger_that_refuses_keeps_the_old_state_so_the_flip_is_retried(
     tmp_path: Path,
 ) -> None:
-    _record(tmp_path, [("a", "funded")], InMemoryLedgerAppender())
+    _record(tmp_path, [("a", "funded")], InMemoryReviewKeyLedgerAppender())
     with pytest.raises(RuntimeError, match="not recorded"):
-        _record(tmp_path, [("a", "out_of_credit")], InMemoryLedgerAppender(refuse="no"))
+        _record(
+            tmp_path,
+            [("a", "out_of_credit")],
+            InMemoryReviewKeyLedgerAppender(refuse="no"),
+        )
     assert read_states(tmp_path / "state") == {"a": "funded"}
 
 
 def test_a_refused_second_row_does_not_write_the_first_row_again(
     tmp_path: Path,
 ) -> None:
-    class RefuseSecond(InMemoryLedgerAppender):
-        def append(self, ledger: Path, row: str) -> Any:
+    class RefuseSecond(InMemoryReviewKeyLedgerAppender):
+        async def append(self, row: str) -> Any:
             if len(self.rows) == 1:
-                return InMemoryLedgerAppender(refuse="contention").append(ledger, row)
-            return super().append(ledger, row)
+                return await InMemoryReviewKeyLedgerAppender(
+                    refuse="contention"
+                ).append(row)
+            return await super().append(row)
 
-    _record(tmp_path, [("a", "funded"), ("b", "funded")], InMemoryLedgerAppender())
+    _record(
+        tmp_path, [("a", "funded"), ("b", "funded")], InMemoryReviewKeyLedgerAppender()
+    )
     flipped = [("a", "out_of_credit"), ("b", "out_of_credit")]
     ledger = RefuseSecond()
     with pytest.raises(RuntimeError, match="not recorded"):
         _record(tmp_path, flipped, ledger)
     assert len(ledger.rows) == 1
     assert read_states(tmp_path / "state") == {"a": "out_of_credit", "b": "funded"}
-    retried = InMemoryLedgerAppender()
+    retried = InMemoryReviewKeyLedgerAppender()
     assert _record(tmp_path, flipped, retried) == [("b", "funded", "out_of_credit")]
-    assert [row for _, row in retried.rows if "key=a" in row] == []
+    assert [row for row in retried.rows if "key=a" in row] == []
 
 
 def test_an_unreachable_read_keeps_the_last_known_state(tmp_path: Path) -> None:
-    _record(tmp_path, [("a", "funded"), ("b", "funded")], InMemoryLedgerAppender())
-    _record(tmp_path, [("a", "unreachable"), ("b", "funded")], InMemoryLedgerAppender())
+    _record(
+        tmp_path, [("a", "funded"), ("b", "funded")], InMemoryReviewKeyLedgerAppender()
+    )
+    _record(
+        tmp_path,
+        [("a", "unreachable"), ("b", "funded")],
+        InMemoryReviewKeyLedgerAppender(),
+    )
     assert read_states(tmp_path / "state") == {"a": "funded", "b": "funded"}
 
 
@@ -211,7 +232,7 @@ def test_an_unreachable_read_keeps_the_last_known_state(tmp_path: Path) -> None:
 def test_a_run_in_which_no_key_gave_a_reading_fails_and_keeps_no_state(
     tmp_path: Path, states: list[tuple[str, str]]
 ) -> None:
-    ledger = InMemoryLedgerAppender()
+    ledger = InMemoryReviewKeyLedgerAppender()
     with pytest.raises(NoReadingError, match="no key gave a reading"):
         _record(tmp_path, states, ledger)
     assert ledger.rows == []
@@ -236,42 +257,92 @@ def test_the_rendered_row_carries_the_ticket_and_the_key_name_never_a_reference(
     assert len(piped.split(" | ")) == len(row.split(" | "))
 
 
-def _stub_ledger_command(tmp_path: Path, exit_code: int) -> tuple[str, Path]:
-    """A stand-in onex-ledger: records its argument list, optionally refuses."""
-    script = tmp_path / "stub_ledger.py"
-    seen = tmp_path / "ledger-argv.json"
-    script.write_text(
-        "import json, sys\n"
-        f"json.dump(sys.argv[1:], open({str(seen)!r}, 'w'))\n"
-        f"sys.stderr.write('stub refused') if {exit_code} else None\n"
-        f"sys.exit({exit_code})\n",
-        encoding="utf-8",
+class _FakeSend:
+    """A stand-in for the bus: records each request and answers with the status it was given."""
+
+    def __init__(self, status: EnumWorkLedgerAppendStatus, message: str = "") -> None:
+        self.status = status
+        self.message = message
+        self.requests: list[ModelWorkLedgerAppendRequest] = []
+
+    async def __call__(
+        self, request: ModelWorkLedgerAppendRequest, timeout_s: float
+    ) -> ModelWorkLedgerAppendReceipt | None:
+        self.requests.append(request)
+        return ModelWorkLedgerAppendReceipt(
+            request_id=request.request_id,
+            status=self.status,
+            exit_code=0,
+            message=self.message,
+            ledger_lines=[],
+            ledger_host="ledger-host",
+            duration_ms=1,
+            ledger_seq=1,
+        )
+
+
+def _bus_appender(send: _FakeSend) -> BusReviewKeyLedgerAppender:
+    return BusReviewKeyLedgerAppender(
+        "lane-x", Path("."), host="h200", clock=lambda: _NOW, send=send
     )
-    return f"{sys.executable} {script}", seen
 
 
-def test_the_appender_runs_the_command_the_host_units_carry_and_reads_its_refusal(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.delenv(LEDGER_COMMAND_VARIABLE, raising=False)
-    with pytest.raises(RuntimeError, match=LEDGER_COMMAND_VARIABLE):
-        ledger_appender_from_environment()
-    command, seen = _stub_ledger_command(tmp_path, 0)
-    monkeypatch.setenv(LEDGER_COMMAND_VARIABLE, command)
+def test_a_flip_row_reaches_the_ledger_as_a_bus_append_request_naming_no_file() -> None:
+    send = _FakeSend(EnumWorkLedgerAppendStatus.ACCEPTED)
     row = render_alarm_row("t", "h200", _MODEL, "key-a", "funded", "out_of_credit")
-    outcome = ledger_appender_from_environment().append(tmp_path / "l.md", row)
+    outcome = asyncio.run(_bus_appender(send).append(row))
     assert outcome.ok
-    assert json.loads(seen.read_text(encoding="utf-8")) == [
-        str(tmp_path / "l.md"),
-        "--append",
-        row,
-    ]
-    command, seen = _stub_ledger_command(tmp_path, 75)
-    monkeypatch.setenv(LEDGER_COMMAND_VARIABLE, command)
-    refused = ledger_appender_from_environment().append(tmp_path / "l.md", row)
+    (request,) = send.requests
+    assert request.ledger_id == "rolling-work-ledger"
+    assert request.requested_by_lane == "review-key-credit-probe"
+    assert request.requesting_host == "h200"
+    cells = request.rows.split(" | ")
+    assert f"req={request.request_id}" in cells
+    assert "via=bus:h200" in cells
+    assert cells[-1] == row.split(" | ")[-1]
+    assert "alarm=review-key-credit" in cells
+    assert asyncio.run(_bus_appender(send).append(row)).ok
+    assert send.requests[1].request_id == request.request_id
+
+
+def test_a_refusal_or_silence_from_the_ledger_is_a_refused_append() -> None:
+    row = render_alarm_row("t", "h200", _MODEL, "key-a", "funded", "out_of_credit")
+    refused = asyncio.run(
+        _bus_appender(_FakeSend(EnumWorkLedgerAppendStatus.REFUSED, "no")).append(row)
+    )
     assert not refused.ok
-    assert "rc=75" in refused.detail
-    assert "stub refused" in refused.detail
+    assert "refused" in refused.detail
+
+    async def _silent(
+        _request: ModelWorkLedgerAppendRequest, _timeout: float
+    ) -> ModelWorkLedgerAppendReceipt | None:
+        return None
+
+    silent = asyncio.run(
+        BusReviewKeyLedgerAppender(
+            "lane-x", Path("."), host="h200", clock=lambda: _NOW, send=_silent
+        ).append(row)
+    )
+    assert not silent.ok
+    assert "no receipt" in silent.detail
+
+
+def test_the_appender_needs_a_workspace_root_and_has_no_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("OMNIBASE_PATH", "OMNI_HOME"):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(RuntimeError, match="OMNI_HOME"):
+        ledger_appender_for_lane("lane-x")
+    monkeypatch.setenv("OMNI_HOME", ".")
+    assert isinstance(ledger_appender_for_lane("lane-x"), BusReviewKeyLedgerAppender)
+
+
+def test_the_probe_runs_no_subprocess_so_no_ledger_command_stands_between_it_and_the_bus() -> (
+    None
+):
+    for path in _PROBE_NODE.rglob("*.py"):
+        assert "subprocess" not in path.read_text("utf-8"), path
 
 
 class _ProbeWorld:
@@ -298,7 +369,9 @@ class _ProbeWorld:
             )
         table = tmp_path / "hosts.yaml"
         table.write_text(
-            f"hosts:\n  - name: {_HOST}\n    target: lab-host\n", encoding="utf-8"
+            f"hosts:\n  - name: {_HOST}\n    target: lab-host\n"
+            f"    ledger_bus_lane: {_BUS_LANE}\n",
+            encoding="utf-8",
         )
         monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(table))
         monkeypatch.setattr(cli_secret, "_tenant_key_store", lambda: self.store)
@@ -316,8 +389,18 @@ class _ProbeWorld:
             "handler_llm_delegation_call.HandlerLlmDelegationCall.__call__",
             _call,
         )
-        self.command, self.seen = _stub_ledger_command(tmp_path, 0)
-        monkeypatch.setenv(LEDGER_COMMAND_VARIABLE, self.command)
+        self.ledger = InMemoryReviewKeyLedgerAppender()
+        self.lanes: list[str] = []
+        ledger = self.ledger
+        lanes = self.lanes
+
+        def _appender_for_lane(lane: str, host: str | None = None) -> Any:
+            lanes.append(lane)
+            return ledger
+
+        monkeypatch.setattr(
+            probe_handler, "ledger_appender_for_lane", _appender_for_lane
+        )
 
     def run(self, *extra: str, model: str = _MODEL) -> Any:
         return CliRunner().invoke(
@@ -332,8 +415,6 @@ class _ProbeWorld:
                 _HOST,
                 "--state-dir",
                 str(self.tmp / "state"),
-                "--ledger",
-                str(self.tmp / "ledger.md"),
                 *extra,
             ],
         )
@@ -344,26 +425,26 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> _ProbeWorld:
     return _ProbeWorld(tmp_path, monkeypatch)
 
 
-def test_the_command_baselines_then_ledgers_a_flip_through_the_ledger_command(
+def test_the_command_baselines_then_ledgers_a_flip_over_the_hosts_bus_lane(
     world: _ProbeWorld,
 ) -> None:
     world.outcomes[:] = [_ok(), _ok()]
     first = world.run()
     assert first.exit_code == 0, first.output
     assert "0 flip(s) written" in first.output
-    assert not world.seen.exists()
+    assert world.ledger.rows == []
     world.outcomes[:] = [_fail(EnumDelegationFailureClass.PROVIDER_BILLING), _ok()]
     second = world.run()
     assert second.exit_code == 0, second.output
     assert "1 flip(s) written" in second.output
-    argv = json.loads(world.seen.read_text(encoding="utf-8"))
-    assert argv[:2] == [str(world.tmp / "ledger.md"), "--append"]
-    assert "key=key-a" in argv[2]
-    assert "ticket=OMN-24658" in argv[2]
+    assert world.lanes == [_BUS_LANE, _BUS_LANE]
+    (row,) = world.ledger.rows
+    assert "key=key-a" in row
+    assert "ticket=OMN-24658" in row
     for ref in world.refs:
-        assert ref not in argv[2] + first.output + second.output
+        assert ref not in row + first.output + second.output
     for value in ("sk-ant-fake-0-never-printed", "sk-ant-fake-1-never-printed"):
-        assert value not in argv[2] + first.output + second.output
+        assert value not in row + first.output + second.output
 
 
 def test_the_command_exits_nonzero_when_every_key_is_unreachable(
@@ -376,13 +457,17 @@ def test_the_command_exits_nonzero_when_every_key_is_unreachable(
     result = world.run()
     assert result.exit_code != 0
     assert "no key gave a reading" in result.output
-    assert not world.seen.exists()
+    assert world.ledger.rows == []
 
 
 def test_the_command_exits_nonzero_when_no_key_is_bound_to_this_host(
     world: _ProbeWorld, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(cli_secret, "_resolve_bound_host", lambda _host: "h999")
+    (world.tmp / "hosts.yaml").write_text(
+        f"hosts:\n  - name: h999\n    target: lab-host\n    ledger_bus_lane: {_BUS_LANE}\n",
+        encoding="utf-8",
+    )
     result = world.run()
     assert result.exit_code != 0
     assert "no key gave a reading" in result.output
@@ -397,14 +482,18 @@ def test_the_command_refuses_a_model_name_the_request_refuses_without_a_tracebac
     assert "review-gateway-key-probe refused" in result.output
 
 
-def test_the_command_refuses_to_run_without_the_ledger_command(
+def test_the_command_refuses_to_run_on_a_host_that_declares_no_bus_lane(
     world: _ProbeWorld, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.delenv(LEDGER_COMMAND_VARIABLE)
+    (world.tmp / "hosts.yaml").write_text(
+        f"hosts:\n  - name: {_HOST}\n    target: lab-host\n", encoding="utf-8"
+    )
     world.outcomes[:] = [_ok(), _ok()]
     result = world.run()
     assert result.exit_code != 0
-    assert LEDGER_COMMAND_VARIABLE in result.output
+    assert "ledger_bus_lane" in result.output
+    assert world.requests == []
+    assert world.ledger.rows == []
 
 
 def test_the_command_passes_the_thinking_mode_to_every_probe_request(
@@ -498,13 +587,12 @@ def test_a_budget_the_contract_declares_is_the_one_the_request_carries(
 
 @pytest.mark.asyncio
 async def test_the_handler_result_counts_the_flips_it_wrote(tmp_path: Path) -> None:
-    ledger = InMemoryLedgerAppender()
+    ledger = InMemoryReviewKeyLedgerAppender()
     request = ModelReviewKeyCreditProbeRequest(
         tenant_id=_TENANT,
         model=_MODEL,
         host=_HOST,
         state_dir=tmp_path / "state",
-        ledger=tmp_path / "ledger.md",
     )
 
     async def run(call: FakeCall) -> Any:
