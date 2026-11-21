@@ -1,0 +1,55 @@
+{
+ "bus": {
+  "command_envelope_id": "00000000-0000-0000-0000-000000000002",
+  "command_topic": "onex.cmd.x.v1",
+  "correlation_id": "00000000-0000-0000-0000-000000000001",
+  "terminal_envelope_id": null,
+  "terminal_offset": null,
+  "terminal_partition": null,
+  "terminal_topic": "onex.evt.x.v1"
+ },
+ "node": "node_github_repo_gateway_effect",
+ "operation": "pr_text",
+ "outcome": "completed",
+ "repo": "OmniNode-ai/omnimarket",
+ "result": {
+  "author": "pr-author",
+  "base_ref": "dev",
+  "body": "",
+  "body_truncated": false,
+  "comments": [
+   {
+    "author": "lane-writer",
+    "body": "Lab: head=89abcdef0123456789abcdef0123456789abcdef\nhost h053, command: onex lab-work run --bus-lane dev --lane x --kind test -- uv run pytest\nresult: exit 0\n",
+    "body_truncated": false,
+    "created_at": "2026-11-17T13:00:00Z",
+    "id": 101,
+    "updated_at": "2026-10-10T18:11:00Z"
+   },
+   {
+    "author": "lane-writer",
+    "body": "Lab: head=43bc9673d0c1db0f70d8497d12983757ed85649d\nhost h053, command: onex lab-work run --bus-lane dev --lane x --kind test -- uv run pytest\nresult: exit 0\n[round 1345] finding 1: fixed\n",
+    "body_truncated": false,
+    "created_at": "2026-11-17T15:00:00Z",
+    "id": 102,
+    "updated_at": "2026-10-10T18:11:00Z"
+   }
+  ],
+  "head_ref": "alarm",
+  "head_repo": "OmniNode-ai/omnimarket",
+  "head_sha": "43bc9673d0c1db0f70d8497d12983757ed85649d",
+  "is_cross_repository": false,
+  "is_draft": true,
+  "merged": false,
+  "operation": "pr_text",
+  "pr_number": 6353,
+  "repo": "OmniNode-ai/omnimarket",
+  "state": "open",
+  "title": "feat: an example",
+  "total_count": 2,
+  "truncated": false
+ },
+ "source": "bus",
+ "verb": "pr-view",
+ "watcher_tick": null
+}

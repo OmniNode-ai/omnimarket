@@ -15,6 +15,12 @@ from omnimarket.models.landing_decision import (
     EnumLivenessRead,
     ModelLandingLivenessFacts,
 )
+from omnimarket.models.pr_landing_liveness_read import (
+    ModelLivenessReadCompleted,
+    ModelLivenessReadFailed,
+    ModelLivenessReadRequest,
+    ModelLivenessReadResult,
+)
 from omnimarket.nodes.node_pr_landing_liveness_read_effect.handlers.adapter_command_reader import (
     CommandLivenessReader,
 )
@@ -23,12 +29,6 @@ from omnimarket.nodes.node_pr_landing_liveness_read_effect.handlers.liveness_rea
 )
 from omnimarket.nodes.node_pr_landing_liveness_read_effect.handlers.liveness_read_ports import (
     InMemoryLivenessReader,
-)
-from omnimarket.nodes.node_pr_landing_liveness_read_effect.models.model_liveness_read import (
-    ModelLivenessReadCompleted,
-    ModelLivenessReadFailed,
-    ModelLivenessReadRequest,
-    ModelLivenessReadResult,
 )
 from omnimarket.nodes.node_pr_landing_liveness_read_effect.overlay import (
     EnumLivenessReaderBackend,

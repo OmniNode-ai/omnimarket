@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from .model_hosted_minutes_uncounted import ModelUncountedRepo
 from .model_hosted_minutes_usage import ModelRepoDayMinutes
 
 AlertOutcome = Literal["none", "sent", "dead", "unconfigured", "already-sent", "failed"]
@@ -26,6 +27,10 @@ class ModelHostedMinutesWatchResult(BaseModel):
     month_minutes_by_repo: dict[str, float]
     daily_totals: dict[str, float]
     total_day_minutes: float
+    private_month_minutes: float
+    included_minutes: int
+    percent_used: float
+    uncounted: tuple[ModelUncountedRepo, ...]
     status_row: str
     ledger_written: bool
     ledger_detail: str

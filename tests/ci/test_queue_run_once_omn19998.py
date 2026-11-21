@@ -287,7 +287,16 @@ def test_queue_always_selects_full_suite():
 
 def test_workflow_admission_and_marker_wiring():
     jobs = yaml.safe_load(CI.read_text())["jobs"]
-    assert jobs["detect-changes"]["steps"][-1]["env"]["FLAG"] == "on"
+    resolve = next(
+        step
+        for step in jobs["detect-changes"]["steps"]
+        if step.get("name") == "Resolve test selection"
+    )
+    # The flag is the repository variable; a merge group runs the full suite whatever it says.
+    assert (
+        resolve["env"]["FLAG"]
+        == "${{ vars.ENABLE_SMART_TESTS == 'true' && 'on' || 'off' }}"
+    )
     assert "merge_group" in jobs["detect-changes"]["if"]
     for key in (
         "detect-changes",

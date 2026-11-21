@@ -146,7 +146,7 @@ class TestRunnerEvaluationLogic:
                     correlation_id="c2",
                     passed=False,
                     xfail_ticket=None,
-                    failures=["terminal: expected completed"],
+                    failures=["quality_gate: expected passes"],
                 ),
             ],
         )

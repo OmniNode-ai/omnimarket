@@ -1,0 +1,32 @@
+schema_version: 1.0.0
+ticket_id: OMN-24830
+title: Resolve the merge conflict on omnimarket PR 6253
+summary: Rebase the PR on dev while preserving its tests, and prove the preserved tests still run at the rebased head.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn24830-unblock
+    statement: Resolve the PR conflict and keep the PR's own tests running at the rebased head.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the real-broker dev roll window gate tests the PR adds still run at the rebased head -- falsifier: `uv run pytest tests/integration/node_dev_roll_window_gate_effect` fails or collects no test'
+      - id: AC2
+        statement: 'AC2: the ledger projection overlay block test the PR adds still passes at the rebased head -- falsifier: `uv run pytest tests/nodes/node_factory_floor_effect/test_ledger_projection_overlay_block.py` fails'
+dod_evidence:
+  - id: dod-omn24830-gate-tests-preserved
+    source: manual
+    binds_ac: [AC1]
+    description: The rebase kept the real-broker gate tests; they run (or skip only where no broker is reachable) at this head.
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/integration/node_dev_roll_window_gate_effect -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn24830-overlay-block-test-preserved
+    source: manual
+    binds_ac: [AC2]
+    description: The rebase kept the ledger projection overlay block test; it passes at this head.
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_ledger_projection_overlay_block.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
