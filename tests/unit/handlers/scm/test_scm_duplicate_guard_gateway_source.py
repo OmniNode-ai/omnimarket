@@ -6,8 +6,8 @@ Landing cause and fix workers on lab hosts pushed a fix branch and then failed a
 ``PR-DUPLICATE-GUARD unchecked ... no PR watcher state file``: a lab host has no watcher state and the command has no
 way past the guard. The refusals are recorded verbatim in ``recorded_refusals.json``.
 
-The world is the one of ``test_scm_duplicate_guard``: a real origin, canonical clone and lane checkout, a real ledger
-file. The watcher state is removed, so the open pull requests come from the gateway over the bus, answered by the real
+The world is the one of ``test_scm_duplicate_guard``: a real origin, canonical clone and lane checkout, an in-memory
+ledger. The watcher state is removed, so the open pull requests come from the gateway over the bus, answered by the real
 gateway dispatcher on a recorded REST exchange. Nothing is mocked but the bus and GitHub.
 """
 
@@ -131,7 +131,6 @@ def lab_host(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     built = World(tmp_path)
     built.state.unlink()
     monkeypatch.setenv("ONEX_PR_WATCHER_STATE", str(built.state))
-    monkeypatch.setenv("ONEX_LEDGER_PATH", str(built.ledger))
     monkeypatch.setenv("ONEX_SCM_CLONE_ROOT", str(built.root))
     monkeypatch.setattr("time.sleep", lambda _s: None)
     return built

@@ -43,6 +43,7 @@ from omnimarket.nodes.node_exception_queue_effect.models import (
     ModelExceptionResolveRequest,
     ModelExceptionRow,
 )
+from omnimarket.protocols.protocol_ledger_rows_reader import LedgerReadError
 
 _FRICTION_MARK = "OMN-18274 friction guard rejected append"
 _WORKTREE_MARK = "OMN-20148 worktree cell rejected append"
@@ -220,7 +221,17 @@ def settle_guard_case(
             how="decision row: left to the operator",
             emitted="",
         )
-    resolved, how = _close(refusal, ports)
+    try:
+        resolved, how = _close(refusal, ports)
+    except LedgerReadError as exc:
+        # An unread ledger proves nothing about the cause, so the case is neither settled nor re-emitted here.
+        return ModelGuardResolution(
+            lane=refusal.lane,
+            key=key,
+            resolved=False,
+            how=f"the ledger could not be read ({exc}); an unread ledger never settles a refusal",
+            emitted="",
+        )
     queue_dir = state_dir / "exception-queue"
     if resolved:
         case_id = str(row.get("id", ""))

@@ -68,9 +68,15 @@ def load_delegation_config(
 
 
 class HandlerClaudeCodeArguments:
-    """Claude Code session; the agent retains its permission checks."""
+    """Claude Code session; the agent retains its permission checks.
 
-    def argv(self, request: ModelDelegationTargetRequest, *, model: str) -> list[str]:
+    ``request`` is unused here: a text-only harness call (OMN-26219) has no
+    repository or commit, so it passes ``None``.
+    """
+
+    def argv(
+        self, request: ModelDelegationTargetRequest | None, *, model: str
+    ) -> list[str]:
         return [
             "claude",
             "-p",

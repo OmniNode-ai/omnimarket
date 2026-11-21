@@ -86,8 +86,13 @@ inputs:
   open_history: {type: list, required: false, description: "Open counts earlier tick runs recorded, oldest first; omitted skips the open-trend finding."}
   open_rise_pct: {type: float, required: false}
   open_history_max_age_hours: {type: float, required: false}
-  dispatched_lanes: {type: list, required: false, description: "Lanes the ledger records as dispatched with their CLAIM host and run id and whether the runner wrote a placement receipt; omitted skips the unplaced-lane finding."}
-  unplaced_lane_alarm_minutes: {type: int, required: false, description: "A dispatched lane with no placement receipt for longer than this is an ALARM (default 10)."}
+  dispatched_lanes: {type: list, required: false, description: "Lanes the ledger records as dispatched with their CLAIM host, run id and time and their TERMINAL outcome; a lane is placed only by a CLAIM with host= and run= inside placement_claim_window_minutes; omitted skips the unplaced-lane finding."}
+  unplaced_lane_alarm_minutes: {type: int, required: false, description: "A dispatched lane still unplaced after this many minutes is an ALARM (default 10)."}
+  placement_claim_window_minutes: {type: int, required: false, description: "A dispatched lane is placed only when its CLAIM with host= and run= is at most this many minutes after the dispatch; later or none is a STATUS unplaced row (default 5, OMN-26216)."}
+  tick_messages: {type: list, required: false, description: "The tick's own MSG rows in the read window with their id, addressee, time and whether an ACK names them; with live_lanes, omitted skips the addressee findings (OMN-26216)."}
+  live_lanes: {type: list, required: false, description: "Names of the lanes live now; a tick MSG addressed to a name not among them is an ALARM (OMN-26216)."}
+  tick_interval_minutes: {type: float, required: false, description: "The tick cadence in minutes (default 11)."}
+  tick_unacked_after_ticks: {type: int, required: false, description: "A tick MSG to a live lane with no ACK after this many ticks is an ALARM naming the cause (default 2)."}
   venv_divergences: {type: list, required: false, description: "Cross-host dispatch-venv divergences with the stamp each was first read; omitted skips the venv-divergence finding."}
   venv_divergence_alarm_minutes: {type: int, required: false, description: "A divergence older than this is an ALARM, a younger one a NOTE (default 30)."}
   deploy_drifts: {type: list, required: false, description: "Lab daemon drift rows node_lab_daemon_sync_effect wrote per host (OMN-19998); omitted skips the deploy-drift finding."}
@@ -102,6 +107,7 @@ outputs:
   missing: {type: list}
   unknown: {type: list}
   checked: {type: list}
+  status_rows: {type: list, description: "One STATUS state=unplaced row per dispatched lane with no CLAIM carrying host= and run= inside the placement window, for the caller to append to the ledger (absent when empty, OMN-26216)."}
   codex_headroom: {type: list, description: "Codex headroom per Codex-capable pool host with a fresh reading, apart from Claude's; a Claude-limited host with free Codex slots is a MISSING lab-headroom line (absent when empty)."}
   alarms: {type: list, description: "Typed ALARM verdict records (unplaced lanes, lasting venv divergence) for the caller to print, write to its evidence file and exit non-zero on."}
   exit_code: {type: int}

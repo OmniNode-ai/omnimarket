@@ -75,7 +75,15 @@ def profile(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         )
     )
     monkeypatch.setenv("DELEGATION_ROUTING_OVERLAY_PATH", str(overlay_path))
-    monkeypatch.setattr(routing, "_config", None)
+    # The reducer keeps its loaded config in four module attributes that belong together; monkeypatch restores
+    # all four afterwards, so a later test never sees the old config beside this test's binding.
+    for name in (
+        "_config",
+        "_config_binding",
+        "_config_spread_peers",
+        "_config_spread_weights",
+    ):
+        monkeypatch.setattr(routing, name, None)
     routing._get_task_class_contract.cache_clear()
     routing._load_bifrost_endpoints.cache_clear()
     yield path
@@ -369,6 +377,7 @@ def test_registered_keys_respect_routing_policy(
             frozenset(),
             task_type="planning",
             byok_backends=routes,
+            prompt="",
         )
         is None
     )
@@ -378,7 +387,9 @@ def test_deployed_resolver_never_reads_a_host_local_key(profile):
     add_key("openrouter")
     # The bus call has no local route snapshot even on a machine with keys.
     assert (
-        routing.next_eligible_tier("cheap_cloud", frozenset(), task_type="planning")
+        routing.next_eligible_tier(
+            "cheap_cloud", frozenset(), task_type="planning", prompt=""
+        )
         is None
     )
 

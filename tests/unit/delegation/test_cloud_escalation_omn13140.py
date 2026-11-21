@@ -463,6 +463,7 @@ class TestNextEligibleTierCodeGeneration:
             "local",
             frozenset(),
             task_type="code_generation",
+            prompt="",
         )
         assert result == "cheap_cloud"
 

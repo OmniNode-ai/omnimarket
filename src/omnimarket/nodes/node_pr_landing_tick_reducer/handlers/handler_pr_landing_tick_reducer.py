@@ -39,6 +39,13 @@ SUBJECT_FIELDS: Final[dict[str, str]] = {
 }
 
 # Parts of the next state that one pull request or cause owns, and the field that names the owner.
+# Visibility rows the old controller's recorded decision never carried (OMN-26208): they say why a
+# red was or was not scoped out, and the actions already carry the decision, so they are not compared.
+NOT_COMPARED_SECTIONS: Final[tuple[str, ...]] = (
+    "non_required_red",
+    "required_contexts_unread",
+)
+
 NEXT_STATE_SUBJECT_FIELDS: Final[dict[str, str]] = {"leases": "pr", "records": "pr"}
 
 
@@ -52,6 +59,8 @@ def fold_decision(decision: ModelLandingDecision) -> dict[str, dict[str, Any]]:
     for section, field in SUBJECT_FIELDS.items():
         for row in doc.pop(section):
             grouped[row[field]].setdefault(section, []).append(row)
+    for section in NOT_COMPARED_SECTIONS:
+        doc.pop(section, None)
     grouped[TICK_LEVEL_SUBJECT] = doc
     return dict(grouped)
 

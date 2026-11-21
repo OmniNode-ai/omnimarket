@@ -19,7 +19,6 @@ This module reads neither binding variable: it asks the runner's resolver first.
 from __future__ import annotations
 
 import os
-import socket
 from collections.abc import Mapping
 
 from omnimarket.handlers.node_overlay_reader import (
@@ -27,6 +26,7 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     find_node_overlay,
     load_structured_overlay,
+    local_host_short_name,
 )
 from omnimarket.models.node_overlays.model_projection_read_binding_overlay import (
     ModelProjectionReadBindingOverlay,
@@ -38,11 +38,6 @@ from omnimarket.projection.runner import (
 )
 
 PROJECTION_READ_BINDING_HOST_OVERLAY_ID = "node_projection_read_effect"
-
-
-def local_host_short_name() -> str:
-    """The local host name without any domain suffix."""
-    return socket.gethostname().split(".", 1)[0]
 
 
 def projection_read_binding_from_host_overlay(
@@ -92,7 +87,6 @@ def resolve_projection_read_binding() -> ModelProjectionRuntimeBinding | None:
 
 __all__ = [
     "PROJECTION_READ_BINDING_HOST_OVERLAY_ID",
-    "local_host_short_name",
     "projection_read_binding_from_host_overlay",
     "resolve_projection_read_binding",
 ]
