@@ -171,6 +171,13 @@ class ModelGithubGatewayRequest(BaseModel):
         min_length=1,
         description="commit_check_runs only: keep check runs of this name",
     )
+    include_output: bool = Field(
+        default=False,
+        description=(
+            "commit_check_runs only: also return each check run's output summary "
+            "(cut at MAX_TEXT_CHARS); off by default so a plain read stays small."
+        ),
+    )
     workflow: str | None = Field(
         default=None,
         pattern=r"^[A-Za-z0-9_.-]+$",
@@ -245,6 +252,16 @@ class ModelGithubGatewayRequest(BaseModel):
         if data.get("file_path") is None:
             data.pop("file_path", None)
         return data
+
+    @model_serializer(mode="wrap")
+    def _omit_include_output_when_off(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        """A request that does not ask for the summary has the shape it had before the flag existed, so a gateway that predates it still accepts it."""
+        dumped = dict(handler(self))
+        if dumped.get("include_output") is False:
+            dumped.pop("include_output")
+        return dumped
 
     @model_validator(mode="after")
     def _require_scope_fields(self) -> ModelGithubGatewayRequest:
@@ -794,6 +811,18 @@ class ModelCheckRun(BaseModel):
     head_branch: str | None = None
     started_at: str | None = None
     completed_at: str | None = None
+    #: The check run's output summary, only when the request set ``include_output``.
+    output_summary: str | None = Field(default=None, max_length=MAX_TEXT_CHARS)
+
+    @model_serializer(mode="wrap")
+    def _omit_an_unset_summary(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        """An answer that carries no summary has the shape it had before the field existed, so an older consumer decodes it."""
+        dumped = dict(handler(self))
+        if dumped.get("output_summary") is None:
+            dumped.pop("output_summary", None)
+        return dumped
 
 
 class ModelCommitCheckRunsResult(_ModelBoundedList):

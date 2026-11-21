@@ -26,6 +26,8 @@
 #   stage_min_pr_records    pull request records, summed over the receipt's nights, that hold a
 #                           selection entry for the stage being entered at the promoted selector and
 #                           policy versions. A receipt over fewer is refused.
+#   record_check_name_prefix the check run that carries a night's published attribution record is named
+#                           <prefix>:<slot date>, on the tested head commit the receipt names for that night.
 target_shard_seconds: 360
 max_narrowed_shards: 5
 durations_path: config/test_file_durations.json
@@ -40,3 +42,4 @@ full_split_count: 20
 record_retention_days: 14
 stage_clean_nights: 7
 stage_min_pr_records: 10
+record_check_name_prefix: nightly-attribution

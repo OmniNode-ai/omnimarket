@@ -40,6 +40,10 @@ class ModelSelectorPolicy(BaseModel):
     stage_clean_nights: int = Field(default=7, ge=1, le=30)
     #: Pull request records, over the receipt's nights, that hold an entry for the stage entered (same default rule).
     stage_min_pr_records: int = Field(default=10, ge=1)
+    #: A night's record is the check run ``<prefix>:<slot date>`` on the tested head commit (same default rule).
+    record_check_name_prefix: str = Field(
+        default="nightly-attribution", pattern=r"^[a-z0-9][a-z0-9-]*$"
+    )
 
     @model_validator(mode="after")
     def _ladder_is_ordered(self) -> ModelSelectorPolicy:

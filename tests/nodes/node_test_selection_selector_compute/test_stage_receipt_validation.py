@@ -26,6 +26,7 @@ from omnimarket.nodes.node_test_selection_selector_compute.models.model_publishe
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_stage_receipt import (
     EnumStageReceiptViolation,
+    ModelReceiptNight,
     ModelStageReceipt,
     ModelStageReceiptValidationRequest,
     ModelStageReceiptValidationResult,
@@ -144,6 +145,7 @@ def test_error_chain_nights_that_skip_a_day_are_not_consecutive() -> None:
         {
             "slot_date": r.nightly_slot_date.isoformat(),
             "nightly_run_id": r.nightly_run_id,
+            "tested_head_sha": r.tested_head_sha,
         }
         for r in gapped
     ]
@@ -294,7 +296,16 @@ def test_published_record_is_frozen_and_refuses_an_extra_or_negative_field() -> 
 @pytest.mark.parametrize(
     "payload",
     [
-        {"stage": 0, "nights": [{"slot_date": "2026-12-01", "nightly_run_id": 1}]},
+        {
+            "stage": 0,
+            "nights": [
+                {
+                    "slot_date": "2026-12-01",
+                    "nightly_run_id": 1,
+                    "tested_head_sha": "a" * 40,
+                }
+            ],
+        },
         {"stage": 0, "entered_from_stage": 0},
         {"stage": 1},
         {"stage": 5, "entered_from_stage": 4},
@@ -326,13 +337,32 @@ def test_receipt_and_result_are_frozen() -> None:
 # -- the in-memory twin of the record source ------------------------------------------
 
 
+def _nights(records: list[ModelPublishedAttributionRecord]) -> list[ModelReceiptNight]:
+    return [
+        ModelReceiptNight(
+            slot_date=r.nightly_slot_date,
+            nightly_run_id=r.nightly_run_id,
+            tested_head_sha=r.tested_head_sha,
+        )
+        for r in records
+    ]
+
+
 def test_in_memory_source_answers_only_the_asked_runs_of_the_asked_repository() -> None:
     records = _records("records_valid.json")
     source: ProtocolAttributionRecordSource = SourceAttributionRecordsInMemory(records)
-    got = source.read_records(records[0].repository, [records[0].nightly_run_id])
-    assert got == (records[0],)
-    assert source.read_records("OmniNode-ai/other", [records[0].nightly_run_id]) == ()
+    got = source.read_records(records[0].repository, _nights(records[:1]))
+    assert got is not None
+    assert got.records == (records[0],)
+    other = source.read_records("OmniNode-ai/other", _nights(records[:1]))
+    assert other is not None
+    assert other.records == ()
 
 
 def test_in_memory_source_built_without_records_is_unreadable() -> None:
-    assert SourceAttributionRecordsInMemory(None).read_records("r", [1]) is None
+    assert (
+        SourceAttributionRecordsInMemory(None).read_records(
+            "OmniNode-ai/omnimarket", _nights(_records("records_valid.json")[:1])
+        )
+        is None
+    )

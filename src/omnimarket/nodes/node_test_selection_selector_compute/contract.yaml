@@ -30,6 +30,13 @@ description: >-
   attribution records the record source publishes (ProtocolAttributionRecordSource), never taken from the
   receipt. Each record must hold the entry for the stage being entered, and the measured targets (share of merges
   narrowed, test-seconds per merge, CI minutes per pull request) must be in the receipt. Stage 0 is the baseline.
+  HandlerAttributionRecordRead (operation read_attribution_records) reads those records: for each night of the receipt it
+  asks the repository gateway node (node_github_repo_gateway_effect, operation commit_check_runs, with the check run's
+  output summary) for the check run named <record_check_name_prefix>:<slot date> on the tested head commit the receipt
+  names, parses its summary as the published record, and answers the records it trusts and the nights it refuses (an
+  unparseable summary, two records for one night, a record that names another commit, repository, slot or run). It
+  makes no other read and no call of its own to GitHub; the adapter SourceAttributionRecordsGateway hands its answer to
+  the stage gate, and a gateway that gives no answer is an unreadable source, which the gate refuses.
   Rollback is an owner change that lowers selection_stage, or the owner setting the ENABLE_SMART_TESTS repository
   variable false; no job writes the variable. A narrowing rule changes what a pull request runs only at or above its
   stage, so data files and entry points narrow only once their stage is entered.
@@ -66,6 +73,12 @@ handler_routing:
       handler:
         name: HandlerStageReceiptValidation
         module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_stage_receipt_validation
+    - operation: read_attribution_records
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_attribution_record_reading.ModelAttributionRecordReadRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_attribution_record_reading.ModelAttributionRecordReading
+      handler:
+        name: HandlerAttributionRecordRead
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_attribution_record_read
     - operation: replay_selection
       input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_selection_replay.ModelReplayRequest
       output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_selection_replay.ModelReplayResult
