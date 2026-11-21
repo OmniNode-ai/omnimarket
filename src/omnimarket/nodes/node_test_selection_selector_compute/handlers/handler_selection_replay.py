@@ -59,7 +59,6 @@ _SECTION = re.compile(r"^\s*\[\[?([^\[\]]+)\]\]?\s*$")
 REASON_TEST_INFRASTRUCTURE = "test_infrastructure"
 REASON_PROTECTED_SURFACE = "protected_surface"
 REASON_UNMAPPED_MODULE = "unmapped_module"
-REASON_CHANGED_TEST_UNNARROWABLE = "changed_test_unnarrowable"
 REASON_SHARED_MODULE = "shared_module"
 REASON_THRESHOLD_MODULES = "threshold_modules"
 REASON_NO_NARROWABLE_SELECTION = "no_narrowable_selection"
@@ -212,13 +211,6 @@ class HandlerSelectionReplay:
         for path in source_paths:
             if "/" not in path or path.split("/", 1)[0] not in config.adjacency:
                 hit(REASON_UNMAPPED_MODULE, resolution.SRC_PREFIX + path)
-        for path in changed:
-            if (
-                path.startswith(resolution.TEST_PREFIX)
-                and path.endswith(".py")
-                and len(path.split("/")) == 2
-            ):
-                hit(REASON_CHANGED_TEST_UNNARROWABLE, path)
         changed_modules = sorted({path.split("/", 1)[0] for path in source_paths})
         for module in changed_modules:
             if module in config.shared_modules:
@@ -231,18 +223,15 @@ class HandlerSelectionReplay:
                 merge, triggers, request.full_split_count, suite_seconds, None
             )
 
-        selected = list(
-            HandlerTestPathResolution()
-            .handle(
-                ModelPathResolutionRequest(
-                    changed_files=tuple(changed),
-                    adjacency=config,
-                    repo_root=str(root),
-                )
+        resolved = HandlerTestPathResolution().handle(
+            ModelPathResolutionRequest(
+                changed_files=tuple(changed),
+                adjacency=config,
+                repo_root=str(root),
             )
-            .selected_paths
         )
-        if not selected:
+        selected = list(resolved.selected_paths)
+        if not selected and not resolved.data_only:
             hit(REASON_NO_NARROWABLE_SELECTION, "selection")
             return self._full(
                 merge, triggers, request.full_split_count, suite_seconds, None

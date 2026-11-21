@@ -4,7 +4,7 @@
 schema_version: "1.0.0"
 ticket_id: OMN-26268
 title: "The test selector replays itself over the last 60 dev merges and commits a baseline receipt that every later narrowing is judged against"
-summary: The selector node gains the operation replay_selection, which replays stage 0 of the selector over merged history against a frozen tree snapshot, and the repository commits the 60-merge baseline receipt it produced. The receipt holds what the replay measured; where that differs from the plan's figures (9 narrowed and 51 full against 8 and 52, 7 shared-module merges against 8) the receipt states both and the measured value stands.
+summary: The selector node gains the operation replay_selection, which replays stage 0 of the selector over merged history against a frozen tree snapshot, and the repository commits the 60-merge baseline receipt it produced. The receipt holds what the replay measured; where that differs from the plan's figures (10 narrowed and 50 full against 8 and 52, 8 narrowed-selection-too-heavy merges against 6, no changed-test-unnarrowable merge against 4, since the selector now selects a changed root-level test file) the receipt states both and the measured value stands.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -32,7 +32,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: dod-omn26268-ac1
-    description: "The receipt's counts re-derive from its own changed-file lists. The replay measured 9 narrowed and 51 full-suite merges (plan: 8 and 52) and 7 shared-module merges (plan: 8); the receipt's premise_checks state each plan figure beside the measured one and the test pins the measured counts."
+    description: "The receipt's counts re-derive from its own changed-file lists. The replay at the merged head measured 10 narrowed and 50 full-suite merges (plan: 8 and 52), 8 narrowed-selection-too-heavy merges (plan: 6) and no changed-test-unnarrowable merge (plan: 4); the receipt's premise_checks state each plan figure beside the measured one and the test pins the measured counts."
     source: manual
     binds_ac: [AC1]
     checks:

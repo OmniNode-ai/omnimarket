@@ -56,14 +56,13 @@ CATEGORIES = {"pyproject.toml": "pyproject", "uv.lock": "lock", "scripts/": "scr
 
 #: What the replay measured over the last 60 merges at the pinned head (it differs from the plan's figures).
 MEASURED_MERGES = 60
-MEASURED_NARROWED = 9
-MEASURED_FULL = 51
+MEASURED_NARROWED = 10
+MEASURED_FULL = 50
 MEASURED_REASONS = {
-    "changed_test_unnarrowable": 4,
-    "narrowed_selection_too_heavy": 6,
+    "narrowed_selection_too_heavy": 8,
     "no_narrowable_selection": 5,
     "protected_surface": 3,
-    "shared_module": 7,
+    "shared_module": 8,
     "test_infrastructure": 22,
     "unmapped_module": 4,
 }
@@ -220,7 +219,7 @@ def test_replay_fixture_gives_the_decisions_the_live_selector_gives(
         "shared_module",
         "test_infrastructure",
         "protected_surface",
-        "changed_test_unnarrowable",
+        None,
     ]
     for decision, (_, files) in zip(result.decisions, FIXTURE_MERGES, strict=True):
         live = compute_selection(
@@ -477,6 +476,12 @@ def test_baseline_receipt_states_the_plan_figures_it_replaces(
         assert checks[f"full-suite merges, reason {reason}"].measured_value == str(
             count
         )
+    # dev's selector selects a changed root-level test file instead of taking the full suite (the reason
+    # changed_test_unnarrowable), so no merge of the replay holds it now; the plan figure stays beside it.
+    unnarrowable = checks["full-suite merges, reason changed_test_unnarrowable"]
+    assert unnarrowable.plan_value == "4"
+    assert unnarrowable.measured_value == "0"
+    assert not unnarrowable.holds
 
 
 def test_baseline_receipt_total_seconds_equals_the_durations_sum(

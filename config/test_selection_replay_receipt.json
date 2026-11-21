@@ -209,16 +209,6 @@
      },
      {
       "entry": null,
-      "evidence": "tests/test_live_document_delegation_omn16868.py",
-      "reason": "changed_test_unnarrowable"
-     },
-     {
-      "entry": null,
-      "evidence": "tests/test_omn18889_call_site_end_to_end.py",
-      "reason": "changed_test_unnarrowable"
-     },
-     {
-      "entry": null,
       "evidence": "enums",
       "reason": "shared_module"
      }
@@ -244,9 +234,9 @@
      "tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_private_scope.py"
     ],
     "kind": "full_suite",
-    "narrowed_estimate_seconds": null,
-    "primary_reason": "changed_test_unnarrowable",
-    "reason_code": "changed_test_unnarrowable",
+    "narrowed_estimate_seconds": 4324.783802,
+    "primary_reason": "narrowed_selection_too_heavy",
+    "reason_code": "narrowed_selection_too_heavy",
     "selected_paths": [
      "tests/"
     ],
@@ -256,8 +246,8 @@
     "triggers": [
      {
       "entry": null,
-      "evidence": "tests/test_golden_chain_private_hosted_minutes_watch_effect.py",
-      "reason": "changed_test_unnarrowable"
+      "evidence": "selection",
+      "reason": "narrowed_selection_too_heavy"
      }
     ]
    },
@@ -640,8 +630,8 @@
     ],
     "kind": "full_suite",
     "narrowed_estimate_seconds": null,
-    "primary_reason": "changed_test_unnarrowable",
-    "reason_code": "changed_test_unnarrowable",
+    "primary_reason": "shared_module",
+    "reason_code": "shared_module",
     "selected_paths": [
      "tests/"
     ],
@@ -649,11 +639,6 @@
     "sha": "5addb723ab70802a5393a3e97c5312767bb24a2e",
     "split_count": 20,
     "triggers": [
-     {
-      "entry": null,
-      "evidence": "tests/test_host_reconcile_failure_alarm.py",
-      "reason": "changed_test_unnarrowable"
-     },
      {
       "entry": null,
       "evidence": "models",
@@ -2872,21 +2857,6 @@
      },
      {
       "entry": null,
-      "evidence": "tests/test_golden_chain_projection_eval_results.py",
-      "reason": "changed_test_unnarrowable"
-     },
-     {
-      "entry": null,
-      "evidence": "tests/test_omn16874_consumer_flow_writer_dispatch.py",
-      "reason": "changed_test_unnarrowable"
-     },
-     {
-      "entry": null,
-      "evidence": "tests/test_omn24171_eval_results_real_postgres.py",
-      "reason": "changed_test_unnarrowable"
-     },
-     {
-      "entry": null,
       "evidence": "enums",
       "reason": "shared_module"
      },
@@ -2940,28 +2910,88 @@
      "tests/test_worktree_reconcile_core_worktree.py",
      "tests/test_worktree_reconcile_schedule.py"
     ],
-    "kind": "full_suite",
+    "kind": "narrowed",
     "narrowed_estimate_seconds": null,
-    "primary_reason": "changed_test_unnarrowable",
-    "reason_code": "changed_test_unnarrowable",
+    "primary_reason": null,
+    "reason_code": "narrowed",
     "selected_paths": [
-     "tests/"
+     "tests/ci/test_repo_evidence_caller_workflow.py",
+     "tests/gates/",
+     "tests/handlers/test_schedule_installers_refuse_worktree_roots_rest.py",
+     "tests/nodes/node_entry_point_registration_compute/",
+     "tests/nodes/node_temporal_health_alarm_effect/test_temporal_worker_supervisor.py",
+     "tests/nodes/node_worktree_prune_temporal_effect/",
+     "tests/nodes/test_code_edit_scope_node.py",
+     "tests/nodes/test_code_entity_repository_provider_omn15230.py",
+     "tests/nodes/test_dep_health_ast_scanner.py",
+     "tests/nodes/test_dep_health_baseline_diff.py",
+     "tests/nodes/test_dep_health_contract_topology.py",
+     "tests/nodes/test_dep_health_cross_reference.py",
+     "tests/nodes/test_dep_health_graphify_runner.py",
+     "tests/nodes/test_dep_health_handler.py",
+     "tests/nodes/test_dep_health_handler_stub.py",
+     "tests/nodes/test_dep_health_models.py",
+     "tests/nodes/test_file_retention_archive_safety.py",
+     "tests/nodes/test_golden_chain_lane_dispatch_effect.py",
+     "tests/nodes/test_graphify_preflight.py",
+     "tests/nodes/test_host_installer_lane_readers.py",
+     "tests/nodes/test_lane_dispatch_batch.py",
+     "tests/nodes/test_lane_dispatch_contract.py",
+     "tests/nodes/test_lane_toolchain_parity.py",
+     "tests/nodes/test_model_work_contract.py",
+     "tests/nodes/test_model_work_receipt_join.py",
+     "tests/nodes/test_morning_trigger_install_contract_topics.py",
+     "tests/nodes/test_nl_to_ticket_pipeline.py",
+     "tests/nodes/test_node_order_advance_effect_contract.py",
+     "tests/nodes/test_omn15797_retention_cleanup_tenant_seam.py",
+     "tests/nodes/test_omn17427_file_retention.py",
+     "tests/nodes/test_omn17427_retention_cleanup_batched.py",
+     "tests/nodes/test_omn19998_venv_cache_retention.py",
+     "tests/nodes/test_omn_13708_adapter_di_local_defaults.py",
+     "tests/nodes/test_omn_13919_runtime_sweep_default_input.py",
+     "tests/nodes/test_omn_14528_runtime_sweep_consumer_liveness.py",
+     "tests/nodes/test_omn_15041_undeclared_consumer_group.py",
+     "tests/nodes/test_remote_lane_nodes_present.py",
+     "tests/nodes/test_remote_lane_overlay_migration.py",
+     "tests/nodes/test_repository_code_entity_postgres.py",
+     "tests/nodes/test_ruling_recovery.py",
+     "tests/nodes/test_scenario_unit_environment_workspace_root.py",
+     "tests/nodes/test_sibling_pin_train_floor.py",
+     "tests/nodes/test_skill_tree_node_contract_inputs.py",
+     "tests/nodes/test_sweep_corpus_git_enumeration.py",
+     "tests/nodes/test_tenant_read_bus_resolver_omn23929.py",
+     "tests/nodes/test_tenant_read_bus_seam.py",
+     "tests/nodes/test_tenant_read_dispatch_key_seam.py",
+     "tests/nodes/test_work_contract_bindings.py",
+     "tests/nodes/test_work_contract_checks.py",
+     "tests/nodes/test_work_contract_corpus.py",
+     "tests/nodes/test_work_contract_pins_current.py",
+     "tests/nodes/test_work_ledger_event_identity.py",
+     "tests/nodes/test_work_ledger_projection_oracle.py",
+     "tests/nodes/test_work_ledger_question_state.py",
+     "tests/nodes/test_work_ledger_writer_shape.py",
+     "tests/test_cdi_handler_binding_sites_b.py",
+     "tests/test_golden_chain_dev_seed_effect.py",
+     "tests/test_golden_chain_worktree_reconcile.py",
+     "tests/test_market_node_runtime_dogfood.py",
+     "tests/test_no_cross_node_reach_in.py",
+     "tests/test_omn19970_dev_seed.py",
+     "tests/test_omn19970_fixture_data_source_real_postgres.py",
+     "tests/test_worktree_reconcile_core_worktree.py",
+     "tests/test_worktree_reconcile_effect.py",
+     "tests/test_worktree_reconcile_exit_classes.py",
+     "tests/test_worktree_reconcile_gone_env.py",
+     "tests/test_worktree_reconcile_projection.py",
+     "tests/test_worktree_reconcile_schedule.py",
+     "tests/test_worktree_reconcile_topics.py",
+     "tests/test_worktree_reconcile_units.py",
+     "tests/test_worktree_triage_unit_reference.py",
+     "tests/unit/scripts/test_validate_node_drift.py"
     ],
-    "selected_seconds": 11419.181802,
+    "selected_seconds": 322.128,
     "sha": "56fd1a76431ed7fea5a31cb8673fa1b7c712d152",
-    "split_count": 20,
-    "triggers": [
-     {
-      "entry": null,
-      "evidence": "tests/test_worktree_reconcile_core_worktree.py",
-      "reason": "changed_test_unnarrowable"
-     },
-     {
-      "entry": null,
-      "evidence": "tests/test_worktree_reconcile_schedule.py",
-      "reason": "changed_test_unnarrowable"
-     }
-    ]
+    "split_count": 5,
+    "triggers": []
    },
    {
     "changed_files": [
@@ -4729,9 +4759,9 @@
      "tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_group_get.py"
     ],
     "kind": "full_suite",
-    "narrowed_estimate_seconds": null,
-    "primary_reason": "changed_test_unnarrowable",
-    "reason_code": "changed_test_unnarrowable",
+    "narrowed_estimate_seconds": 11418.711802,
+    "primary_reason": "narrowed_selection_too_heavy",
+    "reason_code": "narrowed_selection_too_heavy",
     "selected_paths": [
      "tests/"
     ],
@@ -4741,8 +4771,8 @@
     "triggers": [
      {
       "entry": null,
-      "evidence": "tests/test_golden_chain_github_repo_write_effect.py",
-      "reason": "changed_test_unnarrowable"
+      "evidence": "selection",
+      "reason": "narrowed_selection_too_heavy"
      }
     ]
    },
@@ -6060,11 +6090,6 @@
      },
      {
       "entry": null,
-      "evidence": "tests/test_omn19448_terminal_timing_and_requested_model_real_postgres.py",
-      "reason": "changed_test_unnarrowable"
-     },
-     {
-      "entry": null,
       "evidence": "models",
       "reason": "shared_module"
      }
@@ -6255,16 +6280,6 @@
      },
      {
       "entry": null,
-      "evidence": "tests/test_host_reconcile_clone_lock_state.py",
-      "reason": "changed_test_unnarrowable"
-     },
-     {
-      "entry": null,
-      "evidence": "tests/test_lab_sli_collect_reading_exit.py",
-      "reason": "changed_test_unnarrowable"
-     },
-     {
-      "entry": null,
       "evidence": "models",
       "reason": "shared_module"
      }
@@ -6320,16 +6335,6 @@
       "entry": "tests/fixtures/",
       "evidence": "tests/fixtures/deploy_receipt_omn19998/rejected_route_unconfirmed.json",
       "reason": "test_infrastructure"
-     },
-     {
-      "entry": null,
-      "evidence": "tests/test_deploy_publish_monitor_rebuild_rejected_dispatch_omn18816.py",
-      "reason": "changed_test_unnarrowable"
-     },
-     {
-      "entry": null,
-      "evidence": "tests/test_deploy_receipt_reader_instance_owner_omn19998.py",
-      "reason": "changed_test_unnarrowable"
      },
      {
       "entry": null,
@@ -6743,21 +6748,20 @@
   "stage": 0,
   "suite_seconds": 11419.181802,
   "totals": {
-   "full_suite": 51,
+   "full_suite": 50,
    "full_suite_seconds": 685150.90812,
    "merges": 60,
-   "narrowed": 9,
+   "narrowed": 10,
    "reason_counts": {
-    "changed_test_unnarrowable": 4,
-    "narrowed_selection_too_heavy": 6,
+    "narrowed_selection_too_heavy": 8,
     "no_narrowable_selection": 5,
     "protected_surface": 3,
-    "shared_module": 7,
+    "shared_module": 8,
     "test_infrastructure": 22,
     "unmapped_module": 4
    },
-   "selected_seconds": 586051.679308,
-   "selected_shards": 1059
+   "selected_seconds": 574954.625506,
+   "selected_shards": 1044
   },
   "tree_id": "f64cf146a755dc58db8ab381b1ab55237cf32729"
  },
@@ -7515,13 +7519,13 @@
   },
   {
    "holds": false,
-   "measured_value": "9",
+   "measured_value": "10",
    "plan_value": "8",
    "premise": "merges narrowed"
   },
   {
    "holds": false,
-   "measured_value": "51",
+   "measured_value": "50",
    "plan_value": "52",
    "premise": "merges full suite"
   },
@@ -7532,14 +7536,14 @@
    "premise": "full-suite merges, reason test_infrastructure"
   },
   {
-   "holds": false,
-   "measured_value": "7",
+   "holds": true,
+   "measured_value": "8",
    "plan_value": "8",
    "premise": "full-suite merges, reason shared_module"
   },
   {
-   "holds": true,
-   "measured_value": "6",
+   "holds": false,
+   "measured_value": "8",
    "plan_value": "6",
    "premise": "full-suite merges, reason narrowed_selection_too_heavy"
   },
@@ -7550,8 +7554,8 @@
    "premise": "full-suite merges, reason no_narrowable_selection"
   },
   {
-   "holds": true,
-   "measured_value": "4",
+   "holds": false,
+   "measured_value": "0",
    "plan_value": "4",
    "premise": "full-suite merges, reason changed_test_unnarrowable"
   },
