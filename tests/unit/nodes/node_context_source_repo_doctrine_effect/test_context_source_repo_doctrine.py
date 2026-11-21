@@ -42,8 +42,12 @@ from omnimarket.nodes.node_context_source_repo_doctrine_effect import (
     NodeContextSourceRepoDoctrineEffect,
 )
 from omnimarket.nodes.node_context_source_repo_doctrine_effect.handlers.handler_context_source_repo_doctrine import (
+    RULINGS_READER,
+    RULINGS_WINDOW_HOURS,
     load_repo_doctrine_binding,
 )
+from omnimarket.protocols.protocol_ledger_rows_reader import ProtocolLedgerRowsReader
+from tests.helpers.fake_ledger_rows import FakeLedgerRows
 
 pytestmark = pytest.mark.unit
 
@@ -110,14 +114,16 @@ def _read(
     repository: str | None = "omnimarket",
     lane_kind: str | None = None,
     revision: str = STAMP,
-    ledger: Path | None = None,
+    ledger: ProtocolLedgerRowsReader | None = None,
     contract_path: Path | None = None,
 ) -> ModelContextSourceResult:
     env = {} if root is None else {"OMNI_HOME": str(root)}
-    if ledger is not None:
-        env["ONEX_LEDGER_PATH"] = str(ledger)
     result = HandlerContextSourceRepoDoctrine(
-        env=env, contract_path=contract_path
+        env=env,
+        contract_path=contract_path,
+        ledger_reader=ledger
+        if ledger is not None
+        else FakeLedgerRows(error="no ledger rows were offered"),
     ).handle(
         ModelContextSourceRequest(
             factor=factor,
@@ -159,11 +165,8 @@ def _registry(root: Path) -> Path:
     return path
 
 
-def _ledger(tmp_path: Path, *rows: str) -> Path:
-    path = tmp_path / "ledger.md"
-    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
-    (tmp_path / "archive").mkdir(exist_ok=True)
-    return path
+def _ledger(*rows: str) -> FakeLedgerRows:
+    return FakeLedgerRows(rows)
 
 
 def test_invariants_carry_repo_invariant_sections_whole(root: Path) -> None:
@@ -209,11 +212,8 @@ def test_invariants_carry_the_architectural_registry(root: Path) -> None:
         assert not entry.verbatim_verified
 
 
-def test_invariants_carry_rulings_that_name_the_repository(
-    root: Path, tmp_path: Path
-) -> None:
+def test_invariants_carry_rulings_that_name_the_repository(root: Path) -> None:
     ledger = _ledger(
-        tmp_path,
         "2026-10-13T00:00:00Z | RULING | omnimarket: first",
         "2026-10-14T00:00:00Z | RULING | omnibase_infra: other repo",
         "2026-10-15T00:00:00Z | RULING | omnimarketx is a different token",
@@ -224,12 +224,8 @@ def test_invariants_carry_rulings_that_name_the_repository(
         "2026-10-17T00:00:00Z | RULING | omnimarket: superseded tie",
         "2026-10-17T00:00:00Z | RULING | omnimarket: later tie",
     )
-    archive = tmp_path / "archive/newest.md"
-    archive.write_text(
-        "2026-10-18T00:00:00Z | RULING | omnimarket: archive must not be read\n",
-        encoding="utf-8",
-    )
     result = _read(root, F.INVARIANTS, ledger=ledger)
+    assert ledger.calls == [(RULINGS_READER, RULINGS_WINDOW_HOURS, ("RULING",))]
     rulings = result.entries[2:]
     assert [e.text.rsplit(": ", 1)[-1] for e in rulings] == [
         "later tie",
@@ -248,19 +244,13 @@ def test_invariants_carry_rulings_that_name_the_repository(
     ]
     assert all(e.verbatim_verified and not e.paraphrase for e in rulings)
     assert rulings[0].as_of == datetime(2026, 10, 17, tzinfo=UTC)
-    # Once live has fewer than the cap, archives are scanned in reverse name order.
-    ledger.write_text(
-        "2026-10-13T00:00:00Z | RULING | omnimarket: live\n", encoding="utf-8"
+    # Rows the reader returns in any order (an older roll first) are carried newest first.
+    older_first = _ledger(
+        "2026-10-13T00:00:00Z | RULING | omnimarket: live",
+        "2026-10-15T00:00:00Z | RULING | omnimarket: archive second",
+        "2026-10-16T00:00:00Z | RULING | omnimarket: archive first",
     )
-    archive.write_text(
-        "2026-10-16T00:00:00Z | RULING | omnimarket: archive first\n2026-10-15T00:00:00Z | RULING | omnimarket: archive second\n",
-        encoding="utf-8",
-    )
-    (tmp_path / "archive/earlier.md").write_text(
-        "2026-10-18T00:00:00Z | RULING | omnimarket: unread earlier archive\n",
-        encoding="utf-8",
-    )
-    result = _read(root, F.INVARIANTS, ledger=ledger)
+    result = _read(root, F.INVARIANTS, ledger=older_first)
     assert [e.text.rsplit(": ", 1)[-1] for e in result.entries[2:]] == [
         "archive first",
         "archive second",
@@ -268,11 +258,8 @@ def test_invariants_carry_rulings_that_name_the_repository(
     ]
 
 
-def test_rulings_after_the_revision_stamp_are_ignored(
-    root: Path, tmp_path: Path
-) -> None:
+def test_rulings_after_the_revision_stamp_are_ignored(root: Path) -> None:
     ledger = _ledger(
-        tmp_path,
         "2026-10-18T00:00:00Z | RULING | omnimarket: before",
         "2026-10-19T08:00:00Z | RULING | omnimarket: equal",
         "2026-10-19T08:00:01Z | RULING | omnimarket: future",
@@ -466,9 +453,9 @@ def test_unserved_factor_is_unresolved(root: Path) -> None:
 )
 @pytest.mark.parametrize("factor", [F.INVARIANTS, F.CANONICAL_SHAPES, F.EXEMPLAR])
 def test_repository_name_outside_the_pattern_is_skipped(
-    root: Path, tmp_path: Path, repository: str | None, factor: EnumContextFactor
+    root: Path, repository: str | None, factor: EnumContextFactor
 ) -> None:
-    ledger = _ledger(tmp_path, "2026-10-18T00:00:00Z | RULING | ../outside: no")
+    ledger = _ledger("2026-10-18T00:00:00Z | RULING | ../outside: no")
     result = _read(
         root, factor, repository=repository, lane_kind="design-build", ledger=ledger
     )
@@ -549,15 +536,13 @@ def test_handler_satisfies_protocol_context_tier_source() -> None:
     assert isinstance(HandlerContextSourceRepoDoctrine(), ProtocolContextTierSource)
 
 
-def test_a_ruling_in_overlapping_archives_is_carried_once(
-    root: Path, tmp_path: Path
-) -> None:
+def test_a_ruling_read_twice_is_carried_once(root: Path) -> None:
     row = "2026-10-23T00:00:00Z | RULING | omnimarket: overlap"
-    ledger = _ledger(tmp_path, "2026-10-24T00:00:00Z | STATUS | not a ruling")
-    (tmp_path / "archive/2026-10-24-split.md").write_text(row + "\n", encoding="utf-8")
-    (tmp_path / "archive/2026-10-23-split.md").write_text(
-        row + "\n2026-10-22T00:00:00Z | RULING | omnimarket: older\n",
-        encoding="utf-8",
+    ledger = _ledger(
+        "2026-10-24T00:00:00Z | STATUS | not a ruling",
+        row,
+        row,
+        "2026-10-22T00:00:00Z | RULING | omnimarket: older",
     )
     result = _read(root, F.INVARIANTS, ledger=ledger, revision="2026-10-24T12:00:00Z")
     rulings = [e for e in result.entries if (e.source_ref or "").startswith("ledger#")]
@@ -565,3 +550,41 @@ def test_a_ruling_in_overlapping_archives_is_carried_once(
         row,
         "2026-10-22T00:00:00Z | RULING | omnimarket: older",
     ]
+
+
+def test_rulings_are_read_through_the_bus_reader(root: Path) -> None:
+    ledger = _ledger("2026-10-18T00:00:00Z | RULING | omnimarket: via the bus")
+    result = _read(root, F.INVARIANTS, ledger=ledger)
+    assert ledger.calls == [(RULINGS_READER, RULINGS_WINDOW_HOURS, ("RULING",))]
+    assert result.entries[-1].text.endswith("via the bus")
+    assert result.entry_counts["rulings"] == 1
+    assert result.entry_counts["rulings_unavailable"] == 0
+
+
+def test_an_unreadable_ledger_is_unknown_not_empty(root: Path) -> None:
+    result = _read(root, F.INVARIANTS, ledger=FakeLedgerRows(error="reader timed out"))
+    assert result.entry_counts["rulings_unavailable"] == 1
+    assert result.entry_counts["rulings"] == 0
+    assert all(not (e.source_ref or "").startswith("ledger#") for e in result.entries)
+
+
+def test_the_default_reader_without_an_interpreter_is_unknown_not_empty(
+    root: Path,
+) -> None:
+    result = HandlerContextSourceRepoDoctrine(env={"OMNI_HOME": str(root)}).handle(
+        ModelContextSourceRequest(
+            factor=F.INVARIANTS,
+            caller_scope=ModelContextCallerScope(repository="omnimarket"),
+            access=ModelContextAccess(tenant_id="lab"),
+            revision=STAMP,
+        )
+    )
+    assert result.entry_counts["rulings_unavailable"] == 1
+
+
+def test_the_contract_binding_declares_no_ledger_file() -> None:
+    block = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))[
+        "context_source_repo_doctrine"
+    ]
+    assert not [key for key in block if key.startswith("ledger")]
+    assert block["max_rulings"] == 3

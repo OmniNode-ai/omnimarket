@@ -10,9 +10,10 @@ when ``until`` falls at most ``max_grant_hours`` after the row's own timestamp, 
 grant that never ends is ignored. A row may name several projects, one ``grant=``
 cell each.
 
-The ledger file is the one the policy's ``ledger_path_env`` variable names, and only
-its last ``tail_bytes`` are read. No path, an unreadable file or no matching row all
-give no grant, so the guard refuses: an unreadable ledger never grants anything.
+The rows come from the ledger reader node the policy's ``reader`` names, over the last
+``max_grant_hours`` (rounded up) hours, for the policy's ``row_kinds`` only. No ledger
+file is opened. A ``LedgerReadError`` or no matching row gives no grant, so the guard
+refuses: an unreadable ledger never grants anything.
 """
 
 from __future__ import annotations
@@ -21,10 +22,16 @@ import os
 import re
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
+from omnimarket.handlers.adapter_work_ledger_rows_reader import (
+    SubprocessLedgerRowsReader,
+)
 from omnimarket.nodes.node_dev_runtime_mutation_guard_effect.models import (
     ModelDevRuntimeGrantPolicy,
+)
+from omnimarket.protocols.protocol_ledger_rows_reader import (
+    LedgerReadError,
+    ProtocolLedgerRowsReader,
 )
 
 _ROW_HEAD = re.compile(
@@ -71,42 +78,41 @@ def grants_in(
 
 
 class LedgerGrantSource:
-    """Live grants from the ledger file the policy's environment variable names."""
+    """Live grants from the rolling work ledger's rows, read through the ledger reader node."""
 
-    def __init__(self, environ: Mapping[str, str] | None = None) -> None:
-        self._env = dict(os.environ if environ is None else environ)
-
-    def _path(self, policy: ModelDevRuntimeGrantPolicy) -> Path | None:
-        raw = self._env.get(policy.ledger_path_env, "").strip()
-        return Path(raw) if raw else None
+    def __init__(
+        self,
+        reader: ProtocolLedgerRowsReader | None = None,
+        environ: Mapping[str, str] | None = None,
+    ) -> None:
+        self._reader: ProtocolLedgerRowsReader = reader or SubprocessLedgerRowsReader(
+            dict(os.environ if environ is None else environ)
+        )
+        self._error = ""
 
     def live_grants(
         self, policy: ModelDevRuntimeGrantPolicy, now: datetime
     ) -> frozenset[str]:
-        path = self._path(policy)
-        if path is None:
-            return frozenset()
         try:
-            with path.open("rb") as handle:
-                handle.seek(0, os.SEEK_END)
-                size = handle.tell()
-                handle.seek(max(0, size - policy.tail_bytes))
-                text = handle.read().decode("utf-8", errors="replace")
-        except OSError:
+            lines = self._reader.rows(
+                reader=policy.reader,
+                window_hours=policy.window_hours,
+                kinds=policy.row_kinds,
+            )
+        except LedgerReadError as exc:
+            self._error = str(exc)
             return frozenset()
-        return grants_in(text, policy, now)
+        self._error = ""
+        return grants_in("\n".join(lines), policy, now)
 
     def handle(self, policy: ModelDevRuntimeGrantPolicy) -> frozenset[str]:
         """Dispatch entrypoint: the projects live grant rows name now."""
         return self.live_grants(policy, datetime.now(UTC))
 
     def describe(self, policy: ModelDevRuntimeGrantPolicy) -> str:
-        path = self._path(policy)
-        if path is None:
-            return f"no ledger ({policy.ledger_path_env} is unset)"
-        return (
-            f"the ledger at {path}" if path.is_file() else f"no ledger file at {path}"
-        )
+        if self._error:
+            return f"the ledger rows of reader {policy.reader}, which could not be read ({self._error})"
+        return f"the ledger rows of reader {policy.reader} (bus projection, last {policy.window_hours}h)"
 
 
 __all__ = ["LedgerGrantSource", "grants_in"]

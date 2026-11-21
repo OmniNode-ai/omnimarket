@@ -3,10 +3,10 @@
 # ONEX Node Contract - Ask State Effect (OMN-21713)
 #
 # The reading half of the ask-state report. It reads the operator capture store
-# (captures.jsonl, written by node_operator_capture_effect) and the rolling work ledger with its
-# archive rolls, then hands both to node_ask_state_compute, which decides each ask's state
-# (owned, ticketed, parked, done, dropped). The command line prints the report and exits 1
-# while any ask is dropped.
+# (captures.jsonl, written by node_operator_capture_effect) and the rolling work ledger's rows
+# through the bus-fed reader ask-state-rows (no ledger file is opened), then hands both to
+# node_ask_state_compute, which decides each ask's state (owned, ticketed, parked, done, dropped).
+# The command line prints the report and exits 1 while any ask is dropped.
 #
 #   python -m omnimarket.nodes.node_ask_state_effect --since 2026-10-31T00:00:00Z
 #
@@ -54,24 +54,21 @@ event_bus:
 runtime_dispatch:
   external_trigger: "python -m omnimarket.nodes.node_ask_state_effect --since <UTC stamp> (runtime_ask_state.py), which reads the sources, calls HandlerAskStateReport.handle and prints the report"
 env_dependencies:
-  ONEX_LEDGER_PATH:
+  ONEX_LEDGER_BUS_APPEND_COMMAND:
     required: true
-    description: "The rolling work ledger; the --ledger flag overrides. There is no default."
+    description: "Its first word is the interpreter the ledger reader (reader name ask-state-rows, which the reader overlay must list in moved_readers) runs under. There is no default."
   ONEX_OPERATOR_CAPTURE_DIR:
     required: false
     description: "The operator capture store. Unset: ~/.local/state/omni/operator-capture."
 dod_evidence:
   PYTEST:
-    description: "the sources are read, machine and old prompts left out, archives bounded by the window, exit code by dropped asks"
+    description: "the sources are read, machine and old prompts left out, ledger rows read through the bus reader for the window, an unreadable ledger refused, exit code by dropped asks"
     command: "uv run pytest tests/unit/nodes/node_ask_state_effect -q"
     pass_criteria: "every test passes"
 
-# Where the command line reads. The ledger path comes from the environment or --ledger, never a default.
+# Where the command line reads: the capture store file. The ledger rows come from the bus reader.
 runtime:
-  ledger_env: ONEX_LEDGER_PATH
   captures_file: captures.jsonl
-  archive_dir: archive
-  archive_glob: "*.md"
 metadata:
   transport_type: local
   description: "Operator ask state report"
