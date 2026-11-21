@@ -146,15 +146,20 @@ class ModelReaderResult(BaseModel):
     parity: EnumReaderParity = EnumReaderParity.UNREAD
     file_read: bool = False
     event: ModelReaderEvent | None = None
+    # Seconds the read took on the handler's injected clock (OMN-20548); None for a reader
+    # not moved, which reads nothing. The caller compares it with its budget.
+    elapsed_s: float | None = None
 
     def summary(self) -> str:
         """One machine-readable line for stderr and the floor."""
         age = "none" if self.watermark_age_s is None else str(self.watermark_age_s)
+        elapsed = "none" if self.elapsed_s is None else f"{self.elapsed_s:.3f}"
         return (
             f"READER reader={self.reader} query={self.query.value} status={self.status.value} "
             f"source={self.source} reason={self.reason} watermark_age_s={age} "
             f"max_age_s={self.max_watermark_age_s} parity={self.parity.value} "
-            f"matched={self.matched} file_read={'yes' if self.file_read else 'no'}"
+            f"matched={self.matched} file_read={'yes' if self.file_read else 'no'} "
+            f"elapsed_s={elapsed}"
         )
 
 

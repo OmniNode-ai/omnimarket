@@ -29,6 +29,9 @@ from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.models.landing_decision import ModelLandingFacts
 from omnimarket.models.landing_tick_record import ModelLandingTickRecord
+from omnimarket.models.pr_landing_liveness_read import (
+    ModelLivenessReadRequest,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision import (
     decide_landing,
 )
@@ -42,9 +45,6 @@ from omnimarket.nodes.node_pr_landing_liveness_read_effect.handlers.handler_pr_l
 from omnimarket.nodes.node_pr_landing_liveness_read_effect.handlers.liveness_read_ports import (
     InMemoryLivenessReader,
     InMemoryLivenessReadPublisher,
-)
-from omnimarket.nodes.node_pr_landing_liveness_read_effect.models.model_liveness_read import (
-    ModelLivenessReadRequest,
 )
 from omnimarket.nodes.node_pr_landing_liveness_read_effect.overlay import load_overlay
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.adapter_publisher import (

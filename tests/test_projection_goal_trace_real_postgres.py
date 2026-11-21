@@ -183,6 +183,43 @@ async def test_a_replay_writes_this_replays_rows_for_the_goal() -> None:
 
 
 @pytest.mark.integration
+async def test_a_goal_free_session_takes_the_narrow_path_and_a_binding_re_attaches_it() -> (
+    None
+):
+    """OMN-26152: the narrow path's two statements run against real Postgres."""
+    conn = await _connect_or_skip()
+    try:
+        await _setup(conn)
+        writer = GoalTraceProjectionWriter()
+        cast("Any", writer)._db = _ScopedConnectionAdapter(conn)
+        results = [
+            await writer._project(writer.db, "topic", _hook("lane", minute, goal=None))
+            for minute in range(1, 5)
+        ]
+        assert all(r["scope_skipped"] is True for r in results)
+        assert all(r["rows_upserted"] == 2 for r in results)
+        unassigned = await conn.fetchval(
+            f"SELECT count(*) FROM {_SCHEMA}.goal_trace_events "
+            "WHERE assignment = 'unassigned' AND goal_id IS NULL AND seq IS NULL"
+        )
+        assert unassigned == 4
+
+        # A redelivery of one of them is a no-op on the narrow path.
+        redelivered = _hook("lane", 9, goal=None)
+        await writer._project(writer.db, "topic", redelivered)
+        again = await writer._project(writer.db, "topic", redelivered)
+        assert again["rows_upserted"] == 0
+
+        # The binding hook leaves the narrow path and re-attaches every earlier row.
+        bound = await writer._project(writer.db, "topic", _hook("lane", 10, goal=GOAL))
+        assert "scope_skipped" not in bound
+        assert await _count(conn) == 6  # five goal-less hooks and the binding
+    finally:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.close()
+
+
+@pytest.mark.integration
 def test_the_adapter_reads_the_shared_dod_verdict_wire() -> None:
     from omnimarket.models.model_dod_verdict_wire import ModelDodVerdictWire
     from omnimarket.nodes.node_projection_dod_verdict.models import (

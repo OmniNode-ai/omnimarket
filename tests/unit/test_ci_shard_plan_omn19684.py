@@ -311,8 +311,10 @@ def test_integration_guard_does_not_collect_the_whole_tree() -> None:
 
 
 def test_verified_split_count_is_the_full_suite_split_count() -> None:
+    from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record import (
+        EnumFullSuiteReason,
+    )
     from scripts.ci import detect_test_paths
-    from scripts.ci.test_selection_models import EnumFullSuiteReason
 
     full = detect_test_paths._full_suite(EnumFullSuiteReason.MAIN_BRANCH)
     assert full.split_count == FULL_SUITE_SPLITS
