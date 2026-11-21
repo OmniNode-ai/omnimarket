@@ -1,0 +1,84 @@
+schema_version: 1.0.0
+ticket_id: OMN-26270
+title: A pull request that changes only a ticket contract or a changelog gets a stage 1 selection of the always set plus the tests that read the file, not the whole suite
+summary: 'The change-aware test selector took the full 20-shard suite for a diff of only a ticket contract or the changelog, because such a diff reaches no test directory and escalated as no_narrowable_selection.
+  The adjacency configuration gains data_only_globs (contracts/OMN-*.yaml and *.md), data_reader_overrides (data glob to test files) and a data_only_selection_enabled switch. With the switch on, a diff whose files
+  all match data_only_globs selects the always set plus the tests that read the files: a text index of the test files finds a test that spells the file or enumerates its directory, directly or through an imported
+  helper, and the overrides add readers no text shows. Any other unmatched file, alone or beside a data file, keeps the full escalation. The switch ships off, because the rule changes what a pull request runs;
+  the stage gate and the nightly miss check the plan places before narrowing are not in the tree. Not in this change: the stage gate, the replay receipt and the nightly check.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26270-data-only-selection
+  statement: A diff of only ticket contracts or a changelog selects the always set plus the tests that read the files, through reviewed settings in the selector configuration, instead of the full suite.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the five merges that changed only contract files or a changelog are narrowed and each selects 51 seconds or less -- falsifier: `uv run pytest tests/nodes/node_test_selection_selector_compute/test_data_only_selection.py
+      -q --no-cov -k data_only` asserts `selected_seconds <= 51` over the T1 receipt lists and fails on any still full'
+  - id: AC2
+    statement: 'AC2: an unmatched non-code file such as `Dockerfile` still escalates to full with reason `no_narrowable_selection` -- falsifier: a test with `[Dockerfile]` expecting `is_full_suite`'
+  - id: AC3
+    statement: 'AC3: the contract-binding test still runs on every narrowed selection ([OMN-23649](https://linear.app/omninode/issue/OMN-23649)) -- falsifier: delete `tests/ci/test_repo_evidence_caller_workflow.py`
+      from the always set in a fixture and the test must fail'
+  - id: AC4
+    statement: 'AC4: a test that enumerates `contracts/` with glob, a test whose only contract reference is in an imported helper, and a reader named only in `data_reader_overrides` are each selected when a contract
+      changes -- falsifier: a fixture of each; remove the reader index, the helper closure or the override and the test must fail'
+evidence_requirements:
+- kind: tests
+  description: The data-only selection tests and the existing selector tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute tests/unit/scripts/test_detect_test_paths.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26270-ac1
+  description: 'AC1, as measured and not as worded: over the current tree each of the five data-only merges narrows (four contract-only merges and the changelog-only merge, none the full suite). The 51 second
+    bound is not met. The always set alone is 50.8 recorded seconds, and the tests that enumerate contracts/ (AC4) add 36.5 seconds, so a contract merge selects 87.26 seconds and the changelog merge 54.52. The
+    test pins 90 seconds, the measured ceiling. The owner of the criterion decides whether the bound moves to 90 or the readers narrow.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_only_selection.py -q --no-cov -n 0 -p no:randomly -k five_merges
+    cwd: .
+- id: dod-omn26270-ac2
+  description: 'AC2: Dockerfile alone, and a contract beside a Dockerfile, still take the full suite with reason no_narrowable_selection; with the switch off a contract change does too.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_only_selection.py -q --no-cov -n 0 -p no:randomly -k "unmatched or while_the_rule_is_off"
+    cwd: .
+- id: dod-omn26270-ac3
+  description: 'AC3: the shipped always set holds tests/ci/test_repo_evidence_caller_workflow.py, the five merges select it, and in a fixture tree a binding test is selected only through the always set (the
+    control drops it from the always set and it leaves the selection).'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_only_selection.py -q --no-cov -n 0 -p no:randomly -k "contract_binding or five_merges"
+    cwd: .
+- id: dod-omn26270-ac4
+  description: 'AC4: fixture trees select a test that enumerates contracts/ with glob, a test whose only reference is in an imported helper, and a reader named only in data_reader_overrides, each with a control
+    that leaves it out.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_only_selection.py -q --no-cov -n 0 -p no:randomly -k "enumerating or imported_helper or overrides"
+    cwd: .
+- id: dod-omn26270-integration-proof
+  description: the selector tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26270 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_only_selection.py -q --no-cov
+    cwd: .
