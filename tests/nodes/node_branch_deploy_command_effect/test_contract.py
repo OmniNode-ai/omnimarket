@@ -76,6 +76,7 @@ def test_every_setting_is_in_the_overlay_with_no_default() -> None:
         "event_bus",
         "hmac_secret_env",
         "check_agent_key",
+        "signing_key_store",
         "trigger_argv_prefix",
         "env_file",
         "timeout_seconds",

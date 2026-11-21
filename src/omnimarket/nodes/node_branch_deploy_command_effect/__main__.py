@@ -7,11 +7,14 @@ Takes ``--input`` (a ModelBranchDeployCommandRequest as JSON, the
 payload ``onex run-node --input`` takes), dials the broker the node's
 overlay names under ``event_bus``, and hands the request to
 ``HandlerBranchDeployCommand``, which signs the command and publishes it
-to the topic the contract declares for the deploy agent. Exit 0 when
-published; 1 when refused or failed (the result JSON on stdout, the
-detail on stderr); 3 INDETERMINATE on stderr for a bad input, a broker
-the overlay does not name, or an OSError. The broker is never taken
-from an environment variable or a flag.
+to the topic the contract declares for the deploy agent. When the
+overlay names a ``signing_key_store``, the handler resolves the signing
+key from that store when the variable ``hmac_secret_env`` names is unset
+(OMN-24611); a store that does not return it is a refusal and nothing is
+published. Exit 0 when published; 1 when refused or failed (the result
+JSON on stdout, the detail on stderr); 3 INDETERMINATE on stderr for a
+bad input, a broker the overlay does not name, or an OSError. The broker
+is never taken from an environment variable or a flag.
 """
 
 from __future__ import annotations
@@ -28,6 +31,9 @@ from omnimarket.handlers.bus_binding.node_broker import (
     resolve_dialable_broker,
 )
 from omnimarket.models.bus_binding.model_node_broker import ModelNodeBroker
+from omnimarket.nodes.node_branch_deploy_command_effect.adapters.adapter_signing_key_store import (
+    SigningKeyStoreReader,
+)
 from omnimarket.nodes.node_branch_deploy_command_effect.handlers.handler_branch_deploy_command import (
     HandlerBranchDeployCommand,
 )
@@ -35,6 +41,12 @@ from omnimarket.nodes.node_branch_deploy_command_effect.models.model_branch_depl
     ModelBranchDeployCommandRequest,
 )
 from omnimarket.nodes.node_branch_deploy_command_effect.overlay import load_overlay
+from omnimarket.nodes.node_branch_deploy_command_effect.protocols.protocol_signing_key import (
+    ProtocolSigningKey,
+)
+from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store import (
+    HandlerSecretStore,
+)
 from omnimarket.topic_namespace import apply_topic_namespace
 
 NODE_NAME: Final[str] = "node_branch_deploy_command_effect"
@@ -81,8 +93,19 @@ class _KafkaBus:
 def build_handler(*, environ: Mapping[str, str]) -> HandlerBranchDeployCommand:
     """Keep the bus dial and the handler assembly overridable by hermetic CLI callers."""
     broker = resolve_dialable_broker(NODE_NAME, environ=environ)
+    overlay = load_overlay()
+    signing_key_reader: ProtocolSigningKey | None = None
+    if overlay.signing_key_store is not None:
+        signing_key_reader = SigningKeyStoreReader(
+            overlay.signing_key_store.folder,
+            overlay.signing_key_store.key,
+            HandlerSecretStore(overlay=overlay.signing_key_store.secret_store),
+        )
     return HandlerBranchDeployCommand(
-        event_bus=_KafkaBus(broker), overlay=load_overlay(), environ=environ
+        event_bus=_KafkaBus(broker),
+        overlay=overlay,
+        environ=environ,
+        signing_key_reader=signing_key_reader,
     )
 
 
