@@ -14,6 +14,9 @@ from omnimarket.handlers.adapter_test_selection_policy_file import (
     policy_version,
     selector_version,
 )
+from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_text_file import (
+    SourceTextFile,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_selection_record import (
     HandlerSelectionRecord,
 )
@@ -48,11 +51,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--github-output", type=Path, default=None)
     args = parser.parse_args(argv)
 
+    source = SourceTextFile()
     stages: dict[int, ModelTestSelection] = {}
     for item in args.stage_selection:
         stage, _, path = item.partition("=")
-        raw = Path(path).read_text(encoding="utf-8")  # node-purity-ok: adapter
-        stages[int(stage)] = ModelTestSelection.model_validate_json(raw)
+        stages[int(stage)] = ModelTestSelection.model_validate_json(
+            source.read_text(Path(path))
+        )
     request = ModelSelectionRecordRequest(
         repo=args.repo,
         pr_number=args.pr_number,
@@ -63,7 +68,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         run_attempt=args.run_attempt,
         changed_files=tuple(
             line.strip()
-            for line in args.changed_files_from.read_text(encoding="utf-8").splitlines()
+            for line in source.read_text(args.changed_files_from).splitlines()
             if line.strip()
         ),
         flag_enabled=args.feature_flag == "on",

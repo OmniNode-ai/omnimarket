@@ -168,7 +168,7 @@ def test_error_requests_with_a_gap_in_the_stages_or_no_stage_are_refused() -> No
 def test_record_is_frozen_and_forbids_extra_keys() -> None:
     record = _handler().handle(_request())
     with pytest.raises(ValidationError):
-        record.repo = "other"  # type: ignore[misc]
+        record.__setattr__("repo", "other")
     payload = json.loads(record.model_dump_json())
     with pytest.raises(ValidationError):
         ModelTestSelectionRecord.model_validate({**payload, "surplus": 1})

@@ -1334,7 +1334,7 @@ jobs:
           . .venv/bin/activate
           pr_args=()
           if [ -n "$PR_NUMBER" ]; then pr_args=(--pr-number "$PR_NUMBER"); fi
-          python -m omnimarket.nodes.node_test_selection_selector_compute.adapters.adapter_selection_record_cli \
+          python -m omnimarket.nodes.node_test_selection_selector_compute.runtime_selection_record \
             --repo "$REPO" "${pr_args[@]}" \
             --head-sha "$HEAD_SHA" \
             --base-sha "$BASE_SHA" \

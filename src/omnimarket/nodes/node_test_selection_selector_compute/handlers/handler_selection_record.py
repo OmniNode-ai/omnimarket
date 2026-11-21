@@ -7,7 +7,7 @@ rules at or below that stage give, computed as if the flag were on). The stage g
 executed selection is the entry of the policy's ``selection_stage`` when the flag is on and the full
 matrix when it is not, so the pytest matrix is built from one entry whatever the later stages hold.
 Pure over its request, its policy and its injected selector; the workflow's file reads and writes are
-in ``adapters/adapter_selection_record_cli.py``.
+in ``runtime_selection_record.py``.
 """
 
 from __future__ import annotations
