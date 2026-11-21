@@ -22,7 +22,6 @@ files:
     src/omnimarket/nodes/node_branch_claim_check_effect/contract.yaml: 1
     src/omnimarket/nodes/node_canonical_clone_dirty_converge_effect/handlers/handler_canonical_clone_dirty_converge_effect.py: 1
     src/omnimarket/nodes/node_compaction_cost_compute/data/recovery_call_patterns.yaml: 2
-    src/omnimarket/nodes/node_floor_simple_effect/contract.yaml: 1
     src/omnimarket/nodes/node_friction_rollup_compute/tests/fixtures/recorded_day_unit_output.json: 3
     src/omnimarket/nodes/node_handoff_check_effect/contract.yaml: 2
     src/omnimarket/nodes/node_handoff_check_effect/handlers/facts.py: 1
@@ -168,4 +167,4 @@ files:
     tests/unit/validators/test_ledger_file_census.py: 27
     tests/unit/work_ledger_bus/test_work_ledger_append_cli.py: 1
 ratchet:
-  omnimarket: 162
+  omnimarket: 161
