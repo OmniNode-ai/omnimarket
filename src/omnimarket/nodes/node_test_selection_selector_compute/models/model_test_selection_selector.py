@@ -34,6 +34,10 @@ class ModelSelectorPolicy(BaseModel):
     full_split_count: int = Field(ge=1, le=40)
     #: Days a pull request's selection record artifact is kept.
     record_retention_days: int = Field(ge=1, le=90)
+    #: Consecutive clean nightly runs a stage receipt covers before the stage may be entered.
+    stage_clean_nights: int = Field(ge=1, le=30)
+    #: Pull request records, over the receipt's nights, that hold an entry for the stage entered.
+    stage_min_pr_records: int = Field(ge=1)
 
     @model_validator(mode="after")
     def _ladder_is_ordered(self) -> ModelSelectorPolicy:

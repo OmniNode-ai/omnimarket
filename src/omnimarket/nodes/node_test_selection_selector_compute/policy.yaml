@@ -19,6 +19,13 @@
 #   full_split_count        shards of the full-suite matrix: what a run with the flag off and every
 #                           escalation to the full suite takes.
 #   record_retention_days   days a pull request's selection record artifact is kept.
+#   stage_clean_nights      consecutive nightly runs a stage receipt must cover before the stage it
+#                           names may be entered. A night is clean when its published attribution record
+#                           counts zero misses, zero unattributable and zero incomplete for the stage
+#                           being entered, and at least one pull request record.
+#   stage_min_pr_records    pull request records, summed over the receipt's nights, that hold a
+#                           selection entry for the stage being entered at the promoted selector and
+#                           policy versions. A receipt over fewer is refused.
 target_shard_seconds: 360
 max_narrowed_shards: 5
 durations_path: config/test_file_durations.json
@@ -31,3 +38,5 @@ path_count_max_shards: 5
 selection_stage: 0
 full_split_count: 20
 record_retention_days: 14
+stage_clean_nights: 7
+stage_min_pr_records: 10
