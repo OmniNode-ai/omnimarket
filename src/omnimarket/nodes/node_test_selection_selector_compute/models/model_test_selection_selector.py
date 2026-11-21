@@ -34,6 +34,12 @@ class ModelSelectorPolicy(BaseModel):
     full_split_count: int = Field(ge=1, le=40)
     #: Days a pull request's selection record artifact is kept.
     record_retention_days: int = Field(ge=1, le=90)
+    #: The ``selection_by_stage`` entry the code graph comparison reads as the parse side. Absent in
+    #: the frozen replay tree, which predates it.
+    graph_compared_stage: int | None = Field(default=None, ge=0, le=4)
+    #: Fewest valid comparisons the comparison's verdict part one needs; fewer is ``insufficient``.
+    #: Absent in the frozen replay tree, which predates it.
+    graph_min_valid_comparisons: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def _ladder_is_ordered(self) -> ModelSelectorPolicy:
