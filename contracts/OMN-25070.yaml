@@ -90,6 +90,20 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest -q --no-cov tests/ci/test_omninode_onex_package_omn25070.py -k run_by_lane
         cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-pin-carries-setup-fix
+    description: The customer package pins an omnimarket release that carries the onex setup fix (0.4.324 or
+      later), so a customer install runs onex setup without the crash. The bound check fails on the merge base,
+      where the pin is 0.4.322, a release without the fix.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: command
+        check_value: >-
+          uv run --frozen python -c "import tomllib; from packaging.version import Version;
+          pins = tomllib.load(open('packages/omninode-onex/pyproject.toml', 'rb'))['project']['dependencies'];
+          pin = next(p for p in pins if p.startswith('omnimarket=='));
+          assert Version(pin.split('==')[1]) >= Version('0.4.324'), pin"
+        cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn25070-installer-integration-proof
     description: The render node and the rendered installer run on a lab host at the pushed head. Hosted CI runs
       the same tests per platform; only the local Done gate runs this unbound check on the lab.
