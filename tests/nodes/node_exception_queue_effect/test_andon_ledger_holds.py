@@ -30,14 +30,24 @@ from omnimarket.models.stop_gate import (
     ModelWorkingReading,
 )
 from omnimarket.nodes.node_exception_queue_effect.container.container_exception_queue_effect import (
+    create_handler_andon_ledger_holds,
     create_handler_open_stops,
 )
-from omnimarket.nodes.node_exception_queue_effect.handler import HandlerStopEvent
+from omnimarket.nodes.node_exception_queue_effect.handler import (
+    HandlerOpenStops,
+    HandlerStopEvent,
+)
+from omnimarket.nodes.node_exception_queue_effect.handlers.handler_andon_ledger_holds import (
+    HOLDS_READER,
+    HOLDS_WINDOW_HOURS,
+)
 from omnimarket.nodes.node_exception_queue_effect.models import (
     ModelOpenStopsRequest,
     ModelStopEventRequest,
 )
 from omnimarket.nodes.node_exception_queue_effect.node import NodeExceptionQueueEffect
+from omnimarket.protocols.protocol_ledger_rows_reader import LedgerReadError
+from tests.helpers.fake_ledger_rows import FakeLedgerRows
 
 pytestmark = pytest.mark.unit
 
@@ -54,13 +64,17 @@ HOLDS = (
 )
 
 
-def test_andon_hold_opens_stop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text("\n".join(HOLDS) + "\n", encoding="utf-8")
-    monkeypatch.setenv("ONEX_LEDGER_PATH", str(ledger))
-    result = create_handler_open_stops().handle(
+def _open_stops(ledger: FakeLedgerRows) -> HandlerOpenStops:
+    """The container's open-stops handler, its HOLD rows coming from the injected reader node port."""
+    return create_handler_open_stops(ledger_reader=ledger)
+
+
+def test_andon_hold_opens_stop(tmp_path: Path) -> None:
+    ledger = FakeLedgerRows(HOLDS)
+    result = _open_stops(ledger).handle(
         ModelOpenStopsRequest(tmp_path / "queue", now=NOW)
     )
+    assert ledger.calls == [(HOLDS_READER, HOLDS_WINDOW_HOURS, ("HOLD", "RELEASE"))]
     assert {(s.cls, s.scope.key) for s in result.stops} == {
         ("seam-mismatch", "prepr-slot"),
         ("seam-mismatch", "dev-runtime-ready"),
@@ -87,7 +101,7 @@ def test_andon_hold_opens_stop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         assert decision.swarm_lane == stop.swarm_lane
     queue = tmp_path / "queue" / "exception-queue.jsonl"
     before = queue.read_bytes()
-    again = create_handler_open_stops().handle(
+    again = _open_stops(ledger).handle(
         ModelOpenStopsRequest(tmp_path / "queue", now=NOW + timedelta(minutes=10))
     )
     assert again.stops == result.stops
@@ -95,18 +109,16 @@ def test_andon_hold_opens_stop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_andon_release_keeps_readback(tmp_path: Path) -> None:
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text("\n".join(HOLDS) + "\n", encoding="utf-8")
-    request = ModelOpenStopsRequest(tmp_path / "queue", ledger, NOW)
-    node = NodeExceptionQueueEffect()
+    ledger = FakeLedgerRows(HOLDS)
+    request = ModelOpenStopsRequest(tmp_path / "queue", now=NOW)
+    node = _open_stops(ledger)
     before = node.handle(request)
     assert len(before.stops) == 2
-    with ledger.open("a", encoding="utf-8") as stream:
-        for stamp in ("20", "37"):
-            stream.write(
-                "2026-11-02T03:00:00Z | RELEASE | lane=operator-fixture | "
-                f"re=2026-11-02T02:31:{stamp}Z-operator-fixture | cause repaired\n"
-            )
+    for stamp in ("20", "37"):
+        ledger.lines.append(
+            "2026-11-02T03:00:00Z | RELEASE | lane=operator-fixture | "
+            f"re=2026-11-02T02:31:{stamp}Z-operator-fixture | cause repaired"
+        )
     after = node.handle(request)
     assert after.stops == before.stops
     assert {s.readback_command for s in after.stops} == {
@@ -117,13 +129,11 @@ def test_andon_release_keeps_readback(tmp_path: Path) -> None:
 
 
 def test_andon_unregistered_class_reported(tmp_path: Path) -> None:
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text(
-        HOLDS[0].replace("class=seam-mismatch", "class=unknown-fixture") + "\n",
-        encoding="utf-8",
+    ledger = FakeLedgerRows(
+        [HOLDS[0].replace("class=seam-mismatch", "class=unknown-fixture")]
     )
-    result = NodeExceptionQueueEffect().handle(
-        ModelOpenStopsRequest(tmp_path / "queue", ledger, NOW)
+    result = _open_stops(ledger).handle(
+        ModelOpenStopsRequest(tmp_path / "queue", now=NOW)
     )
     assert result.stops == ()
     assert result.reports == (
@@ -143,10 +153,9 @@ def test_andon_hold_only_ingests_in_force_rows(tmp_path: Path, case: str) -> Non
         text = text.replace("2026-11-02T02:31:20Z", "2026-11-03T02:31:20Z")
     else:
         text = text.replace("class=seam-mismatch | ", "")
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text(text + "\n", encoding="utf-8")
-    result = NodeExceptionQueueEffect().handle(
-        ModelOpenStopsRequest(tmp_path / "queue", ledger, NOW)
+    ledger = FakeLedgerRows(text.split("\n"))
+    result = _open_stops(ledger).handle(
+        ModelOpenStopsRequest(tmp_path / "queue", now=NOW)
     )
     assert result.stops == ()
     assert result.reports == ()
@@ -175,12 +184,11 @@ def _event(
 def test_andon_hold_readback_clears_once_and_replay_never_reopens(
     tmp_path: Path,
 ) -> None:
-    ledger = tmp_path / "ledger.md"
     # Two distinct HOLD ids for the same case must both remain consumed after closure.
     second = HOLDS[0].replace("02:31:20Z", "02:31:21Z")
-    ledger.write_text(HOLDS[0] + "\n" + second + "\n", encoding="utf-8")
-    request = ModelOpenStopsRequest(tmp_path / "queue", ledger, NOW)
-    node = NodeExceptionQueueEffect()
+    ledger = FakeLedgerRows([HOLDS[0], second])
+    request = ModelOpenStopsRequest(tmp_path / "queue", now=NOW)
+    node = _open_stops(ledger)
     [stop] = node.handle(request).stops
     _event(request.state_dir, stop.id, EnumStopEventKind.COUNTERMEASURE_MERGED, 1)
     fixed = ModelStopReading(
@@ -217,24 +225,23 @@ def test_andon_hold_readback_clears_once_and_replay_never_reopens(
     )
     queue = request.state_dir / "exception-queue.jsonl"
     before = queue.read_bytes()
-    assert NodeExceptionQueueEffect().handle(request).stops == ()
+    assert node.handle(request).stops == ()
     assert queue.read_bytes() == before
-    with ledger.open("a", encoding="utf-8") as stream:
-        stream.write(HOLDS[0].replace("02:31:20Z", "02:31:22Z") + "\n")
-    [recurrence] = NodeExceptionQueueEffect().handle(request).stops
+    ledger.lines.append(HOLDS[0].replace("02:31:20Z", "02:31:22Z"))
+    [recurrence] = node.handle(request).stops
     assert recurrence.id != stop.id
 
 
 def test_andon_hold_retains_free_text_readback(tmp_path: Path) -> None:
     readback = "slot ready reads 200 twice. An unreadable result keeps this stop."
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text(
-        HOLDS[0].split("readback=", 1)[0] + "ANDON stop.\nReadback: " + readback + "\n",
-        encoding="utf-8",
+    ledger = FakeLedgerRows(
+        (
+            HOLDS[0].split("readback=", 1)[0] + "ANDON stop.\nReadback: " + readback
+        ).split("\n")
     )
     [stop] = (
-        NodeExceptionQueueEffect()
-        .handle(ModelOpenStopsRequest(tmp_path / "queue", ledger, NOW))
+        _open_stops(ledger)
+        .handle(ModelOpenStopsRequest(tmp_path / "queue", now=NOW))
         .stops
     )
     assert stop.readback_command == readback
@@ -262,11 +269,10 @@ async def test_andon_hold_deploy_bus_route(tmp_path: Path) -> None:
     )
     assert model is ModelAndonLedgerHoldsRequest
     assert route["topic"] in contract["event_bus"]["subscribe_topics"]
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text("\n".join(HOLDS) + "\n", encoding="utf-8")
+    ledger = FakeLedgerRows(HOLDS)
     bus = EventBusInmemory()
     adapter = LocalRuntimeBusAdapter(
-        handler=cls(),
+        handler=cls(ledger_reader=ledger),
         handler_name=route["handler"]["name"],
         input_model_cls=model,
         output_topic=contract["terminal_event"],
@@ -280,17 +286,20 @@ async def test_andon_hold_deploy_bus_route(tmp_path: Path) -> None:
         await bus.publish(
             route["topic"],
             None,
-            model(state_dir=tmp_path / "queue", ledger_path=ledger, now=NOW)
-            .model_dump_json()
-            .encode(),
+            model(state_dir=tmp_path / "queue", now=NOW).model_dump_json().encode(),
         )
         history = await bus.get_event_history(topic=contract["terminal_event"])
         assert len(history) == 1
         result = json.loads(history[0].value)
         assert len(result["stop_ids"]) == 2
         assert result["reports"] == []
-        opened = NodeExceptionQueueEffect().handle(
-            ModelOpenStopsRequest(tmp_path / "queue", ledger, NOW)
+        assert ledger.calls[0] == (
+            HOLDS_READER,
+            HOLDS_WINDOW_HOURS,
+            ("HOLD", "RELEASE"),
+        )
+        opened = _open_stops(ledger).handle(
+            ModelOpenStopsRequest(tmp_path / "queue", now=NOW)
         )
         assert {s.scope.key for s in opened.stops} == {
             "prepr-slot",
@@ -298,3 +307,32 @@ async def test_andon_hold_deploy_bus_route(tmp_path: Path) -> None:
         }
     finally:
         await bus.close()
+
+
+def test_unreadable_ledger_is_unknown_never_no_holds(tmp_path: Path) -> None:
+    """A reader that cannot answer raises; open_stops never reads that as "no HOLD rows" and writes no queue."""
+    ledger = FakeLedgerRows(HOLDS, error="reader exited 69: bus unreachable")
+    with pytest.raises(LedgerReadError, match="bus unreachable"):
+        _open_stops(ledger).handle(ModelOpenStopsRequest(tmp_path / "queue", now=NOW))
+    with pytest.raises(LedgerReadError, match="bus unreachable"):
+        create_handler_andon_ledger_holds(ledger_reader=ledger).handle(
+            ModelAndonLedgerHoldsRequest(state_dir=tmp_path / "queue", now=NOW)
+        )
+    assert not (tmp_path / "queue" / "exception-queue.jsonl").exists()
+
+
+def test_container_default_reader_fails_closed_without_an_interpreter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The container's default reader is the subprocess adapter over the environment; unset interpreter is unreadable."""
+    monkeypatch.delenv("ONEX_LEDGER_BUS_APPEND_COMMAND", raising=False)
+    with pytest.raises(LedgerReadError, match="ONEX_LEDGER_BUS_APPEND_COMMAND"):
+        create_handler_open_stops().handle(
+            ModelOpenStopsRequest(tmp_path / "queue", now=NOW)
+        )
+
+
+def test_open_stops_without_a_bound_reader_reads_the_queue_alone(
+    tmp_path: Path,
+) -> None:
+    assert HandlerOpenStops().handle(ModelOpenStopsRequest(tmp_path)).stops == ()

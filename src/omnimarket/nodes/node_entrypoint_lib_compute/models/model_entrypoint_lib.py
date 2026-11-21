@@ -54,7 +54,7 @@ class ModelEntrypointLibRequest(BaseModel):
     )
     onex_dry_run: str | None = None
     registry_root: str | None = None
-    ledger_path: str | None = None
+    bus_append_command: str | None = None
     sandbox_marker_exists: bool = False
     detail_dir_override: str | None = None
     verb: str | None = None
