@@ -43,19 +43,13 @@ class LedgerRowsUnreadableError(RuntimeError):
     """The reader did not answer the rows read with a fresh ``ok``; nothing was read."""
 
 
-def read_window_rows(
-    reader: str,
-    window_hours: int,
-    *,
-    environ: Mapping[str, str] | None = None,
-    point_read: ProtocolLedgerPointRead | None = None,
-    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+def _read(
+    request: ModelReaderRequest,
+    environ: Mapping[str, str] | None,
+    point_read: ProtocolLedgerPointRead | None,
+    clock: Callable[[], datetime],
 ) -> tuple[str, ...]:
-    """The node's rows of the last ``window_hours`` hours for the reader named ``reader``."""
-    if not 1 <= window_hours <= MAX_WINDOW_HOURS:
-        raise LedgerRowsUnreadableError(
-            f"a rows window is 1 to {MAX_WINDOW_HOURS} hours; {window_hours} asked"
-        )
+    """Run one rows-shaped request through the reader handler; only a fresh ``ok`` answers."""
     env = os.environ if environ is None else environ
     try:
         overlay = load_overlay(env)
@@ -71,16 +65,94 @@ def read_window_rows(
         sink,
         clock=clock,
     )
-    result = handler.handle(
-        ModelReaderRequest(
-            reader=reader, query=EnumReaderQuery.ROWS, window_hours=window_hours
-        )
-    )
+    result = handler.handle(request)
     if result.status is not EnumReaderStatus.OK:
         raise LedgerRowsUnreadableError(
-            f"reader {reader}: {result.status.value} ({result.reason})"
+            f"reader {request.reader}: {result.status.value} ({result.reason})"
         )
     return result.lines
 
 
-__all__ = ["MAX_WINDOW_HOURS", "LedgerRowsUnreadableError", "read_window_rows"]
+def read_window_rows(
+    reader: str,
+    window_hours: int,
+    *,
+    environ: Mapping[str, str] | None = None,
+    point_read: ProtocolLedgerPointRead | None = None,
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+) -> tuple[str, ...]:
+    """The node's rows of the last ``window_hours`` hours for the reader named ``reader``."""
+    if not 1 <= window_hours <= MAX_WINDOW_HOURS:
+        raise LedgerRowsUnreadableError(
+            f"a rows window is 1 to {MAX_WINDOW_HOURS} hours; {window_hours} asked"
+        )
+    return _read(
+        ModelReaderRequest(
+            reader=reader, query=EnumReaderQuery.ROWS, window_hours=window_hours
+        ),
+        environ,
+        point_read,
+        clock,
+    )
+
+
+def read_history_rows(
+    reader: str,
+    since: datetime,
+    until: datetime | None = None,
+    *,
+    kinds: tuple[str, ...] = (),
+    term: str | None = None,
+    environ: Mapping[str, str] | None = None,
+    point_read: ProtocolLedgerPointRead | None = None,
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+) -> tuple[str, ...]:
+    """The node's rows from ``since`` to ``until`` (both inclusive; ``until`` open means now), at any age.
+
+    The history read: the window is a date range, not the last N hours, so it reaches past the 30 day
+    window. The query node reads the projection, which holds the archive rolls, page by page.
+    """
+    try:
+        request = ModelReaderRequest(
+            reader=reader,
+            query=EnumReaderQuery.ROWS,
+            since=since,
+            until=until,
+            kinds=kinds,
+            term=term,
+        )
+    except ValueError as exc:
+        raise LedgerRowsUnreadableError(f"history range: {exc}") from exc
+    return _read(request, environ, point_read, clock)
+
+
+def read_row_at(
+    reader: str,
+    at: datetime,
+    kind: str,
+    *,
+    environ: Mapping[str, str] | None = None,
+    point_read: ProtocolLedgerPointRead | None = None,
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+) -> tuple[str, ...]:
+    """Every row stamped exactly ``at`` of ledger row type ``kind``, at any age.
+
+    The point read: the caller decides what zero rows (absent) or more than one (ambiguous) mean; a
+    failed read is :class:`LedgerRowsUnreadableError`, never an empty tuple.
+    """
+    try:
+        request = ModelReaderRequest(
+            reader=reader, query=EnumReaderQuery.ROW_AT, at=at, kinds=(kind,)
+        )
+    except ValueError as exc:
+        raise LedgerRowsUnreadableError(f"row-at read: {exc}") from exc
+    return _read(request, environ, point_read, clock)
+
+
+__all__ = [
+    "MAX_WINDOW_HOURS",
+    "LedgerRowsUnreadableError",
+    "read_history_rows",
+    "read_row_at",
+    "read_window_rows",
+]
