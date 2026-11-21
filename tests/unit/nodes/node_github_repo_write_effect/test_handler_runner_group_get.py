@@ -83,7 +83,7 @@ def _group_body(**over: object) -> dict[str, Any]:
         "id": _GROUP,
         "name": "example-group",
         "allows_public_repositories": False,
-        "restricted_to_selected_workflows": True,
+        "restricted_to_workflows": True,
         "selected_workflows": [_WORKFLOW],
         **over,
     }
@@ -159,8 +159,23 @@ def _request(
     return ModelRepoWriteRequest.model_validate(fields)
 
 
-async def test_a_named_group_is_read_with_its_repositories() -> None:
-    fake = _Fake([(_GROUP_REQUEST, _ok(_group_body())), (_PAGE_1, _ok(_repos(2)))])
+@pytest.mark.parametrize("restricted", [True, False])
+async def test_a_named_group_is_read_with_its_repositories(restricted: bool) -> None:
+    selected_workflows = [_WORKFLOW] if restricted else []
+    fake = _Fake(
+        [
+            (
+                _GROUP_REQUEST,
+                _ok(
+                    _group_body(
+                        restricted_to_workflows=restricted,
+                        selected_workflows=selected_workflows,
+                    )
+                ),
+            ),
+            (_PAGE_1, _ok(_repos(2))),
+        ]
+    )
     result = await _handler(
         fake, _overlay(ModelRunnerGroupEntry(organization=_ORG, group_id=_GROUP))
     ).handle(_request())
@@ -171,8 +186,8 @@ async def test_a_named_group_is_read_with_its_repositories() -> None:
     assert group is not None
     assert (group.id, group.name) == (_GROUP, "example-group")
     assert group.allows_public_repositories is False
-    assert group.restricted_to_selected_workflows is True
-    assert group.selected_workflows == (_WORKFLOW,)
+    assert group.restricted_to_selected_workflows is restricted
+    assert group.selected_workflows == tuple(selected_workflows)
     assert group.repositories == (f"{_ORG}/example-repo-0", f"{_ORG}/example-repo-1")
     assert fake.sent == [_GROUP_REQUEST, _PAGE_1]
 
@@ -237,6 +252,23 @@ async def test_runner_removals_alone_do_not_allow_a_group_read() -> None:
 
 async def test_a_body_without_the_exposure_fields_is_refused_not_defaulted() -> None:
     body = {"id": _GROUP, "name": "example-group"}
+    fake = _Fake([(_GROUP_REQUEST, _ok(body)), (_PAGE_1, _ok(_repos(0)))])
+    result = await _handler(
+        fake, _overlay(ModelRunnerGroupEntry(organization=_ORG, group_id=_GROUP))
+    ).handle(_request())
+    assert isinstance(result, ModelRepoWriteFailed), result
+    assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+
+
+@pytest.mark.parametrize(
+    "restriction_fields", [{}, {"restricted_to_workflows": "false"}]
+)
+async def test_a_body_without_a_boolean_workflow_restriction_is_refused(
+    restriction_fields: dict[str, object],
+) -> None:
+    body = _group_body()
+    del body["restricted_to_workflows"]
+    body.update(restriction_fields)
     fake = _Fake([(_GROUP_REQUEST, _ok(body)), (_PAGE_1, _ok(_repos(0)))])
     result = await _handler(
         fake, _overlay(ModelRunnerGroupEntry(organization=_ORG, group_id=_GROUP))

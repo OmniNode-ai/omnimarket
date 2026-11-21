@@ -1,0 +1,170 @@
+schema_version: 1.0.0
+ticket_id: OMN-25320
+title: 'Review findings 1 to 6 on omnimarket PR 6344 at head 3526e0f38e36 are fixed or argued: the contract tests agree with
+  the owner ruling, the AC1 and AC5 items cannot pass on null, max_tokens is clamped, the tier gate holds on every path and
+  the Lab comment is at the new head'
+summary: 'Sixth review follow-up of omnimarket#6344. Finding 1: the repository rule refuses a binds_ac on a local_done_gate
+  item and requires every declared criterion to bind a hosted test_passes check, so AC1 to AC3 of OMN-24980 and AC1 and AC5
+  of OMN-25284 (open, not meetable here) are recorded in context.open_criteria and bind nothing; no ledger row states another
+  rule. Finding 2: with those criteria unbound, no item passes on a null ticket or a null hosted run. Finding 3: the AC1 live
+  check runs the recorded test at base_ref (exit 1) and at the head (pass). Finding 4: letter runs that are not plain words
+  count one token per letter; max_tokens is clamped at dispatch to what the window of the resolved backend leaves after the
+  input bound (OMN-25381). Finding 5: the member bound is held in code, applied on every selection
+  path including the bus-less port, and an unlisted local member takes the smallest bound. Finding 6: the bound is per member
+  (rungs 64512, peer 48128).'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25320-review-follow-up
+  statement: Every blocking finding of the sixth review of omnimarket#6344 is fixed or argued with evidence.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the contract binds AC1 to AC3 as the owner ruling says, the contract-proof test agrees with the same
+      rule, and every part of the full tests run exits 0 on the lab -- falsifier: `uv run pytest tests/ -q -k ''no_repo_contract_binds_a_local_done_gate_item
+      or every_repo_contract_binds_every_criterion''` fails at head 3526e0f38e36 and passes at the new head'
+  - id: AC2
+    statement: 'AC2: the AC1 and AC5 items do not pass on a null ticket or a null hosted run; the tickets are filed and the
+      run recorded, or the criteria are unbound -- falsifier: `uv run pytest tests/ -q -k contract_proof` fails with ticket
+      null in the contract and passes at the new head'
+  - id: AC3
+    statement: 'AC3: the AC2 check runs the named test at base_ref where it fails and at the head where it passes, and an
+      empty test file no longer satisfies it -- falsifier: `uv run pytest tests/ -q -k contract_proof` passes with the named
+      test file emptied at the old head and fails at the new head'
+  - id: AC4
+    statement: 'AC4: max_tokens is clamped at dispatch or the input is counted with the tokenizer, and a test meters 96256
+      random mixed-case letters against the bound of 48128 -- falsifier: `uv run pytest tests/ -q -k ''input_token_bound or
+      clamp''` fails on the old counting and passes at the new head'
+  - id: AC5
+    statement: 'AC5: a typed tier field is enforced on every path including first_eligible_tier and next_eligible_tier, a
+      bus-less loop test cannot pick local for an over-bound prompt, and an absent YAML key fails closed -- falsifier: `uv
+      run pytest tests/ -q -k ''tier or bus_less''` fails on the old gate and passes at the new head'
+  - id: AC6
+    statement: 'AC6: the bound is gated per member (rungs 64512, peer 48128), local-coder admits code of 65000 characters
+      at 4.4 characters per token, and the proof prompt bound is at most 48128 -- falsifier: `uv run pytest tests/ -q -k ''per_member
+      or proof_prompt''` fails on the old per-character cut and passes at the new head'
+evidence_requirements:
+- kind: tests
+  description: Focused tests of every file the change touches.
+  command: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py
+    tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25320-ac1
+  description: 'OMN-24980 and OMN-25284 declare no criterion bound to a local_done_gate item (the owner rule of the repository
+    tests: a hosted check cannot control a scoped item, and every declared criterion binds a test_passes check); AC1 to AC3
+    of OMN-24980 and AC1 and AC5 of OMN-25284 are recorded in context.open_criteria. The full tests run is in parts on the
+    lab, listed with each exit in the Lab comment of the new head.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -p no:cacheprovider --no-cov -k 'no_repo_contract_binds_a_local_done_gate_item
+      or every_repo_contract_binds_every_criterion'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q -p no:cacheprovider
+      --no-cov -k 'open_criteria or binding_an_open_criterion'
+    cwd: .
+  binds_ac:
+  - AC1
+- id: dod-omn25320-ac2
+  description: 'No item passes for an open criterion on a null ticket or a null hosted run: the criteria that need an owner
+    ticket or a passing hosted dev run are unbound and recorded, and the test refuses a binds_ac on a local_done_gate item.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q -p no:cacheprovider
+      --no-cov -k 'open_criteria or review_ticket or dev_run_record or owner_tickets'
+    cwd: .
+  binds_ac:
+  - AC2
+- id: dod-omn25320-ac3
+  description: The AC1 check of OMN-24980 runs the recorded test at base_ref (exit 1 required) and at the head of the owning
+    repository (pass required); an empty test file, a test passing at base and a test failing at the head are each refused,
+    against a real two-commit git repository.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q -p no:cacheprovider
+      --no-cov -k 'ac1_cause_test or one_line_summarise'
+    cwd: .
+  binds_ac:
+  - AC3
+- id: dod-omn25320-ac4
+  description: input_token_upper_bound counts a letter run longer than 12 letters, or one that switches case twice, one token
+    per letter; 96256 random mixed-case letters bound at no less than 96256 (above the 48732 and 65116 overflow points) and
+    are refused at every local member. max_tokens is clamped at dispatch by clamp_max_tokens (OMN-25381); the gate is the counting plus the per-member
+    bound.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py -q
+      -p no:cacheprovider --no-cov -k 'input_token_bound or random_mixed_case or the_bound_never_undercounts'
+    cwd: .
+  binds_ac:
+  - AC4
+- id: dod-omn25320-ac5
+  description: 'The member bound is held in code (LOCAL_MEMBER_INPUT_BOUNDS, an unlisted local member takes the smallest)
+    and applied on every selection path: the reducer, the same-tier sibling, first_eligible_tier, next_eligible_tier, backend_id_for_tier
+    and the bus-less dispatch port; a ladder mounted without any bound key still refuses an over-bound prompt.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py -q
+      -p no:cacheprovider --no-cov -k 'tier_selection or bus_less or unlisted_local_member or dev_mount_ladder or exclusion_report'
+    cwd: .
+  binds_ac:
+  - AC5
+- id: dod-omn25320-ac6
+  description: 'The bound is gated per member: local-coder and local-heavy-reasoning 64512, the spread peer 48128; code above
+    65000 characters (80000 characters at the generator''s 0.72 to 0.79 per character) goes to a rung and never to the peer;
+    the proof prompt''s bound is at most 48128.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py
+      -q -p no:cacheprovider --no-cov -k 'per_member or proof_prompt or each_member_declares'
+    cwd: .
+  binds_ac:
+  - AC6
+- id: dod-omn25320-ac7
+  description: 'AC7 is met by the PR comment starting `Lab: head=<full head sha>` and cannot be met by a contract check; this
+    local Done gate item reads the head the watcher holds so the comment''s head can be compared by eye. It binds nothing.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: onex scm pr-view OmniNode-ai/omnimarket#6344
+    cwd: .
+  execution_scope: local_done_gate
+- id: dod-omn25320-integration-proof
+  description: Run the focused routing and contract-proof tests on a lab host at the pushed head. Hosted CI cannot reach the
+    lab, so only the local Done gate runs this unbound check; it binds no acceptance criterion.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+      --lane dod-integration-proof-25320 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py
+      tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov
+    cwd: .
+- id: dod-omn25320-open-criteria-gate
+  description: 'The local Done gate refuses while AC7 is open: it reads context.open_criteria (and, where the contract records
+    them, a null owner ticket or a null passing hosted run) and exits 1 naming each, so no hosted check and no unbound
+    item can pass for a criterion this change does not meet. It binds no criterion (a local_done_gate item may not).'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      python3 -c 'import sys, yaml; c = yaml.safe_load(open("contracts/OMN-25320.yaml")).get("context") or {}; p = ["open criterion " + k for k in (c.get("open_criteria") or {})]; p += ["owner ticket " + k + " is null" for k, v in (c.get("owner_tickets") or {}).items() if not v.get("ticket")]; r = c.get("dev_ladder_run"); p += ["no passing hosted dev run"] if r is not None and not r.get("passing_hosted_run") else []; print(chr(10).join(p), file=sys.stderr); sys.exit(1 if p else 0)'
+    cwd: .
+context:
+  open_criteria:
+    AC7: 'AC7: each blocking finding (1 to 6) is fixed with a test red at head 3526e0f38e36 and green at the new head or argued
+      with evidence in a PR comment, and a comment starting `Lab: head=<full head sha>` names each lab command with exit 0
+      and the parts of any split run -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6344` shows a head that differs
+      from the head named in the Lab: comment, or no Lab: comment'
+  open_criteria_reason: AC7 is met by the Lab comment at the new head, which a contract check cannot read.

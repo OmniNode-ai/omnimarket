@@ -34,3 +34,4 @@ class ModelTopicProvisionPlan(BaseModel):
     live_topics_under_rule: int
     live_topics_outside_rule: int
     live_topics_undeclared: int
+    service_writer_topics: tuple[str, ...] = ()
