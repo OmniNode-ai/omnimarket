@@ -611,6 +611,7 @@ node_delegation_routing_order_compute = "omnimarket.nodes.node_delegation_routin
 node_delegation_routing_overlay_check_compute = "omnimarket.nodes.node_delegation_routing_overlay_check_compute"
 node_delegation_routing_reducer = "omnimarket.nodes.node_delegation_routing_reducer"
 node_delegation_rubric_check_compute = "omnimarket.nodes.node_delegation_rubric_check_compute"
+node_delegation_scenario_alarm_effect = "omnimarket.nodes.node_delegation_scenario_alarm_effect"
 node_delegation_scenario_days_compute = "omnimarket.nodes.node_delegation_scenario_days_compute"
 node_delegation_scenario_days_effect = "omnimarket.nodes.node_delegation_scenario_days_effect"
 node_delegation_scenario_r2_effect = "omnimarket.nodes.node_delegation_scenario_r2_effect"
