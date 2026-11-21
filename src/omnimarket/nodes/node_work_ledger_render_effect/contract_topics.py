@@ -18,10 +18,10 @@ CONTRACT_PATH = Path(__file__).resolve().parent / "contract.yaml"
 _CONTRACT = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
 
 ALL_SUBSCRIBE_TOPICS: tuple[str, ...] = tuple(_CONTRACT["subscriptions"]["topics"])
-if len(ALL_SUBSCRIBE_TOPICS) != 22:
+if len(ALL_SUBSCRIBE_TOPICS) != 1:
     raise ValueError(
-        "node_work_ledger_render_effect must subscribe to the eleven v1 and "
-        f"eleven v2 row topics; found {len(ALL_SUBSCRIBE_TOPICS)}"
+        "node_work_ledger_render_effect must subscribe to the accepted-row topic alone; "
+        f"found {len(ALL_SUBSCRIBE_TOPICS)}"
     )
 
 _PUBLISH = contract_publish_topics(CONTRACT_PATH)

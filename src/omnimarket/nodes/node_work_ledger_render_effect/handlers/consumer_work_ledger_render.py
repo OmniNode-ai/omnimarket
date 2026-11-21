@@ -49,6 +49,14 @@ class _Bus(Protocol):
 _GROUP = "work-ledger-render-effect"
 
 
+def _is_unsequenced_history(body: object) -> bool:
+    return (
+        isinstance(body, dict)
+        and body.get("source") == "bootstrap"
+        and body.get("ledger_seq") is None
+    )
+
+
 class ConsumerWorkLedgerRender:
     def __init__(self, handler: HandlerWorkLedgerRender, bus: _Bus) -> None:
         self._handler = handler
@@ -82,6 +90,10 @@ class ConsumerWorkLedgerRender:
         offset = int(message.offset)
         try:
             body = json.loads(message.value)
+            if _is_unsequenced_history(body):
+                # Bootstrap history with no ledger_seq has no place in a seq-ordered file; it is read and passed.
+                self._record(self._handler.acknowledge(topic, offset))
+                return
             row = ModelWorkLedgerRenderRow.model_validate(body)
         except (ValueError, ValidationError, TypeError) as exc:
             await self._bus.publish(

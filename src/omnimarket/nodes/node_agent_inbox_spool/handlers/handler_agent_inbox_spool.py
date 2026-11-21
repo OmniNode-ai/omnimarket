@@ -28,6 +28,7 @@ from ..models import (
 from ..protocols import ProtocolAgentInboxSpoolBus
 from .parse_ledger_msg import (
     MalformedLedgerMsgError,
+    NotMsgRowError,
     addressed_lanes,
     decode_msg_record,
 )
@@ -131,6 +132,8 @@ class HandlerAgentInboxSpool:
         for value in records:
             try:
                 entry = decode_msg_record(value, group_id)
+            except NotMsgRowError:
+                continue  # a row of another type on the accepted-row topic: read, not for the spool
             except MalformedLedgerMsgError:
                 malformed += 1
                 continue

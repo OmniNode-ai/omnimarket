@@ -52,7 +52,8 @@ metadata:
   - OMN-21902
 caller_subscription:
   mode: stable_group_per_host
+  # OMN-25630, L12: the accepted-row topic carries every row type; the spool keeps the MSG rows.
   topics:
-  - onex.evt.omnimarket.work-ledger-msg.v2
+  - onex.evt.omnimarket.work-ledger-row-accepted.v1
   group_id_template: '{prefix}-{host}'
   auto_offset_reset: earliest

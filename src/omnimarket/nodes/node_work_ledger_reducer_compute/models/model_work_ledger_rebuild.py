@@ -11,33 +11,15 @@ row and sequence for sequence.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_work_ledger_entity_kind import EnumWorkLedgerEntityKind
+from omnimarket.models.model_work_ledger_accepted_row import (
+    EnumAcceptedRowSource,
+    ModelAcceptedRowEvent,
+)
 from omnimarket.models.model_work_ledger_fold_result import ModelWorkLedgerRowRecord
-
-
-class EnumAcceptedRowSource(StrEnum):
-    BOOTSTRAP = "bootstrap"
-    LIVE = "live"
-
-
-class ModelAcceptedRowEvent(BaseModel):
-    """One accepted row as the accepted-row topic carries it."""
-
-    model_config = ConfigDict(frozen=True, extra="ignore")
-
-    ledger_id: str = Field(min_length=1)
-    row_id: str = Field(pattern=r"^[0-9a-f]{64}$", description="sha256 of raw_row")
-    raw_row: str = Field(min_length=1)
-    source: EnumAcceptedRowSource
-    ledger_seq: int | None = Field(default=None, ge=1)
-    legacy_ordinal: int | None = Field(default=None, ge=1)
-    req: str | None = Field(
-        default=None, description="The command's req= cell, when it had one."
-    )
 
 
 class ModelRebuiltEntity(BaseModel):

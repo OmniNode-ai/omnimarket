@@ -1,0 +1,98 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-25630"
+title: "Every consumer of the old ledger row topics moves to the accepted-row topic, with a republish command back and a bootstrap that holds live events behind the history"
+summary: "The work-ledger projection, the markdown render node and the agent inbox spool subscribe to onex.evt.omnimarket.work-ledger-row-accepted.v1 and to none of the 22 old row topics. The emit node publishes every judged row on its old topic and once on the accepted-row topic. A relay handler publishes history up to the watermark once, marked source=bootstrap in the L3 order, and holds live events until the history is on the partition. A republish handler writes the accepted-row topic back into the 22 old topics for rollback. The in-memory reader of the customer-local bus still reads the old topics because that bus has no judge and so no accepted-row event; the integrated proof on the dev runtime (AC4) is not part of this change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn25630-bootstrap-holds-live-behind-history"
+    statement: |-
+      The bootstrap relay publishes history once and publishes no live event before it.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a rebuild that includes null-sequence history, concurrent writes during the bootstrap and a restart in the middle of it ends with no live event before a bootstrap event on the partition -- falsifier: uv run pytest tests/unit/nodes/node_projection_work_ledger -k "bootstrap_watermark or bootstrap_restart" -q
+  - id: "req-omn25630-republish-old-topics"
+    statement: |-
+      The republish command writes the accepted-row topic into the 22 old topics once per row.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: the republish command replays the accepted-row topic into the 22 old topics and a consumer of an old topic sees every row once -- falsifier: uv run pytest tests/unit/nodes/node_projection_work_ledger -k republish_old_topics -q
+  - id: "req-omn25630-subscriptions-moved"
+    statement: |-
+      The projection, render and inbox spool nodes subscribe to the accepted-row topic and no node subscribes to an old row topic.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: the projection, render and mirror nodes subscribe to the accepted-row topic and no node subscribes to an old row topic except the republish rollback path -- falsifier: uv run pytest tests/unit/nodes/node_projection_work_ledger -k subscriptions_moved -q
+  - id: "req-omn25630-integrated-readback"
+    statement: |-
+      One row appended over the bus on the dev runtime is read from the accepted-row topic and from the projection with the same row_id.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: integrated: on the dev runtime on h201 one row appended over the bus is read from the accepted-row topic and from the projection with the same row_id -- falsifier: the reader node run on a lab host prints the row from both, read from its stdout
+evidence_requirements:
+  - kind: "tests"
+    description: "The three focused falsifiers of AC1 to AC3 and the emit, render and inbox spool tests they touch."
+    command: "uv run pytest tests/unit/nodes/node_projection_work_ledger tests/unit/nodes/node_work_ledger_emit_effect tests/unit/nodes/node_work_ledger_render_effect tests/nodes/node_agent_inbox_spool -q -m 'not kafka'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn25630-ac1-bootstrap"
+    description: "Null-sequence history, a watermark race, concurrent live writes and a restart in the middle of the bootstrap end with every bootstrap event before every live event, each row once, and the topic rebuilds into the same table as the rows folded directly."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_work_ledger -k 'bootstrap_watermark or bootstrap_restart' -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25630-ac2-republish"
+    description: "Every row of the accepted-row topic reaches the one old topic of its row type and version, a consumer of any of the 22 sees each of its rows once, and a second run adds none."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_work_ledger -k republish_old_topics -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25630-ac3-subscriptions"
+    description: "A scan of every node contract finds no subscription to any of the 22 old row topics; the projection, render node and inbox spool declare the accepted-row topic; a planted old subscription is found by the same scan."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_work_ledger -k subscriptions_moved -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25630-integration-proof"
+    description: >-
+      Run the three focused falsifiers and the emit, render and inbox spool tests on a lab host at the pushed
+      revision. This local completion proof carries no hosted AC bindings.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-25630 --kind test --
+          env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest -p no:randomly
+          tests/unit/nodes/node_projection_work_ledger
+          tests/unit/nodes/node_work_ledger_emit_effect
+          tests/unit/nodes/node_work_ledger_render_effect
+          tests/nodes/node_agent_inbox_spool
+          -q -n 0 --no-cov -m "not kafka and not integration"
+        cwd: "."
+  - id: "dod-omn25630-ac4-integrated"
+    description: "Not run in this change: the dev runtime on h201 has not been built from this branch, and the reader node reads the query node, not the accepted-row topic. The check is the integrated readback the ticket names, to be run after the runtime carries this change."
+    source: "manual"
+    binds_ac: ["AC4"]
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m omnimarket.nodes.node_work_ledger_reader_effect --help"
+        cwd: "."
