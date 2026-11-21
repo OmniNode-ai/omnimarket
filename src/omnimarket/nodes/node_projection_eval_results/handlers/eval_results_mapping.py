@@ -108,6 +108,15 @@ def code_try_items(
                 reason=EnumEvalRefusal.INVALID_EVENT, subject="run", detail=str(exc)
             ),
         )
+    except TypeError:
+        # ``rows`` is not iterable (a number, a boolean, null): refused, not raised.
+        return (), (
+            ModelEvalRefusedPart(
+                reason=EnumEvalRefusal.INVALID_EVENT,
+                subject="run",
+                detail="rows is not a list",
+            ),
+        )
     items: list[ModelEvalItemRow] = []
     refused: list[ModelEvalRefusedPart] = []
     for raw in rows:
@@ -205,17 +214,51 @@ def code_try_items(
     return tuple(items), tuple(refused)
 
 
+def _unwrapped_failure_detail(exc: Exception, payload: dict[str, Any]) -> str:
+    """The refusal detail of a judged payload that failed in a way pydantic does not wrap.
+
+    The judged event's ``event_id`` default reads ``data["judge_run_id"]`` and
+    ``data["correlation_id"]``; when either is missing or fails its own field check the default is
+    handed a dict without it and raises ``KeyError``, which escapes ``model_validate``. The
+    detail names that field. A payload that carries an ``operation`` is named for what it is: the
+    dev broker's judged topic carries the judge compute node's result, not a judged event.
+    """
+    if isinstance(exc, KeyError) and exc.args:
+        detail = (
+            f"{exc.args[0]} is missing or invalid, so the judged event has no event_id"
+        )
+        operation = payload.get("operation")
+        if isinstance(operation, str) and "judge_run_id" not in payload:
+            detail += f"; the payload is a judge {operation} result, not a judged event"
+        return detail
+    return f"{type(exc).__name__}: {exc}"
+
+
 def judged_item(
     request: ModelEvalProjectionRequest,
 ) -> tuple[ModelEvalItemRow | None, ModelEvalRefusedPart | None]:
-    """The scored item of one judged event, or the refusal that explains why it is none."""
+    """The scored item of one judged event, or the refusal that explains why it is none.
+
+    A payload that is not a judged event is refused as ``invalid_event`` and never raised: the
+    writer sends the refusal to the contract's DLQ topic and counts it. Besides pydantic's own
+    ``ValidationError`` the model's ``event_id`` default raises ``KeyError`` (or ``TypeError`` or
+    ``AttributeError`` on a value of the wrong shape), and those are caught here by type.
+    """
     try:
         event = ModelDelegationAcceptanceJudgedEvent.model_validate(request.payload)
     except ValidationError as exc:
+        first = exc.errors()[0]
+        field = ".".join(str(part) for part in first["loc"])
         return None, ModelEvalRefusedPart(
             reason=EnumEvalRefusal.INVALID_EVENT,
             subject="judged",
-            detail=str(exc.errors()[0]["msg"]),
+            detail=f"{field}: {first['msg']}" if field else str(first["msg"]),
+        )
+    except (KeyError, TypeError, AttributeError) as exc:
+        return None, ModelEvalRefusedPart(
+            reason=EnumEvalRefusal.INVALID_EVENT,
+            subject="judged",
+            detail=_unwrapped_failure_detail(exc, request.payload),
         )
     subject = str(event.correlation_id)
     if event.kind != "task":

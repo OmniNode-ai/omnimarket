@@ -166,6 +166,7 @@ SCHEDULABLE_VERBS = (
     "work-ledger-projection-stale",
     "lane-drift",
     "container-unhealthy",
+    "container-restarts",
     "lab-pass-receipt",
     "stale-indeterminate",
     "alarm-digest",
