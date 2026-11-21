@@ -85,9 +85,8 @@ def compute_selection(
 ) -> ModelTestSelection:
     config = load_adjacency_map(adjacency_path)
     policy = load_policy()
-    closure = (stage if stage is not None else policy.selection_stage) >= (
-        policy.file_level_closure_stage
-    )
+    closure_stage, root_conftest_edge = policy.closure_settings()
+    closure = (stage if stage is not None else policy.selection_stage) >= closure_stage
     root = repo_root or REPO_ROOT
 
     if not feature_flag_enabled:
@@ -118,9 +117,7 @@ def compute_selection(
 
     # OMN-26277: at the closure's stage the file-level closure replaces the module-level escalations.
     if closure:
-        resolved = closure_selection(
-            changed_files, config, root, policy.root_conftest_edge
-        )
+        resolved = closure_selection(changed_files, config, root, root_conftest_edge)
         if isinstance(resolved, EnumFullSuiteReason):
             return _full_suite(resolved)
     elif reason := legacy_module_escalation(changed_files, config):

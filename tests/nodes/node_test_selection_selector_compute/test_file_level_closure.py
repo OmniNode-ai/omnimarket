@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import json
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,9 @@ from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_file
     legacy_module_escalation,
     resolve_source_module,
 )
+from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_selection_replay import (
+    HandlerSelectionReplay,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_path_resolution import (
     _import_graph,
 )
@@ -39,6 +43,10 @@ from omnimarket.nodes.node_test_selection_selector_compute.models.model_file_lev
     EnumRootConftestEdge,
     ModelFileLevelClosureRequest,
     ModelFileLevelClosureResult,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_selection_replay import (
+    ModelReplayRequest,
+    ModelReplayResult,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record import (
     EnumFullSuiteReason,
@@ -561,3 +569,135 @@ async def test_file_level_closure_error_chain_unparseable_request_is_a_failure_e
     assert [t for t, _ in seen] == [
         _contract()["runtime_dispatch"]["terminal_events"]["failure"]
     ]
+
+
+# --- AC1: the replay over the pinned input (the replay baseline's 60 merges) ---------------------------------
+
+REPLAY_INPUT = REPO_ROOT / "config" / "test_selection_replay_input.json"
+REPLAY_RECEIPT = REPO_ROOT / "config" / "test_selection_replay_receipt.json"
+#: Test-seconds the replay runs over the 60 pinned merges with the file-level closure active and the root
+#: conftest edge cut (the policy's D1 default), measured through ``replay_selection`` at stage 3.
+PINNED_EDGE = "cut"
+PINNED_TOTAL_SECONDS = 444302.086496
+PINNED_TOLERANCE = 0.02
+CLOSED_REASONS = {
+    "shared_module",
+    "unmapped_module",
+    "narrowed_selection_too_heavy",
+}
+
+
+def _within_tolerance(measured: float, pinned: float) -> bool:
+    return abs(measured - pinned) <= pinned * PINNED_TOLERANCE
+
+
+def _stage_three_replay(edge: str) -> ModelReplayResult:
+    document = json.loads(REPLAY_INPUT.read_text(encoding="utf-8"))
+    document.update(
+        {
+            "stage": 3,
+            "closure": {"file_level_closure_stage": 3, "root_conftest_edge": edge},
+            "repo_root": str(REPO_ROOT),
+        }
+    )
+    result = HandlerSelectionReplay().handle(
+        ModelReplayRequest.model_validate(document)
+    )
+    assert isinstance(result, ModelReplayResult), result
+    return result
+
+
+def test_file_level_closure_replay_total_is_pinned_within_two_percent() -> None:
+    assert load_policy().root_conftest_edge.value == PINNED_EDGE, (
+        "the pin was measured for another root_conftest_edge than the policy's"
+    )
+    measured = _stage_three_replay(PINNED_EDGE).totals.selected_seconds
+    assert _within_tolerance(measured, PINNED_TOTAL_SECONDS), (
+        f"replay measured {measured}, pinned {PINNED_TOTAL_SECONDS}"
+    )
+
+
+def test_file_level_closure_replay_pin_fails_outside_the_tolerance() -> None:
+    assert _within_tolerance(PINNED_TOTAL_SECONDS * 1.019, PINNED_TOTAL_SECONDS)
+    assert not _within_tolerance(PINNED_TOTAL_SECONDS * 1.021, PINNED_TOTAL_SECONDS)
+    assert not _within_tolerance(PINNED_TOTAL_SECONDS * 0.979, PINNED_TOTAL_SECONDS)
+
+
+def test_file_level_closure_replay_narrows_the_closed_reasons_before_the_bound() -> (
+    None
+):
+    receipt = json.loads(REPLAY_RECEIPT.read_text(encoding="utf-8"))
+    closed = {
+        d["sha"]
+        for d in receipt["counterfactual"]["decisions"]
+        if d["primary_reason"] in CLOSED_REASONS
+    }
+    # shared_module 8, unmapped_module 4, narrowed_selection_too_heavy 8 (the plan counted 6)
+    assert len(closed) == 20
+    result = _stage_three_replay(PINNED_EDGE)
+    by_sha = {d.sha: d for d in result.decisions}
+    unresolved = [
+        sha for sha in closed if by_sha[sha].primary_reason == "unresolved_source"
+    ]
+    # one unmapped merge changes src/omnimarket/pack/profiles/lane_brief_context.yaml, a data file outside a
+    # node package that the closure cannot place: it escalates as a typed reason, never a narrower guess
+    assert len(unresolved) == 1
+    for sha in closed - set(unresolved):
+        decision = by_sha[sha]
+        assert decision.primary_reason in (None, "narrowed_selection_too_heavy")
+        # before the bound: the closure's own estimate, narrowed or found too heavy, is under the suite
+        estimate = (
+            decision.narrowed_estimate_seconds
+            if decision.narrowed_estimate_seconds is not None
+            else decision.selected_seconds
+        )
+        assert estimate < result.suite_seconds, (decision.sha, decision.primary_reason)
+    narrowed = [sha for sha in closed if by_sha[sha].kind.value == "narrowed"]
+    assert (
+        len(narrowed) == 12
+    )  # 7 more are over the policy bound as it stands, one is unresolved
+
+
+def test_file_level_closure_replay_keep_edge_runs_at_least_what_cut_runs() -> None:
+    cut = _stage_three_replay("cut").totals.selected_seconds
+    keep = _stage_three_replay("keep").totals.selected_seconds
+    assert keep >= cut
+
+
+def test_file_level_closure_replay_stage_three_without_the_closure_settings_is_refused() -> (
+    None
+):
+    document = json.loads(REPLAY_INPUT.read_text(encoding="utf-8"))
+    document["stage"] = 3
+    with pytest.raises(ValidationError):
+        ModelReplayRequest.model_validate(document)
+
+
+def test_file_level_closure_replay_stage_zero_input_is_unchanged_by_the_new_policy_keys() -> (
+    None
+):
+    document = json.loads(REPLAY_INPUT.read_text(encoding="utf-8"))
+    document["repo_root"] = str(REPO_ROOT)
+    result = HandlerSelectionReplay().handle(
+        ModelReplayRequest.model_validate(document)
+    )
+    assert isinstance(result, ModelReplayResult), result
+    assert result.totals.narrowed == 10
+    assert result.totals.full_suite == 50
+
+
+def test_file_level_closure_policy_file_without_a_closure_key_is_refused(
+    tmp_path: Path,
+) -> None:
+    text = (
+        REPO_ROOT
+        / "src/omnimarket/nodes/node_test_selection_selector_compute/policy.yaml"
+    ).read_text(encoding="utf-8")
+    for key in ("file_level_closure_stage", "root_conftest_edge"):
+        kept = "\n".join(
+            line for line in text.splitlines() if not line.startswith(f"{key}:")
+        )
+        broken = tmp_path / f"policy_without_{key}.yaml"
+        broken.write_text(kept, encoding="utf-8")
+        with pytest.raises(ValueError, match=key):
+            load_policy(broken)

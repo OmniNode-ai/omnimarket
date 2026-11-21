@@ -23,7 +23,8 @@ description: >-
   selection of every stage) behind the stage gate in policy.yaml; the workflow uploads it and builds the pytest matrix
   from the executed selection only. HandlerSelectionReplay (operation replay_selection) replays stage 0 of the selector
   over a list of merges against a frozen tree snapshot and reports each merge's primary reason, every trigger, its
-  selected paths and recorded seconds, and the totals; it reuses the handlers above and changes what no pull request runs.
+  selected paths and recorded seconds, and the totals; it reuses the handlers above and changes what no pull request runs. A request at the closure's stage,
+  with the request's closure settings, replays the file-level closure in place of the module-level ladder.
   HandlerFileLevelClosure runs the closure for every module by file, a vertex being a file except a node package, behind
   the policy's file_level_closure_stage: a deleted or renamed file seeds from the files that still name it, a nested
   conftest.py selects its directory, the root conftest edge is the policy's root_conftest_edge, and a source file the

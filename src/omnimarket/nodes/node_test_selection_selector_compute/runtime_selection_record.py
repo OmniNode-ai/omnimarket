@@ -89,9 +89,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             handle.write(f"retention_days={policy.record_retention_days}\n")
             # The whole-tree collection job runs once, and only when the cut root conftest edge
             # and a narrowed selection under the closure's stage make it the check for the tree.
+            closure_stage, root_conftest_edge = policy.closure_settings()
             gate = (
-                policy.selection_stage >= policy.file_level_closure_stage
-                and policy.root_conftest_edge is EnumRootConftestEdge.CUT
+                policy.selection_stage >= closure_stage
+                and root_conftest_edge is EnumRootConftestEdge.CUT
                 and record.executed_selection.kind is EnumSelectionKind.NARROWED
             )
             handle.write(f"collection_gate={str(gate).lower()}\n")

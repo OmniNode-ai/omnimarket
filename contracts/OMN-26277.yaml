@@ -4,8 +4,8 @@ title: Changes to shared, unmapped and heavy modules select their reverse import
 summary: 'The selector node gains the resolve_file_level_closure operation (HandlerFileLevelClosure): the import closure that ran for node packages runs for every changed file, a deleted or renamed file
   seeds from the files that still name it, a nested conftest.py selects its directory, a source file the closure cannot place escalates as unresolved_source, and the root conftest edge is the policy key
   root_conftest_edge (default cut, the plan recommendation, until decision D1 is answered; keep is built and tested). The rule is active only at policy file_level_closure_stage 3 while selection_stage stays
-  0, so no pull request runs a different selection. ci.yml gains one collection-gate job that needs the detect job. scripts/ci/test_selection_loader.py moves into the node. The replay assertions over the
-  pinned 60 merges (AC1) wait for the replay baseline receipt, which is not on dev. shared_modules, the module threshold and the unmapped escape stay in the adjacency file, read only below stage 3, because
+  0, so no pull request runs a different selection. ci.yml gains one collection-gate job that needs the detect job. scripts/ci/test_selection_loader.py moves into the node. The replay (HandlerSelectionReplay)
+  runs the closure at the closure stage over the 60 pinned merges, and the committed total is pinned in the closure tests (AC1). shared_modules, the module threshold and the unmapped escape stay in the adjacency file, read only below stage 3, because
   removing them now would change what a stage-0 pull request runs.'
 is_seam_ticket: false
 interface_change: false
@@ -41,16 +41,16 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn26277-ac1
-  description: 'AC1, as built and not as worded: the closure narrows a shared model change (stage 3) where stage 2 escalates as shared_module, a file directly under handlers resolves, and six changed modules
-    do not escalate by count. The replay over the 18 merges and the committed seconds total for the chosen D1 branch need the replay baseline receipt (not on dev when this was built), so no total is pinned
-    here and the criterion is not met.'
+  description: 'AC1: the replay over the 60 pinned merges at the closure stage with the root conftest edge cut (the policy key default, decision D1 unanswered) totals 444302.086496 test-seconds, against 574954.625506
+    for the stage-0 receipt, and the test pins it within 2 percent. Of the 20 merges the stage-0 receipt gives the reasons shared_module (8), unmapped_module (4) and narrowed_selection_too_heavy (8), 12 narrow,
+    7 stay over the 1800 second bound with an estimate under the suite, and 1 (a data file outside a node package) escalates as unresolved_source. The criterion counts 18 merges and 6 too-heavy ones; the receipt
+    counts 20 and 8.'
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_file_level_closure.py -q --no-cov -n 0 -p no:randomly -k "models_change_selects or directly_under_handlers or
-      six_changed_modules or stage_gate_on_the_real_tree or root_conftest_edge"
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute -q --no-cov -n 0 -p no:randomly -k file_level_closure
     cwd: .
 - id: dod-omn26277-ac2
   description: 'AC2: the resolver returns none for a file in a directory with no __init__.py, then the closure escalates unresolved_source; with the marker the same file resolves.'

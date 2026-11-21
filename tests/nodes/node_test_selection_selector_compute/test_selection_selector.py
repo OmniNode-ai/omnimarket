@@ -25,6 +25,9 @@ from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
     HandlerTestSelectionSelector,
 )
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_file_level_closure import (
+    EnumRootConftestEdge,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
     ModelAdjacencyMap,
     ModelPathResolutionRequest,
@@ -45,6 +48,8 @@ POLICY = ModelSelectorPolicy(
     path_count_shards=((2, 1), (5, 2)),
     path_count_max_shards=3,
     selection_stage=0,
+    file_level_closure_stage=3,
+    root_conftest_edge=EnumRootConftestEdge.CUT,
     full_split_count=20,
     record_retention_days=14,
 )
