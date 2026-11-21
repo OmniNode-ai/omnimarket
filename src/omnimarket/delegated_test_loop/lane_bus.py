@@ -25,13 +25,17 @@ from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Literal
 
-from omnibase_infra.errors import InfraConnectionError
-
 from omnimarket.delegated_test_loop.lab_run_bus import (
     FocusedRunBusCaller,
     FocusedRunHost,
     ProtocolFocusedRunHandler,
     ProtocolLabRunBus,
+)
+from omnimarket.handlers.bus_connect.errors import LabRunBusError as LabRunBusError
+from omnimarket.handlers.bus_connect.open_kafka import open_kafka_bus
+from omnimarket.handlers.bus_connect.policy import (
+    load_broker_fallbacks,
+    load_connect_policy,
 )
 from omnimarket.handlers.container.container_inmemory import bind_infra_event_bus
 from omnimarket.nodes.node_push_validation_effect import (
@@ -41,10 +45,6 @@ from omnimarket.nodes.node_push_validation_effect import (
 
 BusKind = Literal["kafka", "inmemory"]
 _READY_TIMEOUT_SECONDS = 120
-
-
-class LabRunBusError(RuntimeError):
-    """The bus could not be selected or opened."""
 
 
 def bound_lane_principal() -> str:
@@ -97,9 +97,6 @@ async def open_lab_run_bus(
         resolve_lane_client_transport_for,
     )
     from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
-    from omnibase_infra.event_bus.lane_client_transport_binding import (
-        bind_lane_client_transport,
-    )
 
     try:
         target = resolve_lane_target(
@@ -113,23 +110,21 @@ async def open_lab_run_bus(
     bootstrap = target.bootstrap_servers if target is not None else kafka_bootstrap
     if not bootstrap:
         raise LabRunBusError("no broker address was resolved")
-    binding = (
-        bind_lane_client_transport(transport)
-        if transport is not None
-        else contextlib.nullcontext()
-    )
-    with binding:
-        kafka = EventBusKafka.from_bootstrap(bootstrap)
-        try:
-            await kafka.start()
-        except InfraConnectionError as exc:
-            # OMN-20275: a refused or unreachable broker is the bus being unavailable (exit 69 at every
-            # caller), never an uncaught traceback that a ledger writer cannot tell from a crash.
-            raise LabRunBusError(f"{type(exc).__name__}: {exc}") from exc
-        try:
-            yield kafka
-        finally:
-            await kafka.close()
+    declared_in = target.declared_in if target is not None else None
+    lane_id = target.lane if target is not None else None
+    # OMN-26027: each address starts inside the declared deadline, the lane's declared second
+    # address is tried after it, and a failure is a typed BusConnectError (a LabRunBusError).
+    policy = load_connect_policy(declared_in, lane_id)
+    async with open_kafka_bus(
+        bootstrap=bootstrap,
+        transport=transport,
+        fallbacks=load_broker_fallbacks(
+            declared_in, lane_id, policy.default_broker_fallbacks
+        ),
+        policy=policy,
+        make_bus=EventBusKafka.from_bootstrap,
+    ) as kafka:
+        yield kafka
 
 
 class LabRunBridge:
