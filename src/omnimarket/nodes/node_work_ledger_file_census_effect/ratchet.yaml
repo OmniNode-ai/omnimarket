@@ -45,13 +45,11 @@ files:
     src/omnimarket/nodes/node_hourly_tick_effect/models/model_hourly_tick.py: 1
     src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_idle_slot_fill.py: 7
     src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_ruling_recovery.py: 3
-    src/omnimarket/nodes/node_ilo_redfish_effect/runtime_ilo_redfish_cli.py: 1
     src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_launch.py: 1
     src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_lane_render.py: 1
     src/omnimarket/nodes/node_lab_history_archive_effect/handlers/handler_lab_history_archive.py: 1
     src/omnimarket/nodes/node_ledger_reconcile_compute/handlers/ledger_rows.py: 1
     src/omnimarket/nodes/node_ledger_reconcile_effect/protocols/local_ledger_reconcile_adapters.py: 2
-    src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_remote_setup_check.py: 2
     src/omnimarket/nodes/node_operator_capture_effect/contract.yaml: 1
     src/omnimarket/nodes/node_operator_capture_effect/handlers/capture_ports.py: 1
     src/omnimarket/nodes/node_operator_capture_effect/runtime_capture_cli.py: 1
@@ -189,4 +187,4 @@ files:
     tests/unit/validators/test_ledger_file_census.py: 27
     tests/unit/work_ledger_bus/test_work_ledger_append_cli.py: 1
 ratchet:
-  omnimarket: 183
+  omnimarket: 181

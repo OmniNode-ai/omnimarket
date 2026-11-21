@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-26330
 title: 'Ledger-file census group 2: its 13 src files read the work ledger through the bus or are deleted, and their census rows are lowered'
-summary: The lab story log CLI and the merged-running count read their ledger rows from the moved work ledger reader node (a rows read through the reader's handler) and no longer open the ledger file or name its path variable, and their census rows are lowered. The other eleven group 2 files are left, each with its reason in the lane report.
+summary: The lab story log CLI and the merged-running count read their ledger rows from the moved work ledger reader node (a rows read through the reader's handler) and no longer open the ledger file or name its path variable, and their census rows are lowered. The iLO redfish CLI reads its consent row through the reader's row-at point read, the remote setup check asks for the ledger bus variables, and their rows are lowered. The reader node gains a history read and a row-at point read. The other nine group 2 files are left, each with its reason in the lane report.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -59,6 +59,33 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_history_and_row_at.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn26330-ac1-ilo-consent
+    description: The iLO write path reads its consent row by timestamp and kind through the reader's row-at point read and refuses the write when the answer is unreadable, absent or ambiguous. At the merge base ReaderApprovalSource does not exist, so this fails.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_ilo_redfish_effect/test_reader_approvals.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn26330-ac1-remote-setup
+    description: The remote setup check asks for the ledger bus variables and not for the ledger file path. At the merge base a ledger file path alone satisfies the check, so this fails.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_operator_access_mode_effect/test_operator_access_mode.py -q --no-cov --tb=line -k "ledger_file_path_alone or each_gap_is_named or ready_remote_setup"
+        cwd: .
+  - id: dod-omn26330-ac2-more-rows
+    description: The census rows of the iLO redfish CLI and the remote setup check are gone from the ratchet and the census run exits 0. At the merge base both rows are present, so this fails.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: command
+        check_value: bash -c '! grep -qE "node_ilo_redfish_effect/runtime_ilo_redfish_cli.py|node_operator_access_mode_effect/handlers/handler_remote_setup_check.py" src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml && env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=.'
         cwd: .
   - id: dod-omn26330-integration-proof
     description: "Run the focused tests of the moved readers on a lab host at the pushed head; the local Done gate runs this unbound check."
