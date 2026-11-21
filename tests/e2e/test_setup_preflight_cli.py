@@ -14,6 +14,7 @@ import platform
 import subprocess
 import sys
 from pathlib import Path
+from textwrap import dedent
 
 import pytest
 
@@ -80,16 +81,68 @@ def test_actual_preflight_is_readonly_and_never_prompts(
         )
         assert observation.evidence["platform"] == platform.system()
         assert "Welcome" not in result.stdout
-        assert set(observation.evidence) == {
+        expected_fields = {
             "platform",
             "architecture",
             "macos_version",
             "rosetta",
             "virtual_machine",
         }
+        if platform.system() == "Linux":
+            expected_fields.add("linux_distribution")
+            assert observation.evidence["linux_distribution"] == (
+                platform.freedesktop_os_release().get("ID") or "unknown"
+            )
+        assert set(observation.evidence) == expected_fields
     else:
         assert "Welcome To OmniNode Delegation Onboarding" in result.stdout
         assert "preflight" in result.stdout.lower()
         for prompt in ("Provider:", "Model:", "Paste your", "Password:"):
             assert prompt not in result.stdout
+    assert _snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("options", [("--json",), ("--preflight-only",)])
+def test_windows_without_unix_locks_reports_wsl_remedy(
+    tmp_path: Path, options: tuple[str, ...]
+) -> None:
+    home, workspace = tmp_path / "home", tmp_path / "workspace"
+    home.mkdir()
+    workspace.mkdir()
+    before = _snapshot(tmp_path)
+    script = dedent(
+        """\
+        import platform
+        import sys
+        from importlib.metadata import entry_points
+        from unittest.mock import patch
+
+        sys.modules["fcntl"] = None
+        with patch.object(platform, "system", return_value="Windows"):
+            entry_points(group="console_scripts", name="onex")["onex"].load()(
+                prog_name="onex"
+            )
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script, "setup", "--no-interactive", *options],
+        cwd=workspace,
+        env={"HOME": str(home), "ONEX_STATE_DIR": str(tmp_path / "state")},
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 3, result.stdout + result.stderr
+    if "--json" in options:
+        observation = ModelSetupObservation.model_validate_json(result.stdout)
+        assert observation.step == "preflight"
+        assert observation.status == "unavailable"
+        assert observation.evidence["platform"] == "Windows"
+        remedy = observation.fix or ""
+    else:
+        assert "[unavailable] preflight" in result.stdout
+        remedy = result.stderr
+    assert "Ubuntu" in remedy
+    assert "WSL 2" in remedy
     assert _snapshot(tmp_path) == before

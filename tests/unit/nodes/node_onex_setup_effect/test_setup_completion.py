@@ -178,7 +178,10 @@ def test_completion_cli_carries_explicit_selection_and_optional_name(
                 plan=plan,
             )
 
-    monkeypatch.setattr(cli, "HandlerSetupWorkflow", Workflow)
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow.HandlerSetupWorkflow",
+        Workflow,
+    )
     monkeypatch.setattr(cli, "user_config_path", lambda: tmp_path / "config.yaml")
     result = CliRunner().invoke(
         cli.setup_command,
