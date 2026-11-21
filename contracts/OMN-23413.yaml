@@ -467,12 +467,16 @@ dod_evidence:
     cwd: .
 
 - id: dod-omn23413-ac33-prompt-routing
-  description: The hook node delegates any prompt and blocks Claude with the accepted answer; a declined
-    prompt, a quality-gate-vetoed decline, and a failed or timed-out delegation pass the prompt to
-    Claude; the prompt switch pauses only prompts; Claude is told once what delegation answered while
-    blocked, and the history given to Claude is bounded. Subagents stay on Claude (Amendment 14a). The
-    skip prefix, the fixture installed-hook journey and the captured-receipt readback are covered by the
-    unbound local Done gate item below.
+  description: The evidence item check runs two unit-test files against the hook node handler. The hook
+    node sends an eligible prompt to delegation and blocks Claude with the accepted answer. An action
+    request such as "you can fix it" stays with Claude with no delegation call. A declined prompt, a
+    decline the quality gate vetoed, and a timed-out delegation pass the prompt to Claude. A plain
+    process failure is covered by the local Done gate item below. The prompt switch pauses only prompts.
+    Claude is told once what delegation answered while blocked, and the history given to Claude is
+    bounded. Amendment 14a requires subagents to stay on Claude because onex delegation on registers
+    only the prompt hook. This check calls the handler directly, which still answers a subagent event,
+    and does not observe a Claude session. The skip prefix, the fixture installed-hook journey and the
+    captured-receipt readback are covered by the unbound local Done gate item below.
   source: manual
   execution_scope: hosted_and_local
   binds_ac:
@@ -492,23 +496,24 @@ dod_evidence:
     and keeps the user's existing prompt hook entry. After a second install and at the end, the parsed
     settings stay equal to the first install's parsed settings. The test calls the hook script directly
     with an Agent event, which the script answers with exit 2, the answer on stderr and one delegation
-    call, and then with a Task event in the same turn, which exits 2 and adds no new delegation call
-    because it reuses the same accepted receipt. Amendment 14a requires onex delegation on to register
-    only the prompt hook, so subagents stay on Claude, and this journey does not observe a real session.
-    Aligning it with Amendment 14a follows with omniclaude#3270. It needs the companion omniclaude
-    source or unpacked wheel resource root, through ONEX_COMBINED_HOOK_SOURCE or the sibling omniclaude
-    checkout, and missing assets fail. The lifecycle test in tests/e2e/test_prompt_hook_lifecycle.py
-    needs a real claude CLI on PATH. The same command also checks the TUI. It re-reads three captured
-    files named by ONEX_PROMPT_PROOF_RECEIPT, ONEX_PROMPT_PROOF_DATABASE and ONEX_PROMPT_PROOF_CLAUDE,
-    and compares the receipt's model with the model name in ONEX_PROMPT_PROOF_MODEL, and all four are
-    mandatory. It runs no new inference. It checks each file's recorded values and their agreement. The
-    receipt joins exactly one delegation_events row with matching trace, model, passed gate and token
-    counts, with at least one attempt marked measured. The native capture records no native provider
-    request, zero API duration, empty model usage, zero cost, a passed instrument control, one fallback
-    request with history, and OFF verified, and its result text contains the receipt's run id, model and
-    answer. Self-consistent synthetic files pass, so it does not prove a real installed run. Its scope
-    is the local Done gate, so hosted verification skips it, and AC33 is bound by
-    dod-omn23413-ac33-prompt-routing above.
+    call, and then with a Task event in the same turn, which exits 2 and adds no new delegation call.
+    The test comment attributes this to the same accepted receipt, which the test does not check
+    further. Amendment 14a requires onex delegation on to register only the prompt hook, so subagents
+    stay on Claude, and this journey does not observe a real session. omniclaude#3270 merged on
+    2026-11-19, and this journey still calls the script directly with Agent and Task events. It needs
+    the companion omniclaude source or unpacked wheel resource root, through ONEX_COMBINED_HOOK_SOURCE
+    or the sibling omniclaude checkout, and missing assets fail. The lifecycle test in
+    tests/e2e/test_prompt_hook_lifecycle.py needs a real claude CLI on PATH. The same command also
+    checks the TUI. It re-reads three captured files named by ONEX_PROMPT_PROOF_RECEIPT,
+    ONEX_PROMPT_PROOF_DATABASE and ONEX_PROMPT_PROOF_CLAUDE, and compares the receipt's model with the
+    model name in ONEX_PROMPT_PROOF_MODEL, and all four are mandatory. It runs no new inference. It
+    checks each file's recorded values and their agreement. The receipt joins exactly one
+    delegation_events row with matching trace, model, passed gate and token counts, with at least one
+    attempt marked measured. The native capture records no native provider request, zero API duration,
+    empty model usage, zero cost, a passed instrument control, one fallback request with history, and
+    OFF verified, and its result text contains the receipt's run id, model and answer. Self-consistent
+    synthetic files pass, so it does not prove a real installed run. Its scope is the local Done gate,
+    so hosted verification skips it, and AC33 is bound by dod-omn23413-ac33-prompt-routing above.
   source: manual
   execution_scope: local_done_gate
   checks:
