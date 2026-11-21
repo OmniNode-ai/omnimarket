@@ -175,6 +175,9 @@ class PostgresFloorIntegrationStore:
         rows: list[tuple[object, ...]],
         is_current: Callable[[object], bool],
     ) -> PassOutcome:
+        # The pool is used directly so one pass is one transaction. That skips
+        # AsyncpgAdapter.execute's tenant guard, which does not apply here:
+        # floor_integration_rows has no tenant column. A tenant-scoped table needs it back.
         async with self._adapter.pool.acquire() as conn, conn.transaction():
             # One writer per table at a time, across processes: the held pass
             # is read under the lock, so two passes cannot interleave.

@@ -59,7 +59,7 @@ def _newer(hours: int, readings: list[Any] | None = None) -> Any:
 
 
 async def test_floor_integration_failed_write_keeps_the_held_pass(
-    served: Served, tmp_path: Path
+    served: Served, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     writer, reader = served
     _, first = _project(_batch())
@@ -77,8 +77,16 @@ async def test_floor_integration_failed_write_keeps_the_held_pass(
     )
     db.commit()
 
+    deltas: list[Any] = []
+
+    async def record(*args: Any, **kwargs: Any) -> None:
+        deltas.append((args, kwargs))
+
+    monkeypatch.setattr(writer, "publish_snapshot_delta", record)
     with pytest.raises(Exception, match="injected write failure"):
         _handle(writer, second, 1)
+    # Nothing is published for a pass the table does not hold.
+    assert deltas == []
 
     db.execute("DROP TRIGGER fail_one")
     db.commit()
