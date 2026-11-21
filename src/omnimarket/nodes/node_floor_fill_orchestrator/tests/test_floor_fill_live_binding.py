@@ -3,8 +3,9 @@
 """The live profile: the adapters, the settings, the entry and a tick over the live binding with scripted reads.
 
 The reads (floor URL, plan files, ledger file) are the real adapters pointed at temporary files or driven by an
-injected fetch; the store is the in-memory conditional store. What is not bound live (pool, tickets, brake, stop
-signal) must fail the pass closed naming the seam: ``test_unbound_pool_is_not_read_as_zero_slots`` is the failing
+injected fetch; the store is the in-memory conditional store. What is not bound live (tickets, brake, stop
+signal) must fail the pass closed naming the seam, and the pool, now read from the pool snapshot file, refuses a
+missing or stale snapshot by name: ``test_unbound_pool_is_not_read_as_zero_slots`` is the failing
 control for that rule.
 """
 
@@ -69,6 +70,10 @@ def live_section(tmp_path: Path, **changes: Any) -> dict[str, Any]:
         "plan_file_pattern": "{line_id}.md",
         "ledger_path": str(tmp_path / "ledger.md"),
         "process_output_dir": str(tmp_path / "out"),
+        "pool_snapshot_path": str(tmp_path / "pool.json"),
+        "pool_record_suffix": ".read-at.json",
+        "pool_snapshot_max_age_seconds": 180,
+        "pool_engine": "claude",
     }
     return {**section, **changes}
 
@@ -282,10 +287,11 @@ def tick(tmp_path: Path, fetch: Any) -> tuple[str, int, InMemoryFloorStateStore]
     return result.stdout, result.exit_code, store
 
 
-def test_live_tick_pool_unbound_fails_closed(tmp_path: Path) -> None:
+def test_live_tick_pool_snapshot_missing_fails_closed(tmp_path: Path) -> None:
+    """The live pool is the pool snapshot: with no snapshot record the pass refuses naming it, never reads zero."""
     record = floor_record(LINES4, generated_at=T0)
     out, code, store = tick(tmp_path, lambda _url, _timeout: record)
-    assert "pool-unread:unbound:pool" in out
+    assert "pool-unread:pool-snapshot:snapshot record missing" in out
     assert code == DEGRADED
     assert store.load("floor-fill-test").version == 0
 

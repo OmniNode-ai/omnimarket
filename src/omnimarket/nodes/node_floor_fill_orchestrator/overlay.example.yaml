@@ -71,3 +71,8 @@ floor_fill_live:
   ledger_path: /srv/example/ledger/work-ledger.md
   # Where a started lane's log is written.
   process_output_dir: /srv/example/work/lane-logs
+  # The pool seam: the lane host pool snapshot file and its read-at record; a record older than the bound is refused.
+  pool_snapshot_path: /srv/example/state/lane-host-pool-snapshot/pool.json
+  pool_record_suffix: .read-at.json
+  pool_snapshot_max_age_seconds: 180
+  pool_engine: claude

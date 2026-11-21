@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Example of the overlay section the floor fill alarm check reads. Every value is a placeholder; a deployment writes its own
+# overlay and never edits this file.
+floor_fill_alarm:
+  # The fill's scope: the key of its state row; its stored answer is <scope>:answer.
+  scope: example-floor-fill
+  # The lane and ticket the alarm rows are written under; the lane is one token.
+  row_lane: floor-fill-alarm
+  row_ticket: OMN-0000
+  # The authenticated principal of the host that appends: the row carries it as its own cell, and the ledger writer
+  # refuses a row whose principal differs from the one it authenticated.
+  row_principal: example-principal
+  # The rolling ledger file the check reads and the declared append command it writes through ({row} stands for the row).
+  ledger_path: /srv/example/ledger/work-ledger.md
+  ledger_append_command: ["/srv/example/bin/ledger-append", "{row}"]
+  # The run history the check keeps from the fill's stored answers, and one line per check.
+  run_log_path: /srv/example/state/floor-fill-alarm/runs.jsonl
+  check_log_path: /srv/example/state/floor-fill-alarm/checks.jsonl
+  # The pool read of the check itself: the lane host pool snapshot the fill reads; a record older than the bound is unread.
+  pool_snapshot_path: /srv/example/state/lane-host-pool-snapshot/pool.json
+  pool_record_suffix: .read-at.json
+  pool_snapshot_max_age_seconds: 180
+  pool_engine: claude
+  # No run in this many minutes is an alarm of its own: a fill that never runs leaves no run for the idle rule to count.
+  max_run_age_minutes: 30

@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_floor_fill_alarm_compute
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_type: compute
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  The floor fill's alarm rule (OMN-24873). Given the fill's last runs (free slots seen, lanes sent, the cause line)
+  and the lanes it started (key, start time, CLAIM time), it answers one alarm row when the last two runs both saw
+  more than five free Claude slots and both sent 0 lanes, naming the latest run's cause, and one row per started
+  lane whose CLAIM was not read within 10 minutes of its start or arrived later, naming the lane and its key. Five
+  free slots or fewer, a run that sent a lane, or a CLAIM at 10 minutes or sooner answers no row. With
+  max_run_age_minutes set, no run inside that age is one more row, the fill not running at all. Pure: the time of
+  the check comes in the request; the reads of the fill's stored answers and the ledger belong to the effect that
+  runs it on a schedule.
+handler:
+  module: omnimarket.nodes.node_floor_fill_alarm_compute.handlers.handler_floor_fill_alarm
+  class: HandlerFloorFillAlarm
+  input_model: omnimarket.nodes.node_floor_fill_alarm_compute.models.model_floor_fill_alarm.ModelFloorFillAlarmRequest
+  output_model: omnimarket.nodes.node_floor_fill_alarm_compute.models.model_floor_fill_alarm.ModelFloorFillAlarmResult
+input_model:
+  name: ModelFloorFillAlarmRequest
+  module: omnimarket.nodes.node_floor_fill_alarm_compute.models.model_floor_fill_alarm
+  description: The fill's runs, its started lanes, the time of the check and the rule's bounds.
+output_model:
+  name: ModelFloorFillAlarmResult
+  module: omnimarket.nodes.node_floor_fill_alarm_compute.models.model_floor_fill_alarm
+  description: The alarm rows, each naming its cause, and how many runs and lanes were read.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the scheduled effect that reads the fill's runs and the ledger.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: []
+metadata:
+  ticket: OMN-24873
+  transport_type: local
+lifecycle: experimental

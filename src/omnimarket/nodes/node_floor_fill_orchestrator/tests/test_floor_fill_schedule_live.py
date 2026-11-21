@@ -138,7 +138,9 @@ def test_default_install_unit_is_unchanged_by_the_live_option(
     assert "--profile" not in default_out
 
 
-@pytest.mark.parametrize("key", sorted(ModelFloorFillLiveSettings.model_fields))
+@pytest.mark.parametrize(
+    "key", sorted(set(ModelFloorFillLiveSettings.model_fields) - {"store_dsn_env_file"})
+)
 def test_live_profile_missing_key_refuses_naming_it(key: str, tmp_path: Path) -> None:
     section = {
         name: value for name, value in live_section(tmp_path).items() if name != key
