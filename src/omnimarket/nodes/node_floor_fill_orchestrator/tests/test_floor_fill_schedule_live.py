@@ -138,7 +138,14 @@ def test_default_install_unit_is_unchanged_by_the_live_option(
     assert "--profile" not in default_out
 
 
-@pytest.mark.parametrize("key", sorted(ModelFloorFillLiveSettings.model_fields))
+@pytest.mark.parametrize(
+    "key",
+    sorted(
+        name
+        for name, field in ModelFloorFillLiveSettings.model_fields.items()
+        if field.is_required()
+    ),
+)
 def test_live_profile_missing_key_refuses_naming_it(key: str, tmp_path: Path) -> None:
     section = {
         name: value for name, value in live_section(tmp_path).items() if name != key
@@ -182,3 +189,17 @@ def test_live_profile_installed_unit_equals_dry_run(tmp_path: Path) -> None:
     service = (unit_dir / f"{schedule.unit_name}.service").read_text(encoding="utf-8")
     timer = (unit_dir / f"{schedule.unit_name}.timer").read_text(encoding="utf-8")
     assert service + "\n" + timer + "\n" == dry
+
+
+def test_live_profile_unit_carries_the_optional_env_file_key_only_when_supplied(
+    tmp_path: Path,
+) -> None:
+    supplied = live_section(tmp_path, store_dsn_env_file="~/floor-fill-env/fill.env")
+    code, out, _ = _install_live(tmp_path, supplied, "--dry-run", "--profile", "live")
+    assert code == 0
+    assert json.loads(exec_words(out)[4])["floor_fill_live"] == supplied
+    code, out, _ = _install_live(
+        tmp_path, live_section(tmp_path), "--dry-run", "--profile", "live"
+    )
+    assert code == 0
+    assert "store_dsn_env_file" not in json.loads(exec_words(out)[4])["floor_fill_live"]

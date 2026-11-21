@@ -97,7 +97,8 @@ def overlay_json(
         "lab_hosts": rows,
     }
     if live is not None:
-        document[LIVE_OVERLAY_SECTION] = live.model_dump(mode="json")
+        # An optional key the overlay does not supply (store_dsn_env_file) stays out of the unit, as before it existed.
+        document[LIVE_OVERLAY_SECTION] = live.model_dump(mode="json", exclude_none=True)
     return json.dumps(document, sort_keys=True, separators=(",", ":"))
 
 
