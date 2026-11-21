@@ -26,6 +26,12 @@
 #   stage_min_pr_records    pull request records, summed over the receipt's nights, that hold a
 #                           selection entry for the stage being entered at the promoted selector and
 #                           policy versions. A receipt over fewer is refused.
+#   graph_compared_stage    the selection_by_stage entry the code graph comparison reads as the parse side.
+#                           Fixed before the comparison week starts and not changed during it.
+#   graph_min_valid_comparisons
+#                           fewest valid comparisons (clean, from Memgraph) the comparison's verdict
+#                           part one needs; fewer is "insufficient", never a pass. Fixed before the week
+#                           starts and not changed during it.
 target_shard_seconds: 360
 max_narrowed_shards: 5
 durations_path: config/test_file_durations.json
@@ -40,3 +46,5 @@ full_split_count: 20
 record_retention_days: 14
 stage_clean_nights: 7
 stage_min_pr_records: 10
+graph_compared_stage: 0
+graph_min_valid_comparisons: 20

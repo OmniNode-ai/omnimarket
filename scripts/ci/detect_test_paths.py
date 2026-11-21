@@ -95,12 +95,8 @@ def compute_selection(
     if event_name == "schedule":
         return _full_suite(EnumFullSuiteReason.SCHEDULED)
 
-    for changed in changed_files:
-        if any(
-            changed == infra or changed.startswith(infra.rstrip("/") + "/")
-            for infra in config.test_infrastructure_paths
-        ):
-            return _full_suite(EnumFullSuiteReason.TEST_INFRASTRUCTURE)
+    if any(config.is_test_infrastructure(changed) for changed in changed_files):
+        return _full_suite(EnumFullSuiteReason.TEST_INFRASTRUCTURE)
 
     # OMN-20180: delegation coverage spans unit, golden and flat tests, so
     # module-to-directory narrowing cannot safely represent these surfaces.
