@@ -73,6 +73,9 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
 from omnimarket.models.model_tenant_routing_overlay_backend import (
     TENANT_OVERLAY_TIER_NAME,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.byok_actual_cost import (
+    byok_priced_actual_cost,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
     ModelDelegationBudgetStateEvent,
     materialize_budget_state,
@@ -1952,6 +1955,37 @@ def _measure_actual_cost(
             cost_tier_type=event.cost_tier_type,
             cost_tier_name=event.cost_tier_name,
             cost_measurement_source=event.cost_measurement_source,
+        )
+
+    # OMN-24859: a call made on a customer's own key (BYOK) serves on the
+    # tenant_overlay tier, which has no typed cost model, so the recompute below
+    # books it at cost_usd=0.0 / no_cost_model even though the BYOK catalogue
+    # declares a price for the backend and model. Price it from that declared
+    # price first. None (house backend, or a model with no declared price)
+    # leaves the tier recompute below untouched.
+    byok_cost_usd = byok_priced_actual_cost(
+        backend_id=event.backend_id,
+        model_name=event.model_name,
+        prompt_tokens=event.tokens_input,
+        completion_tokens=event.tokens_output,
+    )
+    if byok_cost_usd is not None:
+        # The saving stays auditable the same way the recompute's completed path
+        # is: counterfactual - measured actual, against the pinned premium
+        # counterfactual. No counterfactual (failed/escalation terminal) quotes
+        # saving.
+        savings_usd = (
+            float(event.premium_counterfactual.counterfactual_cost_usd) - byok_cost_usd
+            if event.premium_counterfactual is not None
+            else 0.0
+        )
+        return ModelActualCostProjection(
+            cost_usd=byok_cost_usd,
+            cost_savings_usd=savings_usd,
+            headroom_consumed_usd=0.0,
+            cost_tier_type="metered",
+            cost_tier_name=event.cost_tier_name,
+            cost_measurement_source="metered",
         )
 
     measurement = recompute_actual_cost_and_savings(

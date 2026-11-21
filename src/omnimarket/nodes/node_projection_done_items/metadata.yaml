@@ -1,0 +1,28 @@
+name: node_projection_done_items
+description: "Projection writer for done items derived from terminal work-ledger events."
+entry_points:
+  onex.nodes:
+    node_projection_done_items: "omnimarket.nodes.node_projection_done_items"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+side_effect_class: database_write
+dependencies:
+  - "omnibase_core>=0.39.0"
+tags:
+  - projection
+  - ledger
+  - done
+  - OMN-25104
+pack: pipeline
+display_name: Done Items Projection
+node_role: reducer
+authors:
+  - OmniNode Platform Team
+license: MIT
+version: "0.1.0"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
