@@ -4,9 +4,11 @@
 
 The hourly throughput tick's question, "does a live lane CLAIM name this plan?", is answered
 here from the lines of ``node_work_ledger_reader_effect`` (the query node's ``open-claims``
-point over the projection, OMN-24445). A claim owns the plan when its lane starts with one of
-the rule's lane prefixes, or its ticket is one of the rule's tickets, and its newest row is
-within the rule's live window; a row in the future counts as live. OWNED answers even when
+point over the projection, OMN-24445). A claim owns the plan when its ``ticket=`` is one of the
+rule's tickets, its ``plan=`` cell names one of the rule's plan paths, or its ``pr=`` names one of
+the rule's pull requests, and its newest row is within the rule's live window; a row in the
+future counts as live. The lane's name never decides, and a closed claim (a TERMINAL ended it)
+is not in the open-claims answer, so it owns nothing. OWNED answers even when
 the read is stale. MISSING needs a read that answered fresh and no owning claim: a failed
 read, a stale answer with no owner and a claim line this handler cannot read are UNKNOWN,
 never MISSING.
@@ -34,6 +36,7 @@ from omnimarket.models.plan_owner_check import (
     ModelPlanOwnerEvent,
     ModelPlanOwnerOverlay,
     ModelPlanOwnerRequest,
+    ModelPlanOwnerRule,
     ModelPlanOwnerVerdict,
 )
 from omnimarket.nodes.node_plan_owner_check_effect.protocols import (
@@ -44,12 +47,14 @@ CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 # An OPEN-CLAIM line of the query node: the cells this decision reads. The line's shape is
 # work_ledger_state_answer._claim_lines: ``OPEN-CLAIM lane=<lane> claim=<stamp> db:<row id>
-# ticket=<ticket|none> newest-row=<stamp> kind=<kind> age=<age> rows=<n> host=<host|none>
+# ticket=<ticket|none> pr=<pr|none> plan=<plan|none> newest-row=<stamp> kind=<kind> age=<age> rows=<n> host=<host|none>
 # run=<run|none> leases=<list|none> liveness=unknown``. The answer's first line is the
 # ``open-claims since=`` heading, which does not start with ``OPEN-CLAIM `` and is ignored.
+# ``pr=`` and ``plan=`` are the CLAIM row's own cells (``none`` when it has none); a line without
+# them is the shape of a reader that predates them and is UNKNOWN, never MISSING.
 _CLAIM = re.compile(
     r"^OPEN-CLAIM lane=(?P<lane>\S+) claim=\S+ db:\S+ ticket=(?P<ticket>\S+) "
-    r"newest-row=(?P<newest>\S+)"
+    r"pr=(?P<pr>\S+) plan=(?P<plan>\S+) newest-row=(?P<newest>\S+)"
 )
 _STAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
@@ -65,6 +70,28 @@ def _stamp(text: str) -> datetime | None:
     if not _STAMP.match(text):
         return None
     return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+
+
+def _plan_key(path: str) -> str:
+    """A plan path by its file stem: no directories, no ``.md``."""
+    name = path.strip().rsplit("/", 1)[-1]
+    return name.removesuffix(".md")
+
+
+def _pr_key(pr: str) -> str:
+    """A pull request as ``<repo>#<n>``, whether or not the owner is named."""
+    return pr.strip().rsplit("/", 1)[-1]
+
+
+def _names_plan(rule: ModelPlanOwnerRule, ticket: str, pr: str, plan: str) -> bool:
+    """Whether the claim's own cells name the rule's plan: a listed ticket, plan path or pull request."""
+    plan_keys = {_plan_key(p) for p in rule.plan_paths}
+    claimed_plans = {_plan_key(p) for p in plan.split(",") if p.strip()}
+    return (
+        ticket in rule.tickets
+        or _pr_key(pr) in {_pr_key(p) for p in rule.prs}
+        or bool(plan_keys & claimed_plans)
+    )
 
 
 def _is_live(newest: datetime, now: datetime, window_minutes: int) -> bool:
@@ -117,9 +144,8 @@ class HandlerPlanOwnerCheck:
                     "unparseable-claim-line",
                     fix=rule.unknown_fix,
                 )
-            if (
-                claim["lane"].startswith(rule.lane_prefixes)
-                or claim["ticket"] in rule.tickets
+            if _names_plan(
+                rule, claim["ticket"], claim["pr"], claim["plan"]
             ) and _is_live(newest, now, rule.live_window_minutes):
                 owners.append(claim["lane"])
         if owners:

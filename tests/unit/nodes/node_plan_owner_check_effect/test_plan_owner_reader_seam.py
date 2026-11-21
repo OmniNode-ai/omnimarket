@@ -57,8 +57,7 @@ def owner_overlay(**changes: object) -> ModelPlanOwnerOverlay:
     """The plan owner overlay of this seam: the fixtures' lane rule, with overrides."""
     rule = ModelPlanOwnerRule(
         finding="cutover-plan-owner",
-        lane_prefixes=("lane-",),
-        tickets=("OMN-19609",),
+        tickets=("OMN-21948",),
         live_window_minutes=60,
         why="no live lane CLAIM names the cutover plan",
         fix="start a ledger cutover lane",
@@ -106,10 +105,8 @@ def test_a_claim_older_than_the_rule_window_is_missing() -> None:
     assert verdict.verdict is EnumPlanOwnerVerdict.MISSING
 
 
-def test_a_lane_the_rule_does_not_name_is_missing() -> None:
-    _, verdict = verdict_over(
-        FakeStateReader((claim_entity(),)), lane_prefixes=("other-",)
-    )
+def test_a_ticket_the_rule_does_not_list_is_missing() -> None:
+    _, verdict = verdict_over(FakeStateReader((claim_entity(),)), tickets=("OMN-1",))
     assert verdict.verdict is EnumPlanOwnerVerdict.MISSING
 
 

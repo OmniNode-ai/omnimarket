@@ -224,6 +224,9 @@ class ModelWorkLedgerOpenClaim(BaseModel):
     lane: str
     claim: ModelWorkLedgerRowRecord
     ticket: str
+    # The CLAIM row's own ``pr=`` and ``plan=`` cells (first word), ``none`` when it has none.
+    pr: str = "none"
+    plan: str = "none"
     newest_row_stamp: str
     newest_row_kind: str
     rows: int

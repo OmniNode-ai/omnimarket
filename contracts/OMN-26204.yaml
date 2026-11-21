@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-26204
+title: The plan owner check counts a live CLAIM that names the plan's ticket, plan path or PR as its owner
+summary: A rule of node_plan_owner_check_effect lists tickets, plan paths and pull requests; a live open CLAIM owns the plan when its ticket, plan cell or pr cell is listed. The lane-name prefix is removed from the rule. The open-claims line of the query node carries the claim's pr and plan cells. Every value is an overlay value.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - public_api
+requirements:
+  - id: req-omn26204-claim-content
+    statement: A live CLAIM owns a plan by the ticket, plan path or pull request it names, never by its lane name.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a live CLAIM whose lane is ledgercut-2140 and whose ticket, plan path or pr= is named by the rule reads OWNED, and the same claim with none of the three reads MISSING -- falsifier: uv run pytest tests/unit/nodes/node_plan_owner_check_effect -q -k claim_names_plan'
+      - id: AC2
+        statement: 'AC2: a CLAIM whose lane begins with ledger-cut but names neither the ticket, the plan path nor a plan PR does not own the plan, so the lane-name prefix no longer decides ownership -- falsifier: uv run pytest tests/unit/nodes/node_plan_owner_check_effect -q -k prefix_does_not_own'
+      - id: AC3
+        statement: 'AC3: the rule''s ticket list, plan paths, PR list and live window are read from the overlay and no ticket id, path or repo name is a literal in the handler -- falsifier: uv run pytest tests/unit/nodes/node_plan_owner_check_effect -q -k overlay_values_only'
+      - id: AC4
+        statement: 'AC4: the overlays rule ledger-cutover-owner names the cutover plan path and its ticket, `tests/test_plan_owner_check_overlay.py` passes in overlays, and its pin in .omnimarket-node-pins names the merge commit of the omnimarket change -- falsifier: uv run pytest tests/test_plan_owner_check_overlay.py -q'
+evidence_requirements:
+  - kind: tests
+    description: Claim-content ownership, prefix, overlay-values, stale, TERMINAL and no-matcher tests of the plan owner check.
+    command: uv run --frozen pytest -q --no-cov -n 0 -p no:randomly tests/unit/nodes/node_plan_owner_check_effect
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn26204-ac1-claim-names-plan
+    description: A live CLAIM of lane ledgercut-2140 that names the rule's ticket, plan path or pr reads OWNED; the same claim naming none reads MISSING.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q --no-cov -n 0 -p no:randomly tests/unit/nodes/node_plan_owner_check_effect -k claim_names_plan
+        cwd: .
+  - id: dod-omn26204-ac2-prefix-does-not-own
+    description: A ledger-cut lane that names neither ticket, plan path nor plan PR does not own the plan.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q --no-cov -n 0 -p no:randomly tests/unit/nodes/node_plan_owner_check_effect -k prefix_does_not_own
+        cwd: .
+  - id: dod-omn26204-ac3-overlay-values-only
+    description: The rule's ticket list, plan paths, PR list and window come from the overlay; the handler holds no ticket, path or repo literal.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q --no-cov -n 0 -p no:randomly tests/unit/nodes/node_plan_owner_check_effect -k overlay_values_only
+        cwd: .
+  - id: dod-omn26204-ac4-overlays-pin
+    description: The overlays pull request carries the rule values and the pin moves to this change's merge commit after the merge; checked by the overlays repository's own test on the local Done gate.
+    source: manual
+    binds_ac: [AC4]
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'git -C "${OMNI_HOME:?}/../overlays" show origin/main:overlays/node_plan_owner_check_effect/overlay.yaml | grep -c plan_paths | grep -qx 1'
+        cwd: .
+  - id: dod-omn26204-integration-proof
+    description: The plan owner node's focused tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26204 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_plan_owner_check_effect -q --no-cov
+        cwd: .
