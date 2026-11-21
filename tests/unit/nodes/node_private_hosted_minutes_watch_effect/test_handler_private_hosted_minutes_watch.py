@@ -279,7 +279,7 @@ def test_alert_launch_failure(monkeypatch, failure):
 @pytest.mark.parametrize("rc", [0, 4])
 def test_ledger_command_and_result(monkeypatch, rc):
     monkeypatch.setenv(
-        "ONEX_HOSTED_MINUTES_LEDGER_BIN", 'fake-onex --config "some path" work-ledger'
+        module.APPEND_COMMAND_ENV, 'fake-onex --config "some path" work-ledger'
     )
     monkeypatch.setattr(append_via_node.socket, "gethostname", lambda: "h053.example")
     run = Mock(return_value=subprocess.CompletedProcess([], rc, "", "e" * 210))
@@ -309,6 +309,22 @@ def test_ledger_command_and_result(monkeypatch, rc):
         timeout=360,
         check=False,
     )
+
+
+def test_installer_filled_onex_ledger_command_is_not_the_work_ledger_command(
+    monkeypatch,
+):
+    """The host installer fills ONEX_HOSTED_MINUTES_LEDGER_BIN with the onex-ledger command; the bus append never runs it."""
+    monkeypatch.delenv(module.APPEND_COMMAND_ENV, raising=False)
+    monkeypatch.setenv(
+        "ONEX_HOSTED_MINUTES_LEDGER_BIN",
+        "uv run --frozen --project /clone/internal onex-ledger",
+    )
+    monkeypatch.setattr(append_via_node.socket, "gethostname", lambda: "h053.example")
+    run = Mock(return_value=subprocess.CompletedProcess([], 0, "", ""))
+    monkeypatch.setattr(module.subprocess, "run", run)
+    module.append_ledger("row", DAY)
+    assert run.call_args.args[0][:3] == ["onex", "work-ledger", "append"]
 
 
 def test_append_request_id_is_the_day_and_nothing_else():

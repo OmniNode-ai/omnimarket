@@ -102,7 +102,8 @@ def read_repository_visibility(org: str, repository: str) -> str:
 
 APPEND_LANE = "private-hosted-minutes-watch"
 _APPEND_NAMESPACE = uuid.UUID("5f0c1d2e-7a4b-4c8e-9b3a-2d6e8f1a0c47")
-APPEND_COMMAND_ENV = "ONEX_HOSTED_MINUTES_LEDGER_BIN"
+# Not ONEX_HOSTED_MINUTES_LEDGER_BIN: the host installer fills that one with the onex-ledger command, which is not the work-ledger command.
+APPEND_COMMAND_ENV = "ONEX_HOSTED_MINUTES_WORK_LEDGER_COMMAND"
 
 
 def append_request_id(day: date) -> uuid.UUID:
