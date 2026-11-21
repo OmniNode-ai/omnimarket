@@ -24,6 +24,8 @@ Failure modes:
   L1. A configure re-run from another folder resets the saved workspace, developer profile,
       completion name and local stack (its compose and topology files), so that step fails.
   L2. A configure re-run that names another --workspace drops the other saved choices.
+  K1. A provider the saved setup does not use reuses a key stored outside setup (onex models add).
+  K2. A saved hosted provider on its own endpoint reuses the provider-wide key.
 """
 
 from __future__ import annotations
@@ -438,3 +440,34 @@ def test_a_named_workspace_keeps_the_other_saved_choices(
     assert rec.plan.completion_name == "Ada"
     assert rec.plan.local_stack == saved.local_stack
     assert [p.provider for p in rec.plan.providers] == ["openai", "anthropic"]
+
+
+def test_a_provider_outside_the_saved_setup_is_asked_for_its_key(rerun: Any) -> None:
+    """K1: only providers the saved setup uses reuse a stored key."""
+    register_local_byok_credential("anthropic", "sk-stored-elsewhere", models=["m"])
+    result, rec = rerun(input="anthropic\nclaude-sonnet-4\n")
+    assert rec.keys == ["anthropic"], result.output
+
+
+def test_a_saved_provider_on_its_own_endpoint_is_asked_for_its_key(
+    rerun: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """K2: a key is stored per provider, not per endpoint, so a custom endpoint asks."""
+    saved = ModelSetupPlan.model_validate(
+        {
+            "workspace": tmp_path / "ws",
+            "components": ("delegation",),
+            "providers": (
+                {
+                    "provider": "openai",
+                    "models": ("gpt-4.1-mini",),
+                    "url": "https://proxy.example/v1",
+                },
+            ),
+        }
+    )
+    monkeypatch.setattr(
+        setup_cli.HandlerSetupWorkflow, "saved_plan", staticmethod(lambda _h: saved)
+    )
+    result, rec = rerun(input="openai\ngpt-4.1-mini\n")
+    assert rec.keys == ["openai"], result.output
