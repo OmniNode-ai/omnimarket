@@ -443,6 +443,9 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # handler: it is dispatched once per consumed source event or runtime tick on
     # its standalone writer operation, and its pure fold,
     # HandlerProjectionEvalResults, does NOT declare the capability.
+    # FloorIntegrationProjectionWriter is node_projection_floor_integration's only
+    # DB writer, dispatched once per consumed integration pass event by runtime
+    # auto-wiring; it has no separate pure fold handler.
     assert declared == {
         "AgentActionsProjectionWriter",
         "AlertChannelLivenessProjectionWriter",
@@ -463,6 +466,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "ProviderQuotaProjectionWriter",
         "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",
+        "FloorIntegrationProjectionWriter",
         "GoalTraceProjectionWriter",
         "HostDiskProjectionWriter",
         "InfraRoutingDecisionsProjectionWriter",

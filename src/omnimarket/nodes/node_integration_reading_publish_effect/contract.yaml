@@ -49,16 +49,28 @@ event_bus:
   publish_topics:
     # onex-topic-allow: a projection snapshot topic has the projection's own name form.
     - onex.snapshot.projection.floor-integration.v1
+    # OMN-25103: the same pass as an event, so a projection writer can consume it; the runtime's dispatch
+    # refuses a snapshot topic (no message category), and node_projection_floor_integration reads this one.
+    - onex.evt.omnimarket.floor-integration-pass.v1
 externally_consumed_topics:
   # The floor reads it through node_floor_projection_read_effect.
   # onex-topic-allow: a projection snapshot topic has the projection's own name form.
   - onex.snapshot.projection.floor-integration.v1
+
+# OMN-25103 (OMN-24005 broker permission coverage): the runtime principal writes the pass event topic.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.floor-integration-pass.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.floor-integration-pass.v1, operation: DESCRIBE}
 
 runtime:
   home_env: OMNI_HOME
   overlay: {overlay_id: node_integration_reading_publish_effect, file_env: ONEX_FLOOR_INTEGRATION_OVERLAY}
   # onex-topic-allow: a projection snapshot topic has the projection's own name form.
   topic: onex.snapshot.projection.floor-integration.v1
+  # OMN-25103: each pass is also published here, same envelope, for node_projection_floor_integration.
+  event_topic: onex.evt.omnimarket.floor-integration-pass.v1
   journal_relpath: .onex_state/floor-simple/emissions.jsonl
   piece: 17
   chain: node_integration_reading_publish_effect:publish_floor_integration
