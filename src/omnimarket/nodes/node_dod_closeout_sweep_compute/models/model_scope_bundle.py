@@ -57,10 +57,17 @@ class ModelScopePrStateRow(BaseModel):
 
 
 class ModelScopeTextStateRow(BaseModel):
-    """One ticket's closeout-text state: a row of the text-state file."""
+    """One ticket's closeout-text state: a row of the text-state file.
+
+    The producer (the ``closeout text state`` command, which the node does not own) prints
+    ``error`` on every row: empty when the ticket was read, the failure's text when it was not,
+    with empty hashes. The model carries it so the scope can name an unread ticket (it is
+    deferred as ``text state unread``) and never read it as a ticket with no closeout comment.
+    """
 
     model_config = _STRICT
     id: str = Field(min_length=1)
+    error: str = ""
     last_closeout_comment_at: str = ""
     text_sha: str = ""
     held_text_sha: str = ""
