@@ -39,11 +39,30 @@ from tests.unit.handlers.scm.test_scm_duplicate_guard import (
     World,
     _row,
     invoke,
-    sent,  # noqa: F401  (the fixtures of the guard's own suite)
-    world,  # noqa: F401
 )
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture
+def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
+    built = World(tmp_path)
+    monkeypatch.setenv("ONEX_PR_WATCHER_STATE", str(built.state))
+    monkeypatch.setenv("ONEX_SCM_CLONE_ROOT", str(built.root))
+    return built
+
+
+@pytest.fixture
+def sent(monkeypatch: pytest.MonkeyPatch) -> list[object]:
+    calls: list[object] = []
+
+    def fake(*args: object, **kwargs: object) -> int:
+        calls.append(args)
+        return 0
+
+    monkeypatch.setattr(scm_cli, "_call_bus", fake)
+    return calls
+
 
 FIXTURE = (
     Path(__file__).resolve().parents[3]
@@ -124,7 +143,7 @@ def claim_rows() -> list[str]:
 
 @pytest.mark.parametrize("host", LAB_HOSTS)
 def test_the_guard_reads_its_claims_through_the_reader_node_and_never_the_ledger_file(
-    world: World,  # noqa: F811
+    world: World,
     monkeypatch: pytest.MonkeyPatch,
     opened_files: list[str],
     host: str,
@@ -159,10 +178,10 @@ def test_the_guard_reads_its_claims_through_the_reader_node_and_never_the_ledger
 
 @pytest.mark.parametrize("host", LAB_HOSTS)
 def test_a_reader_that_answers_with_no_other_claim_lets_pr_create_go_on(
-    world: World,  # noqa: F811
+    world: World,
     monkeypatch: pytest.MonkeyPatch,
     opened_files: list[str],
-    sent: list[object],  # noqa: F811
+    sent: list[object],
     capsys: pytest.CaptureFixture[str],
     host: str,
 ) -> None:
@@ -186,10 +205,10 @@ def test_a_reader_that_answers_with_no_other_claim_lets_pr_create_go_on(
 
 @pytest.mark.parametrize("host", LAB_HOSTS)
 def test_the_recorded_before_fix_answer_is_the_state_the_lab_hosts_must_not_be_in(
-    world: World,  # noqa: F811
+    world: World,
     monkeypatch: pytest.MonkeyPatch,
     opened_files: list[str],
-    sent: list[object],  # noqa: F811
+    sent: list[object],
     capsys: pytest.CaptureFixture[str],
     host: str,
 ) -> None:
@@ -220,10 +239,10 @@ def test_the_recorded_before_fix_answer_is_the_state_the_lab_hosts_must_not_be_i
     ],
 )
 def test_the_answers_of_2026_11_21_leave_the_guard_unchecked_and_the_file_unread(
-    world: World,  # noqa: F811
+    world: World,
     monkeypatch: pytest.MonkeyPatch,
     opened_files: list[str],
-    sent: list[object],  # noqa: F811
+    sent: list[object],
     host: str,
     tell: str,
 ) -> None:
@@ -255,7 +274,7 @@ def test_the_recorder_sees_a_ledger_file_when_one_is_opened(
 
 
 def test_the_guard_waits_for_the_reader_as_long_as_a_loaded_host_needed(
-    world: World,  # noqa: F811
+    world: World,
     monkeypatch: pytest.MonkeyPatch,
     opened_files: list[str],
 ) -> None:
