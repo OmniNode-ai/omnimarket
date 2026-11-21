@@ -93,6 +93,11 @@ from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_prior
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     resolve_lane_model,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.adapters.lease_table_adapter import (
+    LandingLeaseBridge,
+    LeaseTableAdapterError,
+    landing_from_table,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.lab_check import (
     SKIP_FOR_VERDICT,
     read_lab_check,
@@ -260,11 +265,10 @@ class _Tick:
     records: dict[str, ModelLandingPrRecord]
     rebuilds: dict[str, ModelLandingRebuildRecord]
     uncovered: dict[str, ModelLandingUncovered]
-    revoked: set[int]
+    bridge: LandingLeaseBridge
     draining: set[str]
     observe: set[str]
     token: str | None
-    next_lease_id: int
     close_requested: set[str]
     causes: dict[str, ModelLandingCauseRecord] = field(default_factory=dict)
     hold: set[str] = field(default_factory=set)
@@ -289,6 +293,14 @@ class _Tick:
     liveness_files: dict[str, tuple[str, ...]] = field(default_factory=dict)
     non_required_red: tuple[ModelLandingNonRequiredRed, ...] = ()
     required_unread: tuple[ModelLandingRequiredUnread, ...] = ()
+
+    def lifted(self, lease: ModelLandingLease) -> ModelLandingLease:
+        """The lease payload with its deadline, revoked flag and recorded result read from the lease table.
+
+        The table owns those three fields (OMN-24484): the handler keeps the payload only for
+        what the table cannot express, and never writes them itself.
+        """
+        return self.bridge.lifted(lease)
 
     def emit(self, action: ModelLandingAction) -> None:
         if repo_of(action.subject) in self.observe:
@@ -435,15 +447,17 @@ def _read_result(t: _Tick, result: ModelLandingWorkerResult) -> None:
         subject=result.pr,
         lease_id=result.lease_id,
     )
-    if (
-        result.lease_id in t.revoked
-        or lease is None
-        or lease.revoked
-        or lease.result_recorded_at is not None
-        or lease.pr != result.pr
-    ):
+    # The reducer decides whether a worker result is taken: a revoked, unknown, already
+    # recorded or foreign-subject lease number is refused and the result discarded.
+    if not t.bridge.record_result(result.pr, result.lease_id, t.now, result.kind.value):
         t.emit(discard)
         return
+    if (
+        lease is None
+    ):  # the reducer took a result no live lease carries: the table and the state differ
+        raise LandingLeaseTableError(
+            f"lease {result.lease_id} is in the lease table and not in the state"
+        )
     if is_cause(lease.pr):
         _read_cause_result(t, lease, result)
         return
@@ -480,7 +494,6 @@ def _read_result(t: _Tick, result: ModelLandingWorkerResult) -> None:
         reason = _verify_fix(lease, result, subj)
         if reason is EnumLandingOutcomeReason.NONE:
             outcome = EnumLandingOutcome.FIX_SUBMITTED
-    t.leases[pr] = lease.model_copy(update={"result_recorded_at": t.now})
     _record(t, pr, lease.lease_id, outcome, reason)
     if outcome is EnumLandingOutcome.FIX_SUBMITTED:
         t.put_record(
@@ -529,35 +542,38 @@ def _observe_lease(t: _Tick, lease: ModelLandingLease) -> None:
     probe = next((p for p in t.facts.probes if p.lease_id == lease.lease_id), None)
     alive = probe is None or probe.group_alive or probe.tagged_alive
     if not alive:
+        ended = t.lifted(lease)  # read before the release removes the table's row
+        t.bridge.release(pr, lease.lease_id, t.now)
         del t.leases[pr]
         if is_cause(pr):
-            _cause_lease_ended(t, lease)
+            _cause_lease_ended(t, ended)
             return
-        if lease.result_recorded_at is None:
-            if lease.revoked:
+        if ended.result_recorded_at is None:
+            if ended.revoked:
                 why = EnumLandingOutcomeReason.REVOKED
-            elif t.now >= lease.deadline_at:
+            elif t.now >= ended.deadline_at:
                 why = EnumLandingOutcomeReason.DEADLINE
             else:
                 why = EnumLandingOutcomeReason.EXITED
             _record(t, pr, lease.lease_id, EnumLandingOutcome.TIMED_OUT, why)
-            if not lease.revoked:
+            if not ended.revoked:
                 _escalate(t, pr)
         return
+    view = t.lifted(lease)
     if (
         (repo_of(pr) in t.draining or t.held(repo_of(pr), pr))
-        and lease.result_recorded_at is None
-        and not lease.revoked
+        and view.result_recorded_at is None
+        and not view.revoked
     ):
-        lease = lease.model_copy(update={"revoked": True})
-        t.revoked.add(lease.lease_id)
+        t.bridge.revoke(pr, lease.lease_id, t.now)
+        view = t.lifted(lease)
     grace = timedelta(seconds=t.facts.policy.exit_grace_seconds)
     due = (
-        lease.revoked
-        or t.now >= lease.deadline_at
+        view.revoked
+        or t.now >= view.deadline_at
         or (
-            lease.result_recorded_at is not None
-            and t.now >= lease.result_recorded_at + grace
+            view.result_recorded_at is not None
+            and t.now >= view.result_recorded_at + grace
         )
     )
     if due:
@@ -736,9 +752,8 @@ def _try_dispatch(
     )
     if engine is None:
         return False
-    lease_id = t.next_lease_id
-    t.next_lease_id += 1
     deadline = t.now + timedelta(seconds=policy.lease_seconds)
+    lease_id = t.bridge.acquire(subject, t.now, deadline)
     t.leases[subject] = ModelLandingLease(
         pr=subject,
         lease_id=lease_id,
@@ -1042,7 +1057,6 @@ def _read_cause_result(
         reason = _INVALID_REASON[kind]
     else:  # a per-PR result from a cause worker
         reason = EnumLandingOutcomeReason.UNVERIFIED_CLAIM
-    t.leases[key] = lease.model_copy(update={"result_recorded_at": t.now})
     t.recorded.append(
         ModelLandingRecordedOutcome(
             pr=key, lease_id=lease.lease_id, outcome=outcome, reason=reason
@@ -1622,9 +1636,8 @@ def _try_dispatch_cause(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
         if diagnosis
         else EnumLandingBriefClass.SHARED_CAUSE
     )
-    lease_id = t.next_lease_id
-    t.next_lease_id += 1
     deadline = t.now + timedelta(seconds=policy.cause_lease_seconds)
+    lease_id = t.bridge.acquire(key, t.now, deadline)
     head = rec.members[0].head_sha
     checks = tuple(sorted({pair.check for pair in rec.pairs}))
     t.leases[key] = ModelLandingLease(
@@ -2317,6 +2330,14 @@ def _uncovered(
     )
 
 
+class LandingLeaseTableError(RuntimeError):
+    """The reducer's lease table and the controller's state disagree on a lease.
+
+    Raised, like ``LandingCoverageError``, instead of returning a decision built on a
+    state the two halves read differently: the caller acts on nothing from that tick.
+    """
+
+
 class LandingCoverageError(RuntimeError):
     """A green, CLEAN, open PR left this tick with no merge and no named reason.
 
@@ -2386,11 +2407,12 @@ def decide_landing(facts: ModelLandingFacts) -> ModelLandingDecision:
         records={r.pr: r for r in state.records},
         rebuilds={r.key: r for r in state.rebuilds},
         uncovered={u.pr: u for u in state.uncovered},
-        revoked=set(state.revoked_lease_ids),
+        bridge=LandingLeaseBridge(
+            state.leases, state.revoked_lease_ids, state.next_lease_id
+        ),
         draining=set(state.draining_repos) | set(facts.drain_requested),
         observe=set(state.observe_only_repos),
         token=state.token_holder,
-        next_lease_id=state.next_lease_id,
         close_requested=set(state.close_requested),
         causes={c.key: c for c in state.causes},
         hold=set(facts.fixer_hold),
@@ -2447,12 +2469,20 @@ def _decision(
         if pr in open_subjects or pr in t.leases
     )
     reruns = sorted({(e.pr, e.companion) for e in t.elig_reruns})
+    # The lease table, not the handler, is the source of every lease's deadline, revoked flag
+    # and recorded result, of the revoked ids and of the next lease id (OMN-24484).
+    try:
+        leases, revoked_lease_ids, next_lease_id = landing_from_table(
+            t.bridge.table, {lease.lease_id: lease for lease in t.leases.values()}
+        )
+    except LeaseTableAdapterError as error:
+        raise LandingLeaseTableError(str(error)) from error
     next_state = ModelLandingControllerState(
         last_tick=t.facts.tick,
-        next_lease_id=t.next_lease_id,
-        leases=tuple(t.leases[pr] for pr in sorted(t.leases)),
+        next_lease_id=next_lease_id,
+        leases=leases,
         records=records,
-        revoked_lease_ids=tuple(sorted(t.revoked)),
+        revoked_lease_ids=revoked_lease_ids,
         token_holder=t.token,
         draining_repos=tuple(sorted(t.draining)),
         observe_only_repos=tuple(sorted(t.observe)),

@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lease_receipt_reducer
+version: "0.1.0"
+description: "Lease receipt reducer: one lease command over one caller-owned table, as a pure typed reduce"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lease_receipt_reducer: "omnimarket.nodes.node_lease_receipt_reducer"
+capabilities:
+  standalone: true
+  # true: the node consumes its command topic on the bus
+  # (event_bus.subscribe_topics), so runtime auto-wiring prepares it.
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "lease", "receipt"]
+pack: "pr_lifecycle"
+display_name: "Lease Receipt Reducer"
+node_role: "compute"

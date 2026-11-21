@@ -296,6 +296,8 @@ not_routing_resolution_sites:
     reason: reads the extra_repos of the lab fill overlay, the private clone names the merged-history read also covers; it chooses no backend, model, tier or provider
   - site: "src/omnimarket/handlers/delegation_eval_read_binding.py:resolve_setting(OVERLAY_ID)"
     reason: the name of the environment variable that holds the read connection string for the delegation eval label and event tables; a database address for tenant-scoped reads, and it chooses no backend, model, tier or provider
+  - site: "src/omnimarket/nodes/node_lease_receipt_reducer/overlay.py:find_node_overlay(NODE_NAME)"
+    reason: finds the lease overlay file to read which lease kinds exist, their key patterns, admitted callers and ttl bounds; it chooses no backend, model, tier or provider
 not_routing_configs:
   - path: src/omnimarket/configs/model_catalog.yaml
     reason: what the onex TUI's model table shows (the models.dev catalogue address and cache, provider id map, capability columns, context fields, and how long a local server's answer is remembered); it displays models and chooses no backend, model, tier or provider (OMN-23413)

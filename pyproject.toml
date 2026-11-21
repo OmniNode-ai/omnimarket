@@ -991,6 +991,7 @@ node_lane_stack_orphan_compute = "omnimarket.nodes.node_lane_stack_orphan_comput
 node_lane_toolchain_provision_effect = "omnimarket.nodes.node_lane_toolchain_provision_effect"
 node_lane_tree_inventory_effect = "omnimarket.nodes.node_lane_tree_inventory_effect"
 node_launch_validity_compute = "omnimarket.nodes.node_launch_validity_compute"
+node_lease_receipt_reducer = "omnimarket.nodes.node_lease_receipt_reducer"
 node_ledger_append_effect = "omnimarket.nodes.node_ledger_append_effect"
 node_ledger_hash_compute = "omnimarket.nodes.node_ledger_hash_compute"
 node_ledger_hold_verdict_effect = "omnimarket.nodes.node_ledger_hold_verdict_effect"
