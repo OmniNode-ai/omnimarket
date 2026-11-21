@@ -39,7 +39,8 @@ drain T3 model-before-build prerequisite), in the order one tick applies them:
    moves (one more diagnosis attempt) or on a RELEASE row. Only a cause whose
    worker returned a decision, approval or credential blocker asks the operator,
    once, and its park ends on the RELEASE row alone.
-8. Product PRs: chain roots only (R3), update-branch once per head (a typed
+8. Product PRs: a shared-red cause PR first (R4), chain roots only (R3), update-branch
+   once per head, and a red head once per base head (a typed
    no-new-commits response permits one same-head retry after backoff), a head
    held at BLOCKED only by stale cancelled check copies refreshed once per
    head and at most ``max_stale_refreshes`` times per PR (then DEGRADED, no
@@ -149,6 +150,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_fact
     ModelLandingFacts,
     ModelLandingPrFacts,
     ModelLandingRefUpdate,
+    ModelLandingRepoChecks,
     ModelLandingRerunRun,
     ModelLandingSharedCheckVerdict,
     ModelLandingWorkerResult,
@@ -1875,10 +1877,20 @@ def _red_from_older_base(t: _Tick, p: ModelLandingPrFacts) -> bool:
     branch was cut; the PR touched no package file, so lease 28879 and lease
     28915 each wrote ``blocked reason=nothing_to_fix`` and the branch was never
     updated. The head is red from its base when it lacks the base's newest head,
-    it has at least one red check outside the follower checks, and every such
-    check is green on that base head. A repo whose base head or green checks are
-    unread, a conflicting head and a head with a red the base also fails are the
-    PR's own: they keep the worker path.
+    it has at least one red check outside the follower checks, at least one of
+    those is green on that base head, and none is a red of its own.
+
+    Only the reds that count are judged (RULING 2026-11-20T14:09:54Z: decide on
+    the base branch's required contexts): a repo whose required contexts are read
+    (``base_required_checks``) counts its required reds plus the reds the base
+    head also fails; a repo whose required contexts are unread counts every red.
+    A counted red that the base also fails is base-identical, so no branch of
+    this PR could fix it: it is set aside rather than blocking the update
+    (omnimarket#6486 read red on the dependency scan, green on dev, and on the
+    Delegation Health Check, red on dev too, and was never refreshed). A counted
+    red that is neither green nor red on the base is unread, the PR's own. A repo
+    whose base head or green checks are unread, a conflicting head and a head
+    with a red of its own keep the worker path.
     """
     if (
         p.ci is not EnumLandingCi.RED
@@ -1892,15 +1904,23 @@ def _red_from_older_base(t: _Tick, p: ModelLandingPrFacts) -> bool:
         return False
     followers = set(t.facts.policy.cluster_excluded_checks)
     fixable = [c for c in p.red_checks if c not in followers]
-    if not fixable:
+    green = _repo_checks(t.facts.base_green_checks, repo)
+    base_red = _repo_checks(t.facts.base_red_checks, repo)
+    required = (
+        _repo_checks(t.facts.base_required_checks, repo)
+        if any(rc.repo == repo for rc in t.facts.base_required_checks)
+        else None
+    )
+    counted = [c for c in fixable if required is None or c in required or c in base_red]
+    if not counted:
         return False
-    green = {
-        check
-        for repo_checks in t.facts.base_green_checks
-        if repo_checks.repo == repo
-        for check in repo_checks.checks
-    }
-    return set(fixable) <= green
+    return any(c in green for c in counted) and all(
+        c in green or c in base_red for c in counted
+    )
+
+
+def _repo_checks(rows: tuple[ModelLandingRepoChecks, ...], repo: str) -> set[str]:
+    return {check for row in rows if row.repo == repo for check in row.checks}
 
 
 def _cross_repo_owner(t: _Tick, p: ModelLandingPrFacts) -> str | None:
@@ -1976,8 +1996,17 @@ def _update_behind(t: _Tick, p: ModelLandingPrFacts, rec: ModelLandingPrRecord) 
     red head that lacks a base which already passes its reds is updated the
     same way (see ``_red_from_older_base``), before any worker or rerun.
     """
-    if p.merge_state is not EnumLandingMergeState.BEHIND and not _red_from_older_base(
-        t, p
+    behind = p.merge_state is EnumLandingMergeState.BEHIND
+    from_older_base = not behind and _red_from_older_base(t, p)
+    if not behind and not from_older_base:
+        return False
+    base_head = _base_head(t, repo_of(p.pr))
+    # A red head is updated once per base head: a new head of the same PR that
+    # still lacks a base head it was already updated onto is not updated again.
+    if (
+        from_older_base
+        and p.head_sha not in rec.update_heads
+        and base_head in rec.update_base_heads
     ):
         return False
     # OMN-19998: the merge queue rebuilds every entry on the latest base, so an
@@ -2003,6 +2032,9 @@ def _update_behind(t: _Tick, p: ModelLandingPrFacts, rec: ModelLandingPrRecord) 
     t.put_record(
         p.pr,
         update_heads=tuple(sorted({*rec.update_heads, p.head_sha})),
+        update_base_heads=tuple(
+            sorted({*rec.update_base_heads, *([base_head] if base_head else [])})
+        ),
         update_no_new_commits_at=retry_at,
     )
     t.emit(
@@ -2111,6 +2143,42 @@ def _external_judgement_stands(t: _Tick, p: ModelLandingPrFacts) -> bool:
         if t.now - judged.judged_at < timedelta(hours=policy.external_gate_hours):
             return True
     return False
+
+
+def _cause_pr_dirty_watch(t: _Tick, p: ModelLandingPrFacts) -> None:
+    """A shared-red cause PR whose head stays DIRTY past the window raises one MSG per head.
+
+    omnimarket#6486 read DIRTY five times, each rebase re-hashing 70 contracts, and the
+    stall was read as the release chain's for an hour. The first tick that reads the head
+    CONFLICTING dates it; a head that reads CONFLICTING for longer than
+    ``policy.cause_pr_dirty_msg_seconds`` emits one ``escalate_operator`` (the typed
+    operator MSG the park already uses) keyed on that head, and the head is then on
+    record so no later tick repeats it. A head that stops reading CONFLICTING clears the
+    date; a new head starts its own.
+    """
+    if p.state is not EnumLandingPrState.OPEN or not p.shared_red_cause:
+        return
+    rec = t.record_of(p.pr)
+    if p.merge_state is not EnumLandingMergeState.CONFLICTING:
+        if rec.conflict_since is not None or rec.conflict_head is not None:
+            t.put_record(p.pr, conflict_since=None, conflict_head=None)
+        return
+    if rec.conflict_head != p.head_sha or rec.conflict_since is None:
+        rec = t.put_record(p.pr, conflict_head=p.head_sha, conflict_since=t.now)
+    window = timedelta(seconds=t.facts.policy.cause_pr_dirty_msg_seconds)
+    assert rec.conflict_since is not None
+    if t.now - rec.conflict_since <= window or p.head_sha in rec.dirty_msg_heads:
+        return
+    t.put_record(p.pr, dirty_msg_heads=(*rec.dirty_msg_heads, p.head_sha))
+    t.emit(
+        ModelLandingAction(
+            kind=EnumLandingActionKind.ESCALATE_OPERATOR,
+            subject=p.pr,
+            owner=t.facts.policy.exhaustion_owner,
+            members=(ModelLandingMemberRef(pr=p.pr, head_sha=p.head_sha),),
+            dedupe_key=f"{p.pr}@{p.head_sha}:dirty",
+        )
+    )
 
 
 def _product_pr(t: _Tick, p: ModelLandingPrFacts) -> None:
@@ -2353,14 +2421,20 @@ def _cause_fix_prs(t: _Tick) -> set[str]:
 
 def _priority(
     t: _Tick, p: ModelLandingPrFacts, cause_fixes: set[str]
-) -> tuple[bool, bool, int, int, datetime, str]:
-    """R4: green and mergeable, a cause fix, chain root by PRs unblocked, lane priority class, age."""
+) -> tuple[bool, bool, bool, int, int, datetime, str]:
+    """R4: a shared-red cause PR first, green and mergeable, a cause fix, chain root by PRs unblocked, lane priority class, age.
+
+    A PR flagged ``shared_red_cause`` is decided before every other PR on the tick, so
+    it takes the lease, the runtime token and the worker slots first: the PRs held red by
+    the shared cause cannot take them from the PR that fixes it (omnimarket#6486).
+    """
     unblocks = sum(
         1
         for q in t.prs.values()
         if q.state is EnumLandingPrState.OPEN and p.pr in q.parents
     )
     return (
+        not p.shared_red_cause,
         not _mergeable(p),
         p.pr not in cause_fixes,
         -unblocks,
@@ -2421,6 +2495,7 @@ def decide_landing(facts: ModelLandingFacts) -> ModelLandingDecision:
     _dispatch_causes(t)
     cause_fixes = _cause_fix_prs(t)
     for p in sorted(t.prs.values(), key=lambda p: _priority(t, p, cause_fixes)):
+        _cause_pr_dirty_watch(t, p)
         _product_pr(t, p)
     # The tick is local to this call: a raise here leaves no decision, no
     # action and no state behind, so the caller has nothing to act on.

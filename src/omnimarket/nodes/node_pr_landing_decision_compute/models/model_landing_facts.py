@@ -230,6 +230,15 @@ class ModelLandingPrFacts(BaseModel):
     process_fix: bool = Field(
         default=False, description="Carries the process-fix tag (R4)."
     )
+    shared_red_cause: bool = Field(
+        default=False,
+        description=(
+            "The PR is flagged as the cause fix of a shared red (its ticket is marked "
+            "shared-red, or it carries a Fix-Cause line): it is decided before every "
+            "other PR of its repository on the tick, and a head that stays CONFLICTING "
+            "past ``policy.cause_pr_dirty_msg_seconds`` raises one operator MSG per head."
+        ),
+    )
     priority_class: str | None = Field(
         default=None,
         description=(
@@ -568,6 +577,14 @@ class ModelLandingPolicy(BaseModel):
         ge=1,
         description="Update-branch refreshes per PR for stale cancelled copies.",
     )
+    cause_pr_dirty_msg_seconds: int = Field(
+        default=1800,
+        ge=1,
+        description=(
+            "A shared-red cause PR whose head reads DIRTY (CONFLICTING) for longer than "
+            "this raises one operator MSG for that head."
+        ),
+    )
     update_retry_seconds: int = Field(
         default=600,
         ge=1,
@@ -765,6 +782,16 @@ class ModelLandingFacts(BaseModel):
     )
     base_red_checks: tuple[ModelLandingRepoChecks, ...] = Field(
         default=(), description="Checks red on each repo's base head."
+    )
+    base_required_checks: tuple[ModelLandingRepoChecks, ...] = Field(
+        default=(),
+        description=(
+            "The required status contexts of each repo's base branch (RULING "
+            "2026-11-20T14:09:54Z: the controller decides on required contexts only). "
+            "When a repo is listed, a red head counts only its required reds and the "
+            "reds the base head also fails; a repo not listed counts every red, as "
+            "before."
+        ),
     )
     base_green_checks: tuple[ModelLandingRepoChecks, ...] = Field(
         default=(),
