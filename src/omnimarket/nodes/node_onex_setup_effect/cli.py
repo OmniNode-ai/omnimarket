@@ -532,7 +532,15 @@ def setup_command(
                 and (provider is not None or saved is None or action == "configure")
             ):
                 if provider is None and action == "configure":
+                    # Only the added provider changes: every saved choice stays,
+                    # the workspace too unless --workspace names another.
                     added_to = saved
+                    if (
+                        saved is not None
+                        and ctx.get_parameter_source("workspace")
+                        is not ParameterSource.COMMANDLINE
+                    ):
+                        workspace = saved.workspace
                 provider, model, url = _ask_choices(
                     provider,
                     model,

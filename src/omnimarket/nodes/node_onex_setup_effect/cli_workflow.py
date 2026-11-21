@@ -124,7 +124,11 @@ def run_workflow_cli(
             ]
             if not provider and (model or url):
                 raise ValueError("Name the provider for inline model selections")
-            reuse = saved is not None and workspace == saved.workspace
+            # A configure re-run (added_to) keeps every saved choice; otherwise
+            # the saved choices apply only to the same workspace.
+            reuse = saved is not None and (
+                added_to is not None or workspace == saved.workspace
+            )
             if added_to is not None and providers:
                 # OMN-23825: a configure re-run adds the chosen provider to the
                 # saved ones: the entry with the same credential identity (the
