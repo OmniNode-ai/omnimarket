@@ -20,7 +20,12 @@ description: >
   repositories, names, variables, comment rules and the ratchet file are overlay settings. A repository
   that is absent or unreadable, one with no ratchet row and an unreadable ratchet file are typed
   failures, never a pass. Every run is one emission chain (piece 6): a start, then a success or a
-  typed failure under one correlation id.
+  typed failure under one correlation id. With --registry the repositories are every name of the registry's clone list
+  (repos.yaml), none dropped; --seed adds the row and per-file table of a present repository that has none, from the run's
+  own count, and changes no row already held. Each run builds one typed daily record (ModelCensusDailyRecord): the
+  per-repository counts split by surface, runtime code (src/ and runtime contracts) apart from tests, docs, data and plan
+  contracts, and the runtime-code count; the success chain carries it as its counters and --daily-record writes it as JSON.
+  The daily run is the nightly workflow's ledger-file-census job (OMN-26318).
 
 handler:
   module: omnimarket.nodes.node_work_ledger_file_census_effect.handlers.handler_file_census
@@ -45,7 +50,7 @@ input_model:
 output_model:
   name: ModelCensusResult
   module: omnimarket.nodes.node_work_ledger_file_census_effect.models.model_file_census
-  description: Per repository files, readers, writers and ratchet state, the total, the failure code and the lowered ratchet.
+  description: Per repository files, readers, writers and ratchet state, the total, the failure code, the lowered ratchet and the typed daily record.
 
 runtime_dispatch:
   external_trigger: true

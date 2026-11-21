@@ -171,14 +171,17 @@ def test_nightly_runs_full_selection_on_dev_only() -> None:
     assert not triggers["workflow_dispatch"], "workflow_dispatch must take no inputs"
 
     jobs = nightly["jobs"]
-    assert set(jobs) == {"resolve-head", "shard", "census"}, set(jobs)
+    # The ledger-file census runs beside the suite on the same pinned head (OMN-26318); it is not part of the coverage census.
+    assert set(jobs) == {"resolve-head", "shard", "census", "ledger-file-census"}, set(
+        jobs
+    )
 
     # One dev sha, resolved once; every other job checks out exactly that sha,
     # so the census can bind every shard artifact to one head (OMN-20316).
     (resolve_checkout,) = _checkouts(jobs["resolve-head"])
     assert resolve_checkout.get("with", {}).get("ref") == "dev"
     pinned = "${{ needs.resolve-head.outputs.sha }}"
-    for job_id in ("shard", "census"):
+    for job_id in ("shard", "census", "ledger-file-census"):
         (checkout,) = _checkouts(jobs[job_id])
         assert checkout.get("with", {}).get("ref") == pinned, job_id
         assert "resolve-head" in jobs[job_id]["needs"], job_id

@@ -163,8 +163,9 @@ def test_shipped_ratchet_file_holds_the_per_file_table() -> None:
     data = yaml.safe_load((PACKAGE / "overlay.example.yaml").read_text())
     assert "per_file" not in data
     rows = YamlFileBaselineStore(PACKAGE / "ratchet.yaml").read()
-    assert set(rows) == {"omnimarket"}
-    assert all(hits > 0 for hits in rows["omnimarket"].values())
+    assert "omnimarket" in rows
+    assert set(rows) == set(YamlRatchetStore(PACKAGE / "ratchet.yaml").read())
+    assert all(hits > 0 for table in rows.values() for hits in table.values())
 
 
 def test_cli_exits_red_on_a_new_reader_and_green_without_it(

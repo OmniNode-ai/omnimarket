@@ -19,6 +19,9 @@ from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
 from omnimarket.nodes.node_work_ledger_file_census_effect.handlers.classify import (
     executable_hits,
 )
+from omnimarket.nodes.node_work_ledger_file_census_effect.handlers.surface import (
+    build_daily_record,
+)
 from omnimarket.nodes.node_work_ledger_file_census_effect.models.model_file_census import (
     EnumCensusKind,
     ModelCensusHit,
@@ -132,12 +135,20 @@ class HandlerFileCensus:
         }
         failing = [c for c in counts if c.state in codes]
         if not failing:
-            chain.success({"files": total, "repositories": len(counts)})
+            record = build_daily_record(
+                correlation_id=request.correlation_id,
+                clock=self._clock,
+                passed=True,
+                failure_code=None,
+                counts=counts,
+            )
+            chain.success(record.counters())
             return ModelCensusResult(
                 correlation_id=request.correlation_id,
                 passed=True,
                 total_files=total,
                 counts=counts,
+                daily_record=record,
                 lowered_ratchet=lowered,
                 lowered_baseline=lowered_baseline,
             )
@@ -164,11 +175,23 @@ class HandlerFileCensus:
         lowered: dict[str, int] | None = None,
     ) -> ModelCensusResult:
         chain.failure(code, detail)
+        record = (
+            build_daily_record(
+                correlation_id=request.correlation_id,
+                clock=self._clock,
+                passed=False,
+                failure_code=code,
+                counts=counts,
+            )
+            if counts
+            else None
+        )
         return ModelCensusResult(
             correlation_id=request.correlation_id,
             passed=False,
             total_files=total,
             counts=counts,
+            daily_record=record,
             failure_code=code,
             failure_detail=detail[:300],
             lowered_ratchet=lowered or {},

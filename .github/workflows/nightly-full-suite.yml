@@ -298,3 +298,88 @@ jobs:
         run: |
           echo "::error::full-suite shards concluded ${SHARD_RESULT}; see the failing shard's pytest summary"
           exit 1
+
+  # OMN-26318: the daily ledger-file census over every registry repository. It counts, in every repository the registry's
+  # clone list names, the files that hold an executable reader or writer of the ledger file, publishes the per-repository
+  # counts and the runtime-code count as ONE typed record (the node's CENSUS-RECORD line, its JSON artifact and its emission
+  # journal), and is red when any row grew, a new file holds a reader, a clone cannot be read or a repository has no row.
+  # A repository this job cannot clone is a red CENSUS line (repo-absent), never a skipped one. Not a required context.
+  ledger-file-census:
+    name: Ledger file census, every registry repository (nightly)
+    needs: resolve-head
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.OMNI_GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          ref: ${{ needs.resolve-head.outputs.sha }}
+      - name: Clone omnibase_core
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnimemory
+        run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Clone the registry's clone list and every repository it names
+        env:
+          # The repository holding the registry's clone list (repos.yaml) is deployment data: a repository variable names it,
+          # so this public file names no private repository. Unset is red.
+          REGISTRY_LIST_REPO: ${{ vars.ONEX_REGISTRY_LIST_REPO }}
+        run: |
+          set -uo pipefail
+          if [ -z "${GH_TOKEN:-}" ] || [ -z "${REGISTRY_LIST_REPO:-}" ]; then
+            echo "::error::OMNI_GITHUB_TOKEN or the ONEX_REGISTRY_LIST_REPO variable is not set: the registry's clone list cannot be read, so no repository is counted"
+            exit 1
+          fi
+          root="$RUNNER_TEMP/registry"
+          mkdir -p "$root"
+          gh repo clone "$REGISTRY_LIST_REPO" "$root/registry-list" -- --depth=1 || {
+            echo "::error::the registry's clone list could not be cloned"
+            exit 1
+          }
+          # One name and repo per entry of the clone list, read with PyYAML in the project env.
+          uv run python -c 'import sys, yaml; [print(r["name"], r["repo"]) for r in yaml.safe_load(open(sys.argv[1]))["repositories"]]' \
+            "$root/registry-list/repos.yaml" > "$RUNNER_TEMP/registry.txt"
+          while read -r name repo; do
+            [ "$name" = "omnimarket" ] && continue
+            gh repo clone "$repo" "$root/$name" -- --depth=1 \
+              || echo "::error::clone of $repo failed: the census reports $name as absent (red), it is never skipped"
+          done < "$RUNNER_TEMP/registry.txt"
+      - name: Count every registry repository
+        env:
+          ONEX_LEDGER_CENSUS_ROOT: ${{ runner.temp }}/registry
+          ONEX_REPO_REGISTRY: ${{ runner.temp }}/registry/registry-list/repos.yaml
+          ONEX_LEDGER_CENSUS_JOURNAL: ${{ runner.temp }}/ledger-file-census-journal.jsonl
+        run: |
+          set -o pipefail
+          status=0
+          uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect \
+            --packaged-overlay --per-file \
+            --directory "omnimarket=$GITHUB_WORKSPACE" \
+            --daily-record "$GITHUB_WORKSPACE/ledger-file-census-record.json" \
+            | tee ledger-file-census.log || status=$?
+          {
+            echo "### Ledger file census"
+            echo '```'
+            grep -E '^CENSUS ' ledger-file-census.log | cut -c1-200
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      - name: Upload the daily record
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ledger-file-census-daily-record
+          path: |
+            ledger-file-census-record.json
+            ledger-file-census.log
+            ${{ runner.temp }}/ledger-file-census-journal.jsonl
+          if-no-files-found: warn
+          retention-days: 30

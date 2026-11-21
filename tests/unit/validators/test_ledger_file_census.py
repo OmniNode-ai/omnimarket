@@ -210,7 +210,9 @@ def test_register_option_names_the_repository_for_one_run(tmp_path: Path) -> Non
     git = ["git", "-C", str(repo)]
     subprocess.run([*git, "init", "-q"], check=True, env=env)
     (repo / "reader.sh").write_text('cat "$ONEX_LEDGER_PATH"\n')
-    subprocess.run([*git, "add", "--", "reader.sh"], check=True, env=env)
+    # A checkout with no tracked file at all is absent, never a clean zero: the repository keeps another file.
+    (repo / "keep.txt").write_text("kept\n")
+    subprocess.run([*git, "add", "--", "reader.sh", "keep.txt"], check=True, env=env)
     ratchet = tmp_path / "ratchet.yaml"
     ratchet.write_text("ratchet:\n  alpha: 0\n")
     overlay_file = tmp_path / "overlay.yaml"
@@ -288,7 +290,7 @@ def test_the_repository_is_at_or_under_its_ratchet_row() -> None:
     """The ratchet file in this repository holds this repository's count; the live tree may not exceed it."""
     document = yaml.safe_load((PACKAGE / "overlay.example.yaml").read_text())
     table = YamlRatchetStore(RATCHET).read()
-    assert set(table) == {"omnimarket"}
+    assert "omnimarket" in table
     source = GitRepositorySource(
         ROOT.parent, document["max_file_bytes"], {"omnimarket": str(ROOT)}
     )

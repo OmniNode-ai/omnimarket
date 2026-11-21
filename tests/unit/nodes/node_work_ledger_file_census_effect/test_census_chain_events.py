@@ -51,7 +51,17 @@ def test_golden_chain_ends_in_success_under_one_correlation_id() -> None:
     assert {(e.node, e.piece, e.backend) for e in sink.events} == {
         ("node_work_ledger_file_census_effect", 6, "in_memory")
     }
-    assert sink.events[-1].counters == {"files": 0, "repositories": 3}
+    assert sink.events[-1].counters == {
+        "files": 0,
+        "repositories": 3,
+        "runtime_files": 0,
+        "files:alpha": 0,
+        "runtime:alpha": 0,
+        "files:beta": 0,
+        "runtime:beta": 0,
+        "files:outside": 0,
+        "runtime:outside": 0,
+    }
     assert sink.events[0].emitted_at == NOW
 
 

@@ -11,6 +11,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.nodes.node_work_ledger_file_census_effect.models.model_census_daily_record import (
+    ModelCensusDailyRecord,
+)
+
 
 class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -129,4 +133,9 @@ class ModelCensusResult(_Frozen):
         default_factory=dict,
         description="The per-file baseline with every file's row lowered to its count and every cleared "
         "file dropped; never a row raised and never a file added.",
+    )
+    daily_record: ModelCensusDailyRecord | None = Field(
+        default=None,
+        description="The run as one typed record: per-repository counts by surface and the runtime-code count. "
+        "None only when the run failed before any repository was counted.",
     )

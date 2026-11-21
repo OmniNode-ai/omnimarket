@@ -57,7 +57,11 @@ class GitRepositorySource:
         )
 
     def present(self, repository: str) -> bool:
-        return (self._dir(repository) / ".git").exists()
+        """A checkout that holds tracked files: an empty or half-cloned tree is absent, never a clean count of zero."""
+        if not (self._dir(repository) / ".git").exists():
+            return False
+        listed = self._git(repository, "ls-files", "-z", "--no-recurse-submodules")
+        return listed.returncode == 0 and bool(listed.stdout)
 
     def candidates(self, repository: str, tokens: Sequence[str]) -> tuple[str, ...]:
         args = ["grep", "-l", "-z", "-I", "-F", "--no-recurse-submodules"]
