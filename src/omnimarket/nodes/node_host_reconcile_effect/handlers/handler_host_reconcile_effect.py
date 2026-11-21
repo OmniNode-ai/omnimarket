@@ -8,6 +8,7 @@ The verifier script still owns health, refusal ownership, observation and floor 
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import shlex
@@ -69,6 +70,10 @@ from .retired_repositories import (
     retired_repository_findings,
 )
 from .venv_build_lock_facts import venv_build_lock_fact
+
+# What creating or reclaiming the lock raises on a root mounted read-only or
+# denied to the caller.
+_UNWRITABLE_ROOT_ERRNOS = frozenset({errno.EROFS, errno.EACCES, errno.EPERM})
 
 
 def _parse_guard_readback(stdout: str) -> tuple[str, str, int, tuple[str, ...]]:
@@ -411,6 +416,25 @@ class _ReconcilePass:
         return lines[:split], [n for n in lines[split + 1 :] if n != "omnimarket"]
 
     def acquire(self) -> None:
+        try:
+            self._take_lock()
+        except OSError as exc:
+            # A check run mutates nothing, so a registry root it cannot write
+            # (a lane sandbox mounts it read-only) is not a reason to withhold
+            # the host's verdict. Repair mode never reaches this arm: it
+            # mutates the host and must hold the lock, so it still stops.
+            if (
+                self.request.mode != "check"
+                or self.acquired
+                or exc.errno not in _UNWRITABLE_ROOT_ERRNOS
+            ):
+                raise
+            self.say(
+                f"check mode: the host lock {self.lock} cannot be written "
+                f"({exc.strerror}); the check ran without it."
+            )
+
+    def _take_lock(self) -> None:
         try:
             self.lock.mkdir()
         except FileExistsError:
