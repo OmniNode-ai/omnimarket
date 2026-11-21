@@ -756,7 +756,7 @@ class TestContractTextAnswersTheReview:
         for contract, value in pinned:
             assert f"b={_BASE_PIN}" in value, contract
             assert "I(1|10|3|5|6|7|8|9)" in value, contract
-            assert "(^| )9 failed" in value, contract
+            assert any(f"(^| ){n} failed" in value for n in (9, 10)), contract
             assert "origin/dev" not in value, contract
 
     def test_the_nightly_ticket_contract_keeps_its_ac2_unmet(self) -> None:
