@@ -8,6 +8,11 @@ other ``onex setup`` test modules in this folder request them by name.
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+from omnibase_core.models.event_bus.model_run_node_hosted import ModelRunNodeHosted
+
 from tests.unit.nodes.node_onex_setup_effect.test_onex_setup_model_step import (
     home,
     recorder,
@@ -15,3 +20,22 @@ from tests.unit.nodes.node_onex_setup_effect.test_onex_setup_model_step import (
 )
 
 __all__ = ["home", "recorder", "server"]
+
+
+def _delivery_not_required(node_id: str, state_root: Path) -> None:
+    """Stand in for core's delivery check: these tests read the walk's output, not the bus."""
+    del node_id, state_root
+
+
+@pytest.fixture(autouse=True)
+def _hosted_run_without_a_hosted_bus(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Let the walk's tests end without a hosted bus to carry the run's recorded events.
+
+    ``ModelRunNodeHosted.run`` refuses a finished run whose recorded events no forwarder
+    delivered. These tests drive the whole ``onex setup`` walk on a throwaway HOME and read
+    its output; no hosted bus or forwarder overlay exists in the test environment, so only
+    that delivery check is replaced and the run itself stays real.
+    """
+    monkeypatch.setattr(
+        ModelRunNodeHosted, "require_delivered", staticmethod(_delivery_not_required)
+    )
