@@ -352,6 +352,7 @@ def make_writer(
     *,
     overlay_: ModelEvalResultsOverlay | None = None,
     clock: Any = None,
+    **writer_kwargs: Any,
 ) -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
     """A writer over ``store`` with its publish transport captured in the returned list."""
     from omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results_writer import (
@@ -363,6 +364,11 @@ def make_writer(
         clock=clock or (lambda: at(100)),
         store_factory=lambda _db: store,
     )
+    for (
+        knob,
+        value,
+    ) in writer_kwargs.items():  # the writer keeps each bound as a private attribute
+        setattr(writer, f"_{knob}", value)
     cast(Any, writer)._db = FakeDb()
     published: list[tuple[str, dict[str, Any]]] = []
 
