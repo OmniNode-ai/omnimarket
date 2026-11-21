@@ -292,3 +292,32 @@ def test_selected_stack_refuses_invalid_capacity_from_an_injected_reader(
         "a non-finite or non-positive engine capacity must never compare as enough"
     )
     assert commands == [], "the engine answer is refused before any Compose command"
+
+
+def test_selected_stack_bounds_an_injected_reader_by_the_engine_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import time
+
+    from omnimarket.nodes.node_onex_setup_effect.handlers import (
+        handler_setup_stack_requirements as module,
+    )
+
+    # The deadline is shortened so a reader that would answer after it stays fast.
+    monkeypatch.setattr(module, "_ENGINE_READ_TIMEOUT_SECONDS", 0.2, raising=False)
+
+    async def stalled_engine() -> tuple[float, int]:
+        await asyncio.sleep(3)
+        return 4.0, 1 << 30
+
+    def unexpected_command(self, request) -> None:
+        pytest.fail(f"An engine past its deadline must stop before {request.argv}")
+
+    monkeypatch.setattr(HandlerSetupCommand, "handle", unexpected_command)
+    started = time.monotonic()
+    result = module.HandlerSetupStackRequirements(engine_reader=stalled_engine).observe(
+        _plan(tmp_path), ("worker",)
+    )
+    elapsed = time.monotonic() - started
+    assert result.status == "action_required"
+    assert elapsed < 2, f"the reader ran {elapsed:.2f}s past its deadline"

@@ -8,6 +8,7 @@ only from selected services' Compose reservations, never universal host floors.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import re
@@ -39,6 +40,8 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_stack_requiremen
 )
 
 EngineCapacityReader = Callable[[], Coroutine[Any, Any, tuple[float, int]]]
+# Every reader, injected or infra's, gets the limit the default passes to infra.
+_ENGINE_READ_TIMEOUT_SECONDS = 20
 
 
 def _bytes(value: object) -> int:
@@ -104,7 +107,11 @@ class HandlerSetupStackRequirements:
                 fix="Select explicit compose/topology services before checking Docker.",
             )
         try:
-            available_cpu, available_memory = run_coro_sync(self._engine_reader())
+            available_cpu, available_memory = run_coro_sync(
+                asyncio.wait_for(
+                    self._engine_reader(), timeout=_ENGINE_READ_TIMEOUT_SECONDS
+                )
+            )
             # An injected reader is not bound by infra's checks; NaN compares as enough.
             if not (
                 math.isfinite(available_cpu)
