@@ -17,7 +17,7 @@ from rich.text import Text
 from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, VerticalScroll
 from textual.coordinate import Coordinate
 from textual.message import Message
 from textual.screen import ModalScreen
@@ -467,7 +467,8 @@ class ModelDetailsScreen(ModalScreen[None]):
         self._label = provider_label
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="md"):
+        # Scrolls: on a small terminal the rows are taller than the screen.
+        with VerticalScroll(id="md"):
             yield Label(
                 Text(_table().details["title"], style=f"bold {_colour('primary')}")
             )
@@ -475,6 +476,9 @@ class ModelDetailsScreen(ModalScreen[None]):
                 with Horizontal():
                     yield Static(key, classes="mdk")
                     yield Static(value)
+
+    def on_mount(self) -> None:
+        self.query_one("#md", VerticalScroll).focus()
 
     def action_close(self) -> None:
         self.dismiss(None)

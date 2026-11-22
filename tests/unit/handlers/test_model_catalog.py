@@ -161,6 +161,42 @@ def test_capabilities_a_provider_lists_reach_the_details_from_its_own_list() -> 
     assert rows["Files"] == words.unknown_mark
 
 
+async def test_every_detail_row_can_be_reached_on_an_80_by_24_terminal() -> None:
+    """The details overflow a small terminal; the last rows must scroll into view."""
+    from textual.app import App
+    from textual.widgets import Static
+
+    from omnimarket.nodes.node_onex_setup_effect.cli_model_table import (
+        ModelDetailsScreen,
+        _detail_rows,
+    )
+
+    entry = catalog_entry(
+        "openrouter",
+        "vendor/big",
+        deployment="cloud",
+        index=_index(),
+        provider_label="OpenRouter",
+        context_tokens=200_000,
+    )
+    last = str(_detail_rows(entry, "OpenRouter")[-1][1])
+    app: App[None] = App()
+    async with app.run_test(size=(80, 24)) as pilot:
+        details = ModelDetailsScreen(entry, "OpenRouter")
+        await app.push_screen(details)
+        await pilot.pause()
+        row = next(w for w in details.query(Static) if str(w.render()) == last)
+        view = details.query_one("#md").content_region
+
+        def shown() -> bool:
+            return view.y <= row.region.y and row.region.bottom <= view.bottom
+
+        assert not shown()  # the rows do overflow this terminal
+        await pilot.press("end")
+        await pilot.pause()
+        assert shown()
+
+
 @pytest.mark.parametrize("legacy_source", ["models.dev", "OpenRouter + models.dev"])
 def test_details_use_legacy_prices_only_when_the_source_is_unambiguous(
     legacy_source: str,
