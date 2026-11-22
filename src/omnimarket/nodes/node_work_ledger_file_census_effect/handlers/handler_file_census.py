@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
 from omnimarket.nodes.node_work_ledger_file_census_effect.handlers.classify import (
     executable_hits,
+    is_runtime,
 )
 from omnimarket.nodes.node_work_ledger_file_census_effect.models.model_file_census import (
     EnumCensusKind,
@@ -107,6 +108,7 @@ class HandlerFileCensus:
             for name in wanted
         )
         total = sum(c.files for c in counts if not c.own_line)
+        runtime_total = sum(c.runtime_files for c in counts if not c.own_line)
         lowered = dict(ratchet)
         for count in counts:
             if count.state == "lowerable":
@@ -137,6 +139,7 @@ class HandlerFileCensus:
                 correlation_id=request.correlation_id,
                 passed=True,
                 total_files=total,
+                runtime_files=runtime_total,
                 counts=counts,
                 lowered_ratchet=lowered,
                 lowered_baseline=lowered_baseline,
@@ -151,7 +154,9 @@ class HandlerFileCensus:
             for c in failing
             if codes[c.state] == code
         )
-        return self._fail(chain, request, counts, code, detail, total, lowered)
+        return self._fail(
+            chain, request, counts, code, detail, total, lowered, runtime_total
+        )
 
     def _fail(
         self,
@@ -162,12 +167,14 @@ class HandlerFileCensus:
         detail: str,
         total: int = 0,
         lowered: dict[str, int] | None = None,
+        runtime_total: int = 0,
     ) -> ModelCensusResult:
         chain.failure(code, detail)
         return ModelCensusResult(
             correlation_id=request.correlation_id,
             passed=False,
             total_files=total,
+            runtime_files=runtime_total,
             counts=counts,
             failure_code=code,
             failure_detail=detail[:300],
@@ -192,6 +199,9 @@ class HandlerFileCensus:
                 own_line=own_line,
                 present=state != "absent",
                 files=files,
+                runtime_files=len(
+                    {h.path for h in hits if is_runtime(h.path, self._overlay)}
+                ),
                 readers=sum(h.kind is EnumCensusKind.READER for h in hits),
                 writers=sum(h.kind is EnumCensusKind.WRITER for h in hits),
                 hits=hits,

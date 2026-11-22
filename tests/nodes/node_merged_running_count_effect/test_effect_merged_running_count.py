@@ -186,10 +186,9 @@ def _hosts() -> ModelHostTableResult:
 
 def _sources(tmp_path: Path, ledger: str = LEDGER) -> SourceLocalFiles:
     (tmp_path / "state.json").write_text(json.dumps(WATCHER))
-    (tmp_path / "ledger.md").write_text(ledger + "\n")
     return SourceLocalFiles(
         watcher_state=tmp_path / "state.json",
-        ledger=tmp_path / "ledger.md",
+        ledger_rows=lambda: ledger.splitlines(),
         labels=LABELS,
         hosts=_hosts,
         placement_read=tmp_path / "absent-hosts.json",
@@ -284,40 +283,21 @@ def test_the_container_serves_only_the_declared_protocol(tmp_path: Path) -> None
         _Container(_sources(tmp_path)).get_service(object)
 
 
-def _roll(tmp_path: Path, rows_in_archive: list[str], kept: list[str]) -> Path:
-    """A ledger after a roll: older rows in archive/<name>_<date>-split.md, newer rows in the live file."""
-    archive = tmp_path / "archive"
-    archive.mkdir()
-    (archive / "ledger_2026-11-01-split.md").write_text(
-        "\n".join(rows_in_archive) + "\n"
-    )
+def _node_rows(rows_in_archive: list[str], kept: list[str]) -> list[str]:
+    """What the reader node answers for the window after a roll: the older rows, then the newer ones."""
+    return [*rows_in_archive, *kept]
+
+
+def _sources_over(tmp_path: Path, rows: list[str]) -> SourceLocalFiles:
     (tmp_path / "state.json").write_text(json.dumps(WATCHER))
-    (tmp_path / "ledger.md").write_text("\n".join(kept) + "\n")
-    return tmp_path
-
-
-def test_adopted_rows_rolled_into_the_archive_are_still_evidence(
-    tmp_path: Path,
-) -> None:
-    rows = LEDGER.splitlines()
-    rolled = [r for r in rows if "ADOPTED pr=" in r and r.startswith("2026-11-01T1")]
-    kept = [r for r in rows if r not in rolled]
-    _roll(tmp_path, rolled, kept)
-    sources = SourceLocalFiles(
+    return SourceLocalFiles(
         watcher_state=tmp_path / "state.json",
-        ledger=tmp_path / "ledger.md",
+        ledger_rows=lambda: rows,
         labels=LABELS,
         hosts=_hosts,
         placement_read=tmp_path / "absent-hosts.json",
         now=NOW,
     )
-    container: Any = _Container(sources)
-    result = HandlerMergedRunningCountEffect(container).handle(
-        ModelMergedRunningCountRunRequest(now=NOW, config=_config())
-    )
-    day = next(d for d in result.count.days if d.local_date == "2026-11-01")
-    assert (day.merged, day.running, day.not_running) == (4, 3, 1)
-    assert result.evidence_records_read == 3
 
 
 ROLL_HEADER = [
@@ -354,13 +334,27 @@ def test_error_a_claim_quoted_in_a_roll_header_is_not_a_live_lane(
 
 def test_error_a_roll_header_in_an_archive_does_not_raise(tmp_path: Path) -> None:
     rows = LEDGER.splitlines()
-    _roll(tmp_path, ROLL_HEADER + rows, rows)
-    sources = SourceLocalFiles(
-        watcher_state=tmp_path / "state.json",
-        ledger=tmp_path / "ledger.md",
-        labels=LABELS,
-        hosts=_hosts,
-        placement_read=tmp_path / "absent-hosts.json",
-        now=NOW,
-    )
+    sources = _sources_over(tmp_path, _node_rows(ROLL_HEADER + rows, rows))
     assert "quoted-lane" not in {lane.lane for lane in sources.read_live_lanes()}
+
+
+def test_the_production_sources_read_the_ledger_from_the_reader_node_not_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The rows are the reader node's, for the contract's archive window; no ledger file exists under the home."""
+    from omnimarket.nodes.node_merged_running_count_effect import (
+        runtime_merged_running_count as runtime,
+    )
+
+    asked: list[tuple[str, int]] = []
+
+    def fake_read(reader: str, window_hours: int, **_: object) -> tuple[str, ...]:
+        asked.append((reader, window_hours))
+        return tuple(LEDGER.splitlines())
+
+    monkeypatch.setattr(runtime, "read_window_rows", fake_read)
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+    sources = runtime.build_sources(NOW)
+    lanes = {lane.lane for lane in sources.read_live_lanes()}
+    assert lanes == {"floor-fix-1101", "merged-running-count-1101"}
+    assert asked == [("merged-running-count", 8 * 24)]

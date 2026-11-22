@@ -55,11 +55,10 @@ descriptor:
   runtime_profiles: []
   idempotent: true
   timeout_ms: 30000
-# Where each source is, relative to the registry home (home_env); the ledger path is the one ledger_env names.
+# Where each source is, relative to the registry home (home_env). The ledger rows are the work ledger reader node's, never a file.
 # labels are the words the files use and the states the count takes from them.
 runtime:
   home_env: OMNI_HOME
-  ledger_env: ONEX_LEDGER_PATH
   watcher_state_env: ONEX_PR_WATCHER_STATE
   watcher_relpath: .claude_scratch/pr-watcher/state.json
   placement_read_relpath: .claude_scratch/lab-run/hosts.json
