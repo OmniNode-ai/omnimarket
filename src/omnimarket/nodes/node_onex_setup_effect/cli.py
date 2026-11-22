@@ -30,7 +30,10 @@ from pydantic import SecretStr
 from omnimarket.handlers.handler_endpoint_catalog import HandlerEndpointCatalog
 from omnimarket.handlers.handler_endpoint_probe import HandlerModelProbe
 from omnimarket.handlers.routing import byok_provider_backends
-from omnimarket.nodes.node_onex_setup_effect.cli_choices import ask_choices
+from omnimarket.nodes.node_onex_setup_effect.cli_choices import (
+    ask_choices,
+    stored_key_for_unchanged_provider,
+)
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
     KEYLESS_PROVIDERS,
     discard_key,
@@ -197,6 +200,7 @@ def _ask_choices(
     endpoint_auth: str | None = None,
     credentials: dict[str, SecretStr] | None = None,
     connection_id: str | None = None,
+    saved: ModelSetupPlan | None = None,
 ) -> tuple[str | None, str | None, str | None]:
     return ask_choices(
         provider,
@@ -208,6 +212,12 @@ def _ask_choices(
         discover=discover_models,
         read_key=_read_key,
         probe=probe_models,
+        default_provider=saved.providers[0].provider
+        if saved is not None and saved.providers
+        else None,
+        stored_key=lambda name, address: stored_key_for_unchanged_provider(
+            saved, name, address
+        ),
     )
 
 
@@ -476,6 +486,8 @@ def setup_command(
     # stays the one typed result.
     click.echo(LADDER_NOTICE, err=json_output)
     prepared_credentials: dict[str, SecretStr] = {}
+    # A configure re-run with no --provider adds to the saved providers (OMN-23825).
+    added_to: ModelSetupPlan | None = None
     if plan_file is None:
         if compose_file is not None or topology_file is not None:
             if compose_file is None or topology_file is None:
@@ -521,8 +533,18 @@ def setup_command(
             if (
                 ("delegation" in (components or ("delegation",)))
                 and action != "verify"
-                and (provider is not None or saved is None)
+                and (provider is not None or saved is None or action == "configure")
             ):
+                if provider is None and action == "configure":
+                    # Only the added provider changes: every saved choice stays,
+                    # the workspace too unless --workspace names another.
+                    added_to = saved
+                    if (
+                        saved is not None
+                        and ctx.get_parameter_source("workspace")
+                        is not ParameterSource.COMMANDLINE
+                    ):
+                        workspace = saved.workspace
                 provider, model, url = _ask_choices(
                     provider,
                     model,
@@ -530,6 +552,9 @@ def setup_command(
                     endpoint_auth=endpoint_auth,
                     credentials=prepared_credentials,
                     connection_id=connection_id,
+                    # Only a configure re-run reuses a stored key: a named
+                    # --provider can always take a new (rotated) key.
+                    saved=added_to,
                 )
     if (
         not interactive
@@ -578,6 +603,7 @@ def setup_command(
         saved=saved,
         endpoint_auth=endpoint_auth,
         prepared_credentials=prepared_credentials,
+        added_to=added_to,
         connection_id=connection_id,
         native_messages=native_messages,
         compose_file=compose_file,
