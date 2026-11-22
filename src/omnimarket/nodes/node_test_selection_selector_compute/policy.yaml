@@ -2,14 +2,24 @@
 # SPDX-License-Identifier: MIT
 # The settings of node_test_selection_selector_compute (OMN-23296). No value is set in code.
 #
-#   target_shard_seconds    estimated test seconds one shard of a narrowed selection carries.
-#                           360 is the full suite's own per-shard share (about 7160 recorded
-#                           seconds over its 20 planned shards).
-#   max_narrowed_shards     most shards a narrowed selection may take. A selection that needs more
-#                           than this (its estimate is over max_narrowed_shards * target_shard_seconds,
-#                           1800 seconds today) runs as the planned full-suite matrix instead.
-#                           tests/nodes/ with tests/unit/ is about 4,100 seconds and ran as two
-#                           unplanned shards of about 24,000 tests each, 45 to 77 minutes.
+#   target_shard_seconds    estimated test seconds one shard of a narrowed selection carries: the full
+#                           suite's own per-shard share, the recorded suite total in
+#                           config/test_file_durations.json over full_split_count. A policy test reads the
+#                           durations file and fails when target_shard_seconds * full_split_count differs
+#                           from that total by more than record_tolerance_ratio, so the figure follows the
+#                           record and is not typed from memory.
+#   max_narrowed_shards     most shards a narrowed selection may take. The shard count is
+#                           ceil(estimated seconds / target_shard_seconds), capped here.
+#   narrowed_bound_seconds  estimated seconds above which a selection runs as the planned full-suite matrix
+#                           instead. 1800 is provisional until the operator answers the narrowed-run size
+#                           question; the policy-bound report prices the alternatives (comparison_bounds_seconds
+#                           and the full-run crossover) from the replay. It may not exceed
+#                           max_narrowed_shards * target_shard_seconds.
+#   untimed_file_seconds    seconds a test file with no entry in the durations file costs: the durations
+#                           file's p90 (nearest rank over its entries). A policy test holds it within
+#                           record_tolerance_ratio of the p90 computed from the file.
+#   record_tolerance_ratio  relative gap the two policy tests above allow.
+#   comparison_bounds_seconds  bounds the policy-bound report prices beside narrowed_bound_seconds.
 #   durations_path          recorded per-file seconds, relative to the repository root.
 #   path_count_shards       the older rule, kept as a floor: [up to this many selected paths, shards].
 #   path_count_max_shards   shards for more paths than the last rung.
@@ -19,14 +29,25 @@
 #   full_split_count        shards of the full-suite matrix: what a run with the flag off and every
 #                           escalation to the full suite takes.
 #   record_retention_days   days a pull request's selection record artifact is kept.
+#   stage_clean_nights      consecutive nightly runs a stage receipt must cover before the stage it
+#                           names may be entered. A night is clean when its published attribution record
+#                           counts zero misses, zero unattributable and zero incomplete for the stage
+#                           being entered, and at least one pull request record.
+#   stage_min_pr_records    pull request records, summed over the receipt's nights, that hold a
+#                           selection entry for the stage being entered at the promoted selector and
+#                           policy versions. A receipt over fewer is refused.
 #   graph_compared_stage    the selection_by_stage entry the code graph comparison reads as the parse side.
 #                           Fixed before the comparison week starts and not changed during it.
 #   graph_min_valid_comparisons
 #                           fewest valid comparisons (clean, from Memgraph) the comparison's verdict
 #                           part one needs; fewer is "insufficient", never a pass. Fixed before the week
 #                           starts and not changed during it.
-target_shard_seconds: 360
+target_shard_seconds: 571
 max_narrowed_shards: 5
+narrowed_bound_seconds: 1800
+untimed_file_seconds: 4.22
+record_tolerance_ratio: 0.05
+comparison_bounds_seconds: [1800, 5400]
 durations_path: config/test_file_durations.json
 path_count_shards:
   - [2, 1]
@@ -34,8 +55,10 @@ path_count_shards:
   - [10, 3]
   - [16, 4]
 path_count_max_shards: 5
-selection_stage: 0
+selection_stage: 1
 full_split_count: 20
 record_retention_days: 14
+stage_clean_nights: 7
+stage_min_pr_records: 10
 graph_compared_stage: 0
 graph_min_valid_comparisons: 20

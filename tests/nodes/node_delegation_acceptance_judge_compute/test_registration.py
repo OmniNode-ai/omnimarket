@@ -35,7 +35,10 @@ def test_registered_acceptance_judge_route() -> None:
         route.command_topic
         == "onex.cmd.omnimarket.delegation-acceptance-judge-requested.v1"
     )
-    assert route.terminal_topic == "onex.evt.omnimarket.delegation-acceptance-judged.v1"
+    assert (
+        route.terminal_topic
+        == "onex.evt.omnimarket.delegation-acceptance-judge-completed.v1"
+    )
     assert (
         getattr(import_module(route.handler_module), route.handler_class)
         is HandlerDelegationAcceptanceJudge
