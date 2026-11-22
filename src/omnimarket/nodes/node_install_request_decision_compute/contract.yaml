@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Install request decision COMPUTE (OMN-19998, root 5: the install request)
+#
+# One install request, read by the installer on one host: execute, refuse, hold, expire, skip or ignore. Pure: no clock
+# (the caller supplies now), no I/O. Exemplar: node_pr_landing_decision_compute.
+name: node_install_request_decision_compute
+contract_name: node_install_request_decision_compute
+node_name: node_install_request_decision_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  Decides what the installer on one host does with one typed install request. A request for another host is ignored; a
+  request whose publisher is not one of the logins the host's overlay row allows (compared casefolded, blanks stripped),
+  or that names no publisher at all, is refused -- the effect answers the refusal but keeps it out of the result journal,
+  so a forged message cannot poison the idempotency of a real request id; a request that already carries a result under
+  its own id is skipped (`already_verified` when it is verified, `already_answered` when it is not -- a failed request is
+  never re-run on redelivery); a request at or past its expiry, or older than the overlay's command age at decision time,
+  is expired and never executed; a request on a host with a blocker (an install lock held, a unit mid-run) is held with
+  the blocker as its reason; every other request is executed. The order of those rules is fixed and the first that
+  applies wins.
+
+handler:
+  module: omnimarket.nodes.node_install_request_decision_compute.handlers.handler_install_request_decision
+  class: HandlerInstallRequestDecision
+  input_model: omnimarket.models.install_request.ModelInstallRequestDecisionInput
+  output_model: omnimarket.models.install_request.ModelInstallRequestDecision
+
+input_model:
+  name: ModelInstallRequestDecisionInput
+  module: omnimarket.models.install_request
+  description: The request, the executing host, the clock, any result already published, the envelope producer, the logins the host allows and the overlay's command age.
+output_model:
+  name: ModelInstallRequestDecision
+  module: omnimarket.models.install_request
+  description: The action and its reason code.
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  runtime_profiles: []
+  timeout_ms: 1000
+
+# The installer effect calls the handler in process; the node has no bus surface of its own.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the install request effect, with the request, the executing host, the clock, the host's blockers, the envelope producer and the overlay's allowed logins and command age.
+metadata:
+  ticket: OMN-19998
+  transport_type: local

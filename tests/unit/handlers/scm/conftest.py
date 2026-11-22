@@ -33,6 +33,6 @@ def ledger_rows(
         monkeypatch.setattr(
             handler_pr_duplicate_snapshot,
             "SubprocessLedgerRowsReader",
-            lambda _environ: rows,
+            lambda _environ, **_kwargs: rows,
         )
     return rows

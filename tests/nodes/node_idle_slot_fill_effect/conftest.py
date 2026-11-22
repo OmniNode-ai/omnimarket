@@ -8,7 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_idle_slot_fill_effect.handlers import handler_ruling_recovery
+from omnimarket.nodes.node_idle_slot_fill_effect.handlers import (
+    handler_idle_slot_fill,
+    handler_ruling_recovery,
+)
+from tests.helpers.fake_ledger_rows import FakeLedgerRows
 from tests.nodes.node_idle_slot_fill_effect.overlay_fixture import ENV
 
 
@@ -20,6 +24,12 @@ def _overlay_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
     ledger.write_text("")
     monkeypatch.setenv("ONEX_LEDGER_PATH", str(ledger))
+    # The fixer-HOLD read goes through the ledger reader node, never a file: no scenario spawns it.
+    monkeypatch.setattr(
+        handler_idle_slot_fill,
+        "SubprocessLedgerRowsReader",
+        lambda _environ, **_kw: FakeLedgerRows(),
+    )
     monkeypatch.setattr(
         handler_ruling_recovery,
         "read_check",
