@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import shlex
 import subprocess
+import uuid
 from datetime import UTC, datetime
 
 TICKET = "OMN-26216"
@@ -52,17 +53,30 @@ def failure_alert_text(
     )
 
 
-def append_friction(*, ledger: str, append_command: str, row: str) -> str | None:
-    """Append ``row`` through the typed ledger writer; the reason it could not be written, else None.
+def append_friction(*, append_command: str, row: str, host: str) -> str | None:
+    """Append ``row`` through the bus append command; the reason it could not be written, else None.
 
-    With no ledger path (ONEX_LEDGER_PATH unset) nothing is written. The writer is ``onex-ledger <ledger> --append <row>`` unless the host names another writer (a bus
-    writer on a host that holds no ledger file). A writer that fails never changes the reconcile's exit.
+    ``append_command`` is the host's bus ledger writer (``ONEX_RECONCILE_LEDGER_APPEND_CMD``, for example
+    ``onex work-ledger append --bus-lane dev``); this adds the writer's attribution flags and sends the row on
+    stdin. With no append command nothing is written, as with no alert command. No ledger file is named or read.
+    A writer that fails never changes the reconcile's exit.
     """
-    if not ledger:
-        return None  # a host with no ledger configured has no row to write, as with no alert command
+    if not append_command.strip():
+        return None
     try:
         done = subprocess.run(
-            [*shlex.split(append_command or "onex-ledger"), ledger, "--append", row],
+            [
+                *shlex.split(append_command),
+                "--lane",
+                LEDGER_LANE,
+                "--host",
+                host,
+                "--request-id",
+                str(uuid.uuid4()),
+                "--rows-file",
+                "-",
+            ],
+            input=row + "\n",
             capture_output=True,
             text=True,
             timeout=APPEND_TIMEOUT_S,

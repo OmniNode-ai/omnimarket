@@ -32,10 +32,10 @@ pytestmark = pytest.mark.unit
 
 
 def _writers(root: Path) -> tuple[str, Path, Path]:
-    """A ledger writer and an alert command that each append one line per call to a file."""
+    """A bus append command (the row on stdin) and an alert command that each append to a file."""
     ledger = root / "ledger.md"
     writer = root / "writer.sh"
-    writer.write_text('printf "%s\\n" "$3" >> "$1"\n')
+    writer.write_text(f'cat >> "{ledger}"\n')
     alert = root / "alert.sh"
     alerts = root / "alerts.txt"
     alert.write_text('printf "%s\\n---\\n" "$1" >> "' + str(alerts) + '"\n')
@@ -56,7 +56,6 @@ def test_reconcile_failure_alert_on_first_indeterminate_exit(
         root,
         target_host=socket.gethostname()
         + "-other",  # setup refuses: INDETERMINATE, exit 3
-        ledger=str(ledger),
         ledger_append_command=append,
         alert_command=f"bash {alert}",
     )
@@ -87,7 +86,6 @@ def test_reconcile_failure_alert_exit_two_alerts_once_and_writes_one_row(
     append, ledger, alert = _writers(root)
     cmd = command(
         root,
-        ledger=str(ledger),
         ledger_append_command=append,
         alert_command=f"bash {alert}",
     )
@@ -106,7 +104,6 @@ def test_reconcile_failure_alert_success_writes_nothing(
     append, ledger, alert = _writers(root)
     cmd = command(
         root,
-        ledger=str(ledger),
         ledger_append_command=append,
         alert_command=f"bash {alert}",
     )
@@ -123,7 +120,6 @@ def test_reconcile_failure_alert_writer_failure_keeps_the_exit_code(
     cmd = command(
         root,
         target_host=socket.gethostname() + "-other",
-        ledger=str(root / "ledger.md"),
         ledger_append_command="false",
     )
     result = handler(RecordingEvaluator(), RecordingPublisher()).handle(cmd)
@@ -142,7 +138,6 @@ def test_reconcile_failure_alert_row_is_read_by_the_alarm_owner_responder(
     cmd = command(
         root,
         target_host=socket.gethostname() + "-other",
-        ledger=str(ledger),
         ledger_append_command=append,
     )
     handler(RecordingEvaluator(), RecordingPublisher()).handle(cmd)

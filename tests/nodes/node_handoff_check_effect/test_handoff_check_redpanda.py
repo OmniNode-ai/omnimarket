@@ -30,6 +30,7 @@ from tests.bus_lane_guard import (
     assert_broker_in_declared_lane,
     resolve_test_bus_broker,
 )
+from tests.nodes.node_handoff_check_effect.ledger_rows_stub import StubRows
 
 pytestmark = [pytest.mark.kafka, pytest.mark.integration]
 
@@ -61,14 +62,11 @@ async def test_a_planted_ruling_is_refused_over_redpanda(tmp_path: Path) -> None
 
     bootstrap = resolve_test_bus_broker()
     await _probe_broker(bootstrap)
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text(_RULING + "\n", encoding="utf-8")
+    ledger = StubRows(_RULING)
     probes = tmp_path / "probes.json"
     probes.write_text("[]", encoding="utf-8")
     request = ModelHandoffCheckRequest(
         command=EnumHandoffCommand.ASSEMBLE,
-        ledger=str(ledger),
-        archive_dir=str(tmp_path / "none"),
         now=_NOW,
         probes=str(probes),
     )
@@ -96,7 +94,7 @@ async def test_a_planted_ruling_is_refused_over_redpanda(tmp_path: Path) -> None
             command_topic, value=request.model_dump_json().encode()
         )
         message = await asyncio.wait_for(command_consumer.getone(), timeout=15)
-        result = HandlerHandoffCheck().handle(
+        result = HandlerHandoffCheck(ledger_rows=ledger).handle(
             ModelHandoffCheckRequest.model_validate(json.loads(message.value))
         )
         await producer.send_and_wait(

@@ -250,6 +250,27 @@ def current_folder_workspace(cwd: Path, home: Path) -> Path | None:
     return folder
 
 
+def linked_workspace_notice(workspace: Path) -> str | None:
+    """The line naming the real folder a workspace reached through a link writes to.
+
+    OMN-23413 (operator decision 2026-11-22): a workspace given as a link is
+    followed as the user's choice, and setup says which real folder it writes
+    to. ``..`` is never collapsed as text: setup resolves links first and then
+    ``..``, so the real folder is ``resolve()``'s. The path itself or any folder
+    above it may be the link, a dangling one included. None when no link is on
+    the path.
+    """
+    given = workspace.expanduser()
+    if not given.is_absolute():
+        given = Path.cwd() / given
+    prefixes = (Path(*given.parts[:end]) for end in range(2, len(given.parts) + 1))
+    if not any(prefix.is_symlink() for prefix in prefixes):
+        return None
+    return (
+        f"Workspace: {given} reaches its real folder {given.resolve()} through a link."
+    )
+
+
 @click.command("setup", cls=_SetupCommand)
 @click.option(
     "--workspace",
@@ -484,6 +505,10 @@ def setup_command(
     # OMN-21262 (merged from dev): before the first model question, and before
     # any step in an unattended run. Under --json it goes to stderr, so stdout
     # stays the one typed result.
+    if workspace is not None:
+        notice = linked_workspace_notice(workspace)
+        if notice is not None:
+            click.echo(notice, err=json_output)
     click.echo(LADDER_NOTICE, err=json_output)
     prepared_credentials: dict[str, SecretStr] = {}
     # A configure re-run with no --provider adds to the saved providers (OMN-23825).
