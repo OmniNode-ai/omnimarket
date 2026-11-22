@@ -98,7 +98,7 @@ def _receipt(
         tokens_out=_counter(usage, "output_tokens"),
         tokens_cached=_counter(usage, "cached_input_tokens"),
         wall_seconds=time.monotonic() - started,
-        model=request.model,
+        model=request.model or "",
         exit_cause=cause,
         exit_code=code,
     )
@@ -149,8 +149,7 @@ class HandlerCodexHarnessAttempt:
                 f"sandbox_workspace_write.network_access={str(self.policy.network_access).lower()}",
                 "--skip-git-repo-check",
                 "--json",
-                "-m",
-                request.model,
+                *(("-m", request.model) if request.model is not None else ()),
                 "-o",
                 str(answer_file),
                 "-",
@@ -171,7 +170,7 @@ class HandlerCodexHarnessAttempt:
             except OSError:
                 return ModelCodexHarnessReceipt(
                     wall_seconds=time.monotonic() - started,
-                    model=request.model,
+                    model=request.model or "",
                     exit_cause="launch_failed",
                 )
             timed_out = False

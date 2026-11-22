@@ -1,0 +1,22 @@
+# The bounds of one bus connect (OMN-26027). A lane declaration may override
+# connect_deadline_seconds with a key of the same name on the lane.
+#
+# connect_deadline_seconds: 10. Measured 2026-11-19 from a lab host: a TCP connect to the
+#   broker's LAN address took 0.006 s and to its tailnet name 0.002 s. The ledger append
+#   command waits 60 s for its receipt and the alarm delivery 30 s, and the binding health
+#   read waits 8 s, so a connect that has not started in 10 s is not a slow broker. An alarm
+#   tick once hung 52 minutes on a blackholed address with no deadline at all. A dead address
+#   now costs 10 s, and 20 s when the declared second address is tried after it.
+# default_broker_fallbacks: the second address a lane gets when its own declaration names none
+#   (a lane declares broker_fallbacks to replace them). source: hook_edge_lane is the lane's
+#   address in hook_edge_lane.yaml beside the lane declaration, so no address is typed here. The
+#   lab broker still advertises the name of its first address in its metadata, so that name is
+#   dialled at the second address's host (advertised_names_from_bootstrap).
+# abandon_grace_seconds: how long a cancelled start and the close of its bus get, together, to
+#   wind down before the connect returns anyway; it keeps a blackholed connect under the
+#   deadline plus one second.
+connect_deadline_seconds: 10.0
+abandon_grace_seconds: 0.5
+default_broker_fallbacks:
+  - source: hook_edge_lane
+    advertised_names_from_bootstrap: true

@@ -154,7 +154,11 @@ def test_installed_verify_observes_empty_install_without_writes(
     } <= observations.keys()
     assert observations["workspace"].status == "unavailable"
     assert observations["identity"].status == "unavailable"
-    assert observations["models"].status == "action_required"
+    # No model server is named, so the models step is optional on the customer path:
+    # verify reports it skipped with the one bring-your-own-key line, not a required action.
+    models = observations["models"]
+    assert models.status == "skipped"
+    assert "bring your own key" in models.evidence["skipped"]
     assert "workspace-repositories" not in observations
     assert "base-tools" not in observations
     assert all(not item.changed for item in journal.observations)

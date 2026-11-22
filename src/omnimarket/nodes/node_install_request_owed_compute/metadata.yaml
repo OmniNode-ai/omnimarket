@@ -1,0 +1,22 @@
+name: node_install_request_owed_compute
+version: "0.1.0"
+description: "Install requests owed: the NOT RUNNING and expired lines of the requests with no verified result, as a pure function"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_install_request_owed_compute: "omnimarket.nodes.node_install_request_owed_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "install-request", "reading", "pure"]
+pack: "host_install"
+display_name: "Install Request Owed"
+node_role: "compute"
