@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
+from functools import cache
 
 from omnibase_core.enums.enum_tier_cost_type import EnumTierCostType
 
@@ -35,7 +36,8 @@ def historical_unpriced_zero(
     a tier with no cost model is not a free tier. A row that records no tier,
     tier type or source, or names no model, is served as stored, since nothing
     in it shows a priced cloud call. Otherwise the run is free only when its
-    model id ends in ":free" or the pricing manifest declares its price zero.
+    model id ends in ":free", or the pricing manifest, or the provider
+    catalogue for the backend the row names, declares its price zero.
     """
     recorded_source = str(source or "").strip()
     tier_cost_type = str(tier_type or "").strip().casefold()
@@ -62,7 +64,35 @@ def historical_unpriced_zero(
     names = [str(m).strip() for m in models if m is not None and str(m).strip()]
     if not names:
         return False
-    return not any(_declared_free(name) for name in names)
+    if any(_declared_free(name) for name in names):
+        return False
+    return not any(
+        _catalogue_declares_free(backend, model)
+        for backend in names
+        for model in names
+        if backend != model
+    )
+
+
+@cache
+def _catalogue_declares_free(backend_id: str, model: str) -> bool:
+    """True when the provider catalogue declares ``model`` free on ``backend_id``.
+
+    The catalogue's declared price, then the model registry's, as a call on that
+    backend books it, but never the shipped models.dev price list.
+    """
+    from omnimarket.handlers.routing.byok_provider_backends import (
+        byok_model_price_per_1m,
+        load_byok_plan_catalog,
+    )
+
+    for row in load_byok_plan_catalog().values():
+        if row.backend_id == backend_id:
+            price = byok_model_price_per_1m(
+                backend_id, row.endpoint_url, model, supplemental=False
+            )
+            return price is not None and price[0] == 0 and price[1] == 0
+    return False
 
 
 def _declared_free(name: str) -> bool:

@@ -255,6 +255,39 @@ def test_a_backend_alias_does_not_hide_the_free_model_that_answered(
     assert served == {"alias": _FREE, "alias-unpriced": _UNKNOWN_SPEND}
 
 
+def test_a_zero_price_the_provider_catalogue_declares_is_free(tmp_path: Path) -> None:
+    # byok_provider_backends.v1.yaml declares glm-4.5-flash free on the z.ai
+    # general API (backend byok-glm-general) and glm-5.3-flash priced; the
+    # pricing manifest lists neither. The backend may be named by delegated_to
+    # or by backend_id.
+    served = _served(
+        tmp_path,
+        {
+            "glm-free": {
+                "cost_tier_name": "cheap_cloud",
+                "model_name": "glm-4.5-flash",
+                "delegated_to": "byok-glm-general",
+            },
+            "glm-free-by-backend-id": {
+                "cost_tier_name": "cheap_cloud",
+                "model_name": "glm-4.5-flash",
+                "delegated_to": "glm-4.5-flash",
+                "backend_id": "byok-glm-general",
+            },
+            "glm-priced": {
+                "cost_tier_name": "cheap_cloud",
+                "model_name": "glm-5.3-flash",
+                "delegated_to": "byok-glm-general",
+            },
+        },
+    )
+    assert served == {
+        "glm-free": _FREE,
+        "glm-free-by-backend-id": _FREE,
+        "glm-priced": _UNKNOWN_SPEND,
+    }
+
+
 def test_the_run_detail_serves_no_saving_for_an_unknown_cost(tmp_path: Path) -> None:
     # The run-detail exposure serves the legacy cost_savings_usd, not
     # modelled_savings_usd; an unknown cost must not carry a saving there either.
