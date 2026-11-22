@@ -50,13 +50,13 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/ci/test_selection_stage_evidence.py -q --no-cov -n 0 -p no:randomly -k "without_a_receipt or two_stage_jump or stage_receipt_recomputed"
     cwd: .
 - id: dod-omn26442-ac3-own-contract
-  description: 'AC3: this contract binds the evidence of this change; the check reads the policy line selection_stage 0 at the head. The required check read-out of the pull request is taken from the watcher, not from this check.'
+  description: 'AC3: this contract binds the evidence of this change; the whole stage gate test file passes at the head, with selection_stage 0 in the policy. The required check read-out of the pull request is taken from the watcher, not from this check.'
   source: manual
   binds_ac:
   - AC3
   checks:
-  - check_type: command
-    check_value: 'grep -nx "selection_stage: 0" src/omnimarket/nodes/node_test_selection_selector_compute/policy.yaml'
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_selection_stage_evidence.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn26442-integration-proof
   description: the stage gate test file runs on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
