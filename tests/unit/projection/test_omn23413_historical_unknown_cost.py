@@ -429,7 +429,7 @@ def test_a_billed_unpriced_rejected_attempt_makes_the_whole_run_unknown(
         accepted=False,
         http_status=200,
     )
-    free_run = {
+    free_run: dict[str, object] = {
         "cost_tier_name": "cheap_frontier",
         "cost_tier_type": "free_local",
         "cost_measurement_source": "free_local",
@@ -500,7 +500,7 @@ def test_a_historical_beam_row_is_priced_from_a_live_models_dev_read(
         model_catalog, "pricing_models_dev_index", model_catalog.shipped_pricing_index
     )
     beam = {"cost_tier_name": "cheap_cloud", "model_name": "Beam-1.0-501B-A23B"}
-    rows = {
+    rows: dict[str, dict[str, object]] = {
         "by-delegated-to": {**beam, "delegated_to": "byok-reflection"},
         "by-backend-id": {
             **beam,
@@ -566,7 +566,7 @@ def test_a_historical_beam_row_is_priced_from_a_live_models_dev_read(
     }
 
 
-_BEAM_ROWS = {
+_BEAM_ROWS: dict[str, dict[str, object]] = {
     "beam": {
         "cost_tier_name": "cheap_cloud",
         "model_name": "Beam-1.0-501B-A23B",
