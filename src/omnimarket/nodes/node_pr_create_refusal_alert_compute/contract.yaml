@@ -22,6 +22,7 @@ handler:
   module: omnimarket.nodes.node_pr_create_refusal_alert_compute.handlers.handler_pr_create_refusal_alert
   class: HandlerPrCreateRefusalAlertCompute
   input_model: omnimarket.nodes.node_pr_create_refusal_alert_compute.models.ModelPrCreateRefusalAlertRequest
+  output_model: omnimarket.nodes.node_pr_create_refusal_alert_compute.models.ModelPrCreateRefusalAlertResult
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
@@ -36,12 +37,13 @@ descriptor:
   purity: pure
   idempotent: true
   timeout_ms: 1000
-  runtime_profiles:
-  - main
+  runtime_profiles: []
 # Invoked in process by the caller that reads the lane rows (as node_local_alert_compute is); it declares no topic of its own.
 event_bus:
   subscribe_topics: []
   publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the caller that reads the lane rows of one window.
 metadata:
   transport_type: local
 inputs:
