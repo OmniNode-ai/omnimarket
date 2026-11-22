@@ -75,6 +75,9 @@ dod_evidence:
           test -z "$base" || ! git diff --name-only "$base" HEAD
           | grep -vE "^(src/omnimarket/(handlers|models|projection|nodes/node_projection_[a-z_]+)/|tests/|contracts/OMN-26355.yaml$)"; }'
         cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omn18905_writers_carry_source_coordinates.py -q --no-cov -k partition_missing_delivery_context_no_source_reads_a_coordinate_unconditionally
+        cwd: .
   - id: dod-omn26355-integration-proof
     description: "Run the focused delivery-context tests and the writer tests they touch on a lab host at the pushed head; the local Done gate runs this unbound check."
     source: manual
