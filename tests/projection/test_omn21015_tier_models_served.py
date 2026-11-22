@@ -81,6 +81,9 @@ def client(tmp_path: Path) -> TestClient:
                 "delegated_to": model,
                 "cost_tier_name": tier,
                 "cost_usd": cost,
+                # OMN-26413: each run recorded its tokens, so it is a run the metering headline counts.
+                "tokens_input": 100,
+                "tokens_output": 10,
                 "quality_gate_passed": True,
                 "data_source": "real",
                 "created_at": f"2026-10-14T05:{index:02d}:00+00:00",
