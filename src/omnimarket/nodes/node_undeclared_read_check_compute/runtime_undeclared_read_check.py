@@ -13,11 +13,11 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
-from typing import Any
 
-import yaml
-
+from omnimarket.handlers.overlay_documents_reader import (
+    load_overlay_documents,
+    read_text_file,
+)
 from omnimarket.nodes.node_undeclared_read_check_compute.handlers import (
     HandlerUndeclaredReadCheck,
 )
@@ -29,15 +29,6 @@ EXIT_OK = 0
 EXIT_REFUSED = 1
 EXIT_USAGE = 2
 EXIT_UNREAD = 3
-
-
-def load_documents(roots: list[str]) -> dict[str, Any]:
-    documents: dict[str, Any] = {}
-    for root in roots:
-        for path in sorted(Path(root).glob("*/overlay.yaml")):
-            text = path.read_text()  # node-purity-ok: CLI boundary reads the overlay documents it hands to the pure handler
-            documents.setdefault(path.parent.name, yaml.safe_load(text))
-    return documents
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -56,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.diff_file == "-":
         diff_text = sys.stdin.read()
     else:
-        diff_text = Path(args.diff_file).read_text()  # node-purity-ok: CLI boundary
+        diff_text = read_text_file(args.diff_file)
     handler = HandlerUndeclaredReadCheck()
     first = handler.handle(
         ModelUndeclaredReadCheckRequest(diff_text=diff_text, overlay_documents={})
@@ -66,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_OK
     result = handler.handle(
         ModelUndeclaredReadCheckRequest(
-            diff_text=diff_text, overlay_documents=load_documents(roots)
+            diff_text=diff_text, overlay_documents=load_overlay_documents(roots)
         )
     )
     if not result.register_present:
