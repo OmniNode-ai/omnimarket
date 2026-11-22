@@ -41,6 +41,7 @@ from omnimarket.nodes.node_handoff_check_effect.models import (
     fmt_ts,
     parse_ts,
 )
+from omnimarket.nodes.node_handoff_check_effect.protocols import ProtocolLedgerRows
 
 
 def now_for(request: ModelHandoffCheckRequest) -> dt.datetime:
@@ -61,14 +62,12 @@ def _declared_statuses(path: str | None) -> Mapping[str, Mapping[str, object]]:
 
 
 def assemble(
-    request: ModelHandoffCheckRequest, policy: ModelHandoffPolicy, ledger_path: str
+    request: ModelHandoffCheckRequest,
+    policy: ModelHandoffPolicy,
+    ledger_rows: ProtocolLedgerRows,
 ) -> ModelAssembledHandoff:
     now = now_for(request)
-    ledger = Path(ledger_path)
-    rows = load_rows(
-        ledger,
-        Path(request.archive_dir) if request.archive_dir else ledger.parent / "archive",
-    )
+    rows = load_rows(ledger_rows)
     rows = [r for r in rows if r.ts <= now]
     gate = policy.ruling_gate
     declared = _declared_statuses(request.statuses)
@@ -85,7 +84,7 @@ def assemble(
             )
     newest = rows[-1].ts if rows else now
     at, ledger_ttl = fmt_ts(now), policy.stale.ttl_for("ledger")
-    ledger_src = f"ledger {ledger.name} newest row {fmt_ts(newest)}"
+    ledger_src = f"ledger bus newest row {fmt_ts(newest)}"
     sections: dict[str, list[ModelFact]] = {s.id: [] for s in policy.sections}
     session = re.sub(
         r"[^A-Za-z0-9_.-]",
@@ -153,8 +152,8 @@ def assemble(
     ]
     sections["holds"].append(
         make_fact(
-            f"{len(held)} HOLD row(s) have no RELEASE in the whole ledger: {len(live)} in force (until= ahead or open-ended), {len(held) - len(live)} past their until=",
-            f"ledger scan {ledger.name} and archive",
+            f"{len(held)} HOLD row(s) have no RELEASE in the reader's rows window: {len(live)} in force (until= ahead or open-ended), {len(held) - len(live)} past their until=",
+            "ledger scan of the bus reader window",
             at,
             ledger_ttl,
         )
@@ -172,7 +171,7 @@ def assemble(
         make_fact("no open CLAIM in the scan window", ledger_src, at, ledger_ttl)
     ]
     if request.readers:
-        sections["lanes"] += reader_excerpts(request.lane or "", now)
+        sections["lanes"] += reader_excerpts(ledger_rows, request.lane or "", now)
     sections["stopped"] = stopped_facts(rows, policy, now)
     sections["asks"] = ask_facts(rows, policy, now)
     sections["prs"], pr_unv = pr_facts(

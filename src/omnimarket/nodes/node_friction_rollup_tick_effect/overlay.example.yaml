@@ -22,16 +22,32 @@ bucket_hours: 2
 # Under the registry root when the request names no state_dir; the status row names reports under it.
 state_subdir: ".onex_state/friction-rollup"
 latest_stem: latest
-# Beside the ledger when the request names no archive_dir; the sorted files matching the glob are read after the ledger.
-archive_subdir: archive
-archive_glob: "*-split.md"
 # The status row's character budgets for the top classes, the new classes and the needs-ticket classes.
 top_budget_chars: 900
 new_classes_budget_chars: 500
 needs_ticket_budget_chars: 900
-# The command that appends one row: it runs `<command> <ledger> --append <row>`.
-appender_command: [onex-ledger]
-appender_timeout_seconds: 60
+# The ledger is read and appended over the bus, never from a file (OMN-26329). The variables hold the commands the unit's
+# environment names: the read command answers one typed paged request on stdin, the append command takes one row.
+ledger_read_command_env: ONEX_LEDGER_BUS_READ_COMMAND
+ledger_append_command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+ledger_host_env: ONEX_LEDGER_HOST_NAME
+appender_timeout_seconds: 120
+# The read node refuses an answer over its byte bound whatever the window (STATUS rows alone were 6.8 MB for 24 hours), so
+# the tick asks for a page at a time with the node's cursor and reads only the kinds below. A read that does not reach its
+# last page is unread and refuses the tick (exit 2); a rollup is never drawn from a short read. The signals block is drawn
+# from the rows read: the STATUS rows without a resolved= cell are not read, so a signal found only in one is not counted.
+ledger_page_timeout_seconds: 60
+ledger_page_size: 200
+ledger_max_pages: 12
+ledger_time_budget_seconds: 240
+ledger_reads:
+  - kinds: [FRICTION]
+    why: every FRICTION row is a class observation (class, cost, tickets, lane)
+  - kinds: [STATUS]
+    term: "resolved="
+    why: the STATUS rows that carry a resolved=<class> cell give each class its resolved_at
+  - kinds: [CORRECTION, TERMINAL]
+    why: the correction-row and lane-refused-or-halted signals are drawn from these rows
 # The class rules and class owners are the overlay home's: <root>/<class_overlay_id>/overlay.yaml under a root named in
 # ONEX_SKILL_OVERLAY_ROOTS, or the file the variable class_overlay_file_env names. When neither supplies them the tick still
 # finishes and says class-rules=unapplied with the cause (exit 3).
