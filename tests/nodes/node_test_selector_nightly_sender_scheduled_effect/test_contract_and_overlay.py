@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -38,7 +39,7 @@ TICK = "onex.intent.platform.runtime-tick.v1"
 RUN_EVENT = "onex.evt.omnimarket.schedule-run.v1"
 
 
-def contract() -> dict[str, object]:
+def contract() -> dict[str, Any]:
     loaded = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
     return loaded
@@ -62,21 +63,21 @@ def test_contract_and_overlay_the_contract_binds_the_tick_the_overlay_and_the_te
     assert loaded["input_subscriptions"] == [
         {"topic": TICK, "operation": "nightly_sender.scheduled_tick"}
     ]
-    assert loaded["event_bus"]["subscribe_topics"] == [TICK]  # type: ignore[index]
+    assert loaded["event_bus"]["subscribe_topics"] == [TICK]
     assert loaded["terminal_event"] == RUN_EVENT
-    assert RUN_EVENT in loaded["event_bus"]["publish_topics"]  # type: ignore[index]
-    declared = loaded["runtime"]["schedule_overlay"]  # type: ignore[index]
+    assert RUN_EVENT in loaded["event_bus"]["publish_topics"]
+    declared = loaded["runtime"]["schedule_overlay"]
     assert declared["overlay_id"] == NODE
     module, _, name = str(declared["model"]).rpartition(".")
     assert (
         getattr(importlib.import_module(module), name)
         is ModelNightlySenderScheduleOverlay
     )
-    routed = loaded["handler_routing"]["handlers"][0]  # type: ignore[index]
+    routed = loaded["handler_routing"]["handlers"][0]
     assert routed["operation"] == "nightly_sender.scheduled_tick"
-    assert loaded["descriptor"]["timeout_ms"] >= 2 * 1000 * int(
-        OVERLAY["command_timeout_seconds"]
-    )  # type: ignore[index, call-overload]
+    command_timeout = OVERLAY["command_timeout_seconds"]
+    assert isinstance(command_timeout, int)
+    assert loaded["descriptor"]["timeout_ms"] >= 2 * 1000 * command_timeout
 
 
 def test_contract_and_overlay_the_two_commands_and_their_terminal_events_are_declared() -> (
@@ -87,11 +88,10 @@ def test_contract_and_overlay_the_two_commands_and_their_terminal_events_are_dec
     assert load_command_topics("collect_nightly").success == COLLECT_TERMINAL
     assert load_command_topics("publish_attribution_record").command == PUBLISH_COMMAND
     assert load_command_topics("publish_attribution_record").success == PUBLISH_TERMINAL
-    publish = loaded["event_bus"]["publish_topics"]  # type: ignore[index]
+    publish = loaded["event_bus"]["publish_topics"]
     assert {COLLECT_COMMAND, PUBLISH_COMMAND} <= set(publish)
     grants = {
-        (g["name"], g["operation"])
-        for g in loaded["broker_acl_grants"][0]["grants"]  # type: ignore[index]
+        (g["name"], g["operation"]) for g in loaded["broker_acl_grants"][0]["grants"]
     }
     for topic in (COLLECT_COMMAND, PUBLISH_COMMAND, RUN_EVENT):
         assert (topic, "WRITE") in grants

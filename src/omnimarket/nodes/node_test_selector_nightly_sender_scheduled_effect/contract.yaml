@@ -89,8 +89,12 @@ command_sends:
     command_topic: onex.cmd.omnimarket.test-selector-publish-record-requested.v1
     terminal_topic: onex.evt.omnimarket.test-selector-record-published.v1
 
+# The collector (node_test_selector_miss_collect_effect) runs as its own process, not as a runtime subscription (its
+# event_bus.subscribe_topics is empty), so the runtime wires no subscriber for the two command topics this node sends.
 externally_consumed_topics:
   - onex.evt.omnimarket.schedule-run.v1
+  - onex.cmd.omnimarket.test-selector-collect-nightly-requested.v1
+  - onex.cmd.omnimarket.test-selector-publish-record-requested.v1
 
 # Where the schedule reads its settings. The overlays are found under ONEX_SKILL_OVERLAY_ROOTS or the file the env var names.
 runtime:

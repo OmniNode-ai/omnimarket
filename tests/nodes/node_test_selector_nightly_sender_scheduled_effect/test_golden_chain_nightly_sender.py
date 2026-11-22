@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from omnimarket.handlers.schedule_run_store import InMemoryScheduleRunStore
 from omnimarket.models.scm import ModelScmBusReceipt, ModelScmTerminal, ModelScmTopics
@@ -47,7 +47,7 @@ from tests.nodes.node_test_selector_nightly_sender_scheduled_effect.support impo
 pytestmark = pytest.mark.unit
 
 
-def terminal(topic: str, payload: dict[str, object]) -> ModelScmTerminal:
+def terminal(topic: str, payload: dict[str, JsonValue]) -> ModelScmTerminal:
     import uuid
 
     return ModelScmTerminal(
@@ -61,7 +61,7 @@ def terminal(topic: str, payload: dict[str, object]) -> ModelScmTerminal:
             terminal_offset=None,
         ),
         failed=False,
-        payload=payload,  # type: ignore[arg-type]
+        payload=payload,
     )
 
 
