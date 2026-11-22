@@ -1,0 +1,68 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-26319
+title: 'Unblock omnimarket PR 6535: merge the current base and keep the moved ledger reader tests under the ledger file census ratchet'
+summary: 'The branch takes the current dev tip. The two test files the moved ledger readers touched name the ledger path variable on one line more than the per-file census ratchet allows, so the idle fill test shares one session env helper and the adapter test drops an unused path entry. No workflow, required-contexts list or ratchet baseline changes.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26319-ac1
+  statement: the per-file ledger census ratchet passes on the merged tree and the focused tests of the moved readers pass.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: omnimarket#6535 reads the required checks CI Summary, Tests (Split 10/20) and delegation-health-check / Delegation Health Check at success at its new head, read through the scm path after the push -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6535` shows any of the three red or missing at the new head'
+- id: req-omn26319-ac2
+  statement: no check is widened, skipped or bypassed by the change.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: no check is widened, skipped or bypassed, so the diff from d01ac5bc2433 to the new head touches no workflow file, no required-contexts list, no ratchet baseline to loosen a gate and adds no skip or xfail marker -- falsifier: `git diff d01ac5bc2433 <new head> -- .github .onex_ratchets` or the test diff shows a removed assertion, a new skip or xfail, or a loosened threshold'
+- id: req-omn26319-ac3
+  statement: the new head carries a Lab comment with a red-then-green lab run behind it.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the new head is on the PR as a comment starting `Lab: head=<full sha>` with a red-then-green lab run behind it, or a STATUS row names cause=<one line> shared=yes with its evidence when the cause is outside the PR -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6535` shows no comment with `Lab: head=` for the new head and the ledger holds no STATUS row with shared=yes for this ticket'
+evidence_requirements:
+- kind: tests
+  description: 'AC1: the two edited test files pass.'
+  command: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py tests/unit/handlers/test_adapter_work_ledger_rows_reader.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26319-ac1-tests
+  description: 'AC1: the two edited test files pass on the branch. The hosted runner runs them from the repository root with no lab host, no ledger and no network.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py tests/unit/handlers/test_adapter_work_ledger_rows_reader.py -q --no-cov
+    cwd: .
+- id: dod-omn26319-ac2-no-gate-change
+  description: 'AC2: the change touches no workflow file and no ratchet baseline; the census ratchet file is the one dev carries.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_ledger_census_wiring.py -q --no-cov
+    cwd: .
+- id: dod-omn26319-ac3-moved-reader-tests
+  description: 'AC3: the other test files the moved ledger readers edited pass on the branch, the same tests the lab run exercises at the pushed head. The hosted runner runs them from the repository root with no lab host, no ledger and no network.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_fixer_holds_fill_omn21396.py tests/nodes/test_ruling_recovery.py tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py tests/unit/nodes/node_convergence_orchestrator/test_mode_changes_clone.py -q --no-cov
+    cwd: .
+- id: dod-omn26319-integration-proof
+  description: 'Run the moved readers focused tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26319 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py tests/unit/handlers/test_adapter_work_ledger_rows_reader.py -q --no-cov
+    cwd: .

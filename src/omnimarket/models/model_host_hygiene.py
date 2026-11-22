@@ -29,6 +29,7 @@ class EnumHostHygieneReason(StrEnum):
     UNREAD_SKIPPED = "unread_skipped"
     BELOW_THRESHOLD = "below_threshold"
     INTERVAL_NOT_ELAPSED = "interval_not_elapsed"
+    HELD = "held"
 
 
 class EnumHostHygieneUnreadPolicy(StrEnum):
@@ -57,6 +58,10 @@ class ModelHostHygieneLastDispatch(_Frozen):
 class ModelHostHygieneHostFacts(_Frozen):
     host: NonEmptyStr
     cleanup_ids: tuple[str, ...] = Field(min_length=1)
+    # The host's capacity guard as read by the caller: None when the guard does
+    # not hold the host, otherwise the guard's hold reason (for example "heat").
+    # Required: every caller must state what its guard read.
+    held_reason: Annotated[str, StringConstraints(min_length=1)] | None
     reading: ModelHostHygieneReading | None = None
     last_dispatched: tuple[ModelHostHygieneLastDispatch, ...] = ()
 
@@ -99,6 +104,8 @@ class ModelHostHygieneDecisionItem(_Frozen):
     reason: EnumHostHygieneReason
     used_fraction: float | None = None
     reading_age_seconds: int | None = None
+    # The guard's hold reason, copied from the facts when reason is HELD.
+    held_reason: str | None = None
 
 
 class ModelHostHygieneDecision(_Frozen):

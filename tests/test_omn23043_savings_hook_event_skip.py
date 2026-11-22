@@ -17,6 +17,9 @@ from typing import Any, ClassVar
 
 import pytest
 
+from omnimarket.models.model_projection_delivery_context_error import (
+    ProjectionDeliveryContextMissingError,
+)
 from omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer import (
     SavingsProjectionWriter,
 )
@@ -112,7 +115,11 @@ def test_other_topics_are_never_skipped(writer: SavingsProjectionWriter) -> None
 def test_a_skipped_event_without_source_coordinates_fails_as_the_base_does(
     writer: SavingsProjectionWriter,
 ) -> None:
-    """Error chain: an ignored event lacking its coordinates is not silently passed over."""
-    with pytest.raises(KeyError, match="_partition"):
+    """Error chain: an ignored event lacking its coordinates is not silently passed over.
+
+    It is refused with the typed error that names the missing key, as the base writer
+    refuses it, rather than a bare ``KeyError``.
+    """
+    with pytest.raises(ProjectionDeliveryContextMissingError, match="_partition"):
         writer.handle({"_topic": HOOK_TOPIC, "_offset": 5, "hook_event_name": "Stop"})
     assert _RecordingRunner.constructed == 0

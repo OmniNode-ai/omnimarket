@@ -8,6 +8,7 @@ from typing import Any
 from omnimarket.handlers.handler_projection_runtime_writer import (
     RuntimeProjectionWriter,
 )
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_savings.handlers.handler_compaction_savings import (
     POST_COMPACT_HOOK_EVENT,
 )
@@ -35,14 +36,16 @@ class SavingsProjectionWriter(RuntimeProjectionWriter):
         against a topic that grows faster, so its backlog never fell. The skip is
         the runner's own result for such an event, reached without that setup.
 
-        The source coordinates are read first, as the base writer reads them, so
-        a delivery that lacks ``_partition`` or ``_offset`` fails here as it does
+        The delivery context is read first, through the same typed request the
+        base writer reads, so a delivery that lacks ``_partition`` or ``_offset``
+        is refused here with ``ProjectionDeliveryContextMissingError`` as it is
         there instead of being passed over, and a skipped delivery is logged
         with the coordinates it was skipped at.
         """
-        topic = str(request.get("_topic", ""))
-        partition = int(request["_partition"])
-        offset = int(request["_offset"])
+        delivery = ModelProjectionRequest.from_injected(
+            request
+        ).require_delivery_context()
+        topic = str(delivery.topic)
         if (
             topic.endswith(_HOOK_EVENT_TOPIC_SUFFIX)
             and request.get("hook_event_name") != POST_COMPACT_HOOK_EVENT
@@ -50,8 +53,8 @@ class SavingsProjectionWriter(RuntimeProjectionWriter):
             logger.debug(
                 "savings projection passed over an ignored hook event at %s[%d]@%d",
                 topic,
-                partition,
-                offset,
+                delivery.partition,
+                delivery.offset,
             )
             return {"projected": True}
         return super().handle(request)

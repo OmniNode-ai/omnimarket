@@ -46,6 +46,7 @@ from omnimarket.nodes.node_convergence_orchestrator.handlers.handler_convergence
     NODE_NAME,
     HandlerConvergenceScheduled,
 )
+from tests.helpers.fake_ledger_rows import FakeLedgerRows
 
 pytestmark = pytest.mark.unit
 
@@ -181,6 +182,7 @@ class InProcessHostSender:
                 env=env,
                 engine_argv=[sys.executable, "-c", "pass"],
                 run=self._run,
+                ledger_reader=FakeLedgerRows(),
             )
             lines = [
                 f"{o.status.value.upper():9} {o.clone} refused {o.refused_for_seconds}s: {o.reason}"

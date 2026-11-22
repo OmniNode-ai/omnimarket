@@ -47,6 +47,9 @@ from omnimarket.nodes.node_onex_setup_effect.models import ModelOnexSetupRequest
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_observation import (
     ModelSetupObservation,
 )
+from omnimarket.nodes.node_runtime_bus_forward_effect.adapter_core_forwarder import (
+    CoreRuntimeBusForwarder,
+)
 from tests.helpers.setup_shell_environment import isolate_setup_shell
 
 pytestmark = pytest.mark.unit
@@ -176,6 +179,13 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         HandlerSetupPreflight,
         "observe",
         lambda _self, _plan: ModelSetupObservation(step="preflight", status="success"),
+    )
+    # omnibase-core 0.47.74 ends a hosted run non-zero when none of its recorded events reached the
+    # hosted bus. The hosted bus is the boundary here: the installed forwarder carries every event.
+    monkeypatch.setattr(
+        CoreRuntimeBusForwarder,
+        "forward",
+        lambda _self, events: {"forwarded": len(events), "failed": 0, "detail": ""},
     )
     store = tmp_path / "delegation" / "delegation.sqlite"
     store.parent.mkdir()
