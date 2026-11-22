@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The count's sources read from the files a lab host holds: the PR watcher state, the work ledger, the placement read, the host table."""
+"""The count's sources read from the files a lab host holds: the PR watcher state, the work ledger's rows (from the reader node), the placement read, the host table."""
 
 from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, Iterator
-from datetime import UTC, date, datetime, timedelta
+from collections.abc import Callable, Iterable, Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -35,9 +35,6 @@ _ADOPTED = re.compile(
 )
 
 
-_ARCHIVE_DATE = re.compile(r"_(?P<date>\d{4}-\d{2}-\d{2})-split\.md$")
-
-
 class ModelSourceLabels(BaseModel):
     """The words the files use and the labels the count's pull request states take, from the effect's contract."""
 
@@ -53,8 +50,8 @@ class ModelSourceLabels(BaseModel):
     claim_row: str = Field(min_length=1)
     terminal_row: str = Field(min_length=1)
     lane_live_window_hours: int = Field(gt=0)
-    # A ledger roll moves older rows to archive/<ledger name>_<date>-split.md; archives rolled inside this many days
-    # of the clock are read with the live file, so a roll does not take a recent day's evidence away.
+    # The ledger rows come from the work ledger reader node for a window of this many days back from the clock, so
+    # a ledger roll does not take a recent day's evidence away.
     ledger_archive_days: int = Field(default=8, gt=0)
 
 
@@ -78,7 +75,7 @@ class SourceLocalFiles:
         self,
         *,
         watcher_state: Path,
-        ledger: Path,
+        ledger_rows: Callable[[], Iterable[str]],
         labels: ModelSourceLabels,
         hosts: Callable[[], ModelHostTableResult],
         placement_read: Path,
@@ -89,7 +86,7 @@ class SourceLocalFiles:
         provenance_cause: str = "",
     ) -> None:
         self._watcher_state = watcher_state
-        self._ledger = ledger
+        self._ledger_rows = ledger_rows
         self._labels = labels
         self._hosts = hosts
         self._placement_read = placement_read
@@ -100,17 +97,9 @@ class SourceLocalFiles:
         self._provenance_cause = provenance_cause
 
     def _ledger_lines(self) -> Iterator[str]:
-        """The archives rolled inside the window in date order, then the live file: rows come in time order."""
-        archive = self._ledger.parent / "archive"
-        floor = (self._now - timedelta(days=self._labels.ledger_archive_days)).date()
-        rolled: list[tuple[date, Path]] = []
-        if archive.is_dir():
-            for path in archive.glob(f"{self._ledger.stem}_*-split.md"):
-                found = _ARCHIVE_DATE.search(path.name)
-                if found is not None and date.fromisoformat(found["date"]) >= floor:
-                    rolled.append((date.fromisoformat(found["date"]), path))
-        for path in [p for _, p in sorted(rolled)] + [self._ledger]:
-            for line in path.read_text(encoding="utf-8").splitlines():
+        """The reader node's rows for the window, in time order, one line at a time."""
+        for row in self._ledger_rows():
+            for line in row.splitlines():
                 # A roll leaves an HTML comment and a blockquote header that quote the heading it
                 # rolled (a CLAIM with its host cell, whole); neither is a row.
                 if not line.startswith(("<!--", ">")):

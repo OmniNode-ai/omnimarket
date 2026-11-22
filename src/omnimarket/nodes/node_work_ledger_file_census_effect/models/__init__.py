@@ -4,6 +4,8 @@
 
 from omnimarket.nodes.node_work_ledger_file_census_effect.models.model_file_census import (
     EnumCensusKind,
+    ModelCensusDailyRecord,
+    ModelCensusDailyRow,
     ModelCensusHit,
     ModelCensusOverlay,
     ModelCensusRepository,
@@ -14,6 +16,8 @@ from omnimarket.nodes.node_work_ledger_file_census_effect.models.model_file_cens
 
 __all__ = [
     "EnumCensusKind",
+    "ModelCensusDailyRecord",
+    "ModelCensusDailyRow",
     "ModelCensusHit",
     "ModelCensusOverlay",
     "ModelCensusRepository",

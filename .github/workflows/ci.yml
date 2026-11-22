@@ -1266,6 +1266,7 @@ jobs:
       split_count: ${{ steps.detect.outputs.split_count }}
       matrix: ${{ steps.detect.outputs.matrix }}
       selected_paths: ${{ steps.detect.outputs.selected_paths }}
+      collection_gate: ${{ steps.record.outputs.collection_gate }}
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -1327,6 +1328,7 @@ jobs:
             --ref-name "${{ github.ref_name }}" \
             --event-name "${{ github.event_name }}" \
             --feature-flag on \
+            --stage 0 \
             > selection-stage-0.json
 
       # The typed record of this run's selection: the executed selection and the selection of each
@@ -1386,6 +1388,37 @@ jobs:
           echo "split_count=$split_count" >> "$GITHUB_OUTPUT"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "selected_paths=$paths" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Collection gate (OMN-26277): with the root conftest edge cut, a closure that reaches
+  # tests/conftest.py selects its own tests and not the tree, so one whole-tree collection proves
+  # that no import breaks anywhere. It follows the detect job and runs once per pull request, never
+  # inside the sharded `test` job below (a collection step there would run once per shard). It runs
+  # only when the detect job's collection_gate output is true: the policy's cut edge, at or above
+  # file_level_closure_stage, for a narrowed selection.
+  # ---------------------------------------------------------------------------
+  collection-gate:
+    name: Collection Gate
+    needs: [repo-evidence-preflight, detect-changes]
+    if: needs.detect-changes.result == 'success' && needs.detect-changes.outputs.collection_gate == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - name: Clone omnibase_core
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnimemory
+        run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Collect the whole tree once
+        run: uv run pytest tests/ --collect-only -q -m "not kafka and not release_proof" -p no:cacheprovider
 
   test:
     name: Tests (Split ${{ matrix.split }}/${{ needs.detect-changes.outputs.split_count }})

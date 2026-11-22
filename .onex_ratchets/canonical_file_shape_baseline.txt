@@ -173,7 +173,6 @@ scripts/ci/run_dep_health_sweep.py
 scripts/ci/run_quality_gate_calibration.py
 scripts/ci/run_runtime_profiles_validator.py
 scripts/ci/run_shadow_slice.py
-scripts/ci/test_selection_loader.py
 scripts/ci/verify_pypi_pin_resolvability.py
 scripts/ci_bus_lanes.py
 scripts/cost_event_publisher.py
