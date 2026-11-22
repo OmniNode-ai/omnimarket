@@ -85,7 +85,9 @@ def test_provider_values_win_and_models_dev_fills_only_the_gaps() -> None:
     )
     assert entry.context_tokens == 200_000
     assert entry.input_usd_per_million == Decimal(3)
-    assert entry.sources == {
+    assert {
+        key: entry.sources[key] for key in ("model", "context", "price", "capabilities")
+    } == {
         "model": "OpenRouter",
         "context": "OpenRouter",
         "price": "OpenRouter",
@@ -93,6 +95,129 @@ def test_provider_values_win_and_models_dev_fills_only_the_gaps() -> None:
     }
     assert entry.max_output_tokens == 64_000  # not stated by the provider
     assert entry.tiered_price is True
+
+
+@pytest.mark.parametrize("provider_field", ["input", "output"])
+def test_details_attribute_each_model_fact_to_its_source(provider_field: str) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.cli_model_table import _detail_rows
+    from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+        tui_design,
+    )
+
+    entry = catalog_entry(
+        "openrouter",
+        "vendor/big",
+        deployment="cloud",
+        index=_index(),
+        provider_label="OpenRouter",
+        context_tokens=200_000,
+        input_usd_per_million=0 if provider_field == "input" else None,
+        output_usd_per_million=0 if provider_field == "output" else None,
+        capabilities={"Tools": "no"},
+    )
+    words = tui_design().model_table
+    labels = words.details
+    rows = dict(_detail_rows(entry, "OpenRouter"))
+    assert (
+        rows[labels[provider_field]] == f"$0.00 {labels['per_million']}  (OpenRouter)"
+    )
+    other, amount = (
+        ("output", "$25.00") if provider_field == "input" else ("input", "$5.00")
+    )
+    assert rows[labels[other]] == f"{amount} {labels['per_million']}  (models.dev)"
+    assert rows[labels["context"]] == "200K  (OpenRouter)"
+    assert rows[labels["max_output"]] == "64K  (models.dev)"
+    assert rows[labels["name"]] == "Big  (models.dev)"
+    assert rows[labels["cache_read"]] == "$0.50  (models.dev)"
+    assert rows[labels["cache_write"]] == words.unknown_mark
+    assert rows[labels["pricing"]] == f"{labels['tiered']}  (models.dev)"
+    assert rows["Tools"] == f"{labels['no']}  (OpenRouter)"
+    assert rows["Reason"] == f"{labels['no']}  (models.dev)"
+    assert entry.sources["price"] == "OpenRouter + models.dev"
+
+
+def test_capabilities_a_provider_lists_reach_the_details_from_its_own_list() -> None:
+    """The real listing path: a captured OpenRouter body, no models.dev entry."""
+    from omnimarket.handlers.routing.byok_model_listing import list_byok_models
+    from omnimarket.nodes.node_onex_setup_effect.cli_model_table import _detail_rows
+    from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+        tui_design,
+    )
+
+    capture = Path(__file__).parents[2] / "fixtures/openrouter_models_2026_11_20.json"
+    body = json.loads(capture.read_text(encoding="utf-8"))
+    listing = list_byok_models("openrouter", "key", get=lambda **_: body)
+    model = next(
+        m for m in listing.models if m.id == "nvidia/nemotron-3.5-super-vl:free"
+    )
+    entry = model_catalog.listed_catalog_entry(
+        "openrouter", model, EMPTY_INDEX, provider_label="OpenRouter"
+    )
+    words = tui_design().model_table
+    rows = dict(_detail_rows(entry, "OpenRouter"))
+    # The row lists "tools" and an "image" input; it states nothing about files.
+    assert rows["Tools"] == f"{words.details['yes']}  (OpenRouter)"
+    assert rows["Vision"] == f"{words.details['yes']}  (OpenRouter)"
+    assert rows["Files"] == words.unknown_mark
+
+
+async def test_every_detail_row_can_be_reached_on_an_80_by_24_terminal() -> None:
+    """The details overflow a small terminal; the last rows must scroll into view."""
+    from textual.app import App
+    from textual.widgets import Static
+
+    from omnimarket.nodes.node_onex_setup_effect.cli_model_table import (
+        ModelDetailsScreen,
+        _detail_rows,
+    )
+
+    entry = catalog_entry(
+        "openrouter",
+        "vendor/big",
+        deployment="cloud",
+        index=_index(),
+        provider_label="OpenRouter",
+        context_tokens=200_000,
+    )
+    last = str(_detail_rows(entry, "OpenRouter")[-1][1])
+    app: App[None] = App()
+    async with app.run_test(size=(80, 24)) as pilot:
+        details = ModelDetailsScreen(entry, "OpenRouter")
+        await app.push_screen(details)
+        await pilot.pause()
+        row = next(w for w in details.query(Static) if str(w.render()) == last)
+        view = details.query_one("#md").content_region
+
+        def shown() -> bool:
+            return view.y <= row.region.y and row.region.bottom <= view.bottom
+
+        assert not shown()  # the rows do overflow this terminal
+        await pilot.press("end")
+        await pilot.pause()
+        assert shown()
+
+
+@pytest.mark.parametrize("legacy_source", ["models.dev", "OpenRouter + models.dev"])
+def test_details_use_legacy_prices_only_when_the_source_is_unambiguous(
+    legacy_source: str,
+) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.cli_model_table import _detail_rows
+    from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+        tui_design,
+    )
+
+    entry = catalog_entry(
+        "openrouter",
+        "vendor/big",
+        deployment="cloud",
+        index=_index(),
+        provider_label="OpenRouter",
+    ).model_copy(update={"sources": {"price": legacy_source}})
+    labels = tui_design().model_table.details
+    rows = dict(_detail_rows(entry, "OpenRouter"))
+    for field, value in (("input", "$5.00"), ("output", "$25.00")):
+        source_note = "  (models.dev)" if legacy_source == "models.dev" else ""
+        assert rows[labels[field]] == f"{value} {labels['per_million']}{source_note}"
 
 
 def test_models_dev_supplies_what_the_provider_did_not_state() -> None:
@@ -189,6 +314,10 @@ def test_a_local_model_never_gets_a_hosted_price() -> None:
     )
     assert entry.input_usd_per_million is None
     assert price_text(entry) == tui_design().model_table.price_local
+    assert entry.cache_read_usd_per_million is None
+    assert entry.cache_write_usd_per_million is None
+    assert not entry.tiered_price
+    assert entry.capabilities["Cache"] == "unknown"
 
 
 def test_prices_are_exact_decimals_and_print_in_dollars() -> None:
@@ -276,6 +405,64 @@ def test_stored_entries_keep_the_users_order_and_test_status() -> None:
         ("vendor/big", "untested", None),
         ("vendor/other", "failed", "timeout"),
     ]
+
+
+@pytest.mark.parametrize("fresh", [True, False])
+def test_saved_model_facts_follow_the_fresh_provider_listing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fresh: bool
+) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import selected_models
+
+    monkeypatch.setattr(model_catalog, "_onex_home", lambda: tmp_path)
+    model = ModelByokListedModel(
+        id="vendor/big",
+        name="Provider display",
+        context_tokens=16_000,
+        input_usd_per_million=0,
+        output_usd_per_million=23,
+    )
+    model_catalog.remember_provider_listing(
+        ModelByokModelListing(
+            provider="openrouter",
+            outcome="listed",
+            models=(model, ModelByokListedModel(id="unsaved", name="Unsaved")),
+        )
+    )
+    if not fresh:
+        path = tmp_path / str(
+            catalog_config()["provider_listing"]["cache_file"]
+        ).format(provider="openrouter")
+        os.utime(path, (0, 0))
+    entries = selected_models(
+        [
+            {
+                "provider": "openrouter",
+                "set_up": True,
+                "models": ["other", model.id],
+                "last_test": {
+                    "model": model.id,
+                    "status": "failed",
+                    "reason": "timeout",
+                },
+            }
+        ],
+        [],
+        _index(),
+    ).entries
+    assert [entry.model_id for entry in entries] == ["other", model.id]
+    saved = entries[1]
+    assert (saved.status, saved.status_reason) == ("failed", "timeout")
+    if fresh:
+        assert (saved.display_name, saved.context_tokens) == (
+            "Provider display",
+            16_000,
+        )
+        assert (saved.input_usd_per_million, saved.output_usd_per_million) == (0, 23)
+        assert saved.sources["input"] == saved.sources["output"] == "OpenRouter"
+    else:
+        assert (saved.display_name, saved.context_tokens) == ("Big", 1_000_000)
+        assert (saved.input_usd_per_million, saved.output_usd_per_million) == (5, 25)
+        assert saved.sources["input"] == saved.sources["output"] == "models.dev"
 
 
 def _string_literals(path: Path) -> set[str]:
@@ -386,6 +573,60 @@ def test_a_read_provider_list_is_recalled_until_it_is_too_old(tmp_path: Path) ->
         model_catalog.recalled_provider_listing("openrouter", tmp_path, now=later)
         is None
     )
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(os.name != "posix", reason="mkfifo is POSIX only")
+def test_a_cache_path_that_is_not_a_regular_file_never_blocks(tmp_path: Path) -> None:
+    """The TUI reads this cache on its event loop: a FIFO there must not hang it."""
+    import threading
+
+    path = model_catalog._listing_path("openrouter", tmp_path)
+    path.parent.mkdir(parents=True)
+    os.mkfifo(path)
+    result: list[ModelByokModelListing | None] = []
+    reader = threading.Thread(
+        target=lambda: result.append(
+            model_catalog.recalled_provider_listing("openrouter", tmp_path)
+        ),
+        daemon=True,
+    )
+    reader.start()
+    reader.join(timeout=5)
+    assert not reader.is_alive(), "reading the provider-listing cache blocked"
+    assert result == [None]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("kind", ["regular-file", "directory", "fifo"])
+def test_only_an_aged_regular_file_is_an_expired_provider_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """OMN-23413 AC4: a directory or a FIFO at the listing path is no kept list,
+    so the table says nothing expired; an aged regular file is an expired one."""
+    if kind == "fifo" and os.name != "posix":
+        pytest.skip("mkfifo is POSIX only")
+    monkeypatch.setattr(model_catalog, "_onex_home", lambda: tmp_path)
+    path = model_catalog._listing_path("openrouter", tmp_path)
+    path.parent.mkdir(parents=True)
+    if kind == "regular-file":
+        path.write_bytes(b"kept list\n")
+    elif kind == "directory":
+        path.mkdir()
+    else:
+        os.mkfifo(path)
+    os.utime(path, (0, 0))
+
+    entries = stored_entries(
+        [{"provider": "openrouter", "set_up": True, "models": ["vendor/big"]}],
+        index=_index(),
+        deployment_of=lambda _provider: "cloud",
+        label_of=lambda provider, _server: provider,
+    )
+
+    assert [entry.provider_list_expired for entry in entries] == [
+        kind == "regular-file"
+    ]
 
 
 @pytest.mark.unit

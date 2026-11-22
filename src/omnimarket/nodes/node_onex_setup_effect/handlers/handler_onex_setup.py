@@ -25,9 +25,11 @@ is what a retry with a corrected key needs. Which omnibase install.sh step went 
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shlex
 import shutil
+import stat
 import tempfile
 import threading
 import uuid
@@ -35,6 +37,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import yaml
 from omnibase_core.cli.cli_user_config import USER_CONFIG_TEMPLATE, read_user_config
 from omnibase_core.errors.model_onex_error import ModelOnexError
 from omnibase_infra.handlers.handler_workspace_config_root_resolve import (
@@ -89,14 +92,19 @@ STATE_FILE_NAME = "setup.json"
 USER_CONFIG_FILE_NAME = "config.yaml"
 _OWNED_MARKERS = (SETUP_MARKER, INSTALL_SH_MARKER)
 
+_PREVIOUS_EDIT_NOTE = (
+    "# Hand edits are kept only if you delete the first line, after which onex setup\n"
+    "# never touches it."
+)
+_EDIT_NOTE = "# Setup keeps hand edits. Review or move an edited file before changing install paths."
+
 _RUNTIME_CONFIG_TEMPLATE = """\
 {marker}
 # install-path: {path}
 #
 # This workspace's runtime configuration, written for the install path above.
 # Rewrite it for another path with:  onex setup --path <local|docker>
-# Hand edits are kept only if you delete the first line, after which onex setup
-# never touches it.
+{edit_note}
 name: "omnibase-{path}"
 description: "{description}"
 input_topic: "requests"
@@ -171,7 +179,11 @@ def recorded_state(onex_home: Path) -> ModelOnexSetupState | None:
 def recorded_install_path(runtime_config: Path) -> str | None:
     if not runtime_config.is_file():
         return None
-    lines = runtime_config.read_text(encoding="utf-8").splitlines()
+    return runtime_config_install_path(runtime_config.read_text(encoding="utf-8"))
+
+
+def runtime_config_install_path(content: str) -> str | None:
+    lines = content.splitlines()
     if not lines or lines[0] not in _OWNED_MARKERS:
         return None
     for line in lines[1:4]:
@@ -353,27 +365,180 @@ def ensure_user_config(onex_home: Path) -> tuple[str, bool]:
     return str(config), True
 
 
-def ensure_runtime_config(workspace: Path, install_path: str) -> tuple[Path, bool]:
-    runtime_config = workspace / RUNTIME_CONFIG_RELPATH
-    if runtime_config.exists():
-        lines = runtime_config.read_text(encoding="utf-8").splitlines()
-        if not lines or lines[0] not in _OWNED_MARKERS:
-            raise StepFailedError(
-                "runtime_config",
-                f"{runtime_config} exists and was not written by onex setup or "
-                "install.sh; it is left untouched",
-                f"move {runtime_config} aside so setup can write the {install_path} "
-                "configuration",
-            )
+def _generated_runtime_config(install_path: str, edit_note: str = _EDIT_NOTE) -> str:
     bus_type, description = _PATH_SHAPES[install_path]
-    content = _RUNTIME_CONFIG_TEMPLATE.format(
+    return _RUNTIME_CONFIG_TEMPLATE.format(
         marker=SETUP_MARKER,
+        edit_note=edit_note,
         path=install_path,
         description=description,
         bus_type=bus_type,
     )
-    written = write_if_changed(runtime_config, content)
-    return runtime_config, written
+
+
+# What omnibase install.sh writes (write_runtime_config), byte for byte.
+_INSTALL_SH_RUNTIME_CONFIG_TEMPLATE = """\
+{marker}
+# install-path: {path}
+# python: {python}
+#
+# This workspace's runtime configuration, written for the install path above.
+# Rewrite it for another path with:  make switch-path INSTALL_PATH=<local|docker>
+# (or ./install.sh --switch-path <local|docker>). Hand edits are kept only
+# if you delete the first line, after which the installer never touches it.
+name: "omnibase-{path}"
+description: "{description}"
+input_topic: "requests"
+output_topic: "responses"
+group_id: "onex-runtime"
+event_bus:
+  type: "{bus_type}"
+  profile: "local"
+  environment: "local"
+  max_history: 1000
+  circuit_breaker_threshold: 5
+"""
+_INSTALL_SH_DESCRIPTIONS = {
+    "local": "omnibase install path local: fully local runtime, in-memory event bus, no Docker",
+    "docker": "omnibase install path docker: self-hosted Docker stack, Kafka-compatible event bus",
+}
+
+
+def _is_install_sh_runtime_config(content: str) -> bool:
+    lines = content.splitlines()
+    if len(lines) < 3 or not lines[2].startswith("# python: "):
+        return False
+    python = lines[2].removeprefix("# python: ")
+    return any(
+        content
+        == _INSTALL_SH_RUNTIME_CONFIG_TEMPLATE.format(
+            marker=INSTALL_SH_MARKER,
+            path=mode,
+            python=python,
+            description=_INSTALL_SH_DESCRIPTIONS[mode],
+            bus_type=_PATH_SHAPES[mode][0],
+        )
+        for mode in INSTALL_PATHS
+    )
+
+
+def runtime_config_is_complete(content: str) -> bool:
+    """Holds every key setup writes, nested ones too; values may be hand edited."""
+    try:
+        found = yaml.safe_load(content)
+    except yaml.YAMLError:
+        return False
+    template = yaml.safe_load(_generated_runtime_config("local"))
+    if not isinstance(found, dict):
+        return False
+    for key, expected in template.items():
+        if key not in found:
+            return False
+        if isinstance(expected, dict) and not (
+            isinstance(found[key], dict) and set(expected) <= set(found[key])
+        ):
+            return False
+    return True
+
+
+def runtime_config_can_switch(content: str) -> bool:
+    """Only a known generator's complete output can be replaced automatically."""
+    return _is_install_sh_runtime_config(content) or any(
+        content == _generated_runtime_config(mode, note)
+        for mode in INSTALL_PATHS
+        for note in (_EDIT_NOTE, _PREVIOUS_EDIT_NOTE)
+    )
+
+
+_FOLDER_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+_RUNTIME_CONFIG_MAX_BYTES = 1024 * 1024
+
+
+def _open_runtime_config_folder(workspace: Path) -> int:
+    """The runtime config's folder, opened without following a link anywhere below
+    the workspace, so the folder checked is the folder written."""
+    workspace.mkdir(parents=True, exist_ok=True)
+    folder = workspace
+    fd = os.open(workspace, _FOLDER_FLAGS)
+    try:
+        for part in RUNTIME_CONFIG_RELPATH.parent.parts:
+            folder = folder / part
+            try:
+                child = os.open(part, _FOLDER_FLAGS, dir_fd=fd)
+            except FileNotFoundError:
+                os.mkdir(part, 0o755, dir_fd=fd)
+                child = os.open(part, _FOLDER_FLAGS, dir_fd=fd)
+            os.close(fd)
+            fd = child
+    except OSError:
+        os.close(fd)
+        raise StepFailedError(
+            "runtime_config",
+            f"Setup needs a folder at {folder}, not a link or a file.",
+            f"Review {folder} or choose another workspace.",
+        ) from None
+    return fd
+
+
+def _read_at(folder: int, name: str, shown: Path) -> bytes | None:
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=folder)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        fd = -1
+    if fd >= 0:
+        with os.fdopen(fd, "rb") as source:
+            info = os.fstat(source.fileno())
+            if stat.S_ISREG(info.st_mode):
+                raw = source.read(_RUNTIME_CONFIG_MAX_BYTES + 1)
+                if len(raw) <= _RUNTIME_CONFIG_MAX_BYTES:
+                    return raw
+    raise StepFailedError(
+        "runtime_config",
+        f"Setup cannot read {shown} as a regular runtime config.",
+        f"Review {shown} or move it aside.",
+    )
+
+
+def ensure_runtime_config(workspace: Path, install_path: str) -> tuple[Path, bool]:
+    runtime_config = workspace / RUNTIME_CONFIG_RELPATH
+    name = RUNTIME_CONFIG_RELPATH.name
+    folder = _open_runtime_config_folder(workspace)
+    temporary = f".{name}.{uuid.uuid4().hex}"
+    try:
+        checked = _read_at(folder, name, runtime_config)
+        if checked is not None:
+            existing = checked.decode()
+            if runtime_config_install_path(existing) == install_path:
+                return runtime_config, False
+            if not runtime_config_can_switch(existing):
+                raise StepFailedError(
+                    "runtime_config",
+                    f"{runtime_config} contains an existing configuration that setup cannot replace.",
+                    f"Review {runtime_config} or move it aside before changing the install path.",
+                )
+        content = _generated_runtime_config(install_path)
+        fd = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=folder,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        if _read_at(folder, name, runtime_config) != checked:
+            raise StepFailedError(
+                "runtime_config",
+                f"{runtime_config} changed while setup was writing it, so it was left as it is.",
+                f"Review {runtime_config}, then run setup again.",
+            )
+        os.rename(temporary, name, src_dir_fd=folder, dst_dir_fd=folder)
+        return runtime_config, True
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(temporary, dir_fd=folder)
+        os.close(folder)
 
 
 def prove_model(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
