@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26445
+title: "The dev runtime's batch ingest door lifespan resolves the lane declaration through the overlay roots, so the runtime answers /health 200 with no config/lab/ci_bus_lanes.yaml in the container"
+summary: The batch ingest door names the mounted config root from its own overlay while its lane binds, so its lifespan finds config/lab/ci_bus_lanes.yaml in a runtime that mounts it and exports no ONEX_WORKSPACE_CONFIG_ROOT.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26445-door-lane-declaration
+    statement: The door's lifespan resolves the lane declaration the runtime mounts.
+    acceptance:
+      - id: AC1
+        statement: "AC1: a test over the door's lifespan fails on the current reader when the lane declaration is present only in the overlay store and absent at config/lab/ci_bus_lanes.yaml, and it passes after the fix with the declaration resolved through the overlay roots -- falsifier: uv run pytest <the new lifespan test> -q run at the commit before the fix exits non-zero naming ci_bus_lanes and exits 0 after it"
+      - id: AC2
+        statement: "AC2: the five whys name the door code that reads the path and the reason it bypasses the overlay roots, with file and line at the built sha read on omni-201 -- falsifier: the PR body has no Whys section whose last why names a file:line of the reader"
+      - id: AC3
+        statement: "AC3: the boot guard and the health gate files are unchanged and dev is not restarted or rolled by hand -- falsifier: git diff --stat origin/main over the PRs touches the boot guard or the health gate files, or a ledger row shows a manual restart of omninode-runtime"
+      - id: AC4
+        statement: "AC4: the question whether one door's lifespan failure should 503 the whole runtime's /health is answered in the PR body with the runtime code read, and a ticket is minted when the answer is no -- falsifier: the PR body has no Answer section naming the health aggregation code with file and line"
+evidence_requirements:
+  - kind: tests
+    description: The door's lifespan tests and the node's tests.
+    command: uv run pytest tests/nodes/node_gateway_batch_ingest_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26445-ac1
+    description: "The door's lifespan completes startup with the lane declaration present only under the overlay's mounted config root, restores the process environment, and still fails naming ci_bus_lanes.yaml when no declaration exists."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_gateway_batch_ingest_effect/test_lifespan_lane_declaration.py -q --no-cov
+        cwd: .
+  - id: dod-omn26445-ac3
+    description: "The change touches the door node only: no boot guard or health gate file is in the diff."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: command
+        check_value: >-
+          set -eu; ! git diff --name-only origin/dev...HEAD | grep -E 'boot_guard|health_gate|container_healthcheck'
+        cwd: .
+  - id: dod-omn26445-ac2
+    description: "The reader the five whys name is in the door at this head, and the infra resolver it calls reads the fixed relative path."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: command
+        check_value: >-
+          set -eu; grep -n 'broker = broker_for_lane(overlay.kafka.lane, environ)' src/omnimarket/nodes/node_gateway_batch_ingest_effect/kafka_publisher.py;
+          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnibase_infra/dev/src/omnibase_infra/cli/delegate_lane.py" | grep -q '^LANE_DECLARATION_RELATIVE_PATH = Path("config") / "lab" / "ci_bus_lanes.yaml"'
+        cwd: .
+  - id: dod-omn26445-ac4
+    description: "The health aggregation code the Answer names answers every request 503 once a mount failure is set."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: command
+        check_value: >-
+          set -eu;
+          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnibase_infra/dev/src/omnibase_infra/handlers/http_mount/asgi_mounts.py" | grep -q '^        if self.failure:'
+        cwd: .
+  - id: dod-omn26445-deploy-door-at-head
+    description: "Hosted deploy readback: the public repository at this exact head must contain the door's overlay field, and the door's tests must pass there. No lab service is required."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_gateway_batch_ingest_effect -q --no-cov
+        cwd: .
+      - check_type: command
+        check_value: |
+          set -eu;
+          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_gateway_batch_ingest_effect/overlay.py" | grep -q 'workspace_config_root: ConfigRoot | None = None'
+        cwd: .
+  - id: dod-omn26445-integration-proof
+    description: "Run the door's lifespan tests on a lab host at the pushed head; the local Done gate runs this unbound check."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26445 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_gateway_batch_ingest_effect -q --no-cov
+        cwd: .
