@@ -349,12 +349,40 @@ def test_a_zero_is_unknown_only_when_nothing_made_the_run_free_or_priced(
         ).fetchone() == (0.0, _SAVED, "measured")
 
 
-def test_a_store_without_tier_or_source_columns_is_served_as_stored(
+def test_a_store_without_the_cost_source_column_still_serves_an_unpriced_zero_as_unknown(
     tmp_path: Path,
 ) -> None:
-    # The oldest stores predate cost_measurement_source and attempt_history; a store
-    # without the columns the decision reads must still serve every row, unchanged.
-    path = _store(tmp_path, (_delegation("old", cost_tier_name="local"),))
-    rows = _read(path)
-    assert [str(r["correlation_id"]) for r in rows] == ["old"]
-    assert rows[0]["cost_usd"] == 0.0
+    # Older stores predate cost_measurement_source. The read passes NULL for a
+    # column the store lacks; were the missing name quoted instead, SQLite would
+    # read it as a string literal, the source would look recorded and the
+    # unpriced zero would be served as $0. A store without a column the
+    # exposure declares (cost_tier_name) is refused by name, so it is not
+    # exercised here.
+    path = _store(
+        tmp_path,
+        (
+            _delegation(
+                "old-beam",
+                cost_tier_name="cheap_cloud",
+                model_name="Beam-1.0-501B-A23B",
+                delegated_to="Beam-1.0-501B-A23B",
+                cost_usd=0.0,
+            ),
+            _delegation(
+                "old-local",
+                cost_tier_name="local",
+                model_name="qwen3.5:0.8b",
+                delegated_to="qwen3.5:0.8b",
+                cost_usd=0.0,
+            ),
+        ),
+    )
+    with sqlite3.connect(path) as db:
+        columns = {r[1] for r in db.execute("PRAGMA table_info(delegation_events)")}
+    assert "cost_measurement_source" not in columns
+    served = {str(r["correlation_id"]): r for r in _read(path)}
+    assert (
+        served["old-beam"]["cost_usd"],
+        served["old-beam"]["savings_measurement"],
+    ) == (None, "unknown_spend")
+    assert served["old-local"]["cost_usd"] == 0.0
