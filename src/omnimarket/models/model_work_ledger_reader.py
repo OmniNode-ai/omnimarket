@@ -27,6 +27,8 @@ class EnumReaderQuery(StrEnum):
     OPEN_CLAIMS = "open-claims"
     OPEN_RULINGS = "open-rulings"
     ROWS = "rows"
+    # One row by its timestamp and kind (an exact point read; more than one row is ambiguous).
+    ROW_AT = "row-at"
 
 
 class EnumReaderStatus(StrEnum):
@@ -64,30 +66,63 @@ class ModelReaderRequest(BaseModel):
     lane: str | None = Field(default=None, pattern=_LANE)
     ticket: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9]*-[0-9]+$")
     read_parity: bool = False
-    # Required for a rows read; also allowed (optional) for an open-claims read, where it
-    # means "claims opened within the last window_hours"; refused for every other query.
+    # A rows read names its window as window_hours (the last N hours from now) or as a history
+    # range (since, with an optional until, both inclusive): the history range reads rows older
+    # than the 30 day window, page by page, from the projection that holds the archive rolls.
+    # window_hours is also allowed (optional) for an open-claims read, where it means "claims
+    # opened within the last window_hours"; refused for every other query.
     window_hours: int | None = Field(default=None, ge=1, le=24 * 30)
+    since: AwareDatetime | None = None
+    until: AwareDatetime | None = None
+    # A row-at read names the row's timestamp (``at``) and exactly one ``kinds`` entry.
+    at: AwareDatetime | None = None
     # Only a rows read may narrow: the ledger row types it wants (CLAIM, STATUS, ...) and a
-    # case-insensitive substring the row's first line must hold; refused for every other query.
+    # case-insensitive substring the row's first line must hold; a row-at read names its one
+    # kind in ``kinds``; both are refused for every other query.
     kinds: tuple[Annotated[str, Field(min_length=1)], ...] = ()
     term: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
-    def _window_hours_matches_query(self) -> ModelReaderRequest:
+    def _window_matches_query(self) -> ModelReaderRequest:
         if self.query is EnumReaderQuery.ROWS:
-            if self.window_hours is None:
-                raise ValueError("a rows read names its window_hours")
-        elif (
-            self.query is not EnumReaderQuery.OPEN_CLAIMS
-            and self.window_hours is not None
-        ):
-            raise ValueError("window_hours is only for a rows or an open-claims read")
+            if (self.window_hours is None) == (self.since is None):
+                raise ValueError(
+                    "a rows read names exactly one of window_hours or since"
+                )
+            if self.until is not None and self.since is None:
+                raise ValueError("until needs since")
+            if (
+                self.since is not None
+                and self.until is not None
+                and self.until < self.since
+            ):
+                raise ValueError("until is before since")
+        else:
+            if self.since is not None or self.until is not None:
+                raise ValueError("since and until are only for a rows read")
+            if (
+                self.query is not EnumReaderQuery.OPEN_CLAIMS
+                and self.window_hours is not None
+            ):
+                raise ValueError(
+                    "window_hours is only for a rows or an open-claims read"
+                )
+        if self.query is EnumReaderQuery.ROW_AT:
+            if self.at is None:
+                raise ValueError("a row-at read names its timestamp")
+            if len(self.kinds) != 1:
+                raise ValueError("a row-at read names exactly one kind")
+        elif self.at is not None:
+            raise ValueError("at is only for a row-at read")
         return self
 
     @model_validator(mode="after")
     def _filters_only_for_rows(self) -> ModelReaderRequest:
-        if self.query is not EnumReaderQuery.ROWS and (self.kinds or self.term):
+        narrows = self.query in (EnumReaderQuery.ROWS, EnumReaderQuery.ROW_AT)
+        if not narrows and (self.kinds or self.term):
             raise ValueError("kinds and term are only for a rows read")
+        if self.query is EnumReaderQuery.ROW_AT and self.term:
+            raise ValueError("a row-at read takes no term")
         return self
 
 

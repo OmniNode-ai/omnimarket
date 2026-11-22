@@ -17,7 +17,6 @@ class ModelOwnerSummaryRequest(BaseModel):
 
     command: Literal["facts", "check", "triage", "mark-sent"]
     root: Path
-    ledger: Path | None = None
     watcher_state: Path | None = None
     state_file: Path | None = None
     since: str = ""
