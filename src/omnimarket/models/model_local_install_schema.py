@@ -6,10 +6,17 @@ These are data only. The SQLite adapter applies them through its recorded store
 steps, so readers of an initialized store do not acquire a write transaction.
 """
 
+import functools
 import hashlib
 import logging
 import sqlite3
 from collections.abc import Callable
+from typing import TYPE_CHECKING
+
+import yaml
+
+if TYPE_CHECKING:
+    from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 
 # OMN-19988: the latest environment report per (tenant, mode, service), with the
 # verdict and open alert the alert compute gave it. A row changes in place, so its
@@ -437,8 +444,133 @@ LOCAL_RUN_STORE_STEPS: tuple[
 )
 
 
+# OMN-25863: the version of the per-run savings rule, handler_run_savings.modelled_run_savings_columns. Change it
+# whenever that function changes what it computes; every local store then recomputes its stored savings once.
+RUN_SAVINGS_RULE_VERSION = "2026-11-19: priced by the model that ran (model_name, then delegated_to), spend from a named price only"
+
+
+_RUN_SAVINGS_RULE_STEP_PREFIX = "omn25863_run_savings_rule_"
+
+
+def _price_lines(table: "ModelPricingTable") -> list[str] | None:
+    """A table's version and every model it prices, with both rates, sorted: what a stored saving is priced from.
+    None when it prices no model (pricing._load_table's empty fallback table, or a manifest cut short)."""
+    if not table.models:
+        return None
+    return [
+        f"schema_version,{table.schema_version}",
+        *sorted(
+            f"{key},{entry.input_cost_per_1k},{entry.output_cost_per_1k}"
+            for key, entry in table.models.items()
+        ),
+    ]
+
+
+def _manifest_price_lines() -> list[str] | None:
+    """The price lines of the table this process priced from (pricing's cached load)."""
+    from omnimarket.pricing import (
+        _load_table,
+    )
+
+    return _price_lines(_load_table())
+
+
+def run_savings_rule_step() -> str | None:
+    """OMN-25863: the recompute step named by the savings rule's version and the manifest's prices.
+
+    A change to either names a new step, so a store recomputes its stored per-run savings once per change, through
+    the same one-time step machinery (its write transaction, its read-only handling) as every other step. None when
+    the manifest did not load: no saving can be priced, so nothing is recomputed or recorded.
+    """
+    prices = _manifest_price_lines()
+    if prices is None:
+        return None
+    payload = "\n".join([RUN_SAVINGS_RULE_VERSION, *prices])
+    return (
+        _RUN_SAVINGS_RULE_STEP_PREFIX
+        + hashlib.sha256(payload.encode()).hexdigest()[:16]
+    )
+
+
+def _recompute_for_rule(
+    rule: str, earlier_ran: Callable[[], bool] = lambda: False
+) -> Callable[[sqlite3.Connection], None]:
+    """Recompute every stored saving, then forget every other rule step in the same transaction, so only the
+    current rule and prices stand recorded and a later return to earlier ones recomputes again. When the earlier
+    recompute step actually ran in this open (same function, same rule and prices) the step only records itself;
+    decided when it applies, because another process may record the earlier step between listing and applying."""
+
+    def apply(conn: sqlite3.Connection) -> None:
+        if not earlier_ran():
+            recompute_run_savings(conn)
+        conn.execute(
+            "DELETE FROM omnimarket_sqlite_store_steps WHERE step GLOB ? AND step != ?",
+            (_RUN_SAVINGS_RULE_STEP_PREFIX + "*", rule),
+        )
+
+    return apply
+
+
+def _noting_it_ran(
+    apply: Callable[[sqlite3.Connection], None], ran: list[bool]
+) -> Callable[[sqlite3.Connection], None]:
+    """The step as it was, also noting in `ran` that it ran (the runner skips it if another process recorded it)."""
+
+    def noted(conn: sqlite3.Connection) -> None:
+        apply(conn)
+        ran.append(True)
+
+    return noted
+
+
+@functools.cache
+def _warn_manifest_unloaded() -> None:
+    """Said once per process, not on every connection a reader opens."""
+    logging.getLogger(__name__).warning(
+        "the pricing manifest did not load, or the file differs from the prices this process loaded, so stored run "
+        "savings are read as they are, not recomputed"
+    )
+
+
+def _manifest_on_disk_matches(prices: list[str]) -> bool:
+    """Whether the manifest on disk loads now and prices exactly what the digest was taken from. The recompute prices
+    each run from the file (resolve_baseline reads it uncached), so a file that went, was torn or was cut short, or
+    that changed under this process, would otherwise fail the open, or price every run from other prices than the
+    digest it records -- a record no later open would correct."""
+    from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
+
+    try:
+        on_disk = ModelPricingTable.from_yaml()
+    except (OSError, ValueError, yaml.YAMLError):
+        return False
+    return _price_lines(on_disk) == prices
+
+
 def pending_local_run_steps(
     conn: sqlite3.Connection, recorded: Callable[[sqlite3.Connection, str], bool]
 ) -> list[tuple[str, Callable[[sqlite3.Connection], None], str]]:
-    """The run-level steps this store has not recorded, in order."""
-    return [step for step in LOCAL_RUN_STORE_STEPS if not recorded(conn, step[0])]
+    """The run-level steps this store has not recorded, in order, then the savings recompute for the current rule."""
+    pending = [step for step in LOCAL_RUN_STORE_STEPS if not recorded(conn, step[0])]
+    rule = run_savings_rule_step()
+    if rule is None:
+        _warn_manifest_unloaded()
+    elif recorded(conn, rule):
+        pass
+    elif not _manifest_on_disk_matches(_manifest_price_lines() or []):
+        # Checked only when the recompute is pending, so an open with nothing to do reads no file.
+        _warn_manifest_unloaded()
+    else:
+        # A store that has not run the earlier recompute either runs it first in this open, so the rule step does
+        # not price every run a second time under the write lock -- but only if that step really ran here.
+        ran: list[bool] = []
+        for index, (step, apply, lacking) in enumerate(pending):
+            if step == RUN_SAVINGS_RECOMPUTE_STEP:
+                pending[index] = (step, _noting_it_ran(apply, ran), lacking)
+        pending.append(
+            (
+                rule,
+                _recompute_for_rule(rule, earlier_ran=lambda: bool(ran)),
+                "recomputed each run's modelled saving for the current rule and prices",
+            )
+        )
+    return pending
