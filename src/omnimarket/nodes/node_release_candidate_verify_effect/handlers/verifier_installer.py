@@ -17,6 +17,7 @@ import hashlib
 import re
 import shlex
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.nodes.node_release_candidate_verify_effect.models.enum_release_candidate_finding import (
     EnumReleaseCandidateFinding as K,
 )
@@ -27,7 +28,11 @@ from omnimarket.nodes.node_release_candidate_verify_effect.models.model_release_
     ModelReleaseCandidateFinding,
 )
 
-PYPI_INDEXES = frozenset({"https://pypi.org/simple", "https://pypi.org/simple/"})
+# The one package index a customer installer may name, resolved from
+# configs/service_endpoints.yaml like node_dod_verify's release index source,
+# never a literal; the served installer is compared against it, never fetched.
+_PYPI_BASE = service_endpoint_url("pypi.base_url").rstrip("/")
+PYPI_INDEXES = frozenset({f"{_PYPI_BASE}/simple", f"{_PYPI_BASE}/simple/"})
 _ASSIGNMENT = re.compile(
     r"^(?:(?:export|readonly|declare(?:\s+-[a-zA-Z]+)*|local)\s+)?"
     r"(ONEX_PACKAGE|ONEX_VERSION)\+?=(\S*)"
