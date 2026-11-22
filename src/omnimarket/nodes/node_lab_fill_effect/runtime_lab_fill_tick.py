@@ -165,6 +165,12 @@ def _read_work(
     overlay: ModelLabFillTickOverlay, now: datetime
 ) -> tuple[LiveWorkRead, ...]:
     """The declared sources read in goal order; one that is declared and unreadable refuses the pass, naming it."""
+    if overlay.work_sources is None:
+        raise _RefusedError(
+            "work-source",
+            "the overlay declares no work_sources",
+            _EXIT_INPUT_UNAVAILABLE,
+        )
     try:
         return read_live_work(
             _resolved(overlay.work_sources),

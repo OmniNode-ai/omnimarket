@@ -14,11 +14,17 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
+
+from omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_tick_overlay import (
+    ModelLabFillTickOverlay,
+)
 
 from .test_lab_fill_select import FakeLedgerRows
 from .test_runtime_lab_fill_tick import (
     MAX_AGE_S,
     run,
+    tick_overlay,
     write_snapshot,
     write_unit,
 )
@@ -106,6 +112,28 @@ def test_a_stale_work_source_launches_nothing(tmp_path: Path) -> None:
     assert code == 69
     assert out == ""
     assert "REFUSED reason=work-source:pr-watcher" in err
+    assert runner.calls == []
+
+
+def test_an_overlay_written_before_work_sources_loads_and_refuses_naming_them(
+    tmp_path: Path,
+) -> None:
+    """The overlay on the overlays repository's main branch still names the retired list and no work_sources: it must load through
+    this model (the overlay main load check reads it), and the pass must refuse naming the missing key, never read a list."""
+    env = write_unit(tmp_path)
+    write_snapshot(tmp_path)
+    document = tick_overlay(tmp_path)
+    document.pop("work_sources")
+    document["approved_work_path"] = str(tmp_path / "retired-approved-work.json")
+    ModelLabFillTickOverlay.model_validate(document)
+    overlay_file = tmp_path / "overlays" / "node_lab_fill_effect" / "overlay.yaml"
+    overlay_file.write_text(yaml.safe_dump(document), encoding="utf-8")
+    code, out, err, runner = run(env, tmp_path)
+    assert code == 69
+    assert out == ""
+    assert (
+        "REFUSED reason=work-source detail=the overlay declares no work_sources" in err
+    )
     assert runner.calls == []
 
 

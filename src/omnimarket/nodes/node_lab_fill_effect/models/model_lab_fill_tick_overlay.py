@@ -58,8 +58,12 @@ class ModelLabFillTickOverlay(BaseModel):
     host_reach: Mapping[str, tuple[str, ...]]
     fact_hosts: tuple[str, ...]
     ledger_path: str
-    # Where the fill's work is read from, in goal order; replaces the retired approved-work list file.
-    work_sources: ModelLabFillWorkSources
+    # Where the fill's work is read from, in goal order; replaces the retired approved-work list file. Transitional: an overlay
+    # written before this key (the one on the overlays repository's main branch until its change merges) still loads, with the
+    # key absent, and the pass refuses naming it; once that overlay has the key, this becomes a required key.
+    work_sources: ModelLabFillWorkSources | None = None
+    # The retired approved-work list's path: read by nothing, accepted only so an overlay written before work_sources loads.
+    approved_work_path: str | None = None
     brief_dir: str
     state_path: str
     pool_snapshot_path: str
