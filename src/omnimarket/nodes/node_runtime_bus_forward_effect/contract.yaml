@@ -73,4 +73,5 @@ overlay:
 
 metadata:
   ticket: OMN-24003
-  transport_type: inmemory
+  # The HTTPS publisher's deadline transport imports httpx under handlers/, so the contract declares the HTTP transport it discloses.
+  transport_type: http
