@@ -18,7 +18,9 @@ Failure modes, each a case below (spec records/plans/OMN-26413/spec.md, approved
   P10    a NULL tenant_id run counts in none of the three
   R1-R16 the per-run rule cases agree (AC2), and each fails on the deliberate break of the view's rule mapped to it
   S1     `onex metering`'s staleness check: another tenant's newer run does not mark this tenant's row stale
-  O1     over-correction: every served field of both views other than the unpriced count is unchanged
+  T1     a tenant named by slug or by a non-canonical UUID reads the rows the writer recorded under its canonical UUID
+  O1     over-correction: every served field of both views other than the unpriced count is unchanged, and the
+         headline equals its all-rows reading except on stores holding another tenant's or no tenant's rows
 """
 
 from __future__ import annotations
@@ -270,12 +272,12 @@ _RULE: dict[str, tuple[dict[str, Any], int]] = {
 }
 
 
-def _rule_store(tmp_path: Path, case: str) -> Path:
+def _rule_store(tmp_path: Path, case: str, *, base: bool = True) -> Path:
     fields, _ = _RULE[case]
-    priced = _priced()
     run = _delegation("case", **fields)
-    calls = () if case == "no_call_rows" else _measured(priced, run)
-    return _store(tmp_path, (priced, run), calls)
+    runs = (_priced(), run) if base else (run,)
+    calls = () if case == "no_call_rows" else _measured(*runs)
+    return _store(tmp_path, runs, calls)
 
 
 @pytest.mark.parametrize("case", sorted(_RULE))
@@ -368,8 +370,12 @@ def test_every_rule_case_has_a_mutant() -> None:
 def test_each_rule_case_fails_on_its_deliberate_break(
     tmp_path: Path, case: str, view: str
 ) -> None:
-    """Positive control for R1-R16: with the view's rule broken, the three counts no longer agree."""
-    path = _rule_store(tmp_path, case)
+    """Positive control for R1-R16: with the view's rule broken, the three counts no longer agree.
+
+    The listed-model mutant would also flip the base priced run, so those cases run without it: the break must be
+    caught on the case's own row.
+    """
+    path = _rule_store(tmp_path, case, base=_KILLS[case] != "listed_is_unpriced")
     _mutate(path, view, *_MUTANTS[_KILLS[case]])
     headline, savings, routing = _counts(path)
     assert not (headline == savings == routing), (
@@ -540,7 +546,7 @@ _READERS: dict[str, Callable[[Path], dict[str, Any]]] = {
 
 
 @pytest.mark.parametrize("view", [_SAVINGS_VIEW, _ROUTING_VIEW])
-@pytest.mark.parametrize("case", sorted({*_POPULATION, *_RULE} - {"null_tenant"}))
+@pytest.mark.parametrize("case", sorted({*_POPULATION, *_RULE}))
 def test_only_the_unpriced_count_differs_from_the_previous_revision(
     tmp_path: Path, case: str, view: str
 ) -> None:
@@ -556,3 +562,89 @@ def test_only_the_unpriced_count_differs_from_the_previous_revision(
     )
     _replace_view(path, view, previous_sql)
     assert _without(read(path), _COUNT_FIELD[view]) == current
+
+
+# F3 (O1, headline): on every store, the headline equals the reading over all of the store's rows, except where the
+# store holds another tenant's or no tenant's rows (D2), where it must differ.
+_D2_CASES = {"second_tenant", "null_tenant"}
+
+
+def _all_rows_as_tenant(path: Path) -> None:
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("UPDATE delegation_events SET tenant_id = ?", (_TENANT,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("case", sorted({*_POPULATION, *_RULE}))
+def test_the_headline_moves_only_where_the_store_holds_other_tenants_rows(
+    tmp_path: Path, case: str
+) -> None:
+    def build(where: Path) -> Path:
+        where.mkdir()
+        return (
+            _population_store(where, case)
+            if case in _POPULATION
+            else _rule_store(where, case)
+        )
+
+    model = resolve_metering_baseline_model().model
+    scoped, everyone = build(tmp_path / "scoped"), build(tmp_path / "everyone")
+    _all_rows_as_tenant(everyone)
+    rows = []
+    for path in (scoped, everyone):
+        refresh_metering_after_terminal(
+            path, tenant_id=_TENANT, terminal_at=_TERMINAL, baseline_model=model
+        )
+        row = read_summary_row(path, _TENANT, "all", "", model)
+        assert row is not None
+        rows.append(row.model_dump(exclude={"as_of", "window_end"}))
+    if case in _D2_CASES:
+        assert rows[0] != rows[1]
+    else:
+        assert rows[0] == rows[1]
+
+
+# T1: the headline reads the tenant's own rows as the projection writer records them (canonical UUID).
+def test_a_tenant_named_by_slug_reads_the_rows_recorded_under_its_uuid(
+    tmp_path: Path,
+) -> None:
+    from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+    from tests.helpers.tenant_registry import (
+        PROJECTION_TENANT_SLUG,
+        PROJECTION_TENANT_UUID,
+        seed_tenant_registry,
+    )
+
+    uuid = str(PROJECTION_TENANT_UUID)
+    runs = (
+        _run("a", _PRICED, 0.0001, tenant_id=uuid),
+        _run("b", _UNLISTED, 0.0, tenant_id=uuid),
+    )
+    path = _store(tmp_path, runs, _measured(*runs))
+    seed_tenant_registry(SqliteDatabaseAdapter(path))
+    model = resolve_metering_baseline_model().model
+    refresh_metering_after_terminal(
+        path,
+        tenant_id=PROJECTION_TENANT_SLUG,
+        terminal_at=_TERMINAL,
+        baseline_model=model,
+    )
+    row = read_summary_row(path, PROJECTION_TENANT_SLUG, "all", "", model)
+    assert row is not None
+    assert (row.runs_total, row.runs_unknown_spend) == (2, 1)
+
+
+def test_a_tenant_named_by_an_upper_case_uuid_reads_its_rows(tmp_path: Path) -> None:
+    runs = (_priced(), _run("b", _UNLISTED, 0.0))
+    path = _store(tmp_path, runs, _measured(*runs))
+    model = resolve_metering_baseline_model().model
+    upper = _TENANT.upper()
+    refresh_metering_after_terminal(
+        path, tenant_id=upper, terminal_at=_TERMINAL, baseline_model=model
+    )
+    row = read_summary_row(path, upper, "all", "", model)
+    assert row is not None
+    assert (row.runs_total, row.runs_unknown_spend) == (2, 1)

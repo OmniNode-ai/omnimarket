@@ -1,12 +1,13 @@
 -- SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 -- SPDX-License-Identifier: MIT
 -- OMN-26413: the revision of delegation_model_routing_view_v5.sql (OMN-25862). One change, nothing else: each tier
--- model's unmeasured_cost_count counts only the runs the metering headline counts, so for one store the headline, the
--- savings view and this view serve the same unpriced count. A run is counted only when its cost has no named price
--- (v5's rule) and the headline reads it as priced or not: its data_source is not fixture (experiment rows were already
--- left out), it was not returned to the caller, it recorded tokens in either direction, and its call usage is measured
--- (a store with no call rows reads every run as measured; a run with no call row in a store that has others is
--- unrecorded). Counts, costs, backends and traces do not change.
+-- model's unmeasured_cost_count counts only the runs the metering headline classes as priced or as unknown spend (not
+-- unknown tokens, not returned to the caller), so for one store the headline, the savings view and this view serve the
+-- same unpriced count. A run is counted only when its cost has no named price (v5's rule) and its data_source is not
+-- experiment or fixture (NULL counts as real; experiment rows are also left out of the whole view, as in v5), it was
+-- not returned to the caller, it recorded tokens in either direction, and its call usage is measured (a store with no
+-- call rows reads every run as measured; a run with no call row in a store that has others is unrecorded). Every
+-- served field other than unmeasured_cost_count is unchanged.
 --
 -- Applied once per local store by SqliteDatabaseAdapter as the store step omn26413_model_routing_one_unpriced_population;
 -- a revision is a new step, never an edit here.
@@ -35,7 +36,8 @@ events AS (
         CASE WHEN COALESCE(pm_exact.free, pm_lower.free) IS NULL
             OR (de.cost_usd > 0 AND COALESCE(pm_exact.free, pm_lower.free) = 1) THEN NULL
             ELSE de.cost_usd END AS priced_cost_usd,
-        CASE WHEN (de.data_source IS NOT 'fixture')
+        CASE WHEN (de.data_source IS NOT 'experiment')
+            AND (de.data_source IS NOT 'fixture')
             AND (de.terminal_failure_cause IS NOT 'returned_to_caller')
             AND (CAST(COALESCE(de.tokens_input, 0) AS INTEGER) <> 0 OR CAST(COALESCE(de.tokens_output, 0) AS INTEGER) <> 0)
             AND (COALESCE(call_usage.usage_source, CASE WHEN store_calls.any_call THEN 'unrecorded' ELSE 'measured' END) = 'measured')

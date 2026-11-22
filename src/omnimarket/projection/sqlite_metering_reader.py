@@ -38,10 +38,12 @@ writes. A metering readout must never be able to damage the evidence it reads.
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
+from uuid import UUID
 
 from omnimarket.nodes.node_metering_summary_compute.models.model_metering_record_row import (
     METERING_CALLS_PRESENT,
@@ -55,6 +57,12 @@ from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summar
     ModelMeteringRecord,
 )
 from omnimarket.projection.sqlite_database import default_evidence_db_path
+from omnimarket.projection.tenant_registry_resolution import (
+    TENANT_REGISTRY_MIRROR_TABLE,
+    TenantRegistryResolutionError,
+    parse_tenant_uuid,
+    resolve_registry_tenant_uuid,
+)
 
 __all__ = [
     "METERING_COLUMNS",
@@ -99,6 +107,52 @@ def default_metering_db_path() -> Path:
 def _to_record(row: sqlite3.Row) -> ModelMeteringRecord | None:
     # sqlite3.Row iterates values; keys() names the columns.
     return metering_record_from_row(dict(zip(row.keys(), row, strict=True)))
+
+
+def _tenant_keys(db_path: Path, tenant_id: str) -> frozenset[str]:
+    """The stored ``tenant_id`` values that are this tenant's rows (OMN-26413).
+
+    The projection writer stores the tenant's canonical UUID, resolving a slug
+    through ``tenant_registry_mirror`` (or the closed legacy map), so a tenant
+    named by slug or by a non-canonical UUID string is matched the same way.
+    The given string itself always matches. Read only; a store that cannot be
+    read here is reported by the row read that follows.
+    """
+    keys = {tenant_id}
+    parsed = parse_tenant_uuid(tenant_id)
+    if parsed is not None:
+        keys.add(str(parsed))
+        return frozenset(keys)
+    registry_uuid: UUID | None = None
+    if db_path.exists():
+        try:
+            conn = sqlite3.connect(
+                f"file:{db_path}?mode=ro", uri=True
+            )  # no-contract-check: projection boundary
+        except sqlite3.Error:
+            return frozenset(keys)
+        try:
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                (TENANT_REGISTRY_MIRROR_TABLE,),
+            ).fetchone()
+            if exists is not None:
+                row = conn.execute(
+                    f"SELECT tenant_uuid FROM {TENANT_REGISTRY_MIRROR_TABLE} WHERE tenant_slug = ?",
+                    (tenant_id,),
+                ).fetchone()
+                if row is not None and row[0] is not None:
+                    registry_uuid = parse_tenant_uuid(str(row[0]))
+        except sqlite3.Error:
+            return frozenset(keys)
+        finally:
+            conn.close()
+    # A slug nobody resolves matches only its own string, as the writer would refuse it.
+    with contextlib.suppress(TenantRegistryResolutionError):
+        keys.add(
+            str(resolve_registry_tenant_uuid(tenant_id, registry_uuid=registry_uuid))
+        )
+    return frozenset(keys)
 
 
 def _iter_rows(db_path: Path) -> Iterator[sqlite3.Row]:
@@ -174,10 +228,11 @@ def read_metering_records(
     inventing a run inside it.
     """
     resolved = db_path if db_path is not None else default_metering_db_path()
+    tenant_keys = _tenant_keys(resolved, tenant_id)
     records: list[ModelMeteringRecord] = []
     for row in _iter_rows(resolved):
         values = dict(row)
-        if values.get(_TENANT_COLUMN) != tenant_id:
+        if values.get(_TENANT_COLUMN) not in tenant_keys:
             continue
         source = values.get(_DATA_SOURCE_COLUMN)
         if source == _EXPERIMENT or (source == _FIXTURE and not include_fixtures):

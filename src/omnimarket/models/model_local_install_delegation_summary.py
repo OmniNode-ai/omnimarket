@@ -123,6 +123,6 @@ DELEGATION_VIEW_REPLACE_STEPS: tuple[tuple[str, tuple[str, str], str], ...] = (
             "projection_delegation_model_routing",
             "sqlite/delegation_model_routing_view_v6.sql",
         ),
-        "counted a tier model's unmeasured cost only over the runs the metering headline counts",
+        "counted a tier model's unmeasured cost only over the runs the metering headline classes as priced or unknown spend",
     ),
 )

@@ -1,12 +1,13 @@
 -- SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 -- SPDX-License-Identifier: MIT
 -- OMN-26413: the revision after delegation_savings_view_one_unpriced_rule.sql (OMN-25862, revision 7). One change,
--- nothing else: unpriced_call_count counts only the runs the metering headline counts, so for one store the headline,
--- this view and model-routing serve the same unpriced count. A run is counted unpriced only when its cost has no named
--- price (revision 7's rule) and it is a run the headline reads as priced or not: its data_source is not experiment or
--- fixture (NULL counts as real), it was not returned to the caller, it recorded tokens in either direction, and its
--- call usage is measured (a store with no call rows reads every run as measured; a run with no call row in a store
--- that has others is unrecorded). Totals, session rows and per-row costs do not change.
+-- nothing else: unpriced_call_count counts only the runs the metering headline classes as priced or as unknown spend
+-- (not unknown tokens, not returned to the caller), so for one store the headline, this view and model-routing serve
+-- the same unpriced count. A run is counted unpriced only when its cost has no named price (revision 7's rule) and
+-- its data_source is not experiment or fixture (NULL counts as real), it was not returned to the caller, it recorded
+-- tokens in either direction, and its call usage is measured (a store with no call rows reads every run as measured;
+-- a run with no call row in a store that has others is unrecorded). Every served field other than
+-- unpriced_call_count is unchanged.
 --
 -- Applied as the store step omn26413_delegation_savings_one_unpriced_population after
 -- omn25862_delegation_savings_one_unpriced_rule; a later revision is a new step.

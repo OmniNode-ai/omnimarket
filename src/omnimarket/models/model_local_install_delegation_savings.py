@@ -61,7 +61,7 @@ DELEGATION_SAVINGS_VIEW_STEPS = (
     (
         "omn26413_delegation_savings_one_unpriced_population",
         "sqlite/delegation_savings_view_one_unpriced_population.sql",
-        "counted unpriced only over the runs the metering headline counts",
+        "counted unpriced only over the runs the metering headline classes as priced or unknown spend",
     ),
 )
 
