@@ -39,8 +39,6 @@ dod_evidence:
   description: 'Local done gate: the declared installer run on h202 from the pushed branch renders the lane-dispatch-systemd unit, and the unit reads running; the installed tree carries no hand edit. The read is the pull request''s Lab line.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: ssh h202 'systemctl --user is-active onex-lane-dispatch.timer'
@@ -58,11 +56,18 @@ dod_evidence:
   description: 'Local done gate: the probe lane launched from h202 onto h201 shows a CLAIM and a TERMINAL row in the ledger of record.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: bash -o pipefail -c 'onex-work-ledger read --lane labdispatch-probe-2205 | grep -c "CLAIM\\|TERMINAL"'
+    cwd: .
+- id: dod-omn26412-ac2-placement
+  description: 'Hosted proxy for AC2: the placer launches the lane detached with the remote-lane runner and reads the host back, and the bus writer hands CLAIM and STATUS rows naming that lane and host to the publisher. The ledger read of the probe lane from h202 onto h201 is the pull request''s Lab line.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q tests/nodes/node_lane_dispatch_intake_effect/test_lane_dispatch_intake.py -p no:cacheprovider --no-cov -k 'the_placer or the_bus_writer'
     cwd: .
 - id: dod-omn26412-ac3
   description: 'Hosted proxy: the parser reads MSG rows to the dispatcher and the loop places two requests one at a time with two STATUS rows; the unit declaration is serial and bounded. The live read of two CLAIM rows and two STATUS rows on h202 is the pull request''s Lab line.'
