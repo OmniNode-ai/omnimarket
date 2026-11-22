@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: "1.0.0"
+ticket_id: "OMN-26457"
+title: "OmniDash 1.1.15 ships the OMN-26439 fix"
+summary: >-
+  Acceptance for OMN-26457 in omnimarket. omnimarket pins OmniDash v1.1.15 (sha256
+  023f70942857c2494f7799557ebe41b437879567af0fad30be3df9c29e0a4b3b), the release that ships 5870118c
+  (OMN-26439). AC3 is bound to tests/projection/test_dashboard_bundle_pin_omn23212.py; AC1 and AC2 are
+  proved in omnidash (omnidash#538 and the v1.1.15 tag), so this contract lists only AC3.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26457-omnimarket-pin-1115"
+    statement: >-
+      omnimarket pins the OmniDash v1.1.15 bundle that carries the OMN-26439 fix.
+    acceptance:
+      - id: "AC3"
+        statement: >-
+          omnimarket dev pins OmniDash v1.1.15, with the packaged bundle parts matching the pinned sha256
+          -- falsifier: the omnimarket dashboard bundle pin test fails on the v1.1.14 pin and passes on the
+          v1.1.15 pin
+evidence_requirements: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26457-ac3-bundle-pin-1115"
+    description: >-
+      AC3: the pin test reads v1.1.15, its sha256 and asset from the pin and verifies the packaged parts;
+      it fails on the v1.1.14 pin.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn23212.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
