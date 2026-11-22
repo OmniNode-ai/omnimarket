@@ -157,7 +157,7 @@ dependencies = [
     # OMN-26115: floor raised 0.47.60 -> 0.47.74, the first release without
     # omnibase_core.cli.cli_run_node.run_node_in_process (core#2335 removed it) and with
     # ModelRunNodeHosted.run, which the onex setup CLI calls. Raised in BOTH places.
-    "omnibase-core>=0.47.74,<0.48.0",
+    "omnibase-core>=0.47.75,<0.48.0",
     # OMN-23518: floor raised 0.23.3 -> 0.23.15, the release whose notes list the lane process
     # wire models (omnibase_spi CHANGELOG v0.23.15, "Included Since v0.23.14": ProtocolLaneProcessRunner
     # and lane process wire models) the floor fill orchestrator imports from
@@ -681,6 +681,7 @@ node_dod_closeout_sweep_compute = "omnimarket.nodes.node_dod_closeout_sweep_comp
 node_dod_criteria_check_effect = "omnimarket.nodes.node_dod_criteria_check_effect"
 node_dod_sweep_orchestrator = "omnimarket.nodes.node_dod_sweep_orchestrator"
 node_dod_verify = "omnimarket.nodes.node_dod_verify"
+node_done_items_compute = "omnimarket.nodes.node_done_items_compute"
 node_dropped_work_audit_compute = "omnimarket.nodes.node_dropped_work_audit_compute"
 node_dropped_work_audit_scheduled_effect = "omnimarket.nodes.node_dropped_work_audit_scheduled_effect"
 node_duplication_sweep = "omnimarket.nodes.node_duplication_sweep"
@@ -763,6 +764,7 @@ node_full_triage_orchestrator = "omnimarket.nodes.node_full_triage_orchestrator"
 node_gap_analyzer_compute = "omnimarket.nodes.node_gap_analyzer_compute"
 node_gap_compute = "omnimarket.nodes.node_gap_compute"
 node_gate_store_effect = "omnimarket.nodes.node_gate_store_effect"
+node_gateway_batch_ingest_effect = "omnimarket.nodes.node_gateway_batch_ingest_effect"
 node_generate_node_effect = "omnimarket.nodes.node_generate_node_effect"
 node_generated_code_validator = "omnimarket.nodes.node_generated_code_validator"
 node_generated_node_publish_effect = "omnimarket.nodes.node_generated_node_publish_effect"
@@ -872,6 +874,10 @@ node_install_canary_effect = "omnimarket.nodes.node_install_canary_effect"
 node_install_only_preserve_effect = "omnimarket.nodes.node_install_only_preserve_effect"
 node_install_reading_compute = "omnimarket.nodes.node_install_reading_compute"
 node_install_refusal_trace_compute = "omnimarket.nodes.node_install_refusal_trace_compute"
+node_install_request_acl_compute = "omnimarket.nodes.node_install_request_acl_compute"
+node_install_request_decision_compute = "omnimarket.nodes.node_install_request_decision_compute"
+node_install_request_effect = "omnimarket.nodes.node_install_request_effect"
+node_install_request_owed_compute = "omnimarket.nodes.node_install_request_owed_compute"
 node_install_superset_guard_effect = "omnimarket.nodes.node_install_superset_guard_effect"
 node_integration_projection_compute = "omnimarket.nodes.node_integration_projection_compute"
 node_integration_reading_publish_effect = "omnimarket.nodes.node_integration_reading_publish_effect"
@@ -1221,6 +1227,7 @@ node_projection_delegation_judged_acceptance = "omnimarket.nodes.node_projection
 node_projection_dep_health = "omnimarket.nodes.node_projection_dep_health"
 node_projection_dlq_redrive_effect = "omnimarket.nodes.node_projection_dlq_redrive_effect"
 node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
+node_projection_done_items = "omnimarket.nodes.node_projection_done_items"
 node_projection_eval_results = "omnimarket.nodes.node_projection_eval_results"
 node_projection_event_chain = "omnimarket.nodes.node_projection_event_chain"
 node_projection_floor_integration = "omnimarket.nodes.node_projection_floor_integration"
@@ -1483,6 +1490,7 @@ node_test_duration_record_check_effect = "omnimarket.nodes.node_test_duration_re
 node_test_generator = "omnimarket.nodes.node_test_generator"
 node_test_generator_compute = "omnimarket.nodes.node_test_generator_compute"
 node_test_selection_selector_compute = "omnimarket.nodes.node_test_selection_selector_compute"
+node_test_selector_miss_collect_effect = "omnimarket.nodes.node_test_selector_miss_collect_effect"
 node_test_selector_reading_compute = "omnimarket.nodes.node_test_selector_reading_compute"
 node_thread_reply_effect = "omnimarket.nodes.node_thread_reply_effect"
 node_throughput_goal_check_compute = "omnimarket.nodes.node_throughput_goal_check_compute"
@@ -1967,7 +1975,7 @@ override-dependencies = [
     # OMN-26115: floor raised 0.47.60 -> 0.47.74, the first release without
     # omnibase_core.cli.cli_run_node.run_node_in_process (core#2335 removed it) and with
     # ModelRunNodeHosted.run, which the onex setup CLI calls. Raised in BOTH places.
-    "omnibase-core>=0.47.74,<0.48.0",
+    "omnibase-core>=0.47.75,<0.48.0",
     # OMN-23518: floor raised 0.23.3 -> 0.23.15, the release whose notes list the lane process
     # wire models (omnibase_spi CHANGELOG v0.23.15, "Included Since v0.23.14": ProtocolLaneProcessRunner
     # and lane process wire models) the floor fill orchestrator imports from

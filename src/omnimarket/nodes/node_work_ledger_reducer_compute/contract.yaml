@@ -13,7 +13,9 @@ description: >-
   the rows the live judge had accepted before it, and every row whose verdict or refusal rule changed is
   listed. rebuild: an empty table is fed from the accepted-row topic's events (bootstrap history by legacy
   ordinal, then rows by ledger_seq) and compared with the live table row for row, sequence for sequence and
-  entity for entity. Pure compute: no clock, no broker, no database. Nothing is wired to the serve here.
+  entity for entity. window_replay: the last N days of accepted rows are each re-judged with the ledger as it
+  stood before the row and must be accepted, and the refused requests of the same window are re-judged against
+  the ledger at their time and must be refused under the rule name the file judge gave (OMN-25629). Pure compute: no clock, no broker, no database. Nothing is wired to the serve here.
 input_model:
   name: ModelWorkLedgerReducerRequest
   module: omnimarket.nodes.node_work_ledger_reducer_compute.models.model_work_ledger_reducer
@@ -39,15 +41,17 @@ descriptor:
   idempotent: true
   timeout_ms: 30000
 inputs:
-  operation: {type: str, required: true, enum: [shadow_judge, guard_replay, rebuild], description: Which question is asked.}
+  operation: {type: str, required: true, enum: [shadow_judge, guard_replay, rebuild, window_replay], description: Which question is asked.}
   shadow: {type: dict, required: false, description: The row, the ledger text before it, the ledger name and the live verdict, for shadow_judge.}
   replay: {type: dict, required: false, description: The ledger name and the recorded rows with their verdicts, in order, for guard_replay.}
   rebuild: {type: dict, required: false, description: The accepted-row events and optionally the live table, for rebuild.}
+  window: {type: dict, required: false, description: The accepted rows, the window length in days and the refused requests with the file judge's refusal, for window_replay.}
 outputs:
   operation: {type: str}
   shadow: {type: dict}
   replay: {type: dict}
   rebuild: {type: dict}
+  window: {type: dict}
 terminal_event: onex.evt.omnimarket.work-ledger-reducer-completed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.work-ledger-reducer-requested.v1
@@ -63,4 +67,4 @@ metadata:
   description: work-ledger reducer shadow judge, guard replay and accepted-row rebuild
   author: OmniNode Team
   created: "2026-11-07"
-  related_tickets: [OMN-22915]
+  related_tickets: [OMN-22915, OMN-25629]

@@ -439,6 +439,9 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # auto-wiring; its pure fold does NOT declare the capability.
     # HostDiskProjectionWriter is node_projection_host_disk's only DB writer,
     # dispatched once per consumed reading by runtime auto-wiring.
+    # DoneItemsProjectionWriter is node_projection_done_items's only DB writer,
+    # dispatched once per consumed work-ledger TERMINAL event by runtime
+    # auto-wiring; its pure fold, HandlerDoneItems, does NOT declare it.
     # EvalResultsProjectionWriter is node_projection_eval_results' only routed
     # handler: it is dispatched once per consumed source event or runtime tick on
     # its standalone writer operation, and its pure fold,
@@ -454,6 +457,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "ClaudeHookEventsProjectionWriter",
         "CompactionReceiptsProjectionWriter",
         "ContextAuditProjectionWriter",
+        "DoneItemsProjectionWriter",
         "MeteringSummaryProjectionWriter",
         "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",
