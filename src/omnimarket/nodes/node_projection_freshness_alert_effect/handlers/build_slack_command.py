@@ -5,6 +5,8 @@
 from uuid import UUID
 
 from omnimarket.nodes.node_projection_freshness_alert_effect.models import (
+    ModelCoverageCheck,
+    ModelCoverageVerdict,
     ModelFreshnessCheck,
     ModelFreshnessSlackCommand,
     ModelFreshnessVerdict,
@@ -38,6 +40,27 @@ def build_slack_command(
         f"({age} min old, limit {check.max_age_seconds / _SECONDS_PER_MINUTE:g} min) "
         f"while {verdict.demand_distinct_active} distinct `{check.demand.distinct_column}` "
         f"wrote `{check.demand.relation}` in the last {check.demand.window_seconds / _SECONDS_PER_MINUTE:g} min\n"
+        f"correlation_id={correlation_id}"
+    )
+    return ModelFreshnessSlackCommand(
+        channel=channel,
+        text=text,
+        idempotency_key=idempotency_key,
+        correlation_id=correlation_id,
+    )
+
+
+def build_coverage_slack_command(
+    *,
+    check: ModelCoverageCheck,
+    verdict: ModelCoverageVerdict,
+    channel: str,
+    idempotency_key: str,
+    correlation_id: UUID,
+) -> ModelFreshnessSlackCommand:
+    """Render unprojected done events as one plain mrkdwn message."""
+    text = (
+        f":rotating_light: *UNPROJECTED DONE ITEMS* — {verdict.unprojected_tickets} of {verdict.demand_done_tickets} tickets with a done event in `{check.demand_relation}` older than {check.max_age_seconds / _SECONDS_PER_MINUTE:g} min have no matching row in `{check.supply_relation}` (lookback {check.lookback_seconds / _SECONDS_PER_MINUTE:g} min)\n"
         f"correlation_id={correlation_id}"
     )
     return ModelFreshnessSlackCommand(

@@ -57,6 +57,16 @@ freshness_checks:
       # work_events activity is context, never a prerequisite for this alarm.
       min_distinct: 0
 
+coverage_checks:
+  - check_id: done_items_coverage
+    demand_relation: omninode_internal.work_ledger_rows
+    supply_relation: omninode_internal.done_items
+    # A done event older than this with no done_items row means the writer
+    # stopped or refused it (OMN-26435). Thresholds live only here.
+    max_age_seconds: 1800
+    # Must start after the writer's first lab deploy, or history alarms.
+    lookback_seconds: 86400
+
 db_io:
   db_tables:
     - name: claude_hook_events
@@ -71,6 +81,18 @@ db_io:
       migration: "0001_create_work_events.sql"
       access: read
       role: work_events
+    - name: work_ledger_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_work_ledger.sql"
+      access: read
+      role: work_ledger_rows
+    - name: done_items
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_done_items.sql"
+      access: read
+      role: done_items
 
 secrets:
   SLACK_CHANNEL_ID:
