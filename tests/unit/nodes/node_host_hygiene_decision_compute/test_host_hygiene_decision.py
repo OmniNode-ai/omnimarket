@@ -48,6 +48,7 @@ def _req(
             ModelHostHygieneHostFacts(
                 host="host-a",
                 cleanup_ids=cleanup_ids,
+                held_reason=None,
                 reading=reading,
                 last_dispatched=last_dispatched,
             ),
@@ -165,8 +166,12 @@ def test_duplicate_host_raises() -> None:
                 ),
             ),
             hosts=(
-                ModelHostHygieneHostFacts(host="host-a", cleanup_ids=("uv_cache",)),
-                ModelHostHygieneHostFacts(host="host-a", cleanup_ids=("uv_cache",)),
+                ModelHostHygieneHostFacts(
+                    host="host-a", cleanup_ids=("uv_cache",), held_reason=None
+                ),
+                ModelHostHygieneHostFacts(
+                    host="host-a", cleanup_ids=("uv_cache",), held_reason=None
+                ),
             ),
         )
 
@@ -192,7 +197,9 @@ def test_duplicate_cleanup_id_raises() -> None:
                 ),
             ),
             hosts=(
-                ModelHostHygieneHostFacts(host="host-a", cleanup_ids=("uv_cache",)),
+                ModelHostHygieneHostFacts(
+                    host="host-a", cleanup_ids=("uv_cache",), held_reason=None
+                ),
             ),
         )
 
