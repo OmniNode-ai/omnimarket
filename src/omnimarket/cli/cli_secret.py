@@ -1169,7 +1169,7 @@ key_probe.attach_review_key_probe_command(
     models_group,
     resolve_host=lambda host: _resolve_bound_host(host),
     key_store=lambda: _tenant_key_store(),
-    resolve_bus_lane=lambda host: _lab_host_bus_lane(host),
+    resolve_bus_lane=_lab_host_bus_lane,
 )
 
 

@@ -301,7 +301,8 @@ def test_a_flip_row_reaches_the_ledger_as_a_bus_append_request_naming_no_file() 
     assert "via=bus:h200" in cells
     assert cells[-1] == row.split(" | ")[-1]
     assert "alarm=review-key-credit" in cells
-    assert asyncio.run(_bus_appender(send).append(row)).ok
+    repeated = asyncio.run(_bus_appender(send).append(row))
+    assert repeated.ok
     assert send.requests[1].request_id == request.request_id
 
 
