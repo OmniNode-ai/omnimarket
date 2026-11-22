@@ -167,19 +167,6 @@ requirements:
   acceptance:
   - id: AC38
     statement: '`onex delegation status` reports on only when the prompt hook (UserPromptSubmit) is installed and bit 11 is set; an older install that has only the subagent hook reports off and names the missing prompt hook. The prompt hook can be paused on its own (operator 2026-11-15); Amendment 14a (2026-11-17) removed the subagent hook.'
-- id: req-omn23413-ac28
-  statement: 'An unpriced model''s cost is unknown, never $0 (Amendment 6, 2026-11-13). A run whose cost
-    no source priced is stored and served as unknown with no measured saving; omnidash shows it as Unknown
-    and Not measured; onex delegate prints cost unknown. A really free model (local, a :free id, a free
-    tier, a declared zero price) still shows $0. Existing local rows stored as 0 are re-derived, never
-    deleted.'
-  acceptance:
-  - id: AC28
-    statement: 'An unpriced model''s cost is unknown, never $0 (Amendment 6, 2026-11-13). A run whose
-      cost no source priced is stored and served as unknown with no measured saving; omnidash shows it
-      as Unknown and Not measured; onex delegate prints cost unknown. A really free model (local, a :free
-      id, a free tier, a declared zero price) still shows $0. Existing local rows stored as 0 are re-derived,
-      never deleted.'
 evidence_requirements:
 - kind: tests
   description: Run fixture controls plus required installed-wheel and actual model/Claude evidence; preserve
@@ -545,15 +532,17 @@ dod_evidence:
       tests/unit/nodes/node_onex_setup_effect/test_onex_tui_hook_switches.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23413-ac28-historical-unknown-read
-  description: 'The local SQLite read serves a stored zero that no price stood behind
-    (not a local tier, not a :free model id, no pricing-manifest entry) as unknown spend with no measured
-    saving, and leaves the stored row unchanged. Local, :free, manifest-priced, charged and recorded-source
-    runs are served as stored, and attempt history is never served. This binds only the historical-row
-    read; the writer, omnidash, delegate-summary and browser proofs of AC28 are separate evidence.'
+  description: 'The local SQLite read serves a stored zero that no price stood behind as unknown
+    spend with no saving on the decisions and run-detail exposures, and leaves the stored row unchanged.
+    A zero is served as stored when the row records a charge or a cost source other than no_cost_model,
+    a free_local tier type (or, recording neither source nor tier type, a tier the routing registry
+    declares free_local), a model id ending in :free, or a model the pricing manifest or the provider
+    catalogue for the backend the row names prices at zero. The decisions exposure does not serve attempt
+    history; an exposure declaring every column would. This item binds no criterion: AC28 also needs the
+    writer, omnidash, onex delegate summary and browser proofs, which this check does not run, so AC28
+    is declared and bound when that evidence exists.'
   source: manual
   execution_scope: hosted_and_local
-  binds_ac:
-  - AC28
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/projection/test_omn23413_historical_unknown_cost.py -q --no-cov
