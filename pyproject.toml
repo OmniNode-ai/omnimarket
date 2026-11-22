@@ -1148,6 +1148,7 @@ node_pool_usage_verdict_compute = "omnimarket.nodes.node_pool_usage_verdict_comp
 node_post_merge_knowledge_sync_orchestrator = "omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator"
 node_pr_arm_gate_compute = "omnimarket.nodes.node_pr_arm_gate_compute"
 node_pr_claim_registry_effect = "omnimarket.nodes.node_pr_claim_registry_effect"
+node_pr_create_refusal_alert_compute = "omnimarket.nodes.node_pr_create_refusal_alert_compute"
 node_pr_delegated_fix_effect = "omnimarket.nodes.node_pr_delegated_fix_effect"
 node_pr_duplicate_guard_compute = "omnimarket.nodes.node_pr_duplicate_guard_compute"
 node_pr_duplicate_snapshot_effect = "omnimarket.nodes.node_pr_duplicate_snapshot_effect"

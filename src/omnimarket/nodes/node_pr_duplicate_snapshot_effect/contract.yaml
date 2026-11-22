@@ -35,6 +35,18 @@ config:
     prefix_chars: 12
   stack:
     base_rule: newest_contained_open_pr_head
+  # The claims read through the ledger reader node (OMN-26433). A CLAIM is live 0.75 hours after its lane's last row, so the
+  # primary read is the CLAIM, TERMINAL and RELEASE rows of the window plus every row of the last heartbeat_window_hours,
+  # which the dev broker answers in a page each; the fallback is every row of the window. A tier waits at most its own timeout,
+  # the two together at most total_budget_s, and when neither answers the guard is unchecked and opens nothing.
+  ledger_read:
+    reader: pr-duplicate-guard-claims
+    window_hours: 168
+    heartbeat_window_hours: 1
+    claim_kinds: [CLAIM, TERMINAL, RELEASE]
+    primary_timeout_s: 180
+    fallback_timeout_s: 420
+    total_budget_s: 600
 event_bus:
   subscribe_topics: []
   publish_topics: []

@@ -32,6 +32,9 @@ from omnimarket.handlers.scm import scm_cli
 from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers import (
     handler_pr_duplicate_snapshot as snapshot_module,
 )
+from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.ledger_claims_read import (
+    load_ledger_read_config,
+)
 from tests.unit.handlers.scm.test_scm_duplicate_guard import (
     CAUSE,
     CREATE_ARGS,
@@ -160,19 +163,28 @@ def test_the_guard_reads_its_claims_through_the_reader_node_and_never_the_ledger
     answer = json.loads(result.stdout)
     assert answer["adopt_lane"] == "cause-core-0010"
     assert_no_ledger_file_opened(opened_files)
-    assert replay.argvs == [
+    declared = load_ledger_read_config()
+    head = [INTERPRETER, "-m", READER_MODULE, "--reader", snapshot_module.LEDGER_READER]
+    claim_kinds = [word for kind in declared.claim_kinds for word in ("--kind", kind)]
+    assert sorted(replay.argvs) == sorted(
         [
-            INTERPRETER,
-            "-m",
-            READER_MODULE,
-            "--reader",
-            snapshot_module.LEDGER_READER,
-            "--query",
-            "rows",
-            "--window-hours",
-            str(snapshot_module.LEDGER_WINDOW_HOURS),
+            [
+                *head,
+                "--query",
+                "rows",
+                "--window-hours",
+                str(snapshot_module.LEDGER_WINDOW_HOURS),
+                *claim_kinds,
+            ],
+            [
+                *head,
+                "--query",
+                "rows",
+                "--window-hours",
+                str(declared.heartbeat_window_hours),
+            ],
         ]
-    ]
+    )
     assert snapshot_module.LEDGER_READER == "pr-duplicate-guard-claims"
 
 
@@ -278,7 +290,7 @@ def test_the_guard_waits_for_the_reader_as_long_as_a_loaded_host_needed(
     monkeypatch: pytest.MonkeyPatch,
     opened_files: list[str],
 ) -> None:
-    """The 168 hour read took 253 seconds on h051 under load, and a 120 second wait refused three pull requests as unchecked."""
+    """The 168 hour whole-window read took 253 seconds on h051 under load: the fallback's declared wait is longer, the primary's is not (OMN-26433)."""
     world.lane_branch("src/metrics.py", 15)
     loaded = record("h051", "after-fix-loaded")
     replay = use_reader(
@@ -287,8 +299,7 @@ def test_the_guard_waits_for_the_reader_as_long_as_a_loaded_host_needed(
 
     invoke(world.check_args())
 
+    declared = load_ledger_read_config()
     assert loaded["elapsed_s"] > 120
-    assert len(replay.timeouts) == 1
-    timeout = replay.timeouts[0]
-    assert isinstance(timeout, int | float)
-    assert timeout > loaded["elapsed_s"]
+    assert declared.fallback_timeout_s > loaded["elapsed_s"]
+    assert replay.timeouts == [declared.primary_timeout_s] * 2
