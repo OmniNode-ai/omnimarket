@@ -644,3 +644,41 @@ def test_an_install_sh_runtime_config_switches_unless_edited(
     else:
         assert outcome.status == "success", outcome.fix
         assert "# install-path: local" in config.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("shape", ["truncated", "hand-edited"])
+def test_a_runtime_config_with_no_runtime_definition_needs_attention(
+    tmp_path: Path, shape: str
+) -> None:
+    """Two setup header comments alone are not a runtime config setup can adopt."""
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
+        RUNTIME_CONFIG_RELPATH,
+        SETUP_MARKER,
+        ensure_runtime_config,
+    )
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
+        HandlerSetupEnvironment,
+    )
+
+    plan = plan_at(tmp_path)
+    config = plan.workspace / RUNTIME_CONFIG_RELPATH
+    if shape == "truncated":
+        config.parent.mkdir(parents=True)
+        config.write_text(f"{SETUP_MARKER}\n# install-path: local\n")
+    else:
+        ensure_runtime_config(plan.workspace, "local")
+        config.write_text(
+            config.read_text().replace("max_history: 1000", "max_history: 50")
+        )
+    before = config.read_bytes()
+    step = HandlerSetupEnvironment(name="runtime_config", onex_home=tmp_path / "onex")
+    outcome = HandlerSetupWorkflow(onex_home=tmp_path / "onex", steps=(step,)).handle(
+        plan
+    )
+    assert config.read_bytes() == before
+    if shape == "truncated":
+        assert step.observe(plan).status == "action_required"
+        assert outcome.observations[-1].status == "action_required"
+        assert str(config) in (outcome.observations[-1].fix or "")
+    else:
+        assert outcome.observations[-1].status == "success"

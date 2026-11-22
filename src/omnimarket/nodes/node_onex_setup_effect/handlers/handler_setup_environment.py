@@ -109,6 +109,11 @@ def _owned_runtime_config(plan: ModelSetupPlan) -> str | None:
             raise SetupStepRefusedError(
                 f"The runtime config at {path} belongs to the user. Review it before selecting a setup-managed configuration."
             )
+        if not original.runtime_config_is_complete(content):
+            raise SetupStepRefusedError(
+                f"The runtime config at {path} is incomplete. Setup kept it; review it "
+                "or move it aside, then run setup again."
+            )
         mode = "docker" if "docker" in plan.components else "local"
         if original.runtime_config_install_path(
             content

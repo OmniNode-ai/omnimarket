@@ -37,6 +37,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import yaml
 from omnibase_core.cli.cli_user_config import USER_CONFIG_TEMPLATE, read_user_config
 from omnibase_core.errors.model_onex_error import ModelOnexError
 from omnibase_infra.handlers.handler_workspace_config_root_resolve import (
@@ -419,6 +420,25 @@ def _is_install_sh_runtime_config(content: str) -> bool:
         )
         for mode in INSTALL_PATHS
     )
+
+
+def runtime_config_is_complete(content: str) -> bool:
+    """Holds every key setup writes, nested ones too; values may be hand edited."""
+    try:
+        found = yaml.safe_load(content)
+    except yaml.YAMLError:
+        return False
+    template = yaml.safe_load(_generated_runtime_config("local"))
+    if not isinstance(found, dict):
+        return False
+    for key, expected in template.items():
+        if key not in found:
+            return False
+        if isinstance(expected, dict) and not (
+            isinstance(found[key], dict) and set(expected) <= set(found[key])
+        ):
+            return False
+    return True
 
 
 def runtime_config_can_switch(content: str) -> bool:
