@@ -20,7 +20,7 @@ import pytest
 from omnimarket.nodes.node_lane_dispatch_intake_effect.handlers.adapter_lane_dispatch import (
     ScriptBriefBuilder,
 )
-from omnimarket.nodes.node_work_ledger_host_mirror_effect.handlers.handler_pinned_rulings_mirror import (
+from omnimarket.nodes.node_work_ledger_host_mirror_effect.handlers.handler_work_ledger_host_mirror import (
     HandlerPinnedRulingsMirror,
 )
 from omnimarket.nodes.node_work_ledger_host_mirror_effect.models.model_pinned_rulings_mirror import (

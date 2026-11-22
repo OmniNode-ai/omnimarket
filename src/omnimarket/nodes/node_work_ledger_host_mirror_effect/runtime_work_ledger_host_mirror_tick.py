@@ -24,10 +24,8 @@ from pathlib import Path
 from omnimarket.nodes.node_work_ledger_host_mirror_effect.handlers.adapter_bus_read import (
     BusLedgerRowsReader,
 )
-from omnimarket.nodes.node_work_ledger_host_mirror_effect.handlers.handler_pinned_rulings_mirror import (
-    HandlerPinnedRulingsMirror,
-)
 from omnimarket.nodes.node_work_ledger_host_mirror_effect.handlers.handler_work_ledger_host_mirror import (
+    HandlerPinnedRulingsMirror,
     HandlerWorkLedgerHostMirror,
 )
 from omnimarket.nodes.node_work_ledger_host_mirror_effect.models.model_pinned_rulings_mirror import (
