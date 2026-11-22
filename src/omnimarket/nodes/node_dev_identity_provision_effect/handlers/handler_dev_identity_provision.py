@@ -10,6 +10,7 @@ when the lane or realm is not the one the contract declares.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,24 @@ from omnimarket.nodes.node_dev_identity_provision_effect.protocols.protocol_dev_
 logger = logging.getLogger(__name__)
 
 _CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+
+
+class _UserLookupFailedError(Exception):
+    """Keycloak did not answer the user lookup with a usable body."""
+
+
+@dataclass(frozen=True)
+class _Identity:
+    """The identity one run provisions: the command's values over the overlay user's."""
+
+    username: str
+    email: str
+    first_name: str
+    last_name: str
+    client_id: str
+    password_key_id: str
+    password_folder: str
+    password_key: str
 
 
 def _load_dev_only(contract_path: Path | None) -> dict[str, Any]:
@@ -131,12 +150,26 @@ class HandlerDevIdentityProvision:
         overlay = self._overlay
         kc = overlay.keycloak
         admin = overlay.admin
-        user = overlay.user
         api = overlay.api
 
         guard = self._dev_guard(command)
         if guard is not None:
             return guard
+
+        user = self._identity(command)
+        if isinstance(user, ModelDevIdentityProvisionResult):
+            return user
+        if command.write and not command.allow_protected:
+            protected = {name.lower() for name in overlay.protected_usernames}
+            if user.username.lower() in protected:
+                return self._result(
+                    EnumDevIdentityOutcome.USER_PROTECTED,
+                    detail=(
+                        f"user {user.username!r} is in the overlay's protected_usernames; "
+                        "nothing was read or sent. Name the user on purpose with allow_protected to touch it"
+                    ),
+                    user_name=user.username,
+                )
 
         admin_secret = await self._settings_store.read(
             admin.secret_folder, admin.secret_key
@@ -175,16 +208,43 @@ class HandlerDevIdentityProvision:
                 EnumDevIdentityOutcome.PASSWORD_UNAVAILABLE,
                 detail=f"the key generator returned {gen.outcome.value} for {user.password_key_id!r}",
             )
-        password = await self._settings_store.read(
-            user.password_folder, user.password_key
-        )
+        # The overlay's own key is read where the overlay says; a key the command named is read where the generator stored it.
+        if command.password_key_id is None:
+            password_folder, password_key = user.password_folder, user.password_key
+        elif gen.folder is not None and gen.key is not None:
+            password_folder, password_key = gen.folder, gen.key
+        else:
+            return self._result(
+                EnumDevIdentityOutcome.PASSWORD_UNAVAILABLE,
+                detail=f"the key generator named no folder and key for {user.password_key_id!r}",
+            )
+        password = await self._settings_store.read(password_folder, password_key)
         if password is None:
             return self._result(
                 EnumDevIdentityOutcome.PASSWORD_UNAVAILABLE,
-                detail=f"the generated password {user.password_folder}/{user.password_key} is not in the store",
+                detail=f"the generated password {password_folder}/{password_key} is not in the store",
             )
 
-        user_id = await self._ensure_user(admin_token, password)
+        # An existing user is refused here, after the key and password reads and before any write.
+        try:
+            found = await self._find_user(admin_token, user.username)
+        except _UserLookupFailedError:
+            return self._result(
+                EnumDevIdentityOutcome.USER_CREATE_FAILED,
+                detail="Keycloak refused to look up the dev user",
+                user_name=user.username,
+            )
+        if found is not None and not command.reset_existing:
+            return self._result(
+                EnumDevIdentityOutcome.USER_EXISTS_REFUSED,
+                detail=(
+                    f"user {user.username!r} already exists; its password is not reset "
+                    "unless the command carries reset_existing"
+                ),
+                user_name=user.username,
+            )
+
+        user_id = await self._ensure_user(admin_token, password, user, found)
         if user_id is None:
             return self._result(
                 EnumDevIdentityOutcome.USER_CREATE_FAILED,
@@ -280,12 +340,37 @@ class HandlerDevIdentityProvision:
             return None
         return SecretStr(access_token)
 
-    async def _ensure_user(
-        self, admin_token: SecretStr, password: SecretStr
-    ) -> str | None:
-        overlay = self._overlay
-        kc = overlay.keycloak
-        user = overlay.user
+    def _identity(
+        self, command: ModelDevIdentityProvisionCommand
+    ) -> _Identity | ModelDevIdentityProvisionResult:
+        """The identity this run provisions: the command's values over the overlay user's."""
+        user = self._overlay.user
+        username = command.username or user.username
+        if username != user.username and not (
+            command.email and command.password_key_id
+        ):
+            return self._result(
+                EnumDevIdentityOutcome.INVALID_IDENTITY_INPUT,
+                detail=(
+                    f"user {username!r} is not the overlay user; it needs its own email and "
+                    "password_key_id, never the overlay user's"
+                ),
+                user_name=username,
+            )
+        return _Identity(
+            username=username,
+            email=command.email or user.email,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            client_id=user.client_id,
+            password_key_id=command.password_key_id or user.password_key_id,
+            password_folder=user.password_folder,
+            password_key=user.password_key,
+        )
+
+    async def _find_user(self, admin_token: SecretStr, username: str) -> str | None:
+        """The user's id when it exists, None when it does not; raises when Keycloak did not answer usably."""
+        kc = self._overlay.keycloak
         users_url = (
             f"{kc.base_url}{kc.admin_users_path_template.format(realm=kc.realm)}"
         )
@@ -293,13 +378,13 @@ class HandlerDevIdentityProvision:
             ModelIdentityHttpRequest(
                 method="GET",
                 url=users_url,
-                query={"username": user.username, "exact": "true"},
+                query={"username": username, "exact": "true"},
                 bearer=admin_token,
                 timeout_seconds=kc.timeout_seconds,
             )
         )
         if isinstance(found, str):
-            return None
+            raise _UserLookupFailedError
         if (
             found.status == 200
             and isinstance(found.json_body, list)
@@ -307,7 +392,25 @@ class HandlerDevIdentityProvision:
         ):
             user_id = found.json_body[0].get("id")
             if not isinstance(user_id, str):
-                return None
+                raise _UserLookupFailedError
+            return user_id
+        return None
+
+    async def _ensure_user(
+        self,
+        admin_token: SecretStr,
+        password: SecretStr,
+        user: _Identity,
+        existing_id: str | None,
+    ) -> str | None:
+        """Create the user, or, when ``existing_id`` names one (only a reset_existing run gets here), reset its password."""
+        overlay = self._overlay
+        kc = overlay.keycloak
+        users_url = (
+            f"{kc.base_url}{kc.admin_users_path_template.format(realm=kc.realm)}"
+        )
+        if isinstance(existing_id, str):
+            user_id = existing_id
             reset_url = f"{kc.base_url}{kc.admin_reset_password_path_template.format(realm=kc.realm, user_id=user_id)}"
             reset = await self._send(
                 ModelIdentityHttpRequest(
