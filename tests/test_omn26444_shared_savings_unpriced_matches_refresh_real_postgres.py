@@ -89,6 +89,8 @@ def _run(
     )
 
 
+# The four population cases store a NULL cost, so dev's stored-NULL rule counts them and
+# the refresh, which leaves them out, does not: each fails until the view filters them.
 CASES: dict[str, tuple[uuid.UUID, list[dict]]] = {
     "null_cost_listed": (uuid.uuid4(), [{"model": PRICED, "cost": None}]),
     "unlisted_zero": (uuid.uuid4(), [{"model": UNLISTED, "cost": Decimal("0")}]),
@@ -100,19 +102,19 @@ CASES: dict[str, tuple[uuid.UUID, list[dict]]] = {
     "priced_positive": (uuid.uuid4(), [{"model": PRICED, "cost": Decimal("0.02")}]),
     "no_tokens": (
         uuid.uuid4(),
-        [{"model": UNLISTED, "cost": Decimal("0"), "tokens_in": 0, "tokens_out": 0}],
+        [{"model": UNLISTED, "cost": None, "tokens_in": 0, "tokens_out": 0}],
     ),
     "returned_to_caller": (
         uuid.uuid4(),
-        [{"model": UNLISTED, "cost": Decimal("0"), "cause": "returned_to_caller"}],
+        [{"model": UNLISTED, "cost": None, "cause": "returned_to_caller"}],
     ),
     "fixture": (
         uuid.uuid4(),
-        [{"model": UNLISTED, "cost": Decimal("0"), "data_source": "fixture"}],
+        [{"model": UNLISTED, "cost": None, "data_source": "fixture"}],
     ),
     "experiment": (
         uuid.uuid4(),
-        [{"model": UNLISTED, "cost": Decimal("0"), "data_source": "experiment"}],
+        [{"model": UNLISTED, "cost": None, "data_source": "experiment"}],
     ),
     # No NULL data_source case: delegation_events.data_source is NOT NULL DEFAULT 'real'
     # (node_projection_delegation 0049, 0064), so the shared lanes never hold one.
