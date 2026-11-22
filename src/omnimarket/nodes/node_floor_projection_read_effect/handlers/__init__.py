@@ -5,5 +5,8 @@
 from omnimarket.nodes.node_floor_projection_read_effect.handlers.handler_floor_projection_read import (
     HandlerFloorProjectionRead,
 )
+from omnimarket.nodes.node_floor_projection_read_effect.handlers.handler_floor_projection_snapshot_read import (
+    HandlerFloorProjectionSnapshotRead,
+)
 
-__all__ = ["HandlerFloorProjectionRead"]
+__all__ = ["HandlerFloorProjectionRead", "HandlerFloorProjectionSnapshotRead"]
