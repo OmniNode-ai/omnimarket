@@ -15,6 +15,26 @@ summary: >-
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn22036-ac1-accepted-20261122t2145z:
+    - label: AC1
+      criterion_hash: 2a13660ddcd461ba29d43f7c5abacb9f09612e3d3b8a579258c7658076c4a9da
+      proposed_by: lane=dod-closeout-bind-2026-11-22T2145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-22T2145Z-c3
+      accepted_at: '2026-11-22T22:12:16Z'
+    dod-omn22036-ac2-accepted-20261122t2145z:
+    - label: AC2
+      criterion_hash: 311f4bd29cd43100e296ab0d81e432415c593f9e603f24949a2c1f0abe5325e5
+      proposed_by: lane=dod-closeout-bind-2026-11-22T2145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-22T2145Z-c3
+      accepted_at: '2026-11-22T22:12:16Z'
+    dod-omn22036-ac3-accepted-20261122t2145z:
+    - label: AC3
+      criterion_hash: 6517408ff6e44dc3b37340903a5c861f0af322d7b7b6245c40217b24d8991f2b
+      proposed_by: lane=dod-closeout-bind-2026-11-22T2145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-22T2145Z-c3
+      accepted_at: '2026-11-22T22:12:16Z'
 requirements:
   - id: "req-compaction-arm-run-node"
     statement: |-
@@ -148,4 +168,28 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22036 -- uv run --frozen pytest tests/nodes/node_compaction_arm_run_effect -q -p no:randomly --no-cov -m 'not kafka'"
+        cwd: "."
+  - id: "dod-omn22036-ac1-accepted-20261122t2145z"
+    description: "AC1 binding (accepted 2026-11-22T2145Z, proposed by lane=dod-closeout-bind-2026-11-22T2145Z-c3, accepted by lane=dod-closeout-accept-2026-11-22T2145Z-c3). All 6 arm records per case carry one prefix, ledger, initial-state and compaction-input hash, equal to the sha256 of the prefix and ledger files, each in a distinct fork root. Re-run at origin/dev 8c2a3542cc: 1 passed; with the src paths of b1fab33bba reverted: conftest import error."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest -q --no-cov -p no:randomly tests/nodes/node_compaction_arm_run_effect/test_arm_run.py::test_arms_differ_only_at_compaction"
+        cwd: "."
+  - id: "dod-omn22036-ac2-accepted-20261122t2145z"
+    description: "AC2 binding (accepted 2026-11-22T2145Z, proposed by lane=dod-closeout-bind-2026-11-22T2145Z-c3, accepted by lane=dod-closeout-accept-2026-11-22T2145Z-c3). A stock_rerun fork with a custom boundary or custom-boundary evidence is INVALID, reason CUSTOM_BOUNDARY_EVIDENCE, not scorable, with no compacted-context hash. Re-run at origin/dev 8c2a3542cc: 2 passed; with the src paths of b1fab33bba reverted: conftest import error."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest -q --no-cov -p no:randomly tests/nodes/node_compaction_arm_run_effect/test_arm_run.py::test_custom_boundary_invalid"
+        cwd: "."
+  - id: "dod-omn22036-ac3-accepted-20261122t2145z"
+    description: "AC3 binding (accepted 2026-11-22T2145Z, proposed by lane=dod-closeout-bind-2026-11-22T2145Z-c3, accepted by lane=dod-closeout-accept-2026-11-22T2145Z-c3). A failed or unsupplied headless premise never calls the stock adapter, records stock_rerun REFUSED with a PREMISE reason, names the failing premise and records stock_recorded. Re-run at origin/dev 8c2a3542cc: 5 passed; with the src paths of b1fab33bba reverted: conftest import error."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest -q --no-cov -p no:randomly tests/nodes/node_compaction_arm_run_effect/test_arm_run.py::test_refusal_not_hidden"
         cwd: "."
