@@ -1846,12 +1846,13 @@ units:
       ONEX_TEMPORAL_WORKER_PROJECT: "{registry_root}/omnimarket"
       ONEX_LEDGER_WRITE_VIA: "bus"
       ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+    # The unit names no ledger file (OMN-26329): no worker queue's node reads a ledger path, so the unit asks for none; the
+    # steps append through the bus append command above and the closer reads rows through the host's declared reader argv.
     environment_inputs:
       ONEX_LEDGER_HOST_NAME: ledger_host_name
-      ONEX_LEDGER_PATH: ledger_path
       OMNIBASE_INTERNAL_HOME: appender_root
       ONEX_RUNTIME_SSH_HOST: runtime_ssh_host
-    required_environment_inputs: [ONEX_LEDGER_HOST_NAME, ONEX_LEDGER_PATH, OMNIBASE_INTERNAL_HOME]
+    required_environment_inputs: [ONEX_LEDGER_HOST_NAME, OMNIBASE_INTERNAL_HOME]
     environment_file: .config/onex/merged-change-runner-read.env
     evidence_file: .local/state/omni/temporal-worker/last-run.json
     state_directory: .onex_state/temporal-worker
@@ -2333,15 +2334,22 @@ units:
       request_field: project_path
       requires: clean git checkout that carries entry_file
     environment_path_overrides:
-      - ONEX_LEDGER_COMMAND
       - ONEX_SKILL_OVERLAY_ROOTS
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       # The class rules are the overlay of node_friction_rollup_compute: the overlays canonical clone first, then the plugin's overlays.
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
-      ONEX_LEDGER_PATH: "{registry_root}/docs/tracking/ROLLING_WORK_LEDGER.md"
-      ONEX_LEDGER_COMMAND: "{home}/.local/bin/onex-ledger"
+      # The ledger over the bus (OMN-26329): the tick reads its window with the paged read command and appends its STATUS row with
+      # the append command, as the other ledger-writing units do; the unit names no ledger file.
+      ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/omnibase_infra/.venv/bin/onex ledger query --stdin"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
+    # The name the ledger knows this host by: the append command writes the row as this host. Required: a unit installed
+    # without it refuses every append.
+    environment_inputs:
+      ONEX_LEDGER_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_LEDGER_HOST_NAME]
     evidence_file: .local/state/omni/friction-rollup/last-run.json
     state_directory: .onex_state/friction-rollup
