@@ -62,6 +62,15 @@ async def test_dedup_identity_wire_and_canonical_topic_forms_carry_one_id() -> N
     assert (await post(app, batch(canonical, wire))).status == 202
 
 
+def test_dedup_identity_is_the_shared_contract_event_id_for_the_same_bytes() -> None:
+    from omnibase_core.models.contracts.model_ingest_contract import compute_event_id
+
+    headers = {"message-id": b"m-1", "x-a": b"1"}
+    assert derive_event_id(TOPIC_A, b"k", headers, b"v") == compute_event_id(
+        "tenant-a." + TOPIC_A, b"k", b"v", list(headers.items())
+    )
+
+
 def test_dedup_identity_derivation_is_domain_separated_from_a_plain_hash() -> None:
     import hashlib
 

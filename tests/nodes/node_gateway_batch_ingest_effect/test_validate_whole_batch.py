@@ -30,7 +30,7 @@ KINDS: dict[str, tuple[Callable[[], dict[str, object]], str]] = {
         "record-exceeds-kafka-limit",
     ),
     "egress-client-stamp-header": (
-        lambda: record(headers={"message-id": "x"}),
+        lambda: record(headers={"onex-tenant-id": "x"}),
         "egress-client-stamp-header",
     ),
 }

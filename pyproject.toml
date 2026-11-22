@@ -157,7 +157,7 @@ dependencies = [
     # OMN-26115: floor raised 0.47.60 -> 0.47.74, the first release without
     # omnibase_core.cli.cli_run_node.run_node_in_process (core#2335 removed it) and with
     # ModelRunNodeHosted.run, which the onex setup CLI calls. Raised in BOTH places.
-    "omnibase-core>=0.47.74,<0.48.0",
+    "omnibase-core>=0.47.75,<0.48.0",
     # OMN-23518: floor raised 0.23.3 -> 0.23.15, the release whose notes list the lane process
     # wire models (omnibase_spi CHANGELOG v0.23.15, "Included Since v0.23.14": ProtocolLaneProcessRunner
     # and lane process wire models) the floor fill orchestrator imports from
@@ -1967,7 +1967,7 @@ override-dependencies = [
     # OMN-26115: floor raised 0.47.60 -> 0.47.74, the first release without
     # omnibase_core.cli.cli_run_node.run_node_in_process (core#2335 removed it) and with
     # ModelRunNodeHosted.run, which the onex setup CLI calls. Raised in BOTH places.
-    "omnibase-core>=0.47.74,<0.48.0",
+    "omnibase-core>=0.47.75,<0.48.0",
     # OMN-23518: floor raised 0.23.3 -> 0.23.15, the release whose notes list the lane process
     # wire models (omnibase_spi CHANGELOG v0.23.15, "Included Since v0.23.14": ProtocolLaneProcessRunner
     # and lane process wire models) the floor fill orchestrator imports from

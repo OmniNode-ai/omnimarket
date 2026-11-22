@@ -32,8 +32,9 @@ from omnimarket.nodes.node_gateway_batch_ingest_effect.topic_rules import (
 RECORD_FIELDS = frozenset(
     {"topic", "key", "value", "event_id", "envelope_id", "headers"}
 )
+# `message-id` is the shared contract's identity header: a client may send it, and the door replaces it with its stamp.
 STAMP_HEADER_NAMES = frozenset(
-    {"message-id", "onex-tenant-id", "onex-tenant-slug", "onex-ingest-door"}
+    {"onex-tenant-id", "onex-tenant-slug", "onex-ingest-door"}
 )
 DOOR_NAME = b"gateway-batch-ingest"
 _EVENT_ID = re.compile(r"[0-9a-f]{64}", re.ASCII)
@@ -186,12 +187,12 @@ def admit_record(
     if STAMP_HEADER_NAMES.intersection(names):
         raise AdmissionRefusedError("egress-client-stamp-header")
     expected = derive_event_id(
-        decoded.canonical_topic, decoded.key, dict(decoded.headers), decoded.value
+        decoded.canonical_topic, decoded.key, decoded.headers, decoded.value
     )
     if expected != decoded.event_id:
         raise AdmissionRefusedError("event-id-mismatch")
     stamped = (
-        *decoded.headers,
+        *(pair for pair in decoded.headers if pair[0] != "message-id"),
         ("message-id", decoded.event_id.encode("ascii")),
         ("onex-tenant-id", claims.tenant_id.encode("utf-8")),
         ("onex-tenant-slug", claims.tenant_slug.encode("utf-8")),

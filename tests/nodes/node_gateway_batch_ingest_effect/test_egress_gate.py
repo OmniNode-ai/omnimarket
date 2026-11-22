@@ -51,9 +51,8 @@ async def test_egress_oversize_value_is_refused_with_the_gates_own_reason() -> N
 @pytest.mark.parametrize(
     "name",
     [
-        "message-id",
-        "Message-Id",
         "onex-tenant-id",
+        "Onex-Tenant-Id",
         "onex-tenant-slug",
         "onex-ingest-door",
     ],
@@ -65,10 +64,23 @@ async def test_egress_client_sent_stamp_header_is_refused(name: str) -> None:
     assert publisher.calls == []
 
 
+async def test_egress_client_message_id_is_the_identity_header_and_the_door_replaces_it() -> (
+    None
+):
+    app, publisher = make_app()
+    sent = record(headers={"message-id": "client-chosen"})
+    result = await post(app, batch(sent))
+    assert (result.status, result.body) == (202, {"published": 1})
+    [produced] = publisher.calls
+    assert [n for n, _ in produced.headers].count("message-id") == 1
+    assert dict(produced.headers)["message-id"] == sent["event_id"].encode()
+
+
 async def test_egress_gate_runs_on_every_record_not_only_the_first() -> None:
     app, publisher = make_app()
     result = await post(
-        app, batch(record(), record(value=b"2"), record(headers={"message-id": "x"}))
+        app,
+        batch(record(), record(value=b"2"), record(headers={"onex-tenant-id": "x"})),
     )
     assert (result.body["error"], result.body["index"]) == (
         "egress-client-stamp-header",
