@@ -42,7 +42,7 @@ def historical_models_dev_index() -> ModelsDevIndex:
     """
     try:
         # The ONEX home the model table and the delegation call share.
-        return _read(model_catalog._onex_home())  # noqa: SLF001
+        return _read(model_catalog.onex_home())
     except Exception:  # Any failure reading optional metadata: price unknown.
         return EMPTY_INDEX
 
@@ -136,22 +136,22 @@ def _no_fetch(url: str, timeout: float) -> bytes:
 
 
 def _deadline_fetch(deadline_seconds: float) -> FetchBytes:
-    """``model_catalog._fetch`` bounded by ``deadline_seconds`` in total.
+    """``model_catalog.fetch_models_dev`` bounded by ``deadline_seconds`` in total.
 
     The fetch runs in a daemon thread; one still running at the deadline is
     abandoned and its answer, if any, is discarded.
     """
 
     def fetch(url: str, timeout: float) -> bytes:
-        outcome: dict[str, bytes | BaseException] = {}
+        outcome: dict[str, bytes | Exception] = {}
 
         def run() -> None:
             try:
                 # models.dev through the catalogue's own contract transport.
-                outcome["body"] = model_catalog._fetch(  # noqa: SLF001
+                outcome["body"] = model_catalog.fetch_models_dev(
                     url, min(timeout, deadline_seconds)
                 )
-            except BaseException as exc:  # handed to the caller below
+            except Exception as exc:  # handed to the caller below
                 outcome["error"] = exc
 
         worker = threading.Thread(
@@ -163,7 +163,7 @@ def _deadline_fetch(deadline_seconds: float) -> FetchBytes:
         if isinstance(body, bytes):
             return body
         error = outcome.get("error")
-        if isinstance(error, BaseException):
+        if isinstance(error, Exception):
             raise error
         raise TimeoutError(f"models.dev did not answer within {deadline_seconds}s")
 
