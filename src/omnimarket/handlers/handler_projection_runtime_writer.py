@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from omnimarket.handlers.runtime_delivery_host import RuntimeDeliveryHost
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -44,21 +45,18 @@ class RuntimeProjectionWriter:
         # asynchronous writer's pool. Per-binding connections below are
         # resolved and attested by the same topology as that injected adapter.
         data.pop("_db", None)
-        topic = str(data.pop("_topic"))
-        partition = int(data.pop("_partition"))
-        offset = int(data.pop("_offset"))
+        delivery = ModelProjectionRequest.from_injected(data).require_delivery_context()
+        topic = str(delivery.topic)
         meta = MessageMeta(
             topic=topic,
-            partition=partition,
-            offset=offset,
-            fallback_id=str(
-                data.pop(
-                    "_fallback_id",
-                    deterministic_correlation_id(topic, partition, offset),
-                )
-            ),
+            partition=delivery.partition,
+            offset=delivery.offset,
+            fallback_id=delivery.fallback_id
+            or deterministic_correlation_id(topic, delivery.partition, delivery.offset),
         )
-        projected = self._host.deliver(topic, self.event_payload(data), meta)
+        projected = self._host.deliver(
+            topic, self.event_payload(delivery.payload), meta
+        )
         return {"projected": projected}
 
     def event_payload(self, data: dict[str, Any]) -> dict[str, Any]:
