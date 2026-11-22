@@ -1,0 +1,94 @@
+schema_version: 1.0.0
+ticket_id: OMN-21594
+title: 'Contract hot loading A6: The topic reaper flags stale topics, then deletes them after the overlay''s interval'
+summary: Adds node_topic_reaper_compute, a pure compute node that flags broker topics nothing produces to or consumes from, and names them deletable after a second overlay interval and the overlay's quiet observations. Both intervals come from the lane overlay with no default in code; with none, nothing is flagged or deleted and REAPER_POLICY_MISSING is reported. The lifecycle runs through core's FSM transition executor over topic_reaper_fsm. Acceptance criteria AC1 to AC6 are proven by unit tests on an injected clock; AC7 (the same sequence on a real broker) is not met by this pull request.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-topic-reaper
+  statement: The criteria AC1 to AC6 of the ticket, transcribed from the ticket body; the ticket body is the source and this block is the copy.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: with the overlay interval set to three days and an injected clock, withdrawing a contract flags its topic and deletes nothing at day zero or day two; a re-announcement on day two clears the flag; with no re-announcement and two quiet observations the topic is deleted by topic id on day three -- falsifier: a deletion before day three, a flag that survives a re-announcement, or no deletion at day three.'
+  - id: AC2
+    statement: 'AC2: A topic with a live group member or moving end offsets is never deleted and returns to flagged -- falsifier: a deletion.'
+  - id: AC3
+    statement: 'AC3: With no `flag_to_delete_days` in the overlay nothing is ever deleted and `REAPER_POLICY_MISSING` is reported -- falsifier: a deletion, or no report.'
+  - id: AC4
+    statement: 'AC4: A baseline or control topic is never flagged -- falsifier: a flag.'
+  - id: AC5
+    statement: 'AC5: A topic referenced by stored state or a pending emission of an older package generation is not deleted at day three or later while the reference stands, and is deleted after it clears and the quiet observations hold -- falsifier: a deletion while referenced.'
+  - id: AC6
+    statement: 'AC6: The reaper machine runs through core''s real FSM transition executor with the injected `interval_elapsed` value, and the `age_out` transition fires at day three and not at day two -- falsifier: a transition that never fires, or fires early.'
+evidence_requirements:
+- kind: tests
+  description: The reaper's unit tests at the pushed head.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_topic_reaper_compute -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21594-ac1
+  description: The day-zero flag, day-two re-announcement and day-three deletion by topic id on an injected clock.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_topic_reaper_compute/test_handler_topic_reaper.py -k "day_three or re_announcement" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn21594-ac2
+  description: A live group member or moving end offsets are never handed out and return the topic to flagged.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_topic_reaper_compute/test_handler_topic_reaper.py -k "live_group_member or moving_end_offsets" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn21594-ac3
+  description: With no policy nothing is deleted and REAPER_POLICY_MISSING is reported.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_topic_reaper_compute/test_handler_topic_reaper.py -k "missing_policy or no_overlay or overlay_without or policy_has_no_default" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn21594-ac4
+  description: A baseline, control or protected-prefix topic is never flagged.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_topic_reaper_compute/test_handler_topic_reaper.py -k "baseline_and_protected" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn21594-ac5
+  description: An unfinished-work reference blocks the deletion until it clears.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_topic_reaper_compute/test_handler_topic_reaper.py -k "unfinished_work" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn21594-ac6
+  description: The age_out and delete_by_id transitions run through core's executor and age_out fires with the injected value only.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_topic_reaper_compute/test_handler_topic_reaper.py -k "executors_not_the_handlers" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn21594-integration-proof
+  description: The reaper's tests run at the pushed head on a lab host through the lab work node; they need a lab host and about a minute, so only the local Done gate runs it, and it binds no criterion.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21594 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_topic_reaper_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .
