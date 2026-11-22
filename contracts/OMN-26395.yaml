@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26395
+title: "The lab host job claim unit, the floor-fill tick and the stability refresh serve unit each exit 0 on their lab host, one cause named per unit and fixed through the declared host setup"
+summary: The work ledger reader entrypoint prints its verb lines through the detail capture bound, so a read past the contract's max_bytes ends as its head, its tail and a dropped-line count.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26395-unit-causes
+    statement: Each of the three lab units is read on its host, one cause is named per unit, and each unit is either read exit 0 or named blocked with one owner.
+    acceptance:
+      - id: AC1
+        statement: "AC1: for each of the three units the lane reads its own journal on the host and writes one STATUS row naming one cause, the unit file or overlay key that owns it and the host-journal line quoted -- falsifier: grep -c 'unit=onex-host-job-claim|unit=onex-floor-fill-tick|unit=onex-stability-refresh-serve' on the lane STATUS rows returns fewer than three, or a row names no journal line"
+      - id: AC2
+        statement: "AC2: the fix for each cause is made through the declared host setup (an overlay change or the unit source, landed by pull request) and never by a hand edit on a host -- falsifier: the unit file on the host differs from the one the declared installer renders, read with the installer's check mode"
+      - id: AC3
+        statement: "AC3: integrated: one successful run of each unit is read on its host after the fix, ExecMainStatus 0 with a read_at time, or the unit is named blocked with one cause and one owner (a credential or broker grant outside the lane is a block, not a workaround) -- falsifier: run on the lab host, systemctl --user show <unit> -p ExecMainStatus and read it back; it reads a non-zero status after the fix with no blocked= STATUS row for it"
+  - id: req-omn26395-reader-detail-capture-bound
+    statement: The work ledger reader entrypoint cannot print an unbounded capture.
+    acceptance:
+      - id: AC4
+        statement: "AC4: the reader entrypoint prints its verb lines through handlers/detail_capture_bound.py -- falsifier: uv run pytest -k detail_capture_bound on tests/unit/nodes/node_work_ledger_reader_effect/test_reader_detail_capture_bound_wired.py fails when the entrypoint does not call bound_capture"
+evidence_requirements:
+  - kind: tests
+    description: The focused entrypoint wiring tests and the bound's own tests.
+    command: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_detail_capture_bound_wired.py tests/nodes/test_omn26210_detail_capture_bound.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26395-ac1
+    description: "Three lane STATUS rows on the rolling ledger carry unit=onex-host-job-claim, unit=onex-floor-fill-tick and unit=onex-stability-refresh-serve, each with its cause, owning key and quoted journal line."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: disposition
+        check_value: dod-omn26395-ac1
+  - id: dod-omn26395-ac2
+    description: "No host edit was made: every cause found is a broker grant or a credential outside the lane, so no unit file or overlay change was needed."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: disposition
+        check_value: dod-omn26395-ac2
+  - id: dod-omn26395-ac3
+    description: "Each of the three units is named blocked with one cause and one owner in its STATUS row; no unit reads ExecMainStatus 0 yet."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: disposition
+        check_value: dod-omn26395-ac3
+  - id: dod-omn26395-ac4
+    description: "The entrypoint calls bound_capture, uses the contract's detail_capture settings by default and prints head, tail and a dropped-line count for a long read."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_detail_capture_bound_wired.py -q --no-cov -k detail_capture_bound
+  - id: dod-omn26395-integration-proof
+    description: "Run the focused wiring tests on a lab host at the pushed head; the local Done gate runs this unbound check."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26395 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_detail_capture_bound_wired.py tests/nodes/test_omn26210_detail_capture_bound.py -q --no-cov
+        cwd: .
