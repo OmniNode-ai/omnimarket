@@ -449,10 +449,13 @@ def test_setup_refuses_a_collision_in_a_customer_project(
             HandlerSetupEnvironment(name="runtime_config"),
         ),
     ).handle(ModelSetupPlan(workspace=folder))
-    assert result.observations[-1].status in ("failure", "action_required")
+    outcome = result.observations[-1]
+    assert outcome.status in ("failure", "action_required")
     assert user_path.read_bytes() == b"owned by the customer\n"
     if user_path != marker:
         assert not marker.exists()
+        # Refused for the collision itself, not because the folder holds files.
+        assert str(user_path) in (outcome.fix or "")
 
 
 def test_repair_does_not_follow_a_link_in_an_existing_workspace(tmp_path: Path) -> None:
