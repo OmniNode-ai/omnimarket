@@ -437,6 +437,9 @@ def test_file_level_closure_data_only_diff_selects_the_readers_when_the_switch_i
     assert off.data_only is False
 
 
+_FROZEN_RESULT_FIELD = "selected_paths"
+
+
 def test_file_level_closure_requests_and_results_are_frozen_and_forbid_extras() -> None:
     with pytest.raises(ValidationError):
         ModelFileLevelClosureRequest.model_validate(
@@ -450,7 +453,7 @@ def test_file_level_closure_requests_and_results_are_frozen_and_forbid_extras() 
         )
     result = ModelFileLevelClosureResult(selected_paths=("tests/a/",))
     with pytest.raises(ValidationError):
-        result.selected_paths = ()  # type: ignore[misc]
+        setattr(result, _FROZEN_RESULT_FIELD, ())
     with pytest.raises(ValidationError):
         ModelFileLevelClosureResult(
             selected_paths=("tests/a/",),

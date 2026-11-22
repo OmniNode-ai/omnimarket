@@ -5,6 +5,9 @@
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_file_level_closure import (
     HandlerFileLevelClosure,
 )
+from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_policy_bound import (
+    HandlerPolicyBound,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_selection_replay import (
     HandlerSelectionReplay,
 )
@@ -17,6 +20,7 @@ from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test
 
 __all__ = [
     "HandlerFileLevelClosure",
+    "HandlerPolicyBound",
     "HandlerSelectionReplay",
     "HandlerTestPathResolution",
     "HandlerTestSelectionSelector",

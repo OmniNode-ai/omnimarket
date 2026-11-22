@@ -29,6 +29,10 @@ description: >-
   the policy's file_level_closure_stage: a deleted or renamed file seeds from the files that still name it, a nested
   conftest.py selects its directory, the root conftest edge is the policy's root_conftest_edge, and a source file the
   closure cannot place escalates as unresolved_source.
+  HandlerPolicyBound derives the narrowed-run bound, each merge's shard count, the share of replayed merges over
+  each candidate bound, the test-seconds each saves, the full-run crossover and the per-merge runner-cost columns
+  from policy.yaml, the durations file and the replay inputs, and lists every test file without a duration entry
+  and every entry without a file by path; a file with no entry costs untimed_file_seconds.
 input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorRequest
 output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorDecision
 handler:
@@ -68,6 +72,12 @@ handler_routing:
       handler:
         name: HandlerFileLevelClosure
         module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_file_level_closure
+    - operation: calculate_policy_bound
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_policy_bound.ModelPolicyBoundRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_policy_bound.ModelPolicyBoundResult
+      handler:
+        name: HandlerPolicyBound
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_policy_bound
 descriptor:
   node_archetype: compute
   purity: pure
