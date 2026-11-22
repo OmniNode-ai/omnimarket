@@ -59,6 +59,9 @@ dod_evidence:
     binds_ac:
       - AC4
     checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group3_slice_omn26331.py -q --no-cov --tb=line
+        cwd: .
       - check_type: command
         check_value: "sh -c '! env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=. --per-file --verbose 2>&1 | grep -E \"nodes/node_owner_summary_effect/__main__|handlers/handler_plans_today|runtime_patch_apply_dispatch_cli|handlers/handler_private_hosted_minutes_watch\"'"
         cwd: .
