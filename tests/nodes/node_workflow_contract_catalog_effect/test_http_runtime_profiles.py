@@ -103,8 +103,8 @@ async def test_runtime_mount_serves_catalog_to_a_resolved_tenant_only(
         server.attach_manifest(manifest)
         assert server._mount_task is not None
         await server._mount_task
-        assert server._runner is not None
-        port = server._runner.addresses[0][1]
+        assert server._site is not None
+        port = server._site.port
         url = f"http://127.0.0.1:{port}{ROUTE}"
         async with aiohttp.ClientSession() as session:
             async with session.get(
