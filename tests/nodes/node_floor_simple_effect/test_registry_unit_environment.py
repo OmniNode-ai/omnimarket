@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units import (
     HandlerRegistryUnits,
@@ -85,3 +86,18 @@ def test_error_a_value_that_is_not_an_absolute_path_is_refused_so_no_secret_can_
             registry_root="/r",
             alert_env_file="xoxb-looks-like-a-token value",
         )
+
+
+def test_the_timer_carries_the_variable_the_floor_contract_names_for_the_ledger_read_command(
+    tmp_path: Path,
+) -> None:
+    """OMN-26329: the floor reads its ledger over the command the contract's ``runtime.ledger`` names; the unit carries it."""
+    contract = yaml.safe_load(
+        (
+            Path(__file__).resolve().parents[3]
+            / "src/omnimarket/nodes/node_floor_simple_effect/contract.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    name = contract["runtime"]["ledger"]["command_env"]
+    environment = timer_environment(tmp_path)
+    assert environment[name].endswith("onex ledger query --stdin")

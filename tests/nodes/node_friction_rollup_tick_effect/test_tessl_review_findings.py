@@ -17,18 +17,15 @@ from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_
 )
 from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.handler_friction_rollup_tick import (
     DEFAULT_OVERLAY,
-    HandlerFrictionRollupTick,
 )
 from omnimarket.nodes.node_friction_rollup_tick_effect.models.model_friction_rollup_tick import (
     ModelFrictionRollupTickRequest,
     ModelFrictionRollupTickSettings,
 )
-from omnimarket.nodes.node_friction_rollup_tick_effect.protocols.protocol_ledger_appender import (
-    InMemoryLedgerAppender,
-)
 from tests.nodes.node_friction_rollup_tick_effect.tick_support import (
     install_ledger,
     request_for,
+    tick_handler,
 )
 
 pytestmark = pytest.mark.unit
@@ -45,18 +42,14 @@ def _settings(**changes: object) -> ModelFrictionRollupTickSettings:
 
 
 def _row(tmp_path: Path, state_dir: Path | None) -> str:
+    ledger = install_ledger(tmp_path)
     request = ModelFrictionRollupTickRequest(
         registry_root=str(tmp_path / "registry"),
-        ledger_path=str(install_ledger(tmp_path)),
         now=NOW,
         dry_run=True,
         state_dir=None if state_dir is None else str(state_dir),
     )
-    return (
-        HandlerFrictionRollupTick(appender=InMemoryLedgerAppender())
-        .handle(request)
-        .status_row
-    )
+    return tick_handler(ledger).handle(request).status_row
 
 
 def test_status_references_follow_the_state_dir_override(tmp_path: Path) -> None:
@@ -117,13 +110,13 @@ def test_trend_keys_follow_the_configured_window_names() -> None:
 def test_second_tick_of_a_custom_profile_stores_deltas_under_its_window_names(
     tmp_path: Path,
 ) -> None:
-    handler = HandlerFrictionRollupTick(
-        appender=InMemoryLedgerAppender(),
-        settings=_settings(
-            windows=[{"name": "48h", "hours": 48}, {"name": "6h", "hours": 6}]
-        ),
-    )
     ledger = install_ledger(tmp_path)
+    handler = tick_handler(
+        ledger,
+        windows=_settings(
+            windows=[{"name": "48h", "hours": 48}, {"name": "6h", "hours": 6}]
+        ).windows,
+    )
     handler.handle(request_for(tmp_path, ledger, "2026-09-26T06:00:00Z"))
     second = handler.handle(request_for(tmp_path, ledger, NOW))
     trend = json.loads(second.report_json_text)["summary"]["trend"]
