@@ -5,6 +5,44 @@ summary: Adds node_topic_reaper_compute, a pure compute node that flags broker t
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn21594-ac1-accepted-20261122t1145z:
+    - label: AC1
+      criterion_hash: 3282796bbb5e30534ccd35a8800dd7509074a52f8af19ba537442da655d1b661
+      proposed_by: lane=dod-closeout-bind-2026-11-22T1145Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-22T1145Z-c1
+      accepted_at: '2026-11-22T12:16:19Z'
+    dod-omn21594-ac2-accepted-20261122t1145z:
+    - label: AC2
+      criterion_hash: 5797034583334cc160fe2519284bd851a174a988c4965908a3eda0ddc5fa1dfe
+      proposed_by: lane=dod-closeout-bind-2026-11-22T1145Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-22T1145Z-c1
+      accepted_at: '2026-11-22T12:16:19Z'
+    dod-omn21594-ac3-accepted-20261122t1145z:
+    - label: AC3
+      criterion_hash: df0cf6a86abd3b6686aaaa1154a9f11ce49e11f13d97644123d6a9f61eb74d4c
+      proposed_by: lane=dod-closeout-bind-2026-11-22T1145Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-22T1145Z-c1
+      accepted_at: '2026-11-22T12:16:19Z'
+    dod-omn21594-ac4-accepted-20261122t1145z:
+    - label: AC4
+      criterion_hash: 981d257ae6b90ebc409eb92ed9eabb7be376aad6e6490afe9b4de2cdd737d113
+      proposed_by: lane=dod-closeout-bind-2026-11-22T1145Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-22T1145Z-c1
+      accepted_at: '2026-11-22T12:16:19Z'
+    dod-omn21594-ac5-accepted-20261122t1145z:
+    - label: AC5
+      criterion_hash: e89b67d036665b33085b1edc48e96103f78b870cea5abc324e59558043859b92
+      proposed_by: lane=dod-closeout-bind-2026-11-22T1145Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-22T1145Z-c1
+      accepted_at: '2026-11-22T12:16:19Z'
+    dod-omn21594-ac6-accepted-20261122t1145z:
+    - label: AC6
+      criterion_hash: 678fd463656c3a633d3e7272b233696278eafd7b585e568ceba31bee2321a898
+      proposed_by: lane=dod-closeout-bind-2026-11-22T1145Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-22T1145Z-c1
+      accepted_at: '2026-11-22T12:16:19Z'
 requirements:
 - id: req-topic-reaper
   statement: The criteria AC1 to AC6 of the ticket, transcribed from the ticket body; the ticket body is the source and this block is the copy.
@@ -91,4 +129,58 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21594 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_topic_reaper_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn21594-ac1-accepted-20261122t1145z
+  description: 'AC1: Day-zero flag with no delete target on days 0 to 2, a re-announcement on day 2 that returns the topic to ACTIVE, and a delete target (topic, topic_id) on day 3.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_topic_reaper_compute/test_handler_topic_reaper.py::test_withdrawn_topic_flagged_then_deleted_by_id_at_day_three tests/unit/nodes/node_topic_reaper_compute/test_handler_topic_reaper.py::test_re_announcement_on_day_two_clears_the_flag_and_resets_the_clock -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn21594-ac2-accepted-20261122t1145z
+  description: 'AC2: No delete target while a group member is live or end offsets move, and the topic returns to flagged.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_topic_reaper_compute/test_handler_topic_reaper.py::test_live_group_member_is_never_handed_out_and_restarts_the_clock tests/unit/nodes/node_topic_reaper_compute/test_handler_topic_reaper.py::test_moving_end_offsets_return_an_eligible_topic_to_flagged -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn21594-ac3-accepted-20261122t1145z
+  description: 'AC3: With no policy there is no delete target on days 0, 3, 30 and 400, and REAPER_POLICY_MISSING is reported.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_topic_reaper_compute/test_handler_topic_reaper.py::test_missing_policy_reports_and_deletes_nothing -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn21594-ac4-accepted-20261122t1145z
+  description: 'AC4: A baseline or protected-prefix topic stays ACTIVE with reason protected on days 0, 3 and 30.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_topic_reaper_compute/test_handler_topic_reaper.py::test_baseline_and_protected_topics_are_never_flagged -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn21594-ac5-accepted-20261122t1145z
+  description: 'AC5: No delete target on days 3 and 10 while an unfinished-work reference stands, and a delete target on day 11 after it clears.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_topic_reaper_compute/test_handler_topic_reaper.py::test_unfinished_work_reference_blocks_the_delete_until_it_clears -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn21594-ac6-accepted-20261122t1145z
+  description: 'AC6: The handler moves FLAGGED to ELIGIBLE through omnibase_core execute_transition only when interval_elapsed is True, and the sequence is FLAGGED at day 2 and DELETING at day 3.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_topic_reaper_compute/test_handler_topic_reaper.py::test_the_age_guard_is_the_executors_not_the_handlers tests/unit/nodes/node_topic_reaper_compute/test_handler_topic_reaper.py::test_withdrawn_topic_flagged_then_deleted_by_id_at_day_three -q --no-cov -n 0 -p no:randomly
     cwd: .
