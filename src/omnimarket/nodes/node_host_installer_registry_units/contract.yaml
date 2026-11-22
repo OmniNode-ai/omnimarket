@@ -695,10 +695,12 @@ units:
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
     evidence_file: .local/state/omni/c32-auth-boundary-probe/last-run.json
     state_directory: .onex_state/c32-auth-boundary-probe
-  # The overlay store's loader on a Linux pool host (OMN-23353): once an hour it loads the overlays the loader's overlay
-  # names from this host's clone of the overlay home, and only while that clone is at the head of the branch the overlay
+  # The overlay store's loader on a Linux pool host (OMN-23353): every 300 s it checks this host's clone of the overlay home,
+  # and loads the overlays the loader's overlay names when the clone's main has moved past the revision of the last load
+  # (and once an hour to assert an unchanged overlay), and only while that clone is at the head of the branch the overlay
   # names (main), so the store is never filled from a side branch. The overlay root is that clone itself. This replaces
-  # a hand-started transient timer that loaded a stale branch.
+  # a hand-started transient timer that loaded a stale branch. At one run an hour a merged change waited up to an hour for
+  # the store (OMN-26432); the tick publishes only on a move, so the shorter interval adds no record to the topic.
   overlay-store-load-systemd:
     platform: systemd
     kind: registry_module_tick
@@ -706,10 +708,10 @@ units:
     template: templates/onex-registry-module-tick.service.tmpl
     timer_template: templates/onex-registry-module-tick.timer.tmpl
     schedule:
-      start_interval: 3600
+      start_interval: 300
       run_timeout_s: 120
       run_at_load: true
-      description: every 3600 s and at load
+      description: every 300 s and at load
     registry_project: omnimarket
     tick_no_sync: true
     interpreter_candidates:
