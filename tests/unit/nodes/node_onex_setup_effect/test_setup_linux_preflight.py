@@ -33,6 +33,7 @@ pytestmark = pytest.mark.unit
         "6.8.0-generic",
         "5.15.153.1-microsoft-standard-WSL2",
         "4.19.128-microsoft-standard",
+        "5.15.0-Microsoft-standard-WSL2",
     ],
 )
 def test_preflight_linux_and_wsl_supported(
@@ -42,7 +43,10 @@ def test_preflight_linux_and_wsl_supported(
 
     Microsoft's WSL 2 kernels carry the lowercase "-microsoft-standard" local
     version, without a WSL2 suffix on the 4.19 branch, so a WSL 1 check that
-    ignores case or requires WSL2 must fail here.
+    ignores case or requires WSL2 must fail here. A release that names
+    Microsoft with a capital M but also WSL2, such as a custom-built WSL 2
+    kernel, must still be admitted, so a WSL 1 check that drops its "WSL2"
+    exclusion fails here.
     """
     monkeypatch.setattr(preflight.platform, "system", lambda: "Linux")
     monkeypatch.setattr(preflight.platform, "release", lambda: kernel)
