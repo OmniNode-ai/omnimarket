@@ -41,12 +41,18 @@ pytestmark = pytest.mark.unit
 POLICY = ModelSelectorPolicy(
     target_shard_seconds=100,
     max_narrowed_shards=5,
+    narrowed_bound_seconds=500,
+    untimed_file_seconds=0,
+    record_tolerance_ratio=0.05,
+    comparison_bounds_seconds=(500,),
     durations_path="durations.json",
     path_count_shards=((2, 1), (5, 2)),
     path_count_max_shards=3,
     selection_stage=0,
     full_split_count=20,
     record_retention_days=14,
+    stage_clean_nights=7,
+    stage_min_pr_records=10,
     graph_compared_stage=0,
     graph_min_valid_comparisons=20,
 )
@@ -131,12 +137,18 @@ def test_selection_selector_policy_refuses_a_ladder_over_the_narrowed_maximum() 
         ModelSelectorPolicy(
             target_shard_seconds=100,
             max_narrowed_shards=2,
+            narrowed_bound_seconds=200,
+            untimed_file_seconds=0,
+            record_tolerance_ratio=0.05,
+            comparison_bounds_seconds=(200,),
             durations_path="d.json",
             path_count_shards=((2, 1), (5, 3)),
             path_count_max_shards=2,
             selection_stage=0,
             full_split_count=20,
             record_retention_days=14,
+            stage_clean_nights=7,
+            stage_min_pr_records=10,
             graph_compared_stage=0,
             graph_min_valid_comparisons=20,
         )
@@ -144,7 +156,8 @@ def test_selection_selector_policy_refuses_a_ladder_over_the_narrowed_maximum() 
 
 def test_selection_selector_shipped_policy_loads() -> None:
     policy = load_policy()
-    assert policy.target_shard_seconds * policy.max_narrowed_shards == 1800
+    assert policy.narrowed_bound_seconds == 1800
+    assert policy.target_shard_seconds * policy.max_narrowed_shards >= 1800
 
 
 def test_selection_selector_durations_file_source_reads_and_fails_closed(

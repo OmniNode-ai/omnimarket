@@ -1,0 +1,8 @@
+# CODEOWNERS for omnimarket
+# The test selection stage gate: a change to the stage, to a stage receipt or to the test that checks
+# receipts needs the owner's review, because a pull request can otherwise edit the check it must pass.
+# tests/ci/test_selection_stage_evidence.py proves these entries exist and cover the three paths; the
+# refusal itself is the branch protection's.
+/src/omnimarket/nodes/node_test_selection_selector_compute/policy.yaml @OmniNode-ai/platform-leads
+/config/test_selection_stage_receipts/ @OmniNode-ai/platform-leads
+/tests/ci/test_selection_stage_evidence.py @OmniNode-ai/platform-leads
