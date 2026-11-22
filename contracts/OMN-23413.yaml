@@ -285,24 +285,22 @@ dod_evidence:
       -p no:randomly
     cwd: .
 - id: dod-omn23413-ac8-existing-project-files
-  description: 'Setup in an existing project keeps the customer''s own files instead of refusing the folder. Proves the preserve-user-files clause of AC8.'
+  description: 'Setup in an existing project keeps the customer''s own files instead of refusing the folder. It binds no criterion: it proves only the preserve-user-files clause of AC8, and a binding would mark all of AC8 verified. AC8 is bound by dod-omn23413-ac8-migration-repair, whose check runs this test file.'
   source: manual
   execution_scope: hosted_and_local
-  binds_ac:
-  - AC8
   checks:
   - check_type: test_passes
     check_value: 'uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py::test_setup_in_an_existing_project_preserves_customer_files -q --no-cov -n 0 -p no:randomly'
     cwd: .
 - id: dod-omn23413-ac21-field-provenance
-  description: 'The model details name the source of each fact (input price, output price, capabilities, cache, name, output limit). Proves only the per-field provenance clause of AC21; the other AC21 clauses stay open.'
+  description: 'Every AC21 clause, each by its own test: the provider''s exact ids are listed and a model only models.dev knows is never offered (test_config_lists_the_providers_own_ids_exactly_and_no_catalogue_only_model, on a captured OpenRouter body); prices convert to USD per 1M (test_openrouter_rows_carry_name_context_and_price_per_million) as exact Decimal (test_prices_are_exact_decimals_and_print_in_dollars); an unstated capability or price stays unknown (test_nothing_stated_stays_unknown_never_free_or_no); the details name the source of each fact (test_details_attribute_each_model_fact_to_its_source, and test_capabilities_a_provider_lists_reach_the_details_from_its_own_list through the real listing path).'
   source: manual
   execution_scope: hosted_and_local
   binds_ac:
   - AC21
   checks:
   - check_type: test_passes
-    check_value: 'uv run pytest tests/unit/handlers/test_model_catalog.py::test_details_attribute_each_model_fact_to_its_source -q --no-cov -n 0 -p no:randomly'
+    check_value: 'uv run pytest tests/unit/handlers/test_model_catalog.py::test_details_attribute_each_model_fact_to_its_source tests/unit/handlers/test_model_catalog.py::test_capabilities_a_provider_lists_reach_the_details_from_its_own_list tests/unit/handlers/test_model_catalog.py::test_prices_are_exact_decimals_and_print_in_dollars tests/unit/handlers/test_model_catalog.py::test_nothing_stated_stays_unknown_never_free_or_no tests/unit/handlers/routing/test_byok_model_listing.py::test_openrouter_rows_carry_name_context_and_price_per_million tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py::test_config_lists_the_providers_own_ids_exactly_and_no_catalogue_only_model -q --no-cov -n 0 -p no:randomly'
     cwd: .
 - id: dod-omn23413-ac9-cli-behavior
   description: Interactive and unattended share one engine; typed JSON, offline help and positive-control

@@ -652,6 +652,46 @@ async def test_a_long_list_is_searchable_and_ticks_survive_searching() -> None:
         )
 
 
+async def test_config_lists_the_providers_own_ids_exactly_and_no_catalogue_only_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC21: the provider's list decides which models exist and their exact ids;
+    a model only models.dev knows is never offered."""
+    from omnimarket.handlers.model_catalog import ModelsDevIndex
+    from omnimarket.handlers.routing.byok_model_listing import list_byok_models
+    from omnimarket.nodes.node_onex_setup_effect import cli_tui
+
+    capture = Path(__file__).parents[3] / "fixtures/openrouter_models_2026_11_20.json"
+    body = json.loads(capture.read_text(encoding="utf-8"))
+    listing = list_byok_models("openrouter", "key", get=lambda **_: body)
+    only_in_catalogue = ("openrouter", "vendor/only-in-models-dev")
+    monkeypatch.setattr(
+        cli_tui,
+        "_default_index",
+        lambda: ModelsDevIndex(
+            models={**_MODELS_DEV, only_in_catalogue: {"name": "Catalogue only"}},
+            fetched_at="2026-11-12T00:00:00+00:00",
+            stale=False,
+            error=None,
+        ),
+    )
+    app = OnexTui(
+        root=_root,
+        runner=_Runner([]),
+        load_status=_status,
+        list_models=lambda _provider, _key: listing,
+    )
+    async with app.run_test(size=(140, 50)) as pilot:
+        await _open_config(pilot, app)
+        app.screen.query_one("#provider").value = "openrouter"
+        await pilot.pause()
+        app.screen.query_one("#key").value = "sk-or-test"
+        await _wait_for_models(pilot)
+        shown = sorted(entry.model_id for entry in _found(app).entries)
+    assert shown == sorted(row["id"] for row in body["data"])
+    assert only_in_catalogue[1] not in shown
+
+
 async def test_a_refused_key_shows_the_provider_message_and_lists_nothing() -> None:
     list_models, _ = _hosted_listing(outcome="rejected", message="Invalid API key")
     app = OnexTui(
