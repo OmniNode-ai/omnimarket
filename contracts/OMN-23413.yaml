@@ -152,6 +152,11 @@ requirements:
   acceptance:
   - id: AC27
     statement: 'One catalogue, no hard-coded lists. /model, /config and /delegation read the same entries; the providers, capabilities, columns and words come from configuration. /model chooses the first model or Auto.'
+- id: req-omn23413-ac35
+  statement: 'AC35: a call is priced from that combined entry. The provider''s own price is used when it serves one. Otherwise models.dev''s price for that provider and model is used. Otherwise it is unknown as AC28 says. Each run records which source priced it and when that source was read. Both sources are read live. A reused copy is never older than the age set in configuration and never committed.'
+  acceptance:
+  - id: AC35
+    statement: 'AC35: a call is priced from that combined entry. The provider''s own price is used when it serves one. Otherwise models.dev''s price for that provider and model is used. Otherwise it is unknown as AC28 says. Each run records which source priced it and when that source was read. Both sources are read live. A reused copy is never older than the age set in configuration and never committed.'
 - id: req-omn23413-ac33
   statement: Every ordinary prompt goes to delegation first when bit 11 is enabled; documented slash and @claude skips remain native. A quality-passed answer is shown with model and full run ID without native Claude inference. Decline via the fixed CANNOT_ANSWER marker, failure, timeout, quality veto or OFF continues to Claude. Bounded delegated history is deduplicated by run ID and delivered once on the next native turn. onex delegation on/off and the TUI switch add and remove the one prompt hook while preserving Claude settings; subagents stay on Claude (Amendment 14a, 2026-11-17). Real inference and token receipt evidence is required separately from deterministic process controls.
   acceptance:
@@ -167,11 +172,6 @@ requirements:
   acceptance:
   - id: AC38
     statement: '`onex delegation status` reports on only when the prompt hook (UserPromptSubmit) is installed and bit 11 is set; an older install that has only the subagent hook reports off and names the missing prompt hook. The prompt hook can be paused on its own (operator 2026-11-15); Amendment 14a (2026-11-17) removed the subagent hook.'
-- id: req-omn23413-ac35
-  statement: 'AC35: a call is priced from that combined entry. The provider''s own price is used when it serves one. Otherwise models.dev''s price for that provider and model is used. Otherwise it is unknown as AC28 says. Each run records which source priced it and when that source was read. Both sources are read live. A reused copy is never older than the age set in configuration and never committed.'
-  acceptance:
-  - id: AC35
-    statement: 'AC35: a call is priced from that combined entry. The provider''s own price is used when it serves one. Otherwise models.dev''s price for that provider and model is used. Otherwise it is unknown as AC28 says. Each run records which source priced it and when that source was read. Both sources are read live. A reused copy is never older than the age set in configuration and never committed.'
 evidence_requirements:
 - kind: tests
   description: Run fixture controls plus required installed-wheel and actual model/Claude evidence; preserve
@@ -439,6 +439,16 @@ dod_evidence:
   - check_type: test_passes
     check_value: 'uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/handlers/test_local_model_details.py -q --no-cov -n 0 -p no:randomly -k "config or server or ticked or searchable or key"'
     cwd: .
+- id: dod-omn23413-ac35-models-dev-price
+  description: 'Proves the pricing half of AC35 for a customer-key call: the provider''s own price wins and is recorded with its read time; otherwise models.dev is read live and prices the call (a Beam call on a Reflection key is booked at 0 as zero_marginal_api_cost, source models.dev, with the read time); a paid models.dev price is booked as cloud cost; a model absent from both sources stays unknown; a copy older than the configured age is read again, and a stale copy whose re-read fails never prices a call. It does not prove AC35''s "never committed" clause as a scan of the repository, and it proves nothing of AC34 (one combined entry for limits, price and the model table) or AC36 (token usage provenance).'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC35
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/delegation/test_byok_models_dev_price_omn23413.py -q'
+    cwd: .
 - id: dod-omn23413-ac25-delegation-no-typed-input
   description: '/delegation uses one prompt-hook switch (Amendment 14a), refuses without a model, and preserves Claude settings.'
   source: manual
@@ -560,14 +570,4 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_legacy_hooks.py tests/unit/nodes/node_onex_setup_effect/test_cli_delegation.py
       tests/unit/nodes/node_onex_setup_effect/test_setup_delegation_hook_edges.py tests/unit/nodes/node_onex_setup_effect/test_cli_delegation_switches.py
       tests/unit/nodes/node_onex_setup_effect/test_onex_tui_hook_switches.py -q --no-cov -n 0 -p no:randomly
-    cwd: .
-- id: dod-omn23413-ac35-models-dev-price
-  description: 'Proves the pricing half of AC35 for a customer-key call: the provider''s own price wins and is recorded with its read time; otherwise models.dev is read live and prices the call (a Beam call on a Reflection key is booked at 0 as zero_marginal_api_cost, source models.dev, with the read time); a paid models.dev price is booked as cloud cost; a model absent from both sources stays unknown; a copy older than the configured age is read again, and a stale copy whose re-read fails never prices a call. It does not prove AC35''s "never committed" clause as a scan of the repository, and it proves nothing of AC34 (one combined entry for limits, price and the model table) or AC36 (token usage provenance).'
-  source: manual
-  execution_scope: hosted_and_local
-  binds_ac:
-  - AC35
-  checks:
-  - check_type: test_passes
-    check_value: 'uv run pytest tests/unit/delegation/test_byok_models_dev_price_omn23413.py -q'
     cwd: .
