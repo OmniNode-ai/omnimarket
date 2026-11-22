@@ -71,15 +71,24 @@ requirements:
       - id: AC4
         statement: >-
           AC4 (ticket text), the candidate-check part this falsifier checks: the M13 candidate check
-          (node_release_candidate_verify_effect, operation verify_installer) refuses a candidate whose served
-          script's sha256 differs from the manifest's, or whose script names an index other than PyPI
-          (--index-url, --extra-index-url, --default-index or --index, or UV_INDEX_URL, UV_EXTRA_INDEX_URL,
-          UV_DEFAULT_INDEX, UV_INDEX, PIP_INDEX_URL or PIP_EXTRA_INDEX_URL set to anything but
-          https://pypi.org/simple), or a package or version other than the manifest's customer package, or
-          runs a tool install or pip install line without --no-build; the installer rendered from
-          packages/omninode-onex/installer.json at the candidate version passes, and naming PyPI explicitly
-          passes. Not covered here: the install on actual macOS and Linux from a local stand-in for the domain
-          (-k curl_installer_same_release). -- falsifier: uv run pytest
+          (node_release_candidate_verify_effect, operation verify_installer) refuses a served script whose
+          sha256 differs from the one the manifest pins; whose ONEX_PACKAGE and ONEX_VERSION are not set
+          exactly once (plain, export, readonly, declare or local) to the manifest's installer package and
+          that distribution's version; that names an index other than https://pypi.org/simple through
+          -i, --index-url, --extra-index-url, --default-index or --index, or through UV_INDEX_URL,
+          UV_DEFAULT_INDEX, UV_INDEX or PIP_INDEX_URL; that uses UV_EXTRA_INDEX_URL, PIP_EXTRA_INDEX_URL,
+          --config-file, UV_CONFIG_FILE, PIP_CONFIG_FILE, --index-strategy, UV_INDEX_STRATEGY,
+          UV_FIND_LINKS, PIP_FIND_LINKS, or --find-links or -f with a value that is not a shell variable;
+          that sets UV_NO_BUILD*, UV_NO_BINARY*, PIP_NO_BINARY, PIP_ONLY_BINARY or
+          PIP_NO_BUILD_ISOLATION; or that runs pip, pip3, pipx, uv tool or uv install, uvx, uv tool run,
+          or uv add, sync or run without the exact token --no-build (or --only-binary=:all:) in the same
+          command, lines joined across backslash continuations. The installer rendered from
+          packages/omninode-onex/installer.json at the candidate version passes, naming PyPI explicitly
+          passes, and the installer's own --find-links "$ONEX_INSTALL_FIND_LINKS" test hook passes. This is
+          a list of refused spellings, not a shell interpreter: an index or install hidden behind eval, a
+          sourced file or a function built at run time is not covered. Not covered here: the install on
+          actual macOS and Linux from a local stand-in for the domain (-k curl_installer_same_release).
+          -- falsifier: uv run pytest
           tests/nodes/node_release_candidate_verify_effect/test_installer_matches_manifest.py -q -k installer_matches_manifest.
 evidence_requirements:
   - kind: tests

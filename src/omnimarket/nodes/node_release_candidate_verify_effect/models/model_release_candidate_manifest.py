@@ -83,11 +83,12 @@ class ModelManifestRequiredChange(BaseModel):
 
 
 class ModelManifestInstaller(BaseModel):
-    """The curl installer the release serves, pinned by the sha256 of its UTF-8 bytes."""
+    """The curl installer the release serves: the customer package it installs and the sha256 of its UTF-8 bytes."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    sha256: str = Field(min_length=64, max_length=64)
+    package: str = Field(min_length=1)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class ModelReleaseCandidateManifest(BaseModel):

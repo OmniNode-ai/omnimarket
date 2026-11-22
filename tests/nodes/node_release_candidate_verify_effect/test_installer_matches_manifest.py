@@ -84,7 +84,9 @@ def _with_customer(
     return manifest.model_copy(
         update={
             "distributions": tuple(distributions),
-            "installer": ModelManifestInstaller(sha256=_sha(script)),
+            "installer": ModelManifestInstaller(
+                package="omninode-onex", sha256=_sha(script)
+            ),
         }
     )
 
@@ -257,3 +259,150 @@ def test_installer_matches_manifest_needs_a_script(
             installer_script=None,
             manifest=manifest,
         )
+
+
+INSTALL_LINE = '    set -- tool install --python "$ONEX_PYTHON" --no-build'
+MAIN_LINE = 'main "$@"'
+
+
+def _replace(script: str, old: str, new: str) -> str:
+    assert script.count(old) == 1
+    return script.replace(old, new, 1)
+
+
+def _before_main(script: str, line: str) -> str:
+    return _replace(script, MAIN_LINE, line + "\n" + MAIN_LINE)
+
+
+def _pinned(
+    manifest: ModelReleaseCandidateManifest, script: str
+) -> ModelReleaseCandidateVerifyResult:
+    return _verify(_with_customer(manifest, script), script)
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    ["--no-build-isolation", "--no-build-package certifi"],
+)
+def test_installer_matches_manifest_refuses_a_lookalike_of_no_build(
+    manifest: ModelReleaseCandidateManifest, replacement: str
+) -> None:
+    script = _replace(
+        _render(), INSTALL_LINE, INSTALL_LINE.replace("--no-build", replacement)
+    )
+    assert _kinds(_pinned(manifest, script)) == {K.INSTALLER_BUILD}
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'echo --no-build; "$uv" pip install evil',
+        "pip3 install evil",
+        "pipx install evil",
+        '"$uv" tool run evil',
+        "uvx evil",
+        '"$uv" add evil',
+        "python3 -m pip install evil",
+    ],
+)
+def test_installer_matches_manifest_refuses_a_hidden_install(
+    manifest: ModelReleaseCandidateManifest, line: str
+) -> None:
+    script = _before_main(_render(), line)
+    result = _pinned(manifest, script)
+    assert K.INSTALLER_BUILD in _kinds(result)
+    assert not result.matches
+
+
+@pytest.mark.parametrize(
+    ("line", "kind"),
+    [
+        ('ONEX_VERSION="9.9.9"', K.INSTALLER_VERSION),
+        ('export ONEX_PACKAGE="evil"', K.INSTALLER_PACKAGE),
+        ("readonly ONEX_VERSION=9.9.9", K.INSTALLER_VERSION),
+        ("ONEX_VERSION='9.9.9'", K.INSTALLER_VERSION),
+    ],
+)
+def test_installer_matches_manifest_refuses_a_second_assignment(
+    manifest: ModelReleaseCandidateManifest, line: str, kind: K
+) -> None:
+    script = _before_main(_render(), line)
+    assert _kinds(_pinned(manifest, script)) == {kind}
+
+
+def test_installer_matches_manifest_refuses_another_manifest_distribution(
+    manifest: ModelReleaseCandidateManifest,
+) -> None:
+    script = _render()
+    script = _replace(
+        script, 'ONEX_PACKAGE="omninode-onex"', 'ONEX_PACKAGE="omnibase-core"'
+    )
+    script = _replace(script, f'ONEX_VERSION="{CANDIDATE}"', 'ONEX_VERSION="1.0.0"')
+    assert K.INSTALLER_PACKAGE in _kinds(_pinned(manifest, script))
+
+
+@pytest.mark.parametrize(
+    ("edit_kind", "text"),
+    [
+        ("flag", " -i https://packages.example.invalid/simple"),
+        ("flag", " --find-links https://packages.example.invalid/wheels"),
+        ("flag", " --config-file /tmp/uv.toml"),
+        ("flag", " --index-strategy unsafe-best-match"),
+        ("line", "export UV_CONFIG_FILE=/tmp/uv.toml"),
+        ("line", "export PIP_CONFIG_FILE=/tmp/pip.conf"),
+        ("line", "export UV_FIND_LINKS=https://packages.example.invalid/wheels"),
+        ("line", "export PIP_FIND_LINKS=https://packages.example.invalid/wheels"),
+        ("line", "export UV_INDEX_STRATEGY=unsafe-best-match"),
+    ],
+)
+def test_installer_matches_manifest_refuses_more_index_routes(
+    manifest: ModelReleaseCandidateManifest, edit_kind: str, text: str
+) -> None:
+    script = _render()
+    if edit_kind == "flag":
+        script = _replace(script, INSTALL_LINE, INSTALL_LINE + text)
+    else:
+        script = _replace(script, "set -euo pipefail", "set -euo pipefail\n" + text)
+    assert _kinds(_pinned(manifest, script)) == {K.INSTALLER_INDEX}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "export UV_NO_BUILD=0",
+        "export UV_NO_BUILD_PACKAGE=certifi",
+        "export PIP_NO_BINARY=:all:",
+    ],
+)
+def test_installer_matches_manifest_refuses_build_settings_in_the_environment(
+    manifest: ModelReleaseCandidateManifest, text: str
+) -> None:
+    script = _replace(_render(), "set -euo pipefail", "set -euo pipefail\n" + text)
+    assert _kinds(_pinned(manifest, script)) == {K.INSTALLER_BUILD}
+
+
+def test_installer_matches_manifest_allows_a_continued_install_line(
+    manifest: ModelReleaseCandidateManifest,
+) -> None:
+    script = _replace(
+        _render(),
+        INSTALL_LINE,
+        '    set -- tool install --python "$ONEX_PYTHON" \\\n        --no-build',
+    )
+    assert _pinned(manifest, script).matches
+
+
+def test_installer_matches_manifest_allows_the_test_find_links_hook(
+    manifest: ModelReleaseCandidateManifest,
+) -> None:
+    assert '--find-links "$ONEX_INSTALL_FIND_LINKS"' in _render()
+    assert _pinned(manifest, _render()).matches
+
+
+def test_installer_matches_manifest_names_the_customer_package_in_the_manifest() -> (
+    None
+):
+    with pytest.raises(ValidationError):
+        ModelManifestInstaller(package="omninode-onex", sha256="A" * 64)
+    with pytest.raises(ValidationError):
+        ModelManifestInstaller(package="", sha256="a" * 64)

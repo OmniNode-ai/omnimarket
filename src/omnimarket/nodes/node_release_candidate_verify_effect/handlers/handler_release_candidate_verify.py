@@ -72,7 +72,8 @@ class HandlerReleaseCandidateVerify:
             )
             commit = request.plugin_record.git_commit_sha
         elif request.operation == "verify_installer":
-            assert request.installer_script is not None
+            if request.installer_script is None:
+                raise ValueError("verify_installer needs installer_script")
             findings = verify_installer(request.manifest, request.installer_script)
         elif request.operation == "verify_pypi":
             findings = verify_pypi(request.manifest, request.pypi_facts)
