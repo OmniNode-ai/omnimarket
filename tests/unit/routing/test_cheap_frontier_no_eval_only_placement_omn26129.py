@@ -19,7 +19,12 @@ from typing import Any
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
+from omnimarket.models.delegation.model_delegation_routing_overlay import (
+    ModelDelegationRoutingOverlay,
+)
+from omnimarket.models.delegation.model_eval_arms_overlay import ModelEvalArmsOverlay
 from omnimarket.validators.routing_tier_backend_bindability import (
     BIFROST_CONTRACT_PATH,
     declared_backends,
@@ -194,3 +199,69 @@ def test_a_routing_tiers_file_without_the_tier_fails_closed(tmp_path: Path) -> N
     path = _write(tmp_path, "routing_tiers.yaml", tiers)
     with pytest.raises(PlacementError, match=TIER):
         placed_on_tier(BIFROST_CONTRACT_PATH, path)
+
+
+_EVAL_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+_EVAL_MODELS = ["deepseek/deepseek-chat-v9-0731", "qwen/qwen3.8-coder"]
+
+
+def _eval_arms(slug):
+    backend = {
+        "backend_id": "eval-arm",
+        "provider": "openrouter",
+        "endpoint_url": _EVAL_ENDPOINT,
+        "model_name": slug,
+        "secret_ref": "llm.openrouter.api_key",
+        "tier": "cheap_cloud",
+        "timeout_ms": 300000,
+        "max_tokens": 32768,
+        "explicit_pin_only": True,
+        "surface": "internal",
+        "tenant_scope": "house",
+        "capabilities": ["code_generation"],
+    }
+    arm = {
+        "backend_id": "eval-arm",
+        "slug": slug,
+        "tier": "cheap_cloud",
+        "price_in_usd_per_mtok": "0.10",
+        "price_out_usd_per_mtok": "1.00",
+        "context_length": 262144,
+        "task_classes": ["code_generation"],
+        "catalog_read_at": "2026-11-11T12:36:49Z",
+    }
+    return {"spend_cap_usd": "25", "backends": [backend], "arms": [arm]}
+
+
+@pytest.mark.parametrize("slug", _EVAL_MODELS)
+def test_an_eval_only_model_joins_only_as_a_pinned_code_eval_arm(slug):
+    """An eval-only model joins the routing overlay only as a pinned code eval arm."""
+    assert EVAL_ONLY.search(slug.lower())
+    overlay = ModelDelegationRoutingOverlay.model_validate(
+        {
+            "schema_version": "delegation_routing_overlay.v1",
+            "eval_arms": _eval_arms(slug),
+        }
+    )
+    rows = overlay.eval_backend_rows()
+    assert [r["model_name"] for r in rows] == [slug]
+    assert all(r["explicit_pin_only"] is True for r in rows)
+    assert all("placement" not in r for r in rows)
+
+
+@pytest.mark.parametrize("slug", _EVAL_MODELS)
+def test_an_unpinned_eval_only_arm_is_refused(slug):
+    """An eval-only arm that is not explicitly pinned is refused."""
+    data = _eval_arms(slug)
+    data["backends"][0]["explicit_pin_only"] = False
+    with pytest.raises(ValidationError, match="explicit_pin_only"):
+        ModelEvalArmsOverlay.model_validate(data)
+
+
+@pytest.mark.parametrize("slug", _EVAL_MODELS)
+def test_an_eval_only_arm_placed_on_the_tier_is_refused(slug):
+    """An eval-only arm that carries a tier placement is refused."""
+    data = _eval_arms(slug)
+    data["backends"][0]["placement"] = {"tier": TIER, "use_for": ["code_generation"]}
+    with pytest.raises(ValidationError, match="placement"):
+        ModelEvalArmsOverlay.model_validate(data)
