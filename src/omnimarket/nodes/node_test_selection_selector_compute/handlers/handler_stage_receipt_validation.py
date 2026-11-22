@@ -16,6 +16,9 @@ import itertools
 import math
 
 from omnimarket.handlers.adapter_test_selection_policy_file import load_policy
+from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_attribution_records_in_memory import (
+    SourceAttributionRecordsInMemory,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_published_attribution_record import (
     EnumRecordStatus,
     ModelPublishedAttributionRecord,
@@ -52,10 +55,11 @@ class HandlerStageReceiptValidation:
 
     def __init__(
         self,
-        source: ProtocolAttributionRecordSource,
+        source: ProtocolAttributionRecordSource | None = None,
         policy: ModelSelectorPolicy | None = None,
     ) -> None:
-        self._source = source
+        # Without an injected source the gate holds a source that cannot be read, so it refuses.
+        self._source = source or SourceAttributionRecordsInMemory()
         self._policy = policy or load_policy()
 
     def handle(

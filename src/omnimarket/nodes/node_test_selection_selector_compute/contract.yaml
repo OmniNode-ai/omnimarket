@@ -33,6 +33,10 @@ description: >-
   Rollback is an owner change that lowers selection_stage, or the owner setting the ENABLE_SMART_TESTS repository
   variable false; no job writes the variable. A narrowing rule changes what a pull request runs only at or above its
   stage, so data files and entry points narrow only once their stage is entered.
+  HandlerPolicyBound derives the narrowed-run bound, each merge's shard count, the share of replayed merges over
+  each candidate bound, the test-seconds each saves, the full-run crossover and the per-merge runner-cost columns
+  from policy.yaml, the durations file and the replay inputs, and lists every test file without a duration entry
+  and every entry without a file by path; a file with no entry costs untimed_file_seconds.
 input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorRequest
 output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorDecision
 handler:
@@ -72,6 +76,12 @@ handler_routing:
       handler:
         name: HandlerSelectionReplay
         module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_selection_replay
+    - operation: calculate_policy_bound
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_policy_bound.ModelPolicyBoundRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_policy_bound.ModelPolicyBoundResult
+      handler:
+        name: HandlerPolicyBound
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_policy_bound
 descriptor:
   node_archetype: compute
   purity: pure
