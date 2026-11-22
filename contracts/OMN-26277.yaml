@@ -3,8 +3,8 @@ ticket_id: OMN-26277
 title: Changes to shared, unmapped and heavy modules select their reverse import closure by file, and a collection gate runs once per pull request
 summary: 'The selector node gains the resolve_file_level_closure operation (HandlerFileLevelClosure): the import closure that ran for node packages runs for every changed file, a deleted or renamed file
   seeds from the files that still name it, a nested conftest.py selects its directory, a source file the closure cannot place escalates as unresolved_source, and the root conftest edge is the policy key
-  root_conftest_edge (default cut, the plan recommendation, until decision D1 is answered; keep is built and tested). The rule is active only at policy file_level_closure_stage 3 while selection_stage stays
-  0, so no pull request runs a different selection. ci.yml gains one collection-gate job that needs the detect job. scripts/ci/test_selection_loader.py moves into the node. The replay (HandlerSelectionReplay)
+  root_conftest_edge (default cut, the plan recommendation, until decision D1 is answered; keep is built and tested). The rule is active only at policy file_level_closure_stage 3 while selection_stage is
+  below it (1 at dev), so the closure changes the selection of no pull request. ci.yml gains one collection-gate job that needs the detect job. scripts/ci/test_selection_loader.py moves into the node. The replay (HandlerSelectionReplay)
   runs the closure at the closure stage over the 60 pinned merges, and the committed total is pinned in the closure tests (AC1). shared_modules, the module threshold and the unmapped escape stay in the adjacency file, read only below stage 3, because
   removing them now would change what a stage-0 pull request runs.'
 is_seam_ticket: false

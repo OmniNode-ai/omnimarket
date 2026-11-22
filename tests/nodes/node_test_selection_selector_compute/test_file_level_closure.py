@@ -4,8 +4,8 @@
 
 The rule replaces the module-level escalations (``shared_module``, ``unmapped_module``,
 ``threshold_modules``) at the policy's ``file_level_closure_stage``. It stays inactive at the
-shipped ``selection_stage`` of 0, so no pull request runs a different selection until a
-stage-advance change. Every fixture tree below carries real import statements; the closure is read
+shipped ``selection_stage`` (below the closure stage), so the closure changes no pull request's
+selection until a stage-advance change. Every fixture tree below carries real import statements; the closure is read
 from them, not from a list.
 """
 
@@ -166,14 +166,14 @@ def test_file_level_closure_six_changed_modules_do_not_escalate_by_count(
     assert result.selected_paths
 
 
-def test_file_level_closure_is_inactive_below_the_stage_and_policy_ships_stage_zero() -> (
+def test_file_level_closure_is_inactive_below_the_stage_and_policy_ships_a_lower_stage() -> (
     None
 ):
     policy = load_policy()
-    assert policy.selection_stage == 0
     assert policy.file_level_closure_stage == 3
+    assert policy.selection_stage < policy.file_level_closure_stage
     assert policy.root_conftest_edge is EnumRootConftestEdge.CUT
-    # stage 0 keeps every escalation the closure replaces
+    # a stage below the closure's keeps every escalation the closure replaces
     assert (
         legacy_module_escalation(["src/omnimarket/models/x.py"], ADJACENCY)
         is EnumFullSuiteReason.SHARED_MODULE
@@ -210,7 +210,9 @@ def test_file_level_closure_stage_gate_on_the_real_tree() -> None:
     )
     assert at_stage.full_suite_reason is not EnumFullSuiteReason.SHARED_MODULE
     default = compute_selection(changed, ADJACENCY_PATH, "feature", repo_root=REPO_ROOT)
-    assert default == below, "the shipped stage (0) keeps today's selection"
+    assert default == below, (
+        "the shipped stage (below the closure's) keeps today's selection"
+    )
 
 
 def test_file_level_closure_unresolved_source_escalates(tmp_path: Path) -> None:
