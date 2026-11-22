@@ -21,7 +21,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn25861-ac1
-  description: 'AC1: two calls to one model, one through byok-reflection and one direct, are served by the local dashboard as one row whose backends is ["byok-reflection"]; and two real local delegate runs on one model, one through byok-reflection and one on the house route, give that row ["byok-reflection"]. Fails when the row serves no backends or lists the direct call.'
+  description: 'AC1: two calls to one model, one through byok-reflection and one direct, are served by the local dashboard as one row whose backends is ["byok-reflection"]; two local delegate runs through the real dispatch code with a stubbed provider, one through byok-reflection and one on the house route, give that row ["byok-reflection"]; a call with no stated backend makes its row unknown, and each row lists only its own calls'' backends; the writer sends the statements each 0004 column state needs. Fails when the row serves no backends or lists the direct call.'
   source: manual
   binds_ac:
   - AC1
