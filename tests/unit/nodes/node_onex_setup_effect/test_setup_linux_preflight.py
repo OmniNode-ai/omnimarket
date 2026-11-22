@@ -10,6 +10,7 @@ Only external platform observations are supplied; collection and verdicts are re
 import builtins
 import io
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -161,12 +162,12 @@ def test_unreadable_etc_os_release_is_not_answered_by_the_vendor_copy(
     """
     real_open = builtins.open
 
-    def host_open(file: object, *args: object, **kwargs: object) -> object:
+    def host_open(file: Any, *args: Any, **kwargs: Any) -> Any:
         if file == "/etc/os-release":
             raise error(13, "unreadable", file)
         if file == "/usr/lib/os-release":
             return io.StringIO("ID=ubuntu\n")
-        return real_open(file, *args, **kwargs)  # type: ignore[call-overload]
+        return real_open(file, *args, **kwargs)
 
     monkeypatch.setattr(preflight.platform, "system", lambda: "Linux")
     monkeypatch.setattr(builtins, "open", host_open)
