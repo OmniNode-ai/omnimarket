@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 #
 # Policy for the Dependency Security Scan (safety check, enforcing step of
-# .github/workflows/security-scan.yml). One dated exception for one advisory.
+# .github/workflows/security-scan.yml). Dated exceptions, one per advisory.
 # safety ignores the advisory only until the `expires` date; after that date
 # the scan fails on it again.
 version: '3.0'
@@ -14,3 +14,9 @@ security:
         Temporary one-week exception while the dependency range change that
         admits the patched release is made (OMN-25587).
       expires: '2026-11-25'
+    SFTY-20261022-15927:
+      reason: >-
+        opentelemetry-api 1.44.0, affected <=1.45.0 (CVE-2026-114603, ReDoS).
+        Temporary one-week exception while the dependency range change that
+        admits a patched release is made (OMN-25587).
+      expires: '2026-11-29'

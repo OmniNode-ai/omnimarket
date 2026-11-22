@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-25587
+title: Dependency Security Scan carries a dated exception for the opentelemetry-api advisory
+summary: 'safety exits 64 on SFTY-20261022-15927 (CVE-2026-114603, opentelemetry-api 1.44.0, affected <=1.45.0), which dev pins, so the scan is red repo-wide. config/safety-policy.yml gains a one-week dated exception (expires 2026-11-29) while the dependency range change is made.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25587-otel-api-exception
+  statement: 'the Dependency Security Scan policy carries a dated exception for SFTY-20261022-15927'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: config/safety-policy.yml ignores SFTY-20261022-15927 until 2026-11-29 and still ignores SFTY-20261018-93041 until 2026-11-25 -- falsifier: removing the entry makes safety exit 64 on that id'
+evidence_requirements:
+- kind: tests
+  description: The policy file parses and carries both dated entries.
+  command: uv run --frozen python -c "import yaml; p=yaml.safe_load(open('config/safety-policy.yml')); e=p['security']['ignore-vulnerabilities']; assert e['SFTY-20261022-15927']['expires']=='2026-11-29' and e['SFTY-20261018-93041']['expires']=='2026-11-25'"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25587-ac1-policy-entry
+  description: 'config/safety-policy.yml parses and carries the dated exception for SFTY-20261022-15927 (expires 2026-11-29) next to the existing SFTY-20261018-93041 entry.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: uv run --frozen python -c "import yaml; p=yaml.safe_load(open('config/safety-policy.yml')); e=p['security']['ignore-vulnerabilities']; assert e['SFTY-20261022-15927']['expires']=='2026-11-29' and 'OMN-25587' in e['SFTY-20261022-15927']['reason'] and e['SFTY-20261018-93041']['expires']=='2026-11-25'"
+    cwd: .
