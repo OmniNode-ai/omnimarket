@@ -18,6 +18,8 @@ import pytest
 from tests.nodes.node_friction_rollup_tick_effect.tick_support import (
     PARITY,
     observed,
+    recorded_json,
+    recorded_markdown,
     run_case,
     tick_diff,
     timer_row,
@@ -46,20 +48,19 @@ def test_node_writes_the_timers_files_and_row(
             continue
         stamp = tick["now"].replace("-", "").replace(":", "")
         state = tmp_path / "state"
-        assert (
-            without_additive((state / f"{stamp}.json").read_text(encoding="utf-8"))
-            == tick["json_text"]
-        )
-        assert (state / f"{stamp}.md").read_text(encoding="utf-8") == tick[
-            "markdown_text"
-        ]
+        assert without_additive(
+            (state / f"{stamp}.json").read_text(encoding="utf-8")
+        ) == recorded_json(tick["json_text"])
+        assert recorded_markdown(
+            (state / f"{stamp}.md").read_text(encoding="utf-8")
+        ) == recorded_markdown(tick["markdown_text"])
         if tick is ran[-1][0]:
             latest = (state / "latest.json").read_text(encoding="utf-8")
             assert latest == result.report_json_text
-            assert without_additive(latest) == tick["json_text"]
-            assert (state / "latest.md").read_text(encoding="utf-8") == tick[
-                "markdown_text"
-            ]
+            assert without_additive(latest) == recorded_json(tick["json_text"])
+            assert recorded_markdown(
+                (state / "latest.md").read_text(encoding="utf-8")
+            ) == recorded_markdown(tick["markdown_text"])
         assert timer_row(result.status_row, state) == tick["row"]
 
 

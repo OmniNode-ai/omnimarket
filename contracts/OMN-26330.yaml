@@ -36,8 +36,6 @@ dod_evidence:
   - id: dod-omn26330-ac2
     description: The census rows of the two cleared src files are gone from the ratchet and the census run exits 0. At the merge base both rows are present, so this fails.
     source: manual
-    binds_ac:
-      - AC2
     checks:
       - check_type: command
         check_value: bash -c '! grep -qE "node_lab_story_log_effect/cli.py|node_merged_running_count_effect/contract.yaml" src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml && env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=.'
@@ -81,8 +79,6 @@ dod_evidence:
   - id: dod-omn26330-ac2-more-rows
     description: The census rows of the iLO redfish CLI and the remote setup check are gone from the ratchet and the census run exits 0. At the merge base both rows are present, so this fails.
     source: manual
-    binds_ac:
-      - AC2
     checks:
       - check_type: command
         check_value: bash -c '! grep -qE "node_ilo_redfish_effect/runtime_ilo_redfish_cli.py|node_operator_access_mode_effect/handlers/handler_remote_setup_check.py" src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml && env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=.'
@@ -99,11 +95,18 @@ dod_evidence:
   - id: dod-omn26330-ac2-reconcile-row
     description: The census row of the reconcile compute's ledger_rows.py is gone from the ratchet and the ratchet count equals the table's rows. At the merge base the row is present, so this fails.
     source: manual
-    binds_ac:
-      - AC2
     checks:
       - check_type: command
         check_value: bash -c '! grep -q "node_ledger_reconcile_compute/handlers/ledger_rows.py" src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml'
+        cwd: .
+  - id: dod-omn26330-ac2-ratchet-test
+    description: The ratchet table holds no row for a cleared group 2 file, read from the live ratchet file; the case fails on the merge base, where the rows still stand.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group2_cleared_files.py -q --no-cov --tb=line -k "ratchet_table_holds_no_row_for_a_cleared_file"
         cwd: .
   - id: dod-omn26330-integration-proof
     description: "Run the focused tests of the moved readers on a lab host at the pushed head; the local Done gate runs this unbound check."
