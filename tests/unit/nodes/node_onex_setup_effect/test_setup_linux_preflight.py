@@ -27,12 +27,22 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.mark.parametrize(
-    "kernel", ["6.8.0-generic", "5.15.153.1-microsoft-standard-WSL2"]
+    "kernel",
+    [
+        "6.8.0-generic",
+        "5.15.153.1-microsoft-standard-WSL2",
+        "4.19.128-microsoft-standard",
+    ],
 )
 def test_preflight_linux_and_wsl_supported(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kernel: str
 ) -> None:
-    """The old macOS-only gate must fail both supported Ubuntu observations."""
+    """The old macOS-only gate must fail native Ubuntu and Ubuntu under WSL 2.
+
+    Microsoft's WSL 2 kernels carry the lowercase "-microsoft-standard" local
+    version, without a WSL2 suffix on the 4.19 branch, so a WSL 1 check that
+    ignores case or requires WSL2 must fail here.
+    """
     monkeypatch.setattr(preflight.platform, "system", lambda: "Linux")
     monkeypatch.setattr(preflight.platform, "release", lambda: kernel)
     monkeypatch.setattr(preflight.platform, "mac_ver", lambda: ("", ("", "", ""), ""))
@@ -45,6 +55,27 @@ def test_preflight_linux_and_wsl_supported(
     assert result.status == "success", result
     assert result.evidence["linux_distribution"] == "ubuntu"
     assert result.changed is False
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("kernel", ["4.4.0-19041-Microsoft", "4.4.0-17763-Microsoft"])
+def test_ubuntu_on_a_wsl1_kernel_is_refused_with_the_wsl2_remedy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kernel: str
+) -> None:
+    """The delivery plan names Ubuntu under WSL 2 only; WSL 1 reports a
+    capital-M Microsoft kernel release (microsoft/WSL#423)."""
+    monkeypatch.setattr(preflight.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(preflight.platform, "release", lambda: kernel)
+    monkeypatch.setattr(
+        preflight.platform, "freedesktop_os_release", lambda: {"ID": "ubuntu"}
+    )
+    result = preflight.HandlerSetupPreflight().handle(
+        ModelSetupPlan(workspace=tmp_path)
+    )
+    assert result.status == "unavailable", result
+    assert "WSL 1" in (result.fix or "")
+    assert "WSL 2" in (result.fix or "")
+    assert result.evidence["linux_distribution"] == "ubuntu"
     assert list(tmp_path.iterdir()) == []
 
 
