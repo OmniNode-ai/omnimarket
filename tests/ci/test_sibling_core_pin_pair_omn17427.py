@@ -49,6 +49,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # 2b0c3eacdf4d: omnibase_infra#5924 (OMN-24048) adds failed_phase to the dev roll incident; core is unchanged.
 # 6cea249fb8cf: omnibase_infra#5925 (OMN-24063) moves infra to core a09066caf945, which carries the task_type field of the inference intent (omnibase_core#2316).
 # b6f27747506c: omnibase_infra#6063 (OMN-25545) moves infra to core e9f061dc9b4c, which carries omnibase_core#2335 (ModelRunNodeHosted.run replaces the removed in-process hosting function of cli_run_node, OMN-26115).
+# 0f7f2b730399: omnibase_infra dev after #6129 (OMN-25103), which grants the runtime account the floor_integration_pass marker; core is unchanged.
 INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("091013fd7adb", "dev-20261030152335-66d35d2283c3"),
     ("4284f5bf5587", "dev-20261031000524-fc6159b98026"),
@@ -71,6 +72,7 @@ INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("a679b44e2cfe", "dev-20261113013358-a09066caf945"),
     ("b6f27747506c", "dev-20261118065911-e9f061dc9b4c"),
     ("e1c7b1f075d2", "dev-20261120075721-2a9efbda3548"),
+    ("0f7f2b730399", "dev-20261120075721-2a9efbda3548"),
     ("691e3df93fd6", "dev-20261120075721-2a9efbda3548"),
 )
 
