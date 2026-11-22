@@ -886,6 +886,15 @@ def evaluate(
         if dev_reuse
         else frozenset()
     )
+    # OMN-26446: a dev push whose Detect Changes ran is the push that executed the Tests
+    # shards itself (no queue run recorded its tree). The matrix must then be the whole full
+    # suite, so a partial matrix waits instead of reading as complete.
+    dev_suite_ran = (
+        dev_push
+        and (dc := latest.get(DETECT_CHANGES_JOB)) is not None
+        and dc.status == "completed"
+        and dc.conclusion == "success"
+    )
     # The tier can skip before the marker finishes on another runner. Only
     # postpone a skipped tier gate while that marker is visibly in flight;
     # failures and terminal/absent markers retain the strict verdict.
@@ -983,7 +992,9 @@ def evaluate(
     )
 
     # (3) Test-matrix completeness (dynamic split jobs).
-    matrix_state = _evaluate_test_matrix(latest, require_full_suite=queue_run)
+    matrix_state = _evaluate_test_matrix(
+        latest, require_full_suite=queue_run or dev_suite_ran
+    )
 
     # Completeness anchor: every named gate present AND completed.
     gate_missing_or_pending = [

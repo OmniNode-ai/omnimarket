@@ -314,8 +314,13 @@ jobs:
       pull-requests: read
     uses: OmniNode-ai/omnibase_core/.github/workflows/full-suite-reuse.yml@dev-20261018024445-b6ee996befa1
 
-  dev-suite-reuse-verdict:
-    name: Dev Push Full Suite Reuse
+  # OMN-26446: the probe looks for a recorded tree pass and never decides the push. It
+  # exits 0 only when the tree is proven (a queue run recorded it) or when no merge_queue
+  # rule is active on dev, which means no queue run can ever record one: then `run_tests`
+  # is true and this run's own full-suite shards below decide. With a queue rule active and
+  # no proof it exits 1 as before, and no shard runs.
+  dev-tree-pass-probe:
+    name: Dev Tree Pass Probe (OMN-26446)
     needs: dev-full-suite-reuse
     if: always() && github.event_name == 'push' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
@@ -323,8 +328,12 @@ jobs:
     permissions:
       actions: read
       contents: read
+    outputs:
+      tree_pass: ${{ steps.probe.outputs.tree_pass }}
+      run_tests: ${{ steps.probe.outputs.run_tests }}
     steps:
-      - name: Require the queued tree's full-suite pass
+      - name: Look for the queued tree's full-suite pass
+        id: probe
         env:
           GH_TOKEN: ${{ github.token }}
           REUSE: ${{ needs.dev-full-suite-reuse.outputs.reuse }}
@@ -333,6 +342,7 @@ jobs:
           set -euo pipefail
           if [ "$REUSE" = "true" ] && [ -n "$PRODUCER_RUN" ]; then
             echo "Full suite inherited from run $PRODUCER_RUN."
+            printf 'tree_pass=true\nrun_tests=false\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # OMN-19998: a squash can change the commit identity while preserving
@@ -354,18 +364,61 @@ jobs:
               --jq '.jobs[] | select(.name == "CI Summary") | "\(.status) \(.conclusion // "none")"')" || continue
             if [ "$verdict" = "completed success" ]; then
               echo "Full suite inherited from queue run $producer for tree $tree."
+              printf 'tree_pass=true\nrun_tests=false\n' >> "$GITHUB_OUTPUT"
               exit 0
             fi
           done <<< "$markers"
-          # OMN-19998: while the dev merge queue ruleset is off no merge_group
-          # producer can exist; stay strict whenever a merge_queue rule is active on dev.
+          # OMN-26446: while the dev merge queue ruleset is off no merge_group producer can
+          # exist, so the pushed tree is tested here, by the full-suite shards of this run,
+          # and a warning alone no longer admits it. Stay strict whenever a merge_queue
+          # rule is active on dev.
           queue_rules="$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/dev?per_page=100" \
             --jq '[.[] | select(.type == "merge_queue")] | length')"
           if [ "$queue_rules" = "0" ]; then
-            echo "::warning::No merge_queue rule is active on dev, so no queue run can record a tree pass; the pull request ran its selected tests, which are the full suite only when the change forces it (OMN-17232). Strict again once the dev merge queue ruleset is enabled (OMN-19998)."
+            echo "::warning::No merge_queue rule is active on dev, so no queue run can record a tree pass; this push runs the full suite itself and is admitted only when every shard passes (OMN-26446)."
+            printf 'tree_pass=false\nrun_tests=true\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "::error::No verified full-suite pass for this dev tree; heavy tests stay in the queue."
+          exit 1
+
+  # The verdict the CI Summary reads as `Dev Push Full Suite Reuse`. It passes on a proven
+  # queue tree, or on this push's own full suite passing, and on nothing else.
+  dev-suite-reuse-verdict:
+    name: Dev Push Full Suite Reuse
+    needs: [dev-tree-pass-probe, detect-changes, test]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require a full-suite pass for the pushed dev tree
+        env:
+          PROBE: ${{ needs.dev-tree-pass-probe.result }}
+          TREE_PASS: ${{ needs.dev-tree-pass-probe.outputs.tree_pass }}
+          RUN_TESTS: ${{ needs.dev-tree-pass-probe.outputs.run_tests }}
+          DETECT: ${{ needs.detect-changes.result }}
+          IS_FULL_SUITE: ${{ needs.detect-changes.outputs.is_full_suite }}
+          SPLIT_COUNT: ${{ needs.detect-changes.outputs.split_count }}
+          TESTS: ${{ needs.test.result }}
+        run: |
+          set -euo pipefail
+          if [ "$PROBE" != "success" ]; then
+            echo "::error::The dev tree pass probe ended $PROBE; no verified full-suite pass for this dev tree."
+            exit 1
+          fi
+          if [ "$TREE_PASS" = "true" ]; then
+            echo "Full suite inherited from a queue run that recorded this tree."
+            exit 0
+          fi
+          if [ "$RUN_TESTS" != "true" ]; then
+            echo "::error::No verified full-suite pass for this dev tree and this run did not run the suite."
+            exit 1
+          fi
+          if [ "$DETECT" = "success" ] && [ "$IS_FULL_SUITE" = "true" ] && [ "$TESTS" = "success" ]; then
+            echo "Full suite ran on this push: all $SPLIT_COUNT Tests shards passed."
+            exit 0
+          fi
+          echo "::error::The full suite did not pass on this dev push (Detect Changes $DETECT, full suite $IS_FULL_SUITE, Tests $TESTS)."
           exit 1
 
   lint:
@@ -1257,8 +1310,10 @@ jobs:
   # ---------------------------------------------------------------------------
   detect-changes:
     name: Detect Changes
-    needs: [repo-evidence-preflight, zone-filter]
-    if: needs.repo-evidence-preflight.result == 'success' && (github.event_name == 'merge_group' || needs.zone-filter.outputs.docs_only != 'true') && !(github.event_name == 'push' && github.ref == 'refs/heads/dev')
+    needs: [repo-evidence-preflight, zone-filter, dev-tree-pass-probe]
+    # OMN-26446: a dev push runs the Tests shards when no queue run recorded its tree. The
+    # docs-only skip does not apply to a dev push: the shards are the only proof it has.
+    if: always() && needs.repo-evidence-preflight.result == 'success' && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && needs.dev-tree-pass-probe.outputs.run_tests == 'true') || (needs.zone-filter.outputs.docs_only != 'true' && !(github.event_name == 'push' && github.ref == 'refs/heads/dev')))
     runs-on: ubuntu-latest
     outputs:
       is_full_suite: ${{ steps.detect.outputs.is_full_suite }}
@@ -1308,7 +1363,9 @@ jobs:
       - name: Resolve test selection
         id: resolve
         env:
-          FLAG: ${{ vars.ENABLE_SMART_TESTS == 'true' && 'on' || 'off' }}
+          # OMN-26446: a dev push is a merged tree, never a narrowed diff: with the flag off the
+          # selection is the full-suite matrix (the policy's full_split_count shards).
+          FLAG: ${{ (vars.ENABLE_SMART_TESTS == 'true' && !(github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'on' || 'off' }}
           # OMN-23296: the selector calls node_test_selection_selector_compute, which
           # imports only pydantic and pyyaml; src/ holds it without installing the package.
           PYTHONPATH: src
@@ -1334,7 +1391,7 @@ jobs:
       - name: Build selection record
         id: record
         env:
-          FLAG: ${{ vars.ENABLE_SMART_TESTS == 'true' && 'on' || 'off' }}
+          FLAG: ${{ (vars.ENABLE_SMART_TESTS == 'true' && !(github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'on' || 'off' }}
           PYTHONPATH: src
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
