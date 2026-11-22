@@ -14,6 +14,7 @@ requirements:
       - id: "AC1"
         statement: |-
           AC1: the runtime case of the pre-dispatch terminal test passes 20 of 20 runs while the host is loaded, and still fails when the terminal is never published -- falsifier: twenty runs of uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py -q, while uv run pytest tests/unit/delegation -n 8 runs alongside, include a failure, or the planted no-terminal mutant passes
+          AC1 load, amended 2026-11-22 (ticket owner): the closer does not run tests/unit/delegation -n 8 (Operating Rule 21), and each hosted check may run 300 s. The load for this criterion consists of CPU burner processes, one per four of the host's cores (at least one), plus four concurrent child runs of the test, with the run-step topic scan delayed 11 s, past the test's 10 s dispatch deadline, on every one of the 20 runs; the no-terminal half plants a bus that drops every terminal topic, under which both the runtime and market cases must fail. Proved by tests/unit/nodes/node_delegate_skill_orchestrator/test_omn26228_negative_controls.py, bound in contracts/OMN-26228.yaml.
   - id: "req-omn26228-routing-test-owns-its-state"
     statement: |-
       The routing test resets the reducer configuration it depends on, and the test that loads it stops leaking it.
@@ -30,8 +31,8 @@ requirements:
           AC3: neither fix weakens what the tests prove: each keeps a negative control that fails on the defect it guards -- falsifier: the routing test still passes when the static decision is wrong, or the terminal test still passes when no terminal is published
 evidence_requirements:
   - kind: "tests"
-    description: "The routing reproduction in CI order and the runtime terminal test."
-    command: "uv run pytest -p no:randomly tests/unit/handlers/test_delegation_routing_order_reader.py tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py tests/unit/routing/test_handler_routing_intent_dod_overlay.py tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py -q -n 0 --no-cov"
+    description: "The routing reproduction in CI order, the runtime terminal test, and the negative-control harness that plants each defect."
+    command: "uv run pytest -p no:randomly tests/unit/handlers/test_delegation_routing_order_reader.py tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py tests/unit/routing/test_handler_routing_intent_dod_overlay.py tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py tests/unit/nodes/node_delegate_skill_orchestrator/test_omn26228_negative_controls.py -q -n 0 --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -45,13 +46,24 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest -p no:randomly tests/unit/handlers/test_delegation_routing_order_reader.py tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py tests/unit/routing/test_handler_routing_intent_dod_overlay.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn26228-ac1-ac3-terminal-and-controls"
-    description: "The runtime and market cases of the pre-dispatch terminal test pass with the run-step scan outside the deadline, and the routing test asserts the static local decision. The planted mutants (terminal never published: 2 failed; tier order reversed: 7 failed) and the 20 loaded runs are recorded in the pull request; at the merge base the timeout appears only on loaded CI runners."
+  - id: "dod-omn26228-ac1-load-and-no-terminal"
+    description: "Both halves of AC1, re-run at origin/dev by tests/unit/nodes/node_delegate_skill_orchestrator/test_omn26228_negative_controls.py, which runs the guarded test in child pytest runs with one defect planted by the omn26228_mutants plugin. First half (first check): the runtime case of the pre-dispatch terminal test passes 20 of 20 runs, four concurrent child runs of five, while CPU burners run on a quarter of the cores and the run-step topic scan is delayed 11 s on every run, longer than the test's 10 s deadline, so a scan inside the deadline would fail every run. Second half (second check): with the planted no-terminal mutant (the in-memory bus drops every terminal topic) the runtime and market cases both fail, each waiter reporting status 'timeout' instead of the failed terminal. A defect the plugin could not plant writes no report and fails the check, and a skipped test fails it (--refuse-skips). The load is CPU burners and concurrent runs, not tests/unit/delegation -n 8, because the closer does not run directory-wide suites (Operating Rule 21); the 11 s scan stands in for the slowest loaded runner. Each child discovers routes and runs the real scan once, outside the deadline as the guarded test does, and repeats the delayed scan and the timed dispatch."
     source: "manual"
-    binds_ac: ["AC1", "AC3"]
+    binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest -p no:randomly tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py tests/unit/routing/test_handler_routing_intent_dod_overlay.py -q -n 0 --no-cov"
+        check_value: "uv run pytest -p no:randomly tests/unit/nodes/node_delegate_skill_orchestrator/test_omn26228_negative_controls.py::test_ac1_runtime_case_passes_20_runs_on_a_loaded_host_with_the_scan_past_the_deadline -q -n 0 --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest -p no:randomly tests/unit/nodes/node_delegate_skill_orchestrator/test_omn26228_negative_controls.py::test_ac1_ac3_terminal_test_fails_when_the_terminal_is_never_published -q -n 0 --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26228-ac3-negative-controls"
+    description: "Both negative controls of AC3, re-run at origin/dev by tests/unit/nodes/node_delegate_skill_orchestrator/test_omn26228_negative_controls.py with each defect planted by the omn26228_mutants plugin. The routing test fails when the static decision is wrong: with the tier order reversed, test_no_reader_wired_decides_exactly_as_before fails asserting the decision is 'local' (7 failed, 3 passed at 3e54293f). The terminal test fails when no terminal is published: the runtime and market cases both fail, each waiter reporting status 'timeout' instead of the failed terminal. If either guarded test were weakened so that it passed with its defect planted, this check fails."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest -p no:randomly tests/unit/nodes/node_delegate_skill_orchestrator/test_omn26228_negative_controls.py::test_ac3_routing_test_fails_when_the_static_decision_is_wrong tests/unit/nodes/node_delegate_skill_orchestrator/test_omn26228_negative_controls.py::test_ac1_ac3_terminal_test_fails_when_the_terminal_is_never_published -q -n 0 --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26228-integration-proof"
     description: >-
