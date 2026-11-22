@@ -46,7 +46,7 @@ dod_evidence:
       - check_type: command
         check_value: >-
           set -eu; grep -n 'broker = broker_for_lane(overlay.kafka.lane, environ)' src/omnimarket/nodes/node_gateway_batch_ingest_effect/kafka_publisher.py;
-          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnibase_infra/dev/src/omnibase_infra/cli/delegate_lane.py" | grep -q '^LANE_DECLARATION_RELATIVE_PATH = Path("config") / "lab" / "ci_bus_lanes.yaml"'
+          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnibase_infra/dev/src/omnibase_infra/cli/delegate_lane.py" | grep -c '^LANE_DECLARATION_RELATIVE_PATH = Path("config") / "lab" / "ci_bus_lanes.yaml"' > /dev/null
         cwd: .
   - id: dod-omn26445-ac4
     description: "The health aggregation code the Answer names answers every request 503 once a mount failure is set."
@@ -55,7 +55,7 @@ dod_evidence:
       - check_type: command
         check_value: >-
           set -eu;
-          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnibase_infra/dev/src/omnibase_infra/handlers/http_mount/asgi_mounts.py" | grep -q '^        if self.failure:'
+          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnibase_infra/dev/src/omnibase_infra/handlers/http_mount/asgi_mounts.py" | grep -c '^        if self.failure:' > /dev/null
         cwd: .
   - id: dod-omn26445-deploy-door-at-head
     description: "Hosted deploy readback: the public repository at this exact head must contain the door's overlay field, and the door's tests must pass there. No lab service is required."
@@ -67,7 +67,7 @@ dod_evidence:
       - check_type: command
         check_value: |
           set -eu;
-          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_gateway_batch_ingest_effect/overlay.py" | grep -q 'workspace_config_root: ConfigRoot | None = None'
+          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_gateway_batch_ingest_effect/overlay.py" | grep -c 'workspace_config_root: ConfigRoot | None = None' > /dev/null
         cwd: .
   - id: dod-omn26445-integration-proof
     description: "Run the door's lifespan tests on a lab host at the pushed head; the local Done gate runs this unbound check."
