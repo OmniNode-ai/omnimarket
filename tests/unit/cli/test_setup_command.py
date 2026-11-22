@@ -308,6 +308,38 @@ class TestSetupIdempotent:
         assert config.read_text() == "version: 1\nmode: local\n"
 
 
+@pytest.mark.unit
+def test_a_workspace_link_is_followed_and_setup_names_the_real_folder(
+    home: Path, tmp_path: Path
+) -> None:
+    """OMN-23413, operator decision 23413-G9-FOLLOW (2026-11-22): an explicit
+    --workspace that is a symlink is followed as the user's choice, and what
+    setup prints says which real folder it writes to, next to the link given."""
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real, target_is_directory=True)
+
+    result = _run(["--no-interactive", "--workspace", str(link)])
+
+    assert result.exit_code == 0, result.output
+    assert (real / handler_onex_setup.RUNTIME_CONFIG_RELPATH).is_file()
+    named = [
+        line
+        for line in result.output.splitlines()
+        if str(link) in line and str(real) in line
+    ]
+    assert named, (
+        f"setup never said that the link {link} writes into the real folder "
+        f"{real}:\n{result.output}"
+    )
+
+    # A folder that is not a link gets no link notice.
+    plain = _run(["--no-interactive", "--workspace", str(tmp_path / "plain")])
+    assert plain.exit_code == 0, plain.output
+    assert "is a link" not in plain.output
+
+
 def _break_workspace(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> list[str]:
     workspace.parent.mkdir(parents=True, exist_ok=True)
     workspace.write_text("a file where the workspace directory should be\n")

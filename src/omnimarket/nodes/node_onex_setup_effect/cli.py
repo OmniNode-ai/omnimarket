@@ -9,6 +9,7 @@ input or stdin and are never included in a saved plan.
 
 from __future__ import annotations
 
+import os
 import sys
 from collections.abc import Callable
 from functools import wraps
@@ -242,6 +243,20 @@ def current_folder_workspace(cwd: Path, home: Path) -> Path | None:
     return folder
 
 
+def linked_workspace_notice(workspace: Path) -> str | None:
+    """The line naming the real folder a workspace reached through a link writes to.
+
+    OMN-23413 (operator decision 2026-11-22): a workspace given as a link is
+    followed as the user's choice, and setup says which real folder it writes
+    to. None when no link is on the path.
+    """
+    given = Path(os.path.abspath(workspace.expanduser()))
+    real = given.resolve()
+    if real == given:
+        return None
+    return f"Workspace: {given} is a link; setup writes into its real folder {real}."
+
+
 @click.command("setup", cls=_SetupCommand)
 @click.option(
     "--workspace",
@@ -470,6 +485,10 @@ def setup_command(
     # OMN-21262 (merged from dev): before the first model question, and before
     # any step in an unattended run. Under --json it goes to stderr, so stdout
     # stays the one typed result.
+    if workspace is not None:
+        notice = linked_workspace_notice(workspace)
+        if notice is not None:
+            click.echo(notice, err=json_output)
     click.echo(LADDER_NOTICE, err=json_output)
     prepared_credentials: dict[str, SecretStr] = {}
     if plan_file is None:
