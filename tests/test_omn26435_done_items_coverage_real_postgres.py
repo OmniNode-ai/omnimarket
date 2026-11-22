@@ -68,6 +68,7 @@ def _connect_or_skip(dsn: str) -> psycopg2.extensions.connection:
         if os.environ.get("OMN_REQUIRE_REAL_DB") == "1":
             pytest.fail(f"no reachable Postgres for the coverage proof: {exc}")
         pytest.skip(f"no reachable Postgres for the coverage proof: {exc}")
+    raise AssertionError("unreachable: pytest.fail and pytest.skip raise")
 
 
 @pytest.fixture

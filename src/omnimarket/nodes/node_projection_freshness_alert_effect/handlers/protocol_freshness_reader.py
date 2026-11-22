@@ -17,8 +17,6 @@ class ProtocolFreshnessReader(Protocol):
 
     def read(self, check: ModelFreshnessCheck) -> ModelFreshnessObservation:
         """Read both aggregates, raising if either cannot be observed."""
-        ...
 
     def read_coverage(self, check: ModelCoverageCheck) -> ModelCoverageObservation:
         """Read done-ticket demand and unprojected tickets, raising if either cannot be observed."""
-        ...
