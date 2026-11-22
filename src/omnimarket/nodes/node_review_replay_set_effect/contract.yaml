@@ -82,6 +82,13 @@ event_bus:
   publish_topics:
     - "onex.evt.omnimarket.review-replay-set-frozen.v1"
 
+# The freeze command is produced on demand and never on a schedule: a set is frozen once per rollout, under a
+# hash, before the first roster is scored, and a second freeze finds it intact or refuses. The producer is named
+# here because the topic graph refuses a bare declaration.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.review-replay-set-freeze-requested.v1
+    producer: "the replay operator's `onex run-node node_review_replay_set_effect` on a lab host, which publishes the freeze command directly -- not a node contract; on demand once per rollout, never scheduled"
+
 published_events:
   - event_type: ModelReviewReplaySetResult
     topic: onex.evt.omnimarket.review-replay-set-frozen.v1

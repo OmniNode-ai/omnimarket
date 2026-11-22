@@ -53,6 +53,10 @@ event_bus:
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.stall-responder-requested.v1
 
+# OMN-26438 -- the trigger. node_stall_responder_schedule_effect runs on the runtime tick, reads the tick's THROUGHPUT STALL
+# rows from the ledger through its overlay's route and publishes this command; this node reads no ledger and stays pure.
+# The graph reads that producer from the other contract's publish_topics, so no externally_produced_topics entry is declared.
+
 # OMN-22885 -- explicit SINK declaration (contract topic graph closure). No node contract
 # subscribes to the result event: the node starts nothing and writes nothing, so its caller
 # reads the answer from this topic and starts the lanes outside the ONEX node graph.

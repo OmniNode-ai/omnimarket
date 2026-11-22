@@ -1,0 +1,24 @@
+name: node_stall_responder_schedule_effect
+version: "0.1.0"
+description: "Producer of the stall responder's command: on the runtime tick it reads the THROUGHPUT STALL rows from the ledger and requests the responder"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_stall_responder_schedule_effect: "omnimarket.nodes.node_stall_responder_schedule_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "schedule", "stall-responder", "OMN-26438"]
+pack: "liveness"
+display_name: "Stall Responder Schedule"
+node_role: "effect"
