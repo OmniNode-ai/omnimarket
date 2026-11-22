@@ -5,18 +5,22 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 import yaml
 
+from omnimarket.handlers import ledger_rows_via_node
+from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
 from omnimarket.nodes.node_owner_summary_effect.__main__ import main
 from omnimarket.nodes.node_owner_summary_effect.handlers import HandlerOwnerSummary
 from omnimarket.nodes.node_owner_summary_effect.handlers.handler_owner_summary import (
     CLASS_PLAIN,
     COVERAGE_SCOPE,
     DRAFT_RULES,
+    LEDGER_READER,
     PLAIN_WORDS,
     TICKET_COVERAGE_LIMIT,
 )
@@ -46,6 +50,17 @@ NODE = (
 
 NOW = datetime(2026, 10, 24, 12, 0, 0, tzinfo=UTC)
 HANDLER = HandlerOwnerSummary()
+
+
+def _lines(ledger: Path) -> tuple[str, ...]:
+    """A fixture's rows as the rows loader node would answer them."""
+    return tuple(ledger.read_text().splitlines())
+
+
+def _handler(ledger: Path) -> HandlerOwnerSummary:
+    return HandlerOwnerSummary(lambda _hours: _lines(ledger))
+
+
 GOOD = (
     "1 change merged across 1 repository. 0 work runs (lanes) closed.\n"
     "Merges are unconfirmed as running. Friction data is unavailable. omnimarket#12 landed OMN-100 and omniclaude#7 landed OMN-200.\n"
@@ -122,11 +137,10 @@ def test_ticket_ids_require_whole_matches(known: str, cited: str) -> None:
 def test_since_must_precede_window_end(tmp_path: Path, since: str, until: str) -> None:
     with pytest.raises(ValueError, match="--since must be before"):
         HANDLER.resolve_window(NOW, since, until, tmp_path / "state.json")
-    result = HANDLER.handle(
+    result = _handler(tmp_path / "ledger.md").handle(
         ModelOwnerSummaryRequest(
             command="facts",
             root=tmp_path,
-            ledger=tmp_path / "ledger.md",
             since=since,
             until=until,
             now=NOW.isoformat(),
@@ -156,7 +170,7 @@ def test_reused_lane_keeps_new_claim_open(tmp_path: Path, explicit: bool) -> Non
         )
     )
     errors: list[str] = []
-    lanes = HANDLER._lanes(ledger, NOW - timedelta(hours=12), NOW, errors)
+    lanes = HANDLER._lanes(_lines(ledger), NOW - timedelta(hours=12), NOW, errors)
     assert errors == []
     assert [(claim.lane, claim.ticket) for claim in lanes["started"]] == [
         ("beta", "OMN-2"),
@@ -176,12 +190,12 @@ def test_terminal_after_window_does_not_close_claim(
         f"{reference}\n"
     )
     errors: list[str] = []
-    lanes = HANDLER._lanes(ledger, NOW - timedelta(hours=12), NOW, errors)
+    lanes = HANDLER._lanes(_lines(ledger), NOW - timedelta(hours=12), NOW, errors)
     assert errors == []
     assert lanes["count"] == 0
     assert [claim.ticket for claim in lanes["started"]] == ["OMN-1"]
     at_terminal = HANDLER._lanes(
-        ledger, NOW - timedelta(hours=12), NOW + timedelta(hours=1), errors
+        _lines(ledger), NOW - timedelta(hours=12), NOW + timedelta(hours=1), errors
     )
     assert at_terminal["started"] == ()
 
@@ -275,11 +289,10 @@ def _write_world(tmp_path: Path) -> tuple[Path, Path]:
 
 def test_facts_merges_queue_lanes_and_no_authors(tmp_path: Path) -> None:
     home, ledger = _write_world(tmp_path)
-    result = HANDLER.handle(
+    result = _handler(ledger).handle(
         ModelOwnerSummaryRequest(
             command="facts",
             root=home,
-            ledger=ledger,
             since="2026-10-24T00:00:00Z",
             now="2026-10-24T12:00:00Z",
         )
@@ -315,11 +328,10 @@ def _facts_with_closed_lanes(
             for n in range(1, count + 1)
         )
     )
-    result = HANDLER.handle(
+    result = _handler(ledger).handle(
         ModelOwnerSummaryRequest(
             command="facts",
             root=tmp_path,
-            ledger=ledger,
             since=start.isoformat(),
             now=NOW.isoformat(),
         )
@@ -370,11 +382,10 @@ def test_facts_lanes_leave_out_handoffs_and_skips(tmp_path: Path) -> None:
             for i, outcome in enumerate(outcomes)
         )
     )
-    result = HANDLER.handle(
+    result = _handler(ledger).handle(
         ModelOwnerSummaryRequest(
             command="facts",
             root=root,
-            ledger=ledger,
             since="2026-10-24T00:00:00Z",
             now=NOW.isoformat(),
         )
@@ -403,7 +414,7 @@ def test_facts_lanes_drop_the_runner_duplicate_row(tmp_path: Path) -> None:
         "2026-10-24T09:02:00Z | TERMINAL | lane=beta | outcome=done | remote lane on h1 ended status=done\n"
     )
     errors: list[str] = []
-    lanes = HANDLER._lanes(ledger, NOW - timedelta(hours=12), NOW, errors)
+    lanes = HANDLER._lanes(_lines(ledger), NOW - timedelta(hours=12), NOW, errors)
     assert errors == []
     assert [(row.lane, row.text) for row in lanes["closed"]] == [
         ("alpha", "substantive report"),
@@ -415,11 +426,13 @@ def test_facts_lanes_drop_the_runner_duplicate_row(tmp_path: Path) -> None:
 
 
 def test_facts_names_an_unreadable_source(tmp_path: Path) -> None:
-    result = HANDLER.handle(
+    def unanswered(hours: int) -> tuple[str, ...]:
+        raise LedgerRowsUnreadableError(f"the rows loader exited 69 ({hours} h)")
+
+    result = HandlerOwnerSummary(unanswered).handle(
         ModelOwnerSummaryRequest(
             command="facts",
             root=tmp_path,
-            ledger=tmp_path / "missing.md",
             since="2026-10-24T00:00:00Z",
             now="2026-10-24T12:00:00Z",
         )
@@ -427,6 +440,43 @@ def test_facts_names_an_unreadable_source(tmp_path: Path) -> None:
     assert result.facts is not None
     assert any("watcher state unreadable" in e for e in result.facts.errors)
     assert any("ledger unreadable" in e for e in result.facts.errors)
+
+
+def test_facts_ask_the_rows_loader_for_the_window_and_never_read_a_file(
+    tmp_path: Path,
+) -> None:
+    """The default source runs the rows loader node for the owner-summary reader."""
+    asked: list[list[str]] = []
+
+    def runner(argv: list[str], timeout_s: float) -> subprocess.CompletedProcess[str]:
+        asked.append(argv)
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            "2026-10-24T09:00:00Z | TERMINAL | lane=alpha | outcome=done | finished\n",
+            "",
+        )
+
+    handler = HandlerOwnerSummary(
+        lambda hours: ledger_rows_via_node.read_ledger_rows_via_node(
+            LEDGER_READER, hours, runner=runner
+        )
+    )
+    result = handler.handle(
+        ModelOwnerSummaryRequest(
+            command="facts",
+            root=tmp_path,
+            since="2026-10-24T00:00:00Z",
+            now="2026-10-24T12:00:00Z",
+        )
+    )
+    assert result.facts is not None
+    assert not any("ledger unreadable" in e for e in result.facts.errors)
+    assert [c.lane for c in result.facts.lanes_closed] == ["alpha"]
+    (argv,) = asked
+    assert argv[1:3] == ["-m", ledger_rows_via_node.ROWS_LOADER_MODULE]
+    assert argv[-4:-2] == ["--reader", "owner-summary"]
+    assert int(argv[-1]) >= 13
 
 
 def test_friction_unavailable_then_ok(tmp_path: Path) -> None:
@@ -453,13 +503,12 @@ def test_cli_facts_check_and_mark_sent(
                 "facts",
                 "--omni-home",
                 str(home),
-                "--ledger",
-                str(ledger),
                 "--since",
                 "2026-10-24T00:00:00Z",
                 "--now",
                 "2026-10-24T12:00:00Z",
-            ]
+            ],
+            ledger_rows=lambda _hours: _lines(ledger),
         )
         == 0
     )
@@ -848,13 +897,12 @@ def test_coverage_feeds_earlier_findings_forward(
                 "facts",
                 "--omni-home",
                 str(root),
-                "--ledger",
-                str(ledger),
                 "--since",
                 "2026-10-24T00:00:00Z",
                 "--now",
                 NOW.isoformat(),
-            ]
+            ],
+            ledger_rows=lambda _hours: _lines(ledger),
         )
         == 0
     )
@@ -1071,11 +1119,10 @@ def test_coverage_is_derived_from_the_facts_not_the_stored_copy() -> None:
 
 def test_coverage_facts_command_hands_the_drafter_its_lists(tmp_path: Path) -> None:
     root, ledger = _write_world(tmp_path)
-    result = HANDLER.handle(
+    result = _handler(ledger).handle(
         ModelOwnerSummaryRequest(
             command="facts",
             root=root,
-            ledger=ledger,
             since="2026-10-24T00:00:00Z",
             now=NOW.isoformat(),
         )
@@ -1109,11 +1156,10 @@ def test_coverage_facts_command_hands_the_drafter_its_lists(tmp_path: Path) -> N
 
 def test_coverage_scope_describes_the_check(tmp_path: Path) -> None:
     root, ledger = _write_world(tmp_path)
-    result = HANDLER.handle(
+    result = _handler(ledger).handle(
         ModelOwnerSummaryRequest(
             command="facts",
             root=root,
-            ledger=ledger,
             since="2026-10-24T00:00:00Z",
             now=NOW.isoformat(),
         )
@@ -1139,13 +1185,12 @@ def test_coverage_dry_run_round_trip_through_the_cli(
                 "facts",
                 "--omni-home",
                 str(root),
-                "--ledger",
-                str(ledger),
                 "--since",
                 "2026-10-24T00:00:00Z",
                 "--now",
                 NOW.isoformat(),
-            ]
+            ],
+            ledger_rows=lambda _hours: _lines(ledger),
         )
         == 0
     )

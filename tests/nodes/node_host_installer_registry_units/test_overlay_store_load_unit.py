@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""node_host_installer_registry_units: the overlay store loader is a declared hourly systemd unit (OMN-23353).
+"""node_host_installer_registry_units: the overlay store loader is a declared systemd unit that runs every 300 s (OMN-23353, OMN-26432).
 
 Until this unit existed the loader on a pool host was a hand-started transient timer that loaded a stale branch.
 """
@@ -68,17 +68,17 @@ def _checkout(tmp_path: Path) -> tuple[Path, str]:
     return path, revision
 
 
-def test_the_unit_is_declared_hourly_on_systemd_and_reads_the_overlay_home_clone() -> (
+def test_the_unit_is_declared_every_300_s_on_systemd_and_reads_the_overlay_home_clone() -> (
     None
 ):
     unit = load_units()[UNIT]
     assert unit["platform"] == "systemd"
-    assert unit["schedule"]["start_interval"] == 3600
+    assert unit["schedule"]["start_interval"] == 300
     assert unit["module"].endswith("runtime_overlay_store_load_tick")
     assert unit["environment"]["ONEX_SKILL_OVERLAY_ROOTS"] == ("{overlays_root}")
 
 
-def test_install_renders_an_hourly_timer_running_the_tick_over_the_clone_overlay_root(
+def test_install_renders_a_300_s_timer_running_the_tick_over_the_clone_overlay_root(
     tmp_path: Path,
 ) -> None:
     path, revision = _checkout(tmp_path)
@@ -97,7 +97,7 @@ def test_install_renders_an_hourly_timer_running_the_tick_over_the_clone_overlay
     unit_dir = tmp_path / "home" / ".config/systemd/user"
     service = (unit_dir / f"{LABEL}.service").read_text(encoding="utf-8")
     timer = (unit_dir / f"{LABEL}.timer").read_text(encoding="utf-8")
-    assert "OnUnitActiveSec=3600" in timer
+    assert "OnUnitActiveSec=300" in timer
     assert (
         '"-m" "omnimarket.nodes.node_overlay_store_load_effect.runtime_overlay_store_load_tick"'
         in service

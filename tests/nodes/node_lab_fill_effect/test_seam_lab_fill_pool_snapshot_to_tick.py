@@ -98,7 +98,6 @@ def test_the_built_request_takes_the_overlays_values(tmp_path: Path) -> None:
         hosts=(ModelLabFillTickHost(host="h1", free=2),),
         selection_holds={"OMN-1": "handed-off"},
         ledger_path="/l",
-        approved_work_path="/a",
         brief_dir="/b",
         state_path="",
     )
@@ -109,3 +108,4 @@ def test_the_built_request_takes_the_overlays_values(tmp_path: Path) -> None:
             continue
         assert getattr(request, name) == getattr(configured, name), name
     assert request.selection_holds == {"OMN-1": "handed-off"}
+    assert request.approved_work_path == "live-work:goal-order"

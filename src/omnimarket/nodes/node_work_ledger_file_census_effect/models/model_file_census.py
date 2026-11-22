@@ -60,6 +60,14 @@ class ModelCensusOverlay(_Frozen):
         min_length=1,
         description="Path of the shrink-only ratchet file, relative to the working directory.",
     )
+    runtime_include: tuple[str, ...] = Field(
+        description="Regexes (searched in the path) that mark runtime code: the source tree and the runtime contracts "
+        "that sit in it. A path no pattern marks is not runtime code.",
+    )
+    runtime_exclude: tuple[str, ...] = Field(
+        description="Regexes (searched in the path) that take a path out of runtime code again: tests, fixtures, docs, "
+        "data and plan contracts, whatever tree they sit in.",
+    )
     per_file: bool = Field(
         default=False,
         description="Hold the per-file rows (the ``files`` table of the ratchet file) as well as the count. "
@@ -91,6 +99,12 @@ class ModelRepositoryCount(_Frozen):
     own_line: bool
     present: bool
     files: int = Field(ge=0)
+    runtime_files: int = Field(
+        default=0,
+        ge=0,
+        description="Of ``files``, those that are runtime code (the overlay's runtime patterns), counted apart from "
+        "tests, docs, data and plan contracts.",
+    )
     readers: int = Field(ge=0)
     writers: int = Field(ge=0)
     hits: tuple[ModelCensusHit, ...] = ()
@@ -118,6 +132,11 @@ class ModelCensusResult(_Frozen):
     total_files: int = Field(
         ge=0, description="Files in repositories that are not on their own line."
     )
+    runtime_files: int = Field(
+        default=0,
+        ge=0,
+        description="Runtime-code files in repositories that are not on their own line.",
+    )
     counts: tuple[ModelRepositoryCount, ...]
     failure_code: str | None = None
     failure_detail: str = ""
@@ -130,3 +149,48 @@ class ModelCensusResult(_Frozen):
         description="The per-file baseline with every file's row lowered to its count and every cleared "
         "file dropped; never a row raised and never a file added.",
     )
+
+
+class ModelCensusDailyRow(_Frozen):
+    repository: str
+    own_line: bool
+    files: int = Field(ge=0)
+    runtime_files: int = Field(ge=0)
+    ratchet: int | None = None
+    state: str
+
+
+class ModelCensusDailyRecord(_Frozen):
+    """The daily record: the per-repository counts and the runtime-code count as one typed value."""
+
+    correlation_id: str
+    recorded_on: str = Field(description="UTC date, YYYY-MM-DD.")
+    passed: bool
+    failure_code: str | None = None
+    total_files: int = Field(ge=0)
+    runtime_files: int = Field(ge=0)
+    repositories: tuple[ModelCensusDailyRow, ...]
+
+    @classmethod
+    def from_result(
+        cls, result: ModelCensusResult, recorded_on: str
+    ) -> ModelCensusDailyRecord:
+        return cls(
+            correlation_id=result.correlation_id,
+            recorded_on=recorded_on,
+            passed=result.passed,
+            failure_code=result.failure_code,
+            total_files=result.total_files,
+            runtime_files=result.runtime_files,
+            repositories=tuple(
+                ModelCensusDailyRow(
+                    repository=c.repository,
+                    own_line=c.own_line,
+                    files=c.files,
+                    runtime_files=c.runtime_files,
+                    ratchet=c.ratchet,
+                    state=c.state,
+                )
+                for c in result.counts
+            ),
+        )

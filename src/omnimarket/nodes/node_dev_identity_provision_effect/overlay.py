@@ -69,7 +69,14 @@ class ModelApiOverlay(BaseModel):
 
 
 class ModelDevIdentityProvisionOverlay(BaseModel):
-    """The whole overlay document; the optional store block means the machine's own store when absent."""
+    """The whole overlay document; the optional store block means the machine's own store when absent.
+
+    ``protected_usernames`` defaults to no one protected, the one field with a default: the overlays repository holds the
+    deployed document and its own test holds the R8 probe user in the list, and the list must be able to arrive after this
+    model (the overlay loader refuses a document the model rejects, so a required field would turn the deployed overlay red
+    until the document changed). A username in the list is refused by the handler unless the command carries
+    ``allow_protected``.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -78,6 +85,7 @@ class ModelDevIdentityProvisionOverlay(BaseModel):
     admin: ModelAdminOverlay
     user: ModelUserOverlay
     api: ModelApiOverlay
+    protected_usernames: list[str] = Field(default_factory=list)
     secret_store: ModelSecretStoreOverlay | None = None
 
 

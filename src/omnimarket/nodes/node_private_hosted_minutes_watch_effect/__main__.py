@@ -26,7 +26,6 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path.home() / ".local/state/omni/private-hosted-minutes-watch",
     )
-    parser.add_argument("--ledger", type=Path, default=None)
     parser.add_argument("--org", default="OmniNode-ai")
     parser.add_argument(
         "--day",
@@ -45,7 +44,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 org=args.org,
                 day=args.day,
                 state_dir=args.state_dir,
-                ledger=args.ledger,
             )
         )
     except NodeOverlayError as exc:
