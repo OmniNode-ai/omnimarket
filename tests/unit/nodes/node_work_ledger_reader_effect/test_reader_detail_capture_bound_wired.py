@@ -9,6 +9,7 @@ states the dropped line count. These tests fail when the entrypoint stops callin
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
 import pytest
@@ -17,10 +18,12 @@ from omnimarket.nodes.node_work_ledger_reader_effect import (
     runtime_work_ledger_reader as entrypoint,
 )
 from omnimarket.nodes.node_work_ledger_reader_effect.handlers.detail_capture_bound import (
+    bound_capture,
     load_detail_capture_settings,
 )
 from omnimarket.nodes.node_work_ledger_reader_effect.models import ModelPointAnswer
 from omnimarket.nodes.node_work_ledger_reader_effect.models.model_detail_capture import (
+    ModelDetailCaptureResult,
     ModelDetailCaptureSettings,
 )
 from tests.unit.nodes.node_work_ledger_query_effect.state_fixtures import WATERMARK
@@ -63,13 +66,15 @@ def test_detail_capture_bound_is_called_by_the_entrypoint(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     calls: list[Path] = []
-    real = entrypoint.bound_capture
+    real = bound_capture
 
-    def spy(stream, dest, settings):  # type: ignore[no-untyped-def]
+    def spy(
+        stream: Iterable[bytes], dest: Path, settings: ModelDetailCaptureSettings
+    ) -> ModelDetailCaptureResult:
         calls.append(dest)
         return real(stream, dest, settings)
 
-    monkeypatch.setattr(entrypoint, "bound_capture", spy)
+    monkeypatch.setattr(f"{entrypoint.__name__}.bound_capture", spy)
     code = _run(tmp_path, ("row-1", "row-2"), None)
     assert code in (0, 1), capsys.readouterr().err
     assert len(calls) == 1, "the entrypoint did not call bound_capture"
@@ -99,13 +104,15 @@ def test_detail_capture_bound_the_default_settings_are_the_contracts(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     seen: list[ModelDetailCaptureSettings] = []
-    real = entrypoint.bound_capture
+    real = bound_capture
 
-    def spy(stream, dest, settings):  # type: ignore[no-untyped-def]
+    def spy(
+        stream: Iterable[bytes], dest: Path, settings: ModelDetailCaptureSettings
+    ) -> ModelDetailCaptureResult:
         seen.append(settings)
         return real(stream, dest, settings)
 
-    monkeypatch.setattr(entrypoint, "bound_capture", spy)
+    monkeypatch.setattr(f"{entrypoint.__name__}.bound_capture", spy)
     _run(tmp_path, ("row-1",), None)
     capsys.readouterr()
     assert seen == [load_detail_capture_settings()]
