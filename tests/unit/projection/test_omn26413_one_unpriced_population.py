@@ -13,8 +13,8 @@ The savings view and model-routing applied none of these filters (routing left o
 
 Failure modes, each a case below (spec records/plans/OMN-26413/spec.md, approved 2026-11-22):
   P1-P7  the ticket's run-population cases: no tokens, estimated usage, unknown usage, no call row while the store has
-         others, returned to the caller, a fixture row, an experiment row (AC1; the second-tenant case moves to a
-         follow-up ticket, D2-SHAPE-26413 = A)
+         others, returned to the caller, a fixture row, an experiment row (AC3, which supersedes AC1; the
+         second-tenant case moves to a follow-up ticket, D2-SHAPE-26413 = A)
   P9     a NULL data_source run stays unpriced in all three (regression guard for the views' new filter)
   R1-R16 the per-run rule cases agree (AC2), and each fails on the deliberate break of the view's rule mapped to it
   O1     over-correction: every served field of both views other than the unpriced count is unchanged
@@ -122,7 +122,7 @@ def _measured(*runs: dict[str, Any]) -> tuple[dict[str, Any], ...]:
 
 
 # ---------------------------------------------------------------------------
-# AC1: the ticket's run-population cases, plus the NULL data_source guard.
+# AC3: the ticket's first seven run-population cases, plus the NULL data_source guard.
 # Each store is one priced run of the tenant plus one $0 run on an unlisted model, changed as named.
 # ---------------------------------------------------------------------------
 

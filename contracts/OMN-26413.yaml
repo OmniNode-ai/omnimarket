@@ -9,10 +9,10 @@ requirements:
 - id: req-omn26413-one-unpriced-population
   statement: For one store, the metering headline and the local savings and model-routing views count unpriced runs over the same runs.
   acceptance:
-  - id: AC1
-    statement: 'AC1: for one store, the metering headline, the savings view and model-routing serve the same unpriced count for each of the eight cases in the table above -- falsifier: a pytest written before the fix that builds each case''s store and fails on omnimarket dev unless the three counts agree'
   - id: AC2
     statement: 'AC2: the same three counts agree for each of the 16 per-run rule cases (NULL cost on a listed and on an unlisted model; unlisted at $0, positive and negative; listed priced at $0 and positive; listed free at $0 and positive; an upper-case name matching a lower-case manifest key; model_name empty or NULL with delegated_to listed; model_name unlisted with delegated_to listed; model_name listed with delegated_to unlisted; both empty; an untiered unlisted $0 run; a store with no call rows) -- falsifier: the same pytest''s rule cases, each shown failing on a deliberate break of the view''s unpriced rule'
+  - id: AC3
+    statement: 'AC3: for one store, the metering headline, the savings view and model-routing serve the same unpriced count for each of the first seven cases in the table above (every case but the second tenant) -- falsifier: a pytest written before the fix that builds each case''s store and fails on omnimarket dev unless the three counts agree'
 evidence_requirements:
 - kind: tests
   description: The one-unpriced-population tests pass at the pushed head.
@@ -22,12 +22,12 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn26413-ac1-ac2
-  description: 'AC1 and AC2: the whole one-unpriced-population test file. AC1''s run-population cases fail on omnimarket dev (the merge-base control); AC2''s 16 per-run rule cases must agree, and each fails on the deliberate break of each view''s unpriced rule mapped to it; each population case fails again when its view filter is removed.'
+- id: dod-omn26413-ac2-ac3
+  description: 'AC2 and AC3: the whole one-unpriced-population test file. AC3''s seven run-population cases fail on omnimarket dev (the merge-base control); AC2''s 16 per-run rule cases must agree, and each fails on the deliberate break of each view''s unpriced rule mapped to it; each population case fails again when its view filter is removed.'
   source: manual
   binds_ac:
-  - AC1
   - AC2
+  - AC3
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/projection/test_omn26413_one_unpriced_population.py -q -p no:randomly --no-cov
