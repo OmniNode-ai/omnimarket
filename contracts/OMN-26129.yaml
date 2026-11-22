@@ -91,7 +91,7 @@ dod_evidence:
           env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
           --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
           --lane dod-integration-proof-26129 --kind test --
-          env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+          uv run --frozen pytest
           tests/unit/delegation/test_routing_completeness_omn15630.py
           tests/unit/delegation/test_tier_order_backend_coverage_omn17427.py
           tests/unit/routing/test_cheap_frontier_stays_free_omn26129.py
