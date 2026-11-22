@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-26413
 title: 'For one store, the metering headline and the savings and model-routing views count different runs as unpriced: a $0 run on an unlisted model whose usage is estimated reads 0, 1 and 1'
-summary: 'The metering headline counts a run as unknown spend only if it is a real run (not a fixture or experiment), was not returned to the caller, recorded tokens, has measured call usage and belongs to the tenant. The savings view and model-routing applied none of those filters (routing left out experiment rows only), so for one store the three unpriced counts differed. Savings view revision 8 and model-routing view v6, each a new one-time store step, count unpriced only over the runs the headline classes as priced or unknown spend (not unknown tokens, not returned to the caller); every other served field is unchanged. The headline, its refresh after each delegation and `onex metering`''s staleness check now read only the tenant''s own rows, matched as the projection writer records them (the canonical UUID, a slug resolved through the tenant registry mirror); read_metering_records takes tenant_id as a required argument, as the views and the shared Postgres refresh already do; on a store holding rows with no tenant or another tenant, the headline''s figures fall to the tenant''s own rows.'
+summary: 'The metering headline counts a run as unknown spend only if it is a real run (not a fixture or experiment), was not returned to the caller, recorded tokens and has measured call usage. The savings view and model-routing applied none of those filters (routing left out experiment rows only), so for one store the three unpriced counts differed. Savings view revision 8 and model-routing view v6, each a new one-time store step, count unpriced only over the runs the headline classes as priced or unknown spend (not unknown tokens, not returned to the caller); every other served field is unchanged. The headline''s tenant scoping (the second-tenant case) is not in this change: it must be built as a contract, node and handler under the canonical file shape ruling, and moves to a follow-up ticket.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -22,23 +22,15 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn26413-ac1
-  description: 'AC1 (the OMN-26413 ticket''s table): for one store, the headline''s runs_unknown_spend (from the row the delegation path''s refresh stores), the savings view''s unpriced_call_count and model-routing''s summed unmeasured_cost_count agree for no tokens, estimated usage, unknown usage, no call row, returned to the caller, fixture, experiment and a second tenant''s run (plus NULL data_source and NULL tenant guards); each population case fails again when its view filter is removed; fails on omnimarket dev.'
+- id: dod-omn26413-ac1-ac2
+  description: 'AC1 and AC2: the whole one-unpriced-population test file. AC1''s run-population cases fail on omnimarket dev (the merge-base control); AC2''s 16 per-run rule cases must agree, and each fails on the deliberate break of each view''s unpriced rule mapped to it; each population case fails again when its view filter is removed.'
   source: manual
   binds_ac:
   - AC1
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/projection/test_omn26413_one_unpriced_population.py -q -p no:randomly --no-cov -k "cover_the_same_runs or population_case_fails or stale"
-    cwd: .
-- id: dod-omn26413-ac2
-  description: 'AC2: the three counts agree on each of the 16 per-run rule cases, and each case fails on the deliberate break of each view''s unpriced rule mapped to it (one mutant per rule clause, built into the test).'
-  source: manual
-  binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/projection/test_omn26413_one_unpriced_population.py -q -p no:randomly --no-cov -k "rule_case"
+    check_value: uv run pytest tests/unit/projection/test_omn26413_one_unpriced_population.py -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn26413-integration-proof
   description: the view store steps, the tenant-scoped headline reader and their tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
