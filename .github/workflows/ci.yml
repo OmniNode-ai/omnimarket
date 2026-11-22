@@ -4526,6 +4526,66 @@ jobs:
             --overlays-root "$OVERLAYS_CHECKOUT/$OVERLAYS_DOCUMENTS_DIR" \
             --pins-file "$OVERLAYS_CHECKOUT/$OVERLAYS_PINS_FILE"
 
+  # OMN-26424: every setting a lane, host, CI job or image build reads is declared in overlays, and a change that ADDS a read of a
+  # setting no overlay declares is refused. The decision is node_undeclared_read_check_compute's: it judges the added lines of this
+  # pull request's diff (an environment variable read in Python or shell, a `vars.` repository variable of a workflow, an image build
+  # argument) against the overlays repository's declared_settings register and every other overlay's string values. A diff that adds no
+  # read passes without the register; a diff that adds a read while the register cannot be read exits 3 and fails the job, never passes
+  # it. Unconditional (no needs/if apart from the fork guard of overlay-main-load, whose reason holds here): a failure fails CI Summary
+  # through its default-deny sweep. The planted-read tests run first so a check that cannot refuse is red here.
+  undeclared-read-check:
+    name: Undeclared Read Check (OMN-26424)
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      OVERLAYS_REPOSITORY_NAME: overlays
+      OVERLAYS_REF: main
+      OVERLAYS_CHECKOUT: .overlays-main
+      OVERLAYS_DOCUMENTS_DIR: overlays
+    steps:
+      - name: Checkout this pull request
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Mint a read-only overlays token
+        id: overlays-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.ONEXBOT_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ env.OVERLAYS_REPOSITORY_NAME }}
+          permission-contents: read
+      - name: Checkout the overlays repository at its main branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          repository: ${{ github.repository_owner }}/${{ env.OVERLAYS_REPOSITORY_NAME }}
+          ref: ${{ env.OVERLAYS_REF }}
+          path: ${{ env.OVERLAYS_CHECKOUT }}
+          token: ${{ steps.overlays-token.outputs.token }}
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          version: "0.8.3"
+      - name: Sync the environment
+        run: uv sync --locked
+      - name: The planted undeclared reads turn the check red
+        run: uv run pytest tests/test_undeclared_read_check.py -q --no-cov -p no:cacheprovider
+      - name: This pull request adds no read of a setting that no overlay declares
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          base="${BASE_SHA:-}"
+          case "$base" in ""|0000000000000000000000000000000000000000) base="HEAD~1" ;; esac
+          git diff -U0 --no-color --no-renames "$base"...HEAD > change.diff
+          uv run python -m omnimarket.nodes.node_undeclared_read_check_compute \
+            --diff-file change.diff \
+            --overlays-root "$OVERLAYS_CHECKOUT/$OVERLAYS_DOCUMENTS_DIR"
+
   # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
   # "Ci runners should be for private repos only"). omnibase_core's check refuses
   # a job whose runs-on is, or can resolve to, a self-hosted label unless core's

@@ -1039,6 +1039,8 @@ _CI_YML_STRUCTURALLY_COVERED_KEYS: frozenset[str] = frozenset(
         # (naming it in STRICT_GATE_JOBS changes the bytes the recorded-head
         # replay pins).
         "overlay-main-load",
+        # Undeclared Read Check (OMN-26424): unconditional apart from the same fork guard; covered by the L3 default-deny sweep.
+        "undeclared-read-check",
     }
 )
 
