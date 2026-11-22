@@ -1681,7 +1681,7 @@ def test_curl_installer_same_release_leaves_a_foreign_onex_alone(
     foreign.parent.mkdir(parents=True, exist_ok=True)
     foreign_text = "#!/bin/sh\n# installed by pipx for another package\necho foreign\n"
     foreign.write_text(foreign_text)
-    os.chmod(foreign, 0o755)
+    os.chmod(foreign, 0o700)
     before = foreign.read_bytes()
     try:
         result = _ci_curl_bash(env, base)
