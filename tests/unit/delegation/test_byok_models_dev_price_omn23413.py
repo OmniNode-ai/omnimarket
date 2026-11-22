@@ -374,7 +374,9 @@ def test_a_hanging_models_dev_read_is_cut_and_the_call_finishes_within_its_limit
     assert result.success
     assert result.cost_basis is EnumCostBasis.UNKNOWN
     assert result.price_source is None
-    assert posts[0]["timeout_seconds"] < 5.0
+    post_timeout = posts[0]["timeout_seconds"]
+    assert isinstance(post_timeout, (int, float))
+    assert post_timeout < 5.0
     assert len(reads) == 1
     _call(
         monkeypatch,
@@ -552,3 +554,195 @@ def test_an_eval_arm_price_is_recorded_as_the_routing_overlay(
     assert result.actual_cost_usd == Decimal("3")
     assert result.price_source == "delegation_routing_overlay"
     assert result.price_read_at is None
+
+
+# --- Round-2 review of 82de9581: one models.dev read in flight per ONEX home, and
+# no failure marked when no read actually ran.
+#
+# Failure modes:
+#   S1  concurrent calls that find the copy expired each start their own 6.7 MB read.
+#   S2  a zero or tiny deadline marks a failure for the retry interval though no read ran.
+#   S3  a caller that only waited on another call's read marks a failure when it gives up.
+
+_PRICED = (Decimal("0.3"), Decimal("1.0"))
+
+
+def _failure_marker_path(tmp_path: Path) -> Path:
+    return _models_dev_cache(tmp_path).with_suffix(".failed")
+
+
+def test_concurrent_calls_share_one_models_dev_read(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, live_models_dev: _ModelsDevServer
+) -> None:
+    live_models_dev.document = _models_dev_document(BEAM, (0.3, 1.0))
+
+    def slow(url: str, timeout: float) -> bytes:
+        time.sleep(0.3)
+        return live_models_dev(url, timeout)
+
+    monkeypatch.setattr(model_catalog, "_fetch", slow)
+    barrier = threading.Barrier(5)
+    results: list[tuple[tuple[Decimal, Decimal], str | None] | None] = [None] * 5
+
+    def worker(index: int) -> None:
+        barrier.wait()
+        results[index] = model_catalog.models_dev_price_with_read_time(
+            "reflection", BEAM, deadline_seconds=3.0
+        )
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(5)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(10)
+    assert len(live_models_dev.reads) == 1, "concurrent calls each read models.dev"
+    assert [r[0] if r else None for r in results] == [_PRICED] * 5
+
+
+def test_a_zero_deadline_attempts_no_read_and_marks_no_failure(
+    tmp_path: Path, live_models_dev: _ModelsDevServer
+) -> None:
+    live_models_dev.document = _models_dev_document(BEAM, (0.3, 1.0))
+    assert (
+        model_catalog.models_dev_price_with_read_time(
+            "reflection", BEAM, deadline_seconds=0.0
+        )
+        is None
+    )
+    assert live_models_dev.reads == []
+    assert not _failure_marker_path(tmp_path).exists(), (
+        "no read ran, yet a failure was marked"
+    )
+    found = model_catalog.models_dev_price_with_read_time(
+        "reflection", BEAM, deadline_seconds=3.0
+    )
+    assert found is not None
+    assert found[0] == _PRICED
+    assert len(live_models_dev.reads) == 1
+
+
+def test_a_caller_waiting_on_another_read_gives_up_without_marking_a_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, live_models_dev: _ModelsDevServer
+) -> None:
+    started = threading.Event()
+    release = threading.Event()
+
+    def held(url: str, timeout: float) -> bytes:
+        live_models_dev.reads.append(url)
+        started.set()
+        release.wait(10)
+        return json.dumps(_models_dev_document(BEAM, (0.3, 1.0))).encode()
+
+    monkeypatch.setattr(model_catalog, "_fetch", held)
+    first: list[tuple[tuple[Decimal, Decimal], str | None] | None] = [None]
+
+    def reader() -> None:
+        first[0] = model_catalog.models_dev_price_with_read_time(
+            "reflection", BEAM, deadline_seconds=5.0
+        )
+
+    thread = threading.Thread(target=reader)
+    thread.start()
+    try:
+        assert started.wait(5)
+        waiter = model_catalog.models_dev_price_with_read_time(
+            "reflection", BEAM, deadline_seconds=0.2
+        )
+        assert waiter is None
+        assert len(live_models_dev.reads) == 1, (
+            "the waiting caller started its own read"
+        )
+        assert not _failure_marker_path(tmp_path).exists(), (
+            "a caller that only waited marked a failure"
+        )
+    finally:
+        release.set()
+        thread.join(10)
+    assert first[0] is not None
+    assert first[0][0] == _PRICED
+    assert len(live_models_dev.reads) == 1
+
+
+# --- Round-3: a timed-out read marks a failure only when it ran out of the full
+# configured deadline, and a fresh kept copy prices a call whatever its deadline.
+#
+# Failure modes:
+#   S4  a call with little time left cuts its own read short and marks a failure,
+#       so every call stops reading models.dev for the retry interval.
+#   S5  a zero deadline leaves a call unknown though a fresh kept copy could price it.
+
+
+def _join_price_readers() -> None:
+    for thread in threading.enumerate():
+        if thread.name == "models-dev-price-read":
+            thread.join(5)
+
+
+@pytest.mark.parametrize(
+    ("cap", "marked"),
+    [(3.0, False), (0.2, True)],
+    ids=["shorter-than-configured", "configured-deadline"],
+)
+def test_only_a_read_cut_at_the_full_configured_deadline_marks_a_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    live_models_dev: _ModelsDevServer,
+    cap: float,
+    marked: bool,
+) -> None:
+    settings = model_catalog.catalog_config()
+    patched = {
+        **settings,
+        "models_dev": {**settings["models_dev"], "call_read_deadline_seconds": cap},
+    }
+    monkeypatch.setattr(model_catalog, "catalog_config", lambda: patched)
+    started = threading.Event()
+    release = threading.Event()
+
+    def held(url: str, timeout: float) -> bytes:
+        live_models_dev.reads.append(url)
+        started.set()
+        release.wait(10)
+        return json.dumps(_models_dev_document(BEAM, (0.3, 1.0))).encode()
+
+    monkeypatch.setattr(model_catalog, "_fetch", held)
+    marker = _failure_marker_path(tmp_path)
+    try:
+        found = model_catalog.models_dev_price_with_read_time(
+            "reflection", BEAM, deadline_seconds=0.2
+        )
+        assert found is None
+        assert started.is_set(), "the call's own read never began"
+        assert marker.exists() is marked, (
+            "a read cut short of the configured deadline marked a failure"
+            if not marked
+            else "a read cut at the configured deadline marked nothing"
+        )
+    finally:
+        release.set()
+        _join_price_readers()
+    if not marked:
+        assert not marker.exists()
+        again = model_catalog.models_dev_price_with_read_time(
+            "reflection", BEAM, deadline_seconds=3.0
+        )
+        assert again is not None
+        assert again[0] == _PRICED
+        assert len(live_models_dev.reads) == 1
+
+
+def test_a_zero_deadline_still_prices_from_a_fresh_kept_copy(
+    tmp_path: Path, live_models_dev: _ModelsDevServer
+) -> None:
+    cache = _models_dev_cache(tmp_path)
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(
+        json.dumps(_models_dev_document(BEAM, (0.3, 1.0))), encoding="utf-8"
+    )
+    found = model_catalog.models_dev_price_with_read_time(
+        "reflection", BEAM, deadline_seconds=0.0
+    )
+    assert found is not None, "a fresh kept copy did not price a zero-deadline call"
+    assert found[0] == _PRICED
+    assert found[1] == datetime.fromtimestamp(cache.stat().st_mtime, UTC).isoformat()
+    assert live_models_dev.reads == []

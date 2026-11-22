@@ -14,12 +14,15 @@ read, the cache) are data in configs/model_catalog.yaml.
 from __future__ import annotations
 
 import contextlib
+import contextvars
+import fcntl
 import json
 import os
 import tempfile
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from functools import cache
@@ -259,6 +262,11 @@ def _failure_marker(onex_home: Path) -> Path:
     return (onex_home / cache_file).with_suffix(".failed")
 
 
+def _read_lock_path(onex_home: Path) -> Path:
+    cache_file = str(catalog_config()["models_dev"]["cache_file"])
+    return (onex_home / cache_file).with_suffix(".lock")
+
+
 def _failed_recently(onex_home: Path, *, now: datetime | None = None) -> bool:
     """A call's models.dev read failed or ran out of time within the retry interval."""
     try:
@@ -276,6 +284,10 @@ def _failed_recently(onex_home: Path, *, now: datetime | None = None) -> bool:
 
 
 def _mark_failed(onex_home: Path) -> None:
+    # Last writer wins on the marker (round-2 note N2): a caller that gives up
+    # marks outside the read lock, so it can land just after a read that
+    # succeeded cleared the marker. That is harmless, because a fresh kept
+    # copy is always checked before the marker and wins.
     marker = _failure_marker(onex_home)
     with contextlib.suppress(OSError):
         marker.parent.mkdir(parents=True, exist_ok=True)
@@ -288,13 +300,27 @@ def _clear_failed(onex_home: Path) -> None:
         _failure_marker(onex_home).unlink(missing_ok=True)
 
 
+@dataclass
+class _ReadState:
+    fetching: bool = False
+
+
+#: Set inside a deadline-bounded read: whether this call's own read began.
+_models_dev_read_state: contextvars.ContextVar[_ReadState | None] = (
+    contextvars.ContextVar("_models_dev_read_state", default=None)
+)
+
+
 def pricing_models_dev_index() -> ModelsDevIndex:
     """The prices a delegation call reads to price a model (OMN-23413 AC35).
 
     models.dev read live: the kept copy while it is younger than its configured
     age, else read again. A failed read leaves a marker, and no call reads
     again until the retry interval has passed; until then the call is unpriced
-    (an expired copy never prices a call, see ``_pricing_index``).
+    (an expired copy never prices a call, see ``_pricing_index``). At most one
+    read is in flight per ONEX home, across threads and processes: a caller
+    that finds a read in flight waits on its lock (bounded by its own
+    deadline in ``_pricing_index``) and then uses what that read kept.
     """
     home = _onex_home()
     kept = kept_models_dev_index(home)
@@ -307,12 +333,52 @@ def pricing_models_dev_index() -> ModelsDevIndex:
             stale=False,
             error="models.dev read failed recently; not read again yet",
         )
-    index = load_models_dev(home)
-    if index.error is not None:
-        _mark_failed(home)
-    else:
-        _clear_failed(home)
-    return index
+
+    lock_path = _read_lock_path(home)
+    with contextlib.suppress(OSError):
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+    except OSError:
+        os.close(fd)
+        raise
+
+    try:
+        # Another caller may have just finished while we waited on the lock.
+        kept = kept_models_dev_index(home)
+        if kept.fetched_at is not None:
+            return kept
+        if _failed_recently(home):
+            return ModelsDevIndex(
+                models={},
+                fetched_at=None,
+                stale=False,
+                error="models.dev read failed recently; not read again yet",
+            )
+
+        state = _models_dev_read_state.get()
+        if state is not None:
+            state.fetching = True
+
+        index = load_models_dev(home)
+        if index.error is not None:
+            _mark_failed(home)
+        else:
+            _clear_failed(home)
+        return index
+    finally:
+        with contextlib.suppress(OSError):
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def _kept_pricing_index() -> ModelsDevIndex:
+    """The fresh kept models.dev copy, read from disk only, or the empty index."""
+    try:
+        return kept_models_dev_index(_onex_home())
+    except Exception:  # Any failure reading optional metadata: price unknown.
+        return EMPTY_INDEX
 
 
 def _pricing_index(deadline_seconds: float | None = None) -> ModelsDevIndex:
@@ -320,24 +386,42 @@ def _pricing_index(deadline_seconds: float | None = None) -> ModelsDevIndex:
 
     Supplemental metadata cannot prevent a provider call, so a read failure
     is no index and the model stays unpriced. An expired copy (a failed
-    refetch that kept a stale cache) never prices a call. With a deadline the
-    read runs on a daemon thread and is given up when the deadline passes:
-    that counts as a failed read for the retry interval, and the thread may
-    still finish on its own and keep what it read.
+    refetch that kept a stale cache) never prices a call. With a deadline, a
+    fresh kept copy prices the call first with no network read, whatever the
+    deadline, so a call is left unknown only when no fresh copy exists. A
+    deadline of zero or less then starts no read. Otherwise the read runs on
+    a daemon thread and is given up when the deadline passes. A failure is
+    marked for the retry interval only when this call's own read began and
+    ran out of the full configured deadline; a caller that only waited on
+    another call's read, or gave up sooner, marks nothing. The thread may
+    still finish on its own and keep, or mark, what it read.
     """
     if deadline_seconds is None:
         return _read_pricing_index()
+    kept = _kept_pricing_index()
+    if kept.fetched_at is not None:
+        return kept
+    if deadline_seconds <= 0:
+        return EMPTY_INDEX
+    state = _ReadState()
     found: list[ModelsDevIndex] = []
-    reader = threading.Thread(
-        target=lambda: found.append(_read_pricing_index()),
-        name="models-dev-price-read",
-        daemon=True,
-    )
+
+    def _run() -> None:
+        _models_dev_read_state.set(state)
+        found.append(_read_pricing_index())
+
+    reader = threading.Thread(target=_run, name="models-dev-price-read", daemon=True)
     started = time.monotonic()
     reader.start()
     reader.join(max(deadline_seconds - (time.monotonic() - started), 0.0))
     if reader.is_alive() or not found:
-        _mark_failed(_onex_home())
+        # A read this call began that ran out of the full configured deadline
+        # counts as failed for the retry interval; a shorter wait says nothing
+        # about models.dev, so it marks nothing and the read goes on to mark
+        # its own outcome.
+        cap = float(catalog_config()["models_dev"]["call_read_deadline_seconds"])
+        if state.fetching and deadline_seconds >= cap:
+            _mark_failed(_onex_home())
         return EMPTY_INDEX
     return found[0]
 
