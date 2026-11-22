@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -21,6 +21,8 @@ from omnimarket.nodes.node_gateway_batch_ingest_effect.models.model_batch_ingest
 
 NODE_NAME = "node_gateway_batch_ingest_effect"
 OVERLAY_FILE_ENV = "GATEWAY_BATCH_INGEST_OVERLAY_FILE"
+
+ConfigRoot = Annotated[str, Field(pattern=r"^/[A-Za-z0-9._/-]*$")]
 
 TENANT_PREFIX = "tenant-"
 MAX_SLUG_CHARS = 32
@@ -106,6 +108,10 @@ class ModelKafkaOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     lane: str = Field(min_length=1)
+    # The directory holding config/lab/ci_bus_lanes.yaml in the runtime that serves the door. A runtime that
+    # mounts it but exports no ONEX_WORKSPACE_CONFIG_ROOT cannot resolve the lane, and the door's lifespan then
+    # fails. The overlay declares the mount; a root the environment already names wins.
+    workspace_config_root: ConfigRoot | None = None
     producer_max_request_bytes: int = Field(gt=0)
     message_timeout_ms: int = Field(gt=0)
     record_overhead_bytes: int = Field(ge=0)
