@@ -32,7 +32,6 @@ class ModelReviewKeyCreditProbeRequest(BaseModel):
     host: str
     thinking_mode: Literal["disabled", "adaptive"] = "disabled"
     state_dir: Path
-    ledger: Path
 
 
 class ModelReviewKeyCreditProbeResult(BaseModel):
