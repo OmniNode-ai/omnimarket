@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import os
 import re
 from collections import Counter
 from collections.abc import Sequence
@@ -15,17 +14,14 @@ from omnimarket.nodes.node_handoff_check_effect.handlers.ledger_rows import (
     open_claims,
     ref_url,
 )
-from omnimarket.nodes.node_handoff_check_effect.handlers.readers import (
-    plugin_root,
-    read_prs,
-    run_reader,
-)
+from omnimarket.nodes.node_handoff_check_effect.handlers.readers import read_prs
 from omnimarket.nodes.node_handoff_check_effect.models import (
     ModelFact,
     ModelHandoffPolicy,
     ModelLedgerRow,
     fmt_ts,
 )
+from omnimarket.nodes.node_handoff_check_effect.protocols import ProtocolLedgerRows
 
 PR_RE = re.compile(r"[A-Za-z0-9_.-]+#\d+")
 
@@ -346,32 +342,28 @@ def limit_facts(
     ]
 
 
-def reader_excerpts(lane: str, now: dt.datetime) -> list[ModelFact]:
-    root = plugin_root()
-    if not root or not os.environ.get("ONEX_LEDGER_PATH"):
-        return []
+def reader_excerpts(
+    ledger_rows: ProtocolLedgerRows, lane: str, now: dt.datetime
+) -> list[ModelFact]:
+    """The holds and inbox views of the reader node, one fact each (the inbox only for a lane)."""
     out = []
-    for label, script, args in (
-        ("catchup holds", "ledger-catchup/catchup.sh", ["24"]),
-        ("inbox", "ledger-msg/inbox.sh", [lane] if lane else []),
+    for label, view, view_lane in (
+        ("catchup holds", "holds", None),
+        ("inbox", "inbox", lane or None),
     ):
-        path = root / "skills" / script
-        if label == "inbox" and not lane:
+        if view == "inbox" and not lane:
             continue
-        rc, text = (
-            run_reader(["bash", str(path), *args])
-            if path.is_file()
-            else (127, "reader not found")
-        )
+        answer = ledger_rows.read_view(view, view_lane)
+        readable = answer.status in ("ok", "stale")
         out.append(
             make_fact(
                 f"{label}: "
                 + (
-                    clip(" / ".join(text.splitlines()[-3:]), 300)
-                    if rc in (0, 3)
-                    else f"UNREADABLE rc={rc}"
+                    clip(" / ".join(answer.lines[:3]), 300)
+                    if readable
+                    else f"UNREADABLE {answer.status} {answer.reason}".strip()
                 ),
-                f"{script} {' '.join(args)}",
+                f"bus reader {view}{f' {view_lane}' if view_lane else ''}",
                 fmt_ts(now),
                 3600,
             )
