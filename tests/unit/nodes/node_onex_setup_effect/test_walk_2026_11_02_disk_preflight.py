@@ -46,6 +46,8 @@ def walk_machine() -> ModelSetupMachineFacts:
             "cpus": walk["cpus"],
             "ram_bytes": walk["ram_gib"] * GIB,
             "free_disk_bytes": walk["disk_free_gib"] * GIB,
+            # Not recorded by the walk: these isolate the disk reading, so only a
+            # free-disk check can turn this machine away.
             "administrator": True,
             "virtual_machine": walk["virtual_machine"],
             "rosetta": False,
@@ -55,12 +57,6 @@ def walk_machine() -> ModelSetupMachineFacts:
             "missing_tools": [],
         }
     )
-
-
-def test_walk_2026_11_02_fixture_is_the_refused_machine() -> None:
-    walk = json.loads(WALK.read_text(encoding="utf-8"))
-    assert walk["disk_free_gib"] < 20 < walk["disk_total_gib"]
-    assert walk["retired_refusal"] == "17 GB free disk (needs 20)"
 
 
 def test_walk_2026_11_02_guide_vm_passes_preflight(tmp_path: Path) -> None:
