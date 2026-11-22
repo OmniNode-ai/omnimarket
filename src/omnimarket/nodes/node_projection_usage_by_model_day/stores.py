@@ -13,12 +13,13 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
-from omnimarket.nodes.node_projection_usage_by_model_day.models import (
-    ModelUsageCallDelta,
-)
-from omnimarket.projection.protocol_database import DatabaseAdapter
-
 if TYPE_CHECKING:
+    # Annotations only: the adapter module imports this one for its mixin, so
+    # nothing here may import, at load, a module that leads back to it.
+    from omnimarket.nodes.node_projection_usage_by_model_day.models import (
+        ModelUsageCallDelta,
+    )
+    from omnimarket.projection.protocol_database import DatabaseAdapter
 
     class _PgHost(Protocol):
         """What the Postgres mixin calls on ``PostgresSyncProjectionAdapter``."""
