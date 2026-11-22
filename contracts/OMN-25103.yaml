@@ -54,7 +54,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_projection_floor_integration -q -n 0 -p no:randomly --no-cov
-        cwd: .
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: dod-omn25103-ac4
     description: AC4 is the publisher's event-topic cases; two of the three fail at the merge base.
     source: manual
@@ -66,7 +66,7 @@ dod_evidence:
           uv run --frozen pytest
           tests/nodes/node_integration_reading_publish_effect/test_integration_pass_event_omn25103.py
           -q -n 0 -p no:randomly --no-cov
-        cwd: .
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: dod-omn25103-integration-proof
     description: >-
       The pushed head runs the floor integration writer and the integration publisher suites, golden chain
