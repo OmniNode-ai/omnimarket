@@ -1,0 +1,118 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeGatewayWorkflowTerminalEffect
+#
+# Moves a gateway workflow row (public.gateway_workflows) to completed or failed when the
+# delegation orchestrator publishes its terminal event for the gateway's correlation id. The
+# retired onex-api workflow_terminal_consumer was the only writer of these columns; this node
+# replaces it. The join is tenant_id plus correlation_id: the terminal never carries the
+# gateway's workflow id.
+name: "node_gateway_workflow_terminal_effect"
+contract_name: "node_gateway_workflow_terminal_effect"
+node_name: "node_gateway_workflow_terminal_effect"
+node_type: "EFFECT_GENERIC"
+runtime_profiles:
+  - effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "0.1.0"
+lifecycle: experimental
+description: >
+  Subscribes to the delegation terminal pair (delegation-completed.v1 and delegation-failed.v1) and writes
+  status, the answering model, tokens, latency, route, provider, credential source, result content, failure
+  fields, rule evaluations and completed_at onto the one gateway workflow row of the event's tenant and
+  correlation id, in one transaction with a status guard so the first terminal wins. A terminal that does not
+  belong to a gateway workflow is counted and acknowledged. A malformed terminal is dead-lettered without its
+  content.
+input_model:
+  name: "ModelDelegationTerminalEnvelope"
+  module: "omnimarket.nodes.node_gateway_workflow_terminal_effect.models.model_delegation_terminal_envelope"
+  description: "One delegation terminal delivery: the canonical topic and the flat wire payload."
+output_model:
+  name: "ModelGatewayTerminalApplied"
+  module: "omnimarket.nodes.node_gateway_workflow_terminal_effect.models.model_gateway_terminal_applied"
+  description: "The decision for one delivery."
+handler:
+  module: "omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal"
+  class: "HandlerGatewayWorkflowTerminal"
+  input_model: "omnimarket.nodes.node_gateway_workflow_terminal_effect.models.model_delegation_terminal_envelope.ModelDelegationTerminalEnvelope"
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: "omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal:HandlerGatewayWorkflowTerminal"
+  handlers:
+    - topic: onex.evt.omnibase-infra.delegation-completed.v1
+      message_category: event
+      operation: apply_delegation_completed
+      handler:
+        name: HandlerGatewayWorkflowTerminal
+        module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
+      handler_module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
+    - topic: onex.evt.omnibase-infra.delegation-failed.v1
+      message_category: event
+      operation: apply_delegation_failed
+      handler:
+        name: HandlerGatewayWorkflowTerminal
+        module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
+      handler_module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+config:
+  # The overlay document <root>/node_gateway_workflow_terminal_effect/overlay.yaml carries every deployment
+  # value: the secret resolver path and the logical DSN secret name of the gateway's database (omninode_cloud),
+  # pool size, query timeout, the broker env name and the publish timeout. Nothing in it is a secret.
+  overlay_id: "node_gateway_workflow_terminal_effect"
+handler_dependencies:
+  - omnimarket.nodes.node_gateway_workflow_terminal_effect.protocols.protocol_gateway_terminal_store.ProtocolGatewayTerminalStore
+  - omnimarket.nodes.node_gateway_workflow_terminal_effect.protocols.protocol_gateway_terminal_store.ProtocolGatewayTerminalDeadLetter
+dependencies:
+  - name: "secret_resolver"
+    type: "service"
+    class_name: "SecretResolver"
+    module: "omnibase_infra.runtime.secret_resolver"
+    description: "Resolves the logical DSN secret name the overlay gives, for the gateway's database."
+    required: false
+db_io:
+  db_tables:
+    # The table lives in the gateway's database (omninode_cloud, schema public); its migrations belong to the
+    # hosted gateway's database owner, not to this repository, so the migration cell is that owner's path.
+    # The handler selects and locks the row before it updates it, so access is read_write.
+    - name: gateway_workflows
+      database_ref: omninode_cloud
+      schema: public
+      migration: "db/migrations/20260721_gateway_workflows.sql"
+      access: read_write
+      role: gateway_workflow_store
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnibase-infra.delegation-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnibase-infra.delegation-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnibase-infra.delegation-failed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnibase-infra.delegation-failed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.gateway-workflow-terminal-malformed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.gateway-workflow-terminal-malformed.v1, operation: DESCRIBE}
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnibase-infra.delegation-completed.v1
+    - onex.evt.omnibase-infra.delegation-failed.v1
+  publish_topics:
+    - onex.dlq.omnimarket.gateway-workflow-terminal-malformed.v1
+dlq_topics:
+  - onex.dlq.omnimarket.gateway-workflow-terminal-malformed.v1
+capabilities:
+  - name: "gateway_workflow_terminal_write"
+    description: "Write the terminal outcome of a gateway workflow onto its row."
+metadata:
+  description: "The terminal-outcome writer for gateway workflows."
+  author: "OmniNode Team"
+  license: "MIT"
+  transport_type: kafka
