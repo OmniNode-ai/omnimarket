@@ -45,11 +45,11 @@ second row. `failed` means the brief did not pass its check or the runner refuse
 Two requests in one message. The first pins its lane to `h201`; the second lets placement choose.
 
 ```text
-2026-11-21T23:10:00Z | MSG | from=orchestrator-example | principal=example-principal | id=2026-11-21T23:10:00Z-orchestrator-example | to=labdispatch | requests=W3siaG9zdCI6ImgyMDEiLCJsYW5lIjoiZXhhbXBsZS1hLTAxMDAiLCJ0YXNrIjoiUmVhZC1vbmx5OiBwcmludCB0aGUgaG9zdG5hbWUgYW5kIGZpbmlzaC4iLCJ0aWNrZXQiOiJPTU4tMTAwMDEifSx7Imhvc3QiOiJhbnkiLCJsYW5lIjoiZXhhbXBsZS1iLTAxMDAiLCJ0YXNrIjoiUmVhZC1vbmx5OiBsaXN0IHRoZSBsYWJvcmF0b3J5IGhvc3QgbG9hZCBhbmQgZmluaXNoLiIsInRpY2tldCI6Ik9NTi0xMDAwMiJ9XQ | place two example lanes
+2026-11-21T23:10:00Z | MSG | from=orchestrator-example | principal=example-principal | id=2026-11-21T23:10:00Z-orchestrator-example | to=labdispatch | requests=W3siaG9zdCI6ImgyMDEiLCJsYW5lIjoiZXhhbXBsZS1hLTAxMDAiLCJ0YXNrIjoiUmVhZC1vbmx5OiBwcmludCB0aGUgaG9zdG5hbWUgYW5kIGZpbmlzaC4iLCJ0aWNrZXQiOiJPTU4tMjY0MTIifSx7Imhvc3QiOiJhbnkiLCJsYW5lIjoiZXhhbXBsZS1iLTAxMDAiLCJ0YXNrIjoiUmVhZC1vbmx5OiBsaXN0IHRoZSBsYWJvcmF0b3J5IGhvc3QgbG9hZCBhbmQgZmluaXNoLiIsInRpY2tldCI6Ik9NTi0yNjQxMiJ9XQ | place two example lanes
 ```
 
 The `requests` cell decodes to:
 
 ```json
-[{"host":"h201","lane":"example-a-0100","task":"Read-only: print the hostname and finish.","ticket":"OMN-10001"},{"host":"any","lane":"example-b-0100","task":"Read-only: list the laboratory host load and finish.","ticket":"OMN-10002"}]
+[{"host":"h201","lane":"example-a-0100","task":"Read-only: print the hostname and finish.","ticket":"OMN-26412"},{"host":"any","lane":"example-b-0100","task":"Read-only: list the laboratory host load and finish.","ticket":"OMN-26412"}]
 ```
