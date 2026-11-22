@@ -16,6 +16,11 @@ description: >
   ledger and the responder's state and starts the lanes. The lab-idle cost sum that was its
   second operation is node_lab_idle_cost_compute.
 
+  OMN-26438. The trigger is a schedule on the runtime tick (config.stall_responder.schedule), the
+  schedule shape the throughput tick uses: the tick that opens a window returns that window's
+  fire on the terminal topic and every other tick returns nothing. The window opens two minutes
+  after the throughput tick's, which writes the stall rows this node answers.
+
 input_model: omnimarket.nodes.node_stall_responder_compute.models.model_stall_responder.ModelStallResponderRequest
 output_model: omnimarket.nodes.node_stall_responder_compute.models.model_stall_responder.ModelStallResponderResult
 
@@ -23,12 +28,23 @@ handler_routing:
   routing_strategy: operation_match
   handlers:
     - operation: decide_stall_responses
+      topic: onex.cmd.omnimarket.stall-responder-requested.v1
       handler:
         name: HandlerStallCauseResponder
         module: omnimarket.nodes.node_stall_responder_compute.handlers.handler_stall_cause_responder
       event_model:
         name: ModelStallResponderRequest
         module: omnimarket.nodes.node_stall_responder_compute.models.model_stall_responder
+    # OMN-26438: the schedule's entry, scoped to the tick topic so no entry spans the command and
+    # intent categories.
+    - operation: stall_responder.scheduled_fire
+      topic: onex.intent.platform.runtime-tick.v1
+      handler:
+        name: HandlerStallResponderScheduledFire
+        module: omnimarket.nodes.node_stall_responder_compute.handlers.handler_stall_responder_scheduled_fire
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      output_model: omnimarket.models.model_runtime_tick_schedule.ModelScheduledFire
 
 handler:
   module: omnimarket.nodes.node_stall_responder_compute.handlers.handler_stall_cause_responder
@@ -44,9 +60,23 @@ descriptor:
 
 terminal_event: onex.evt.omnimarket.stall-responder-decided.v1
 
+# OMN-26438: the runtime tick is the only schedule the runtime dispatches. The throughput tick's
+# cadence is 600 s at offset 0; this window is the same interval at offset 120 s.
+config:
+  stall_responder:
+    schedule:
+      workflow: stall-responder
+      interval_seconds: 600
+      offset_seconds: 120
+
+input_subscriptions:
+  - topic: onex.intent.platform.runtime-tick.v1
+    operation: stall_responder.scheduled_fire
+
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.stall-responder-requested.v1
+    - onex.intent.platform.runtime-tick.v1
   publish_topics:
     - onex.evt.omnimarket.stall-responder-decided.v1
 

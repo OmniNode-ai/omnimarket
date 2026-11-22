@@ -137,6 +137,11 @@ requirements:
       package and thin bootstrap. Capture version, package hashes, plugin versions, effective non-secret
       configuration, outcomes, receipts, terminal evidence and dashboard/Claude proof in a repeatable
       artifact. Mocked servers prove fault controls; they do not replace actual model proof.'
+- id: req-omn23413-ac21
+  statement: 'Model catalogue normalisation and merge: provider ids are kept exactly; prices convert to USD per 1M with Decimal; unknown capability and price stay unknown; a catalogue-only model is not listed as available; per-field provenance is shown in details.'
+  acceptance:
+  - id: AC21
+    statement: 'Model catalogue normalisation and merge: provider ids are kept exactly; prices convert to USD per 1M with Decimal; unknown capability and price stay unknown; a catalogue-only model is not listed as available; per-field provenance is shown in details.'
 - id: req-omn23413-ac22
   statement: '/config selects models from a live list, never a typed id. After the provider and its key or URL, the provider''s models load on their own and show provider, model, context, price (USD per 1M tokens, in / out), capabilities and status, with search, filter, sort and a details view. Any number can be ticked; every ticked model is stored in order and used by delegation. Values no source states show "-", never zero or "no". A model on the user''s own server is named by that server (Ollama or vLLM) with the context and capabilities it reports.'
   acceptance:
@@ -292,6 +297,24 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py tests/unit/nodes/node_onex_setup_effect/test_setup_legacy_import.py
       tests/e2e/test_setup_configuration_cli.py tests/e2e/test_setup_workflow_cli.py -q --no-cov -n 0
       -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac8-existing-project-files
+  description: 'Setup in an existing project keeps the customer''s own files instead of refusing the folder. It binds no criterion: it proves only the preserve-user-files clause of AC8, and a binding would mark all of AC8 verified. AC8 is bound by dod-omn23413-ac8-migration-repair, whose check runs this test file.'
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py::test_setup_in_an_existing_project_preserves_customer_files -q --no-cov -n 0 -p no:randomly'
+    cwd: .
+- id: dod-omn23413-ac21-field-provenance
+  description: 'Every AC21 clause, each by its own test: the provider''s exact ids are listed and a model only models.dev knows is never offered (test_config_lists_the_providers_own_ids_exactly_and_no_catalogue_only_model, on a captured OpenRouter body); prices convert to USD per 1M (test_openrouter_rows_carry_name_context_and_price_per_million) as exact Decimal (test_prices_are_exact_decimals_and_print_in_dollars); an unstated capability or price stays unknown (test_nothing_stated_stays_unknown_never_free_or_no); the details name the source of each fact (test_details_attribute_each_model_fact_to_its_source, and test_capabilities_a_provider_lists_reach_the_details_from_its_own_list through the real listing path).'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC21
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/handlers/test_model_catalog.py::test_details_attribute_each_model_fact_to_its_source tests/unit/handlers/test_model_catalog.py::test_capabilities_a_provider_lists_reach_the_details_from_its_own_list tests/unit/handlers/test_model_catalog.py::test_prices_are_exact_decimals_and_print_in_dollars tests/unit/handlers/test_model_catalog.py::test_nothing_stated_stays_unknown_never_free_or_no tests/unit/handlers/routing/test_byok_model_listing.py::test_openrouter_rows_carry_name_context_and_price_per_million tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py::test_config_lists_the_providers_own_ids_exactly_and_no_catalogue_only_model -q --no-cov -n 0 -p no:randomly'
     cwd: .
 - id: dod-omn23413-ac9-cli-behavior
   description: Interactive and unattended share one engine; typed JSON, offline help and positive-control

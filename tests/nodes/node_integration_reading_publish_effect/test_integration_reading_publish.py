@@ -247,7 +247,10 @@ def test_golden_chain_the_cli_takes_the_batch_on_stdin_and_publishes(
     code, events, published = _main(monkeypatch, tmp_path, json.dumps(BATCH), EXAMPLE)
     assert code == 0
     assert [e["phase"] for e in events] == ["start", "success"]
-    (envelope,) = published
+    # OMN-25103: the stand-in publisher serves both topics, so it holds the snapshot
+    # and the same envelope again on the pass event topic.
+    envelope, event_copy = published
+    assert event_copy == envelope
     assert envelope.projection_id == "integration"
     assert envelope.payload["counts"] == GOLDEN_COUNTS
 

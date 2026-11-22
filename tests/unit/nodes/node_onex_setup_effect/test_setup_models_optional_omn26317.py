@@ -82,8 +82,7 @@ def test_models_optional_does_not_make_another_step_optional(
     home: Path, recorder: object, tmp_path: Path
 ) -> None:
     workspace = tmp_path / "ws"
-    workspace.mkdir()
-    (workspace / "unrelated.txt").write_text("keep me\n")
+    workspace.write_text("keep me\n")
 
     result = _setup(workspace, "--json")
 
