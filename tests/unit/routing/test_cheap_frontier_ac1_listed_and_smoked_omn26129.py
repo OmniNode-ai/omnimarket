@@ -30,7 +30,9 @@ SMOKES = sorted((FIXTURES_DIR / "receipts").glob("cheap_frontier_smokes_*.json")
 def _catalogue() -> dict[str, Any]:
     """Load the captured provider catalogue fixture."""
     with CATALOGUE.open(encoding="utf-8") as fh:
-        return json.load(fh)
+        data = json.load(fh)
+        assert isinstance(data, dict)
+        return data
 
 
 def _rungs(contract_path: Path = BIFROST_CONTRACT_PATH) -> dict[str, str]:
