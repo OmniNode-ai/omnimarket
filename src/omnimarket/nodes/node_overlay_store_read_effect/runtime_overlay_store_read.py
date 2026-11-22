@@ -42,10 +42,16 @@ from omnimarket.nodes.node_overlay_store_read_effect.handlers import (
     HandlerOverlayStoreRead,
     compare_documents,
 )
+from omnimarket.nodes.node_overlay_store_read_effect.handlers.source_head import (
+    overlays_main_sha,
+)
 
 NODE = "node_overlay_store_read_effect"
 EXIT_UNREADABLE = 65
 EXIT_DIFFERS = 1
+# What one tick may spend listening on past its first window for the record of overlays main (OMN-26432). The tick's own
+# deadline is the contract's timeout_ms (120 s) and the fleet read takes a window after the refresh, so this leaves both room.
+CATCH_UP_BUDGET_S = 60.0
 
 
 def _contract() -> dict[str, Any]:
@@ -157,6 +163,7 @@ def _bus_snapshot_store(
             group_prefix=f"{NODE}.{host}",
             window_s=overlay.read_window_s,
             group_id=f"{NODE}.{host}.snapshot" if resume else None,
+            catch_up_budget_s=CATCH_UP_BUDGET_S,
         ),
         _BusReporter(open_bus, contract["event_bus"]["publish_topics"][0]),
     )
@@ -186,6 +193,7 @@ def build_handler(
         reporter=reporter,
         host=host,
         policies=overlay.overlays,
+        source_head=lambda: overlays_main_sha(env),
     )
 
 
