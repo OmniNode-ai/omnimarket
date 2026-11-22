@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_tenant_api_key_effect
+version: 1.0.0
+description: Registers a gateway key by its sha256 digest and revokes a key by id for one tenant; the key itself never reaches the bus.
+pack: operator_tooling
+node_role: effect
+display_name: Tenant API Key Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_tenant_api_key_effect: omnimarket.nodes.node_tenant_api_key_effect
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+- asyncpg>=0.29
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- tenant
+- identity
