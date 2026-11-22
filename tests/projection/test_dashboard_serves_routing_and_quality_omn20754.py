@@ -65,6 +65,9 @@ def client(tmp_path: Path) -> TestClient:
             "task_type": "reasoning",
             "delegated_to": "qwen-local",
             "cost_tier_name": "local",
+            # OMN-26413: the run recorded its tokens, so it is a run the metering headline counts.
+            "tokens_input": 100,
+            "tokens_output": 10,
             "quality_gate_passed": True,
             "actual_score": 0.9,
             "required_bar": 0.7,
