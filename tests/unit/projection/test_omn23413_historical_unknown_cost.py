@@ -84,20 +84,20 @@ _CASES: dict[
     ),
     # Free: a local tier, whatever its attempts say.
     "local-tier": ("local", "qwen3.5:0.8b", 0.0, None, _UNKNOWN, False),
-    # Free: a ":free" model id on a cloud tier.
+    # Free: a ":free" model id on a metered cloud tier (cheap_frontier would be
+    # free by its tier alone and never reach the id).
     "free-id": (
-        "cheap_frontier",
+        "cheap_cloud",
         "thinkingmachines/inkling:free",
         0.0,
         None,
         _UNKNOWN,
         False,
     ),
-    # Free: the manifest declares a zero price (no tier recorded).
     # A tier or :free suffix written in another case or with spaces is still free.
     "local-tier-spelling": (" Local ", "qwen3.5:0.8b", 0.0, None, _UNKNOWN, False),
     "free-id-upper-case": (
-        "cheap_frontier",
+        "cheap_cloud",
         "vendor/model:FREE",
         0.0,
         None,
@@ -106,7 +106,8 @@ _CASES: dict[
     ),
     # No tier recorded: nothing shows the run was cloud-priced, so it is served as stored.
     "no-tier-unpriced-model": (None, "Beam-1.0-501B-A23B", 0.0, None, _MEASURED, False),
-    "declared-zero-price": (None, "Qwen3.8-27B", 0.0, None, _UNKNOWN, False),
+    # Free: the manifest declares a zero price, on a metered tier.
+    "declared-zero-price": ("cheap_cloud", "Qwen3.8-27B", 0.0, None, _UNKNOWN, False),
     # Charged runs and explicitly recorded sources are served as stored.
     "charged": ("cheap_cloud", "Beam-1.0-501B-A23B", 1.5, None, _MEASURED, False),
     "recorded-source": (
