@@ -5,6 +5,20 @@ summary: The caller workflow passed evidence-source, verifier-tag and compare-wi
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn21977-ac1-accepted-20261122t1545z:
+      - label: AC1
+        criterion_hash: e69b07b52dc5f1b665664e818076ca976c09d5548b09225bba31fe7917379556
+        proposed_by: lane=dod-closeout-bind-2026-11-22T1545Z-c3
+        accepted_by: lane=dod-closeout-accept-2026-11-22T1545Z-c3
+        accepted_at: '2026-11-22T16:07:58Z'
+    dod-omn21977-ac2-accepted-20261122t1545z:
+      - label: AC2
+        criterion_hash: 31aed1f0cb43548ca772b3e2bf9918f2d8ecc501eed4ef5c13b3213d088a22c1
+        proposed_by: lane=dod-closeout-bind-2026-11-22T1545Z-c3
+        accepted_by: lane=dod-closeout-accept-2026-11-22T1545Z-c3
+        accepted_at: '2026-11-22T16:07:58Z'
 requirements:
   - id: req-omn21977-caller-check-budget
     statement: The caller declares a per-check budget the reusable accepts, and the characterization tests that read the caller's inputs fail without the change.
@@ -42,6 +56,24 @@ dod_evidence:
         cwd: .
       - check_type: test_passes
         check_value: uv run pytest tests/ci/test_repo_evidence_caller_merged_fix_repin_omn21146.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21977-ac1-accepted-20261122t1545z
+    description: 'AC1 binding (accepted 2026-11-22T1545Z, proposed by lane=dod-closeout-bind-2026-11-22T1545Z-c3, accepted by lane=dod-closeout-accept-2026-11-22T1545Z-c3). The caller workflow''s repo-evidence job passes check-timeout-seconds as a quoted whole number in 1..900. Re-run at origin/dev 53eb69ee30: 1 passed. With the workflow from 5715b619c9^1, and at dev with 5715b619c9''s workflow change reverted: 1 failed.'
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_repo_evidence_caller_workflow.py::test_caller_workflow_shape -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21977-ac2-accepted-20261122t1545z
+    description: 'AC2 binding (accepted 2026-11-22T1545Z, proposed by lane=dod-closeout-bind-2026-11-22T1545Z-c3, accepted by lane=dod-closeout-accept-2026-11-22T1545Z-c3). Both repin characterization tests pop check-timeout-seconds instead of asserting a two-key with block. Re-run at origin/dev 53eb69ee30: 2 passed. The repin tests from 5715b619c9^1 against the dev caller: 2 failed; at dev with 5715b619c9''s workflow change reverted: 2 failed.'
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_repo_evidence_caller_scope_repin_omn19513.py::test_the_scope_repin_keeps_the_job_id_and_inputs tests/ci/test_repo_evidence_caller_merged_fix_repin_omn21146.py::test_the_repin_keeps_the_job_id_and_inputs -q --no-cov --tb=line
         cwd: .
   - id: dod-omn21977-integration-proof
     description: Run the caller and both repin characterization checks on a lab host at the pushed head. The caller check fails when the budget input is absent. This is a workflow configuration proof; it does not assert a container rollout. The hosted verifier cannot dispatch lab work, so this unbound check belongs to the local Done gate.
