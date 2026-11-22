@@ -36,6 +36,23 @@ emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
+context:
+  ac_binding_provenance:
+    dod-omn22020-ac1-accepted-20261122t2145z:
+    - label: AC1
+      criterion_hash: 1ee55833e9522f5379395f0c5e869f7dd33fbc40a024240625d562b0e2c0801d
+      proposed_by: lane=dod-closeout-bind-2026-11-22T2145Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-22T2145Z-c2
+    dod-omn22020-ac2-accepted-20261122t2145z:
+    - label: AC2
+      criterion_hash: 0947ede94a3754f44f6adb8d94068cfd216fa4e597b09ba0b1b28758fd5d4733
+      proposed_by: lane=dod-closeout-bind-2026-11-22T2145Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-22T2145Z-c2
+    dod-omn22020-ac6-accepted-20261122t2145z:
+    - label: AC6
+      criterion_hash: c4a2921b600f26c9ed88e28cea27d0e831c2b41fa244be5c5e8988110f8b4f31
+      proposed_by: lane=dod-closeout-bind-2026-11-22T2145Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-22T2145Z-c2
 dod_evidence:
 - id: dod-omn22020-ac1
   description: 'First graph/proof step: AC1: the whole seam graph view_seam_read (VS-01 to VS-17) is declared in
@@ -135,3 +152,27 @@ dod_evidence:
           assert reading["mismatched"] == 0, result
           print(json.dumps({"case": case, "result_model": receipt["result_model"], "result": result}, sort_keys=True))
       ' "$probe_dir"
+- id: dod-omn22020-ac1-accepted-20261122t2145z
+  description: "AC1: the seventeen seams, the named models and enums, the new nodes and a typed INSUFFICIENT scaffold for each unbuilt emitter. Re-run by the accepting lane on omnimarket dev 8c2a3542cc: 17 passed, 37 deselected. The tests do not exist at the parent of the implementing merge 23ff5b270d."
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: "env -u PYTHONPATH uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k seam_graph_declared -q --no-cov"
+- id: dod-omn22020-ac2-accepted-20261122t2145z
+  description: "AC2: the event-chain walk, the graph check refusing a removed emitter then restoring, and the runtime close readings. Re-run by the accepting lane on omnimarket dev 8c2a3542cc: 34 passed, 20 deselected. Absent at the parent of 23ff5b270d."
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: "env -u PYTHONPATH uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k three_part_proof -q --no-cov"
+- id: dod-omn22020-ac6-accepted-20261122t2145z
+  description: "AC6: a mismatched VS-02 reading with every publish step ok raises MISSING seam:VS-02, an absent reading raises UNKNOWN, and the feed builds the typed tick field and measures VS-17 from sender ids against consumed ids. Re-run by the accepting lane on omnimarket dev 8c2a3542cc: 11 passed. Absent at the parent of 23ff5b270d."
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: command
+    check_value: "env -u PYTHONPATH uv run --frozen pytest src/omnimarket/nodes/node_throughput_tick_decision_compute/tests/test_seam_readings.py src/omnimarket/nodes/node_seam_conservation_compute/tests/test_seam_readings_feed.py -q --no-cov"
