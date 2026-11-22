@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26454
+title: "uv.lock upgrades opentelemetry-api, opentelemetry-sdk and the otlp http exporter to 1.45.2, the advisory the Dependency Security Scan reports, and the work contract uv.lock pins follow"
+summary: The Dependency Security Scan Safety step reports SFTY-20261022-15927 against opentelemetry-api 1.44.0 (affected spec <=1.45.0). The lock moves the opentelemetry packages to 1.45.2 and the work contract environment pins are repinned to the new uv.lock digest.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26454-otel-lock
+    statement: uv.lock pins the opentelemetry packages at a release outside the advisory's affected spec, and every work contract environment pin matches the lock.
+    acceptance:
+      - id: AC1
+        statement: "AC1: uv.lock pins opentelemetry-api, opentelemetry-sdk and opentelemetry-exporter-otlp-proto-http at 1.45.2 -- falsifier: grep -A1 'name = \"opentelemetry-api\"' uv.lock shows version 1.44.0"
+      - id: AC2
+        statement: "AC2: every work contract environment pin on uv.lock matches the digest of uv.lock -- falsifier: uv run pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov exits non-zero"
+      - id: AC3
+        statement: "AC3: the change widens or bypasses no check, so its diff touches no workflow file and no .onex_ratchets file -- falsifier: git diff --name-only origin/dev...HEAD -- .github .onex_ratchets prints a path"
+evidence_requirements:
+  - kind: tests
+    description: The work contract pin tests.
+    command: uv run pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26454-ac1
+    description: "uv.lock holds opentelemetry-api, opentelemetry-sdk and opentelemetry-exporter-otlp-proto-http at 1.45.2."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: command
+        check_value: >-
+          set -eu;
+          for p in opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-http; do
+          grep -A1 "^name = \"$p\"$" uv.lock | grep -q '^version = "1.45.2"$'; done
+        cwd: .
+  - id: dod-omn26454-ac2
+    description: "The work contract corpus loads and every environment pin on uv.lock matches the lock digest."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov
+        cwd: .
+  - id: dod-omn26454-ac3
+    description: "The diff touches no workflow file and no ratchet file."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: command
+        check_value: >-
+          set -eu; ! git diff --name-only origin/dev...HEAD -- .github .onex_ratchets | grep .
+        cwd: .
+  - id: dod-omn26454-deploy-lock-at-head
+    description: "Hosted deploy readback: the public repository at this exact head holds uv.lock at opentelemetry-api 1.45.2. No lab service is required."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu;
+          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/uv.lock" | grep -A1 '^name = "opentelemetry-api"$' | grep -c '^version = "1.45.2"$' > /dev/null
+        cwd: .
+  - id: dod-omn26454-integration-proof
+    description: "Run the work contract pin tests on a lab host at the pushed head; the local Done gate runs this unbound check."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26454 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov
+        cwd: .
