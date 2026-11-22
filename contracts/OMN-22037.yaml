@@ -7,6 +7,32 @@ summary: >-
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn22037-ac1-accepted-20261122t2145z:
+    - label: AC1
+      criterion_hash: f01c098bf574d7de74d16ca1cdfcc8317542ecd6ddeac287b4013d1aa1d893c8
+      proposed_by: lane=dod-closeout-bind-2026-11-22T2145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-22T2145Z-c3
+      accepted_at: '2026-11-22T22:12:16Z'
+    dod-omn22037-ac3-accepted-20261122t2145z:
+    - label: AC3
+      criterion_hash: 1268130ed1ba974855eabf49664c87dc5f71b8cb2a7d4b6f75ba91fc19e85ada
+      proposed_by: lane=dod-closeout-bind-2026-11-22T2145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-22T2145Z-c3
+      accepted_at: '2026-11-22T22:12:16Z'
+    dod-omn22037-ac4-accepted-20261122t2145z:
+    - label: AC4
+      criterion_hash: ec70c04e40365a234f712d0027bc2f1831b7aa3ce6a98bc0723aa0c9eeceb8bf
+      proposed_by: lane=dod-closeout-bind-2026-11-22T2145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-22T2145Z-c3
+      accepted_at: '2026-11-22T22:12:16Z'
+    dod-omn22037-ac5-accepted-20261122t2145z:
+    - label: AC5
+      criterion_hash: 9e00421ff1d913a2f64c96e3c29729f910c617fe579cc2defe5773eb3af09fe8
+      proposed_by: lane=dod-closeout-bind-2026-11-22T2145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-22T2145Z-c3
+      accepted_at: '2026-11-22T22:12:16Z'
 requirements:
   - id: "req-omn22037-preregistration-gates"
     statement: "The verdict node enforces the CM.14 pre-registration on a confirmatory run."
@@ -101,4 +127,36 @@ dod_evidence:
           grep -F 'if digest != record.data_file_sha256:' "$readback_dir/preregistration_gate.py";
           grep -F 'verify_confirmatory(request, thresholds)' "$readback_dir/handler_compaction_verdict.py";
           printf 'compaction pre-registration source readback matched %s\n' "$revision"
+        cwd: "."
+  - id: "dod-omn22037-ac1-accepted-20261122t2145z"
+    description: "AC1 binding (accepted 2026-11-22T2145Z, proposed by lane=dod-closeout-bind-2026-11-22T2145Z-c3, accepted by lane=dod-closeout-accept-2026-11-22T2145Z-c3). A confirmatory run is refused with no block, no data PR record, a data file edited after the data PR, or a data PR merged at or after the run start. Re-run at origin/dev 8c2a3542cc: 4 passed, 43 deselected; with the src paths of a053a9263d reverted: collection error."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py -q --no-cov -p no:randomly -k 'preregistered and (without_a_block or without_a_data_pr or edited_after or merged_after)'"
+        cwd: "."
+  - id: "dod-omn22037-ac3-accepted-20261122t2145z"
+    description: "AC3 binding (accepted 2026-11-22T2145Z, proposed by lane=dod-closeout-bind-2026-11-22T2145Z-c3, accepted by lane=dod-closeout-accept-2026-11-22T2145Z-c3). A session in both sets is refused at parse, a split hash differing from the recorded sets is refused, and a confirmatory run reading a calibration session or a session in neither set is refused. Re-run at origin/dev 8c2a3542cc: 4 passed, 43 deselected; with the src paths of a053a9263d reverted: collection error."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py -q --no-cov -p no:randomly -k 'preregistered and (both_sets or split_hash or calibration_session or neither_set)'"
+        cwd: "."
+  - id: "dod-omn22037-ac4-accepted-20261122t2145z"
+    description: "AC4 binding (accepted 2026-11-22T2145Z, proposed by lane=dod-closeout-bind-2026-11-22T2145Z-c3, accepted by lane=dod-closeout-accept-2026-11-22T2145Z-c3). A confirmatory run must name a build, the report names the judged build, a build other than the selection rule's pick is refused, and a build is judged once. Re-run at origin/dev 8c2a3542cc: 4 passed, 43 deselected; with the src paths of a053a9263d reverted: collection error."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py -q --no-cov -p no:randomly -k 'preregistered and (names_a_build or other_than_the_selected or judged_once or names_build_split)'"
+        cwd: "."
+  - id: "dod-omn22037-ac5-accepted-20261122t2145z"
+    description: "AC5 binding (accepted 2026-11-22T2145Z, proposed by lane=dod-closeout-bind-2026-11-22T2145Z-c3, accepted by lane=dod-closeout-accept-2026-11-22T2145Z-c3). The recorded smallest margin must equal 3 over the held-out count, the feasibility margin must match the safeguard margin, and a margin below the minimum gives an EXPLORATORY run that issues neither HELPS nor NO_DIFFERENCE. Re-run at origin/dev 8c2a3542cc: 5 passed, 42 deselected; with the src paths of a053a9263d reverted: collection error."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py -q --no-cov -p no:randomly -k 'preregistered and (smallest_margin or feasible_minimum or feasibility_margin)'"
         cwd: "."
