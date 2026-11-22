@@ -111,11 +111,6 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-collect-nightly-requested.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-publish-record-requested.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-publish-record-requested.v1, operation: DESCRIBE}
-      # The terminal events are read to find the answer to each command.
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-selector-collect-completed.v1, operation: READ}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-selector-collect-completed.v1, operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-selector-record-published.v1, operation: READ}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-selector-record-published.v1, operation: DESCRIBE}
 
 metadata:
   transport_type: kafka
