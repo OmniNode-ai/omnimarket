@@ -440,7 +440,9 @@ def test_dev_identity_provision_command_defaults_are_the_overlay_values_and_off(
     assert command.reset_existing is False
     assert command.allow_protected is False
     with pytest.raises(ValidationError):
-        ModelDevIdentityProvisionCommand(lane="dev", write=True, tenant_name="x")  # type: ignore[call-arg]
+        ModelDevIdentityProvisionCommand.model_validate(
+            {"lane": "dev", "write": True, "tenant_name": "x"}
+        )
 
 
 def _lan_addresses(document: dict[str, object]) -> list[str]:
@@ -475,6 +477,9 @@ def test_dev_identity_provision_protected_usernames_are_declared_by_the_overlay(
     document = yaml.safe_load(OVERLAY_EXAMPLE.read_text(encoding="utf-8"))
     overlay = ModelDevIdentityProvisionOverlay.model_validate(document)
     assert overlay.user.username in overlay.protected_usernames
+    # A document that predates the list loads with no one protected; the overlays repository's own test holds the R8 user in it.
     del document["protected_usernames"]
-    with pytest.raises(ValidationError):
-        ModelDevIdentityProvisionOverlay.model_validate(document)
+    assert (
+        ModelDevIdentityProvisionOverlay.model_validate(document).protected_usernames
+        == []
+    )
