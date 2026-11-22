@@ -1,0 +1,23 @@
+name: node_install_request_effect
+version: "0.1.0"
+description: "Install request effect: install one unit or tree on this host when it is safe, run the unit's declared verify, publish the typed result"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_install_request_effect: "omnimarket.nodes.node_install_request_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase-infra>=0.38.68"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "install-request", "host-install"]
+pack: "host_install"
+display_name: "Install Request Effect"
+node_role: "effect"

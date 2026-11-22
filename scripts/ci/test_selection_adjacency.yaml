@@ -49,13 +49,20 @@ always_selected_paths:
 # node directory, contract.yaml and onex.nodes entry point. A node contract change
 # narrowed to the node's own tests and skipped it: the test selector chose 52
 # paths for omnimarket#6071 and omnimarket#6054 and none was this test. An entry
-# point change edits pyproject.toml, which is test infrastructure below and takes
-# the full suite, so contract.yaml files are the glob here.
+# point change edits pyproject.toml, whose selection is set by test_infrastructure_paths
+# below and by the selection stage, so contract.yaml files are the glob here.
+# A change to the selector policy selects the test that checks the stage receipts, because the
+# policy file is data the import graph cannot read. A change under config/ is no narrowable path,
+# so it takes the full escalation, which runs that test too.
 path_triggered_selected_paths:
   - changed_globs:
       - src/omnimarket/nodes/*/contract.yaml
     selected_paths:
       - tests/test_market_node_runtime_dogfood.py
+  - changed_globs:
+      - src/omnimarket/nodes/node_test_selection_selector_compute/policy.yaml
+    selected_paths:
+      - tests/ci/test_selection_stage_evidence.py
 
 # OMN-23719: modules made of node packages. A change reaching one of these
 # (directly, or through reverse_deps) selects the tests of the nodes it can
@@ -68,12 +75,14 @@ node_scoped_modules:
   - nodes
 
 # A diff whose files all lie outside src/ and tests/ and match data_only_globs (a ticket contract, a
-# markdown file) reaches no test directory and used to take the full suite as no_narrowable_selection.
-# With data_only_selection_enabled it selects the always set plus the tests that read the files: a test
-# whose text spells the file or enumerates its directory (through an imported helper too), and the
+# markdown file) reaches no test directory. With data_only_selection_enabled it selects the always
+# set plus the tests that read the files: a test whose text spells the file or enumerates its
+# directory (through an imported helper too), and the
 # readers data_reader_overrides names (data glob -> test files) for a reader the text cannot show. Any
 # other unmatched file keeps the full escalation. The rule changes what a pull request runs, so it stays
-# off until the change that turns it on.
+# off until its stage is entered: selection_stage in the selector's policy.yaml rises one stage at a time,
+# each on a receipt under config/test_selection_stage_receipts/ that
+# tests/ci/test_selection_stage_evidence.py recomputes from the published nightly records.
 data_only_selection_enabled: false
 data_only_globs:
   - contracts/OMN-*.yaml

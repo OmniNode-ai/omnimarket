@@ -1301,7 +1301,10 @@ jobs:
 
       # The flag is the repository variable, not a literal: with it not true the selection is the
       # full-suite matrix (the policy's full_split_count shards), so the shard plan and the pytest
-      # steps below read the same flag.
+      # steps below read the same flag. What a narrowing rule changes for a pull request is set by
+      # selection_stage in the selector's policy.yaml, which rises one stage at a time on a receipt
+      # that tests/ci/test_selection_stage_evidence.py recomputes from the published nightly records.
+      # Rollback is an owner change that lowers the stage, or the owner setting the variable false.
       - name: Resolve test selection
         id: resolve
         env:
@@ -1325,6 +1328,9 @@ jobs:
             --event-name "${{ github.event_name }}" \
             --feature-flag on \
             > selection-stage-0.json
+          # Stage 1 runs the same selector's decision; the record's stage gate reads the entry of
+          # the policy's selection_stage, and an entry it lacks is a full-suite escalation.
+          cp selection-stage-0.json selection-stage-1.json
 
       # The typed record of this run's selection: the executed selection and the selection of each
       # stage, built by the selector node's build_selection_record operation.
@@ -1351,6 +1357,7 @@ jobs:
             --changed-files-from changed.txt \
             --feature-flag "$FLAG" \
             --stage-selection 0=selection-stage-0.json \
+            --stage-selection 1=selection-stage-1.json \
             --out selection-record.json \
             --github-output "$GITHUB_OUTPUT"
           cat selection-record.json
