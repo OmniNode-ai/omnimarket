@@ -13,7 +13,6 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 
 from omnimarket.handlers.work_ledger_text import ledger_row_stamp, split_ledger_rows
 
@@ -63,16 +62,14 @@ def parse_row(row: str) -> LedgerRow | None:
 
 
 def read_week(
-    paths: tuple[Path, ...], start: datetime, end: datetime
+    lines: tuple[str, ...], start: datetime, end: datetime
 ) -> list[LedgerRow]:
-    """Every row stamped in [start, end) across `paths`, ordered by stamp then position."""
+    """Every row stamped in [start, end) among the ledger `lines`, ordered by stamp then position."""
     rows: list[LedgerRow] = []
-    for path in paths:
-        text = path.read_text(encoding="utf-8", errors="replace")
-        for raw in split_ledger_rows(text):
-            parsed = parse_row(raw)
-            if parsed is not None and start <= parsed.stamp < end:
-                rows.append(parsed)
+    for raw in split_ledger_rows("\n".join(lines)):
+        parsed = parse_row(raw)
+        if parsed is not None and start <= parsed.stamp < end:
+            rows.append(parsed)
     rows.sort(key=lambda r: r.stamp)
     return rows
 

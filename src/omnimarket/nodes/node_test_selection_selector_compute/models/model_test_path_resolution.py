@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Wire types of the test-path resolution handler and the module adjacency map (OMN-23719).
 
-The adjacency map models moved here from scripts/ci/test_selection_loader.py, which keeps loading the
-YAML and re-exports them.
+The adjacency map models live here; ``adapters/adjacency_file.py`` loads the YAML.
 """
 
 from __future__ import annotations

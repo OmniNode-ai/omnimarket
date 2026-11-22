@@ -1039,6 +1039,11 @@ _CI_YML_STRUCTURALLY_COVERED_KEYS: frozenset[str] = frozenset(
         # (naming it in STRICT_GATE_JOBS changes the bytes the recorded-head
         # replay pins).
         "overlay-main-load",
+        # OMN-26446: the dev push tree-pass probe. It reports `skipped` on every
+        # pull request and merge group run, and on a dev push a failed probe is a
+        # non-good conclusion the L3 default-deny sweep fails; the verdict job
+        # (`Dev Push Full Suite Reuse`) also reads its result through `needs`.
+        "dev-tree-pass-probe",
     }
 )
 
