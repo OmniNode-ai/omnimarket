@@ -395,21 +395,293 @@ def test_a_refusal_shows_its_own_reason_and_other_errors_stay_generic(
     assert result.observations[-1].fix == "Use an empty folder for the workspace."
 
 
-def test_a_folder_with_other_files_is_refused_by_name(tmp_path: Path) -> None:
-    """The real workspace step names the folder and writes nothing into it."""
+def test_setup_in_an_existing_project_preserves_customer_files(tmp_path: Path) -> None:
+    """A normal project may contain files before ONEX is installed."""
     from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
         HandlerSetupEnvironment,
-    )
-    from omnimarket.nodes.node_onex_setup_effect.protocols.protocol_setup_step import (
-        SetupStepRefusedError,
     )
 
     folder = tmp_path / "work root"
     folder.mkdir()
-    (folder / "notes.txt").write_text("mine")
-    step = HandlerSetupEnvironment(name="workspace", onex_home=tmp_path / "onex")
-    with pytest.raises(SetupStepRefusedError) as refused:
-        step.apply(ModelSetupPlan(workspace=folder))
-    assert str(folder) in str(refused.value)
-    assert "already holds other files" in str(refused.value)
-    assert sorted(p.name for p in folder.iterdir()) == ["notes.txt"]
+    note = folder / "notes.txt"
+    note.write_bytes(b"my project\r\n")
+    engine = HandlerSetupWorkflow(
+        onex_home=tmp_path / "onex",
+        steps=(HandlerSetupEnvironment(name="workspace"),),
+    )
+    plan = ModelSetupPlan(workspace=folder)
+    for changed in (True, False):
+        outcome = engine.handle(plan).observations[-1]
+        assert outcome.status == "success", outcome.fix
+        assert outcome.changed is changed
+        assert note.read_bytes() == b"my project\r\n"
+        assert (folder / ".onex-setup-workspace").read_text() == "onex setup\n"
+
+
+@pytest.mark.parametrize(
+    "collision", ["workspace_marker", "runtime_config", "config_directory"]
+)
+def test_setup_refuses_a_collision_in_a_customer_project(
+    tmp_path: Path, collision: str
+) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
+        RUNTIME_CONFIG_RELPATH,
+    )
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
+        HandlerSetupEnvironment,
+    )
+
+    folder = tmp_path / "project"
+    folder.mkdir()
+    marker = folder / ".onex-setup-workspace"
+    runtime = folder / RUNTIME_CONFIG_RELPATH
+    user_path = {
+        "workspace_marker": marker,
+        "runtime_config": runtime,
+        "config_directory": folder / RUNTIME_CONFIG_RELPATH.parts[0],
+    }[collision]
+    user_path.parent.mkdir(parents=True, exist_ok=True)
+    user_path.write_bytes(b"owned by the customer\n")
+    result = HandlerSetupWorkflow(
+        onex_home=tmp_path / "onex",
+        steps=(
+            HandlerSetupEnvironment(name="workspace"),
+            HandlerSetupEnvironment(name="runtime_config"),
+        ),
+    ).handle(ModelSetupPlan(workspace=folder))
+    outcome = result.observations[-1]
+    assert outcome.status in ("failure", "action_required")
+    assert user_path.read_bytes() == b"owned by the customer\n"
+    if user_path != marker:
+        assert not marker.exists()
+        # Refused for the collision itself, not because the folder holds files.
+        assert str(user_path) in (outcome.fix or "")
+
+
+def test_repair_does_not_follow_a_link_in_an_existing_workspace(tmp_path: Path) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
+        RUNTIME_CONFIG_RELPATH,
+    )
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
+        HandlerSetupEnvironment,
+    )
+
+    plan = plan_at(tmp_path, action="repair")
+    plan.workspace.mkdir()
+    (plan.workspace / ".onex-setup-workspace").write_text("onex setup\n")
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    link = plan.workspace / RUNTIME_CONFIG_RELPATH.parts[0]
+    link.symlink_to(shared, target_is_directory=True)
+    engine = HandlerSetupWorkflow(
+        onex_home=tmp_path / "onex",
+        steps=(
+            HandlerSetupEnvironment(name="workspace"),
+            HandlerSetupEnvironment(name="runtime_config"),
+        ),
+    )
+    outcome = engine.handle(plan).observations[-1]
+    assert outcome.status == "action_required"
+    assert str(link) in (outcome.fix or "")
+    assert list(shared.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "edited", [False, True], ids=["clean-generated", "customer-edited"]
+)
+def test_switch_install_path_preserves_customer_edits(
+    tmp_path: Path, edited: bool
+) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
+        ensure_runtime_config,
+    )
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
+        HandlerSetupEnvironment,
+    )
+
+    plan = plan_at(tmp_path)
+    config, _ = ensure_runtime_config(plan.workspace, "docker")
+    if edited:
+        with config.open("a") as stream:
+            stream.write("# customer addition made after setup\n")
+    before = config.read_bytes()
+    outcome = (
+        HandlerSetupWorkflow(
+            onex_home=tmp_path / "onex",
+            steps=(
+                HandlerSetupEnvironment(name="workspace"),
+                HandlerSetupEnvironment(name="runtime_config"),
+            ),
+        )
+        .handle(plan)
+        .observations[-1]
+    )
+    if edited:
+        assert config.read_bytes() == before
+        assert outcome.status in ("action_required", "failure")
+        assert str(config) in (outcome.fix or "")
+    else:
+        assert outcome.status == "success", outcome.fix
+        assert b"# install-path: local" in config.read_bytes()
+
+
+def test_a_folder_swapped_for_a_link_after_the_check_is_never_written_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The runtime config is written into the folder setup checked, not a link's target."""
+    from omnimarket.nodes.node_onex_setup_effect.handlers import handler_onex_setup
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
+        HandlerSetupEnvironment,
+    )
+
+    plan = plan_at(tmp_path)
+    plan.workspace.mkdir()
+    (plan.workspace / ".onex-setup-workspace").write_text("onex setup\n")
+    relative = handler_onex_setup.RUNTIME_CONFIG_RELPATH
+    top = relative.parts[0]
+    (plan.workspace / relative.parent).mkdir(parents=True)
+    outside = tmp_path / "outside"
+    (outside / relative.parent.relative_to(top)).mkdir(parents=True)
+    generate = handler_onex_setup._generated_runtime_config
+
+    def swap_then_generate(*args: str) -> str:
+        # Runs after setup has checked the folder and before it writes.
+        (plan.workspace / top).rename(plan.workspace / "checked")
+        (plan.workspace / top).symlink_to(outside, target_is_directory=True)
+        return generate(*args)
+
+    monkeypatch.setattr(
+        handler_onex_setup, "_generated_runtime_config", swap_then_generate
+    )
+    HandlerSetupWorkflow(
+        onex_home=tmp_path / "onex",
+        steps=(HandlerSetupEnvironment(name="runtime_config"),),
+    ).handle(plan)
+    assert [p for p in outside.rglob("*") if p.is_file()] == []
+    checked = plan.workspace / "checked" / relative.relative_to(top)
+    assert b"# install-path: local" in checked.read_bytes()
+
+
+def test_an_edit_saved_after_the_check_is_not_overwritten(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.handlers import handler_onex_setup
+
+    config, _ = handler_onex_setup.ensure_runtime_config(tmp_path, "docker")
+    can_switch = handler_onex_setup.runtime_config_can_switch
+
+    def edit_after_check(content: str) -> bool:
+        allowed = can_switch(content)
+        with config.open("a") as stream:
+            stream.write("# customer edit saved after the check\n")
+        return allowed
+
+    monkeypatch.setattr(
+        handler_onex_setup, "runtime_config_can_switch", edit_after_check
+    )
+    with pytest.raises(handler_onex_setup.StepFailedError):
+        handler_onex_setup.ensure_runtime_config(tmp_path, "local")
+    assert config.read_text().endswith("# customer edit saved after the check\n")
+    assert "# install-path: docker" in config.read_text()
+
+
+def _install_sh_runtime_config(path_choice: str) -> str:
+    """What the captured install.sh writes, rendered as its shell heredoc would."""
+    script = (
+        Path(__file__).parents[3]
+        / "fixtures/onex_setup/omnibase_install_sh_7e5af9e6.txt"
+    ).read_text(encoding="utf-8")
+    writer = script.split("write_runtime_config() {", 1)[1]
+    body = writer.split('cat > "$tmp" <<EOF\n', 1)[1].split("\nEOF\n", 1)[0] + "\n"
+    description = writer.split(f"{path_choice})", 1)[1].split('description="', 1)[1]
+    bus_type = writer.split(f"{path_choice})", 1)[1].split('bus_type="', 1)[1]
+    values = {
+        "$RUNTIME_CONFIG_MARKER": "# generated-by: omnibase install.sh",
+        "$path_choice": path_choice,
+        "$PYTHON_BIN": "/opt/py/bin/python3.12",
+        "$description": description.split('"', 1)[0],
+        "$bus_type": bus_type.split('"', 1)[0],
+    }
+    for name, value in values.items():
+        body = body.replace(name, value)
+    assert "$" not in body
+    return body
+
+
+@pytest.mark.parametrize(
+    "edited", [False, True], ids=["unedited-install-sh", "edited-install-sh"]
+)
+def test_an_install_sh_runtime_config_switches_unless_edited(
+    tmp_path: Path, edited: bool
+) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
+        RUNTIME_CONFIG_RELPATH,
+    )
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
+        HandlerSetupEnvironment,
+    )
+
+    plan = plan_at(tmp_path)
+    plan.workspace.mkdir()
+    (plan.workspace / ".onex-setup-workspace").write_text("onex setup\n")
+    config = plan.workspace / RUNTIME_CONFIG_RELPATH
+    config.parent.mkdir(parents=True)
+    written = _install_sh_runtime_config("docker")
+    if edited:
+        written += "# customer addition\n"
+    config.write_text(written, encoding="utf-8")
+    outcome = (
+        HandlerSetupWorkflow(
+            onex_home=tmp_path / "onex",
+            steps=(
+                HandlerSetupEnvironment(name="workspace"),
+                HandlerSetupEnvironment(name="runtime_config"),
+            ),
+        )
+        .handle(plan)
+        .observations[-1]
+    )
+    if edited:
+        assert config.read_text(encoding="utf-8") == written
+        assert outcome.status == "action_required"
+    else:
+        assert outcome.status == "success", outcome.fix
+        assert "# install-path: local" in config.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("shape", ["truncated", "hand-edited"])
+def test_a_runtime_config_with_no_runtime_definition_needs_attention(
+    tmp_path: Path, shape: str
+) -> None:
+    """Two setup header comments alone are not a runtime config setup can adopt."""
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
+        RUNTIME_CONFIG_RELPATH,
+        SETUP_MARKER,
+        ensure_runtime_config,
+    )
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
+        HandlerSetupEnvironment,
+    )
+
+    plan = plan_at(tmp_path)
+    config = plan.workspace / RUNTIME_CONFIG_RELPATH
+    if shape == "truncated":
+        config.parent.mkdir(parents=True)
+        config.write_text(f"{SETUP_MARKER}\n# install-path: local\n")
+    else:
+        ensure_runtime_config(plan.workspace, "local")
+        config.write_text(
+            config.read_text().replace("max_history: 1000", "max_history: 50")
+        )
+    before = config.read_bytes()
+    step = HandlerSetupEnvironment(name="runtime_config", onex_home=tmp_path / "onex")
+    outcome = HandlerSetupWorkflow(onex_home=tmp_path / "onex", steps=(step,)).handle(
+        plan
+    )
+    assert config.read_bytes() == before
+    if shape == "truncated":
+        assert step.observe(plan).status == "action_required"
+        assert outcome.observations[-1].status == "action_required"
+        assert str(config) in (outcome.observations[-1].fix or "")
+    else:
+        assert outcome.observations[-1].status == "success"

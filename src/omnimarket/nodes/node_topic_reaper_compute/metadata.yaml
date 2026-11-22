@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_topic_reaper_compute
+version: 1.0.0
+description: Flag broker topics nothing produces to or consumes from, then name them deletable after a second interval; both intervals are lane overlay values and nothing is deleted without them.
+pack: topics
+node_role: compute
+display_name: Topic Reaper Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_topic_reaper_compute: omnimarket.nodes.node_topic_reaper_compute
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- broker-topics
+- OMN-21594
