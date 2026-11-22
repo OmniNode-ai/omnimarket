@@ -19,6 +19,7 @@ import threading
 import time
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +30,7 @@ from omnimarket.handlers.model_catalog import (
     ModelsDevIndex,
 )
 
-__all__ = ["historical_models_dev_index"]
+__all__ = ["historical_models_dev_index", "models_dev_declares_free"]
 
 
 def historical_models_dev_index() -> ModelsDevIndex:
@@ -44,6 +45,34 @@ def historical_models_dev_index() -> ModelsDevIndex:
         return _read(model_catalog._onex_home())  # noqa: SLF001
     except Exception:  # Any failure reading optional metadata: price unknown.
         return EMPTY_INDEX
+
+
+def models_dev_declares_free(
+    index: ModelsDevIndex, provider: str, model_id: str
+) -> bool:
+    """True when ``index`` lists ``model_id`` at a zero input and output price.
+
+    ``provider`` is the ONEX provider id, mapped to models.dev's through the
+    catalogue's ``provider_ids``. A model models.dev does not list, or whose
+    entry states no input or output price, is not free.
+    """
+    md_provider = model_catalog.catalog_config()["provider_ids"].get(provider)
+    if not md_provider:
+        return False
+    metadata = index.models.get((str(md_provider), model_id))
+    cost = metadata.get("cost") if metadata else None
+    if not isinstance(cost, Mapping):
+        return False
+    return _zero(cost.get("input")) and _zero(cost.get("output"))
+
+
+def _zero(value: object) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str, Decimal)):
+        return False
+    try:
+        return Decimal(str(value)) == 0
+    except InvalidOperation:
+        return False
 
 
 def _settings() -> Mapping[str, Any]:

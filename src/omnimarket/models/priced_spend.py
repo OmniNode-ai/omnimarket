@@ -198,7 +198,7 @@ def _models_dev_declares_free(
     """
     if models_dev is None:
         return False
-    from omnimarket.handlers import model_catalog
+    from omnimarket.handlers import model_catalog, models_dev_historical_read
     from omnimarket.handlers.routing.byok_provider_backends import (
         byok_backend_provider,
     )
@@ -208,8 +208,9 @@ def _models_dev_declares_free(
         provider
     ):
         return False
-    price = model_catalog.models_dev_index_price_per_1m(models_dev(), provider, model)
-    return price is not None and price[0] == 0 and price[1] == 0
+    return models_dev_historical_read.models_dev_declares_free(
+        models_dev(), provider, model
+    )
 
 
 def _declared_free(name: str) -> bool:

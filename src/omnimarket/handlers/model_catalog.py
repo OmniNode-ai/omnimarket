@@ -294,17 +294,10 @@ def models_dev_price_per_1m(
     provider has no models.dev id, models.dev does not list the model, or the
     entry states no input or output price.
     """
-    return models_dev_index_price_per_1m(_pricing_index(), provider, model_id)
-
-
-def models_dev_index_price_per_1m(
-    index: ModelsDevIndex, provider: str, model_id: str
-) -> tuple[Decimal, Decimal] | None:
-    """``(input, output)`` USD per 1M tokens as ``index`` lists the model, or None."""
     md_provider = catalog_config()["provider_ids"].get(provider)
     if not md_provider:
         return None
-    metadata = index.models.get((str(md_provider), model_id))
+    metadata = _pricing_index().models.get((str(md_provider), model_id))
     cost = metadata.get("cost") if metadata else None
     if not isinstance(cost, dict):
         return None
