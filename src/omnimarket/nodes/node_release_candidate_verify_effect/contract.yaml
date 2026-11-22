@@ -13,8 +13,9 @@ description: >
   protected console scripts, the dashboard bundle and the launch-required changes) and verifies it:
   an installed environment (RECORD files and hashes, the protected entry-point groups, protected
   console-script owners and the generated launcher rebuilt from an admitted installer template), a
-  plugin install by content, the manifest against what PyPI serves, and the cut against its required
-  changes by ancestry. A mismatch is refused with the file, entry point or launcher line named. The
+  plugin install by content, the manifest against what PyPI serves, the cut against its required
+  changes by ancestry, and the served curl installer against the sha256 the manifest pins, its package,
+  version, index and --no-build (OMN-25070 AC4). A mismatch is refused with the file, entry point or launcher line named. The
   release train publishes the candidate; this node never releases or tags. Every setting is in the
   overlay (overlay.default.yaml is the in-memory profile).
 

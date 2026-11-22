@@ -37,6 +37,7 @@ class ModelReleaseCandidateVerifyResult(BaseModel):
     matches: bool
     installed_matches_manifest: bool | None = None
     plugin_matches_manifest: bool | None = None
+    installer_matches_manifest: bool | None = None
     reading: str
     layout: str = ""
     installed_git_commit_sha: str = ""

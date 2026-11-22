@@ -55,7 +55,11 @@ class ModelReleaseCandidateVerifyRequest(BaseModel):
 
     correlation_id: UUID = Field(default_factory=uuid4)
     operation: Literal[
-        "verify_installed", "verify_plugin", "verify_pypi", "verify_ancestry"
+        "verify_installed",
+        "verify_plugin",
+        "verify_pypi",
+        "verify_ancestry",
+        "verify_installer",
     ]
     manifest: ModelReleaseCandidateManifest
     environment_prefix: str | None = Field(
@@ -69,6 +73,10 @@ class ModelReleaseCandidateVerifyRequest(BaseModel):
     plugin_record: ModelInstalledPluginRecord | None = None
     pypi_facts: tuple[ModelPypiFact, ...] = ()
     ancestry_facts: tuple[ModelAncestryFact, ...] = ()
+    installer_script: str | None = Field(
+        default=None,
+        description="The installer text the release serves (verify_installer).",
+    )
     overlay: ModelReleaseCandidateOverlay | None = Field(
         default=None, description="None reads the packaged overlay.default.yaml."
     )
@@ -79,4 +87,6 @@ class ModelReleaseCandidateVerifyRequest(BaseModel):
             raise ValueError("verify_installed needs environment_prefix")
         if self.operation == "verify_plugin" and self.plugin_record is None:
             raise ValueError("verify_plugin needs plugin_record")
+        if self.operation == "verify_installer" and self.installer_script is None:
+            raise ValueError("verify_installer needs installer_script")
         return self

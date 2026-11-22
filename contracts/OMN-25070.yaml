@@ -65,6 +65,22 @@ requirements:
       - id: AC3
         statement: >-
           AC3 (ticket text as amended 2026-11-21), the part this falsifier checks: uv tool install --python 3.12 --no-build omninode-onex==<candidate> and pipx install --python 3.12 --pip-args=--only-binary=:all: omninode-onex==<candidate>, each into an empty HOME with a PATH of /usr/bin and /bin plus only the installers and Python 3.12 and Python 3.11 as the default interpreter for uv and pipx (UV_PYTHON, PIPX_DEFAULT_PYTHON), install under Python 3.12, put exactly onex and omni-agent on PATH, run onex, and build nothing from AC1's source-only certifi fixture, which is shown to be in the closure; each launcher is declared once, by omninode-onex with the target omnibase_core.cli.cli_commands:cli, counting console_scripts, gui_scripts and launcher files listed in any RECORD; every hashed file of the customer wheel's RECORD is installed with that sha256; every Requires-Dist of the customer package is a single == pin equal to the installed version, and every installed omnibase-, omnimarket or omninode- distribution is pinned; the customer package carries no code; offline controls (core only, both, none, a wrong target, a gui_scripts or RECORD launcher, a changed installed file, no pins, an unpinned or non-== pin, code in the wheel) fail. Not yet covered here, because they need the release train's candidate manifest: the owner and target as the manifest names them, the customer wheel's sha256, and the installed content of the other distributions. The pipx line without --python 3.12 fails because pipx installs through uv (PIPX_DEFAULT_BACKEND=uv, pipx's default when uv is on PATH); with pip, pipx picks a Python 3.12 from PATH itself. -- falsifier: uv run pytest tests/e2e/test_setup_packaged_journey.py -q -k one_package_uv_and_pipx.
+  - id: req-omn25070-installer-matches-manifest
+    statement: The candidate check refuses a served curl installer that is not the one the candidate manifest pins.
+    acceptance:
+      - id: AC4
+        statement: >-
+          AC4 (ticket text), the candidate-check part this falsifier checks: the M13 candidate check
+          (node_release_candidate_verify_effect, operation verify_installer) refuses a candidate whose served
+          script's sha256 differs from the manifest's, or whose script names an index other than PyPI
+          (--index-url, --extra-index-url, --default-index or --index, or UV_INDEX_URL, UV_EXTRA_INDEX_URL,
+          UV_DEFAULT_INDEX, UV_INDEX, PIP_INDEX_URL or PIP_EXTRA_INDEX_URL set to anything but
+          https://pypi.org/simple), or a package or version other than the manifest's customer package, or
+          runs a tool install or pip install line without --no-build; the installer rendered from
+          packages/omninode-onex/installer.json at the candidate version passes, and naming PyPI explicitly
+          passes. Not covered here: the install on actual macOS and Linux from a local stand-in for the domain
+          (-k curl_installer_same_release). -- falsifier: uv run pytest
+          tests/nodes/node_release_candidate_verify_effect/test_installer_matches_manifest.py -q -k installer_matches_manifest.
 evidence_requirements:
   - kind: tests
     description: The package tests; the opt-in install check runs with ONEX_TEST_ONEX_WHEEL set.
@@ -134,4 +150,18 @@ dod_evidence:
       - check_type: command
         check_value: >-
           sh -c 'd="$(mktemp -d)" && uv build --wheel --out-dir "$d" packages/omninode-onex && ONEX_TEST_ONEX_WHEEL="$(ls "$d"/omninode_onex-*.whl)" ONEX_E2E_REQUIRE_COMPLETE=1 uv run --frozen pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k one_package_uv_and_pipx'
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-installer-matches-manifest
+    description: >-
+      The candidate check against the curl installer rendered from packages/omninode-onex/installer.json: the
+      rendered script passes, and a changed script, another index, another version or package, or an install
+      line without --no-build is refused. Fails on dev, where the manifest pins no installer and the check has no
+      verify_installer operation.
+    source: manual
+    binds_ac:
+      - AC4
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_release_candidate_verify_effect/test_installer_matches_manifest.py -q --no-cov -k installer_matches_manifest
         cwd: ${OMNI_HOME}/omnimarket
