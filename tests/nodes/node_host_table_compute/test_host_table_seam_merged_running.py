@@ -59,7 +59,7 @@ def sources_over(tmp_path: Path, hosts: Callable[[], ModelHostTableResult]):
     )
     return SourceLocalFiles(
         watcher_state=tmp_path / "state.json",
-        ledger=tmp_path / "ledger.md",
+        ledger_rows=lambda: (),
         labels=labels,
         hosts=hosts,
         placement_read=tmp_path / "absent-hosts.json",
