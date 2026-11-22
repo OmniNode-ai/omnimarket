@@ -94,52 +94,6 @@ def _ladders(contract: dict[str, Any]) -> dict[str, list[str]]:
     return ladders
 
 
-def _paid_before_tier(
-    ladders: dict[str, list[str]], tiers: dict[str, dict[str, Any]]
-) -> list[str]:
-    """Return messages for paid tiers that precede the tier in a ladder."""
-    messages: list[str] = []
-    for task_class, order in ladders.items():
-        if TIER not in order:
-            continue
-        index = order.index(TIER)
-        for name in order[:index]:
-            cost = tiers.get(name, {}).get("cost", {})
-            if cost.get("cost_type") != "free_local":
-                messages.append(f"{task_class}: {name} before {TIER}")
-    return messages
-
-
-def _candidates(
-    task_class: str, tier: ModelRoutingTier, contract: dict[str, Any]
-) -> frozenset[str]:
-    """Return the backend refs of the tier that serve the task class."""
-    model_ref = routing._get_contract_model_ref(task_class, contract=contract)
-    explicit = routing._is_explicit_task_model_override(task_class, contract)
-    return frozenset(
-        m.backend_ref
-        for m in tier.models
-        if task_class in m.use_for or (explicit and m.id == model_ref)
-    )
-
-
-def _unserved(
-    tier: ModelRoutingTier, ladders: dict[str, list[str]], contract: dict[str, Any]
-) -> list[str]:
-    """Return task classes whose ladder names the tier but it serves none."""
-    return [
-        task_class
-        for task_class, order in ladders.items()
-        if TIER in order and not _candidates(task_class, tier, contract)
-    ]
-
-
-def _placed_tier() -> ModelRoutingTier:
-    """Return the placed routing tier named TIER."""
-    (tier,) = [t for t in placed_routing_config().tiers if t.name == TIER]
-    return tier
-
-
 def test_the_tier_is_declared_free() -> None:
     """The tier must be declared free with zero cost and free_local type."""
     assert not _not_free(_tiers())
@@ -150,19 +104,6 @@ def test_the_rung_is_listed_and_priced_zero() -> None:
     models = _rung_models()
     assert models
     assert not _priced(models, json.loads(CATALOGUE.read_text(encoding="utf-8")))
-
-
-def test_every_ladder_naming_the_tier_is_served_there() -> None:
-    """Every ladder that names the tier must be served by at least one model."""
-    contract = _yaml(TASK_CONTRACT)
-    ladders = _ladders(contract)
-    assert any(TIER in o for o in ladders.values())
-    assert not _unserved(_placed_tier(), ladders, contract)
-
-
-def test_the_tier_comes_before_every_paid_tier() -> None:
-    """No paid tier may precede the tier in any ladder."""
-    assert not _paid_before_tier(_ladders(_yaml(TASK_CONTRACT)), _tiers())
 
 
 def test_a_metered_tier_is_caught() -> None:
@@ -187,15 +128,88 @@ def test_a_priced_or_unlisted_rung_is_caught() -> None:
     assert _priced(["vendor/absent:free"], payload) == ["vendor/absent:free not listed"]
 
 
-def test_an_unserved_tier_is_caught() -> None:
-    """A tier with no models must be flagged as unserved."""
+def _paid_before_free(
+    ladders: dict[str, list[str]], tiers: dict[str, dict[str, Any]]
+) -> list[str]:
+    """Return messages naming paid tiers that appear before a free tier on any ladder."""
+    errors: list[str] = []
+    for task_class, ladder in ladders.items():
+        for i, free in enumerate(ladder):
+            if tiers.get(free, {}).get("cost", {}).get("cost_type") == "free_local":
+                for paid in ladder[:i]:
+                    if (
+                        tiers.get(paid, {}).get("cost", {}).get("cost_type")
+                        != "free_local"
+                    ):
+                        errors.append(f"{task_class}: {paid} before {free}")
+    return errors
+
+
+def _candidates(
+    task_class: str, tier: ModelRoutingTier, contract: dict[str, Any]
+) -> frozenset[str]:
+    """Return the backend refs usable for a task class on a tier, honoring explicit overrides."""
+    model_ref = routing._get_contract_model_ref(task_class, contract=contract)
+    explicit = routing._is_explicit_task_model_override(task_class, contract)
+    return frozenset(
+        m.backend_ref
+        for m in tier.models
+        if task_class in m.use_for or (explicit and m.id == model_ref)
+    )
+
+
+def _unserved(
+    config_tiers: dict[str, ModelRoutingTier],
+    ladders: dict[str, list[str]],
+    contract: dict[str, Any],
+) -> list[str]:
+    """Return messages for ladder tiers that are unknown or serve no backend for a class."""
+    errors: list[str] = []
+    for task_class, ladder in ladders.items():
+        for name in ladder:
+            tier = config_tiers.get(name)
+            if tier is None:
+                errors.append(f"{task_class}: {name} unknown")
+            elif not _candidates(task_class, tier, contract):
+                errors.append(f"{task_class}: {name} serves no backend")
+    return errors
+
+
+def _placed_tiers() -> dict[str, ModelRoutingTier]:
+    """Return the placed routing config tiers keyed by tier name."""
+    return {t.name: t for t in placed_routing_config().tiers}
+
+
+def test_every_tier_on_every_ladder_is_served() -> None:
+    """Every tier on every ladder is known and serves a backend for its class."""
     contract = _yaml(TASK_CONTRACT)
-    empty = _placed_tier().model_copy(update={"models": []})
-    assert _unserved(empty, _ladders(contract), contract)
+    ladders = _ladders(contract)
+    assert any(TIER in o for o in ladders.values())
+    assert not _unserved(_placed_tiers(), ladders, contract)
 
 
-def test_a_paid_tier_ahead_of_the_tier_is_caught() -> None:
-    """A paid tier before the tier in a ladder must be flagged."""
-    assert _paid_before_tier({"x": ["local", "cheap_cloud", TIER]}, _tiers()) == [
+def test_every_free_tier_comes_before_every_paid_tier() -> None:
+    """No paid tier precedes a free tier on any ladder."""
+    assert not _paid_before_free(_ladders(_yaml(TASK_CONTRACT)), _tiers())
+
+
+def test_an_unserved_tier_is_caught() -> None:
+    """A tier with no models is reported as unserving any backend."""
+    contract = _yaml(TASK_CONTRACT)
+    tiers = _placed_tiers()
+    tiers[TIER] = tiers[TIER].model_copy(update={"models": []})
+    unserved = _unserved(tiers, _ladders(contract), contract)
+    assert unserved
+    assert all(TIER in u for u in unserved)
+
+
+def test_a_paid_tier_ahead_of_a_free_tier_is_caught() -> None:
+    """A paid tier ahead of a free tier is reported with the expected messages."""
+    planted = {"code_generation": [TIER, "cheap_cloud", "claude", "local"]}
+    assert _paid_before_free(planted, _tiers()) == [
+        "code_generation: cheap_cloud before local",
+        "code_generation: claude before local",
+    ]
+    assert _paid_before_free({"x": ["local", "cheap_cloud", TIER]}, _tiers()) == [
         f"x: cheap_cloud before {TIER}"
     ]
