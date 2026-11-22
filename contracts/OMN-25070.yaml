@@ -72,21 +72,24 @@ requirements:
         statement: >-
           AC4 (ticket text), the candidate-check part this falsifier checks: the M13 candidate check
           (node_release_candidate_verify_effect, operation verify_installer) refuses a served script whose
-          sha256 differs from the one the manifest pins; whose ONEX_PACKAGE and ONEX_VERSION are not set
-          exactly once (plain, export, readonly, declare or local) to the manifest's installer package and
-          that distribution's version; that names an index other than https://pypi.org/simple through
-          -i, --index-url, --extra-index-url, --default-index or --index, or through UV_INDEX_URL,
+          sha256 differs from the one the manifest pins; whose ONEX_PACKAGE and ONEX_VERSION are not each
+          assigned exactly once (plain, +=, export, readonly, declare or local) to the manifest's installer
+          package and that distribution's version; that names an index other than https://pypi.org/simple
+          through --index-url, --extra-index-url, --default-index or --index, or -i (separate or attached)
+          in an install command or the set -- that builds it, or through UV_INDEX_URL,
           UV_DEFAULT_INDEX, UV_INDEX or PIP_INDEX_URL; that uses UV_EXTRA_INDEX_URL, PIP_EXTRA_INDEX_URL,
           --config-file, UV_CONFIG_FILE, PIP_CONFIG_FILE, --index-strategy, UV_INDEX_STRATEGY,
-          UV_FIND_LINKS, PIP_FIND_LINKS, or --find-links or -f with a value that is not a shell variable;
+          UV_FIND_LINKS, PIP_FIND_LINKS, or --find-links (or -f in an install command, separate or
+          attached) with a value that is not a plain shell variable such as "$NAME" or "${NAME}";
           that sets UV_NO_BUILD*, UV_NO_BINARY*, PIP_NO_BINARY, PIP_ONLY_BINARY or
           PIP_NO_BUILD_ISOLATION; or that runs pip, pip3, pipx, uv tool or uv install, uvx, uv tool run,
           or uv add, sync or run without the exact token --no-build (or --only-binary=:all:) in the same
-          command, lines joined across backslash continuations. The installer rendered from
+          command, lines joined across backslash continuations and shell comments ignored. The installer rendered from
           packages/omninode-onex/installer.json at the candidate version passes, naming PyPI explicitly
           passes, and the installer's own --find-links "$ONEX_INSTALL_FIND_LINKS" test hook passes. This is
-          a list of refused spellings, not a shell interpreter: an index or install hidden behind eval, a
-          sourced file or a function built at run time is not covered. Not covered here: the install on
+          a list of refused spellings, not a shell interpreter: an index or install hidden behind eval,
+          sh -c or bash -c, a sourced file or a function built at run time, or a package given as a URL,
+          path or git reference, is not covered. Not covered here: the install on
           actual macOS and Linux from a local stand-in for the domain (-k curl_installer_same_release).
           -- falsifier: uv run pytest
           tests/nodes/node_release_candidate_verify_effect/test_installer_matches_manifest.py -q -k installer_matches_manifest.

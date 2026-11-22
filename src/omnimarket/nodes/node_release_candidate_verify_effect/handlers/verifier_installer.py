@@ -2,10 +2,13 @@
 # SPDX-License-Identifier: MIT
 """The served curl installer against the candidate manifest (OMN-25070 AC4).
 
-The script must be the one the manifest pins by sha256, set the manifest's customer package and its
-version exactly once, name no package index or package source other than PyPI, change no build
-setting through the environment, and run every install or run command with the exact --no-build
-flag. A mismatch is a finding that names the line; nothing raises.
+The script must be the one the manifest pins by sha256, assign the manifest's customer package and
+its version exactly once each, name no package index other than PyPI and no find-links source but a
+plain shell variable, change no build setting through the environment, and run every install or
+run command with the exact --no-build flag. It reads the script as a list of refused spellings,
+not as a shell: an install hidden behind eval, sh -c, a sourced file or a function, or a package
+given as a URL, path or git reference, is not detected. A mismatch is a finding that names the
+line; nothing raises.
 """
 
 from __future__ import annotations
@@ -27,17 +30,15 @@ from omnimarket.nodes.node_release_candidate_verify_effect.models.model_release_
 PYPI_INDEXES = frozenset({"https://pypi.org/simple", "https://pypi.org/simple/"})
 _ASSIGNMENT = re.compile(
     r"^(?:(?:export|readonly|declare(?:\s+-[a-zA-Z]+)*|local)\s+)?"
-    r"(ONEX_PACKAGE|ONEX_VERSION)=(\S*)"
+    r"(ONEX_PACKAGE|ONEX_VERSION)\+?=(\S*)"
 )
 _INDEX_FLAGS = frozenset(
     {
-        "-i",
         "--index-url",
         "--extra-index-url",
         "--default-index",
         "--index",
         "--find-links",
-        "-f",
         "--config-file",
         "--index-strategy",
     }
@@ -51,6 +52,8 @@ _BUILD_VARIABLE = re.compile(
     r"\b(UV_NO_BUILD\w*|UV_NO_BINARY\w*|PIP_NO_BINARY|PIP_ONLY_BINARY|"
     r"PIP_NO_BUILD_ISOLATION)=(\S*)"
 )
+_SHORT_INDEX_FLAGS = ("-i", "-f")
+_VARIABLE_VALUE = re.compile(r"^\$\{?[A-Za-z_]\w*\}?$")
 _NO_BUILD_TOKENS = frozenset({"--no-build", "--only-binary=:all:"})
 _SEPARATORS = frozenset({";", "&&", "||", "|", "&", "(", ")", "{", "}"})
 _INSTALL_TOOL = re.compile(r"pip[0-9.]*|pipx|tool|uv")
@@ -87,10 +90,10 @@ def _tokens(line: str) -> list[str]:
     try:
         lex = shlex.shlex(line, posix=True, punctuation_chars=";&|(){}")
         lex.whitespace_split = True
-        lex.commenters = ""
+        lex.commenters = "#"
         return list(lex)
     except ValueError:
-        return line.split()
+        return line.split(" #", 1)[0].split()
 
 
 def _segments(tokens: list[str]) -> list[list[str]]:
@@ -136,12 +139,25 @@ def _is_install(segment: list[str]) -> bool:
 
 
 def _index_flags(tokens: list[str]) -> list[tuple[str, str]]:
-    """Every index or package-source flag with its value, as `flag value` or `flag=value`."""
+    """Every index or package-source flag with its value, as `flag value` or `flag=value`.
+
+    The short forms -i and -f (also attached, as in -ihttps://...) count only in an install
+    command or a `set --` that builds one, so a `[ -f file ]` test is not a find-links flag.
+    """
     pairs: list[tuple[str, str]] = []
     for segment in _segments(tokens):
+        short = _is_install(segment) or segment[0] == "set"
         i = 0
         while i < len(segment):
             token = segment[i]
+            if short and token in _SHORT_INDEX_FLAGS:
+                pairs.append((token, segment[i + 1] if i + 1 < len(segment) else ""))
+                i += 2
+                continue
+            if short and token[:2] in _SHORT_INDEX_FLAGS and len(token) > 2:
+                pairs.append((token[:2], token[2:]))
+                i += 1
+                continue
             if token in _INDEX_FLAGS:
                 pairs.append((token, segment[i + 1] if i + 1 < len(segment) else ""))
                 i += 2
@@ -154,11 +170,11 @@ def _index_flags(tokens: list[str]) -> list[tuple[str, str]]:
 
 
 def _refused_source(flag: str, value: str) -> bool:
-    """--index-strategy and --config-file are always refused; find-links only from a variable."""
+    """--index-strategy and --config-file are always refused; find-links only from a plain variable."""
     if flag in ("--index-strategy", "--config-file"):
         return True
     if flag in ("--find-links", "-f"):
-        return not value.startswith("$")
+        return _VARIABLE_VALUE.match(value) is None
     return value not in PYPI_INDEXES
 
 
@@ -199,7 +215,7 @@ def verify_installer(
                 else:
                     versions.append(value)
 
-    if len(set(packages)) != 1 or (
+    if len(packages) != 1 or (
         packages and _normalize(packages[0]) != _normalize(installer.package)
     ):
         findings.append(
@@ -223,7 +239,7 @@ def verify_installer(
                 "the manifest pins an installer package it does not list",
             )
         )
-    elif len(set(versions)) != 1 or versions[0] != distribution.version:
+    elif len(versions) != 1 or versions[0] != distribution.version:
         findings.append(
             _finding(
                 K.INSTALLER_VERSION,

