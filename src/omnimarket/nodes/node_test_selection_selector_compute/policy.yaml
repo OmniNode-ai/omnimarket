@@ -62,7 +62,7 @@ path_count_shards:
   - [10, 3]
   - [16, 4]
 path_count_max_shards: 5
-selection_stage: 1
+selection_stage: 0
 file_level_closure_stage: 3
 root_conftest_edge: cut
 full_split_count: 20
