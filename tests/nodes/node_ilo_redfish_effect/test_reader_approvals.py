@@ -93,10 +93,12 @@ def test_a_consent_row_without_an_out_of_scope_cell_is_no_approval() -> None:
 def test_the_power_write_is_refused_and_sends_nothing_for_every_failed_lookup(
     answer: str,
 ) -> None:
-    harness = build("gen9")
     rows = {"absent": (), "ambiguous": (ROW, ROW + " "), "unreadable": ()}[answer]
-    harness.handler._approvals = ReaderApprovalSource(  # type: ignore[attr-defined]
-        FakeRowAt(rows, error=answer == "unreadable")
+    harness = build(
+        "gen9",
+        approval_source=ReaderApprovalSource(
+            FakeRowAt(rows, error=answer == "unreadable")
+        ),
     )
     result = harness.handler.handle(power("h9", EnumIloPowerAction.FORCE_RESTART))
     assert result.outcome is EnumIloOutcome.REFUSED
@@ -106,8 +108,7 @@ def test_the_power_write_is_refused_and_sends_nothing_for_every_failed_lookup(
 
 
 def test_the_power_write_proceeds_on_one_readable_consent_row() -> None:
-    harness = build("gen9")
-    harness.handler._approvals = ReaderApprovalSource(FakeRowAt((ROW,)))  # type: ignore[attr-defined]
+    harness = build("gen9", approval_source=ReaderApprovalSource(FakeRowAt((ROW,))))
     result = harness.handler.handle(power("h9", EnumIloPowerAction.FORCE_RESTART))
     assert result.refusal is None
     assert result.outcome is not EnumIloOutcome.REFUSED

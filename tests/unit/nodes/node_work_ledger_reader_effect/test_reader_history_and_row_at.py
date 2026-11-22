@@ -238,6 +238,11 @@ def test_request_model_refuses_mixed_or_misplaced_fields() -> None:
             term="t",
         )
     with pytest.raises(ValidationError):
-        ModelReaderRequest(  # type: ignore[call-arg]
-            reader="x", query=EnumReaderQuery.ROWS, since=OLD, extra_field=1
+        ModelReaderRequest.model_validate(
+            {
+                "reader": "x",
+                "query": EnumReaderQuery.ROWS,
+                "since": OLD,
+                "extra_field": 1,
+            }
         )
