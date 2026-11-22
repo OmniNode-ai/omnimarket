@@ -31,6 +31,8 @@ from omnimarket.nodes.node_handoff_check_effect.models import (
     parse_ts,
 )
 
+from .ledger_rows_stub import StubRows
+
 pytestmark = pytest.mark.unit
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -52,10 +54,9 @@ def umbrella_claims(ticket: str = "TKT-U", lanes: int = 20) -> list[str]:
     ]
 
 
-def write_ledger(tmp_path: Path, *rows: str) -> Path:
-    path = tmp_path / "ledger.md"
-    path.write_text("# ledger\n" + "\n".join(rows) + "\n", encoding="utf-8")
-    return path
+def write_ledger(tmp_path: Path, *rows: str) -> StubRows:
+    """The ledger rows the bus reader would answer (tmp_path kept for the callers' shape)."""
+    return StubRows(*rows)
 
 
 def write_probes(tmp_path: Path, *recs: dict) -> Path:
@@ -76,20 +77,18 @@ def probe(
     }
 
 
-def run(tmp_path: Path, ledger: Path, probes: Path, *extra: str, now: str = NOW) -> int:
+def run(
+    tmp_path: Path, ledger: StubRows, probes: Path, *extra: str, now: str = NOW
+) -> int:
     argv = [
         "assemble",
-        "--ledger",
-        str(ledger),
-        "--archive-dir",
-        str(tmp_path / "none"),
         "--now",
         now,
         "--probes",
         str(probes),
         *extra,
     ]
-    return cli.main(argv)
+    return cli.main(argv, ledger_rows=ledger)
 
 
 def test_policy_is_the_handoff_check_section_of_the_node_contract() -> None:
@@ -395,14 +394,18 @@ def test_dropped_count_reproduces_on_the_recorded_slice_of_2026_11_01(
     expected = json.loads(
         (FIXTURES / "expected_dropped.json").read_text(encoding="utf-8")
     )
-    ledger = FIXTURES / "ledger_slice_2026-11-01.md"
+    ledger = StubRows(
+        *(FIXTURES / "ledger_slice_2026-11-01.md")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    )
     assert run(tmp_path, ledger, write_probes(tmp_path), now=expected["now"]) in (0, 1)
     first = capsys.readouterr().out.splitlines()[0]
     assert first == (
         f"DROPPED-DECISIONS dropped={expected['dropped']} judged={expected['judged']} unlinkable={expected['unlinkable']} "
         f"pending_no_evidence_yet={expected['pending_no_evidence_yet']} pending_evidenced={expected['pending_evidenced']}"
     )
-    rows = load_rows(ledger, None)
+    rows = load_rows(ledger)
     result = dropped_decisions(rows, load_policy(), parse_ts(expected["now"]))
     assert [d.stamp for d in result.dropped] == expected["dropped_items"]
 
@@ -485,15 +488,12 @@ def test_resume_reads_the_newest_committed_handoff_and_lists_a_changed_line(
             "resume",
             "--kb-clone",
             str(clone),
-            "--ledger",
-            str(ledger),
-            "--archive-dir",
-            str(tmp_path / "none"),
             "--now",
             NOW,
             "--probes",
             str(recorded),
-        ]
+        ],
+        ledger_rows=ledger,
     )
     out = capsys.readouterr().out
     assert rc == 0
@@ -519,13 +519,12 @@ def test_resume_with_no_handoff_exits_3(
                 "resume",
                 "--kb-clone",
                 str(clone),
-                "--ledger",
-                str(ledger),
                 "--now",
                 NOW,
                 "--probes",
                 str(write_probes(tmp_path)),
-            ]
+            ],
+            ledger_rows=ledger,
         )
         == 3
     )

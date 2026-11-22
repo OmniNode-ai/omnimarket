@@ -456,6 +456,9 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         # OMN-25104: done_items declares `cursor_column: ticket`, its primary
         # key, from its first commit.
         "node_projection_done_items::done_items#0",
+        # OMN-25103: floor_integration_rows declares `cursor_column: key`, its
+        # primary key, from its first commit.
+        "node_projection_floor_integration::floor_integration_rows#0",
     }
 )
 # 65 as of OMN-18769: runner_fleet_liveness (OMN-18768) and lab_lane_health
@@ -495,7 +498,10 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
 # 85 as of OMN-25104: done_items declares `cursor_column: ticket`, its primary
 # key (unique and stable, as lab lane-health's `lane`), in the same change as
 # the exposure, so the measured backlog is unmoved.
-_AC3_TOTAL_EXPOSURES = 85
+# 86 as of OMN-25103: floor_integration_rows declares `cursor_column: key`, its
+# primary key, in the same change as the exposure, so the measured backlog is
+# unmoved.
+_AC3_TOTAL_EXPOSURES = 86
 _AC3_MEASURED_GAP = 54
 
 

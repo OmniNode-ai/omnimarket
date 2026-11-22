@@ -11,6 +11,14 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: CHANGELOG.md is absent from omnimarket dev and the removed-prose test passes there -- falsifier: uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q'
+- id: req-omn25958-receipt-gate-pin
+  statement: omnimarket's call-repo-evidence-gate.yml pins the omnibase_core dev-merge tag that first accepts a
+    changelog-free release cut, so this repository's release pull requests can pass the receipt gate.
+  acceptance:
+  - id: DoD1
+    statement: 'DoD1: .github/workflows/call-repo-evidence-gate.yml and tests/ci/receipt_gate_pin.py pin
+      receipt-gate.yml at dev-20261122081426-c5dc44467b01 or a later dev-merge tag -- falsifier: uv run pytest
+      tests/ci/test_receipt_gate_pin_changelog_free_release_omn25958.py -q fails at the merge base, which pins dev-20261120161913-d3ba14c48d02.'
 evidence_requirements:
 - kind: tests
   description: The removed-prose test passes at the pushed head.
@@ -28,4 +36,14 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn25958-dod1-caller-pin
+  description: The caller pins the receipt-gate reusable at a dev-merge tag at or after dev-20261122081426-c5dc44467b01,
+    and the test-side copy of the pin matches it. Fails at the merge base, which pins dev-20261120161913-d3ba14c48d02.
+  source: manual
+  binds_ac:
+  - DoD1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_receipt_gate_pin_changelog_free_release_omn25958.py -q --no-cov -n 0 -p no:randomly
     cwd: .

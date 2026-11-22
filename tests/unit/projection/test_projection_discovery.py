@@ -1033,8 +1033,12 @@ class TestOmn15800ExposureParity:
         # 85 after OMN-25104: onex.snapshot.projection.done-items.v1, one row
         # per done ticket behind the dashboard's Done figure, bus-backed with
         # its writer in the same change.
-        assert len(topic_map) == 85
+        # 86 after OMN-25103: onex.snapshot.projection.floor-integration-rows.v1,
+        # the newest integration pass behind the dashboard's Running figure,
+        # bus-backed with its writer in the same change.
+        assert len(topic_map) == 86
         assert "onex.snapshot.projection.done-items.v1" in topic_map
+        assert "onex.snapshot.projection.floor-integration-rows.v1" in topic_map
         for liveness_topic in (
             "onex.snapshot.projection.automation-liveness.v1",
             "onex.snapshot.projection.automation-liveness-runs.v1",
