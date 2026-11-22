@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_install_request_effect/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+host_name_env: EXAMPLE_INSTALL_HOST_NAME
+default_expiry_minutes: 120
+command_timeout_seconds: 600
+hold_retry_seconds: 60
+max_command_age_seconds: 21600
+output_max_chars: 400
+journal_dir_env: EXAMPLE_INSTALL_JOURNAL_DIR
+journal_file: install-request-results.jsonl
+# The login the lane publishes install requests under (the in-memory bus holds no broker login to read).
+publisher_login_env: EXAMPLE_INSTALL_PUBLISHER_LOGIN
+# How long the owed reading waits past the last envelope the bus hands it before it counts the log read.
+owed_quiet_seconds: 30
+git_command: [/usr/bin/git]
+hosts:
+  - name: example-host
+    blocker_files:
+      - /tmp/example-install.lock
+    # The only logins whose requests this host answers; every other publisher is refused, not journalled.
+    allowed_publishers: [example-lane-bot]
+    # The broker login this host's serve process must be authenticated as; the host refuses every request otherwise.
+    host_principal: example-host-login
+    units:
+      - name: example-unit
+        kind: unit-tree
+        repositories:
+          - name: Example-Org/example-repo
+            mirror_path: /srv/example-host/mirrors/example-repo
+            remote_ref_prefix: "origin/"
+            landing_branch: main
+            review_branches: [integration]
+        prepare_argv: [/usr/bin/env, example-refresh, "{repository}", "{ref}"]
+        verifies:
+          - name: example-verify
+            argv: [/usr/bin/env, example-verify, --unit, example-unit]
+            expected_line: "example-unit ok"
+      - name: example-plugin-tree
+        kind: plugin-tree
+        repositories:
+          - name: Example-Org/example-plugin-repo
+            mirror_path: /srv/example-host/mirrors/example-plugin-repo
+            remote_ref_prefix: "origin/"
+            landing_branch: main
+        installer_argv:
+          [/usr/bin/env, example-install-tree, --branch, "{ref}", --commit, "{sha}"]
+        rollback_argv: [/usr/bin/env, example-install-tree, --branch, "{ref}", --force]
+        # Reads the revision the host stands at now, before anything is written (the rollback target on a first request).
+        current_revision_argv: [/usr/bin/env, example-install-tree, --status]
+        verifies:
+          - name: example-verify-plugin
+            argv: [/usr/bin/env, example-verify-plugin, --tree]
+            expected_line: "installed at {revision}"
+        revision_pattern: "installed revision ([0-9a-f]{7,40})"
