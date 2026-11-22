@@ -9,6 +9,9 @@ import re
 from collections.abc import Sequence
 from pathlib import Path
 
+from omnimarket.nodes.node_handoff_check_effect.adapters.bus_ledger_rows import (
+    MAX_WINDOW_HOURS,
+)
 from omnimarket.nodes.node_handoff_check_effect.handlers.ledger_rows import (
     load_rows,
     parse_row,
@@ -26,6 +29,7 @@ from omnimarket.nodes.node_handoff_check_effect.models import (
     fmt_ts,
     parse_ts,
 )
+from omnimarket.nodes.node_handoff_check_effect.protocols import ProtocolLedgerRows
 
 KEEP_CELLS = (
     "lane",
@@ -94,23 +98,26 @@ def scrub_row(r: ModelLedgerRow, cited: str, alias: Aliases) -> str:
 
 
 def record_slice(
-    request: ModelHandoffCheckRequest, policy: ModelHandoffPolicy, ledger_path: str
+    request: ModelHandoffCheckRequest,
+    policy: ModelHandoffPolicy,
+    ledger_rows: ProtocolLedgerRows,
 ) -> ModelHandoffCheckResult:
     if not (request.since and request.until and request.out):
         raise ValueError("record-slice: since, until and out are required")
     gate = policy.ruling_gate
     lo, hi = parse_ts(request.since), parse_ts(request.until)
-    ledger = Path(ledger_path)
-    rows = [
-        r
-        for r in load_rows(
-            ledger,
-            Path(request.archive_dir)
-            if request.archive_dir
-            else ledger.parent / "archive",
+    now = (
+        parse_ts(request.now)
+        if request.now
+        else dt.datetime.now(dt.UTC).replace(microsecond=0)
+    )
+    if lo < now - dt.timedelta(hours=MAX_WINDOW_HOURS):
+        # The reader's rows window ends at 30 days; older rows need its history read, which
+        # omn-26330-ledger-census-group-2-b adds and this change does not duplicate.
+        raise ValueError(
+            f"record-slice: since {request.since} is older than the reader's {MAX_WINDOW_HOURS} hour rows window"
         )
-        if lo <= r.ts <= hi
-    ]
+    rows = [r for r in load_rows(ledger_rows) if lo <= r.ts <= hi]
     decisions = [r for r in rows if r.type in gate.row_types]
     decision_ids = {id(r) for r in decisions}
     stamps = {fmt_ts(r.ts) for r in decisions}

@@ -9,4 +9,4 @@ previous pin.
 """
 
 RECEIPT_GATE_REUSABLE = "OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml"
-RECEIPT_GATE_PIN_TAG = "dev-20261120161913-d3ba14c48d02"
+RECEIPT_GATE_PIN_TAG = "dev-20261122081426-c5dc44467b01"
