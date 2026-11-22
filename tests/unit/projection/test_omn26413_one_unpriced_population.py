@@ -7,8 +7,7 @@ as unknown spend only if:
   - it is a real run (not a fixture or experiment);
   - it was not returned to the caller;
   - it recorded tokens;
-  - its call usage was measured;
-  - it is the tenant's own.
+  - its call usage was measured.
 The savings view and model-routing applied none of these filters (routing left out experiment rows only).
 
 Failure modes, each a case below (spec records/plans/OMN-26413/spec.md, approved 2026-11-22):
@@ -169,7 +168,7 @@ _POPULATION = {
 def test_the_three_unpriced_counts_cover_the_same_runs(
     tmp_path: Path, case: str
 ) -> None:
-    """P1-P10: one store, three readings, one count."""
+    """P1-P7 and P9: one store, three readings, one count."""
     path = _population_store(tmp_path, case)
     expected = _POPULATION[case]
     assert _counts(path) == (expected, expected, expected)
