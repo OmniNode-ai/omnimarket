@@ -580,3 +580,67 @@ def test_an_edit_saved_after_the_check_is_not_overwritten(
         handler_onex_setup.ensure_runtime_config(tmp_path, "local")
     assert config.read_text().endswith("# customer edit saved after the check\n")
     assert "# install-path: docker" in config.read_text()
+
+
+def _install_sh_runtime_config(path_choice: str) -> str:
+    """What the captured install.sh writes, rendered as its shell heredoc would."""
+    script = (
+        Path(__file__).parents[3]
+        / "fixtures/onex_setup/omnibase_install_sh_7e5af9e6.txt"
+    ).read_text(encoding="utf-8")
+    writer = script.split("write_runtime_config() {", 1)[1]
+    body = writer.split('cat > "$tmp" <<EOF\n', 1)[1].split("\nEOF\n", 1)[0] + "\n"
+    description = writer.split(f"{path_choice})", 1)[1].split('description="', 1)[1]
+    bus_type = writer.split(f"{path_choice})", 1)[1].split('bus_type="', 1)[1]
+    values = {
+        "$RUNTIME_CONFIG_MARKER": "# generated-by: omnibase install.sh",
+        "$path_choice": path_choice,
+        "$PYTHON_BIN": "/opt/py/bin/python3.12",
+        "$description": description.split('"', 1)[0],
+        "$bus_type": bus_type.split('"', 1)[0],
+    }
+    for name, value in values.items():
+        body = body.replace(name, value)
+    assert "$" not in body
+    return body
+
+
+@pytest.mark.parametrize(
+    "edited", [False, True], ids=["unedited-install-sh", "edited-install-sh"]
+)
+def test_an_install_sh_runtime_config_switches_unless_edited(
+    tmp_path: Path, edited: bool
+) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
+        RUNTIME_CONFIG_RELPATH,
+    )
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
+        HandlerSetupEnvironment,
+    )
+
+    plan = plan_at(tmp_path)
+    plan.workspace.mkdir()
+    (plan.workspace / ".onex-setup-workspace").write_text("onex setup\n")
+    config = plan.workspace / RUNTIME_CONFIG_RELPATH
+    config.parent.mkdir(parents=True)
+    written = _install_sh_runtime_config("docker")
+    if edited:
+        written += "# customer addition\n"
+    config.write_text(written, encoding="utf-8")
+    outcome = (
+        HandlerSetupWorkflow(
+            onex_home=tmp_path / "onex",
+            steps=(
+                HandlerSetupEnvironment(name="workspace"),
+                HandlerSetupEnvironment(name="runtime_config"),
+            ),
+        )
+        .handle(plan)
+        .observations[-1]
+    )
+    if edited:
+        assert config.read_text(encoding="utf-8") == written
+        assert outcome.status == "action_required"
+    else:
+        assert outcome.status == "success", outcome.fix
+        assert "# install-path: local" in config.read_text(encoding="utf-8")

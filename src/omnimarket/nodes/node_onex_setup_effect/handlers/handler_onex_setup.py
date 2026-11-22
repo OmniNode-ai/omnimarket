@@ -375,9 +375,55 @@ def _generated_runtime_config(install_path: str, edit_note: str = _EDIT_NOTE) ->
     )
 
 
+# What omnibase install.sh writes (write_runtime_config), byte for byte.
+_INSTALL_SH_RUNTIME_CONFIG_TEMPLATE = """\
+{marker}
+# install-path: {path}
+# python: {python}
+#
+# This workspace's runtime configuration, written for the install path above.
+# Rewrite it for another path with:  make switch-path INSTALL_PATH=<local|docker>
+# (or ./install.sh --switch-path <local|docker>). Hand edits are kept only
+# if you delete the first line, after which the installer never touches it.
+name: "omnibase-{path}"
+description: "{description}"
+input_topic: "requests"
+output_topic: "responses"
+group_id: "onex-runtime"
+event_bus:
+  type: "{bus_type}"
+  profile: "local"
+  environment: "local"
+  max_history: 1000
+  circuit_breaker_threshold: 5
+"""
+_INSTALL_SH_DESCRIPTIONS = {
+    "local": "omnibase install path local: fully local runtime, in-memory event bus, no Docker",
+    "docker": "omnibase install path docker: self-hosted Docker stack, Kafka-compatible event bus",
+}
+
+
+def _is_install_sh_runtime_config(content: str) -> bool:
+    lines = content.splitlines()
+    if len(lines) < 3 or not lines[2].startswith("# python: "):
+        return False
+    python = lines[2].removeprefix("# python: ")
+    return any(
+        content
+        == _INSTALL_SH_RUNTIME_CONFIG_TEMPLATE.format(
+            marker=INSTALL_SH_MARKER,
+            path=mode,
+            python=python,
+            description=_INSTALL_SH_DESCRIPTIONS[mode],
+            bus_type=_PATH_SHAPES[mode][0],
+        )
+        for mode in INSTALL_PATHS
+    )
+
+
 def runtime_config_can_switch(content: str) -> bool:
     """Only a known generator's complete output can be replaced automatically."""
-    return any(
+    return _is_install_sh_runtime_config(content) or any(
         content == _generated_runtime_config(mode, note)
         for mode in INSTALL_PATHS
         for note in (_EDIT_NOTE, _PREVIOUS_EDIT_NOTE)
