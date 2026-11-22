@@ -18,6 +18,7 @@ from omnimarket.nodes.node_idle_slot_fill_effect.handlers.ruling_recovery import
     detect_relaunches,
     parse_rows,
 )
+from tests.helpers.fake_ledger_rows import FakeLedgerRows
 
 NOW = datetime(2026, 10, 26, 14, tzinfo=UTC)
 RULING = "2026-10-20T21:56:19Z"
@@ -200,7 +201,7 @@ def _tick(
     monitor = HandlerRulingRecovery(
         live_reader or (lambda _check: RuntimeError("fixture unread"))
     )
-    return HandlerLabFill(monitor).handle(
+    return HandlerLabFill(monitor, ledger_reader=FakeLedgerRows()).handle(
         ModelLabFillRequest(
             now=now,
             request={
