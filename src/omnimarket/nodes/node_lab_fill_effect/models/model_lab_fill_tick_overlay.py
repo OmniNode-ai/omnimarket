@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """The lab-fill unit's deployment overlay: every setting, no code default for a deployment fact (OMN-24419).
 
-The Mac lab-fill unit reads it, finds the pool snapshot, runs the select step and builds the tick request from it.
+The lab-fill unit reads it, finds the pool snapshot, runs the select step and builds the tick request from it.
 Paths may start with $OMNIBASE_PATH or $OMNI_HOME; the runtime expands them, this model never does."""
 
 from __future__ import annotations
@@ -18,11 +18,16 @@ from .model_lab_fill_tick import (
     ModelLabFillTickHost,
     ModelLabFillTickRequest,
 )
+from .model_lab_fill_work_sources import ModelLabFillWorkSources
 
 OVERLAY_ID = "node_lab_fill_effect"
 # A second instance of the step pins its own overlay file here;
 # unset, the overlay is <root>/node_lab_fill_effect/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS.
 OVERLAY_FILE_ENV = "ONEX_LAB_FILL_TICK_OVERLAY_FILE"
+
+# The tick request names where its rows come from; the rows are read from live state (``work_sources``), so this is a label
+# the rows port never opens, not a file.
+LIVE_WORK_LOCATOR = "live-work:goal-order"
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
@@ -53,7 +58,8 @@ class ModelLabFillTickOverlay(BaseModel):
     host_reach: Mapping[str, tuple[str, ...]]
     fact_hosts: tuple[str, ...]
     ledger_path: str
-    approved_work_path: str
+    # Where the fill's work is read from, in goal order; replaces the retired approved-work list file.
+    work_sources: ModelLabFillWorkSources
     brief_dir: str
     state_path: str
     pool_snapshot_path: str
@@ -68,7 +74,7 @@ class ModelLabFillTickOverlay(BaseModel):
     selection_repeat_limit: int = Field(ge=1)
     selection_scope_repos: tuple[str, ...]
 
-    @field_validator("ledger_path", "approved_work_path", "brief_dir")
+    @field_validator("ledger_path", "brief_dir")
     @classmethod
     def _path_stays_put(cls, value: str) -> str:
         """A path is named, never walked up out of its directory, and holds no NUL."""
@@ -92,7 +98,6 @@ class ModelLabFillTickOverlay(BaseModel):
         hosts: tuple[ModelLabFillTickHost, ...],
         selection_holds: Mapping[str, str],
         ledger_path: str,
-        approved_work_path: str,
         brief_dir: str,
         state_path: str,
     ) -> ModelLabFillTickRequest:
@@ -103,7 +108,7 @@ class ModelLabFillTickOverlay(BaseModel):
             apply=self.apply,
             hosts=hosts,
             ledger_path=ledger_path,
-            approved_work_path=approved_work_path,
+            approved_work_path=LIVE_WORK_LOCATOR,
             brief_dir=brief_dir,
             parent=self.parent,
             parent_ticket=self.parent_ticket,
