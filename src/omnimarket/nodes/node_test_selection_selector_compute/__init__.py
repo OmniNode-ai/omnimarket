@@ -11,6 +11,9 @@ from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_poli
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_selection_replay import (
     HandlerSelectionReplay,
 )
+from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_stage_receipt_validation import (
+    HandlerStageReceiptValidation,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_path_resolution import (
     HandlerTestPathResolution,
 )
@@ -22,6 +25,7 @@ __all__ = [
     "HandlerFileLevelClosure",
     "HandlerPolicyBound",
     "HandlerSelectionReplay",
+    "HandlerStageReceiptValidation",
     "HandlerTestPathResolution",
     "HandlerTestSelectionSelector",
 ]

@@ -94,6 +94,9 @@ from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
     ModelFSMSubcontract,
 )
 
+from omnimarket.handlers.adapter_work_ledger_rows_reader import (
+    SubprocessLedgerRowsReader,
+)
 from omnimarket.handlers.handler_engine_ladder import load_engine_ladder
 from omnimarket.handlers.handler_lab_fill_live_tickets import (
     LabFillLiveReadError,
@@ -110,7 +113,6 @@ from omnimarket.handlers.rules_stop_gate import (
 )
 from omnimarket.handlers.wip_admission_fill_gate import fill_wip_gate
 from omnimarket.handlers.work_ledger_fixer_holds import fixer_hold_reasons
-from omnimarket.handlers.work_ledger_text import split_ledger_rows
 from omnimarket.models.lab_fill import (
     EnumLabFillTicketDrop,
     ModelLabFillCriteriaReadRequest,
@@ -145,6 +147,10 @@ from omnimarket.nodes.node_idle_slot_fill_effect.models import (
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     load_policy,
     resolve_lane_model,
+)
+from omnimarket.protocols.protocol_ledger_rows_reader import (
+    LedgerReadError,
+    ProtocolLedgerRowsReader,
 )
 
 from .handler_ruling_recovery import HandlerRulingRecovery
@@ -353,40 +359,36 @@ def read_board(now: str, env: Mapping[str, str]) -> tuple[list[dict[str, Any]], 
     )
 
 
-def read_fixer_holds(now: str, env: Mapping[str, str]) -> tuple[dict[str, str], str]:
-    """Read the declared ledger and its rolls, including HOLDs older than the claim window.
+FIXER_HOLDS_READER = "idle-fill-holds"
+FIXER_HOLD_WINDOW_HOURS = 720  # the reader's longest window
+_HOLD_ROW = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ \| (HOLD|RELEASE) \| ")
+
+
+def read_fixer_holds(
+    now: str,
+    env: Mapping[str, str],
+    reader: ProtocolLedgerRowsReader | None = None,
+) -> tuple[dict[str, str], str]:
+    """Read the HOLD and RELEASE rows of the ledger reader node's 720 h window.
 
     Unlike backlog generation, this read runs even when generation is off or the
     stored backlog fills every slot. An unread ledger never means no HOLDs.
     """
-    path = env.get("ONEX_LEDGER_PATH")
-    root = env.get("ONEX_REGISTRY_ROOT") or env.get("OMNI_HOME")
-    ledger = (
-        Path(path).expanduser()
-        if path
-        else (
-            Path(root).expanduser() / "docs/tracking/ROLLING_WORK_LEDGER.md"
-            if root
-            else None
-        )
-    )
-    if ledger is None:
-        return {}, "configure ONEX_LEDGER_PATH or a registry root before filling"
     try:
-        paths = [
-            ledger,
-            *sorted((ledger.parent / "archive").glob("ROLLING_WORK_LEDGER*.md")),
+        lines = (reader or SubprocessLedgerRowsReader(env)).rows(
+            reader=FIXER_HOLDS_READER,
+            window_hours=FIXER_HOLD_WINDOW_HOURS,
+            kinds=("HOLD", "RELEASE"),
+        )
+        rows = [
+            ModelLandingLedgerRow(ts=line[:20], rtype=match[1], text=line)
+            for line in lines
+            if (match := _HOLD_ROW.match(line))
         ]
-        rows = []
-        for source in paths:
-            for text in split_ledger_rows(source.read_text(encoding="utf-8")):
-                stamp, rtype, _ = text.split(" | ", 2)
-                if rtype in {"HOLD", "RELEASE"}:
-                    rows.append(ModelLandingLedgerRow(ts=stamp, rtype=rtype, text=text))
         clock = datetime.strptime(now, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
         return fixer_hold_reasons(sorted(rows, key=lambda row: row.ts), clock), ""
-    except (OSError, ValueError) as exc:
-        return {}, f"{ledger}: {type(exc).__name__}: {exc}"
+    except (LedgerReadError, ValueError) as exc:
+        return {}, f"{FIXER_HOLDS_READER}: {type(exc).__name__}: {exc}"
 
 
 def fixer_hold_reason(item: Mapping[str, Any], holds: Mapping[str, str]) -> str | None:
@@ -1921,9 +1923,12 @@ def _cell(text: str, name: str) -> str:
 
 
 def ledger_tickets(
-    ledger: Path, drain_map: Path, registry_root: Path, now: str
+    drain_map: Path, registry_root: Path, now: str
 ) -> tuple[set[str], dict[str, str]]:
-    """Live CLAIM tickets and unsettled missing-readback TERMINAL subjects; failures raise (OMN-17427)."""
+    """Live CLAIM tickets and unsettled missing-readback TERMINAL subjects; failures raise (OMN-17427).
+
+    drain_map reads the rows through the ledger rows loader under its reader ``drain-map``; no ledger path is passed
+    (an explicit path is drain_map's file read, OMN-20547)."""
     spec = importlib.util.spec_from_file_location("_lab_fill_drain_map", drain_map)
     if spec is None or spec.loader is None:
         raise ValueError("cannot load drain_map")
@@ -1934,7 +1939,7 @@ def ledger_tickets(
         tzinfo=UTC
     )  # drain_map reads aware stamps
     grammar = dm.load_grammar(registry_root)
-    rows, _ = dm.load_rows(registry_root, 2.0, now_dt, grammar, ledger)
+    rows, _ = dm.load_rows(registry_root, 2.0, now_dt, grammar)
     opened = dm.open_claims(rows, grammar, now_dt - timedelta(days=2))
     last: dict[str, datetime] = {}
     for row in rows:
@@ -2106,21 +2111,12 @@ def default_sources(now: str, env: Mapping[str, str]) -> ModelBacklogSources | N
 
     registry_value = env.get(REGISTRY_ROOT_ENV) or env.get("OMNI_HOME")
     registry_root = Path(registry_value) if registry_value else None
-    ledger = (
-        Path(env["ONEX_LEDGER_PATH"])
-        if env.get("ONEX_LEDGER_PATH")
-        else (
-            registry_root / "docs/tracking/ROLLING_WORK_LEDGER.md"
-            if registry_root
-            else None
-        )
-    )
     drain_map = skill_file("merge-drain/scripts/drain_map.py")
 
     def tickets() -> tuple[set[str], dict[str, str]]:
-        if ledger is None or registry_root is None:
-            raise ValueError(f"{REGISTRY_ROOT_ENV} or ledger is unavailable")
-        return ledger_tickets(ledger, drain_map, registry_root, now)
+        if registry_root is None:
+            raise ValueError(f"{REGISTRY_ROOT_ENV} is unavailable")
+        return ledger_tickets(drain_map, registry_root, now)
 
     return ModelBacklogSources(
         linear_snapshot=registry_root
@@ -2278,8 +2274,13 @@ def tick_row_recorder(
 
 
 class HandlerLabFill:
-    def __init__(self, ruling_recovery: HandlerRulingRecovery | None = None) -> None:
+    def __init__(
+        self,
+        ruling_recovery: HandlerRulingRecovery | None = None,
+        ledger_reader: ProtocolLedgerRowsReader | None = None,
+    ) -> None:
         self._ruling_recovery = ruling_recovery or HandlerRulingRecovery()
+        self._ledger_reader = ledger_reader
 
     def handle(self, request: ModelLabFillRequest) -> ModelLabFillResult:
         if request.read_only:
@@ -2354,7 +2355,9 @@ class HandlerLabFill:
         completed.update(answered_items(backlog, sent, lanes=lanes))
         scope = request.out_of_scope
         scope_unread = scope if isinstance(scope, str) else ""
-        holds, holds_unread = read_fixer_holds(request.now, os.environ)
+        holds, holds_unread = read_fixer_holds(
+            request.now, os.environ, self._ledger_reader
+        )
         wip_sources = request.sources or default_sources(request.now, os.environ)
         wip_refusal, wip_finding = fill_wip_gate(
             ledger_tickets=wip_sources.ledger_tickets if wip_sources else None,

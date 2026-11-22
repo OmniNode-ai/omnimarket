@@ -56,6 +56,12 @@ class ModelSelectorPolicy(BaseModel):
     full_split_count: int = Field(ge=1, le=40)
     #: Days a pull request's selection record artifact is kept.
     record_retention_days: int = Field(ge=1, le=90)
+    #: Consecutive clean nightly runs a stage receipt covers before the stage may be entered. The default
+    #: lets the frozen replay snapshot of the baseline receipt, written before this key existed, still load;
+    #: ``policy.yaml`` holds the value the gate reads.
+    stage_clean_nights: int = Field(default=7, ge=1, le=30)
+    #: Pull request records, over the receipt's nights, that hold an entry for the stage entered (same default rule).
+    stage_min_pr_records: int = Field(default=10, ge=1)
     #: The ``selection_by_stage`` entry the code graph comparison reads as the parse side. Absent in
     #: the frozen replay tree, which predates it.
     graph_compared_stage: int | None = Field(default=None, ge=0, le=4)

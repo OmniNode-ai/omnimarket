@@ -1302,7 +1302,10 @@ jobs:
 
       # The flag is the repository variable, not a literal: with it not true the selection is the
       # full-suite matrix (the policy's full_split_count shards), so the shard plan and the pytest
-      # steps below read the same flag.
+      # steps below read the same flag. What a narrowing rule changes for a pull request is set by
+      # selection_stage in the selector's policy.yaml, which rises one stage at a time on a receipt
+      # that tests/ci/test_selection_stage_evidence.py recomputes from the published nightly records.
+      # Rollback is an owner change that lowers the stage, or the owner setting the variable false.
       - name: Resolve test selection
         id: resolve
         env:

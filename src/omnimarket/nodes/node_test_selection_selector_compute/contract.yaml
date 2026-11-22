@@ -25,6 +25,15 @@ description: >-
   over a list of merges against a frozen tree snapshot and reports each merge's primary reason, every trigger, its
   selected paths and recorded seconds, and the totals; it reuses the handlers above and changes what no pull request runs. A request at the closure's stage,
   with the request's closure settings, replays the file-level closure in place of the module-level ladder.
+  HandlerStageReceiptValidation checks the stage receipts under config/test_selection_stage_receipts/ (operation
+  validate_stage_receipt): a stage is entered one at a time, by a receipt that names stage_clean_nights consecutive
+  nightly runs, and the receipt's totals and its selector and policy versions are recomputed from the nightly
+  attribution records the record source publishes (ProtocolAttributionRecordSource), never taken from the
+  receipt. Each record must hold the entry for the stage being entered, and the measured targets (share of merges
+  narrowed, test-seconds per merge, CI minutes per pull request) must be in the receipt. Stage 0 is the baseline.
+  Rollback is an owner change that lowers selection_stage, or the owner setting the ENABLE_SMART_TESTS repository
+  variable false; no job writes the variable. A narrowing rule changes what a pull request runs only at or above its
+  stage, so data files and entry points narrow only once their stage is entered.
   HandlerFileLevelClosure runs the closure for every module by file, a vertex being a file except a node package, behind
   the policy's file_level_closure_stage: a deleted or renamed file seeds from the files that still name it, a nested
   conftest.py selects its directory, the root conftest edge is the policy's root_conftest_edge, and a source file the
@@ -60,6 +69,12 @@ handler_routing:
       handler:
         name: HandlerSelectionRecord
         module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_selection_record
+    - operation: validate_stage_receipt
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_stage_receipt.ModelStageReceiptValidationRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_stage_receipt.ModelStageReceiptValidationResult
+      handler:
+        name: HandlerStageReceiptValidation
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_stage_receipt_validation
     - operation: replay_selection
       input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_selection_replay.ModelReplayRequest
       output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_selection_replay.ModelReplayResult
