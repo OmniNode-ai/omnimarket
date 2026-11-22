@@ -69,7 +69,12 @@ class ModelApiOverlay(BaseModel):
 
 
 class ModelDevIdentityProvisionOverlay(BaseModel):
-    """The whole overlay document; the optional store block means the machine's own store when absent."""
+    """The whole overlay document; the optional store block means the machine's own store when absent.
+
+    ``protected_usernames`` is required, never defaulted: a document that leaves the list out is refused, so an omission cannot
+    silently leave a user unprotected. An explicit empty list protects no one. A username in it is refused by the handler
+    unless the command carries ``allow_protected``.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -78,6 +83,7 @@ class ModelDevIdentityProvisionOverlay(BaseModel):
     admin: ModelAdminOverlay
     user: ModelUserOverlay
     api: ModelApiOverlay
+    protected_usernames: list[str]
     secret_store: ModelSecretStoreOverlay | None = None
 
 
