@@ -230,6 +230,31 @@ def test_the_row_s_own_cost_record_wins_over_today_s_tier_registry(
     }
 
 
+def test_a_backend_alias_does_not_hide_the_free_model_that_answered(
+    tmp_path: Path,
+) -> None:
+    # delegated_to names the backend, routed_model the ":free" model that
+    # answered; on a metered tier the free id alone makes the zero free.
+    served = _served(
+        tmp_path,
+        {
+            "alias": {
+                "cost_tier_name": "cheap_cloud",
+                "model_name": None,
+                "delegated_to": "byok-openrouter",
+                "routed_model": "vendor/model:free",
+            },
+            "alias-unpriced": {
+                "cost_tier_name": "cheap_cloud",
+                "model_name": None,
+                "delegated_to": "byok-openrouter",
+                "routed_model": "vendor/model",
+            },
+        },
+    )
+    assert served == {"alias": _FREE, "alias-unpriced": _UNKNOWN_SPEND}
+
+
 def test_the_run_detail_serves_no_saving_for_an_unknown_cost(tmp_path: Path) -> None:
     # The run-detail exposure serves the legacy cost_savings_usd, not
     # modelled_savings_usd; an unknown cost must not carry a saving there either.

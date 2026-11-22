@@ -57,16 +57,25 @@ def historical_unpriced_zero(
             return False
     except (InvalidOperation, ValueError):
         return False
-    name = next(
-        (str(m).strip() for m in models if m is not None and str(m).strip()), ""
-    )
-    if not name or name.casefold().endswith(":free"):
+    # Every name the row records is read: delegated_to can be a backend alias
+    # while routed_model names the model that answered.
+    names = [str(m).strip() for m in models if m is not None and str(m).strip()]
+    if not names:
         return False
+    return not any(_declared_free(name) for name in names)
+
+
+def _declared_free(name: str) -> bool:
+    """A ":free" model id, or one the pricing manifest declares at a zero price.
+
+    A positive price does not make a stored zero free, and the run is not
+    repriced here.
+    """
+    if name.casefold().endswith(":free"):
+        return True
     table = _load_table()
     entry = table.get_entry(name) or table.get_entry(name.lower())
-    # Only a declared zero price shows the run was free; a positive price does
-    # not make a stored zero free, and the run is not repriced here.
-    return not (
+    return (
         entry is not None
         and entry.input_cost_per_1k == 0
         and entry.output_cost_per_1k == 0
