@@ -36,7 +36,12 @@ import yaml
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.handlers.rules_overlay_root_declared import declared_overlay_root
-from omnimarket.handlers.rules_unit_roots import UnitRootRefusedError, under_worktrees
+from omnimarket.handlers.rules_unit_roots import (
+    UnitRootPinnedError,
+    UnitRootRefusedError,
+    pinned_plugin_cache_version,
+    under_worktrees,
+)
 from omnimarket.models.overlay_keys import ModelLabHostsTable
 from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (
     ModelCopiedUnitPayload,
@@ -525,6 +530,15 @@ class HandlerRegistryUnits:
             ]
             if offending:
                 raise UnitRootRefusedError(request.unit, offending)
+            # OMN-22809: the same variables never pin a plugin version either (the plugin is named through
+            # {marketplace_root}); an old copy of a node's overlay in a versioned cache folder would answer.
+            pinned = [
+                entry
+                for entry in filled.get(str(name), "").split(os.pathsep)
+                if pinned_plugin_cache_version(entry) is not None
+            ]
+            if pinned:
+                raise UnitRootPinnedError(request.unit, pinned)
         if request.mode == "install":
             for name in unit.get("required_environment_inputs") or []:
                 if not filled.get(str(name)):

@@ -47,6 +47,9 @@ from omnimarket.nodes.node_onex_setup_effect.models import (
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_observation import (
     ModelSetupObservation,
 )
+from omnimarket.nodes.node_runtime_bus_forward_effect.adapter_core_forwarder import (
+    CoreRuntimeBusForwarder,
+)
 from tests.helpers.setup_shell_environment import isolate_setup_shell
 
 _UNSET_ENV: dict[str, str | None] = {"OMNIBASE_PATH": None, "OMNI_HOME": None}
@@ -82,6 +85,13 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     isolate_setup_shell(monkeypatch)
     assert Path.home() == fake_home
     assert Path.home() != real_home
+    # omnibase-core 0.47.74 ends a hosted run non-zero when none of its recorded events reached the
+    # hosted bus. The hosted bus is the boundary here: the installed forwarder carries every event.
+    monkeypatch.setattr(
+        CoreRuntimeBusForwarder,
+        "forward",
+        lambda _self, events: {"forwarded": len(events), "failed": 0, "detail": ""},
+    )
     # Every prerequisite present by default; tests remove what they need to.
     monkeypatch.setattr(handler_onex_setup, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(handler_onex_setup, "prove_model", _answering_model_step)
@@ -184,13 +194,14 @@ class TestSetupWalk:
         assert (home / ".onex/setup.json").is_file()
         assert "Setup complete" in result.output
 
-    def test_omni_home_bridge_is_a_derivation_source(
+    def test_omni_home_is_not_a_derivation_source(
         self, home: Path, tmp_path: Path
     ) -> None:
         workspace = tmp_path / "bridge"
         result = _run(["--no-interactive"], OMNI_HOME=str(workspace))
-        assert result.exit_code == 0, result.output
-        assert (workspace / handler_onex_setup.RUNTIME_CONFIG_RELPATH).is_file()
+        assert result.exit_code == 1
+        assert "--workspace is missing" in result.output
+        assert not (workspace / handler_onex_setup.RUNTIME_CONFIG_RELPATH).exists()
 
     def test_scripted_empty_environment_prompts_once_for_the_workspace(
         self, home: Path, tmp_path: Path
