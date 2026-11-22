@@ -17,7 +17,7 @@ requirements:
       - id: AC3
         statement: 'AC3: the rule''s ticket list, plan paths, PR list and live window are read from the overlay and no ticket id, path or repo name is a literal in the handler -- falsifier: uv run pytest tests/unit/nodes/node_plan_owner_check_effect -q -k overlay_values_only'
       - id: AC4
-        statement: 'AC4: the overlays rule ledger-cutover-owner names the cutover plan path and its ticket, `tests/test_plan_owner_check_overlay.py` passes in overlays, and its pin in .omnimarket-node-pins names the merge commit of the omnimarket change -- falsifier: uv run pytest tests/test_plan_owner_check_overlay.py -q'
+        statement: 'AC4: an overlay that carries lane_prefixes instead of rules values (tickets, plan_paths, prs) is refused at load, so the overlays rule must carry the rules values -- falsifier: uv run pytest tests/unit/nodes/node_plan_owner_check_effect -q -k lane_prefix_in_an_overlay'
 evidence_requirements:
   - kind: tests
     description: Claim-content ownership, prefix, overlay-values, stale, TERMINAL and no-matcher tests of the plan owner check.
@@ -51,10 +51,17 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest -q --no-cov -n 0 -p no:randomly tests/unit/nodes/node_plan_owner_check_effect -k overlay_values_only
         cwd: .
-  - id: dod-omn26204-ac4-overlays-pin
-    description: The overlays pull request carries the rule values and the pin moves to this change's merge commit after the merge; checked by the overlays repository's own test on the local Done gate.
+  - id: dod-omn26204-ac4-overlay-load
+    description: An overlay that lists lane_prefixes instead of rules values is refused at load.
     source: manual
     binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q --no-cov -n 0 -p no:randomly tests/unit/nodes/node_plan_owner_check_effect -k lane_prefix_in_an_overlay
+        cwd: .
+  - id: dod-omn26204-overlays-pin
+    description: The overlays pull request carries the rule values and the pin moves to this change's merge commit after the merge; checked by the overlays repository's own test on the local Done gate, which hosted CI cannot reach.
+    source: manual
     execution_scope: local_done_gate
     checks:
       - check_type: command
