@@ -20,7 +20,6 @@ files:
     contracts/OMN-25723.yaml: 1
     src/omnimarket/handlers/ledger_row_grammar.py: 1
     src/omnimarket/nodes/node_branch_claim_check_effect/contract.yaml: 1
-    src/omnimarket/nodes/node_canonical_clone_dirty_converge_effect/handlers/handler_canonical_clone_dirty_converge_effect.py: 1
     src/omnimarket/nodes/node_compaction_cost_compute/data/recovery_call_patterns.yaml: 2
     src/omnimarket/nodes/node_floor_simple_effect/contract.yaml: 1
     src/omnimarket/nodes/node_friction_rollup_compute/tests/fixtures/recorded_day_unit_output.json: 3
@@ -34,7 +33,6 @@ files:
     src/omnimarket/nodes/node_host_reading_effect/overlay.example.yaml: 4
     src/omnimarket/nodes/node_host_reconcile_effect/__main__.py: 1
     src/omnimarket/nodes/node_hourly_tick_effect/models/model_hourly_tick.py: 1
-    src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_idle_slot_fill.py: 7
     src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_ruling_recovery.py: 3
     src/omnimarket/nodes/node_ilo_redfish_effect/runtime_ilo_redfish_cli.py: 1
     src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_launch.py: 1
@@ -55,13 +53,11 @@ files:
     src/omnimarket/nodes/node_projection_work_ledger/parity.py: 2
     src/omnimarket/nodes/node_retention_cleanup/contract.yaml: 1
     src/omnimarket/nodes/node_retention_cleanup/handlers/handler_file_retention.py: 1
-    src/omnimarket/nodes/node_review_key_credit_probe_effect/handlers/handler_review_key_credit_probe.py: 1
     src/omnimarket/nodes/node_session_front_door_compute/handlers/entry.py: 1
     src/omnimarket/nodes/node_session_front_door_compute/handlers/receipt.py: 4
     src/omnimarket/nodes/node_session_resume_compute/handlers/dangling.py: 1
     src/omnimarket/nodes/node_silent_failure_alarm_effect/handlers/handler_silent_failure_alarm.py: 1
-    src/omnimarket/nodes/node_tailnet_https_serve_effect/overlay.example.yaml: 2
-    src/omnimarket/nodes/node_work_ledger_copy_effect/overlay.example.yaml: 3
+    src/omnimarket/nodes/node_work_ledger_copy_effect/overlay.example.yaml: 2
     src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml: 3
     src/omnimarket/nodes/node_work_state_projection_effect/contract.yaml: 1
     tests/fixtures/context_compaction/manifest.yaml: 8
@@ -102,7 +98,7 @@ files:
     tests/nodes/node_host_reading_effect/test_host_reading_cli.py: 1
     tests/nodes/node_host_reading_effect/test_host_readings.py: 2
     tests/nodes/node_idle_slot_fill_effect/conftest.py: 2
-    tests/nodes/node_idle_slot_fill_effect/test_fixer_holds_fill_omn21396.py: 4
+    tests/nodes/node_idle_slot_fill_effect/test_fixer_holds_fill_omn21396.py: 2
     tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py: 1
     tests/nodes/node_idle_slot_fill_effect/test_mechanism_owed_wired.py: 2
     tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_effect.py: 1
@@ -138,7 +134,7 @@ files:
     tests/test_host_reconcile_effect.py: 1
     tests/test_omn20708_branch_claim_check_handler.py: 1
     tests/test_omn22468_session_files_port.py: 1
-    tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py: 5
+    tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py: 2
     tests/unit/handlers/test_work_ledger_roll_boundary.py: 4
     tests/unit/nodes/node_context_source_ledger_effect/test_context_source_ledger.py: 2
     tests/unit/nodes/node_context_source_ledger_effect/test_ledger_fold_memo_omn21099.py: 1
@@ -162,4 +158,4 @@ files:
     tests/unit/validators/test_ledger_file_census.py: 27
     tests/unit/work_ledger_bus/test_work_ledger_append_cli.py: 1
 ratchet:
-  omnimarket: 156
+  omnimarket: 152
