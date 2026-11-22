@@ -553,8 +553,10 @@ dod_evidence:
     in :free, or a model that the pricing manifest, the provider catalogue for the backend the row names,
     or models.dev read live for that backend''s provider prices at zero. A models.dev copy older than its
     configured age is not used, and the price list shipped with the install never makes a zero free.
-    A hanging models.dev read costs a served read at most its configured deadline, once per retry
-    interval, and leaves the run unknown; a fresh copy that cannot be parsed is read again.
+    The configured deadline for a models.dev read is at most a quarter of the models.dev fetch timeout;
+    with models.dev hanging, a served read finishes within that deadline plus one second, fetches once
+    per retry interval, and leaves the run unknown. A fresh copy that cannot be parsed is read again,
+    and when that read fails the failure is marked and the run stays unknown.
     A rejected attempt the provider answered that is itself such a zero makes the whole run unknown.
     The writer, omnidash Unknown and Not measured, the onex delegate cost-unknown summary and the browser
     check of AC28 are not run here and are separate evidence.'

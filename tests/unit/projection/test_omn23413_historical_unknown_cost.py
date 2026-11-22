@@ -585,7 +585,12 @@ def test_a_hanging_models_dev_costs_a_read_its_deadline_once_per_interval(
     # timeout, once per retry interval, and the run stays unknown.
     from omnimarket.handlers import model_catalog
 
-    hang_seconds = 4.0
+    config = model_catalog.catalog_config()
+    deadline = float(config["historical_price_read"]["deadline_seconds"])
+    fetch_timeout = float(config["models_dev"]["timeout_seconds"])
+    # Well under the fetch timeout: at most a quarter of it.
+    assert deadline <= fetch_timeout / 4
+    hang_seconds = deadline + 2.0
     release = threading.Event()
     fetched: list[str] = []
 
@@ -618,7 +623,7 @@ def test_a_hanging_models_dev_costs_a_read_its_deadline_once_per_interval(
 
     assert (first, second, third) == (_UNKNOWN_SPEND,) * 3
     assert (after_first, after_second, after_third) == (1, 1, 2)
-    assert first_seconds < hang_seconds
+    assert first_seconds < deadline + 1.0
     assert second_seconds < 1.0
 
 
@@ -644,3 +649,32 @@ def test_a_fresh_models_dev_copy_that_cannot_be_parsed_is_read_again(
 
     assert (_served(tmp_path, _BEAM_ROWS)["beam"], len(fetched)) == (_FREE, 1)
     assert json.loads(cache.read_text(encoding="utf-8")) == _models_dev(0)
+
+
+def test_a_failed_reread_of_an_unparsable_copy_is_marked_and_unknown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, models_dev_home: Path
+) -> None:
+    # Review of e35b1f36: a fresh copy that cannot be parsed is read again, and
+    # when that read fails the failure is marked and the run stays unknown. A
+    # served read runs two queries, so one fetch shows the first query marked
+    # the failure before the second.
+    from omnimarket.handlers import model_catalog
+
+    config = model_catalog.catalog_config()
+    cache = models_dev_home / str(config["models_dev"]["cache_file"])
+    cache.parent.mkdir(parents=True)
+    cache.write_text("{not json", encoding="utf-8")
+    fetched: list[str] = []
+
+    def failing_fetch(url: str, timeout: float) -> bytes:
+        fetched.append(url)
+        raise OSError("models.dev unreachable")
+
+    monkeypatch.setattr(model_catalog, "_onex_home", lambda: models_dev_home)
+    monkeypatch.setattr(model_catalog, "_fetch", failing_fetch)
+
+    served = _served(tmp_path, _BEAM_ROWS)["beam"]
+    marker = models_dev_home / str(
+        config["historical_price_read"]["failed_marker_file"]
+    )
+    assert (served, len(fetched), marker.is_file()) == (_UNKNOWN_SPEND, 1, True)
