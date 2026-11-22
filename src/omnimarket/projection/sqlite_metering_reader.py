@@ -109,6 +109,11 @@ def _to_record(row: sqlite3.Row) -> ModelMeteringRecord | None:
     return metering_record_from_row(dict(zip(row.keys(), row, strict=True)))
 
 
+def _open_readonly(db_path: Path) -> sqlite3.Connection:
+    uri = f"file:{db_path}?mode=ro"
+    return sqlite3.connect(uri, uri=True)  # no-contract-check: projection boundary
+
+
 def _tenant_keys(db_path: Path, tenant_id: str) -> frozenset[str]:
     """The stored ``tenant_id`` values that are this tenant's rows (OMN-26413).
 
@@ -126,9 +131,7 @@ def _tenant_keys(db_path: Path, tenant_id: str) -> frozenset[str]:
     registry_uuid: UUID | None = None
     if db_path.exists():
         try:
-            conn = sqlite3.connect(
-                f"file:{db_path}?mode=ro", uri=True
-            )  # no-contract-check: projection boundary
+            conn = _open_readonly(db_path)
         except sqlite3.Error:
             return frozenset(keys)
         try:

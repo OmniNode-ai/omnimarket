@@ -158,7 +158,7 @@ def _population_store(tmp_path: Path, case: str) -> Path:
     elif case == "null_tenant":
         zero["tenant_id"] = None
         calls = _measured(priced, zero)
-    else:  # pragma: no cover - a typo in the parametrize list
+    else:
         raise AssertionError(case)
     return _store(tmp_path, (priced, zero), calls)
 
