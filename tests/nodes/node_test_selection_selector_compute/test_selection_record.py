@@ -240,7 +240,7 @@ def test_record_stage_entry_without_a_key_is_refused(key: str) -> None:
 
 def test_policy_holds_the_stage_gate_and_the_record_settings() -> None:
     raw = yaml.safe_load(POLICY_PATH.read_text(encoding="utf-8"))
-    assert raw["selection_stage"] == 1
+    assert raw["selection_stage"] == 0
     assert raw["full_split_count"] == 20
     assert raw["record_retention_days"] == 14
     policy = load_policy()
@@ -248,7 +248,7 @@ def test_policy_holds_the_stage_gate_and_the_record_settings() -> None:
         policy.selection_stage,
         policy.full_split_count,
         policy.record_retention_days,
-    ) == (1, 20, 14)
+    ) == (0, 20, 14)
 
 
 def test_contract_routes_build_selection_record_to_its_handler() -> None:
