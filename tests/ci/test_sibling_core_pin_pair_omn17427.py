@@ -71,6 +71,7 @@ INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("a679b44e2cfe", "dev-20261113013358-a09066caf945"),
     ("b6f27747506c", "dev-20261118065911-e9f061dc9b4c"),
     ("e1c7b1f075d2", "dev-20261120075721-2a9efbda3548"),
+    ("691e3df93fd6", "dev-20261120075721-2a9efbda3548"),
 )
 
 _GIT_SOURCE = re.compile(
@@ -140,8 +141,8 @@ def test_the_core_pin_is_the_one_the_infra_pin_names() -> None:
 
 
 def test_omnimarket_pins_the_newest_recorded_infra_and_core_pair() -> None:
-    """The lock moves with the newest recorded row: infra e1c7b1f075d2 and core 2a9efbda3548."""
+    """The lock moves with the newest recorded row: infra 691e3df93fd6 and core 2a9efbda3548."""
     infra_tag, infra_sha = _locked_dev_tag("omnibase-infra")
     core_tag, _ = _locked_dev_tag("omnibase-core")
     assert (infra_sha[:12], core_tag) == INFRA_CORE_TAGS[-1]
-    assert infra_tag == "dev-20261120235610-e1c7b1f075d2"
+    assert infra_tag == "dev-20261122091919-691e3df93fd6"

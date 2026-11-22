@@ -1809,7 +1809,8 @@ omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:Nod
 # OMN-23932: infra#5906 moves infra to core dev-20261111183916-a85cb916d4c1, the core tag below; the two tags move together.
 # OMN-26115: infra moves to dev-20261119220033-b6f27747506c (omnibase_infra#6063, OMN-25545), newer than the dev tag dev-20261119055404-a679b44e2cfe; it locks the core tag below, so the two tags move together.
 # OMN-26286: infra moves to dev-20261120235610-e1c7b1f075d2 (omnibase_infra#6116 merged: the infra and omnimemory dev tags now name one omnibase-core tag, dev-20261120075721-2a9efbda3548).
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261120235610-e1c7b1f075d2" }
+# OMN-25861: infra moves to dev-20261122091919-691e3df93fd6 (omnibase_infra#6156 merged: it vendors usage migration 0004, which the Sibling Release Compatibility check needs before this repository adds 0004); that commit locks the same core tag below.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261122091919-691e3df93fd6" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
