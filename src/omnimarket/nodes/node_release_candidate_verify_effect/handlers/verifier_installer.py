@@ -53,6 +53,7 @@ _BUILD_VARIABLE = re.compile(
     r"PIP_NO_BUILD_ISOLATION)=(\S*)"
 )
 _SHORT_INDEX_FLAGS = ("-i", "-f")
+_WORD_START = frozenset(";&|()")
 _VARIABLE_VALUE = re.compile(r"^\$\{?[A-Za-z_]\w*\}?$")
 _NO_BUILD_TOKENS = frozenset({"--no-build", "--only-binary=:all:"})
 _SEPARATORS = frozenset({";", "&&", "||", "|", "&", "(", ")", "{", "}"})
@@ -86,14 +87,41 @@ def _logical_lines(script: str) -> list[tuple[int, str]]:
     return logical
 
 
+def _strip_comment(line: str) -> str:
+    """Cut a shell comment: a # outside quotes at the start of a word, as the shell reads it.
+
+    A # inside a word (a#b, $#, ${#1}, a URL fragment) is text, not a comment.
+    """
+    quote = ""
+    escaped = False
+    previous = ""
+    for index, char in enumerate(line):
+        if escaped:
+            escaped = False
+        elif char == "\\" and quote != "'":
+            escaped = True
+        elif quote:
+            if char == quote:
+                quote = ""
+        elif char in "'\"":
+            quote = char
+        elif char == "#" and (
+            not previous or previous.isspace() or previous in _WORD_START
+        ):
+            return line[:index]
+        previous = char
+    return line
+
+
 def _tokens(line: str) -> list[str]:
+    code = _strip_comment(line)
     try:
-        lex = shlex.shlex(line, posix=True, punctuation_chars=";&|(){}")
+        lex = shlex.shlex(code, posix=True, punctuation_chars=";&|(){}")
         lex.whitespace_split = True
-        lex.commenters = "#"
+        lex.commenters = ""
         return list(lex)
     except ValueError:
-        return line.split(" #", 1)[0].split()
+        return code.split()
 
 
 def _segments(tokens: list[str]) -> list[list[str]]:

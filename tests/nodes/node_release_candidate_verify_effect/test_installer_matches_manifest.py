@@ -477,3 +477,34 @@ def test_installer_matches_manifest_allows_a_file_test_outside_install_lines(
     script = _before_main(script, "[ -f /etc/os-release ] && echo linux")
     result = _pinned(manifest, script)
     assert result.matches
+
+
+@pytest.mark.parametrize(
+    ("line", "kind"),
+    [
+        ("echo a#b; pip install evil", K.INSTALLER_BUILD),
+        ("echo $#; pip install evil", K.INSTALLER_BUILD),
+        ("n=${#1}; pip install evil", K.INSTALLER_BUILD),
+        (
+            '"$uv" pip install --no-build x#y --index-url https://packages.example.invalid/simple',
+            K.INSTALLER_INDEX,
+        ),
+    ],
+)
+def test_installer_matches_manifest_reads_a_hash_inside_a_word_as_text(
+    line: str,
+    kind: K,
+    manifest: ModelReleaseCandidateManifest,
+) -> None:
+    script = _before_main(_render(), line)
+    result = _pinned(manifest, script)
+    assert kind in _kinds(result)
+    assert not result.matches
+
+
+def test_installer_matches_manifest_still_ignores_a_real_comment(
+    manifest: ModelReleaseCandidateManifest,
+) -> None:
+    script = _before_main(_render(), "echo ok # pip install evil")
+    result = _pinned(manifest, script)
+    assert result.matches
