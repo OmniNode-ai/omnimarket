@@ -124,7 +124,10 @@ def _mark_failed(marker: Path) -> None:
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.touch()
     except OSError:
-        # Without the marker the next read tries again, still bounded by the deadline.
+        # Accepted, not fixed: with an ONEX home the marker cannot be written in,
+        # every read tries models.dev again, each bounded by deadline_seconds. A
+        # served read runs two queries, so until the home is writable each
+        # refresh can wait about two deadlines (about 4 s at the configured 2 s).
         return
 
 
