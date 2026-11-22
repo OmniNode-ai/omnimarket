@@ -571,6 +571,12 @@ def _failure_marker_path(tmp_path: Path) -> Path:
     return _models_dev_cache(tmp_path).with_suffix(".failed")
 
 
+def _join_price_readers() -> None:
+    for thread in threading.enumerate():
+        if thread.name == "models-dev-price-read":
+            thread.join(5)
+
+
 def test_concurrent_calls_share_one_models_dev_read(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, live_models_dev: _ModelsDevServer
 ) -> None:
@@ -609,7 +615,8 @@ def test_a_zero_deadline_attempts_no_read_and_marks_no_failure(
         )
         is None
     )
-    assert live_models_dev.reads == []
+    _join_price_readers()
+    assert live_models_dev.reads == [], "a zero deadline started a read"
     assert not _failure_marker_path(tmp_path).exists(), (
         "no read ran, yet a failure was marked"
     )
@@ -670,12 +677,6 @@ def test_a_caller_waiting_on_another_read_gives_up_without_marking_a_failure(
 #   S4  a call with little time left cuts its own read short and marks a failure,
 #       so every call stops reading models.dev for the retry interval.
 #   S5  a zero deadline leaves a call unknown though a fresh kept copy could price it.
-
-
-def _join_price_readers() -> None:
-    for thread in threading.enumerate():
-        if thread.name == "models-dev-price-read":
-            thread.join(5)
 
 
 @pytest.mark.parametrize(
