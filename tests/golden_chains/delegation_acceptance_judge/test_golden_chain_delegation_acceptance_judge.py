@@ -43,7 +43,7 @@ _NODE_DIR = (
     / "node_delegation_acceptance_judge_compute"
 )
 _COMMAND_TOPIC = "onex.cmd.omnimarket.delegation-acceptance-judge-requested.v1"
-_TERMINAL_TOPIC = "onex.evt.omnimarket.delegation-acceptance-judged.v1"
+_TERMINAL_TOPIC = "onex.evt.omnimarket.delegation-acceptance-judge-completed.v1"
 _CHAIN_FILES = sorted(_CHAIN_DIR.glob("chain_*.json"))
 _RUBRIC_YAML = (
     files("omnimarket")
