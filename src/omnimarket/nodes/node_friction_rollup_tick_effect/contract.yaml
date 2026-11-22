@@ -7,9 +7,9 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >-
   One friction rollup tick (OMN-22987), the scheduled unit that moved here from the timer of OMN-19715:
-  reads the ledger and the sorted archive files, runs the compute node's rollup for each window with the class rules
+  reads the window's rows over the bus (paged reads of the work ledger reader node), runs the compute node's rollup for each window with the class rules
   of the overlay home, writes the dated and latest json and markdown reports atomically, prunes old reports and
-  appends one STATUS row through an injected appender. Exit codes: 0 done, 1 append refused, 2 usage or unreadable
+  appends one STATUS row through the bus append command. Exit codes: 0 done, 1 append refused, 2 usage or unreadable
   input, 3 done with class rules unapplied. Every setting is in overlay.example.yaml.
 input_model:
   name: ModelFrictionRollupTickRequest
@@ -39,11 +39,9 @@ descriptor:
     - effects
 inputs:
   registry_root: {type: str, required: true, description: Root that holds the default state directory.}
-  ledger_path: {type: str, required: true, description: The rolling work ledger to read and append to.}
   now: {type: str, required: false, description: UTC timestamp used instead of the clock.}
   dry_run: {type: bool, required: false, description: Compute the row and reports and write nothing.}
   state_dir: {type: str, required: false, description: Where the reports are written.}
-  archive_dir: {type: str, required: false, description: Where the archive split files are.}
 outputs:
   status: {type: str}
   exit_code: {type: int}
