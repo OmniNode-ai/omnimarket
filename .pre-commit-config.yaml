@@ -1568,7 +1568,7 @@ repos:
       - id: undeclared-read-check
         name: Undeclared read check (OMN-26424)
         language: system
-        entry: bash -c 'git diff --cached -U0 --no-color --no-renames | uv run python -m omnimarket.nodes.node_undeclared_read_check_compute --overlays-root "${ONEX_SKILL_OVERLAY_ROOTS:-}"'
+        entry: bash -c 'git diff --cached -U0 --no-color --no-renames | uv run python -m omnimarket.nodes.node_undeclared_read_check_compute.runtime_undeclared_read_check --overlays-root "${ONEX_SKILL_OVERLAY_ROOTS:-}"'
         files: ^(src/|scripts/|docker/|\.github/workflows/|Dockerfile)
         pass_filenames: false
         require_serial: true

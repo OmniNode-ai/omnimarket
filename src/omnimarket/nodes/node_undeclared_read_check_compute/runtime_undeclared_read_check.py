@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""CLI of the undeclared read check: a unified diff on stdin or in a file, the overlay roots by flag.
+"""Request entry of the undeclared read check: a unified diff on stdin or in a file, the overlay roots by flag.
+
+    python -m omnimarket.nodes.node_undeclared_read_check_compute.runtime_undeclared_read_check --diff-file change.diff --overlays-root <dir>
 
 Exit 0: no undeclared read (or the diff adds no read at all). Exit 1: a read no overlay declares is added.
 Exit 3: the diff adds a read and the declared_settings register could not be read from the roots, so the

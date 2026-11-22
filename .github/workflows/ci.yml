@@ -4589,7 +4589,7 @@ jobs:
           base="${BASE_SHA:-}"
           case "$base" in ""|0000000000000000000000000000000000000000) base="HEAD~1" ;; esac
           git diff -U0 --no-color --no-renames "$base"...HEAD > change.diff
-          uv run python -m omnimarket.nodes.node_undeclared_read_check_compute \
+          uv run python -m omnimarket.nodes.node_undeclared_read_check_compute.runtime_undeclared_read_check \
             --diff-file change.diff \
             --overlays-root "$OVERLAYS_CHECKOUT/$OVERLAYS_DOCUMENTS_DIR"
 

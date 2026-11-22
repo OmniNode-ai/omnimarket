@@ -10,7 +10,7 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 node_type: compute
 # Run in process by a CI job and a pre-commit hook over a unified diff; it has no topic of its own,
-# so it carries no onex.nodes entry point.
+# so it carries no onex.nodes entry point and is named in node_entry_point_registration_compute's reviewed list.
 lifecycle: experimental
 description: >-
   Pure check that every setting a change newly reads is declared in an overlay. A unified diff and

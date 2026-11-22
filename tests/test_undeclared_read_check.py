@@ -14,18 +14,18 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.nodes.node_undeclared_read_check_compute.__main__ import (
-    EXIT_OK,
-    EXIT_REFUSED,
-    EXIT_UNREAD,
-    main,
-)
 from omnimarket.nodes.node_undeclared_read_check_compute.handlers import (
     HandlerUndeclaredReadCheck,
 )
 from omnimarket.nodes.node_undeclared_read_check_compute.models import (
     EnumReadKind,
     ModelUndeclaredReadCheckRequest,
+)
+from omnimarket.nodes.node_undeclared_read_check_compute.runtime_undeclared_read_check import (
+    EXIT_OK,
+    EXIT_REFUSED,
+    EXIT_UNREAD,
+    main,
 )
 
 pytestmark = pytest.mark.unit
