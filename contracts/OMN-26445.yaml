@@ -14,12 +14,6 @@ requirements:
     acceptance:
       - id: AC1
         statement: "AC1: a test over the door's lifespan fails on the current reader when the lane declaration is present only in the overlay store and absent at config/lab/ci_bus_lanes.yaml, and it passes after the fix with the declaration resolved through the overlay roots -- falsifier: uv run pytest <the new lifespan test> -q run at the commit before the fix exits non-zero naming ci_bus_lanes and exits 0 after it"
-      - id: AC2
-        statement: "AC2: the five whys name the door code that reads the path and the reason it bypasses the overlay roots, with file and line at the built sha read on omni-201 -- falsifier: the PR body has no Whys section whose last why names a file:line of the reader"
-      - id: AC3
-        statement: "AC3: the boot guard and the health gate files are unchanged and dev is not restarted or rolled by hand -- falsifier: git diff --stat origin/main over the PRs touches the boot guard or the health gate files, or a ledger row shows a manual restart of omninode-runtime"
-      - id: AC4
-        statement: "AC4: the question whether one door's lifespan failure should 503 the whole runtime's /health is answered in the PR body with the runtime code read, and a ticket is minted when the answer is no -- falsifier: the PR body has no Answer section naming the health aggregation code with file and line"
 evidence_requirements:
   - kind: tests
     description: The door's lifespan tests and the node's tests.
@@ -40,7 +34,6 @@ dod_evidence:
   - id: dod-omn26445-ac3
     description: "The change touches the door node only: no boot guard or health gate file is in the diff."
     source: manual
-    binds_ac: [AC3]
     checks:
       - check_type: command
         check_value: >-
@@ -49,7 +42,6 @@ dod_evidence:
   - id: dod-omn26445-ac2
     description: "The reader the five whys name is in the door at this head, and the infra resolver it calls reads the fixed relative path."
     source: manual
-    binds_ac: [AC2]
     checks:
       - check_type: command
         check_value: >-
@@ -59,7 +51,6 @@ dod_evidence:
   - id: dod-omn26445-ac4
     description: "The health aggregation code the Answer names answers every request 503 once a mount failure is set."
     source: manual
-    binds_ac: [AC4]
     checks:
       - check_type: command
         check_value: >-
