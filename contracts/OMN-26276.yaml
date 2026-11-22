@@ -1,0 +1,105 @@
+schema_version: 1.0.0
+ticket_id: OMN-26276
+title: A changed fixture or data file selects the tests that read it, directly, through a helper or through a source module, and OMN-18266 is closed on that lookup
+summary: 'The change-aware test selector took the full suite for any changed file under tests/fixtures/ (test_infrastructure_paths). With data_file_readers_enabled the selector node resolves a changed
+  non-Python file under tests/, contracts/ or a node directory to its readers: the test files whose text spells its path, its file name or a directory between tests/fixtures/ and the file, the tests that enumerate
+  the directory with glob, rglob or iterdir, the reverse import closure of a helper among those tests, the tests that import a src/ file naming the file, and data_reader_overrides. A rename or delete looks up the
+  old path as well, because the changed-file list carries both. A file with no reader selects the always set only; a path built at run time with no literal part is the nightly''s to catch. tests/fixtures/ leaves
+  test_infrastructure_paths and moves to data_reader_gated_infrastructure_paths, which keeps the full-suite escalation while the switch is off and for a Python file beneath it; tests/conftest.py, pytest.ini,
+  .pre-commit-config.yaml and uv.lock stay test infrastructure. The switch is off, selection_stage stays 0, and scripts/ci/detect_test_paths.py shrinks. Not in this change: the pyproject and lock version-line
+  rules, the stage gate and receipts, and the replay receipt.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26276-data-file-readers
+  statement: A changed fixture or data file selects the tests that read it, through a helper or a source module, instead of the full suite, behind a switch that is off.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the four fixture-only merges (`7819ffecd0`, `006a153ee0`, `bd745d07d1`, `b9e96a63b8`) narrow and each selected set contains every test that opens the changed file -- falsifier: `uv run
+      pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -q --no-cov -k data_readers` greps the tree for each changed file name and fails when a hit is not selected'
+  - id: AC2
+    statement: 'AC2: the two fixture merges that also change the lock (`79f31e93f5`, `ae69d56977`) narrow only if their lock diffs are the package own version line, otherwise stay full, matching the T1 receipt
+      disposition -- falsifier: replay against their actual lock diffs; any other outcome fails'
+  - id: AC3
+    statement: 'AC3: a fixture read only through a shared helper, one read by a production helper under `src/`, and one changed beside a file whose readers are found each select their readers -- falsifier:
+      a fixture of each; remove the helper-closure or source-side step and the test must fail'
+  - id: AC4
+    statement: 'AC4: a test that builds the fixture path dynamically from a directory named in a string is found -- falsifier: a fixture test using `iterdir` over the changed file directory; remove the directory
+      rule and the test must fail'
+  - id: AC5
+    statement: 'AC5: a catalog or topology YAML change selects its readers and the [OMN-18266](https://linear.app/omninode/issue/OMN-18266) check passes, which closes [OMN-18266](https://linear.app/omninode/issue/OMN-18266)
+      -- falsifier: `-k data_readers` catalog case'
+evidence_requirements:
+- kind: tests
+  description: The data-reader tests and the existing selector tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute tests/unit/scripts/test_detect_test_paths.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26276-ac1
+  description: 'AC1: the data files of the four fixture merges narrow with the rule on, and every test file whose text names a changed file is in the selection. Resolved over the data files, not each merge''s full
+    list: three of the four also change a shared module or a protected config surface, a full-suite reason this ticket does not touch. Replayed over the frozen tree of the T1 baseline receipt with the rule on, none of the four hits the fixture trigger any more; the frozen tree holds no test text, so the reader containment is asserted over the live checkout.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -q --no-cov -n 0 -p no:randomly -k "data_readers and four_fixture_merges"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_readers_replay.py -q --no-cov -n 0 -p no:randomly -k "data_readers and four_fixture_merges"
+    cwd: .
+- id: dod-omn26276-ac2
+  description: 'AC2: with the rule on, the changed files of 79f31e93f5 and ae69d56977 (fixtures, pyproject.toml and uv.lock) stay a full suite for test_infrastructure; the narrowing of the second, whose lock diff
+    is the package own version line, is asserted again after the pyproject rules merge. The replay over the frozen tree of the T1 receipt gives the same decision for both: a full suite for the lock and pyproject.toml, with the fixtures beside them no longer a trigger.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -q --no-cov -n 0 -p no:randomly -k "data_readers and lock"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_readers_replay.py -q --no-cov -n 0 -p no:randomly -k "data_readers and lock"
+    cwd: .
+- id: dod-omn26276-ac3
+  description: 'AC3: a fixture read through a shared helper, through a src/ file and its importer facade, and a data file beside a node each select their readers; the controls remove the helper reference, the
+    source-side name and show the readers absent.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -q --no-cov -n 0 -p no:randomly -k "data_readers and (shared_helper or source_file or beside_a_node)"
+    cwd: .
+- id: dod-omn26276-ac4
+  description: 'AC4: a test that enumerates a directory named in a string with iterdir is found; with data_reader_fixture_roots emptied the dynamic-path test is no reader.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -q --no-cov -n 0 -p no:randomly -k "data_readers and (directory_named_in_a_string or iterdir)"
+    cwd: .
+- id: dod-omn26276-ac5
+  description: 'AC5: a catalog YAML and a topology YAML select their readers and the always set; the lookup answers the question OMN-18266 asked, with the readers named, so the switch-off full-suite escalation
+    is the only case left for it.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -q --no-cov -n 0 -p no:randomly -k "data_readers and catalog"
+    cwd: .
+- id: dod-omn26276-integration-proof
+  description: the selector tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26276 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -q --no-cov
+    cwd: .

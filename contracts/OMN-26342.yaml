@@ -1,0 +1,54 @@
+schema_version: 1.0.0
+title: The window replay's command form passes the node-purity gate with no suppression comment
+ticket_id: OMN-26342
+summary: >-
+  The command form of node_work_ledger_reducer_compute carried one node-purity suppression comment on its file read, which
+  the canonical-file-shape ratchet refuses as suppression growth (0 to 1). The command now takes its input files through
+  click's own file types, so the module has no file call of its own and no suppression comment. A test runs the purity
+  validator over the module with every comment stripped.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26342-no-suppression
+  statement: The command module is pure without a suppression comment and its command form behaves as before.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the purity validator reports nothing over the command module with every comment stripped -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reducer_compute/test_window_replay.py -k pure_without_a_suppression_comment -q fails when a file call or a suppression comment carries the module'
+  - id: AC2
+    statement: 'AC2: the window replay tests all pass over the new input handling -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reducer_compute -q fails when a command run no longer reads its ledger, archive rolls, serve log or requests file'
+evidence_requirements:
+- kind: tests
+  description: The window replay tests at the pushed head.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_work_ledger_reducer_compute -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26342-ac1-purity
+  description: The module has no purity violation once its comments are stripped; against the previous module the same test fails on the file read.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reducer_compute/test_window_replay.py -k pure_without_a_suppression_comment -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26342-ac2-command-tests
+  description: The fifteen window replay tests pass, the command-form tests among them.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reducer_compute/test_window_replay.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26342-integration-proof
+  description: Run the window replay tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26342 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_reducer_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .

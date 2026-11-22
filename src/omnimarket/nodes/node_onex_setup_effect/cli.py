@@ -233,7 +233,7 @@ class _SetupCommand(click.Command):
 def current_folder_workspace(cwd: Path, home: Path) -> Path | None:
     """OMN-23413 AC19: the folder setup runs from is the workspace, as in
     coding-agent CLIs, except the home folder or the filesystem root, which
-    fall back to $OMNIBASE_PATH, $OMNI_HOME, the recorded root or a prompt."""
+    fall back to $OMNIBASE_PATH, the recorded root or a prompt."""
     folder = cwd.resolve()
     if folder == home.resolve() or folder == Path(folder.anchor):
         return None
@@ -244,10 +244,10 @@ def current_folder_workspace(cwd: Path, home: Path) -> Path | None:
 @click.option(
     "--workspace",
     type=click.Path(path_type=Path),
-    envvar=["OMNIBASE_PATH", "OMNI_HOME"],
+    envvar="OMNIBASE_PATH",
     default=None,
     help="Workspace root (default: the current folder; from the home folder or / "
-    "it is $OMNIBASE_PATH, then $OMNI_HOME, then the root an earlier run recorded).",
+    "it is $OMNIBASE_PATH, then the root an earlier run recorded).",
 )
 @click.option(
     "--path",

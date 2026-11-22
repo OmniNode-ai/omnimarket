@@ -77,6 +77,12 @@
           ]
         },
         {
+          "name": "Latest Core Smoke",
+          "note": [
+            "latest-core-smoke — needs occ-preflight, if: always(); no skip path"
+          ]
+        },
+        {
           "name": "Customer Clean-Install Delegate Gate",
           "note": [
             "customer-clean-install (OMN-16200) — needs occ-preflight, if: always()"

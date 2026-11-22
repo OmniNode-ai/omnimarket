@@ -1,0 +1,42 @@
+{
+  "incident": {
+    "build": "omnimarket 9f421237, dev build of 2026-11-21T09:10:40Z",
+    "read_utc": "2026-11-21T09:40Z",
+    "writer": "SavingsProjectionWriter",
+    "logged_keyerror_partition": 57,
+    "logged_projection_not_materialized": 114,
+    "keyerror_text": "KeyError: '_partition'",
+    "traceback_recoverable": false,
+    "source": "rolling work ledger MSG 2026-11-21T09:51:15Z, integration pass 216 evidence; the container log is not recoverable, so the requests below are rebuilt from the exact dict omnibase_infra handler_wiring builds when its delivery is None"
+  },
+  "requests": [
+    {
+      "name": "savings-estimated",
+      "_topic": "onex.evt.omnibase-infra.savings-estimated.v1",
+      "_event_type": "savings-estimated",
+      "_envelope_id": "00000000-0000-4000-8000-000000000001",
+      "payload": {"tenant_id": "35ef29ac-3b39-423f-9675-32597b14f0d3", "event_id": "incident-savings-1"}
+    },
+    {
+      "name": "delegation-completed",
+      "_topic": "onex.evt.omnibase-infra.delegation-completed.v1",
+      "_event_type": "delegation-completed",
+      "_envelope_id": "00000000-0000-4000-8000-000000000002",
+      "payload": {"tenant_id": "35ef29ac-3b39-423f-9675-32597b14f0d3", "event_id": "incident-delegation-1"}
+    },
+    {
+      "name": "hook-event-post-compact",
+      "_topic": "onex.evt.omniclaude.hook-event.v1",
+      "_event_type": "hook-event",
+      "_envelope_id": "00000000-0000-4000-8000-000000000003",
+      "payload": {"event_id": "incident-hook-1", "hook_event_name": "PostCompact"}
+    },
+    {
+      "name": "hook-event-ignored",
+      "_topic": "onex.evt.omniclaude.hook-event.v1",
+      "_event_type": "hook-event",
+      "_envelope_id": "00000000-0000-4000-8000-000000000004",
+      "payload": {"event_id": "incident-hook-2", "hook_event_name": "PreToolUse"}
+    }
+  ]
+}
