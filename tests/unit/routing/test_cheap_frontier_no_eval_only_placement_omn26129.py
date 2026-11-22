@@ -35,7 +35,7 @@ EVAL_ONLY = re.compile(r"deepseek|qwen[-_]?3\.8")
 
 
 class PlacementError(ValueError):
-    """routing_tiers.yaml names a placement this check cannot resolve."""
+    """A placement this check cannot resolve; the check fails closed on it."""
 
 
 def placed_on_tier(
@@ -104,7 +104,7 @@ _PAID_ELSEWHERE = {
 }
 
 
-def test_no_eval_only_model_is_placed_on_the_tier_by_either_file() -> None:
+def test_no_eval_only_model_is_placed_on_the_tier_by_any_route() -> None:
     placed = placed_on_tier()
     assert placed, (
         "cheap_frontier has no placed backend; the routing-completeness gates need one"
