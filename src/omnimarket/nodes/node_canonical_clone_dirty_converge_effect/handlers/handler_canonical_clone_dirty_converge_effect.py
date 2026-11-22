@@ -41,6 +41,9 @@ from typing import Any
 
 import click
 
+from omnimarket.handlers.adapter_work_ledger_rows_reader import (
+    SubprocessLedgerRowsReader,
+)
 from omnimarket.handlers.handler_packaged_contract_loader import (
     load_packaged_contract_section,
 )
@@ -73,9 +76,16 @@ from omnimarket.nodes.node_lab_alarm_deliver_effect.overlay import (
 from omnimarket.nodes.node_lab_alarm_deliver_effect.runtime_lab_alarm_deliver import (
     build_handler as build_delivery_handler,
 )
+from omnimarket.protocols.protocol_ledger_rows_reader import (
+    LedgerReadError,
+    ProtocolLedgerRowsReader,
+)
 
 NODE = "node_canonical_clone_dirty_converge_effect"
 AGE_ENV = "ONEX_CLONE_DIRTY_CONVERGE_AFTER_S"
+#: The reader node's name for the open-CLAIM read, and the window it covers (a CLAIM older than a week names no live lane).
+CLAIMS_READER = "clone-dirty-converge-claims"
+CLAIMS_WINDOW_HOURS = 168
 DETACHED_AGE_ENV = "ONEX_CLONE_DETACHED_REATTACH_AFTER_S"
 ENGINE_BOUND_ENV = "ONEX_CLONE_REFUSAL_BOUND_S"
 _TIMEOUTS = load_node_timeouts(NODE)
@@ -151,9 +161,12 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         run: Run = subprocess.run,
         engine_argv: Sequence[str] | None = None,
         delivery: ProtocolAlarmDelivery | None = None,
+        ledger_reader: ProtocolLedgerRowsReader | None = None,
     ) -> None:
         self.registry_root = registry_root
         self._delivery = delivery
+        self._ledger_reader = ledger_reader
+        self._claims: dict[str, str] | None = None
         self._env = dict(env)
         self.declaration = declaration or load_declaration()
         self._run = run
@@ -422,27 +435,30 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             return False  # PermissionError means alive; other errors prove nothing
         return False
 
-    def _open_claim_naming(self, clone: Path) -> str:
-        """The lane of an open CLAIM that names the clone's path, else an empty string."""
-        ledger = self._env.get("ONEX_LEDGER_PATH", "")
-        if not ledger:
-            return ""
-        try:
-            lines = (
-                Path(ledger).read_text(encoding="utf-8", errors="replace").splitlines()
+    def _open_claims(self) -> dict[str, str]:
+        """Every lane's open CLAIM row in the ledger reader node's window, read once per tick."""
+        if self._claims is None:
+            reader = self._ledger_reader or SubprocessLedgerRowsReader(self._env)
+            lines = reader.rows(
+                reader=CLAIMS_READER,
+                window_hours=CLAIMS_WINDOW_HOURS,
+                kinds=("CLAIM", "TERMINAL"),
             )
-        except OSError:
-            return ""
-        open_claims: dict[str, str] = {}
-        for line in lines:
-            parts = [p.strip() for p in line.split(" | ", 3)]
-            if len(parts) < 3 or not parts[2].startswith("lane="):
-                continue
-            lane = parts[2][5:]
-            if parts[1] == "CLAIM":
-                open_claims[lane] = line
-            elif parts[1] == "TERMINAL":
-                open_claims.pop(lane, None)
+            claims: dict[str, str] = {}
+            for line in sorted(lines, key=lambda row: row[:20]):
+                parts = [p.strip() for p in line.split(" | ", 3)]
+                if len(parts) < 3 or not parts[2].startswith("lane="):
+                    continue
+                lane = parts[2][5:]
+                if parts[1] == "CLAIM":
+                    claims[lane] = line
+                elif parts[1] == "TERMINAL":
+                    claims.pop(lane, None)
+            self._claims = claims
+        return self._claims
+
+    def _open_claim_naming(self, clone: Path) -> str:
+        """The lane of an open CLAIM that names the clone's path, else an empty string; raises LedgerReadError."""
         named = re.compile(
             "("
             + re.escape(str(clone))
@@ -451,8 +467,20 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             + ")(?![\\w.-])"
         )
         return next(
-            (lane for lane, text in open_claims.items() if named.search(text)), ""
+            (lane for lane, text in self._open_claims().items() if named.search(text)),
+            "",
         )
+
+    def _claim_block(self, clone: Path) -> str:
+        """Why an open CLAIM keeps this clone from converging, else an empty string.
+
+        A ledger that cannot be read never proves that no CLAIM names the clone, so it blocks too.
+        """
+        try:
+            lane = self._open_claim_naming(clone)
+        except LedgerReadError as exc:
+            return f"the ledger could not be read ({exc}); an unread ledger never proves no CLAIM names the clone"
+        return f"an open CLAIM of lane {lane} names the clone" if lane else ""
 
     def _process_inside(self, clone: Path) -> str:
         """A process whose working directory is inside the clone; 'unknown' when lsof cannot say."""
@@ -544,9 +572,9 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             return outcome(skipped, "already at the upstream tip")
         if any((Path(git_dir_text) / marker).exists() for marker in _IN_PROGRESS):
             return outcome(skipped, "a git operation is in progress in the clone")
-        lane = self._open_claim_naming(clone)
-        if lane:
-            return outcome(skipped, f"an open CLAIM of lane {lane} names the clone")
+        blocked = self._claim_block(clone)
+        if blocked:
+            return outcome(skipped, blocked)
         inside = self._process_inside(clone)
         if inside:
             return outcome(skipped, f"a process is using the clone ({inside})")
@@ -595,9 +623,9 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             return outcome(failed, "git directory does not resolve")
         if any((Path(git_dir_text) / marker).exists() for marker in _IN_PROGRESS):
             return outcome(skipped, "a git operation is in progress in the clone")
-        lane = self._open_claim_naming(clone)
-        if lane:
-            return outcome(skipped, f"an open CLAIM of lane {lane} names the clone")
+        blocked = self._claim_block(clone)
+        if blocked:
+            return outcome(skipped, blocked)
         inside = self._process_inside(clone)
         if inside:
             return outcome(skipped, f"a process is using the clone ({inside})")
@@ -676,9 +704,9 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             )
         if any((clone / ".git" / marker).exists() for marker in _IN_PROGRESS):
             return outcome(skipped, "a git operation is in progress in the clone")
-        lane = self._open_claim_naming(clone)
-        if lane:
-            return outcome(skipped, f"an open CLAIM of lane {lane} names the clone")
+        blocked = self._claim_block(clone)
+        if blocked:
+            return outcome(skipped, blocked)
         inside = self._process_inside(clone)
         if inside:
             return outcome(skipped, f"a process is using the clone ({inside})")
@@ -750,6 +778,7 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         )
 
     def tick(self) -> list[ModelDirtyConvergeOutcome]:
+        self._claims = None
         env = {k: v for k, v in self._env.items() if k not in _GIT_LOCATION_ENV}
         env[ENGINE_BOUND_ENV] = str(int(min(self.age, self.detached_age)))
         env["OMNI_HOME"] = str(self.registry_root)

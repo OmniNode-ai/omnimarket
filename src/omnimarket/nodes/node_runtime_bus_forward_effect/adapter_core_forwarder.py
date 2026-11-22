@@ -20,6 +20,9 @@ from omnimarket.models.bus_binding.model_node_broker import ModelNodeBroker
 from omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_runtime_bus_forward import (
     HandlerRuntimeBusForward,
 )
+from omnimarket.nodes.node_runtime_bus_forward_effect.models.model_https_event_bus import (
+    ModelHttpsEventBus,
+)
 from omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward import (
     ModelForwardEvent,
     ModelRuntimeBusForwardCommand,
@@ -70,12 +73,23 @@ class CoreRuntimeBusForwarder:
         )
         self._environ = os.environ if environ is None else environ
 
+    def _make_publisher(
+        self, overlay: ModelRuntimeBusForwardOverlay
+    ) -> ProtocolRuntimeBusPublisher:
+        if isinstance(overlay.event_bus, ModelHttpsEventBus):
+            from omnimarket.nodes.node_runtime_bus_forward_effect.publishers.publisher_https import (
+                PublisherHttps,
+            )
+
+            return PublisherHttps.from_overlay(overlay.event_bus, self._environ)
+        broker = broker_for_lane(overlay.event_bus.lane, self._environ)
+        return self._publisher_for_broker(broker)
+
     def forward(self, events: Sequence[ProtocolRecordedEvent]) -> dict[str, object]:
         """The core hook: publish ``events`` to the hosted bus and answer the receipt mapping."""
         try:
             overlay = self._overlay or load_overlay(self._environ)
-            broker = broker_for_lane(overlay.event_bus.lane, self._environ)
-            publisher = self._publisher_for_broker(broker)
+            publisher = self._make_publisher(overlay)
         except Exception as exc:
             raise RuntimeError(
                 f"runtime bus forwarder could not reach the hosted bus: {type(exc).__name__}: {exc}"
