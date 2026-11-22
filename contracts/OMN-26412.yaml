@@ -45,6 +45,15 @@ dod_evidence:
   - check_type: command
     check_value: ssh h202 'systemctl --user is-active onex-lane-dispatch.timer'
     cwd: .
+- id: dod-omn26412-ac1-mirror
+  description: 'Hosted proxy for the brief-building piece of AC1: the host mirror tick carries a cited ruling older than its 30 day window onto the archive roll beside the mirror, so a brief built on a lab host finds it; a pinned ruling the host cannot carry fails the tick and is named. The read of lane_brief.py constraints exiting 0 against the installed mirror on h202 is the pull request''s Lab line.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q tests/nodes/node_work_ledger_host_mirror_effect/test_pinned_rulings_mirror.py -p no:cacheprovider --no-cov
+    cwd: .
 - id: dod-omn26412-ac2
   description: 'Local done gate: the probe lane launched from h202 onto h201 shows a CLAIM and a TERMINAL row in the ledger of record.'
   source: manual
