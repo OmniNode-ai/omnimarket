@@ -32,7 +32,7 @@ acceptance:
     - '{answer}'
     environment:
       path: uv.lock
-      sha256: 8a497363818188faee3c70592da964513cf7c11c5bc073cf4ee94e7a7953a264
+      sha256: 234008b57d27d616987d8b763ef304635d50dfaf379eb54cf77ddaa561893ca0
     expected_exit: 0
     ticket: OMN-21090
     evidence_id: dod-omn21090-ac4-measurement-labelled-facts
