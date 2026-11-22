@@ -46,10 +46,11 @@ def walk_machine() -> ModelSetupMachineFacts:
             "cpus": walk["cpus"],
             "ram_bytes": walk["ram_gib"] * GIB,
             "free_disk_bytes": walk["disk_free_gib"] * GIB,
-            # Not recorded by the walk: these isolate the disk reading, so only a
-            # free-disk check can turn this machine away.
-            "administrator": True,
             "virtual_machine": walk["virtual_machine"],
+            # Not recorded by the walk (administrator, rosetta,
+            # docker_installed, stack_running, occupied_ports, missing_tools):
+            # neutral values, so none of them can refuse this machine.
+            "administrator": True,
             "rosetta": False,
             "docker_installed": False,
             "stack_running": False,
