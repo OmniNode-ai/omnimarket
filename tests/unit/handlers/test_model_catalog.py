@@ -598,6 +598,38 @@ def test_a_cache_path_that_is_not_a_regular_file_never_blocks(tmp_path: Path) ->
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("kind", ["regular-file", "directory", "fifo"])
+def test_only_an_aged_regular_file_is_an_expired_provider_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """OMN-23413 AC4: a directory or a FIFO at the listing path is no kept list,
+    so the table says nothing expired; an aged regular file is an expired one."""
+    if kind == "fifo" and os.name != "posix":
+        pytest.skip("mkfifo is POSIX only")
+    monkeypatch.setattr(model_catalog, "_onex_home", lambda: tmp_path)
+    path = model_catalog._listing_path("openrouter", tmp_path)
+    path.parent.mkdir(parents=True)
+    if kind == "regular-file":
+        path.write_bytes(b"kept list\n")
+    elif kind == "directory":
+        path.mkdir()
+    else:
+        os.mkfifo(path)
+    os.utime(path, (0, 0))
+
+    entries = stored_entries(
+        [{"provider": "openrouter", "set_up": True, "models": ["vendor/big"]}],
+        index=_index(),
+        deployment_of=lambda _provider: "cloud",
+        label_of=lambda provider, _server: provider,
+    )
+
+    assert [entry.provider_list_expired for entry in entries] == [
+        kind == "regular-file"
+    ]
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "outcome", ["rejected", "billing", "unsupported", "inconclusive"]
 )

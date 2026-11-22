@@ -914,7 +914,8 @@ async def test_the_table_says_when_a_provider_list_has_expired(
     """OMN-23413, operator decision 23413-AC4-SHOWEXPIRED (2026-11-22): once the
     24-hour provider list has expired the table says so (AC4: a stale catalogue
     fails visibly), and while it is fresh it says nothing; models.dev still
-    fills the facts after expiry (23413-G10-FALLBACK)."""
+    fills the facts after expiry (23413-G10-FALLBACK). The words are the
+    configured ones (model_table.listing_expired, AC27)."""
     import os
 
     from textual.widgets import DataTable
@@ -924,8 +925,13 @@ async def test_the_table_says_when_a_provider_list_has_expired(
         ModelByokListedModel,
         ModelByokModelListing,
     )
+    from omnimarket.nodes.node_onex_setup_effect import cli_model_table
+    from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+        tui_design,
+    )
 
     monkeypatch.setattr(model_catalog, "_onex_home", lambda: tmp_path)
+    configured = tui_design().model_table.listing_expired
     rows = json.dumps(
         {"provider": "openrouter", "set_up": True, "models": ["qwen/qwen3.8-27b"]}
     )
@@ -944,7 +950,7 @@ async def test_the_table_says_when_a_provider_list_has_expired(
     # No list was ever kept: nothing has expired, so no marker either.
     never = await shown_row()
     assert "262K" in never
-    assert "expired" not in never.lower(), never
+    assert configured not in never, never
 
     model_catalog.remember_provider_listing(
         ModelByokModelListing(
@@ -959,14 +965,26 @@ async def test_the_table_says_when_a_provider_list_has_expired(
     )
     fresh = await shown_row()
     assert "16K" in fresh  # the provider's own list
-    assert "expired" not in fresh.lower(), fresh
+    assert configured not in fresh, fresh
 
     os.utime(model_catalog._listing_path("openrouter", tmp_path), (0, 0))
     expired = await shown_row()
     assert "262K" in expired  # models.dev fills the facts
-    assert "expired" in expired.lower(), (
-        f"the table shows no expired marker after the provider list expired: {expired}"
+    assert configured in expired, (
+        f"the table shows no {configured!r} marker after the provider list "
+        f"expired: {expired}"
     )
+
+    # The words are read from the configuration, not written into the code.
+    real_table = cli_model_table._table()
+    monkeypatch.setattr(
+        cli_model_table,
+        "_table",
+        lambda: real_table.model_copy(update={"listing_expired": "LIST GONE STALE"}),
+    )
+    reworded = await shown_row()
+    assert "LIST GONE STALE" in reworded, reworded
+    assert configured not in reworded, reworded
 
 
 async def test_model_with_nothing_set_up_points_to_setup() -> None:
