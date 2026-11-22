@@ -266,7 +266,9 @@ def check_row_current(
         "repair": METERING_ROW_REPAIR,
     }
     start, end = _window_bounds(window_kind, window_start)
-    runs = read_metering_records(db_path=db_path, window_start=start, window_end=end)
+    runs = read_metering_records(
+        tenant_id=tenant_id, db_path=db_path, window_start=start, window_end=end
+    )
     if row is None:
         if window_kind == "day" and not runs:
             reason = f"no delegation was recorded on {window_start} (UTC)"

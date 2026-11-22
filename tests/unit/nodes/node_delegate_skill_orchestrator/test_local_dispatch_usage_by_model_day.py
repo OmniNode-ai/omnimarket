@@ -329,8 +329,12 @@ def _usage_tokens(db_path: Path) -> tuple[int, int]:
 
 
 def _metering_tokens(db_path: Path) -> tuple[int, int]:
-    """Token totals as ``onex metering --json`` reads them (AC1)."""
-    records = read_metering_records(db_path=db_path)
+    """Token totals as ``onex metering --json`` reads them (AC1), for the tenant the run was recorded under."""
+    (tenant,) = {
+        str(r["tenant_id"])
+        for r in _rows(db_path, "SELECT tenant_id FROM delegation_events")
+    }
+    records = read_metering_records(tenant_id=tenant, db_path=db_path)
     return (
         sum(r.tokens_in or 0 for r in records),
         sum(r.tokens_out or 0 for r in records),

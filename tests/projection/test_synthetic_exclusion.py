@@ -148,13 +148,15 @@ def test_sqlite_totals_ignore_a_synthetic_run_and_runs_still_lists_it(
     }
 
     assert totals() == before
-    assert [r.correlation_id for r in read_metering_records(db_path=path)] == [
-        real["correlation_id"]
-    ]
+    assert [
+        r.correlation_id for r in read_metering_records(tenant_id=tenant, db_path=path)
+    ] == [real["correlation_id"]]
     # Fixtures can be asked for back; an experiment run cannot.
     assert [
         r.correlation_id
-        for r in read_metering_records(db_path=path, include_fixtures=True)
+        for r in read_metering_records(
+            tenant_id=tenant, db_path=path, include_fixtures=True
+        )
     ] == [real["correlation_id"]]
 
     topics = build_projection_topic_map()

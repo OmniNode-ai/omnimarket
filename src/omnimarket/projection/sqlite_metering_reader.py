@@ -72,6 +72,9 @@ _DATA_SOURCE_COLUMN = "data_source"
 _FIXTURE = "fixture"
 # OMN-23169: typed synthetic traffic. Never in a measured figure, with no opt-in.
 _EXPERIMENT = "experiment"
+# OMN-26413: the tenant a row belongs to. A tenant's metering reads only its own rows, as the local views and the
+# shared lanes' refresh do; a row with no tenant (written before the column existed) is nobody's.
+_TENANT_COLUMN = "tenant_id"
 
 
 class MeteringRecordsUnavailableError(RuntimeError):
@@ -120,7 +123,11 @@ def _iter_rows(db_path: Path) -> Iterator[sqlite3.Row]:
             }
             optional = tuple(
                 column
-                for column in (_DATA_SOURCE_COLUMN, METERING_CAUSE_COLUMN)
+                for column in (
+                    _DATA_SOURCE_COLUMN,
+                    METERING_CAUSE_COLUMN,
+                    _TENANT_COLUMN,
+                )
                 if column in columns
             )
             # OMN-24615 AC1: each run's provider usage, where the store has calls.
@@ -138,12 +145,18 @@ def _iter_rows(db_path: Path) -> Iterator[sqlite3.Row]:
 
 def read_metering_records(
     *,
+    tenant_id: str,
     db_path: Path | None = None,
     window_start: datetime | None = None,
     window_end: datetime | None = None,
     include_fixtures: bool = False,
 ) -> tuple[ModelMeteringRecord, ...]:
-    """Read delegation records in ``[window_start, window_end)``.
+    """Read ``tenant_id``'s delegation records in ``[window_start, window_end)``.
+
+    OMN-26413: only the tenant's own rows are read. Another tenant's runs, and
+    rows with no tenant at all, are not this tenant's metering; the local
+    savings and model-routing views already leave them out, so for one store all
+    three count the same runs.
 
     OMN-19970: rows the dev and demo seed wrote (``data_source = 'fixture'``)
     are measured nothing and are skipped unless ``include_fixtures`` is set, so
@@ -163,7 +176,10 @@ def read_metering_records(
     resolved = db_path if db_path is not None else default_metering_db_path()
     records: list[ModelMeteringRecord] = []
     for row in _iter_rows(resolved):
-        source = dict(row).get(_DATA_SOURCE_COLUMN)
+        values = dict(row)
+        if values.get(_TENANT_COLUMN) != tenant_id:
+            continue
+        source = values.get(_DATA_SOURCE_COLUMN)
         if source == _EXPERIMENT or (source == _FIXTURE and not include_fixtures):
             continue
         record = _to_record(row)

@@ -28,6 +28,8 @@ from omnimarket.projection.sqlite_metering_reader import (
 pytestmark = pytest.mark.unit
 
 _NOW = datetime(2026, 9, 18, 12, 0, tzinfo=UTC)
+# OMN-26413: metering reads one tenant's rows; every row here is this tenant's.
+_TENANT = "a8a6827a-48b1-42e2-886c-41c4f0243946"
 
 _DDL = """
 CREATE TABLE delegation_events (
@@ -39,7 +41,8 @@ CREATE TABLE delegation_events (
     tokens_input     INTEGER NOT NULL DEFAULT 0,
     tokens_output    INTEGER NOT NULL DEFAULT 0,
     cost_usd         REAL,
-    cost_savings_usd REAL NOT NULL DEFAULT 0.0
+    cost_savings_usd REAL NOT NULL DEFAULT 0.0,
+    tenant_id        TEXT NOT NULL DEFAULT 'a8a6827a-48b1-42e2-886c-41c4f0243946'
 )
 """
 
@@ -135,7 +138,10 @@ class TestMixedTypeTimestamps:
     def test_the_window_excludes_an_old_text_row(self, db: Path) -> None:
         """A numeric SQL window matches every TEXT row; this one must not."""
         records = read_metering_records(
-            db_path=db, window_start=_NOW - timedelta(days=7), window_end=_NOW
+            tenant_id=_TENANT,
+            db_path=db,
+            window_start=_NOW - timedelta(days=7),
+            window_end=_NOW,
         )
         ids = {r.correlation_id for r in records}
         assert "stale-text" not in ids
@@ -144,15 +150,18 @@ class TestMixedTypeTimestamps:
     def test_the_window_includes_a_recent_real_row(self, db: Path) -> None:
         """Repairing the SQL to compare ISO strings would drop this one."""
         records = read_metering_records(
-            db_path=db, window_start=_NOW - timedelta(days=7), window_end=_NOW
+            tenant_id=_TENANT,
+            db_path=db,
+            window_start=_NOW - timedelta(days=7),
+            window_end=_NOW,
         )
         assert "fresh-real" in {r.correlation_id for r in records}
 
     def test_an_unbounded_read_returns_every_row(self, db: Path) -> None:
-        assert len(read_metering_records(db_path=db)) == 4
+        assert len(read_metering_records(tenant_id=_TENANT, db_path=db)) == 4
 
     def test_records_come_back_in_time_order(self, db: Path) -> None:
-        records = read_metering_records(db_path=db)
+        records = read_metering_records(tenant_id=_TENANT, db_path=db)
         assert [r.correlation_id for r in records] == [
             "stale-text",
             "unmeasured",
@@ -167,7 +176,7 @@ class TestUnknownsSurviveTheRead:
     def test_both_token_counts_zero_reads_as_unrecorded(self, db: Path) -> None:
         record = next(
             r
-            for r in read_metering_records(db_path=db)
+            for r in read_metering_records(tenant_id=_TENANT, db_path=db)
             if r.correlation_id == "unmeasured"
         )
         assert record.tokens_in is None
@@ -178,7 +187,7 @@ class TestUnknownsSurviveTheRead:
     def test_a_null_cost_reads_as_none_not_zero(self, db: Path) -> None:
         record = next(
             r
-            for r in read_metering_records(db_path=db)
+            for r in read_metering_records(tenant_id=_TENANT, db_path=db)
             if r.correlation_id == "unmeasured"
         )
         assert record.spend_usd is None
@@ -186,7 +195,7 @@ class TestUnknownsSurviveTheRead:
     def test_a_recorded_zero_cost_reads_as_zero(self, db: Path) -> None:
         record = next(
             r
-            for r in read_metering_records(db_path=db)
+            for r in read_metering_records(tenant_id=_TENANT, db_path=db)
             if r.correlation_id == "fresh-text"
         )
         assert record.spend_usd == Decimal("0")
@@ -195,7 +204,7 @@ class TestUnknownsSurviveTheRead:
     def test_money_is_exact_decimal_not_float(self, db: Path) -> None:
         record = next(
             r
-            for r in read_metering_records(db_path=db)
+            for r in read_metering_records(tenant_id=_TENANT, db_path=db)
             if r.correlation_id == "fresh-real"
         )
         assert record.spend_usd == Decimal("0.001")
@@ -207,13 +216,13 @@ class TestUnavailableStoreIsNotAnEmptyOne:
 
     def test_a_missing_database_refuses(self, tmp_path: Path) -> None:
         with pytest.raises(MeteringRecordsUnavailableError, match="no local"):
-            read_metering_records(db_path=tmp_path / "absent.sqlite")
+            read_metering_records(tenant_id=_TENANT, db_path=tmp_path / "absent.sqlite")
 
     def test_a_database_without_the_table_refuses(self, tmp_path: Path) -> None:
         path = tmp_path / "empty.sqlite"
         sqlite3.connect(path).close()
         with pytest.raises(MeteringRecordsUnavailableError, match="delegation_events"):
-            read_metering_records(db_path=path)
+            read_metering_records(tenant_id=_TENANT, db_path=path)
 
     def test_an_empty_table_is_an_empty_tuple(self, tmp_path: Path) -> None:
         path = tmp_path / "fresh.sqlite"
@@ -221,13 +230,13 @@ class TestUnavailableStoreIsNotAnEmptyOne:
         conn.execute(_DDL)
         conn.commit()
         conn.close()
-        assert read_metering_records(db_path=path) == ()
+        assert read_metering_records(tenant_id=_TENANT, db_path=path) == ()
 
 
 class TestReadIsReadOnly:
     def test_the_reader_cannot_write_to_the_evidence_store(self, db: Path) -> None:
         before = db.read_bytes()
-        read_metering_records(db_path=db)
+        read_metering_records(tenant_id=_TENANT, db_path=db)
         assert db.read_bytes() == before
 
     def test_the_default_path_matches_the_writer(self) -> None:

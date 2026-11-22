@@ -74,7 +74,10 @@ def refresh_metering_summary(
 ) -> tuple[ModelMeteringSummaryRow, ...]:
     """Refresh every recorded day and all-time, plus explicitly requested days."""
     records = read_metering_records(
-        db_path=db_path, window_end=now, include_fixtures=include_fixtures
+        tenant_id=tenant_id,
+        db_path=db_path,
+        window_end=now,
+        include_fixtures=include_fixtures,
     )
     requested_days = days
     if days is not None:
@@ -235,7 +238,7 @@ def refresh_metering_after_terminal(
         model = baseline_model or resolve_metering_baseline_model().model
         baseline = resolve_baseline(model)
         version = current_pricing_manifest_version(model)
-        records = read_metering_records(db_path=db_path)
+        records = read_metering_records(tenant_id=tenant_id, db_path=db_path)
         newest = max([terminal_at, *(r.occurred_at for r in records)])
         as_of = newest.astimezone(UTC) + _AFTER_NEWEST_RUN
         stored = read_summary_row(db_path, tenant_id, "all", "", model)
