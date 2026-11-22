@@ -273,11 +273,12 @@ dod_evidence:
     none of the delivery-unit ownership, prerequisites or AC/TI report that the
     ticket's AC32 requires. The tests check that the preflight admits an os-release
     ID the setup contract lists (ubuntu) and refuses unlisted distributions, ID_LIKE
-    clones, other platforms and an unreadable /etc/os-release; that native Windows
+    clones, other platforms and an unreadable /etc/os-release; that Ubuntu on a
+    WSL 1 kernel is refused with the WSL 2 remedy while native Ubuntu and WSL 2
+    kernels are admitted; that native Windows
     gets the Ubuntu under WSL 2 remedy without reading the workspace or its disk,
     with Unix locking unavailable, and leaves the profile and workspace untouched;
-    and that the installed preflight succeeds on an Ubuntu host. The kernel release
-    is not read, so WSL 1 and WSL 2 are not told apart.
+    and that the installed preflight succeeds on an Ubuntu host.
   source: manual
   execution_scope: hosted_and_local
   checks:

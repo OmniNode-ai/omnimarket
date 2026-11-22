@@ -12,6 +12,7 @@ class ModelSetupMachineFacts(BaseModel):
     architecture: str
     macos_version: str
     linux_distribution: str | None = None
+    kernel_release: str | None = None
     cpus: int | None = Field(default=None, ge=1)
     ram_bytes: int | None = Field(default=None, ge=1)
     free_disk_bytes: int | None = Field(default=None, ge=0)

@@ -42,7 +42,9 @@ def collect_machine_facts(workspace: Path) -> ModelSetupMachineFacts:
             ancestor = ancestor.parent
         free_disk_bytes = shutil.disk_usage(ancestor).free
     linux_distribution = None
+    kernel_release = None
     if system == "Linux":
+        kernel_release = platform.release()
         # Keep unreadable facts unknown; the preflight boundary refuses them.
         with suppress(OSError, ValueError):
             # os-release(5) allows /usr/lib/os-release only when /etc/os-release
@@ -72,9 +74,20 @@ def collect_machine_facts(workspace: Path) -> ModelSetupMachineFacts:
         architecture=platform.machine(),
         macos_version=platform.mac_ver()[0],
         linux_distribution=linux_distribution,
+        kernel_release=kernel_release,
         free_disk_bytes=free_disk_bytes,
         rosetta=observations.get("rosetta"),
         virtual_machine=observations.get("virtual_machine"),
+    )
+
+
+def _wsl1_kernel(kernel_release: str | None) -> bool:
+    # WSL 1 reports a kernel release naming "Microsoft" (microsoft/WSL#423); the
+    # WSL 2 kernels carry a lowercase "-microsoft-standard" local version.
+    return (
+        kernel_release is not None
+        and "Microsoft" in kernel_release
+        and "WSL2" not in kernel_release
     )
 
 
@@ -112,6 +125,12 @@ class HandlerSetupPreflight:
                 if facts.linux_distribution not in supported_linux_distributions():
                     reasons.append(
                         "Run onboarding on Ubuntu Linux or macOS 14 or newer."
+                    )
+                if _wsl1_kernel(facts.kernel_release):
+                    reasons.append(
+                        "WSL 1 is not supported. Convert this distribution to"
+                        " WSL 2 (wsl --set-version <distribution> 2 in Windows)"
+                        " and run onex setup there."
                     )
             elif facts.platform == "Windows":
                 reasons.append(
