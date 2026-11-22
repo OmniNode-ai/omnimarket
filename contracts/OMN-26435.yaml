@@ -11,7 +11,7 @@ requirements:
     statement: A scheduled check raises an alarm when the work ledger holds a done event older than a set threshold with no matching done_items row.
     acceptance:
       - id: AC1
-        statement: 'AC1: a scheduled check raises an alarm when the work ledger holds a done event older than a set threshold with no matching done_items row -- falsifier: uv run --frozen pytest tests/test_omn26435_done_items_coverage_alarm.py tests/test_omn26435_done_items_coverage_reader.py -q -n 0 -p no:randomly --no-cov -k "done_items_alarm_fires_on_unprojected_done_event or classifier_states or test_reader_"; with the handler''s STALE publish suppressed, or an unprojected ticket classed covered, or the reader''s supply comparison flipped, the AC1 test fails'
+        statement: 'AC1: a scheduled check raises an alarm when the work ledger holds a done event older than a set threshold with no matching done_items row -- falsifier: uv run --frozen pytest tests/test_omn26435_done_items_coverage_alarm.py tests/test_omn26435_done_items_coverage_reader.py -q -n 0 -p no:randomly --no-cov -k "done_items_alarm_fires_on_unprojected_done_event or end_to_end_from_a_ledger_row or classifier_states or test_reader_"; with the handler''s STALE publish suppressed, or an unprojected ticket classed covered, or the reader''s supply comparison flipped, the AC1 test fails'
   - id: req-omn26435-quiet
     statement: The check stays quiet when the work ledger holds no new done events.
     acceptance:
@@ -38,7 +38,7 @@ dod_evidence:
       - AC1
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/test_omn26435_done_items_coverage_alarm.py tests/test_omn26435_done_items_coverage_reader.py -q -n 0 -p no:randomly --no-cov -k "done_items_alarm_fires_on_unprojected_done_event or classifier_states or test_reader_"
+        check_value: uv run --frozen pytest tests/test_omn26435_done_items_coverage_alarm.py tests/test_omn26435_done_items_coverage_reader.py -q -n 0 -p no:randomly --no-cov -k "done_items_alarm_fires_on_unprojected_done_event or end_to_end_from_a_ledger_row or classifier_states or test_reader_"
         cwd: .
   - id: dod-omn26435-ac2
     description: AC2 is the quiet cases.
