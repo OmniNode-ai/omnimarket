@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import fcntl
 import os
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,8 +16,21 @@ from omnimarket.models.ilo_redfish.model_ilo_redfish_result import (
     ModelIloApproval,
     ModelIloJournalRecord,
 )
+from omnimarket.nodes.node_work_ledger_reader_effect.adapters.rows_read import (
+    LedgerRowsUnreadableError,
+    read_row_at,
+)
 
 _DEFAULT_APPROVER = "operator"
+CONSENT_READER = "ilo-consent"
+CONSENT_KIND = "OPERATOR-CONSENT"
+
+RowAtReader = Callable[[datetime, str], tuple[str, ...]]
+
+
+def read_consent_row_at(at: datetime, kind: str) -> tuple[str, ...]:
+    """The moved ledger reader's point read: every row stamped ``at`` of ``kind``, at any age."""
+    return read_row_at(CONSENT_READER, at, kind)
 
 
 class FileActionJournal:
@@ -93,14 +107,14 @@ class LedgerApprovalSource:
             with self._path.open("r", encoding="utf-8", errors="replace") as handle:
                 for line in handle:
                     if line.startswith(prefix):
-                        return self._parse(ref, line.rstrip("\n"))
+                        return self.parse(ref, line.rstrip("\n"))
         except OSError:
             # An unreadable ledger is no approval: the caller refuses the write.
             return None
         return None
 
     @staticmethod
-    def _parse(ref: str, line: str) -> ModelIloApproval | None:
+    def parse(ref: str, line: str) -> ModelIloApproval | None:
         cells = [cell.strip() for cell in line.split(" | ")]
         lane: str | None = None
         approved_by = _DEFAULT_APPROVER
@@ -131,8 +145,41 @@ class LedgerApprovalSource:
         )
 
 
+class ReaderApprovalSource:
+    """Reads an OPERATOR-CONSENT row by its timestamp through the moved ledger reader's point read.
+
+    The lookup is fail-closed: an unreadable answer (the reader is not moved, the node did not
+    answer, the answer is stale), an absent row and an ambiguous answer (more than one consent row
+    at that instant) all answer no approval, so the caller refuses the write. The approval's age is
+    judged by the handler, not here. The row shape is the one :class:`LedgerApprovalSource` parses.
+    """
+
+    def __init__(self, row_at: RowAtReader = read_consent_row_at) -> None:
+        self._row_at = row_at
+
+    def find(self, ref: str) -> ModelIloApproval | None:
+        try:
+            at = datetime.strptime(ref, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        except ValueError:
+            return None
+        try:
+            rows = self._row_at(at, CONSENT_KIND)
+        except LedgerRowsUnreadableError:
+            return None
+        prefix = f"{ref} | {CONSENT_KIND} | "
+        matching = [row for row in rows if row.startswith(prefix)]
+        if len(matching) != 1:
+            return None
+        return LedgerApprovalSource.parse(ref, matching[0].rstrip("\n"))
+
+
 __all__ = [
+    "CONSENT_KIND",
+    "CONSENT_READER",
     "FileActionJournal",
     "JournalUnreadableError",
     "LedgerApprovalSource",
+    "ReaderApprovalSource",
+    "RowAtReader",
+    "read_consent_row_at",
 ]

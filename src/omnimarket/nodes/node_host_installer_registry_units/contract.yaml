@@ -695,10 +695,12 @@ units:
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
     evidence_file: .local/state/omni/c32-auth-boundary-probe/last-run.json
     state_directory: .onex_state/c32-auth-boundary-probe
-  # The overlay store's loader on a Linux pool host (OMN-23353): once an hour it loads the overlays the loader's overlay
-  # names from this host's clone of the overlay home, and only while that clone is at the head of the branch the overlay
+  # The overlay store's loader on a Linux pool host (OMN-23353): every 300 s it checks this host's clone of the overlay home,
+  # and loads the overlays the loader's overlay names when the clone's main has moved past the revision of the last load
+  # (and once an hour to assert an unchanged overlay), and only while that clone is at the head of the branch the overlay
   # names (main), so the store is never filled from a side branch. The overlay root is that clone itself. This replaces
-  # a hand-started transient timer that loaded a stale branch.
+  # a hand-started transient timer that loaded a stale branch. At one run an hour a merged change waited up to an hour for
+  # the store (OMN-26432); the tick publishes only on a move, so the shorter interval adds no record to the topic.
   overlay-store-load-systemd:
     platform: systemd
     kind: registry_module_tick
@@ -706,10 +708,10 @@ units:
     template: templates/onex-registry-module-tick.service.tmpl
     timer_template: templates/onex-registry-module-tick.timer.tmpl
     schedule:
-      start_interval: 3600
+      start_interval: 300
       run_timeout_s: 120
       run_at_load: true
-      description: every 3600 s and at load
+      description: every 300 s and at load
     registry_project: omnimarket
     tick_no_sync: true
     interpreter_candidates:
@@ -2227,26 +2229,29 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/consumer-group-guard/last-run.json
     state_directory: .onex_state/consumer-group-guard
-  # The lab fill on the operator Mac (OMN-24419; node_lab_fill_effect's runtime_lab_fill_tick): every 1200 s one pass reads the lane host pool
-  # snapshot (the free slots per host), selects on the bus ledger reader's rows and runs the whole tick with no model in the loop. It takes the
-  # label of the morning workflow's lab-fill job it replaces (that job ran the retired lab-fill.js; its calendar minutes 10, 30 and 50 were every
-  # 20 minutes). The overlay (node_lab_fill_effect in the overlays repository) names every path, bound, repository list and the pool snapshot's
-  # age bound; the reader overlay names lab-fill-selection. This unit holds none of it.
-  lab-fill-tick:
-    platform: launchd
+  # The lab fill on a Linux pool host (node_lab_fill_effect's runtime_lab_fill_tick): every 1200 s one pass reads the lane host pool
+  # snapshot (the free slots per host), reads the fill's work live in goal order (the work sources the overlay declares), selects on the bus
+  # ledger reader's rows and runs the whole tick with no model in the loop; its lanes are placed through the remote-lane runner over the bus,
+  # never by ssh. It moved from the operator Mac's launchd job (label ai.omninode.lab-fill, OMN-24419), which could not read the lab's state: the
+  # Mac entry is gone from this contract. One run is bounded by run_timeout_s 1020, the old job's bound. The overlay (node_lab_fill_effect in
+  # the overlays repository) names every path, bound, repository list and the pool snapshot's age bound; the reader overlay names
+  # lab-fill-selection. This unit holds none of it.
+  lab-fill-tick-systemd:
+    platform: systemd
     kind: registry_module_tick
-    label: ai.omninode.lab-fill
-    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    label: onex-filler-tick
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
     schedule:
       start_interval: 1200
+      run_timeout_s: 1020
       run_at_load: true
       description: every 1200 s and at load
     registry_project: omnimarket
-    # The old job's bound for one fire was 1020 s; a pass that outlives it is ended with its process group and exits 124 (run_timeout_s, OMN-22881).
-    run_timeout_s: 1020
     tick_no_sync: true
     interpreter_candidates:
-      - /opt/homebrew/bin/python3.13
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
       - /usr/local/bin/python3.13
     module: omnimarket.nodes.node_lab_fill_effect.runtime_lab_fill_tick
     entry_file: src/omnimarket/nodes/node_lab_fill_effect/runtime_lab_fill_tick.py
@@ -2259,11 +2264,13 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      # The overlays canonical clone first (the unit's overlays and the selection and reader overlays live there), then the plugin's overlays.
-      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      # The overlays canonical clone (the unit's overlay and the selection and reader overlays live there).
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
       OMNIBASE_PATH: "{registry_root}"
       # The tick launches lanes through the remote-lane runner and the onex command line by name: the registry's launcher directory leads the search path.
-      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      # The select step reads the rolling ledger's rows over the bus, never from the ledger file: the reader overlay's read names this variable.
+      ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/.onex-dispatch-venv/bin/onex ledger query --stdin"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/lab-fill-tick/last-run.json

@@ -90,7 +90,6 @@ def _run(
 ) -> ModelMergedRunningCountRunResult:
     tmp_path.mkdir(parents=True, exist_ok=True)
     (tmp_path / "state.json").write_text(json.dumps(WATCHER))
-    (tmp_path / "ledger.md").write_text(ledger + "\n")
     placement_file = tmp_path / "hosts.json"
     if placement is not None:
         placement_file.write_text(json.dumps(placement))
@@ -103,7 +102,7 @@ def _run(
     )
     sources = SourceLocalFiles(
         watcher_state=tmp_path / "state.json",
-        ledger=tmp_path / "ledger.md",
+        ledger_rows=lambda: ledger.splitlines(),
         labels=LABELS,
         hosts=lambda: hosts_result(HOST_TABLE),
         placement_read=placement_file,
@@ -225,10 +224,9 @@ def test_idle_host_with_no_cap_and_no_advertisement_reads_unread_not_zero(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "state.json").write_text(json.dumps(WATCHER))
-    (tmp_path / "ledger.md").write_text(LEDGER + "\n")
     sources = SourceLocalFiles(
         watcher_state=tmp_path / "state.json",
-        ledger=tmp_path / "ledger.md",
+        ledger_rows=lambda: LEDGER.splitlines(),
         labels=LABELS,
         hosts=lambda: hosts_result({"hosts": [{"name": "h900"}]}),
         placement_read=tmp_path / "none.json",
