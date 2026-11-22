@@ -209,3 +209,18 @@ def test_orchestrator_named_as_parent_only_by_closed_claims_is_not_live() -> Non
     result = _fire(ports)
     assert result.alarms[0].orchestrator is None
     assert _msgs(ports) == []
+
+
+def test_contract_declares_the_completed_terminal_event_topic() -> None:
+    from pathlib import Path
+
+    import yaml
+
+    import omnimarket.nodes.node_failure_alarm_router_effect as node_pkg
+
+    contract = yaml.safe_load(
+        (Path(node_pkg.__file__).parent / "contract.yaml").read_text()
+    )
+    topic = "onex.evt.omnimarket.failure-alarm-router-completed.v1"
+    assert contract["terminal_event"] == topic
+    assert topic in contract["event_bus"]["publish_topics"]

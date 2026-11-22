@@ -74,7 +74,7 @@ class SelfCheckFailedError(RuntimeError):
     """A synthetic failure row did not reach both destinations."""
 
 
-class RouterPorts(Protocol):
+class FailureAlarmPorts(Protocol):
     def read_rows(self) -> list[str]: ...
     def read_ticks(self) -> list[str] | None:
         """The controller's tick lines, or None when no ticks source is configured."""
@@ -190,7 +190,7 @@ class _MemoryPorts:
 
 
 def _deliver_message(
-    ports: RouterPorts, request_id: str, rows: list[str], push_text: str
+    ports: FailureAlarmPorts, request_id: str, rows: list[str], push_text: str
 ) -> None:
     """Push first, then write the rows: a failed push leaves no row, so the next fire retries it."""
     ports.push(push_text)
@@ -266,7 +266,7 @@ def _parse_rows(lines: list[str]) -> list[Row]:
 class HandlerFailureAlarmRouter:
     """Read the failure classes and deliver one alarm per cause to the orchestrator inbox and the push channel."""
 
-    def __init__(self, *, ports: RouterPorts | None = None) -> None:
+    def __init__(self, *, ports: FailureAlarmPorts | None = None) -> None:
         self._ports = ports
         self._refusals_pushed: set[str] = set()
 
@@ -305,7 +305,7 @@ class HandlerFailureAlarmRouter:
             raise
         return result.model_copy(update={"self_check_passed": True})
 
-    def _push_refusal_once(self, ports: RouterPorts, message: str) -> None:
+    def _push_refusal_once(self, ports: FailureAlarmPorts, message: str) -> None:
         if message in self._refusals_pushed:
             return
         self._refusals_pushed.add(message)
@@ -316,7 +316,7 @@ class HandlerFailureAlarmRouter:
             ports.push(f"ALARM failure alarm router refused to read: {message}")
 
     def _evaluate(
-        self, ports: RouterPorts, request: ModelFailureAlarmRequest, now: datetime
+        self, ports: FailureAlarmPorts, request: ModelFailureAlarmRequest, now: datetime
     ) -> ModelFailureAlarmResult:
         rows = _parse_rows(ports.read_rows())
         tick_lines = ports.read_ticks()
