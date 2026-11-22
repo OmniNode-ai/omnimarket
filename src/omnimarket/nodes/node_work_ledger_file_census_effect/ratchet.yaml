@@ -21,14 +21,8 @@ files:
     src/omnimarket/handlers/ledger_row_grammar.py: 1
     src/omnimarket/nodes/node_branch_claim_check_effect/contract.yaml: 1
     src/omnimarket/nodes/node_compaction_cost_compute/data/recovery_call_patterns.yaml: 2
-    src/omnimarket/nodes/node_floor_simple_effect/contract.yaml: 1
     src/omnimarket/nodes/node_friction_rollup_compute/tests/fixtures/recorded_day_unit_output.json: 3
-    src/omnimarket/nodes/node_friction_rollup_tick_effect/runtime_friction_rollup_tick.py: 1
-    src/omnimarket/nodes/node_handoff_check_effect/contract.yaml: 2
-    src/omnimarket/nodes/node_handoff_check_effect/handlers/facts.py: 1
-    src/omnimarket/nodes/node_handoff_check_effect/handlers/handler_handoff_check.py: 2
-    src/omnimarket/nodes/node_handoff_check_effect/runtime_handoff_check_cli.py: 1
-    src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml: 8
+    src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml: 5
     src/omnimarket/nodes/node_host_installer_registry_units/handlers/handler_registry_units.py: 3
     src/omnimarket/nodes/node_host_reading_effect/overlay.example.yaml: 4
     src/omnimarket/nodes/node_host_reconcile_effect/__main__.py: 1
@@ -158,4 +152,4 @@ files:
     tests/unit/validators/test_ledger_file_census.py: 27
     tests/unit/work_ledger_bus/test_work_ledger_append_cli.py: 1
 ratchet:
-  omnimarket: 152
+  omnimarket: 146

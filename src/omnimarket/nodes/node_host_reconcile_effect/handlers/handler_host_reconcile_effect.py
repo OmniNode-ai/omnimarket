@@ -172,8 +172,8 @@ class HandlerHostReconcileEffect:
         receipt = reconcile.receipt_path()
         notes: list[str] = []
         failed = append_friction(
-            ledger=command.ledger,
             append_command=command.ledger_append_command,
+            host=result.host,
             row=failure_friction_row(
                 at=datetime.now(UTC),
                 host=result.host,

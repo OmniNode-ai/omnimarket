@@ -12,7 +12,7 @@ description: >
   Every factual line carries its source and read time, and a read older than its
   declared age is marked STALE. Three commands: assemble, resume (re-probe the stale
   lines of the newest committed handoff) and record-slice (record a scrubbed ledger
-  slice as a test fixture). Reads the ledger, its archive rolls, the PR watcher state
+  slice as a test fixture). Reads the ledger through the bus reader node (a 720 hour rows window), the PR watcher state
   and the committed handoffs of the shared document clone; writes only under the
   out_dir it is given.
 
@@ -31,7 +31,7 @@ handler_routing:
 
 descriptor:
   node_archetype: effect
-  purity: effectful  # reads the ledger, its archive rolls, the PR watcher state and committed handoffs; probes services; writes only under out_dir
+  purity: effectful  # reads the ledger through the bus reader node, the PR watcher state and committed handoffs; probes services; writes only under out_dir
   idempotent: true
   timeout_ms: 120000
   runtime_profiles:
@@ -42,13 +42,6 @@ inputs:
     type: str
     enum: [assemble, resume, record-slice]
     required: true
-  ledger:
-    type: str
-    required: false
-    description: "Rolling work ledger path; ONEX_LEDGER_PATH when absent, no default"
-  archive_dir:
-    type: str
-    required: false
   now:
     type: str
     required: false
@@ -172,10 +165,6 @@ handoff_check:
   # An unset variable is recorded as unconfigured. Unhealthy and unconfigured are recorded,
   # never refused.
   probes:
-    - name: ledger
-      kind: file_age
-      env: ONEX_LEDGER_PATH
-      max_age_seconds: 3600
     - name: pr-watcher-state
       kind: file_age
       env: ONEX_PR_WATCHER_STATE
