@@ -10,8 +10,10 @@ cannot be read from it. The door builds its producer from the same lane-binding 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib
-from collections.abc import Callable, Mapping
+import os
+from collections.abc import Callable, Iterator, Mapping
 from typing import Protocol
 
 from pydantic import SecretStr
@@ -26,6 +28,7 @@ from omnimarket.nodes.node_gateway_batch_ingest_effect.overlay import (
 )
 
 _SASL_ENVIRONMENT = ("KAFKA_SASL_USERNAME", "KAFKA_SASL_PASSWORD")
+_CONFIG_ROOT_ENV = "ONEX_WORKSPACE_CONFIG_ROOT"
 
 
 class ProtocolProducer(Protocol):
@@ -44,6 +47,24 @@ class ProtocolProducer(Protocol):
     def poll(self, timeout: float) -> int: ...
 
     def flush(self, timeout: float) -> int: ...
+
+
+@contextlib.contextmanager
+def _config_root_declared(root: str | None) -> Iterator[None]:
+    """Name the overlay's mounted config root for the lane resolver while the lane binds.
+
+    The dev runtime mounts the lane declaration but exports no ONEX_WORKSPACE_CONFIG_ROOT, so the resolver found
+    no config/lab/ci_bus_lanes.yaml and the lifespan failed. A root the environment already names wins; the
+    variable is put back as it was once the lane is bound, because only the bind reads it.
+    """
+    if root is None or os.environ.get(_CONFIG_ROOT_ENV, "").strip():
+        yield
+        return
+    os.environ[_CONFIG_ROOT_ENV] = root
+    try:
+        yield
+    finally:
+        os.environ.pop(_CONFIG_ROOT_ENV, None)
 
 
 def broker_for_lane(lane: str, environ: Mapping[str, str]) -> ModelNodeBroker:
@@ -116,7 +137,10 @@ class KafkaConfirmingPublisher:
         *,
         broker: ModelNodeBroker | None = None,
     ) -> KafkaConfirmingPublisher:
-        resolved = broker or broker_for_lane(overlay.kafka.lane, environ)
+        if broker is None:
+            with _config_root_declared(overlay.kafka.workspace_config_root):
+                broker = broker_for_lane(overlay.kafka.lane, environ)
+        resolved = broker
         producer_cls = importlib.import_module("confluent_kafka").Producer
         return cls(
             producer_cls(producer_config(resolved, overlay)),
