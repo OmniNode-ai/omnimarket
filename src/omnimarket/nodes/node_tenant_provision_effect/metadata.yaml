@@ -1,0 +1,29 @@
+name: node_tenant_provision_effect
+version: 1.0.0
+description: Creates one ownerless tenant, its default plan and one TENANT_CREATED outbox envelope from a bus command, and reads a tenant by id or slug; every refusal is a typed outcome on the completed topic.
+pack: data
+node_role: effect
+display_name: Tenant Provision Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_tenant_provision_effect: omnimarket.nodes.node_tenant_provision_effect
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- asyncpg>=0.30.0
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- tenant
+- identity
