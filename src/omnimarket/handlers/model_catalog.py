@@ -220,6 +220,24 @@ def pricing_models_dev_index() -> ModelsDevIndex:
     return shipped_pricing_index()
 
 
+def historical_models_dev_index() -> ModelsDevIndex:
+    """models.dev as a stored run is priced from (OMN-23413 AC35), or the empty index.
+
+    Read live: the cache under the ONEX home while younger than its configured
+    age, else refetched. A copy older than that age (a failed refetch keeps it,
+    marked stale) is never used, and neither is the price list committed with
+    the install, so a run models.dev cannot be read for stays unpriced. Tests
+    replace this function unless they serve their own copy.
+    """
+    try:
+        index = load_models_dev(_onex_home())
+    except Exception:  # Any failure reading optional metadata: price unknown.
+        return EMPTY_INDEX
+    if index.fetched_at is None or index.stale:
+        return EMPTY_INDEX
+    return index
+
+
 def _pricing_index() -> ModelsDevIndex:
     """The index a call may price from, or the empty index.
 
@@ -294,10 +312,17 @@ def models_dev_price_per_1m(
     provider has no models.dev id, models.dev does not list the model, or the
     entry states no input or output price.
     """
+    return models_dev_index_price_per_1m(_pricing_index(), provider, model_id)
+
+
+def models_dev_index_price_per_1m(
+    index: ModelsDevIndex, provider: str, model_id: str
+) -> tuple[Decimal, Decimal] | None:
+    """``(input, output)`` USD per 1M tokens as ``index`` lists the model, or None."""
     md_provider = catalog_config()["provider_ids"].get(provider)
     if not md_provider:
         return None
-    metadata = _pricing_index().models.get((str(md_provider), model_id))
+    metadata = index.models.get((str(md_provider), model_id))
     cost = metadata.get("cost") if metadata else None
     if not isinstance(cost, dict):
         return None

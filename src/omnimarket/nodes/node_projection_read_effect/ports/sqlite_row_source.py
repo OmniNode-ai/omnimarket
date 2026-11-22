@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from omnimarket.models.priced_spend import historical_unpriced_zero
+from omnimarket.models.priced_spend import historical_unpriced_zero_reader
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.table_reader import (
     RETAINED_WINDOW_FACTOR,
@@ -304,7 +304,7 @@ class SqliteTableRowSource:
             conn.create_function(
                 "onex_historical_unpriced_zero",
                 9,
-                historical_unpriced_zero,
+                historical_unpriced_zero_reader(),
                 deterministic=True,
             )
             query = build_sqlite_window_query(

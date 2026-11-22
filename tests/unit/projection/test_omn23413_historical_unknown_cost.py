@@ -12,7 +12,9 @@ pricing manifest declares (zero included). A zero with none of those is unknown.
 
 import asyncio
 import json
+import os
 import sqlite3
+import time
 from pathlib import Path
 
 import pytest
@@ -466,4 +468,98 @@ def test_a_billed_unpriced_rejected_attempt_makes_the_whole_run_unknown(
         "billed-free": _FREE,
         "no-history": _FREE,
         "damaged-history": _FREE,
+    }
+
+
+@pytest.fixture
+def models_dev_home(tmp_path: Path) -> Path:
+    """The ONEX home a test's live models.dev read caches under (never the real one)."""
+    return tmp_path / "onex_home"
+
+
+def _models_dev(price: float) -> dict[str, object]:
+    # The shape of https://models.dev/api.json, reduced to the one model.
+    return {
+        "reflection": {
+            "models": {
+                "Beam-1.0-501B-A23B": {"cost": {"input": price, "output": price}}
+            }
+        }
+    }
+
+
+def test_a_historical_beam_row_is_priced_from_a_live_models_dev_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, models_dev_home: Path
+) -> None:
+    # Operator ruling 23413-G7 (2026-11-22; AC34 and AC35 stay as written):
+    # with no price from the provider, a run is priced from models.dev's price
+    # for that provider and model, read live into a copy never older than the
+    # configured age, never from the price list committed with the install
+    # (omnimarket#6497), which lists Beam at [0, 0] and is in play here.
+    from omnimarket.handlers import model_catalog
+
+    settings = model_catalog.catalog_config()["models_dev"]
+    max_age = float(settings["max_age_hours"])
+    monkeypatch.setattr(
+        model_catalog, "pricing_models_dev_index", model_catalog.shipped_pricing_index
+    )
+    beam = {"cost_tier_name": "cheap_cloud", "model_name": "Beam-1.0-501B-A23B"}
+    rows = {
+        "by-delegated-to": {**beam, "delegated_to": "byok-reflection"},
+        "by-backend-id": {
+            **beam,
+            "delegated_to": "Beam-1.0-501B-A23B",
+            "backend_id": "byok-reflection",
+        },
+    }
+
+    def scenario(
+        name: str,
+        document: dict[str, object] | None,
+        cached: dict[str, object] | None = None,
+        cache_age_hours: float = 0.0,
+    ) -> tuple[dict[str, tuple[object, object, object]], int]:
+        home = models_dev_home / name
+        monkeypatch.setattr(model_catalog, "_onex_home", lambda: home)
+        fetched: list[str] = []
+
+        def fetch(url: str, timeout: float) -> bytes:
+            fetched.append(url)
+            if document is None:
+                raise OSError("models.dev unreachable")
+            return json.dumps(document).encode("utf-8")
+
+        monkeypatch.setattr(model_catalog, "_fetch", fetch)
+        if cached is not None:
+            cache = home / str(settings["cache_file"])
+            cache.parent.mkdir(parents=True)
+            cache.write_text(json.dumps(cached), encoding="utf-8")
+            stamp = time.time() - cache_age_hours * 3600
+            os.utime(cache, (stamp, stamp))
+        store = tmp_path / name
+        store.mkdir()
+        return _served(store, rows), len(fetched)
+
+    free = {"by-delegated-to": _FREE, "by-backend-id": _FREE}
+    unknown = {"by-delegated-to": _UNKNOWN_SPEND, "by-backend-id": _UNKNOWN_SPEND}
+    # A served read runs two queries (the window, then its freshness), and
+    # models.dev is read at most once per query, never once per row: the first
+    # query's fetch leaves a fresh copy the second reuses, and a failing fetch
+    # is tried once in each.
+    assert {
+        "live": scenario("live", _models_dev(0)),
+        # A copy younger than the configured age is reused without a fetch.
+        "kept": scenario("kept", None, _models_dev(0), max_age - 1),
+        # An older copy whose refetch fails is not reused.
+        "expired": scenario("expired", None, _models_dev(0), max_age + 1),
+        # A positive price does not make a stored zero free.
+        "priced": scenario("priced", _models_dev(3)),
+        # Only the shipped price list: unknown.
+        "shipped-only": scenario("shipped-only", None),
+    } == {
+        "live": (free, 1),
+        "kept": (free, 0),
+        "expired": (unknown, 2),
+        "priced": (unknown, 1),
+        "shipped-only": (unknown, 2),
     }
