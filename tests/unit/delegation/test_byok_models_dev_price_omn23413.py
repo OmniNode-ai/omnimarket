@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import threading
 import time
 from collections.abc import Callable
@@ -246,6 +247,25 @@ def _call(
             timeout_seconds=timeout_seconds,
         )
     )
+
+
+def test_the_models_dev_read_lock_is_created_readable_by_its_owner_alone(
+    live_models_dev: _ModelsDevServer, tmp_path: Path
+) -> None:
+    """CodeQL py/overly-permissive-file: the lock must not be world readable.
+
+    Run under umask 0 so the mode the code asks for is the mode the file gets;
+    a 0o644 request would otherwise be masked down by the shell's umask.
+    """
+    live_models_dev.document = _models_dev_document(BEAM, (0, 0))
+    previous = os.umask(0)
+    try:
+        model_catalog.models_dev_price_with_read_time("reflection", BEAM)
+    finally:
+        os.umask(previous)
+    lock = model_catalog._read_lock_path(tmp_path)
+    assert lock.is_file(), "the read did not create its lock under the ONEX home"
+    assert stat.S_IMODE(lock.stat().st_mode) == 0o600
 
 
 def test_a_beam_call_reads_models_dev_live_and_records_it_as_the_price_source(
