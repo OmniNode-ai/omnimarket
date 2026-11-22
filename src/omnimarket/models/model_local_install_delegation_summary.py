@@ -109,4 +109,12 @@ DELEGATION_VIEW_REPLACE_STEPS: tuple[tuple[str, tuple[str, str], str], ...] = (
         ),
         "served the backends of each model's tokens-to-compliance row",
     ),
+    (
+        "omn25862_model_routing_one_unpriced_rule",
+        (
+            "projection_delegation_model_routing",
+            "sqlite/delegation_model_routing_view_v5.sql",
+        ),
+        "counted a tier model's unmeasured cost by the metering headline's rule",
+    ),
 )
