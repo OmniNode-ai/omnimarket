@@ -29,6 +29,10 @@ KINDS: dict[str, tuple[Callable[[], dict[str, object]], str]] = {
         lambda: record(TOPIC_B, b"v" * 2100),
         "record-exceeds-kafka-limit",
     ),
+    "envelope-id-invalid": (
+        lambda: {**record(), "envelope_id": " "},
+        "envelope-id-invalid",
+    ),
     "egress-client-stamp-header": (
         lambda: record(headers={"onex-tenant-id": "x"}),
         "egress-client-stamp-header",

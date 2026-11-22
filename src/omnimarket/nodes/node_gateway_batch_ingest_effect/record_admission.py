@@ -133,8 +133,11 @@ def validate_shape(
     event_id = raw.get("event_id")
     if not isinstance(event_id, str) or _EVENT_ID.fullmatch(event_id) is None:
         raise AdmissionRefusedError("event-id-invalid")
+    # The envelope id is a trace label only, and a forwarding client that has none omits it; a given one must be text.
     envelope_id = raw.get("envelope_id")
-    if not isinstance(envelope_id, str) or not envelope_id.strip():
+    if "envelope_id" in raw and (
+        not isinstance(envelope_id, str) or not envelope_id.strip()
+    ):
         raise AdmissionRefusedError("envelope-id-invalid")
     key = _decode_b64(raw_key) if raw_key is not None else None
     value = _decode_b64(raw_value)

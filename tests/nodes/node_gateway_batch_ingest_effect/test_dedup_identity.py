@@ -62,6 +62,14 @@ async def test_dedup_identity_wire_and_canonical_topic_forms_carry_one_id() -> N
     assert (await post(app, batch(canonical, wire))).status == 202
 
 
+async def test_dedup_identity_a_record_with_no_envelope_id_is_admitted() -> None:
+    bare = {k: v for k, v in record(value=b"v").items() if k != "envelope_id"}
+    app, publisher = make_app()
+    result = await post(app, batch(bare))
+    assert (result.status, result.body) == (202, {"published": 1})
+    assert [c.event_id for c in publisher.calls] == [bare["event_id"]]
+
+
 def test_dedup_identity_is_the_shared_contract_event_id_for_the_same_bytes() -> None:
     from omnibase_core.models.contracts.model_ingest_contract import compute_event_id
 
