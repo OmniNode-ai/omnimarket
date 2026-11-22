@@ -165,12 +165,9 @@ class HandlerProjectionFreshnessAlert:
                 unprojected_tickets=coverage.unprojected_tickets
                 if coverage is not None
                 else None,
+                refused_rows=(coverage.refused_rows if coverage is not None else None),
                 error=error,
             )
-            if coverage is not None and coverage_verdict.error is None:
-                coverage_verdict = coverage_verdict.model_copy(
-                    update={"refused_rows": coverage.refused_rows}
-                )
             coverage_verdicts.append(coverage_verdict)
             if coverage_verdict.state is EnumFreshnessState.UNKNOWN:
                 logger.error(

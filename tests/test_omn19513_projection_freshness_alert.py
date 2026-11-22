@@ -426,6 +426,7 @@ def test_no_threshold_literal_lives_in_python() -> None:
         "max_age_seconds",
         "window_seconds",
         "min_distinct",
+        "lookback_seconds",
     }
     offenders: list[str] = []
     for path in NODE_ROOT.rglob("*.py"):

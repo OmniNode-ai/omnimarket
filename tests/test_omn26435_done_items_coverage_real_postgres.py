@@ -28,7 +28,9 @@ from omnimarket.nodes.node_projection_freshness_alert_effect.handlers.freshness_
     PostgresFreshnessReader,
 )
 from omnimarket.nodes.node_projection_freshness_alert_effect.models import (
+    EnumFreshnessState,
     ModelCoverageCheck,
+    ModelCoverageObservation,
 )
 
 _SCHEMA = "omn26435_coverage_read_test"
@@ -129,7 +131,7 @@ def _seed_done_item(dsn: str, *, ticket: str, done_row_id: str, age: int) -> Non
     conn.close()
 
 
-def _read_coverage(dsn: str) -> dict:
+def _read_coverage(dsn: str) -> ModelCoverageObservation:
     reader = PostgresFreshnessReader(dsn=dsn, now=lambda: _NOW)
     try:
         return reader.read_coverage(_CHECK)
@@ -137,14 +139,13 @@ def _read_coverage(dsn: str) -> dict:
         reader.close()
 
 
-def _classify(dsn: str) -> str:
+def _classify(dsn: str) -> EnumFreshnessState:
     observation = _read_coverage(dsn)
     return classify_done_items_coverage(
         check_id=_CHECK.check_id,
-        now=_NOW,
-        demand_done_tickets=observation["demand_done_tickets"],
-        unprojected_tickets=observation["unprojected_tickets"],
-        max_age_seconds=_CHECK.max_age_seconds,
+        demand_done_tickets=observation.demand_done_tickets,
+        unprojected_tickets=observation.unprojected_tickets,
+        refused_rows=observation.refused_rows,
     ).state
 
 
@@ -152,9 +153,9 @@ def _classify(dsn: str) -> str:
 def test_unprojected_old_done_event_reads_back_stale(scratch_dsn: str) -> None:
     _seed_ledger_row(scratch_dsn, ticket="OMN-1", outcome="done", age=3600)
     observation = _read_coverage(scratch_dsn)
-    assert observation["demand_done_tickets"] == 1
-    assert observation["unprojected_tickets"] == 1
-    assert _classify(scratch_dsn) == "STALE"
+    assert observation.demand_done_tickets == 1
+    assert observation.unprojected_tickets == 1
+    assert _classify(scratch_dsn) is EnumFreshnessState.STALE
 
 
 @pytest.mark.integration
@@ -162,27 +163,27 @@ def test_projected_done_event_reads_back_fresh(scratch_dsn: str) -> None:
     rid = _seed_ledger_row(scratch_dsn, ticket="OMN-1", outcome="done", age=3600)
     _seed_done_item(scratch_dsn, ticket="OMN-1", done_row_id=rid, age=3600)
     observation = _read_coverage(scratch_dsn)
-    assert observation["demand_done_tickets"] == 1
-    assert observation["unprojected_tickets"] == 0
-    assert _classify(scratch_dsn) == "FRESH"
+    assert observation.demand_done_tickets == 1
+    assert observation.unprojected_tickets == 0
+    assert _classify(scratch_dsn) is EnumFreshnessState.FRESH
 
 
 @pytest.mark.integration
 def test_handed_off_only_reads_back_idle(scratch_dsn: str) -> None:
     _seed_ledger_row(scratch_dsn, ticket="OMN-1", outcome="handed-off", age=3600)
     observation = _read_coverage(scratch_dsn)
-    assert observation["demand_done_tickets"] == 0
-    assert observation["unprojected_tickets"] == 0
-    assert _classify(scratch_dsn) == "IDLE"
+    assert observation.demand_done_tickets == 0
+    assert observation.unprojected_tickets == 0
+    assert _classify(scratch_dsn) is EnumFreshnessState.IDLE
 
 
 @pytest.mark.integration
 def test_recent_done_event_is_not_yet_demand(scratch_dsn: str) -> None:
     _seed_ledger_row(scratch_dsn, ticket="OMN-1", outcome="done", age=600)
     observation = _read_coverage(scratch_dsn)
-    assert observation["demand_done_tickets"] == 0
-    assert observation["unprojected_tickets"] == 0
-    assert _classify(scratch_dsn) == "IDLE"
+    assert observation.demand_done_tickets == 0
+    assert observation.unprojected_tickets == 0
+    assert _classify(scratch_dsn) is EnumFreshnessState.IDLE
 
 
 @pytest.mark.integration
@@ -191,6 +192,6 @@ def test_stale_supply_row_counts_as_unprojected(scratch_dsn: str) -> None:
     _seed_ledger_row(scratch_dsn, ticket="OMN-1", outcome="done", age=3600)
     _seed_done_item(scratch_dsn, ticket="OMN-1", done_row_id=rid_old, age=7200)
     observation = _read_coverage(scratch_dsn)
-    assert observation["demand_done_tickets"] == 1
-    assert observation["unprojected_tickets"] == 1
-    assert _classify(scratch_dsn) == "STALE"
+    assert observation.demand_done_tickets == 1
+    assert observation.unprojected_tickets == 1
+    assert _classify(scratch_dsn) is EnumFreshnessState.STALE

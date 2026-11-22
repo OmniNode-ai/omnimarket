@@ -7,8 +7,10 @@ from __future__ import annotations
 import importlib
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
+import yaml
 from pydantic import SecretStr
 
 from omnimarket.nodes.node_projection_freshness_alert_effect.handlers.classify_done_items_coverage import (
@@ -19,6 +21,7 @@ from omnimarket.nodes.node_projection_freshness_alert_effect.handlers.handler_pr
 )
 from omnimarket.nodes.node_projection_freshness_alert_effect.models import (
     EnumFreshnessState,
+    ModelCoverageCheck,
     ModelCoverageObservation,
     ModelFreshnessCheck,
     ModelFreshnessObservation,
@@ -50,13 +53,22 @@ class _Publisher:
 
 
 class _Reader:
-    def __init__(self, coverage: ModelCoverageObservation) -> None:
+    def __init__(
+        self,
+        coverage: ModelCoverageObservation,
+        error: Exception | None = None,
+    ) -> None:
         self._coverage = coverage
+        self._error = error
+        self.coverage_checks: list[ModelCoverageCheck] = []
 
     def read(self, check: ModelFreshnessCheck) -> ModelFreshnessObservation:
         return ModelFreshnessObservation(supply_newest_at=NOW, demand_distinct_active=0)
 
-    def read_coverage(self, check: ModelFreshnessCheck) -> ModelCoverageObservation:
+    def read_coverage(self, check: ModelCoverageCheck) -> ModelCoverageObservation:
+        self.coverage_checks.append(check)
+        if self._error is not None:
+            raise self._error
         return self._coverage
 
 
@@ -127,20 +139,115 @@ def test_done_items_alarm_quiet_without_done_events() -> None:
     assert matching == []
 
 
+def test_done_items_alarm_unknown_when_source_unreadable(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    coverage = ModelCoverageObservation(demand_done_tickets=1, unprojected_tickets=1)
+    reader = _Reader(coverage, error=OSError("dark source"))
+    publisher = _Publisher()
+    handler = HandlerProjectionFreshnessAlert(
+        reader=reader,
+        event_publisher=publisher,
+        clock=_Clock(),
+    )
+    trigger = ModelFreshnessTrigger(correlation_id=CORRELATION)
+    evaluation = handler.handle(trigger)
+
+    verdict = next(
+        v for v in evaluation.coverage_verdicts if v.check_id == "done_items_coverage"
+    )
+    assert verdict.state == EnumFreshnessState.UNKNOWN
+    assert "OSError" in (verdict.error or "")
+
+    matching = [
+        (topic, payload)
+        for topic, payload in publisher.calls
+        if b"done_items_coverage" in payload
+    ]
+    assert matching == []
+
+    error_records = [
+        r
+        for r in caplog.records
+        if r.levelname == "ERROR" and "Done-items coverage UNKNOWN" in r.getMessage()
+    ]
+    assert error_records, (
+        "expected an ERROR record mentioning 'Done-items coverage UNKNOWN'"
+    )
+
+
+def test_done_items_alarm_unknown_when_ledger_rows_refused() -> None:
+    coverage = ModelCoverageObservation(
+        demand_done_tickets=0,
+        unprojected_tickets=0,
+        refused_rows=3,
+    )
+    reader = _Reader(coverage)
+    publisher = _Publisher()
+    handler = HandlerProjectionFreshnessAlert(
+        reader=reader,
+        event_publisher=publisher,
+        clock=_Clock(),
+    )
+    trigger = ModelFreshnessTrigger(correlation_id=CORRELATION)
+    evaluation = handler.handle(trigger)
+
+    verdict = next(
+        v for v in evaluation.coverage_verdicts if v.check_id == "done_items_coverage"
+    )
+    assert verdict.state == EnumFreshnessState.UNKNOWN
+
+    matching = [
+        (topic, payload)
+        for topic, payload in publisher.calls
+        if b"done_items_coverage" in payload
+    ]
+    assert matching == []
+
+
+def test_done_items_coverage_thresholds_come_from_the_contract(tmp_path: Path) -> None:
+    contract_path = Path(HANDLER_MODULE.__file__).parent.parent / "contract.yaml"
+    contract = yaml.safe_load(contract_path.read_text())
+    contract["coverage_checks"][0]["max_age_seconds"] = 7200
+    contract["coverage_checks"][0]["lookback_seconds"] = 172800
+    written_path = tmp_path / "contract.yaml"
+    written_path.write_text(yaml.safe_dump(contract))
+
+    coverage = ModelCoverageObservation(demand_done_tickets=0, unprojected_tickets=0)
+    reader = _Reader(coverage)
+    publisher = _Publisher()
+    handler = HandlerProjectionFreshnessAlert(
+        reader=reader,
+        event_publisher=publisher,
+        clock=_Clock(),
+        contract_path=written_path,
+    )
+    trigger = ModelFreshnessTrigger(correlation_id=CORRELATION)
+    handler.handle(trigger)
+
+    assert len(reader.coverage_checks) == 1
+    check = reader.coverage_checks[0]
+    assert check.max_age_seconds == 7200
+    assert check.lookback_seconds == 172800
+
+
 @pytest.mark.parametrize(
-    ("demand", "unprojected", "error", "expected"),
+    ("demand", "unprojected", "refused_rows", "error", "expected"),
     [
-        (1, 1, None, EnumFreshnessState.STALE),
-        (3, 0, None, EnumFreshnessState.FRESH),
-        (0, 0, None, EnumFreshnessState.IDLE),
-        (None, 0, None, EnumFreshnessState.UNKNOWN),
-        (2, None, None, EnumFreshnessState.UNKNOWN),
-        (1, 1, "dark source", EnumFreshnessState.UNKNOWN),
+        (1, 1, 0, None, EnumFreshnessState.STALE),
+        (3, 0, 0, None, EnumFreshnessState.FRESH),
+        (0, 0, 0, None, EnumFreshnessState.IDLE),
+        (None, 0, 0, None, EnumFreshnessState.UNKNOWN),
+        (2, None, 0, None, EnumFreshnessState.UNKNOWN),
+        (1, 1, 0, "dark source", EnumFreshnessState.UNKNOWN),
+        (1, 0, 2, None, EnumFreshnessState.UNKNOWN),
+        (0, 0, 1, None, EnumFreshnessState.UNKNOWN),
     ],
 )
 def test_done_items_classifier_states(
     demand: int | None,
     unprojected: int | None,
+    refused_rows: int,
     error: str | None,
     expected: EnumFreshnessState,
 ) -> None:
@@ -148,6 +255,7 @@ def test_done_items_classifier_states(
         check_id="done_items_coverage",
         demand_done_tickets=demand,
         unprojected_tickets=unprojected,
+        refused_rows=refused_rows,
         error=error,
     )
     assert verdict.check_id == "done_items_coverage"

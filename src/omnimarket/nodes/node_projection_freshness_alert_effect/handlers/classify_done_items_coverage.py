@@ -17,6 +17,7 @@ def classify_done_items_coverage(
     check_id: str,
     demand_done_tickets: int | None,
     unprojected_tickets: int | None,
+    refused_rows: int | None = 0,
     error: str | None = None,
 ) -> ModelCoverageVerdict:
     """Classify the done-items coverage state from the supplied counts and error."""
@@ -65,12 +66,32 @@ def classify_done_items_coverage(
             error="unprojected_tickets is negative",
         )
 
+    if refused_rows is None or refused_rows < 0:
+        return ModelCoverageVerdict(
+            check_id=check_id,
+            state=EnumFreshnessState.UNKNOWN,
+            demand_done_tickets=None,
+            unprojected_tickets=None,
+            error="refused_rows is missing or negative",
+        )
+
+    if refused_rows > 0:
+        return ModelCoverageVerdict(
+            check_id=check_id,
+            state=EnumFreshnessState.UNKNOWN,
+            demand_done_tickets=demand_done_tickets,
+            unprojected_tickets=unprojected_tickets,
+            refused_rows=refused_rows,
+            error=f"{refused_rows} ledger rows could not be parsed, so coverage is unknown",
+        )
+
     if demand_done_tickets == 0:
         return ModelCoverageVerdict(
             check_id=check_id,
             state=EnumFreshnessState.IDLE,
             demand_done_tickets=demand_done_tickets,
             unprojected_tickets=unprojected_tickets,
+            refused_rows=refused_rows,
         )
 
     if unprojected_tickets > demand_done_tickets:
@@ -79,6 +100,7 @@ def classify_done_items_coverage(
             state=EnumFreshnessState.UNKNOWN,
             demand_done_tickets=demand_done_tickets,
             unprojected_tickets=unprojected_tickets,
+            refused_rows=refused_rows,
             error="unprojected_tickets exceeds demand_done_tickets",
         )
 
@@ -88,6 +110,7 @@ def classify_done_items_coverage(
             state=EnumFreshnessState.STALE,
             demand_done_tickets=demand_done_tickets,
             unprojected_tickets=unprojected_tickets,
+            refused_rows=refused_rows,
         )
 
     return ModelCoverageVerdict(
@@ -95,6 +118,7 @@ def classify_done_items_coverage(
         state=EnumFreshnessState.FRESH,
         demand_done_tickets=demand_done_tickets,
         unprojected_tickets=unprojected_tickets,
+        refused_rows=refused_rows,
     )
 
 
