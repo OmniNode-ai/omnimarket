@@ -59,8 +59,13 @@ def build_coverage_slack_command(
     correlation_id: UUID,
 ) -> ModelFreshnessSlackCommand:
     """Render unprojected done events as one plain mrkdwn message."""
+    refused_clause = (
+        f"; {verdict.refused_rows} ledger rows could not be parsed"
+        if verdict.refused_rows is not None and verdict.refused_rows > 0
+        else ""
+    )
     text = (
-        f":rotating_light: *UNPROJECTED DONE ITEMS* — {verdict.unprojected_tickets} of {verdict.demand_done_tickets} tickets with a done event in `{check.demand_relation}` older than {check.max_age_seconds / _SECONDS_PER_MINUTE:g} min have no matching row in `{check.supply_relation}` (lookback {check.lookback_seconds / _SECONDS_PER_MINUTE:g} min)\n"
+        f":rotating_light: *UNPROJECTED DONE ITEMS* — {verdict.unprojected_tickets} of {verdict.demand_done_tickets} tickets with a done event in `{check.demand_relation}` older than {check.max_age_seconds / _SECONDS_PER_MINUTE:g} min have no matching row in `{check.supply_relation}` (lookback {check.lookback_seconds / _SECONDS_PER_MINUTE:g} min){refused_clause}\n"
         f"correlation_id={correlation_id}"
     )
     return ModelFreshnessSlackCommand(

@@ -75,7 +75,7 @@ def classify_done_items_coverage(
             error="refused_rows is missing or negative",
         )
 
-    if refused_rows > 0:
+    if demand_done_tickets == 0 and refused_rows > 0:
         return ModelCoverageVerdict(
             check_id=check_id,
             state=EnumFreshnessState.UNKNOWN,
@@ -111,6 +111,16 @@ def classify_done_items_coverage(
             demand_done_tickets=demand_done_tickets,
             unprojected_tickets=unprojected_tickets,
             refused_rows=refused_rows,
+        )
+
+    if refused_rows > 0:
+        return ModelCoverageVerdict(
+            check_id=check_id,
+            state=EnumFreshnessState.UNKNOWN,
+            demand_done_tickets=demand_done_tickets,
+            unprojected_tickets=unprojected_tickets,
+            refused_rows=refused_rows,
+            error=f"{refused_rows} ledger rows could not be parsed, so coverage is unknown",
         )
 
     return ModelCoverageVerdict(

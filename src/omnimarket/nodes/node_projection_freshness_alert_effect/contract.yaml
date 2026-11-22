@@ -11,7 +11,7 @@ description: >
   through the canonical Slack publisher. A zero demand minimum keeps the hook
   alarm active when the runtime hosting both hook and work projections is down.
   Unreadable sources produce UNKNOWN findings on the terminal event and ERROR logs.
-  OMN-26435 adds a done-items coverage check: done events older than its threshold with no done_items row alert; refused ledger rows are UNKNOWN.
+  OMN-26435 adds a done-items coverage check: done events older than its threshold with no done_items row alert; refused ledger rows make an otherwise covered result UNKNOWN, never hide an alarm.
 
 handler:
   module: omnimarket.nodes.node_projection_freshness_alert_effect.handlers.handler_projection_freshness_alert
@@ -66,7 +66,8 @@ coverage_checks:
     # A done event older than this with no done_items row means the writer
     # stopped or refused it (OMN-26435). Thresholds live only here.
     max_age_seconds: 1800
-    # Must start after the writer's first lab deploy, or history alarms.
+    # A rolling window: for one lookback after the done-items writer first
+    # reaches a lane, done events from before it can alarm unless it backfills.
     lookback_seconds: 86400
 
 db_io:

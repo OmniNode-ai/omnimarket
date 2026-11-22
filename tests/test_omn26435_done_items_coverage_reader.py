@@ -23,8 +23,8 @@ CHECK = ModelCoverageCheck(
     check_id="done_items_coverage",
     demand_relation="omninode_internal.work_ledger_rows",
     supply_relation="omninode_internal.done_items",
-    max_age_seconds=1800,
-    lookback_seconds=86400,
+    max_age_seconds=1234,
+    lookback_seconds=5678,
 )
 
 
@@ -131,9 +131,9 @@ def test_reader_without_done_events_skips_the_supply_read():
     assert len(executed) == 1
 
 
-def test_reader_binds_the_window_from_the_contract():
+def test_reader_binds_the_window_from_the_check():
     _observation, executed = _read([], [])
     assert executed[0][1] == (
-        NOW - timedelta(seconds=1800),
-        NOW - timedelta(seconds=86400),
+        NOW - timedelta(seconds=1234),
+        NOW - timedelta(seconds=5678),
     )

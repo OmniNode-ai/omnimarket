@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import importlib
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -15,6 +15,9 @@ from pydantic import SecretStr
 
 from omnimarket.nodes.node_projection_freshness_alert_effect.handlers.classify_done_items_coverage import (
     classify_done_items_coverage,
+)
+from omnimarket.nodes.node_projection_freshness_alert_effect.handlers.freshness_reader import (
+    PostgresFreshnessReader,
 )
 from omnimarket.nodes.node_projection_freshness_alert_effect.handlers.handler_projection_freshness_alert import (
     HandlerProjectionFreshnessAlert,
@@ -70,6 +73,53 @@ class _Reader:
         if self._error is not None:
             raise self._error
         return self._coverage
+
+
+class _FakeCursor:
+    def __init__(self) -> None:
+        self._fetchall_results: list[list[tuple]] = [
+            [
+                (
+                    f"{(NOW - timedelta(seconds=3600)).strftime('%Y-%m-%dT%H:%M:%SZ')} | TERMINAL | lane=alpha | ticket=OMN-1 | outcome=done | finished",
+                )
+            ],
+            [],
+        ]
+        self._fetchone_results: list[tuple] = [(NOW,), (0,)]
+        self._fetchall_index = 0
+        self._fetchone_index = 0
+
+    def execute(self, _sql: str, *_params: object) -> None:
+        pass
+
+    def fetchall(self) -> list[tuple]:
+        if self._fetchall_index < len(self._fetchall_results):
+            result = self._fetchall_results[self._fetchall_index]
+            self._fetchall_index += 1
+            return result
+        return []
+
+    def fetchone(self) -> tuple | None:
+        if self._fetchone_index < len(self._fetchone_results):
+            result = self._fetchone_results[self._fetchone_index]
+            self._fetchone_index += 1
+            return result
+        return None
+
+    def __enter__(self) -> _FakeCursor:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        pass
+
+
+class _FakeConnection:
+    def __init__(self) -> None:
+        self.closed = 0
+        self._cursor = _FakeCursor()
+
+    def cursor(self) -> _FakeCursor:
+        return self._cursor
 
 
 @pytest.fixture(autouse=True)
@@ -231,6 +281,34 @@ def test_done_items_coverage_thresholds_come_from_the_contract(tmp_path: Path) -
     assert check.lookback_seconds == 172800
 
 
+def test_done_items_alarm_end_to_end_from_a_ledger_row() -> None:
+    fake_conn = _FakeConnection()
+    reader = PostgresFreshnessReader(dsn="postgresql://unused", now=lambda: NOW)
+    reader._conn = fake_conn
+    publisher = _Publisher()
+    handler = HandlerProjectionFreshnessAlert(
+        reader=reader,
+        event_publisher=publisher,
+        clock=_Clock(),
+    )
+    trigger = ModelFreshnessTrigger(correlation_id=CORRELATION)
+    evaluation = handler.handle(trigger)
+
+    verdict = next(
+        v for v in evaluation.coverage_verdicts if v.check_id == "done_items_coverage"
+    )
+    assert verdict.state == EnumFreshnessState.STALE
+    assert verdict.demand_done_tickets == 1
+    assert verdict.unprojected_tickets == 1
+
+    matching = [
+        (topic, payload)
+        for topic, payload in publisher.calls
+        if b"done_items_coverage" in payload
+    ]
+    assert len(matching) == 1
+
+
 @pytest.mark.parametrize(
     ("demand", "unprojected", "refused_rows", "error", "expected"),
     [
@@ -242,6 +320,8 @@ def test_done_items_coverage_thresholds_come_from_the_contract(tmp_path: Path) -
         (1, 1, 0, "dark source", EnumFreshnessState.UNKNOWN),
         (1, 0, 2, None, EnumFreshnessState.UNKNOWN),
         (0, 0, 1, None, EnumFreshnessState.UNKNOWN),
+        (2, 2, 1, None, EnumFreshnessState.STALE),
+        (3, 0, 1, None, EnumFreshnessState.UNKNOWN),
     ],
 )
 def test_done_items_classifier_states(

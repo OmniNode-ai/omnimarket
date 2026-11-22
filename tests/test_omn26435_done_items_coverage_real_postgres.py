@@ -51,6 +51,8 @@ def _dsn() -> str:
         "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
     )
     if not password:
+        if os.environ.get("OMN_REQUIRE_REAL_DB") == "1":
+            pytest.fail("INTEGRATION_POSTGRES_PASSWORD not set -- no real-DB proof")
         pytest.skip("INTEGRATION_POSTGRES_PASSWORD not set -- no real-DB proof")
     host = os.environ.get("INTEGRATION_POSTGRES_HOST", "localhost")
     port = os.environ.get("INTEGRATION_POSTGRES_PORT", "5432")
@@ -63,6 +65,8 @@ def _connect_or_skip(dsn: str) -> psycopg2.extensions.connection:
     try:
         return psycopg2.connect(dsn, connect_timeout=5)
     except psycopg2.OperationalError as exc:
+        if os.environ.get("OMN_REQUIRE_REAL_DB") == "1":
+            pytest.fail(f"no reachable Postgres for the coverage proof: {exc}")
         pytest.skip(f"no reachable Postgres for the coverage proof: {exc}")
 
 
@@ -114,6 +118,22 @@ def _seed_ledger_row(dsn: str, *, ticket: str, outcome: str, age: int) -> str:
             f"INSERT INTO {_SCHEMA}.work_ledger_rows (row_id, row_ts, row_type, raw_row) "
             "VALUES (%s, %s, %s, %s)",
             (rid, _NOW - timedelta(seconds=age), "TERMINAL", raw),
+        )
+    conn.close()
+    return rid
+
+
+def _seed_status_row(dsn: str, ticket: str, age: int) -> str:
+    stamp = _stamp(age)
+    raw = f"{stamp} | STATUS | lane=alpha | ticket={ticket} | merged=1"
+    rid = row_id_of(raw)
+    conn = psycopg2.connect(dsn, connect_timeout=5)
+    conn.autocommit = True
+    with conn.cursor() as cur:
+        cur.execute(
+            f"INSERT INTO {_SCHEMA}.work_ledger_rows (row_id, row_ts, row_type, raw_row) "
+            "VALUES (%s, %s, %s, %s)",
+            (rid, _NOW - timedelta(seconds=age), "STATUS", raw),
         )
     conn.close()
     return rid
@@ -195,3 +215,21 @@ def test_stale_supply_row_counts_as_unprojected(scratch_dsn: str) -> None:
     assert observation.demand_done_tickets == 1
     assert observation.unprojected_tickets == 1
     assert _classify(scratch_dsn) is EnumFreshnessState.STALE
+
+
+@pytest.mark.integration
+def test_done_event_older_than_the_lookback_is_not_demand(scratch_dsn: str) -> None:
+    _seed_ledger_row(scratch_dsn, ticket="OMN-1", outcome="done", age=90000)
+    observation = _read_coverage(scratch_dsn)
+    assert observation.demand_done_tickets == 0
+    assert observation.unprojected_tickets == 0
+    assert _classify(scratch_dsn) is EnumFreshnessState.IDLE
+
+
+@pytest.mark.integration
+def test_status_rows_are_not_demand(scratch_dsn: str) -> None:
+    _seed_status_row(scratch_dsn, "OMN-1", 3600)
+    observation = _read_coverage(scratch_dsn)
+    assert observation.demand_done_tickets == 0
+    assert observation.unprojected_tickets == 0
+    assert _classify(scratch_dsn) is EnumFreshnessState.IDLE
