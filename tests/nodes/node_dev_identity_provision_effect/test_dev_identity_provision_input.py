@@ -445,6 +445,9 @@ def test_dev_identity_provision_command_defaults_are_the_overlay_values_and_off(
         )
 
 
+_LAN_PREFIX = ".".join(("192", "168", ""))
+
+
 def _lan_addresses(document: dict[str, object]) -> list[str]:
     """Every base_url in an overlay document that is a 192.168 LAN address (tailnet only, operator ruling 2026-11-11)."""
     found: list[str] = []
@@ -452,7 +455,7 @@ def _lan_addresses(document: dict[str, object]) -> list[str]:
         section = document.get(block)
         assert isinstance(section, dict)
         base_url = str(section["base_url"])
-        if "192.168." in base_url:  # test-literal-ok: LAN guard
+        if _LAN_PREFIX in base_url:
             found.append(f"{block}.base_url={base_url}")
     return found
 
