@@ -6,6 +6,14 @@ summary: The dev runtime mutation guard refused two kinds of read-only call. A c
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn21989-ac1-accepted-20261122t1745z:
+    - label: AC1
+      criterion_hash: 966219f3d5eef56e25a714e09e215fdd1a3e3e623ce303dd899c9fcaec9c4196
+      proposed_by: lane=dod-closeout-bind-2026-11-22T1745Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-22T1745Z-c2
+      accepted_at: '2026-11-22T18:10:43Z'
 requirements:
 - id: req-omn21989-readonly-docker-calls
   statement: Read-only docker calls and a compose up with --dry-run are classified non-mutating, a mutating verb stays refused without a grant, and a --dry-run text that is not the compose call's own switch smuggles nothing.
@@ -51,6 +59,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -k recorded_refused_calls -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21989-ac1-accepted-20261122t1745z
+  description: 'AC1 binding (accepted 2026-11-22T1745Z, proposed by lane=dod-closeout-bind-2026-11-22T1745Z-c2, accepted by lane=dod-closeout-accept-2026-11-22T1745Z-c2). Read-only docker calls (events, ps, inspect, logs, compose config, compose up with the dry-run switch in every project-naming shape, local and over ssh) and every recorded refused call get verdict ALLOW from the handler, and the process entrypoint exits 0. Re-run at origin/dev 53eb69ee30: 46 passed. At dev with the product changes of 5b13aeb4cd reverted: 21 failed, 25 passed.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_runtime_mutation_guard_effect -k readonly_allow -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn21989-integration-proof
   description: The pushed head ran the node's suite, including the recorded read-only calls and the smuggle shapes through the process entrypoint, on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
