@@ -77,8 +77,7 @@ def mint_tenant(path: Path) -> str:
     return str(mint_local_tenant_identity(db_path=path).tenant_uuid)
 
 
-def seed(path: Path, tenant: str) -> None:
-    """OMN-26413: the runs are recorded under the tenant whose metering reads them."""
+def seed(path: Path) -> None:
     db = SqliteDatabaseAdapter(path)
     for record in request().records:
         db.upsert(
@@ -86,7 +85,6 @@ def seed(path: Path, tenant: str) -> None:
             "correlation_id",
             {
                 "correlation_id": record.correlation_id,
-                "tenant_id": tenant,
                 "created_at": record.occurred_at.isoformat(),
                 "delegated_to": record.model,
                 "model_name": record.model,
@@ -149,7 +147,7 @@ def test_refresh_baseline_changes_every_window_and_replaces(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "db.sqlite"
-    seed(path, "local")
+    seed(path)
     monkeypatch.setattr(
         "omnimarket.projection.sqlite_metering_summary.resolve_baseline",
         lambda model: baseline(model, "2" if model == "model-b" else "1"),
@@ -176,8 +174,8 @@ def test_cli_json_is_stored_content_and_keys(tmp_path: Path) -> None:
     """OMN-19977: the CLI prints the stored row (its columns, with summary_json
     spread) and reads it as stored: a second read is byte-identical."""
     path = tmp_path / "db.sqlite"
+    seed(path)
     tenant = mint_tenant(path)
-    seed(path, tenant)
     baseline_model = resolve_baseline_model(overlay={}, store={}).model
     refresh_metering_summary(path, tenant, baseline_model, NOW)
     result = CliRunner().invoke(metering_command, ["--db", str(path), "--json"])
@@ -244,8 +242,8 @@ def test_cli_manifest_change_is_reported_stale_not_refreshed(
     """OMN-19977: a manifest change is the refresh command's job (ruling D-A);
     the CLI names the stale row and leaves every stored row as it was."""
     path = tmp_path / "db.sqlite"
+    seed(path)
     tenant = mint_tenant(path)
-    seed(path, tenant)
     current = baseline()
     monkeypatch.setattr(
         "omnimarket.projection.sqlite_metering_summary.resolve_baseline",
@@ -268,8 +266,8 @@ def test_cli_manifest_change_is_reported_stale_not_refreshed(
 
 def test_cli_explicit_day_reads_its_stored_row(tmp_path: Path) -> None:
     path = tmp_path / "db.sqlite"
+    seed(path)
     tenant = mint_tenant(path)
-    seed(path, tenant)
     refresh_metering_summary(
         path, tenant, resolve_baseline_model(overlay={}, store={}).model, NOW
     )

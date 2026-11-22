@@ -103,15 +103,6 @@ def db(tmp_path: Path) -> Path:
     conn.close()
     # OMN-17427: metering keys its summary on the install's own minted identity.
     tenant = str(mint_local_tenant_identity(db_path=path).tenant_uuid)
-    # OMN-26413: metering reads one tenant's rows; these runs are the install's own.
-    conn = sqlite3.connect(path)
-    if "tenant_id" not in {
-        c[1] for c in conn.execute("PRAGMA table_info(delegation_events)")
-    }:
-        conn.execute("ALTER TABLE delegation_events ADD COLUMN tenant_id TEXT")
-    conn.execute("UPDATE delegation_events SET tenant_id = ?", (tenant,))
-    conn.commit()
-    conn.close()
     # OMN-19977: the rows the end of each `onex delegate` refreshes; the CLI
     # only reads them. Today's row is named so `--window today` has one even
     # when the runs above fall on yesterday's UTC date.

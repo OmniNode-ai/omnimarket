@@ -12,15 +12,12 @@ as unknown spend only if:
 The savings view and model-routing applied none of these filters (routing left out experiment rows only).
 
 Failure modes, each a case below (spec records/plans/OMN-26413/spec.md, approved 2026-11-22):
-  P1-P8  the ticket's eight cases: no tokens, estimated usage, unknown usage, no call row while the store has others,
-         returned to the caller, a fixture row, an experiment row, a second tenant's run (AC1)
+  P1-P7  the ticket's run-population cases: no tokens, estimated usage, unknown usage, no call row while the store has
+         others, returned to the caller, a fixture row, an experiment row (AC1; the second-tenant case moves to a
+         follow-up ticket, D2-SHAPE-26413 = A)
   P9     a NULL data_source run stays unpriced in all three (regression guard for the views' new filter)
-  P10    a NULL tenant_id run counts in none of the three
   R1-R16 the per-run rule cases agree (AC2), and each fails on the deliberate break of the view's rule mapped to it
-  S1     `onex metering`'s staleness check: another tenant's newer run does not mark this tenant's row stale
-  T1     a tenant named by slug or by a non-canonical UUID reads the rows the writer recorded under its canonical UUID
-  O1     over-correction: every served field of both views other than the unpriced count is unchanged, and the
-         headline equals its all-rows reading except on stores holding another tenant's or no tenant's rows
+  O1     over-correction: every served field of both views other than the unpriced count is unchanged
 """
 
 from __future__ import annotations
@@ -35,7 +32,6 @@ from typing import Any
 
 import pytest
 
-from omnimarket.cli.cli_metering import check_row_current
 from omnimarket.models.model_projection_read import ModelProjectionReadRequest
 from omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_read import (
     HandlerProjectionRead,
@@ -55,7 +51,6 @@ from tests.unit.projection.test_omn24615_evaluated_runs_and_served_model import 
     _TOPICS as _ROUTING_TOPICS,
 )
 from tests.unit.projection.test_sqlite_delegation_savings_view_omn20008 import (
-    _OTHER,
     _TENANT,
     _call,
     _delegation,
@@ -127,7 +122,7 @@ def _measured(*runs: dict[str, Any]) -> tuple[dict[str, Any], ...]:
 
 
 # ---------------------------------------------------------------------------
-# AC1: the ticket's eight cases, plus the NULL data_source and NULL tenant guards.
+# AC1: the ticket's run-population cases, plus the NULL data_source guard.
 # Each store is one priced run of the tenant plus one $0 run on an unlisted model, changed as named.
 # ---------------------------------------------------------------------------
 
@@ -149,14 +144,8 @@ def _population_store(tmp_path: Path, case: str) -> Path:
     elif case in ("fixture", "experiment"):
         zero["data_source"] = case
         calls = _measured(priced, zero)
-    elif case == "second_tenant":
-        zero["tenant_id"] = _OTHER
-        calls = _measured(priced, zero)
     elif case == "null_data_source":
         zero["data_source"] = None
-        calls = _measured(priced, zero)
-    elif case == "null_tenant":
-        zero["tenant_id"] = None
         calls = _measured(priced, zero)
     else:
         raise AssertionError(case)
@@ -172,9 +161,7 @@ _POPULATION = {
     "returned_to_caller": 0,
     "fixture": 0,
     "experiment": 0,
-    "second_tenant": 0,
     "null_data_source": 1,
-    "null_tenant": 0,
 }
 
 
@@ -449,62 +436,6 @@ def test_each_population_case_fails_when_its_filter_is_removed(
 
 
 # ---------------------------------------------------------------------------
-# S1: `onex metering`'s staleness check reads only the tenant's own runs.
-# ---------------------------------------------------------------------------
-
-
-def test_another_tenants_newer_run_does_not_stale_this_tenants_row(
-    tmp_path: Path,
-) -> None:
-    path = _store(tmp_path, (_priced(),), _measured(_priced()))
-    model = resolve_metering_baseline_model().model
-    refresh_metering_after_terminal(
-        path, tenant_id=_TENANT, terminal_at=_TERMINAL, baseline_model=model
-    )
-    row = read_summary_row(path, _TENANT, "all", "", model)
-    assert row is not None
-    later = _run(
-        "other-later",
-        _PRICED,
-        0.0001,
-        tenant_id=_OTHER,
-        created_at="2026-10-12T00:00:00+00:00",
-    )
-    _store(tmp_path, (later,), _measured(later))
-    refusal = check_row_current(
-        path,
-        row.model_dump(mode="json"),
-        tenant_id=_TENANT,
-        window_kind="all",
-        window_start="",
-        baseline_model=model,
-    )
-    assert refusal is None, refusal
-
-
-def test_this_tenants_own_newer_run_still_stales_its_row(tmp_path: Path) -> None:
-    """Over-correction guard for S1: the check still sees the tenant's own later run."""
-    path = _store(tmp_path, (_priced(),), _measured(_priced()))
-    model = resolve_metering_baseline_model().model
-    refresh_metering_after_terminal(
-        path, tenant_id=_TENANT, terminal_at=_TERMINAL, baseline_model=model
-    )
-    row = read_summary_row(path, _TENANT, "all", "", model)
-    assert row is not None
-    later = _run("own-later", _PRICED, 0.0001, created_at="2026-10-12T00:00:00+00:00")
-    _store(tmp_path, (later,), _measured(later))
-    refusal = check_row_current(
-        path,
-        row.model_dump(mode="json"),
-        tenant_id=_TENANT,
-        window_kind="all",
-        window_start="",
-        baseline_model=model,
-    )
-    assert refusal is not None
-
-
-# ---------------------------------------------------------------------------
 # O1: over-correction. Each view, served beside the revision it replaces (OMN-25862's), differs only in its count.
 # ---------------------------------------------------------------------------
 
@@ -562,89 +493,3 @@ def test_only_the_unpriced_count_differs_from_the_previous_revision(
     )
     _replace_view(path, view, previous_sql)
     assert _without(read(path), _COUNT_FIELD[view]) == current
-
-
-# F3 (O1, headline): on every store, the headline equals the reading over all of the store's rows, except where the
-# store holds another tenant's or no tenant's rows (D2), where it must differ.
-_D2_CASES = {"second_tenant", "null_tenant"}
-
-
-def _all_rows_as_tenant(path: Path) -> None:
-    conn = sqlite3.connect(path)
-    try:
-        conn.execute("UPDATE delegation_events SET tenant_id = ?", (_TENANT,))
-        conn.commit()
-    finally:
-        conn.close()
-
-
-@pytest.mark.parametrize("case", sorted({*_POPULATION, *_RULE}))
-def test_the_headline_moves_only_where_the_store_holds_other_tenants_rows(
-    tmp_path: Path, case: str
-) -> None:
-    def build(where: Path) -> Path:
-        where.mkdir()
-        return (
-            _population_store(where, case)
-            if case in _POPULATION
-            else _rule_store(where, case)
-        )
-
-    model = resolve_metering_baseline_model().model
-    scoped, everyone = build(tmp_path / "scoped"), build(tmp_path / "everyone")
-    _all_rows_as_tenant(everyone)
-    rows = []
-    for path in (scoped, everyone):
-        refresh_metering_after_terminal(
-            path, tenant_id=_TENANT, terminal_at=_TERMINAL, baseline_model=model
-        )
-        row = read_summary_row(path, _TENANT, "all", "", model)
-        assert row is not None
-        rows.append(row.model_dump(exclude={"as_of", "window_end"}))
-    if case in _D2_CASES:
-        assert rows[0] != rows[1]
-    else:
-        assert rows[0] == rows[1]
-
-
-# T1: the headline reads the tenant's own rows as the projection writer records them (canonical UUID).
-def test_a_tenant_named_by_slug_reads_the_rows_recorded_under_its_uuid(
-    tmp_path: Path,
-) -> None:
-    from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
-    from tests.helpers.tenant_registry import (
-        PROJECTION_TENANT_SLUG,
-        PROJECTION_TENANT_UUID,
-        seed_tenant_registry,
-    )
-
-    uuid = str(PROJECTION_TENANT_UUID)
-    runs = (
-        _run("a", _PRICED, 0.0001, tenant_id=uuid),
-        _run("b", _UNLISTED, 0.0, tenant_id=uuid),
-    )
-    path = _store(tmp_path, runs, _measured(*runs))
-    seed_tenant_registry(SqliteDatabaseAdapter(path))
-    model = resolve_metering_baseline_model().model
-    refresh_metering_after_terminal(
-        path,
-        tenant_id=PROJECTION_TENANT_SLUG,
-        terminal_at=_TERMINAL,
-        baseline_model=model,
-    )
-    row = read_summary_row(path, PROJECTION_TENANT_SLUG, "all", "", model)
-    assert row is not None
-    assert (row.runs_total, row.runs_unknown_spend) == (2, 1)
-
-
-def test_a_tenant_named_by_an_upper_case_uuid_reads_its_rows(tmp_path: Path) -> None:
-    runs = (_priced(), _run("b", _UNLISTED, 0.0))
-    path = _store(tmp_path, runs, _measured(*runs))
-    model = resolve_metering_baseline_model().model
-    upper = _TENANT.upper()
-    refresh_metering_after_terminal(
-        path, tenant_id=upper, terminal_at=_TERMINAL, baseline_model=model
-    )
-    row = read_summary_row(path, upper, "all", "", model)
-    assert row is not None
-    assert (row.runs_total, row.runs_unknown_spend) == (2, 1)

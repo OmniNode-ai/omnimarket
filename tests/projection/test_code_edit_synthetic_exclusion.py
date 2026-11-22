@@ -103,6 +103,6 @@ def test_a_synthetic_code_edit_turn_is_kept_typed_and_left_out_of_real_traffic(
 
     # The real-traffic reading is the same with the trial turns planted.
     assert reading() == before
-    assert [
-        r.correlation_id for r in read_metering_records(tenant_id=tenant, db_path=path)
-    ] == [real["correlation_id"]]
+    assert [r.correlation_id for r in read_metering_records(db_path=path)] == [
+        real["correlation_id"]
+    ]

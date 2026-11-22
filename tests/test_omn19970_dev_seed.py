@@ -214,15 +214,10 @@ def test_metering_excludes_fixture_rows_unless_asked(tmp_path: Path) -> None:
     handler.project_delegate_skill_terminal(_terminal(real, 0.25), db)
     seeded = HandlerDevSeed().seed_local(db, tenant_id=PROJECTION_TENANT_SLUG)
 
-    # OMN-26413: metering reads one tenant's rows; the projection records these under the tenant's UUID.
-    measured = read_metering_records(
-        tenant_id=str(PROJECTION_TENANT_UUID), db_path=path
-    )
+    measured = read_metering_records(db_path=path)
     assert [r.correlation_id for r in measured] == [real]
 
-    everything = read_metering_records(
-        tenant_id=str(PROJECTION_TENANT_UUID), db_path=path, include_fixtures=True
-    )
+    everything = read_metering_records(db_path=path, include_fixtures=True)
     assert {r.correlation_id for r in everything} == {real, *seeded.correlation_ids}
 
 
@@ -234,20 +229,17 @@ def test_metering_reads_a_store_written_before_the_label_existed(
     conn.execute(
         "CREATE TABLE delegation_events (correlation_id TEXT PRIMARY KEY, created_at TEXT, "
         "delegated_to TEXT, model_name TEXT, task_type TEXT, tokens_input INTEGER, "
-        "tokens_output INTEGER, cost_usd REAL, cost_savings_usd REAL, tenant_id TEXT)"
+        "tokens_output INTEGER, cost_usd REAL, cost_savings_usd REAL)"
     )
     legacy = str(uuid4())
     conn.execute(
         "INSERT INTO delegation_events VALUES (?, '2026-09-28T10:00:00+00:00', 'm', 'm', "
-        "'document', 10, 2, 0.0, 0.01, ?)",
-        (legacy, PROJECTION_TENANT_SLUG),
+        "'document', 10, 2, 0.0, 0.01)",
+        (legacy,),
     )
     conn.commit()
     conn.close()
-    assert [
-        r.correlation_id
-        for r in read_metering_records(tenant_id=PROJECTION_TENANT_SLUG, db_path=path)
-    ] == [legacy]
+    assert [r.correlation_id for r in read_metering_records(db_path=path)] == [legacy]
 
 
 def _runtime_seed(
@@ -281,9 +273,8 @@ def test_runtime_seed_replay_keeps_fixture_labels_and_measured_total(
     projection = HandlerProjectionDelegation(publisher=_NullPublisher())
     real = _terminal(str(uuid4()), 0.25)
     projection.handle({**real.model_dump(mode="json"), "_db": db})
-    # OMN-26413: metering reads one tenant's rows; the projection records these under the tenant's UUID.
     before = refresh_metering_summary(
-        path, str(PROJECTION_TENANT_UUID), "claude-opus-4-6", datetime.now(UTC)
+        path, PROJECTION_TENANT_SLUG, "claude-opus-4-6", datetime.now(UTC)
     )[0]
 
     seeded = _runtime_seed(projection, db)
@@ -293,14 +284,11 @@ def test_runtime_seed_replay_keeps_fixture_labels_and_measured_total(
     assert len(after_second) == len(after_first) == len(seeded) + 1
     fixture_rows = [r for r in after_second if r["correlation_id"] in seeded]
     assert {r["data_source"] for r in fixture_rows} == {"fixture"}
-    assert [
-        r.correlation_id
-        for r in read_metering_records(
-            tenant_id=str(PROJECTION_TENANT_UUID), db_path=path
-        )
-    ] == [str(real.correlation_id)]
+    assert [r.correlation_id for r in read_metering_records(db_path=path)] == [
+        str(real.correlation_id)
+    ]
     measured = refresh_metering_summary(
-        path, str(PROJECTION_TENANT_UUID), "claude-opus-4-6", datetime.now(UTC)
+        path, PROJECTION_TENANT_SLUG, "claude-opus-4-6", datetime.now(UTC)
     )[0]
     assert measured.runs_total == before.runs_total == 1
     assert measured.savings_usd == before.savings_usd

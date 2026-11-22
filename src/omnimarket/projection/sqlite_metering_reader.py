@@ -38,12 +38,10 @@ writes. A metering readout must never be able to damage the evidence it reads.
 
 from __future__ import annotations
 
-import contextlib
 import sqlite3
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
-from uuid import UUID
 
 from omnimarket.nodes.node_metering_summary_compute.models.model_metering_record_row import (
     METERING_CALLS_PRESENT,
@@ -57,12 +55,6 @@ from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summar
     ModelMeteringRecord,
 )
 from omnimarket.projection.sqlite_database import default_evidence_db_path
-from omnimarket.projection.tenant_registry_resolution import (
-    TENANT_REGISTRY_MIRROR_TABLE,
-    TenantRegistryResolutionError,
-    parse_tenant_uuid,
-    resolve_registry_tenant_uuid,
-)
 
 __all__ = [
     "METERING_COLUMNS",
@@ -80,9 +72,6 @@ _DATA_SOURCE_COLUMN = "data_source"
 _FIXTURE = "fixture"
 # OMN-23169: typed synthetic traffic. Never in a measured figure, with no opt-in.
 _EXPERIMENT = "experiment"
-# OMN-26413: the tenant a row belongs to. A tenant's metering reads only its own rows, as the local views and the
-# shared lanes' refresh do; a row with no tenant (written before the column existed) is nobody's.
-_TENANT_COLUMN = "tenant_id"
 
 
 class MeteringRecordsUnavailableError(RuntimeError):
@@ -109,55 +98,6 @@ def _to_record(row: sqlite3.Row) -> ModelMeteringRecord | None:
     return metering_record_from_row(dict(zip(row.keys(), row, strict=True)))
 
 
-def _open_readonly(db_path: Path) -> sqlite3.Connection:
-    uri = f"file:{db_path}?mode=ro"
-    return sqlite3.connect(uri, uri=True)  # no-contract-check: projection boundary
-
-
-def _tenant_keys(db_path: Path, tenant_id: str) -> frozenset[str]:
-    """The stored ``tenant_id`` values that are this tenant's rows (OMN-26413).
-
-    The projection writer stores the tenant's canonical UUID, resolving a slug
-    through ``tenant_registry_mirror`` (or the closed legacy map), so a tenant
-    named by slug or by a non-canonical UUID string is matched the same way.
-    The given string itself always matches. Read only; a store that cannot be
-    read here is reported by the row read that follows.
-    """
-    keys = {tenant_id}
-    parsed = parse_tenant_uuid(tenant_id)
-    if parsed is not None:
-        keys.add(str(parsed))
-        return frozenset(keys)
-    registry_uuid: UUID | None = None
-    if db_path.exists():
-        try:
-            conn = _open_readonly(db_path)
-        except sqlite3.Error:
-            return frozenset(keys)
-        try:
-            exists = conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-                (TENANT_REGISTRY_MIRROR_TABLE,),
-            ).fetchone()
-            if exists is not None:
-                row = conn.execute(
-                    f"SELECT tenant_uuid FROM {TENANT_REGISTRY_MIRROR_TABLE} WHERE tenant_slug = ?",
-                    (tenant_id,),
-                ).fetchone()
-                if row is not None and row[0] is not None:
-                    registry_uuid = parse_tenant_uuid(str(row[0]))
-        except sqlite3.Error:
-            return frozenset(keys)
-        finally:
-            conn.close()
-    # A slug nobody resolves matches only its own string, as the writer would refuse it.
-    with contextlib.suppress(TenantRegistryResolutionError):
-        keys.add(
-            str(resolve_registry_tenant_uuid(tenant_id, registry_uuid=registry_uuid))
-        )
-    return frozenset(keys)
-
-
 def _iter_rows(db_path: Path) -> Iterator[sqlite3.Row]:
     if not db_path.exists():
         raise MeteringRecordsUnavailableError(
@@ -180,11 +120,7 @@ def _iter_rows(db_path: Path) -> Iterator[sqlite3.Row]:
             }
             optional = tuple(
                 column
-                for column in (
-                    _DATA_SOURCE_COLUMN,
-                    METERING_CAUSE_COLUMN,
-                    _TENANT_COLUMN,
-                )
+                for column in (_DATA_SOURCE_COLUMN, METERING_CAUSE_COLUMN)
                 if column in columns
             )
             # OMN-24615 AC1: each run's provider usage, where the store has calls.
@@ -202,18 +138,12 @@ def _iter_rows(db_path: Path) -> Iterator[sqlite3.Row]:
 
 def read_metering_records(
     *,
-    tenant_id: str,
     db_path: Path | None = None,
     window_start: datetime | None = None,
     window_end: datetime | None = None,
     include_fixtures: bool = False,
 ) -> tuple[ModelMeteringRecord, ...]:
-    """Read ``tenant_id``'s delegation records in ``[window_start, window_end)``.
-
-    OMN-26413: only the tenant's own rows are read. Another tenant's runs, and
-    rows with no tenant at all, are not this tenant's metering; the local
-    savings and model-routing views already leave them out, so for one store all
-    three count the same runs.
+    """Read delegation records in ``[window_start, window_end)``.
 
     OMN-19970: rows the dev and demo seed wrote (``data_source = 'fixture'``)
     are measured nothing and are skipped unless ``include_fixtures`` is set, so
@@ -231,13 +161,9 @@ def read_metering_records(
     inventing a run inside it.
     """
     resolved = db_path if db_path is not None else default_metering_db_path()
-    tenant_keys = _tenant_keys(resolved, tenant_id)
     records: list[ModelMeteringRecord] = []
     for row in _iter_rows(resolved):
-        values = dict(row)
-        if values.get(_TENANT_COLUMN) not in tenant_keys:
-            continue
-        source = values.get(_DATA_SOURCE_COLUMN)
+        source = dict(row).get(_DATA_SOURCE_COLUMN)
         if source == _EXPERIMENT or (source == _FIXTURE and not include_fixtures):
             continue
         record = _to_record(row)
