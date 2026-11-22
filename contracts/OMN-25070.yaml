@@ -95,6 +95,25 @@ requirements:
           actual macOS and Linux from a local stand-in for the domain (-k curl_installer_same_release).
           -- falsifier: uv run pytest
           tests/nodes/node_release_candidate_verify_effect/test_installer_matches_manifest.py -q -k installer_matches_manifest.
+  - id: req-omn25070-curl-installer-same-release
+    statement: The curl installer, fetched from a stand-in for our domain, installs the candidate exactly as the guide's uv line does.
+    acceptance:
+      - id: AC4
+        statement: >-
+          AC4 (ticket text), the install part this falsifier checks: on Linux x86_64, Linux arm64 and Apple
+          Silicon macOS, the candidate's script is served over HTTP from a local stand-in for our domain and
+          piped from curl into bash in an empty HOME with no uv on PATH and a git stub that fails the test if
+          called; it downloads the pinned uv from a local stand-in, installs it only after its sha256 matches,
+          runs the guide's install line with --no-build, never calls git, creates no .git directory, and leaves
+          exactly onex and omni-agent in uv's bin directory with onex running; with a uv download whose sha256
+          differs it exits non-zero before installing uv or onex; with a foreign onex already in uv's bin
+          directory it exits non-zero naming that file and the pipx fix, leaves the file unchanged, and the
+          guide's uv line in the same fixture fails without touching it; on Windows it refuses as not
+          supported yet, naming WSL. Until omninode-onex is published, the candidate wheel comes through the
+          installer's find-links variable and every other distribution comes from PyPI. Not covered here:
+          installed content checked against the release manifest, which exists only at release. -- falsifier:
+          uv run pytest tests/e2e/test_setup_packaged_journey.py -q -k curl_installer_same_release, on each of
+          those runners.
 evidence_requirements:
   - kind: tests
     description: The package tests; the opt-in install check runs with ONEX_TEST_ONEX_WHEEL set.
@@ -178,4 +197,19 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_release_candidate_verify_effect/test_installer_matches_manifest.py -q --no-cov -k installer_matches_manifest
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-curl-installer-same-release
+    description: >-
+      Builds the candidate wheel at this commit and runs the curl installer journey and its three controls
+      with ONEX_E2E_REQUIRE_COMPLETE=1, so a missing wheel fails rather than skips. Red while the candidate's
+      pins resolve to a release whose onex --help fails (the installer refuses it); needs network access to
+      PyPI and to the uv release.
+    source: manual
+    binds_ac:
+      - AC4
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: >-
+          sh -c 'd="$(mktemp -d)" && uv build --wheel --out-dir "$d" packages/omninode-onex && ONEX_TEST_ONEX_WHEEL="$(ls "$d"/omninode_onex-*.whl)" ONEX_E2E_REQUIRE_COMPLETE=1 uv run --frozen pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k curl_installer_same_release'
         cwd: ${OMNI_HOME}/omnimarket

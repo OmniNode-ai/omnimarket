@@ -1354,3 +1354,363 @@ def test_one_package_uv_and_pipx_ties_the_install_to_the_wheel(tmp_path: Path) -
     installed.write_text(content + "Summary: changed\n")
     with pytest.raises(AssertionError, match="differs from the wheel"):
         _assert_installed_matches_wheel(site, wheel)
+
+
+_CI_INSTALLER = (
+    Path(__file__).resolve().parents[2]
+    / "packages"
+    / "omninode-onex"
+    / "installer.json"
+)
+_CI_TOOLS = (
+    "bash",
+    "curl",
+    "tar",
+    "mktemp",
+    "awk",
+    "sed",
+    "grep",
+    "uname",
+    "basename",
+    "cat",
+    "cp",
+    "mv",
+    "mkdir",
+    "rm",
+    "chmod",
+    "dirname",
+    "env",
+    "gzip",
+    "sha256sum",
+    "shasum",
+    "perl",
+    "ldd",
+    "sysctl",
+    "ln",
+    "ls",
+    "head",
+    "tr",
+    "readlink",
+    "id",
+)
+
+
+def _ci_config() -> dict[str, Any]:
+    """Load the installer manifest from the repository."""
+    config: dict[str, Any] = json.loads(_CI_INSTALLER.read_text(encoding="utf-8"))
+    return config
+
+
+def _ci_host_target() -> str:
+    """Map the host platform to the uv release target triple."""
+    import platform
+
+    system = platform.system()
+    machine = platform.machine()
+    if system == "Linux" and machine == "x86_64":
+        return "x86_64-unknown-linux-gnu"
+    if system == "Linux" and machine in {"aarch64", "arm64"}:
+        return "aarch64-unknown-linux-gnu"
+    if system == "Darwin" and machine == "arm64":
+        return "aarch64-apple-darwin"
+    pytest.skip(f"curl installer journey does not run on {system} {machine}")
+
+
+def _ci_uv_tarball(target: str, cache: Path) -> Path:
+    """Return the pinned uv tarball, downloading it once if needed."""
+    env_dir = os.environ.get("ONEX_TEST_UV_TARBALL_DIR")
+    if env_dir:
+        path = Path(env_dir) / f"uv-{target}.tar.gz"
+        assert path.is_file(), f"missing uv tarball: {path}"
+        return path
+    version = _ci_config()["uv_version"]
+    url = (
+        f"https://github.com/astral-sh/uv/releases/download/"
+        f"{version}/uv-{target}.tar.gz"
+    )
+    response = httpx.get(url, follow_redirects=True, timeout=120)
+    response.raise_for_status()
+    cache.mkdir(parents=True, exist_ok=True)
+    path = cache / f"uv-{target}.tar.gz"
+    path.write_bytes(response.content)
+    return path
+
+
+def _ci_render(version: str) -> str:
+    """Render the installer script for the given release version."""
+    from omnimarket.nodes.node_onex_installer_render_compute.handlers.handler_onex_installer_render import (
+        HandlerOnexInstallerRender,
+    )
+    from omnimarket.nodes.node_onex_installer_render_compute.models.model_onex_installer import (
+        ModelOnexInstallerRequest,
+    )
+
+    config = _ci_config()
+    config["version"] = version
+    request = ModelOnexInstallerRequest.model_validate(config)
+    return HandlerOnexInstallerRender().handle(request).script
+
+
+def _ci_serve(root: Path) -> tuple[ThreadingHTTPServer, str]:
+    """Serve root over loopback HTTP on an ephemeral port."""
+
+    import functools
+    import http.server
+
+    class _QuietHandler(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, format: str, *args: Any) -> None:
+            """Suppress per-request logging."""
+
+    handler = functools.partial(_QuietHandler, directory=str(root))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, f"http://127.0.0.1:{server.server_address[1]}"
+
+
+def _ci_toolbox(directory: Path, uname_stub: str | None = None) -> Path:
+    """Populate directory with symlinks to the required host tools."""
+    directory.mkdir(parents=True, exist_ok=True)
+    for name in _CI_TOOLS:
+        if name == "uname" and uname_stub is not None:
+            continue
+        found = shutil.which(name)
+        if found is not None:
+            os.symlink(found, directory / name)
+    if uname_stub is not None:
+        stub = directory / "uname"
+        stub.write_text(f"#!/bin/sh\n{uname_stub}\n", encoding="utf-8")
+        stub.chmod(0o755)
+    return directory
+
+
+def _ci_fixture(
+    tmp_path: Path,
+    script: str,
+    tarball: Path,
+    target: str,
+    uname_stub: str | None = None,
+) -> tuple[dict[str, str], Path, Path, ThreadingHTTPServer, str]:
+    """Build the isolated HOME, site, stub and tools for the installer."""
+    home = tmp_path / "home"
+    home.mkdir()
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "install.sh").write_text(script, encoding="utf-8")
+    version = _ci_config()["uv_version"]
+    uv_dir = site / "uv" / version
+    uv_dir.mkdir(parents=True)
+    shutil.copy2(tarball, uv_dir / f"uv-{target}.tar.gz")
+    stub = tmp_path / "stub"
+    stub.mkdir()
+    git_log = tmp_path / "git-called.log"
+    _git_stub(stub, git_log)
+    toolbox = _ci_toolbox(tmp_path / "tools", uname_stub)
+    server, base = _ci_serve(site)
+    tmp_dir = tmp_path / "tmp"
+    tmp_dir.mkdir()
+    env: dict[str, str] = {
+        "HOME": str(home),
+        "PATH": f"{stub}:{toolbox}",
+        "LANG": "C.UTF-8",
+        "ONEX_INSTALL_UV_BASE_URL": f"{base}/uv",
+        "TMPDIR": str(tmp_dir),
+    }
+    for key in (
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+    ):
+        if key in os.environ:
+            env[key] = os.environ[key]
+    return env, home, git_log, server, base
+
+
+def _ci_curl_bash(
+    env: dict[str, str],
+    base: str,
+    timeout: int = 900,
+) -> subprocess.CompletedProcess[str]:
+    """Run the installer script through curl piped into bash."""
+    return subprocess.run(
+        ["/bin/bash", "-c", f"curl -fsSL {base}/install.sh | bash"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=timeout,
+    )
+
+
+@pytest.mark.release_proof
+def test_curl_installer_same_release(tmp_path: Path) -> None:
+    """AC4: the candidate's script, fetched over HTTP from a local stand-in for our domain and piped into bash in an empty HOME with no uv on PATH and a git stub, installs the pinned uv after its sha256 matches, runs the guide's install line with --no-build, never calls git and leaves exactly onex and omni-agent in uv's bin directory. Until omninode-onex is published, the candidate wheel comes from ONEX_TEST_ONEX_WHEEL through the installer's find-links variable while every other distribution comes from PyPI. Not covered here: installed content checked against the release manifest, which exists only at release."""
+    wheel_env = os.environ.get("ONEX_TEST_ONEX_WHEEL")
+    if wheel_env is None:
+        if os.environ.get("ONEX_E2E_REQUIRE_COMPLETE") == "1":
+            pytest.fail("curl installer journey requires ONEX_TEST_ONEX_WHEEL")
+        pytest.skip("curl installer journey requires ONEX_TEST_ONEX_WHEEL")
+    wheel = Path(wheel_env)
+    assert wheel.is_file()
+    version = wheel.name.split("-")[1]
+    target = _ci_host_target()
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    tarball = _ci_uv_tarball(target, cache)
+    assert (
+        hashlib.sha256(tarball.read_bytes()).hexdigest()
+        == (_ci_config()["uv_sha256"][target])
+    )
+    links = tmp_path / "links"
+    links.mkdir()
+    shutil.copy2(wheel, links / wheel.name)
+    script = _ci_render(version)
+    env, home, git_log, server, base = _ci_fixture(
+        tmp_path,
+        script,
+        tarball,
+        target,
+    )
+    env["ONEX_INSTALL_FIND_LINKS"] = str(links)
+    try:
+        result = _ci_curl_bash(env, base)
+    finally:
+        server.shutdown()
+    assert result.returncode == 0, (
+        f"installer failed: stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+    assert not git_log.exists(), (
+        f"git was called: {git_log.read_text(encoding='utf-8')!r}"
+    )
+    assert [p for p in tmp_path.rglob(".git") if p.is_dir()] == []
+    private = home / ".local" / "share" / "omninode" / "uv" / "uv"
+    assert private.is_file()
+    assert "checksum verified" in result.stderr
+    uv_version_out = subprocess.run(
+        [str(private), "--version"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
+    assert _ci_config()["uv_version"] in uv_version_out
+    bin_dir = home / ".local" / "bin"
+    assert {p.name for p in bin_dir.iterdir()} == set(CUSTOMER_LAUNCHERS)
+    onex = subprocess.run(
+        [str(bin_dir / "onex"), "--version"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    assert onex.returncode == 0
+    assert version in onex.stdout + onex.stderr
+
+
+@pytest.mark.release_proof
+def test_curl_installer_same_release_refuses_a_changed_uv(tmp_path: Path) -> None:
+    """A changed uv tarball must be refused and leave no partial install."""
+    target = _ci_host_target()
+    tarball = _ci_uv_tarball(target, tmp_path / "cache")
+    changed = tmp_path / f"changed-uv-{target}.tar.gz"
+    changed.write_bytes(tarball.read_bytes() + b"0")
+    script = _ci_render(_ci_config()["version"])
+    env, home, git_log, server, base = _ci_fixture(tmp_path, script, changed, target)
+    try:
+        result = _ci_curl_bash(env, base, timeout=300)
+    finally:
+        server.shutdown()
+    assert result.returncode != 0
+    assert "does not match its published sha256" in result.stderr
+    assert not (home / ".local" / "share" / "omninode" / "uv" / "uv").exists()
+    assert not (home / ".local" / "bin" / "onex").exists()
+    assert not git_log.exists()
+
+
+@pytest.mark.release_proof
+def test_curl_installer_same_release_leaves_a_foreign_onex_alone(
+    tmp_path: Path,
+) -> None:
+    """A foreign onex launcher must be left untouched on a refused install."""
+    wheel_env = os.environ.get("ONEX_TEST_ONEX_WHEEL")
+    if wheel_env is None:
+        if os.environ.get("ONEX_E2E_REQUIRE_COMPLETE") == "1":
+            pytest.fail("foreign-launcher journey requires ONEX_TEST_ONEX_WHEEL")
+        pytest.skip("foreign-launcher journey requires ONEX_TEST_ONEX_WHEEL")
+    wheel = Path(wheel_env)
+    version = wheel.name.split("-")[1]
+    links = tmp_path / "links"
+    links.mkdir()
+    shutil.copy2(wheel, links / wheel.name)
+    target = _ci_host_target()
+    tarball = _ci_uv_tarball(target, tmp_path / "cache")
+    env, home, git_log, server, base = _ci_fixture(
+        tmp_path, _ci_render(version), tarball, target
+    )
+    env["ONEX_INSTALL_FIND_LINKS"] = str(links)
+    foreign = home / ".local" / "bin" / "onex"
+    foreign.parent.mkdir(parents=True, exist_ok=True)
+    foreign_text = "#!/bin/sh\n# installed by pipx for another package\necho foreign\n"
+    foreign.write_text(foreign_text)
+    os.chmod(foreign, 0o755)
+    before = foreign.read_bytes()
+    try:
+        result = _ci_curl_bash(env, base)
+    finally:
+        server.shutdown()
+    assert result.returncode != 0
+    assert str(foreign) in result.stderr
+    assert "pipx uninstall" in result.stderr
+    assert foreign.read_bytes() == before
+    private = home / ".local" / "share" / "omninode" / "uv" / "uv"
+    assert private.is_file()
+    line = subprocess.run(
+        [
+            str(private),
+            "tool",
+            "install",
+            "--python",
+            "3.12",
+            "--no-build",
+            f"omninode-onex=={version}",
+            "--find-links",
+            str(links),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=900,
+    )
+    assert line.returncode != 0
+    assert foreign.read_bytes() == before
+    assert not git_log.exists()
+
+
+@pytest.mark.release_proof
+def test_curl_installer_same_release_refuses_windows_naming_wsl(tmp_path: Path) -> None:
+    """A Windows uname stub must be refused as unsupported WSL."""
+    target = _ci_host_target()
+    tarball = _ci_uv_tarball(target, tmp_path / "cache")
+    uname_stub = 'case "$1" in -m) echo x86_64 ;; *) echo MINGW64_NT-10.0-22631 ;; esac'
+    env, home, git_log, server, base = _ci_fixture(
+        tmp_path,
+        _ci_render(_ci_config()["version"]),
+        tarball,
+        target,
+        uname_stub=uname_stub,
+    )
+    try:
+        result = _ci_curl_bash(env, base, timeout=120)
+    finally:
+        server.shutdown()
+    assert result.returncode != 0
+    assert "WSL" in result.stderr
+    assert "not supported yet" in result.stderr
+    assert not (home / ".local" / "share" / "omninode" / "uv").exists()
+    assert not git_log.exists()
