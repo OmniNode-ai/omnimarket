@@ -14,6 +14,7 @@ import asyncio
 import json
 import os
 import sqlite3
+import threading
 import time
 from pathlib import Path
 
@@ -544,8 +545,8 @@ def test_a_historical_beam_row_is_priced_from_a_live_models_dev_read(
     unknown = {"by-delegated-to": _UNKNOWN_SPEND, "by-backend-id": _UNKNOWN_SPEND}
     # A served read runs two queries (the window, then its freshness), and
     # models.dev is read at most once per query, never once per row: the first
-    # query's fetch leaves a fresh copy the second reuses, and a failing fetch
-    # is tried once in each.
+    # query's fetch leaves a fresh copy the second reuses, and a failed fetch
+    # is not tried again within the retry interval.
     assert {
         "live": scenario("live", _models_dev(0)),
         # A copy younger than the configured age is reused without a fetch.
@@ -559,7 +560,87 @@ def test_a_historical_beam_row_is_priced_from_a_live_models_dev_read(
     } == {
         "live": (free, 1),
         "kept": (free, 0),
-        "expired": (unknown, 2),
+        "expired": (unknown, 1),
         "priced": (unknown, 1),
-        "shipped-only": (unknown, 2),
+        "shipped-only": (unknown, 1),
     }
+
+
+_BEAM_ROWS = {
+    "beam": {
+        "cost_tier_name": "cheap_cloud",
+        "model_name": "Beam-1.0-501B-A23B",
+        "delegated_to": "byok-reflection",
+    }
+}
+
+
+def test_a_hanging_models_dev_costs_a_read_its_deadline_once_per_interval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, models_dev_home: Path
+) -> None:
+    # Review of bc576d96: a failed models.dev read recorded nothing, and a
+    # served read runs two queries, so with models.dev hanging and no fresh copy
+    # every dashboard refresh and every onex metering run stalled about 20 s.
+    # A hanging read now costs at most a deadline well under the 10 s fetch
+    # timeout, once per retry interval, and the run stays unknown.
+    from omnimarket.handlers import model_catalog
+
+    hang_seconds = 4.0
+    release = threading.Event()
+    fetched: list[str] = []
+
+    def hanging_fetch(url: str, timeout: float) -> bytes:
+        fetched.append(url)
+        release.wait(hang_seconds)
+        raise TimeoutError("models.dev did not answer")
+
+    monkeypatch.setattr(model_catalog, "_onex_home", lambda: models_dev_home)
+    monkeypatch.setattr(model_catalog, "_fetch", hanging_fetch)
+
+    def timed_read(name: str) -> tuple[object, int, float]:
+        store = tmp_path / name
+        store.mkdir()
+        started = time.monotonic()
+        served = _served(store, _BEAM_ROWS)["beam"]
+        return served, len(fetched), time.monotonic() - started
+
+    try:
+        first, after_first, first_seconds = timed_read("first")
+        second, after_second, second_seconds = timed_read("second")
+        # Once the retry interval has passed, models.dev is tried again, once.
+        day_ago = time.time() - 86400
+        for kept in models_dev_home.rglob("*"):
+            if kept.is_file():
+                os.utime(kept, (day_ago, day_ago))
+        third, after_third, _ = timed_read("third")
+    finally:
+        release.set()
+
+    assert (first, second, third) == (_UNKNOWN_SPEND,) * 3
+    assert (after_first, after_second, after_third) == (1, 1, 2)
+    assert first_seconds < hang_seconds
+    assert second_seconds < 1.0
+
+
+def test_a_fresh_models_dev_copy_that_cannot_be_parsed_is_read_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, models_dev_home: Path
+) -> None:
+    # Review of bc576d96: a cached copy younger than its age but not JSON gave
+    # an empty index, so every Beam run read unknown until the copy aged out.
+    from omnimarket.handlers import model_catalog
+
+    settings = model_catalog.catalog_config()["models_dev"]
+    cache = models_dev_home / str(settings["cache_file"])
+    cache.parent.mkdir(parents=True)
+    cache.write_text("{not json", encoding="utf-8")
+    fetched: list[str] = []
+
+    def fetch(url: str, timeout: float) -> bytes:
+        fetched.append(url)
+        return json.dumps(_models_dev(0)).encode("utf-8")
+
+    monkeypatch.setattr(model_catalog, "_onex_home", lambda: models_dev_home)
+    monkeypatch.setattr(model_catalog, "_fetch", fetch)
+
+    assert (_served(tmp_path, _BEAM_ROWS)["beam"], len(fetched)) == (_FREE, 1)
+    assert json.loads(cache.read_text(encoding="utf-8")) == _models_dev(0)

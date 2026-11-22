@@ -220,24 +220,6 @@ def pricing_models_dev_index() -> ModelsDevIndex:
     return shipped_pricing_index()
 
 
-def historical_models_dev_index() -> ModelsDevIndex:
-    """models.dev as a stored run is priced from (OMN-23413 AC35), or the empty index.
-
-    Read live: the cache under the ONEX home while younger than its configured
-    age, else refetched. A copy older than that age (a failed refetch keeps it,
-    marked stale) is never used, and neither is the price list committed with
-    the install, so a run models.dev cannot be read for stays unpriced. Tests
-    replace this function unless they serve their own copy.
-    """
-    try:
-        index = load_models_dev(_onex_home())
-    except Exception:  # Any failure reading optional metadata: price unknown.
-        return EMPTY_INDEX
-    if index.fetched_at is None or index.stale:
-        return EMPTY_INDEX
-    return index
-
-
 def _pricing_index() -> ModelsDevIndex:
     """The index a call may price from, or the empty index.
 

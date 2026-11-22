@@ -98,14 +98,14 @@ def historical_unpriced_zero(
 def historical_unpriced_zero_reader() -> Callable[..., bool]:
     """``historical_unpriced_zero`` for one read, with models.dev read at most once.
 
-    The live models.dev read (``historical_models_dev_index``) happens only
+    The live models.dev read (``models_dev_historical_read``) happens only
     when a row names a backend whose provider models.dev lists.
     """
-    from omnimarket.handlers import model_catalog
+    from omnimarket.handlers import models_dev_historical_read
 
     @cache
     def models_dev() -> ModelsDevIndex:
-        return model_catalog.historical_models_dev_index()
+        return models_dev_historical_read.historical_models_dev_index()
 
     def read(amount: object, *columns: object) -> bool:
         return historical_unpriced_zero(amount, *columns, models_dev=models_dev)

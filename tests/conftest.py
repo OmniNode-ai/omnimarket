@@ -242,14 +242,14 @@ def _no_real_models_dev_price_reads(
     test sees an empty index unless it serves its own. A test that asks for
     the ``models_dev_home`` fixture reads its own copy under that home.
     """
-    from omnimarket.handlers import model_catalog
+    from omnimarket.handlers import model_catalog, models_dev_historical_read
 
     monkeypatch.setattr(
         model_catalog, "pricing_models_dev_index", lambda: model_catalog.EMPTY_INDEX
     )
     if "models_dev_home" not in request.fixturenames:
         monkeypatch.setattr(
-            model_catalog,
+            models_dev_historical_read,
             "historical_models_dev_index",
             lambda: model_catalog.EMPTY_INDEX,
         )
