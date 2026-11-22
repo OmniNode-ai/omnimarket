@@ -15,6 +15,9 @@ import yaml
 from omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers import (
     handler_gateway_workflow_terminal as handler_module,
 )
+from omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers import (
+    wiring_overlay as wiring_module,
+)
 from omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal import (
     HandlerGatewayWorkflowTerminal,
     load_contract_routes,
@@ -383,3 +386,35 @@ def test_handler_signature_is_canonical() -> None:
 
 def test_uuid_helper_roundtrip() -> None:
     assert isinstance(_TENANT, UUID)
+
+
+async def test_runtime_injected_flat_delivery_is_applied() -> None:
+    """The runtime hands one flat dict: the wire fields beside _topic and other injected keys."""
+    handler, store, _ = _make()
+    flat = {**_payload(), "_topic": _COMPLETED, "_partition": 0, "_offset": 66301}
+    request = ModelDelegationTerminalEnvelope.model_validate(flat)
+    assert request.topic == _COMPLETED
+    assert "_topic" not in request.payload
+    assert (await handler.handle(request)).outcome is Outcome.APPLIED
+    assert store.rows[0].status == "completed"
+
+
+async def test_event_type_alone_selects_the_failed_status() -> None:
+    handler, store, _ = _make()
+    flat = {
+        **_payload(failure_reason="boom"),
+        "_event_type": "omnibase-infra.delegation-failed",
+    }
+    result = await handler.handle(ModelDelegationTerminalEnvelope.model_validate(flat))
+    assert result.outcome is Outcome.APPLIED
+    assert store.rows[0].status == "failed"
+
+
+async def test_handler_without_arguments_builds_its_ports_from_the_overlay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, dlq = FakeTerminalStore([FakeRow(_TENANT, _CORR)]), FakeDeadLetter()
+    monkeypatch.setattr(wiring_module, "build_ports_from_overlay", lambda: (store, dlq))
+    handler = HandlerGatewayWorkflowTerminal()
+    assert (await handler.handle(_env())).outcome is Outcome.APPLIED
+    assert store.rows[0].status == "completed"

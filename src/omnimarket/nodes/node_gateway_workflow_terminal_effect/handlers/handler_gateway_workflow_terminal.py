@@ -120,11 +120,13 @@ class HandlerGatewayWorkflowTerminal:
 
     def __init__(
         self,
-        store: ProtocolGatewayTerminalStore,
-        dead_letter: ProtocolGatewayTerminalDeadLetter,
+        store: ProtocolGatewayTerminalStore | None = None,
+        dead_letter: ProtocolGatewayTerminalDeadLetter | None = None,
         *,
         contract_path: Path | None = None,
     ) -> None:
+        # The runtime builds an in-process handler with no arguments; the ports are then built
+        # from the node's overlay document on the first delivery.
         self._store = store
         self._dead_letter = dead_letter
         self._routes, self._dlq_topic = load_contract_routes(contract_path)
@@ -133,12 +135,39 @@ class HandlerGatewayWorkflowTerminal:
     def _count_event(self, name: str) -> None:
         self.counters[name] = self.counters.get(name, 0) + 1
 
+    def _ports(
+        self,
+    ) -> tuple[ProtocolGatewayTerminalStore, ProtocolGatewayTerminalDeadLetter]:
+        if self._store is None or self._dead_letter is None:
+            from omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.wiring_overlay import (
+                build_ports_from_overlay,
+            )
+
+            self._store, self._dead_letter = build_ports_from_overlay()
+        return self._store, self._dead_letter
+
+    def _status_of(
+        self, request: ModelDelegationTerminalEnvelope
+    ) -> Literal["completed", "failed"] | None:
+        if request.topic in self._routes:
+            return self._routes[request.topic]
+        # An event type such as "<family>.delegation-completed" names the same delivery as
+        # the topic "<prefix>.<family>.delegation-completed.<version>".
+        for topic, status in self._routes.items():
+            parts = topic.split(".")
+            if request.event_type and ".".join(parts[2:-1]) == request.event_type:
+                return status
+        return None
+
     async def handle(
         self, request: ModelDelegationTerminalEnvelope
     ) -> ModelGatewayTerminalApplied:
-        status = self._routes.get(request.topic)
+        status = self._status_of(request)
         if status is None:
-            raise ValueError(f"topic {request.topic!r} is not declared by the contract")
+            raise ValueError(
+                f"delivery {request.topic or request.event_type!r} is not declared by the contract"
+            )
+        store, _ = self._ports()
         payload = request.payload
         try:
             update = self._validate(payload, status)
@@ -154,7 +183,7 @@ class HandlerGatewayWorkflowTerminal:
             return ModelGatewayTerminalApplied(
                 outcome=EnumGatewayTerminalOutcome.NOT_A_GATEWAY_WORKFLOW
             )
-        outcome, workflow_id = await self._store.apply_terminal(update)
+        outcome, workflow_id = await store.apply_terminal(update)
         if outcome is EnumGatewayTerminalStoreOutcome.AMBIGUOUS:
             reason = EnumGatewayTerminalDeadLetterReason.AMBIGUOUS_CORRELATION
             await self._publish_dead_letter(request, reason)
@@ -239,7 +268,7 @@ class HandlerGatewayWorkflowTerminal:
         payload = request.payload
         record: dict[str, Any] = {
             "reason": reason.value,
-            "source_topic": request.topic,
+            "source_topic": request.topic or request.event_type,
             "fields_present": sorted(WIRE_FIELDS.intersection(payload)),
         }
         for key in ("correlation_id", "tenant_id"):
@@ -247,7 +276,8 @@ class HandlerGatewayWorkflowTerminal:
                 record[key] = str(_as_uuid(payload.get(key)))
             except _MalformedError:
                 continue
-        await self._dead_letter.publish(
+        _, dead_letter = self._ports()
+        await dead_letter.publish(
             topic=self._dlq_topic,
             key=str(record.get("correlation_id", "unknown")),
             record=record,

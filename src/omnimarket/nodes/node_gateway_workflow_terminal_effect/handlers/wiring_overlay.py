@@ -22,8 +22,10 @@ from omnimarket.nodes.node_gateway_workflow_terminal_effect.models.model_gateway
 OVERLAY_ID = "node_gateway_workflow_terminal_effect"
 
 
-def build_handler_from_overlay() -> HandlerGatewayWorkflowTerminal:
-    """Load overlay.yaml and return a handler over the Postgres store and the Kafka dead-letter publisher."""
+def build_ports_from_overlay() -> tuple[
+    PostgresGatewayTerminalStore, KafkaDeadLetterPublisher
+]:
+    """Load overlay.yaml and return the Postgres store and the Kafka dead-letter publisher."""
     overlay = load_structured_overlay(OVERLAY_ID, ModelGatewayTerminalOverlay)
     database = overlay.database
     pool = GatewayTerminalPostgresPool(
@@ -32,7 +34,7 @@ def build_handler_from_overlay() -> HandlerGatewayWorkflowTerminal:
         max_size=database.pool_max_size,
         query_timeout_seconds=database.query_timeout_seconds,
     )
-    return HandlerGatewayWorkflowTerminal(
+    return (
         PostgresGatewayTerminalStore(pool),
         KafkaDeadLetterPublisher(
             bootstrap_servers_env=overlay.broker_bootstrap_servers_env,
@@ -41,4 +43,14 @@ def build_handler_from_overlay() -> HandlerGatewayWorkflowTerminal:
     )
 
 
-__all__: list[str] = ["OVERLAY_ID", "build_handler_from_overlay"]
+def build_handler_from_overlay() -> HandlerGatewayWorkflowTerminal:
+    """A handler over the overlay's ports, for a caller that wants them built up front."""
+    store, dead_letter = build_ports_from_overlay()
+    return HandlerGatewayWorkflowTerminal(store, dead_letter)
+
+
+__all__: list[str] = [
+    "OVERLAY_ID",
+    "build_handler_from_overlay",
+    "build_ports_from_overlay",
+]
