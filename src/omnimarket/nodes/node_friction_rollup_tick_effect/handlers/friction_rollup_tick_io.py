@@ -11,9 +11,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from omnimarket.models.friction_rollup import (
-    ModelFrictionRollupSource,
-)
 from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_tick_core import (
     STAMPED_REPORT,
     previous_document,
@@ -21,44 +18,6 @@ from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_
 from omnimarket.nodes.node_friction_rollup_tick_effect.models.model_friction_rollup_tick import (
     ModelFrictionRollupTickSettings,
 )
-
-
-def display_archive_path(ledger_dir: Path, path: Path) -> str:
-    try:
-        return path.resolve().relative_to(ledger_dir.resolve()).as_posix()
-    except ValueError:
-        return path.name
-
-
-def read_sources(
-    ledger: Path, archive_dir: Path, settings: ModelFrictionRollupTickSettings
-) -> list[ModelFrictionRollupSource]:
-    """Whole texts in live ledger then sorted archive order; a missing archive directory is a missing source."""
-    sources = [
-        ModelFrictionRollupSource(
-            display=ledger.name,
-            kind="markdown",
-            text=ledger.read_text(encoding="utf-8"),
-        )
-    ]
-    if archive_dir.is_dir():
-        for path in sorted(archive_dir.glob(settings.archive_glob)):
-            sources.append(
-                ModelFrictionRollupSource(
-                    display=display_archive_path(ledger.parent, path),
-                    kind="markdown",
-                    text=path.read_text(encoding="utf-8"),
-                )
-            )
-    else:
-        sources.append(
-            ModelFrictionRollupSource(
-                display=display_archive_path(ledger.parent, archive_dir),
-                kind="missing",
-                text=None,
-            )
-        )
-    return sources
 
 
 def read_previous(
