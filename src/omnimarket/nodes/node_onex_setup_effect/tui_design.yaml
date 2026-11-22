@@ -157,6 +157,9 @@ model_table:
     stale: "(stale: could not refresh)"
     "yes": "Yes"
     "no": "No"
+  # After a row's provider once its kept list (24 hours) has expired: the row's
+  # facts then come from models.dev (OMN-23413 AC4, operator 2026-11-22).
+  listing_expired: "provider list expired"
   # A model on the user's own server: the provider, then the server that answered.
   server_label: "{provider} · {server}"
   # Shown for any value no source states (price, context, capabilities).

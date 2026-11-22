@@ -281,6 +281,27 @@ def recalled_provider_listing(
         return None
 
 
+def provider_listing_expired(
+    provider: str, onex_home: Path | None = None, *, now: datetime | None = None
+) -> bool:
+    """True when a kept list for ``provider`` exists and is older than its age.
+
+    No kept list, or one that is not a regular file, is not an expired list.
+    """
+    path = _listing_path(provider, onex_home or _onex_home())
+    try:
+        info = os.stat(path)
+    except OSError:
+        return False
+    if not stat.S_ISREG(info.st_mode):
+        return False
+    max_age = timedelta(
+        hours=float(catalog_config()["provider_listing"]["max_age_hours"])
+    )
+    kept_at = datetime.fromtimestamp(info.st_mtime, UTC)
+    return (now or datetime.now(UTC)) - kept_at >= max_age
+
+
 def list_and_remember_models(
     provider: str, api_key: str | SecretStr
 ) -> ModelByokModelListing:
@@ -549,6 +570,7 @@ def stored_entries(
         on_servers = row.get("local_models")
         deployment = deployment_of(provider)
         provider_models: dict[str, ModelByokListedModel] = {}
+        expired = False
         if (
             deployment == "cloud"
             and not on_servers
@@ -557,6 +579,9 @@ def stored_entries(
             listing = recalled_provider_listing(provider)
             if listing and listing.provider == provider and listing.outcome == "listed":
                 provider_models = {model.id: model for model in listing.models}
+            elif listing is None:
+                # AC4: models.dev fills the facts, and the table says why.
+                expired = provider_listing_expired(provider)
         stored: list[tuple[str, str | None, Any]] = (
             [
                 (str(m["model"]), str(m["base_url"]), m.get("last_test"))
@@ -594,6 +619,6 @@ def stored_entries(
                     status=status,
                     status_reason=reason,
                     server_url=url,
-                )
+                ).model_copy(update={"provider_list_expired": expired})
             )
     return tuple(entries)

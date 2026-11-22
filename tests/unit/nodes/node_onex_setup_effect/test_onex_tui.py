@@ -908,6 +908,67 @@ async def test_model_lists_set_up_models_and_makes_the_choice_first() -> None:
         assert _actions(runner)[-1] == ("models", "first", "--clear")
 
 
+async def test_the_table_says_when_a_provider_list_has_expired(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-23413, operator decision 23413-AC4-SHOWEXPIRED (2026-11-22): once the
+    24-hour provider list has expired the table says so (AC4: a stale catalogue
+    fails visibly), and while it is fresh it says nothing; models.dev still
+    fills the facts after expiry (23413-G10-FALLBACK)."""
+    import os
+
+    from textual.widgets import DataTable
+
+    from omnimarket.handlers import model_catalog
+    from omnimarket.handlers.routing.byok_model_listing import (
+        ModelByokListedModel,
+        ModelByokModelListing,
+    )
+
+    monkeypatch.setattr(model_catalog, "_onex_home", lambda: tmp_path)
+    rows = json.dumps(
+        {"provider": "openrouter", "set_up": True, "models": ["qwen/qwen3.8-27b"]}
+    )
+
+    async def shown_row() -> str:
+        app = _app(_Runner([], by_command={("models", "list"): rows}))
+        async with app.run_test(size=(160, 40)) as pilot:
+            await _type(pilot, "/model")
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.pause()
+            grid = app.screen.query_one("#models").query_one(DataTable)
+            assert grid.row_count == 1
+            return "  ".join(str(cell) for cell in grid.get_row_at(0))
+
+    # No list was ever kept: nothing has expired, so no marker either.
+    never = await shown_row()
+    assert "262K" in never
+    assert "expired" not in never.lower(), never
+
+    model_catalog.remember_provider_listing(
+        ModelByokModelListing(
+            provider="openrouter",
+            outcome="listed",
+            models=(
+                ModelByokListedModel(
+                    id="qwen/qwen3.8-27b", name="Qwen listed", context_tokens=16_000
+                ),
+            ),
+        )
+    )
+    fresh = await shown_row()
+    assert "16K" in fresh  # the provider's own list
+    assert "expired" not in fresh.lower(), fresh
+
+    os.utime(model_catalog._listing_path("openrouter", tmp_path), (0, 0))
+    expired = await shown_row()
+    assert "262K" in expired  # models.dev fills the facts
+    assert "expired" in expired.lower(), (
+        f"the table shows no expired marker after the provider list expired: {expired}"
+    )
+
+
 async def test_model_with_nothing_set_up_points_to_setup() -> None:
     app = _app(_Runner([], by_command={("models", "list"): ""}))
     async with app.run_test() as pilot:

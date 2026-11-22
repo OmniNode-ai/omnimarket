@@ -103,6 +103,8 @@ def provider_text(entry: ModelCatalogEntry, label: str) -> Text:
     if entry.server_url:  # two servers can run one model: say which one this is
         host = urlparse(entry.server_url).netloc or entry.server_url
         text.append(f"  {host}", style=_colour("muted"))
+    if entry.provider_list_expired:  # AC4: say why models.dev fills the facts
+        text.append(f"  {_table().listing_expired}", style=_colour("warning"))
     return text
 
 
