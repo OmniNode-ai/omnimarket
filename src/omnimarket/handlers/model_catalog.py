@@ -155,6 +155,38 @@ def load_models_dev(
     )
 
 
+def kept_models_dev_index(
+    onex_home: Path | None = None, *, now: datetime | None = None
+) -> ModelsDevIndex:
+    """The models.dev copy as kept, without any fetch (OMN-23413 AC34).
+
+    Reads the cached copy only while it is younger than its configured age.
+    A missing, expired, or unreadable copy yields the empty index; this
+    function never contacts models.dev.
+    """
+    settings = catalog_config()["models_dev"]
+    path = (onex_home or _onex_home()) / str(settings["cache_file"])
+    moment = now or datetime.now(UTC)
+    cached_at: datetime | None = None
+    if path.is_file():
+        cached_at = datetime.fromtimestamp(path.stat().st_mtime, UTC)
+    fresh = cached_at is not None and moment - cached_at < timedelta(
+        hours=float(settings["max_age_hours"])
+    )
+    if not fresh:
+        return EMPTY_INDEX
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return EMPTY_INDEX
+    return ModelsDevIndex(
+        models=_index(document),
+        fetched_at=cached_at.isoformat() if cached_at else None,
+        stale=False,
+        error=None,
+    )
+
+
 def _decimal(value: Any) -> Decimal | None:
     """A non-negative number as Decimal through its text, or None."""
     if isinstance(value, bool) or not isinstance(value, (int, float, str, Decimal)):
@@ -188,8 +220,8 @@ def _shipped_price_list() -> Mapping[str, Any]:
 def shipped_pricing_index() -> ModelsDevIndex:
     """The shipped price list as an index of ``cost`` entries, read from disk only.
 
-    It is data in the install, refreshed with each release, so a delegation call
-    on a customer machine never reaches models.dev to price a model.
+    It is data in the install (omnimarket#6497). A delegation call does not
+    price from it: OMN-23413 AC35 prices from models.dev read live.
     """
     document = _shipped_price_list()
     found: dict[tuple[str, str], Mapping[str, Any]] = {}
@@ -212,24 +244,27 @@ def shipped_pricing_index() -> ModelsDevIndex:
 def pricing_models_dev_index() -> ModelsDevIndex:
     """The prices a delegation call reads to price a model (OMN-23413 AC35).
 
-    The price list shipped with the install, never a fetch: a customer machine
-    makes no models.dev connection inside a delegation call. The model table's
-    own refresh (``load_models_dev``) is a separate, user-initiated read.
-    Tests replace this function so no unit test depends on the list's contents.
+    A live read of the models.dev cache, refetched when older than the
+    configured age; a failed refetch keeps the expired copy and marks it
+    stale, which _pricing_index then refuses to price from.
     """
-    return shipped_pricing_index()
+    return load_models_dev(_onex_home())
 
 
 def _pricing_index() -> ModelsDevIndex:
     """The index a call may price from, or the empty index.
 
-    Supplemental metadata cannot prevent a provider call, so a read failure is
-    no index and the model stays unpriced.
+    Supplemental metadata cannot prevent a provider call, so a read failure
+    is no index and the model stays unpriced. An expired copy (a failed
+    refetch that kept a stale cache) never prices a call.
     """
     try:
-        return pricing_models_dev_index()
+        index = pricing_models_dev_index()
     except Exception:  # Any failure reading optional metadata: price unknown.
         return EMPTY_INDEX
+    if index.stale:
+        return EMPTY_INDEX
+    return index
 
 
 def _listing_path(provider: str, onex_home: Path) -> Path:
@@ -251,10 +286,17 @@ def remember_provider_listing(
     _write_atomic(path, listing.model_dump_json().encode("utf-8"))
 
 
-def recalled_provider_listing(
-    provider: str, onex_home: Path | None = None, *, now: datetime | None = None
-) -> ModelByokModelListing | None:
-    """The kept list for ``provider`` while younger than its age, else None."""
+def _recalled_listing(
+    provider: str,
+    onex_home: Path | None = None,
+    *,
+    now: datetime | None = None,
+) -> tuple[ModelByokModelListing, datetime] | None:
+    """The kept list for ``provider`` while younger than its age, with its kept time.
+
+    Returns the listing and the UTC time it was kept (file mtime). A missing,
+    expired, or unreadable copy yields None.
+    """
     path = _listing_path(provider, onex_home or _onex_home())
     try:
         kept_at = datetime.fromtimestamp(path.stat().st_mtime, UTC)
@@ -266,9 +308,20 @@ def recalled_provider_listing(
     if (now or datetime.now(UTC)) - kept_at >= max_age:
         return None
     try:
-        return ModelByokModelListing.model_validate_json(path.read_text("utf-8"))
+        listing = ModelByokModelListing.model_validate_json(path.read_text("utf-8"))
     except (OSError, ValueError):
         return None
+    return listing, kept_at
+
+
+def recalled_provider_listing(
+    provider: str, onex_home: Path | None = None, *, now: datetime | None = None
+) -> ModelByokModelListing | None:
+    """The kept list for ``provider`` while younger than its age, else None."""
+    result = _recalled_listing(provider, onex_home, now=now)
+    if result is None:
+        return None
+    return result[0]
 
 
 def list_and_remember_models(
@@ -288,8 +341,8 @@ def models_dev_price_per_1m(
     """A model's ``(input, output)`` USD per 1M tokens as models.dev lists it, or None.
 
     OMN-23413 AC35: the provider's own catalogue and the model registry come
-    first; this is read only for a model neither prices, from the price list
-    shipped with the install. ``provider`` is the ONEX
+    first; this is read only for a model neither prices, from models.dev read
+    live (``pricing_models_dev_index``). ``provider`` is the ONEX
     provider id, mapped to models.dev's through ``provider_ids``. None when the
     provider has no models.dev id, models.dev does not list the model, or the
     entry states no input or output price.
@@ -444,21 +497,26 @@ def listed_catalog_entry(
     )
 
 
-def runtime_catalog_entry(provider: str, model_id: str) -> ModelCatalogEntry:
-    """Provider facts as the explorer last read them, and the same supplemental cache.
+def runtime_catalog_entry(
+    provider: str, model_id: str, *, live: bool = True
+) -> ModelCatalogEntry:
+    """One combined entry: the provider list the explorer kept, then models.dev (AC34).
 
-    Reads only what is kept: the provider list the table last read (AC34) and
-    the cached models.dev index. It never lists models itself, so a delegation
-    call makes no request beyond the call (OMN-20157).
+    It never lists models itself, so a delegation call makes no provider request
+    beyond the call (OMN-20157). ``live`` reads models.dev as a call prices from
+    it (AC35: read again when older than the configured age); ``live=False`` is
+    for route resolution outside the call, which reads only a copy still within
+    that age and never fetches.
     """
-    index = _pricing_index()
-    listing = recalled_provider_listing(provider)
-    if listing is not None:
+    index = _pricing_index() if live else kept_models_dev_index()
+    result = _recalled_listing(provider)
+    if result is not None:
+        listing, kept_at = result
         for model in listing.models:
             if model.id == model_id:
                 return listed_catalog_entry(
                     provider, model, index, provider_label=provider
-                )
+                ).model_copy(update={"provider_listed_at": kept_at.isoformat()})
     return catalog_entry(
         provider,
         model_id,

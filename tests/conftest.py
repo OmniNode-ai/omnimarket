@@ -246,6 +246,21 @@ def _no_real_models_dev_price_reads(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _no_real_onex_home_model_copies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """No unit test reads the developer's own kept model copies (OMN-23413 AC35).
+
+    Route resolution reads the models.dev copy and the provider lists kept under
+    the ONEX home. Point that home at an empty per-test folder; a test that
+    serves its own copies sets ``_onex_home`` in its body.
+    """
+    from omnimarket.handlers import model_catalog
+
+    monkeypatch.setattr(model_catalog, "_onex_home", lambda: tmp_path / "onex-home")
+
+
+@pytest.fixture(autouse=True)
 def _no_real_byok_model_list_reads(monkeypatch: pytest.MonkeyPatch) -> None:
     """No unit test reads a real provider's model list (OMN-20157).
 

@@ -1193,7 +1193,8 @@ def byok_model_price_per_1m(
     if not supplemental:
         return None
     # OMN-23413 AC35: a model neither the catalogue nor the registry prices is
-    # priced from the price list shipped with the install, never fetched; still None when it states none.
+    # priced from models.dev, read live (a copy older than its configured age is
+    # read again and never prices a call); still None when it states none.
     from omnimarket.handlers.model_catalog import models_dev_price_per_1m
 
     return models_dev_price_per_1m(provider, model_name)

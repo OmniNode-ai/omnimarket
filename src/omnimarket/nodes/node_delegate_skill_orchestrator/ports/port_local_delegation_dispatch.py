@@ -1172,8 +1172,12 @@ def _call_with_model_budget(
     requested: int | None,
     request: ModelLlmDelegationCallRequest,
 ) -> ModelLlmDelegationCallResult:
-    """Read the output ceiling and price entry inside the supervised effect; no metadata is fetched."""
-    ceiling, entry = model_output_budget(row, request.model_id)
+    """Read the output ceiling and price entry inside the supervised effect.
+
+    models.dev is read here, inside the cancellable worker, and only when its
+    copy is older than the configured age (OMN-23413 AC35).
+    """
+    ceiling, entry = model_output_budget(row, request.model_id, live=True)
     limit = resolve_effective_max_tokens(
         requested=requested, backend_max_tokens=ceiling
     )

@@ -50,7 +50,11 @@ from omnimarket.events.provider_quota import (
     ModelProviderQuotaObserved,
 )
 from omnimarket.handlers import openai_compatible_endpoint as endpoints
-from omnimarket.handlers.model_catalog import catalog_config, runtime_catalog_entry
+from omnimarket.handlers.model_catalog import (
+    catalog_config,
+    models_dev_price_per_1m,
+    runtime_catalog_entry,
+)
 from omnimarket.handlers.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
@@ -459,6 +463,62 @@ def _compute_cost(
         cost_basis = EnumCostBasis.UNKNOWN
 
     return actual, opus_equiv, savings, cost_basis
+
+
+def _price_provenance(
+    model_id: str,
+    endpoint_url: str | None,
+    provider: str | None,
+    model_entry: ModelCatalogEntry | None,
+    cost_basis: EnumCostBasis,
+) -> tuple[str | None, str | None]:
+    """Which source priced a customer-key call, and when it was read (OMN-23413 AC35).
+
+    Mirrors ``_compute_cost``'s order. A price from packaged configuration (the
+    BYOK catalogue, the model registry, an eval arm) has no read time; a price
+    from the provider's kept list or models.dev carries the oldest read time of
+    the sources it used. An unpriced call has neither.
+    """
+    if cost_basis is EnumCostBasis.UNKNOWN:
+        return None, None
+    catalogue_provider = byok_backend_provider(provider)
+    if catalogue_provider is None:
+        return None, None
+    if (
+        byok_model_price_per_1m(
+            provider, endpoint_url, model_id, supplemental=model_entry is None
+        )
+        is not None
+    ):
+        if byok_declared_price_per_1m(endpoint_url, model_id) is not None:
+            return "byok_provider_backends", None
+        if (
+            model_entry is None
+            and models_dev_price_per_1m(catalogue_provider, model_id) is not None
+        ):
+            return "models.dev", None
+        return "model_registry", None
+    if (
+        model_entry is not None
+        and model_entry.input_usd_per_million is not None
+        and model_entry.output_usd_per_million is not None
+    ):
+        source = model_entry.sources.get("price")
+        read_times: list[str] = []
+        if (
+            source is not None
+            and source != "models.dev"
+            and model_entry.provider_listed_at is not None
+        ):
+            read_times.append(model_entry.provider_listed_at)
+        if (
+            source is not None
+            and "models.dev" in source
+            and model_entry.metadata_fetched_at is not None
+        ):
+            read_times.append(model_entry.metadata_fetched_at)
+        return source, min(read_times) if read_times else None
+    return "delegation_routing_overlay", None
 
 
 def _cost_usage_source(cost_basis: EnumCostBasis) -> EnumUsageSource:
@@ -1434,6 +1494,9 @@ class HandlerLlmDelegationCall:
             provider=request.provider,
             model_entry=model_entry,
         )
+        price_source, price_read_at = _price_provenance(
+            request.model_id, endpoint_url, request.provider, model_entry, cost_basis
+        )
 
         result = ModelLlmDelegationCallResult(
             request_id=request.request_id,
@@ -1459,6 +1522,8 @@ class HandlerLlmDelegationCall:
             savings_usd=savings,
             usage_source=_token_usage_source(response_json),
             cost_basis=cost_basis,
+            price_source=price_source,
+            price_read_at=price_read_at,
             provider_reported_cost_usd=_provider_reported_cost(response_json),
             quality_gate_passed=True,
             endpoint_healthy=True,
@@ -1522,6 +1587,9 @@ class HandlerLlmDelegationCall:
             provider=request.provider,
             model_entry=model_entry,
         )
+        price_source, price_read_at = _price_provenance(
+            request.model_id, endpoint_url, request.provider, model_entry, cost_basis
+        )
         cache_read, cache_write_5m, cache_write_1h = cache_usage_figures(
             response_json.get("usage") or {}
         )
@@ -1545,6 +1613,8 @@ class HandlerLlmDelegationCall:
             savings_usd=savings,
             usage_source=_token_usage_source(response_json, native=True),
             cost_basis=cost_basis,
+            price_source=price_source,
+            price_read_at=price_read_at,
             quality_gate_passed=True,
             endpoint_healthy=True,
             served_model_id=reading.served_model,

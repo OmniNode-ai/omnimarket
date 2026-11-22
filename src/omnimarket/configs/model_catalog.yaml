@@ -21,9 +21,9 @@ models_dev:
   # The whole catalogue is read at once (6.7 MB on 2026-11-17); larger is refused.
   max_bytes: 33554432
 
-# The prices a delegation call reads for a model neither the provider catalogue
-# nor the model registry prices. A data file shipped inside the install and
-# refreshed with each release; a call never fetches models.dev to price a model.
+# A price list shipped inside the install (omnimarket#6497). A delegation call
+# no longer prices from it: OMN-23413 AC35 prices a call from models.dev read
+# live, reusing the copy above only while it is younger than max_age_hours.
 shipped_price_list:
   file: model_price_list.v1.json
 

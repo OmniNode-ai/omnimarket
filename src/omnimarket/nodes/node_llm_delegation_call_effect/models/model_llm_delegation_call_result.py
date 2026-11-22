@@ -75,6 +75,11 @@ class ModelLlmDelegationCallResult(BaseModel):
     # Token evidence only; cost provenance is carried separately by cost_basis.
     usage_source: EnumUsageSource = EnumUsageSource.UNKNOWN
     cost_basis: EnumCostBasis = EnumCostBasis.UNKNOWN
+    # OMN-23413 AC35: which source priced this call (the provider's own list,
+    # models.dev, or packaged configuration) and when that source was read
+    # (ISO UTC; None for packaged configuration). Both None when unpriced.
+    price_source: str | None = None
+    price_read_at: str | None = None
 
     @property
     def cost_usage_source(self) -> EnumUsageSource:

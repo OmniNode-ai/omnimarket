@@ -210,10 +210,15 @@ def _keep_eval_arm_model(
 
 
 def model_output_budget(
-    row: ModelByokProviderBackend, model_id: str
+    row: ModelByokProviderBackend, model_id: str, *, live: bool = False
 ) -> tuple[int, ModelCatalogEntry]:
-    """The request ceiling and the same entry used to price the call."""
-    entry = runtime_catalog_entry(row.provider, model_id)
+    """The request ceiling and the same entry used to price the call.
+
+    Route resolution reads only copies still within their configured age and
+    never fetches; the supervised call passes ``live=True`` so models.dev is
+    read again there when its copy is older than that age (OMN-23413 AC35).
+    """
+    entry = runtime_catalog_entry(row.provider, model_id, live=live)
     limit = entry.max_output_tokens
     if limit is None:
         limit = row.max_tokens or int(
