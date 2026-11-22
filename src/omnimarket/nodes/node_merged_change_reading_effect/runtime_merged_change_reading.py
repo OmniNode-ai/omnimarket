@@ -12,6 +12,7 @@ handler. Nothing is written.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from collections.abc import Mapping, Sequence
@@ -82,6 +83,12 @@ def load_contract_config() -> ModelMcrConfig:
     """The compute node's own declared rule config."""
     document = yaml.safe_load(COMPUTE_CONTRACT.read_text(encoding="utf-8"))
     return ModelMcrConfig.model_validate(document["merged_change_reading"])
+
+
+def load_log_labels() -> ModelMcrLogLabels:
+    """The runtime read labels the effect's own contract declares (``runtime.log``)."""
+    rt = yaml.safe_load(OWN_CONTRACT.read_text(encoding="utf-8"))["runtime"]
+    return ModelMcrLogLabels.model_validate(rt["log"])
 
 
 def build_sources(
@@ -220,6 +227,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="read every change the runner overlay declares",
     )
     ap.add_argument("--now", help="override the clock, UTC ISO (tests and replays)")
+    ap.add_argument(
+        "--resolve-only",
+        action="store_true",
+        help="Resolve the supplied changes to merge SHAs without reading the runtime",
+    )
     ap.add_argument("--overlay", help="a YAML file holding a full ModelMcrConfig")
     args = ap.parse_args(arguments)
     if not args.change and not args.all_runners:
@@ -229,12 +241,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.now
         else datetime.now(UTC)
     )
+    sources = build_sources(os.environ, now)
+    if args.resolve_only:
+        resolved = sources.resolve_changes(tuple(parse_change(c) for c in args.change))
+        sys.stdout.write(
+            json.dumps([change.model_dump(mode="json") for change in resolved]) + "\n"
+        )
+        return 0
+
     config = (
         ModelMcrConfig.model_validate(yaml.safe_load(Path(args.overlay).read_text()))
         if args.overlay
         else load_contract_config()
     )
-    sources = build_sources(os.environ, now)
     changes = [parse_change(c) for c in args.change]
     if args.all_runners:
         declared = {(c.repo, c.number) for c in changes}

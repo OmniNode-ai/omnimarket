@@ -73,6 +73,8 @@ class ModelLabAlarmDeliveryRequest(BaseModel):
     alarms: tuple[ModelLabAlarm, ...] = ()
     #: The condition's own reading, quoted in the ledger row.
     evidence: str = ""
+    #: When set on an OK request, send this notice before clearing each active episode.
+    recovery_detail: str = ""
     #: False delivers nothing and keeps nothing (a probe or a drill).
     write: bool = True
 
@@ -82,6 +84,8 @@ class ModelLabAlarmDeliveryRequest(BaseModel):
             raise ValueError(
                 "an alarm belongs to a different condition than the request"
             )
+        if self.recovery_detail and self.outcome is not EnumDeliveryCondition.OK:
+            raise ValueError("a recovery notice requires an OK outcome")
         if self.alarms and self.outcome is not EnumDeliveryCondition.ALARM:
             raise ValueError("alarms are carried only by an ALARM outcome")
         return self

@@ -1,0 +1,121 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merged_change_runner_read_workflow
+node_type: ORCHESTRATOR_GENERIC
+lifecycle: experimental
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.1.0"
+description: >-
+  The managed Temporal schedule samples the dev runtime's readiness and build record. For each observed
+  restart it queues one read when the runtime reports ready. The read selects the declared runner merges
+  newer than the preceding build and no later than the start of the read. The reader invokes one activity
+  per selected change and publishes its result through the integration reading publish effect. A merge or
+  read that cannot be verified is published UNREAD with its cause. The schedule watches each read until it
+  completes and delivers one idle alarm and recovery through the lab alarm delivery effect. No model
+  is used. The host registry unit runs the worker and installs its schedule.
+input_model:
+  name: ModelRunnerReadPlan
+  module: omnimarket.nodes.node_merged_change_runner_read_workflow.models.model_runner_read
+  description: The step commands, the line concurrency, the step timeout and the retry limit of one full read.
+output_model:
+  name: ModelRunnerIntegrationResult
+  module: omnimarket.nodes.node_merged_change_runner_read_workflow.models.model_runner_read
+  description: The integration reading batch of one full read and its verdict counts.
+handler:
+  module: omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.handler_runner_reading_integration
+  class: HandlerRunnerReadingIntegration
+  input_model: omnimarket.nodes.node_merged_change_runner_read_workflow.models.model_runner_read.ModelRunnerIntegrationRequest
+  output_model: omnimarket.nodes.node_merged_change_runner_read_workflow.models.model_runner_read.ModelRunnerIntegrationResult
+dependencies:
+  - name: omnimarket.nodes.node_merged_change_reading_effect
+    dependency_type: internal
+    description: "reads one declared line per activity, through its declared CLI."
+    required: true
+  - name: omnimarket.nodes.node_integration_reading_publish_effect
+    dependency_type: internal
+    description: "publishes the integration projection through its declared CLI."
+    required: true
+  - name: omnimarket.nodes.node_lab_alarm_deliver_effect
+    dependency_type: internal
+    description: "delivers ready-edge idle and recovery notices."
+    required: true
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.handler_runner_reading_integration:HandlerRunnerReadingIntegration
+  handlers:
+    - operation: handle
+      handler:
+        name: HandlerRunnerReadingIntegration
+        module: omnimarket.nodes.node_merged_change_runner_read_workflow.handlers.handler_runner_reading_integration
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: >-
+    The Temporal schedule runner_read.schedule_id runs one readiness check every
+    ready_edge.probe_interval_seconds. The schedule command creates or updates it. The start command
+    is an explicit full-read diagnostic. The registry_module_tick unit hosts the worker.
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 900000
+metadata:
+  transport_type: local
+  description: Read declared merged-change runners after dev runtime readiness and supervise publication.
+  author: OmniNode Team
+  created: '2026-11-17'
+runner_read:
+  address: 127.0.0.1:7233
+  namespace: default
+  task_queue: onex-merged-change-runner-read
+  schedule_id: merged-change-runner-read
+  workflow_id_prefix: merged-change-runner-read
+  ready_edge:
+    probe_interval_seconds: 30
+    probe_timeout_seconds: 8
+    tick_timeout_seconds: 180
+    idle_bound_seconds: 600
+    # The runtime's address is the host of the dev deploy reading overlay's health probe; only the path is declared here.
+    ready_path: /ready
+    host_reads_overlay_id: runtime_host_reads
+    host_reads_file_env: RUNTIME_HOST_READS_OVERLAY_PATH
+    alarm_state_relpath: .onex_state/merged-change-runner-read/alarm-state.json
+  line_concurrency: 8
+  step_timeout_seconds: 180
+  step_max_attempts: 3
+  # {python} is the worker's own interpreter, so every step runs in the worker's environment.
+  steps:
+    lines: ["{python}", "-m", "omnimarket.nodes.node_merged_change_runner_read_workflow", "lines"]
+    read_line: ["{python}", "-m", "omnimarket.nodes.node_merged_change_reading_effect"]
+    publish: ["{python}", "-m", "omnimarket.nodes.node_merged_change_runner_read_workflow", "publish"]
+  runners_overlay:
+    overlay_id: merged_change_runners
+    overlay_file_env: MERGED_CHANGE_RUNNERS_OVERLAY_PATH
+  publish_module: omnimarket.nodes.node_integration_reading_publish_effect
+  publish_timeout_seconds: 120
+  home_env: OMNI_HOME
+  # The run record of every full read, under the registry home: one JSON line per read.
+  run_record_relpath: .onex_state/merged-change-runner-read/runs.jsonl
+  origin_template: "node_merged_change_runner_read_workflow:{host}:{run_id}"
+  git_timeout_seconds: 20
+  integration:
+    verdict_running: SEEN_RUNNING
+    verdict_not_running: NOT_RUNNING
+    verdict_unread: UNREAD
+    library_kind: library
+    target_runtime: the dev runtime
+    target_unit_template: "{unit} on {host}"
+    store_running_path: overlay_store_checkout
+    # The reader's missing step (node_merged_change_reading_compute's requirements) -> the projection's state and gap.
+    missing_steps:
+      no_declared_runner: {state: not_running, gap_class: needs_reader}
+      not_in_build: {state: not_running, gap_class: runtime_behind}
+      node_not_loaded: {state: not_running, gap_class: needs_registration}
+      no_trigger_subscription: {state: not_running, gap_class: needs_registration}
+      no_run_since_build: {state: not_running, gap_class: needs_unit}
+      no_result: {state: defect, gap_class: needs_unit}
+      last_run_failed: {state: defect, gap_class: needs_unit}
+    unknown_missing_step: {state: not_running, gap_class: needs_reading}

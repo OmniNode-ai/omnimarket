@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: integration_reading_publish_effect
 version: "0.1.0"
-description: "Publishes one integration pass's readings as the integration floor projection, with the pass's own time."
+description: "Publishes full and incremental integration readings as the floor projection."
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
