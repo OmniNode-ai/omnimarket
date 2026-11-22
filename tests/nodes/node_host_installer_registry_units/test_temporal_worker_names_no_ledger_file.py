@@ -22,9 +22,13 @@ from tests.nodes.node_host_installer_registry_units import (
     test_registry_units_systemd as base,
 )
 from tests.nodes.node_host_installer_registry_units.test_service_type_unit import (
-    linux_host,  # noqa: F401  (autouse fixture: a Linux host with uv)
+    linux_host,
     request,
 )
+
+# `linux_host` is an autouse fixture (a Linux host with uv) taken from the sibling module: naming
+# it in `__all__` keeps the import used and makes pytest collect it here.
+__all__ = ["linux_host"]
 
 pytestmark = pytest.mark.unit
 

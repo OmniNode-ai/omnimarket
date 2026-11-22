@@ -58,7 +58,9 @@ RULING = (
 CLAIM = "2026-11-01T20:30:00Z | CLAIM | lane=other | ticket=TKT-9 | actor=x | model=x"
 
 
-def bus_port(answer: ModelPointAnswer, *, moved: bool = True) -> BusLedgerRows:
+def bus_port(
+    answer: ModelPointAnswer, *, moved: bool = True
+) -> tuple[BusLedgerRows, InMemoryPointRead]:
     point_read = InMemoryPointRead({"rows": answer, "inbox": answer, "holds": answer})
     handler = HandlerWorkLedgerReader(
         overlay(moved_readers=(LEDGER_ROWS_READER,) if moved else ("other",)),
@@ -67,9 +69,7 @@ def bus_port(answer: ModelPointAnswer, *, moved: bool = True) -> BusLedgerRows:
         clock=lambda: CLOCK,
         topics=TOPICS,
     )
-    port = BusLedgerRows(handler)
-    port.point_read = point_read  # type: ignore[attr-defined]
-    return port
+    return BusLedgerRows(handler), point_read
 
 
 def fresh(*lines: str) -> ModelPointAnswer:
@@ -160,38 +160,39 @@ def test_load_rows_refuses_an_unreadable_answer() -> None:
 
 
 def test_the_bus_port_asks_the_reader_for_the_widest_window_it_allows() -> None:
-    port = bus_port(fresh(RULING, CLAIM))
+    port, point_read = bus_port(fresh(RULING, CLAIM))
     answer = port.read_rows(MAX_WINDOW_HOURS)
     assert answer.status == "ok"
     assert answer.lines == (RULING, CLAIM)
-    queries = port.point_read.requests  # type: ignore[attr-defined]
+    queries = point_read.requests
     assert queries[0].query == "rows"
     assert queries[0].since == CLOCK - timedelta(hours=MAX_WINDOW_HOURS)
     assert MAX_WINDOW_HOURS == 720
 
 
 def test_the_bus_port_clamps_a_window_beyond_the_reader_cap() -> None:
-    port = bus_port(fresh(RULING))
+    port, _ = bus_port(fresh(RULING))
     assert port.read_rows(5000).status == "ok"
 
 
 def test_the_bus_port_reports_a_reader_that_is_not_moved() -> None:
-    answer = bus_port(fresh(RULING), moved=False).read_rows(MAX_WINDOW_HOURS)
+    port, _ = bus_port(fresh(RULING), moved=False)
+    answer = port.read_rows(MAX_WINDOW_HOURS)
     assert answer.status == "not-moved"
     assert answer.lines == ()
 
 
 def test_the_bus_port_reports_a_node_outage() -> None:
-    port = bus_port(ModelPointAnswer(error="bus-outage"))
+    port, _ = bus_port(ModelPointAnswer(error="bus-outage"))
     answer = port.read_rows(MAX_WINDOW_HOURS)
     assert answer.status == "unreadable"
     assert "bus-outage" in answer.reason
 
 
 def test_the_inbox_view_asks_the_reader_for_the_lane() -> None:
-    port = bus_port(fresh("inbox lane-a: 0 open"))
+    port, point_read = bus_port(fresh("inbox lane-a: 0 open"))
     answer = port.read_view("inbox", "lane-a")
     assert answer.status == "ok"
-    queries = port.point_read.requests  # type: ignore[attr-defined]
+    queries = point_read.requests
     assert queries[0].query == "inbox"
     assert queries[0].lanes == ("lane-a",)

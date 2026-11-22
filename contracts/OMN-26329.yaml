@@ -25,20 +25,20 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: dod-omn26329-ac1
-    description: "AC1: the census run over the branch passes with --per-file; each cleared group 1 file has no row left in the ratchet table."
+    description: "AC1: each cleared group 1 file holds no executable reader or writer of the ledger file or its path variable; the cases read the live tree and fail on the merge base, where the files still hold a counted hit."
     source: manual
     binds_ac: [AC1]
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/unit/validators/test_ledger_file_census.py -q --no-cov -p no:cacheprovider
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group1_omn26329.py -q --no-cov -p no:cacheprovider -k "holds_no_executable"
         cwd: .
   - id: dod-omn26329-ac2
-    description: "AC2: the ratchet diff holds only dropped rows and lowered counts, written by the census node's --lower."
+    description: "AC2: each cleared group 1 file has no ratchet row and the registry units contract row is lowered, never raised, with the census run over the branch passing --per-file; the cases fail on the merge base, where the rows still stand."
     source: manual
     binds_ac: [AC2]
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/unit/validators/test_ledger_file_census.py -q --no-cov -p no:cacheprovider
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group1_omn26329.py -q --no-cov -p no:cacheprovider -k "ratchet_row or lowered_never_raised"
         cwd: .
   - id: dod-omn26329-ac3
     description: "AC3: the moved readers and writers have tests that read the bus read command and the bus append command as separate processes; the node tests of the group pass."
