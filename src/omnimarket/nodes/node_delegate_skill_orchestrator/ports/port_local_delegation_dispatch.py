@@ -417,6 +417,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
     current_call_observer,
+    current_local_model_entry,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,
@@ -1198,8 +1199,11 @@ def _call_with_model_budget(
             "timeout_seconds": max(request.timeout_seconds - spent, 0.001),
         }
     )
-    request.bind_local_model_entry(entry)
-    result = handler(request)
+    entry_token = current_local_model_entry.set(entry)
+    try:
+        result = handler(request)
+    finally:
+        current_local_model_entry.reset(entry_token)
     result.record_local_output_ceiling(ceiling)
     return result
 

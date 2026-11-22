@@ -53,6 +53,7 @@ from omnimarket.handlers import openai_compatible_endpoint as endpoints
 from omnimarket.handlers.model_catalog import (
     call_read_deadline,
     catalog_config,
+    models_dev_price_with_read_time,
     runtime_catalog_entry,
 )
 from omnimarket.handlers.routing.byok_model_discovery import (
@@ -151,6 +152,23 @@ _CONTRACT = Path(__file__).parent.parent / "contract.yaml"
 current_call_observer: ContextVar[
     Callable[[ModelLlmDelegationCallObservation], None] | None
 ] = ContextVar("llm_delegation_call_observer", default=None)
+
+#: The catalogue entry the local dispatch already read for this call (its output
+#: ceiling and price), bound for the duration of the effect call in the same
+#: context, so the effect uses one snapshot for its budget and its cost. It is
+#: never on the request, so it is absent from the wire schema. ``None`` (the
+#: default) means the effect reads the entry itself.
+current_local_model_entry: ContextVar[ModelCatalogEntry | None] = ContextVar(
+    "llm_delegation_call_local_model_entry", default=None
+)
+
+
+def bound_local_model_entry(provider: str, model_id: str) -> ModelCatalogEntry | None:
+    """The bound entry when it is for this provider and model, else ``None``."""
+    entry = current_local_model_entry.get()
+    if entry and entry.provider == provider and entry.model_id == model_id:
+        return entry
+    return None
 
 
 def _report_call(observation: ModelLlmDelegationCallObservation) -> None:
@@ -434,8 +452,15 @@ def _priced_cost(
             provider,
             endpoint_url,
             model_id,
-            supplemental=model_entry is None,
-            deadline_seconds=deadline_seconds,
+            models_dev_price=(
+                (
+                    lambda p, m: models_dev_price_with_read_time(
+                        p, m, deadline_seconds=deadline_seconds
+                    )
+                )
+                if model_entry is None
+                else None
+            ),
         )
         if priced is not None:
             model_price, price_source, price_read_at = priced
@@ -1125,8 +1150,8 @@ class HandlerLlmDelegationCall:
                 # OMN-23413 AC35: a live models.dev read here is bounded and its
                 # time comes out of the provider call's own timeout.
                 metadata_started = time.monotonic()
-                model_entry = request.local_model_entry(
-                    provider
+                model_entry = bound_local_model_entry(
+                    provider, request.model_id
                 ) or runtime_catalog_entry(
                     provider,
                     request.model_id,
