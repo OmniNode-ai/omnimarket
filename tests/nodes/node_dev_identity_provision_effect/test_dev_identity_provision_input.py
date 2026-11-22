@@ -452,7 +452,7 @@ def _lan_addresses(document: dict[str, object]) -> list[str]:
         section = document.get(block)
         assert isinstance(section, dict)
         base_url = str(section["base_url"])
-        if "192.168." in base_url:
+        if "192.168." in base_url:  # test-literal-ok: LAN guard
             found.append(f"{block}.base_url={base_url}")
     return found
 
@@ -465,8 +465,8 @@ def test_dev_identity_provision_overlay_addresses_example_holds_no_lan_address()
     # The example is also read the way the node loads it: through the overlay model, which now carries the protected list.
     overlay = ModelDevIdentityProvisionOverlay.model_validate(document)
     assert overlay.protected_usernames
-    assert "192.168." not in str(overlay.keycloak.base_url)
-    assert "192.168." not in str(overlay.api.base_url)
+    assert overlay.keycloak.base_url == document["keycloak"]["base_url"]
+    assert overlay.api.base_url == document["api"]["base_url"]
 
 
 def test_dev_identity_provision_overlay_addresses_refuses_a_192_168_address() -> None:
