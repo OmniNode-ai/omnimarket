@@ -387,3 +387,83 @@ def test_a_store_without_the_cost_source_column_still_serves_an_unpriced_zero_as
         served["old-beam"]["savings_measurement"],
     ) == (None, "unknown_spend")
     assert served["old-local"]["cost_usd"] == 0.0
+
+
+def _attempt(
+    tier: str, backend: str, model: str, *, accepted: bool, http_status: int | None
+) -> dict[str, object]:
+    return {
+        "tier": tier,
+        "backend_id": backend,
+        "model_id": model,
+        "quality_gate_passed": accepted,
+        "cost_usd": 0.0,
+        "usage_source": "measured" if http_status == 200 else None,
+        "http_status": http_status,
+        "acceptance_decision": "accept" if accepted else "climb",
+    }
+
+
+def test_a_billed_unpriced_rejected_attempt_makes_the_whole_run_unknown(
+    tmp_path: Path,
+) -> None:
+    # Operator ruling 23413-G6 (2026-11-22): a Beam attempt answered HTTP 200
+    # and was rejected, then a free attempt answered. The writer stored the run
+    # at 0, with the free tier's record, because it counts the unpriced attempt
+    # as 0; the Beam call was billed at a price no source states, so the whole
+    # run's cost is unknown.
+    answer = _attempt(
+        "cheap_frontier",
+        "gemini-flash-lite",
+        "gemini-3.5-flash-lite",
+        accepted=True,
+        http_status=200,
+    )
+    beam = _attempt(
+        "cheap_cloud",
+        "byok-reflection",
+        "Beam-1.0-501B-A23B",
+        accepted=False,
+        http_status=200,
+    )
+    free_run = {
+        "cost_tier_name": "cheap_frontier",
+        "cost_tier_type": "free_local",
+        "cost_measurement_source": "free_local",
+        "model_name": "gemini-3.5-flash-lite",
+        "delegated_to": "gemini-3.5-flash-lite",
+    }
+    served = _served(
+        tmp_path,
+        {
+            "billed-unpriced": {**free_run, "attempt_history": [beam, answer]},
+            # Refused with HTTP 429: the provider never answered, nothing was billed.
+            "refused": {
+                **free_run,
+                "attempt_history": [{**beam, "http_status": 429}, answer],
+            },
+            # A rejected attempt on a ":free" model was billed nothing.
+            "billed-free": {
+                **free_run,
+                "attempt_history": [
+                    _attempt(
+                        "cheap_cloud",
+                        "byok-openrouter",
+                        "vendor/model:free",
+                        accepted=False,
+                        http_status=200,
+                    ),
+                    answer,
+                ],
+            },
+            "no-history": free_run,
+            "damaged-history": {**free_run, "attempt_history": {"not": "a ladder"}},
+        },
+    )
+    assert served == {
+        "billed-unpriced": _UNKNOWN_SPEND,
+        "refused": _FREE,
+        "billed-free": _FREE,
+        "no-history": _FREE,
+        "damaged-history": _FREE,
+    }

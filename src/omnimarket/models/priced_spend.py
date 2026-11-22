@@ -12,6 +12,7 @@ rewritten (D1).
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
 from functools import cache
@@ -24,11 +25,19 @@ __all__ = ["historical_unpriced_zero", "priced_spend"]
 
 
 def historical_unpriced_zero(
-    amount: object, source: object, tier: object, tier_type: object, *models: object
+    amount: object,
+    source: object,
+    tier: object,
+    tier_type: object,
+    attempts: object,
+    *models: object,
 ) -> bool:
     """True for a stored zero that no price stood behind. Never reprices a run.
 
-    A charged amount, or a cost source other than no_cost_model, is served as
+    A charged amount is served as stored. A rejected attempt the provider
+    answered (so billed) that is itself an unpriced zero makes the whole run's
+    cost unknown, whatever the answering attempt cost (operator ruling
+    23413-G6). Otherwise a cost source other than no_cost_model is served as
     stored. The row's own record comes first: a recorded free_local tier type
     is free, and a recorded no_cost_model source or non-free tier type is not
     made free by today's routing registry. Only a row that records neither is
@@ -39,6 +48,10 @@ def historical_unpriced_zero(
     model id ends in ":free", or the pricing manifest, or the provider
     catalogue for the backend the row names, declares its price zero.
     """
+    if not _is_zero(amount):
+        return False
+    if _billed_unpriced_attempt(attempts):
+        return True
     recorded_source = str(source or "").strip()
     tier_cost_type = str(tier_type or "").strip().casefold()
     if recorded_source not in ("", "no_cost_model"):
@@ -52,13 +65,6 @@ def historical_unpriced_zero(
         cost = resolve_tier_cost(tier_name)
         if cost is not None and cost.cost_type is EnumTierCostType.FREE_LOCAL:
             return False
-    if amount is None or isinstance(amount, bool):
-        return False
-    try:
-        if Decimal(str(amount)) != 0:
-            return False
-    except (InvalidOperation, ValueError):
-        return False
     # Every name the row records is read: delegated_to can be a backend alias
     # while routed_model names the model that answered.
     names = [str(m).strip() for m in models if m is not None and str(m).strip()]
@@ -72,6 +78,56 @@ def historical_unpriced_zero(
         for model in names
         if backend != model
     )
+
+
+def _is_zero(amount: object) -> bool:
+    if amount is None or isinstance(amount, bool):
+        return False
+    try:
+        return Decimal(str(amount)) == 0
+    except (InvalidOperation, ValueError):
+        return False
+
+
+def _billed_unpriced_attempt(attempts: object) -> bool:
+    """True when a rejected attempt the provider answered is an unpriced zero.
+
+    The answering attempt is the row's own record and is judged from it. An
+    attempt with no answer (a refusal, a timeout, a skipped rung) was not
+    billed. A stored history that is not a list of attempts is ignored.
+    """
+    if not isinstance(attempts, str) or not attempts.strip():
+        return False
+    try:
+        ladder = json.loads(attempts)
+    except ValueError:
+        return False
+    if not isinstance(ladder, list):
+        return False
+    for attempt in ladder:
+        if not isinstance(attempt, Mapping):
+            continue
+        if attempt.get("quality_gate_passed") is True or (
+            attempt.get("acceptance_decision") == "accept"
+        ):
+            continue
+        status = attempt.get("http_status")
+        answered = (
+            isinstance(status, int)
+            and not isinstance(status, bool)
+            and 200 <= status < 300
+        ) or bool(attempt.get("finish_reason"))
+        if answered and historical_unpriced_zero(
+            attempt.get("cost_usd", 0.0),
+            None,
+            attempt.get("tier"),
+            None,
+            None,
+            attempt.get("model_id"),
+            attempt.get("backend_id"),
+        ):
+            return True
+    return False
 
 
 @cache

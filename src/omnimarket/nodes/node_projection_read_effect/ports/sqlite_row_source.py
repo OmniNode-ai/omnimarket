@@ -60,8 +60,8 @@ def _local_select_list(cfg: ProjectionTableConfig, available: tuple[str, ...]) -
         return select_list(cfg)
     # An older terminal shape stored zero for every run it could not price. A
     # zero no price stood behind is served as unknown with no saving, decided
-    # from the row's own tier and model; the stored record is never changed.
-    # A column an older store lacks is passed as NULL.
+    # from the row's own tier, model and attempt history; the stored record is
+    # never changed. A column an older store lacks is passed as NULL.
     arguments = ", ".join(
         quote_identifier(column) if column in available else "NULL"
         for column in (
@@ -69,6 +69,7 @@ def _local_select_list(cfg: ProjectionTableConfig, available: tuple[str, ...]) -
             "cost_measurement_source",
             "cost_tier_name",
             "cost_tier_type",
+            "attempt_history",
             "model_name",
             "delegated_to",
             "routed_model",
@@ -302,7 +303,7 @@ class SqliteTableRowSource:
             columns = _require_relation(conn, cfg, order_spec)
             conn.create_function(
                 "onex_historical_unpriced_zero",
-                8,
+                9,
                 historical_unpriced_zero,
                 deterministic=True,
             )
