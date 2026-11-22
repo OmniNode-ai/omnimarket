@@ -21,6 +21,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.handlers.routing.eval_arm_backends import append_eval_arm_backends
 from omnimarket.models.delegation.model_delegation_routing_overlay import (
     ModelDelegationRoutingOverlay,
 )
@@ -205,7 +206,7 @@ _EVAL_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 _EVAL_MODELS = ["deepseek/deepseek-chat-v9-0731", "qwen/qwen3.8-coder"]
 
 
-def _eval_arms(slug):
+def _eval_arms(slug: str) -> dict[str, Any]:
     backend = {
         "backend_id": "eval-arm",
         "provider": "openrouter",
@@ -234,7 +235,7 @@ def _eval_arms(slug):
 
 
 @pytest.mark.parametrize("slug", _EVAL_MODELS)
-def test_an_eval_only_model_joins_only_as_a_pinned_code_eval_arm(slug):
+def test_an_eval_only_model_joins_only_as_a_pinned_code_eval_arm(slug: str) -> None:
     """An eval-only model joins the routing overlay only as a pinned code eval arm."""
     assert EVAL_ONLY.search(slug.lower())
     overlay = ModelDelegationRoutingOverlay.model_validate(
@@ -250,7 +251,7 @@ def test_an_eval_only_model_joins_only_as_a_pinned_code_eval_arm(slug):
 
 
 @pytest.mark.parametrize("slug", _EVAL_MODELS)
-def test_an_unpinned_eval_only_arm_is_refused(slug):
+def test_an_unpinned_eval_only_arm_is_refused(slug: str) -> None:
     """An eval-only arm that is not explicitly pinned is refused."""
     data = _eval_arms(slug)
     data["backends"][0]["explicit_pin_only"] = False
@@ -259,9 +260,32 @@ def test_an_unpinned_eval_only_arm_is_refused(slug):
 
 
 @pytest.mark.parametrize("slug", _EVAL_MODELS)
-def test_an_eval_only_arm_placed_on_the_tier_is_refused(slug):
+def test_an_eval_only_arm_placed_on_the_tier_is_refused(slug: str) -> None:
     """An eval-only arm that carries a tier placement is refused."""
     data = _eval_arms(slug)
     data["backends"][0]["placement"] = {"tier": TIER, "use_for": ["code_generation"]}
     with pytest.raises(ValidationError, match="placement"):
         ModelEvalArmsOverlay.model_validate(data)
+
+
+@pytest.mark.parametrize("slug", _EVAL_MODELS)
+def test_the_appended_eval_only_arm_is_pinned_and_unplaced(
+    slug: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Driven through append_eval_arm_backends, the appended eval-only row is pinned and has no placement."""
+    overlay = tmp_path / "routing-overlay.yaml"
+    overlay.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": "delegation_routing_overlay.v1",
+                "eval_arms": _eval_arms(slug),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+    monkeypatch.setenv("DELEGATION_ROUTING_OVERLAY_PATH", str(overlay))
+    rows = [r for r in append_eval_arm_backends([]) if r["model_name"] == slug]
+    assert len(rows) == 1
+    assert rows[0]["explicit_pin_only"] is True
+    assert rows[0].get("placement") is None
