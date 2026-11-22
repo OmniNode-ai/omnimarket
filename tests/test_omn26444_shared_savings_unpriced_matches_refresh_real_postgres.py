@@ -192,9 +192,14 @@ async def _refresh(tenant: uuid.UUID, conn) -> int:
         days=None,
         requested_at=WHEN,
     )
-    await refresh_from_store(
+    result = await refresh_from_store(
         req, reads_for=lambda _name: _Reads(conn), fold_and_store=capture
     )
+    if "plan" not in captured:
+        # A tenant whose every run the refresh leaves out (fixture, experiment) is
+        # reported without runs and never folded: its unknown spend is zero.
+        assert result["tenants_without_runs"] == [str(tenant)], result
+        return 0
     plan = captured["plan"]
     return (
         HandlerMeteringSummary()
