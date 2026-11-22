@@ -478,15 +478,10 @@ def models_dev_home(tmp_path: Path) -> Path:
     return tmp_path / "onex_home"
 
 
-def _models_dev(price: float) -> dict[str, object]:
+def _models_dev(price: float, *, output: float | None = None) -> dict[str, object]:
     # The shape of https://models.dev/api.json, reduced to the one model.
-    return {
-        "reflection": {
-            "models": {
-                "Beam-1.0-501B-A23B": {"cost": {"input": price, "output": price}}
-            }
-        }
-    }
+    cost = {"input": price, "output": price if output is None else output}
+    return {"reflection": {"models": {"Beam-1.0-501B-A23B": {"cost": cost}}}}
 
 
 def test_a_historical_beam_row_is_priced_from_a_live_models_dev_read(
@@ -555,6 +550,9 @@ def test_a_historical_beam_row_is_priced_from_a_live_models_dev_read(
         "expired": scenario("expired", None, _models_dev(0), max_age + 1),
         # A positive price does not make a stored zero free.
         "priced": scenario("priced", _models_dev(3)),
+        # Free only when both the input and the output price are zero.
+        "input-free": scenario("input-free", _models_dev(0, output=3)),
+        "output-free": scenario("output-free", _models_dev(3, output=0)),
         # Only the shipped price list: unknown.
         "shipped-only": scenario("shipped-only", None),
     } == {
@@ -562,6 +560,8 @@ def test_a_historical_beam_row_is_priced_from_a_live_models_dev_read(
         "kept": (free, 0),
         "expired": (unknown, 1),
         "priced": (unknown, 1),
+        "input-free": (unknown, 1),
+        "output-free": (unknown, 1),
         "shipped-only": (unknown, 1),
     }
 
