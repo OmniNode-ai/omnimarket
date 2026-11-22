@@ -46,7 +46,7 @@ class ModelPlacementRequest(BaseModel):
     def _host(cls, value: str) -> str:
         if not HOST_RE.fullmatch(value):
             raise ValueError(
-                f"host hint {value!r} is not empty, 'any' or a pool host such as h201"
+                f"host hint {value!r} is not empty, 'any' or a pool host name"
             )
         return value
 
