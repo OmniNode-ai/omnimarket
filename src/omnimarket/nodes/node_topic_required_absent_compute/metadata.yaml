@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_topic_required_absent_compute
+version: 1.0.0
+description: >-
+  Name each topic that must exist now and is absent from the broker's live topic list.
+  Reads nothing and changes nothing.
+pack: topics
+node_role: compute
+display_name: Topic Required Absent Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_topic_required_absent_compute: omnimarket.nodes.node_topic_required_absent_compute
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- required-absent
