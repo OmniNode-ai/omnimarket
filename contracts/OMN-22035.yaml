@@ -9,6 +9,14 @@ summary: >-
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn22035-ac2-accepted-20261122t2145z:
+    - label: AC2
+      criterion_hash: 5ef0459d396d0ed3b53c304621cd58bfe324280c5277c3b7c0d29048e857f17a
+      proposed_by: lane=dod-closeout-bind-2026-11-22T2145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-22T2145Z-c3
+      accepted_at: '2026-11-22T22:12:16Z'
 requirements:
   - id: req-case-manifests
     statement: Account for each compaction boundary with a reproducible case or a typed exclusion.
@@ -82,3 +90,11 @@ dod_evidence:
       - check_type: command
         check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane comp-cm1-1102 -- uv run pytest tests/nodes/node_context_compaction_manifest_compute -q --no-cov'
         cwd: .
+  - id: "dod-omn22035-ac2-accepted-20261122t2145z"
+    description: "AC2 binding (accepted 2026-11-22T2145Z, proposed by lane=dod-closeout-bind-2026-11-22T2145Z-c3, accepted by lane=dod-closeout-accept-2026-11-22T2145Z-c3). Two HandlerTranscriptManifest runs on the same transcript bytes give equal case_key lists, manifest_yaml and bundle_files. Re-run at omnimarket origin/dev 8c2a3542cc: 1 passed; with the src paths of b4b1d55e26 reverted at that head: collection error (ModelCheckpointSnapshot import)."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest -q --no-cov -p no:randomly tests/nodes/node_context_compaction_manifest_compute/test_cm1_case_manifest.py::test_ac2_same_bytes_give_identical_keys_and_bundle"
+        cwd: "."
