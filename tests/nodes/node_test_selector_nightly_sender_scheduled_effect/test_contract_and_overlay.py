@@ -96,9 +96,10 @@ def test_contract_and_overlay_the_two_commands_and_their_terminal_events_are_dec
     for topic in (COLLECT_COMMAND, PUBLISH_COMMAND, RUN_EVENT):
         assert (topic, "WRITE") in grants
         assert (topic, "DESCRIBE") in grants
-    for topic in (COLLECT_TERMINAL, PUBLISH_TERMINAL, TICK):
-        assert (topic, "READ") in grants
-        assert (topic, "DESCRIBE") in grants
+    # The role derivation covers event_bus topics only, so the terminal events
+    # carry no grant block rows; the tick is the one subscribed topic.
+    assert (TICK, "READ") in grants
+    assert (TICK, "DESCRIBE") in grants
 
 
 def test_contract_and_overlay_the_example_overlay_holds_exactly_the_models_keys() -> (
