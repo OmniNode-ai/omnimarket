@@ -1447,6 +1447,10 @@ jobs:
   test:
     name: Tests (Split ${{ matrix.split }}/${{ needs.detect-changes.outputs.split_count }})
     needs: [repo-evidence-preflight, detect-changes]
+    # OMN-26446: detect-changes now needs dev-tree-pass-probe, which is skipped on a pull
+    # request. A skipped ancestor skips this job under the implicit success(), so no shard
+    # ran and Coverage Sweep Gate found no artifacts. Name the two results this job needs.
+    if: always() && needs.repo-evidence-preflight.result == 'success' && needs.detect-changes.result == 'success'
     runs-on: ubuntu-24.04
     # OMN-18405: no timeout-minutes meant a stuck shard fell back to GitHub's
     # implicit 360m job default. Measured p95 across 524 successful shards
