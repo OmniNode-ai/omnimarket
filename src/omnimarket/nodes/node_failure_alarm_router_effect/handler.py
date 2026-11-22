@@ -348,7 +348,9 @@ class HandlerFailureAlarmRouter:
 
         failures: list[str] = []
         alarms: list[ModelCauseAlarm] = []
-        orchestrator = live_orchestrator(rows, request.orchestrator_lane_pattern)
+        found = live_orchestrator(rows, request.orchestrator_lane_pattern)
+        orchestrator = found[0] if found else None
+        orchestrator_source = found[1] if found else "none"
         for cause in active:
             if cause.key in open_causes:
                 continue
@@ -388,6 +390,7 @@ class HandlerFailureAlarmRouter:
                     first_at=cause.first_at,
                     kind=cause.kind,
                     orchestrator=orchestrator,
+                    orchestrator_source=orchestrator_source,
                     delivered_to=(
                         ("orchestrator-inbox", "operator-push")
                         if orchestrator

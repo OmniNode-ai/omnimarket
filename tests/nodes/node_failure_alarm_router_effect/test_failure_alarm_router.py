@@ -179,3 +179,33 @@ def test_lookback_ignores_a_refusal_older_than_the_window() -> None:
     result = _fire(FakePorts([*base_rows(), old]), lookback_hours=6)
     assert result.alarms == ()
     assert (NOW - timedelta(hours=6)).year == 2026
+
+
+def test_orchestrator_with_no_claim_of_its_own_is_resolved_from_live_claims_naming_it_parent() -> (
+    None
+):
+    """The 2026-11-22 ledger holds no CLAIM for the session lane; its open child CLAIMs name it as parent."""
+    rows = [
+        "2026-11-22T22:00:00Z | CLAIM | lane=child-lane-1 | actor=x | model=y | ticket=OMN-1"
+        " | est ~1 lane-hours; displaces z; (OMN-1) | parent=orchestrator-31d9-swarm | child",
+        REFUSED_TERMINAL,
+    ]
+    ports = FakePorts(rows)
+    result = _fire(ports)
+    row = parse_row(_msgs(ports)[0])
+    assert row is not None
+    assert row.value("to") == ORCHESTRATOR
+    assert result.alarms[0].orchestrator_source == "claim-parent"
+
+
+def test_orchestrator_named_as_parent_only_by_closed_claims_is_not_live() -> None:
+    rows = [
+        "2026-11-22T22:00:00Z | CLAIM | lane=child-lane-1 | actor=x | model=y | ticket=OMN-1"
+        " | est ~1 lane-hours; displaces z; (OMN-1) | parent=orchestrator-31d9-swarm | child",
+        "2026-11-22T22:30:00Z | TERMINAL | lane=child-lane-1 | ticket=OMN-1 | outcome=done | ended",
+        REFUSED_TERMINAL,
+    ]
+    ports = FakePorts(rows)
+    result = _fire(ports)
+    assert result.alarms[0].orchestrator is None
+    assert _msgs(ports) == []

@@ -44,6 +44,7 @@ class ModelCauseAlarm(BaseModel):
     first_at: str
     kind: str
     orchestrator: str | None
+    orchestrator_source: str = "none"
     delivered_to: tuple[str, ...]
 
 

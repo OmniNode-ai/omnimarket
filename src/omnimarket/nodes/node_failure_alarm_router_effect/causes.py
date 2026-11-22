@@ -199,20 +199,42 @@ def lasted_minutes(first_at: str, resolved: datetime) -> int:
     return max(0, round((resolved - parse_stamp(first_at)) / timedelta(minutes=1)))
 
 
-def live_orchestrator(rows: list[Row], pattern: str) -> str | None:
-    """The newest open CLAIM whose lane matches ``pattern``; a TERMINAL of the lane closes its CLAIM."""
+def live_orchestrator(rows: list[Row], pattern: str) -> tuple[str, str] | None:
+    """The live orchestrator lane and how it was found, or None.
+
+    Live means an open CLAIM (a TERMINAL of the lane closes it). A lane that holds no CLAIM of its own is
+    still live when an open CLAIM names it in ``parent=`` (the session lane of 2026-11-22 wrote no CLAIM, and
+    its children's CLAIMs name it). A lane whose newest row of the two kinds is a TERMINAL is closed.
+    """
     claims: dict[str, str] = {}
+    parents: dict[str, str] = {}
+    closed: set[str] = set()
     for row in rows:
         lane = row.token("lane")
         if not lane:
             continue
         if row.row_type == "CLAIM":
             claims[lane] = row.stamp
+            closed.discard(lane)
+            parent = row.token("parent")
+            if parent:
+                parents[lane] = parent
         elif row.row_type == "TERMINAL":
             claims.pop(lane, None)
+            parents.pop(lane, None)
+            closed.add(lane)
+    named: dict[str, tuple[str, str]] = {}
+    for lane, at in claims.items():
+        named[lane] = max(named.get(lane, ("", "")), (at, "claim-lane"))
+        parent = parents.get(lane)
+        if parent is not None:
+            named[parent] = max(named.get(parent, ("", "")), (at, "claim-parent"))
     live = {
-        lane: at for lane, at in claims.items() if re.match(pattern, lane) is not None
+        lane: found
+        for lane, found in named.items()
+        if re.match(pattern, lane) is not None and lane not in closed
     }
     if not live:
         return None
-    return max(live, key=lambda lane: (live[lane], lane))
+    lane = max(live, key=lambda name: (live[name][0], name))
+    return lane, live[lane][1]
