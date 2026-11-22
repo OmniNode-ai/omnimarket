@@ -29,6 +29,9 @@ from uuid import uuid4
 import pytest
 
 from omnimarket.handlers.routing import delegation_backend_resolution
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestSpec,
 )
@@ -38,15 +41,19 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
+from tests.unit.nodes.node_delegate_skill_orchestrator import (
+    test_local_dispatch_usage_by_model_day as _usage_tests,
+)
 from tests.unit.nodes.node_delegate_skill_orchestrator.test_local_dispatch_usage_by_model_day import (
     _BACKENDS,
     _ladder_run,
-    _local_backend,  # noqa: F401  (fixture, used by name)
     _MeteredTierEffect,
     _passing_named_test_runner,
     _rows,
 )
 
+# The shared fixture, bound in this module so its tests can request it by name.
+_local_backend = _usage_tests._local_backend
 _MODEL = "Qwen3.6-35B-A3B"
 
 
@@ -150,14 +157,14 @@ def test_a_failed_byok_lookup_leaves_the_backend_unknown_and_the_run_whole(
     real = port_local_delegation_dispatch._is_customer_byok_route
     usage_checks: list[str] = []
 
-    def failing(backend: object) -> bool:
+    def failing(backend: ModelResolvedDelegationBackend) -> bool:
         # Only the usage booking's check fails; routing's own checks keep their answer.
         import inspect
 
         if any(f.function == "of" for f in inspect.stack()[1:3]):
             usage_checks.append("raised")
             raise OSError("credential store unreadable")
-        return real(backend)  # type: ignore[arg-type]
+        return real(backend)
 
     monkeypatch.setattr(
         port_local_delegation_dispatch, "_is_customer_byok_route", failing

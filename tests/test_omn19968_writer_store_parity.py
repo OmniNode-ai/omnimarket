@@ -835,8 +835,9 @@ async def test_the_store_writes_backends_only_once_postgres_has_them(
     """OMN-25861: an overlay-bound local install writes usage through this adapter to a lane database.
 
     Before 0004 reaches that database the store must still store the call, naming neither new column (the producer
-    would otherwise drop every usage call with a logged warning); once 0004 is there, the call keeps its backend and
-    the row serves its backends.
+    would otherwise drop every usage call with a logged warning). 0004's two ALTERs can commit separately, so with
+    only the calls column the call keeps its backend and the row names no backends; once 0004 is whole, the call keeps
+    its backend and the row serves its backends.
     """
     fold = HandlerProjectionUsageByModelDay()
 
@@ -870,6 +871,27 @@ async def test_the_store_writes_backends_only_once_postgres_has_them(
         (before,) = postgres.query("usage_by_model_day_calls")
         assert "backend" not in before
 
+        sql = "\n".join(
+            line
+            for line in _USAGE_BACKENDS_MIGRATION.read_text(
+                encoding="utf-8"
+            ).splitlines()
+            if not line.lstrip().startswith("--")
+        )
+        (calls_alter,) = [s for s in sql.split(";") if "usage_by_model_day_calls" in s]
+        await admin.execute(
+            for_isolated_schema(calls_alter + ";").replace("public.", f"{schema}.")
+        )
+        assert postgres.has_column("usage_by_model_day_calls", "backend")
+        assert not postgres.has_column("usage_by_model_day", "backends")
+        assert apply_usage_call(call("half-0004", "model-half"), postgres)
+        (half,) = [
+            r
+            for r in postgres.query("usage_by_model_day")
+            if r["model_id"] == "model-half"
+        ]
+        assert "backends" not in half
+
         await migrate(_USAGE_BACKENDS_MIGRATION)
         assert postgres.has_column("usage_by_model_day_calls", "backend")
         assert postgres.has_column("usage_by_model_day", "backends")
@@ -878,10 +900,15 @@ async def test_the_store_writes_backends_only_once_postgres_has_them(
             str(r["call_id"]): r["backend"]
             for r in postgres.query("usage_by_model_day_calls")
         }
-        assert calls == {"before-0004": None, "with-0004": "byok-reflection"}
+        assert calls == {
+            "before-0004": None,
+            "half-0004": "byok-reflection",
+            "with-0004": "byok-reflection",
+        }
         rows = {
             str(r["model_id"]): r["backends"]
             for r in postgres.query("usage_by_model_day")
         }
         assert rows["model-after"] == ["byok-reflection"]
         assert rows["model-before"] is None
+        assert rows["model-half"] is None

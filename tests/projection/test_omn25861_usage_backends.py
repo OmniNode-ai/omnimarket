@@ -57,7 +57,10 @@ from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_
     apply_usage_call,
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
-from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from omnimarket.projection.protocol_database import (
+    DatabaseAdapter,
+    InmemoryDatabaseAdapter,
+)
 from omnimarket.projection.sqlite_database import (
     SqliteDatabaseAdapter,
     reconcile_existing_store,
@@ -99,7 +102,7 @@ def _call(
     return ModelUsageCallEvent.model_validate(fields)
 
 
-def _apply(db: SqliteDatabaseAdapter, *events: ModelUsageCallEvent) -> None:
+def _apply(db: DatabaseAdapter, *events: ModelUsageCallEvent) -> None:
     fold = HandlerProjectionUsageByModelDay()
     for event in events:
         assert apply_usage_call(fold.handle(event), db)
@@ -341,7 +344,7 @@ def test_b8_the_store_writes_each_new_column_only_where_it_exists(
     columns: set[tuple[str, str]], call_backend: object, row_backends: object
 ) -> None:
     db = _ColumnsInForce(columns)
-    _apply(db, _call("p1", "byok-reflection"))  # type: ignore[arg-type]
+    _apply(db, _call("p1", "byok-reflection"))
     (call,) = db.query("usage_by_model_day_calls")
     (row,) = db.query("usage_by_model_day")
     assert call.get("backend", "absent") == call_backend

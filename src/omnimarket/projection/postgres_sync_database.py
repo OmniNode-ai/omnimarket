@@ -39,6 +39,7 @@ from omnimarket.handlers.handler_projection_derived_write import (
     HandlerProjectionDerivedWrite,
 )
 from omnimarket.nodes.node_projection_tenant_credentials.stores import CredentialPgStore
+from omnimarket.nodes.node_projection_usage_by_model_day.stores import UsagePgStore
 from omnimarket.projection.tenant_isolation import (
     TENANT_GUC,
     resolve_read_tenant,
@@ -68,7 +69,7 @@ def _search_path_option(schema: str) -> str:
     return f"-c search_path={_validate_identifier(schema, kind='schema')}"
 
 
-class PostgresSyncProjectionAdapter(CredentialPgStore):
+class PostgresSyncProjectionAdapter(CredentialPgStore, UsagePgStore):
     """``ProtocolProjectionDatabaseSync`` over a psycopg2 Postgres connection.
 
     UPSERT keys on the conflict column(s); JSON/list/dict values are adapted to
@@ -76,8 +77,7 @@ class PostgresSyncProjectionAdapter(CredentialPgStore):
     own it). A fresh connection is opened per operation and closed afterwards —
     matching :class:`SqliteDatabaseAdapter`'s connect-per-call model, which is
     appropriate for the low-frequency, one-shot CLI evidence write this adapter
-    serves (it is NOT a hot projection-runner loop, which uses ``AsyncpgAdapter``
-    with a pool).
+    serves (it is NOT a hot projection-runner loop, which uses ``AsyncpgAdapter`` with a pool).
     """
 
     def __init__(self, dsn: str, *, schema: str | None = None) -> None:
@@ -277,30 +277,6 @@ class PostgresSyncProjectionAdapter(CredentialPgStore):
                     )
                 # The tenant context commits before this return reaches a caller.
                 return written
-        finally:
-            conn.close()
-
-    def has_column(self, table: str, column: str) -> bool:
-        """Whether ``table`` has ``column`` on this database (OMN-25861).
-
-        The migrations own this schema and a write naming a column they have not
-        added fails, so a writer that must keep working while a migration is still
-        on its way asks first. Read from the catalogue; the table resolves through
-        the same search_path every write here uses.
-        """
-        table_ident = _validate_identifier(table, kind="table")
-        column_ident = _validate_identifier(column, kind="column")
-        conn = self._connect()
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT EXISTS (SELECT 1 FROM pg_attribute "
-                    "WHERE attrelid = to_regclass(%s) AND attname = %s "
-                    "AND NOT attisdropped)",
-                    (table_ident, column_ident),
-                )
-                row = cur.fetchone()
-                return bool(row and row[0])
         finally:
             conn.close()
 
