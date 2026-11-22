@@ -85,7 +85,7 @@ state_machine:
   terminal_states: [deleted]
   persistence_enabled: false
   states:
-    - {version: {major: 1, minor: 0, patch: 0}, state_name: active, state_type: operational, description: a boot-set contract declares the topic, or it is not quiet}
+    - {version: {major: 1, minor: 0, patch: 0}, state_name: active, state_type: operational, description: "a boot-set contract declares the topic, or it is not quiet"}
     - {version: {major: 1, minor: 0, patch: 0}, state_name: flagged, state_type: operational, description: nothing produces or consumes; the flag time is recorded and nothing is deleted}
     - {version: {major: 1, minor: 0, patch: 0}, state_name: eligible, state_type: operational, description: the second interval has passed with the required quiet observations}
     - {version: {major: 1, minor: 0, patch: 0}, state_name: deleting, state_type: operational, description: the deletion was handed out by topic id}
