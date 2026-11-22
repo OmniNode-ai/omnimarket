@@ -51,6 +51,9 @@ limits:
   max_egress_value_bytes: 262144
 kafka:
   lane: dev
+  # The mounted directory that holds config/lab/ci_bus_lanes.yaml; set it when the runtime exports no
+  # ONEX_WORKSPACE_CONFIG_ROOT.
+  workspace_config_root: /etc/onex/workspace-config
   producer_max_request_bytes: 1048576
   message_timeout_ms: 10000
   record_overhead_bytes: 64

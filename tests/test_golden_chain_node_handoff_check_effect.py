@@ -27,6 +27,7 @@ from omnimarket.nodes.node_handoff_check_effect.models import (
     ModelHandoffCheckRequest,
     ModelHandoffCheckResult,
 )
+from tests.nodes.node_handoff_check_effect.ledger_rows_stub import StubRows
 
 _CONTRACT = (
     Path(__file__).resolve().parents[1]
@@ -51,19 +52,16 @@ _PROBE = {
 
 def _request(
     tmp_path: Path, *rows: str, out_dir: Path | None
-) -> ModelHandoffCheckRequest:
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text("\n".join(rows) + "\n", encoding="utf-8")
+) -> tuple[ModelHandoffCheckRequest, StubRows]:
     probes = tmp_path / "probes.json"
     probes.write_text(json.dumps([_PROBE]), encoding="utf-8")
-    return ModelHandoffCheckRequest(
+    request = ModelHandoffCheckRequest(
         command=EnumHandoffCommand.ASSEMBLE,
-        ledger=str(ledger),
-        archive_dir=str(tmp_path / "none"),
         now=_NOW,
         probes=str(probes),
         out_dir=str(out_dir) if out_dir else None,
     )
+    return request, StubRows(*rows)
 
 
 def test_the_contract_names_the_handler_and_the_topics() -> None:
@@ -74,9 +72,11 @@ def test_the_contract_names_the_handler_and_the_topics() -> None:
     assert _CONTRACT_DATA["terminal_event"] == COMPLETED_TOPIC
 
 
-async def _round_trip(request: ModelHandoffCheckRequest) -> ModelHandoffCheckResult:
+async def _round_trip(
+    request: ModelHandoffCheckRequest, rows: StubRows
+) -> ModelHandoffCheckResult:
     event_bus = EventBusInmemory()
-    handler = HandlerHandoffCheck()
+    handler = HandlerHandoffCheck(ledger_rows=rows)
     completed: list[dict[str, Any]] = []
 
     async def on_completed(message: Any) -> None:
@@ -103,7 +103,7 @@ async def _round_trip(request: ModelHandoffCheckRequest) -> ModelHandoffCheckRes
 
 async def test_a_planted_ruling_command_in_a_refusal_event_out(tmp_path: Path) -> None:
     out_dir = tmp_path / "out"
-    result = await _round_trip(_request(tmp_path, _RULING, _CLAIM, out_dir=out_dir))
+    result = await _round_trip(*_request(tmp_path, _RULING, _CLAIM, out_dir=out_dir))
     assert result.exit_code == 1
     assert len(result.refused) == 1
     assert not out_dir.exists()
@@ -124,7 +124,7 @@ async def test_an_accounted_handoff_command_in_a_written_event_out(
     tmp_path: Path,
 ) -> None:
     out_dir = tmp_path / "out"
-    result = await _round_trip(_request(tmp_path, _CLAIM, out_dir=out_dir))
+    result = await _round_trip(*_request(tmp_path, _CLAIM, out_dir=out_dir))
     # An unhealthy service is recorded and never a refusal.
     assert result.exit_code == 0
     assert result.written_path is not None
@@ -137,10 +137,9 @@ async def test_an_accounted_handoff_command_in_a_written_event_out(
 async def test_a_command_missing_its_inputs_is_bad_input_not_a_crash(
     tmp_path: Path, command: str
 ) -> None:
-    request = _request(tmp_path, _CLAIM, out_dir=None).model_copy(
-        update={"command": EnumHandoffCommand(command)}
-    )
-    result = await _round_trip(request)
+    base, rows = _request(tmp_path, _CLAIM, out_dir=None)
+    request = base.model_copy(update={"command": EnumHandoffCommand(command)})
+    result = await _round_trip(request, rows)
     assert result.exit_code == 2
     assert result.errors
 

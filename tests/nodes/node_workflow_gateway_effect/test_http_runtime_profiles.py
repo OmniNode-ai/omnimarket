@@ -131,8 +131,8 @@ async def test_runtime_mount_publishes_a_command_the_consumer_model_accepts(
         server.attach_manifest(manifest)
         assert server._mount_task is not None
         await server._mount_task
-        assert server._runner is not None
-        port = server._runner.addresses[0][1]
+        assert server._site is not None
+        port = server._site.port
         base = f"http://127.0.0.1:{port}"
         async with aiohttp.ClientSession() as session:
             async with session.post(
