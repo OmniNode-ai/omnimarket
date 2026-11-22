@@ -233,3 +233,22 @@ def test_status_rows_are_not_demand(scratch_dsn: str) -> None:
     assert observation.demand_done_tickets == 0
     assert observation.unprojected_tickets == 0
     assert _classify(scratch_dsn) is EnumFreshnessState.IDLE
+
+
+@pytest.mark.integration
+def test_stored_row_type_is_what_makes_a_row_demand(scratch_dsn: str) -> None:
+    """A TERMINAL done line stored as row_type STATUS is not demand: only the SQL row_type filter excludes it."""
+    raw = _raw_row("OMN-1", "done", 3600)
+    conn = psycopg2.connect(scratch_dsn, connect_timeout=5)
+    conn.autocommit = True
+    with conn.cursor() as cur:
+        cur.execute(
+            f"INSERT INTO {_SCHEMA}.work_ledger_rows (row_id, row_ts, row_type, raw_row) "
+            "VALUES (%s, %s, %s, %s)",
+            (row_id_of(raw), _NOW - timedelta(seconds=3600), "STATUS", raw),
+        )
+    conn.close()
+    observation = _read_coverage(scratch_dsn)
+    assert observation.demand_done_tickets == 0
+    assert observation.unprojected_tickets == 0
+    assert _classify(scratch_dsn) is EnumFreshnessState.IDLE
