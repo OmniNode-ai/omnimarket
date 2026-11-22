@@ -542,3 +542,29 @@ def test_installer_matches_manifest_joins_a_command_over_three_lines(
     assert result.matches is matches
     if not matches:
         assert _kinds(result) == {K.INSTALLER_BUILD}
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "echo a\\\\\npip install evil",
+        "echo a \\\\\n  b \\\\\npip install evil",
+    ],
+)
+def test_installer_matches_manifest_reads_an_even_backslash_run_as_text(
+    manifest: ModelReleaseCandidateManifest,
+    line: str,
+) -> None:
+    script = _before_main(_render(), line)
+    result = _pinned(manifest, script)
+    assert K.INSTALLER_BUILD in _kinds(result)
+    assert not result.matches
+
+
+def test_installer_matches_manifest_joins_after_an_odd_backslash_run(
+    manifest: ModelReleaseCandidateManifest,
+) -> None:
+    line = '"$uv" pip install \\\\\\\n  --no-build x'
+    script = _before_main(_render(), line)
+    result = _pinned(manifest, script)
+    assert result.matches is True

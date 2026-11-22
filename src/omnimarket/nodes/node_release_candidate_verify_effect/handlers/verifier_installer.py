@@ -69,26 +69,32 @@ def _finding(kind: K, subject: str, detail: str = "") -> ModelReleaseCandidateFi
     return ModelReleaseCandidateFinding(kind=kind, subject=subject, detail=detail)
 
 
+def _continues(line: str) -> bool:
+    """True when the line ends in an unescaped backslash, so the shell joins it with the next line; an even run of trailing backslashes is literal text."""
+    run = len(line) - len(line.rstrip("\\"))
+    return run % 2 == 1
+
+
 def _logical_lines(script: str) -> list[tuple[int, str]]:
     lines = script.splitlines()
-    logical: list[tuple[int, str]] = []
+    result: list[tuple[int, str]] = []
     i = 0
-    while i < len(lines):
+    n = len(lines)
+    while i < n:
         start = i
         # A comment ends at its newline: a backslash inside it does not continue the line.
         text = _strip_comment(lines[i])
-        continued = text == lines[i] and text.endswith("\\")
-        while continued and i + 1 < len(lines):
+        continued = text == lines[i] and _continues(text)
+        while continued and i + 1 < n:
             i += 1
             following = _strip_comment(lines[i])
             text = text[:-1] + " " + following
-            continued = following == lines[i] and following.endswith("\\")
+            continued = following == lines[i] and _continues(following)
         i += 1
         stripped = text.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        logical.append((start + 1, stripped))
-    return logical
+        if stripped and not stripped.startswith("#"):
+            result.append((start + 1, stripped))
+    return result
 
 
 def _strip_comment(line: str) -> str:
