@@ -22,7 +22,6 @@ def _state_home() -> Path:
 
 # The calendar-fired jobs of launchd/morning-workflows and their fire spacing in seconds.
 CALENDAR_JOB_INTERVALS: dict[str, int] = {
-    "ai.omninode.lab-fill": 1200,
     "ai.omninode.hourly-tick": 3600,
     "ai.omninode.merged-worktree-reaper": 3600,
     "ai.omninode.morning-ground-state": 86400,

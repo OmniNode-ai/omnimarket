@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import json
+import shlex
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -54,6 +56,31 @@ class _Reader:
 class _Broken:
     def read(self, now: datetime) -> ModelMergedRunningCountResult:
         raise OSError("the PR watcher state is gone")
+
+
+_READER_OVERLAY = {
+    "moved_readers": ["merged-running-count"],
+    "max_watermark_age_seconds": 900,
+    "page_size": 200,
+    "max_pages": 50,
+    "rows_lines_only": False,
+    "route": {
+        "kind": "command",
+        "command_env": "ONEX_LEDGER_BUS_READ_COMMAND",
+        "timeout_seconds": 30,
+    },
+    "parity": {"receipt_lane": "work-ledger-parity", "window_hours": 48},
+    "events": {"journal_env": "ONEX_LEDGER_READER_JOURNAL"},
+}
+
+# The bus read command a host binds: one request on stdin, one fresh ``ok`` rows answer (no rows) on stdout.
+_READ_COMMAND = (
+    "import json, sys; from datetime import UTC, datetime; "
+    "request = json.load(sys.stdin); "
+    "stamp = datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ'); "
+    "print(json.dumps({'correlation_id': request['correlation_id'], 'status': 'ok', "
+    "'lines': [], 'matched': 0, 'freshness': {'newest_projected_at': stamp}, 'watermark': stamp}))"
+)
 
 
 def _record(world: dict[str, Path], reader: Any) -> dict[str, Any]:
@@ -184,6 +211,17 @@ def test_merged_running_real_reader_uses_the_resolved_table_without_the_env(
         )
     )
     monkeypatch.setenv("ONEX_FACTORY_FLOOR_OVERLAY", str(overlay))
+    # The count reader reads the ledger window through the moved ledger reader, which needs its own overlay
+    # (found under the overlay root the world names) and the bus read command that overlay's route names.
+    reader_overlay = (
+        world["home"].parent / "overlays/node_work_ledger_reader_effect/overlay.yaml"
+    )
+    reader_overlay.parent.mkdir(parents=True, exist_ok=True)
+    reader_overlay.write_text(yaml.safe_dump(_READER_OVERLAY), encoding="utf-8")
+    monkeypatch.setenv(
+        "ONEX_LEDGER_BUS_READ_COMMAND",
+        shlex.join([sys.executable, "-c", _READ_COMMAND]),
+    )
     (home / "hosts.yaml").write_text(
         "hosts: [{name: h051, target: h051.lan, cap: 2}]\n"
     )

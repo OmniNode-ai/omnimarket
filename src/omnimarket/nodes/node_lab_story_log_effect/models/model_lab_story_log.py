@@ -25,8 +25,8 @@ class ModelLabStoryLogRequest(BaseModel):
         default=None,
         description="The instant 'previous' is resolved against; defaults to the current UTC time.",
     )
-    ledger_paths: tuple[Path, ...] = Field(
-        description="The live ledger first, then any archive files; a file with no row in the week is read and skipped."
+    ledger_lines: tuple[str, ...] = Field(
+        description="The ledger rows, as the work ledger reader node answers them for a window that reaches back to the week's first day; a row outside the week is skipped."
     )
     hygiene_vocabulary_path: Path = Field(
         description="The public-repo hygiene gate's private denylist vocabulary (repository names, host patterns, person names)."

@@ -20,7 +20,11 @@ from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_text_
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_selection_record import (
     HandlerSelectionRecord,
 )
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_file_level_closure import (
+    EnumRootConftestEdge,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record import (
+    EnumSelectionKind,
     ModelSelectionRecordRequest,
     ModelTestSelection,
 )
@@ -83,6 +87,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.github_output is not None:
         with args.github_output.open("a", encoding="utf-8") as handle:
             handle.write(f"retention_days={policy.record_retention_days}\n")
+            # The whole-tree collection job runs once, and only when the cut root conftest edge
+            # and a narrowed selection under the closure's stage make it the check for the tree.
+            closure_stage, root_conftest_edge = policy.closure_settings()
+            gate = (
+                policy.selection_stage >= closure_stage
+                and root_conftest_edge is EnumRootConftestEdge.CUT
+                and record.executed_selection.kind is EnumSelectionKind.NARROWED
+            )
+            handle.write(f"collection_gate={str(gate).lower()}\n")
     return 0
 
 

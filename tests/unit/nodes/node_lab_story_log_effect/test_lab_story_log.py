@@ -9,7 +9,6 @@ own restricted YAML subset: the real vocabulary is private and is read at run ti
 from __future__ import annotations
 
 import os
-import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -60,7 +59,9 @@ PRIVATE_TOKENS = (
 def _request(tmp_path: Path, **overrides: object) -> ModelLabStoryLogRequest:
     base: dict[str, object] = {
         "week": "2026-W42",
-        "ledger_paths": (FIXTURES / "ledger_week.md",),
+        "ledger_lines": tuple(
+            (FIXTURES / "ledger_week.md").read_text(encoding="utf-8").splitlines()
+        ),
         "hygiene_vocabulary_path": FIXTURES / "hygiene_vocabulary.yaml",
         "person_names_path": FIXTURES / "person_names.txt",
         "lab_vocabulary_path": FIXTURES / "lab_vocabulary.yaml",
@@ -244,32 +245,90 @@ def test_contract_declares_topics_and_entry_points() -> None:
     )
 
 
-def test_fixture_copy_is_not_mutated(tmp_path: Path) -> None:
-    shutil.copy(FIXTURES / "ledger_week.md", tmp_path / "l.md")
-    before = (tmp_path / "l.md").read_bytes()
-    _run(tmp_path, ledger_paths=(tmp_path / "l.md",))
-    assert (tmp_path / "l.md").read_bytes() == before
-
-
-def test_ledger_paths_read_only_archives_that_reach_into_the_week(
-    tmp_path: Path,
+def test_the_cli_reads_the_week_from_the_bus_reader_not_from_the_ledger_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from omnimarket.nodes.node_lab_story_log_effect.cli import ledger_paths
+    """No ledger option and no ledger file exist; the rows come from the reader node."""
+    from click.testing import CliRunner
 
-    live = tmp_path / "ROLLING_WORK_LEDGER.md"
-    live.write_text("")
-    archive = tmp_path / "archive"
-    archive.mkdir()
-    for name in (
-        "ROLLING_WORK_LEDGER_2026-10-05-split.md",
-        "ROLLING_WORK_LEDGER_2026-10-19-split.md",
-    ):
-        (archive / name).write_text("")
-    start = datetime(2026, 10, 12, tzinfo=UTC)
-    assert ledger_paths(live, start) == (
-        live,
-        archive / "ROLLING_WORK_LEDGER_2026-10-19-split.md",
+    from omnimarket.nodes.node_lab_story_log_effect import cli
+
+    asked: list[tuple[str, int]] = []
+    fixture = tuple(
+        (FIXTURES / "ledger_week.md").read_text(encoding="utf-8").splitlines()
     )
+
+    def fake_read(reader: str, window_hours: int, **_: object) -> tuple[str, ...]:
+        asked.append((reader, window_hours))
+        return fixture
+
+    monkeypatch.setattr(cli, "read_window_rows", fake_read)
+    result = CliRunner().invoke(
+        cli.lab_story_log_command,
+        [
+            "--week",
+            "previous",
+            "--vocabulary-home",
+            str(tmp_path / "home"),
+            "--checkout",
+            str(tmp_path / "kb"),
+            "--dry-run",
+        ],
+    )
+    # The vocabulary home is absent, so the handler refuses AFTER the rows were asked of the node.
+    assert asked
+    assert asked[0][0] == "lab-story-log"
+    assert 1 <= asked[0][1] <= 24 * 14
+    assert "--ledger" not in result.output
+
+
+def test_the_cli_refuses_when_the_reader_does_not_answer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from click.testing import CliRunner
+
+    from omnimarket.nodes.node_lab_story_log_effect import cli
+    from omnimarket.nodes.node_work_ledger_reader_effect.adapters.rows_read import (
+        LedgerRowsUnreadableError,
+    )
+
+    def unreadable(reader: str, window_hours: int, **_: object) -> tuple[str, ...]:
+        raise LedgerRowsUnreadableError("reader lab-story-log: not-moved")
+
+    monkeypatch.setattr(cli, "read_window_rows", unreadable)
+    result = CliRunner().invoke(
+        cli.lab_story_log_command,
+        [
+            "--week",
+            "previous",
+            "--vocabulary-home",
+            str(FIXTURES),
+            "--checkout",
+            str(tmp_path),
+            "--dry-run",
+        ],
+    )
+    assert result.exit_code == 69
+    assert "not-moved" in result.output
+    assert not (tmp_path / "articles").exists()
+
+
+def test_week_rows_asks_for_the_hours_back_to_the_weeks_first_day(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnimarket.nodes.node_lab_story_log_effect import cli
+
+    asked: list[int] = []
+
+    def fake_read(reader: str, window_hours: int, **_: object) -> tuple[str, ...]:
+        assert reader == "lab-story-log"
+        asked.append(window_hours)
+        return ()
+
+    monkeypatch.setattr(cli, "read_window_rows", fake_read)
+    start = datetime(2026, 10, 12, tzinfo=UTC)
+    cli.week_rows(start, datetime(2026, 10, 19, 22, 30, tzinfo=UTC))
+    assert asked == [7 * 24 + 23]
 
 
 def test_publish_commits_the_log_on_a_branch_and_opens_the_pull_request(
