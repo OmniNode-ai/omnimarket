@@ -37,7 +37,10 @@ def main(
         build=build
         or (
             lambda environment, trigger: build_runner(
-                environment, trigger=trigger, settings_store=r8_settings_store()
+                environment,
+                trigger=trigger,
+                settings_store=r8_settings_store(),
+                check_dev_ready=True,
             )
         ),
     )
