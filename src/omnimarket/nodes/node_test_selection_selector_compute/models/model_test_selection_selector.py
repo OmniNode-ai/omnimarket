@@ -23,8 +23,20 @@ class ModelSelectorPolicy(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    #: Estimated test seconds one shard of a narrowed selection carries; the full suite's own share
+    #: (the recorded suite total over ``full_split_count``), held within ``record_tolerance_ratio`` by a test.
     target_shard_seconds: int = Field(ge=1)
+    #: Most shards a narrowed selection may take.
     max_narrowed_shards: int = Field(ge=1)
+    #: Estimated test seconds above which a selection takes the full suite (the operator's narrowed-run bound).
+    narrowed_bound_seconds: int = Field(ge=1)
+    #: Seconds a test file with no duration entry costs: the durations file's p90.
+    untimed_file_seconds: float = Field(ge=0)
+    #: Allowed relative gap between ``target_shard_seconds * full_split_count`` and the recorded suite total,
+    #: and between ``untimed_file_seconds`` and the durations file's p90.
+    record_tolerance_ratio: float = Field(gt=0, lt=1)
+    #: Bounds the policy-bound report prices beside the policy bound.
+    comparison_bounds_seconds: tuple[int, ...]
     durations_path: str = Field(min_length=1)
     path_count_shards: tuple[tuple[int, int], ...]
     path_count_max_shards: int = Field(ge=1)
@@ -34,9 +46,22 @@ class ModelSelectorPolicy(BaseModel):
     full_split_count: int = Field(ge=1, le=40)
     #: Days a pull request's selection record artifact is kept.
     record_retention_days: int = Field(ge=1, le=90)
+    #: The ``selection_by_stage`` entry the code graph comparison reads as the parse side. Absent in
+    #: the frozen replay tree, which predates it.
+    graph_compared_stage: int | None = Field(default=None, ge=0, le=4)
+    #: Fewest valid comparisons the comparison's verdict part one needs; fewer is ``insufficient``.
+    #: Absent in the frozen replay tree, which predates it.
+    graph_min_valid_comparisons: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def _ladder_is_ordered(self) -> ModelSelectorPolicy:
+        if (
+            self.narrowed_bound_seconds
+            > self.max_narrowed_shards * self.target_shard_seconds
+        ):
+            raise ValueError(
+                "narrowed_bound_seconds may not exceed max_narrowed_shards * target_shard_seconds"
+            )
         bounds = [paths for paths, _ in self.path_count_shards]
         if bounds != sorted(set(bounds)):
             raise ValueError("path_count_shards must rise by selected path count")

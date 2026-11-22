@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-26330
 title: 'Ledger-file census group 2: its 13 src files read the work ledger through the bus or are deleted, and their census rows are lowered'
-summary: The lab story log CLI and the merged-running count read their ledger rows from the moved work ledger reader node (a rows read through the reader's handler) and no longer open the ledger file or name its path variable, and their census rows are lowered. The iLO redfish CLI reads its consent row through the reader's row-at point read, the remote setup check asks for the ledger bus variables, and their rows are lowered. The reader node gains a history read and a row-at point read. The other nine group 2 files are left, each with its reason in the lane report.
+summary: The lab story log CLI and the merged-running count read their ledger rows from the moved work ledger reader node (a rows read through the reader's handler) and no longer open the ledger file or name its path variable, and their census rows are lowered. The iLO redfish CLI reads its consent row through the reader's row-at point read, the remote setup check asks for the ledger bus variables, and their rows are lowered. The reader node gains a history read and a row-at point read. The ledger reconcile compute's line citation pattern no longer carries the ledger file's name, and its row is lowered. The other eight group 2 files are left, each with its reason in the lane report.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -86,6 +86,24 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: bash -c '! grep -qE "node_ilo_redfish_effect/runtime_ilo_redfish_cli.py|node_operator_access_mode_effect/handlers/handler_remote_setup_check.py" src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml && env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=.'
+        cwd: .
+  - id: dod-omn26330-ac1-reconcile-line-ref
+    description: The reconcile compute's line citation pattern reads a cited ledger line without naming the ledger file, and the census run prints no hit for ledger_rows.py. At the merge base the file holds a hit, so the cleared-files test fails.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_ledger_reconcile_compute/test_line_ref_re.py tests/unit/nodes/node_work_ledger_file_census_effect/test_group2_cleared_files.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn26330-ac2-reconcile-row
+    description: The census row of the reconcile compute's ledger_rows.py is gone from the ratchet and the ratchet count equals the table's rows. At the merge base the row is present, so this fails.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: command
+        check_value: bash -c '! grep -q "node_ledger_reconcile_compute/handlers/ledger_rows.py" src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml'
         cwd: .
   - id: dod-omn26330-integration-proof
     description: "Run the focused tests of the moved readers on a lab host at the pushed head; the local Done gate runs this unbound check."

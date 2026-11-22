@@ -7,6 +7,8 @@ Model ownership: PRIVATE to omnimarket.
 
 from __future__ import annotations
 
+import math
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -54,8 +56,15 @@ class ModelDevRuntimeGrantPolicy(BaseModel):
     target_prefix: str = Field(default="compose:")
     until_cell: str = Field(min_length=1)
     max_grant_hours: float = Field(gt=0)
-    ledger_path_env: str = Field(min_length=1)
-    tail_bytes: int = Field(gt=0)
+    reader: str = Field(
+        min_length=1,
+        description="The ledger reader node's name for the grant read.",
+    )
+
+    @property
+    def window_hours(self) -> int:
+        """Whole hours of ledger rows to read: a row older than max_grant_hours holds no live grant."""
+        return math.ceil(self.max_grant_hours)
 
 
 class ModelDevRuntimeGuardPolicy(BaseModel):

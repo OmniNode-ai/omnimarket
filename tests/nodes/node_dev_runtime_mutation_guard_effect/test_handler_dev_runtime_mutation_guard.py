@@ -49,6 +49,7 @@ from omnimarket.nodes.node_dev_runtime_mutation_guard_effect.runtime_dev_runtime
 from omnimarket.nodes.node_dev_runtime_mutation_guard_effect.runtime_dev_runtime_mutation import (
     main as runtime_main,
 )
+from tests.helpers.fake_ledger_rows import FakeLedgerRows
 
 pytestmark = pytest.mark.unit
 
@@ -124,14 +125,14 @@ def test_ac1_planted_dev_runtime_mutation_is_refused(command: str) -> None:
     assert output["permissionDecision"] == "deny"
 
 
-def test_ac1_live_grant_admits_the_mutation(tmp_path: Path) -> None:
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
-    ledger.write_text(
-        "2026-10-31T15:40:00Z | OPERATOR-CONSENT | lane=orchestrator | ticket=OMN-21795 | "
-        "grant=compose:omnibase-infra until=2026-10-31T17:00:00Z | APPROVED SCOPE: restart the dev runtime\n",
-        encoding="utf-8",
+def test_ac1_live_grant_admits_the_mutation() -> None:
+    rows = FakeLedgerRows(
+        [
+            "2026-10-31T15:40:00Z | OPERATOR-CONSENT | lane=orchestrator | ticket=OMN-21795 | "
+            "grant=compose:omnibase-infra until=2026-10-31T17:00:00Z | APPROVED SCOPE: restart the dev runtime"
+        ]
     )
-    grants = LedgerGrantSource({"ONEX_LEDGER_PATH": str(ledger)})
+    grants = LedgerGrantSource(rows)
     decision = _decide("docker restart omninode-runtime", grants=grants)
     assert decision.verdict is EnumDevRuntimeMutationVerdict.ALLOW
     assert decision.granted is True
@@ -152,23 +153,66 @@ def test_ac1_live_grant_admits_the_mutation(tmp_path: Path) -> None:
         "2026-10-31T15:40:00Z | OPERATOR-CONSENT | grant=compose:omnibase-infra",
     ],
 )
-def test_ac1_dead_or_foreign_grant_does_not_admit(tmp_path: Path, row: str) -> None:
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
-    ledger.write_text(row + "\n", encoding="utf-8")
+def test_ac1_dead_or_foreign_grant_does_not_admit(row: str) -> None:
     decision = _decide(
         "docker restart omninode-runtime",
-        grants=LedgerGrantSource({"ONEX_LEDGER_PATH": str(ledger)}),
+        grants=LedgerGrantSource(FakeLedgerRows([row])),
     )
     assert decision.verdict is EnumDevRuntimeMutationVerdict.REFUSE
 
 
-def test_ac1_unreadable_ledger_grants_nothing(tmp_path: Path) -> None:
-    for env in ({}, {"ONEX_LEDGER_PATH": str(tmp_path / "missing.md")}):
-        decision = _decide(
-            "docker restart omninode-runtime", grants=LedgerGrantSource(env)
+def test_ac1_unreadable_ledger_grants_nothing() -> None:
+    rows = FakeLedgerRows(
+        [
+            "2026-10-31T15:40:00Z | OPERATOR-CONSENT | grant=compose:omnibase-infra "
+            "until=2026-10-31T17:00:00Z"
+        ],
+        error="reader dev-runtime-mutation-guard-grants exited 69: bus unreachable",
+    )
+    decision = _decide(
+        "docker restart omninode-runtime", grants=LedgerGrantSource(rows)
+    )
+    assert decision.verdict is EnumDevRuntimeMutationVerdict.REFUSE
+    assert decision.granted is False
+    assert "could not be read" in decision.reason
+    assert "bus unreachable" in decision.reason
+
+
+def test_ac1_unset_ledger_interpreter_grants_nothing() -> None:
+    decision = _decide(
+        "docker restart omninode-runtime", grants=LedgerGrantSource(environ={})
+    )
+    assert decision.verdict is EnumDevRuntimeMutationVerdict.REFUSE
+    assert "could not be read" in decision.reason
+
+
+def test_ac1_grant_read_names_the_reader_window_and_row_kinds() -> None:
+    policy = ContractGuardPolicySource().load({}).grant
+    rows = FakeLedgerRows()
+    source = LedgerGrantSource(rows)
+    assert source.live_grants(policy, NOW) == frozenset()
+    assert rows.calls == [
+        (
+            "dev-runtime-mutation-guard-grants",
+            24,
+            ("GRANT", "OPERATOR-CONSENT"),
         )
-        assert decision.verdict is EnumDevRuntimeMutationVerdict.REFUSE
-        assert "no ledger" in decision.reason
+    ]
+    assert policy.reader == "dev-runtime-mutation-guard-grants"
+    assert policy.window_hours >= policy.max_grant_hours
+    assert "ledger_path_env" not in policy.model_dump()
+
+
+def test_ac1_describe_names_the_reader_not_a_path() -> None:
+    policy = ContractGuardPolicySource().load({}).grant
+    source = LedgerGrantSource(FakeLedgerRows())
+    source.live_grants(policy, NOW)
+    text = source.describe(policy)
+    assert "dev-runtime-mutation-guard-grants" in text
+    assert "/" not in text
+    failed = LedgerGrantSource(FakeLedgerRows(error="boom"))
+    failed.live_grants(policy, NOW)
+    assert "boom" in failed.describe(policy)
 
 
 def test_ac1_grants_in_reads_every_named_project() -> None:
@@ -349,7 +393,7 @@ def test_readonly_allow_recorded_refused_calls_entrypoint_exits_zero(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.delenv("ONEX_LEDGER_PATH", raising=False)
+    monkeypatch.delenv("ONEX_LEDGER_BUS_APPEND_COMMAND", raising=False)
     monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
     monkeypatch.setattr("sys.stdin", io.StringIO(payload))
@@ -394,18 +438,16 @@ def test_refuse_every_compose_mutating_verb_without_a_grant(
 
 @pytest.mark.parametrize("verb", COMPOSE_MUTATING)
 def test_refuse_every_compose_mutating_verb_unless_granted(
-    verb: str, tmp_path: Path
+    verb: str,
 ) -> None:
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
-    ledger.write_text(
-        "2026-10-31T15:40:00Z | OPERATOR-CONSENT | ticket=OMN-21795 | "
-        "grant=compose:omnibase-infra until=2026-10-31T17:00:00Z | fixture\n",
-        encoding="utf-8",
+    rows = FakeLedgerRows(
+        [
+            "2026-10-31T15:40:00Z | OPERATOR-CONSENT | ticket=OMN-21795 | "
+            "grant=compose:omnibase-infra until=2026-10-31T17:00:00Z | fixture"
+        ]
     )
     command = f"docker compose -p omnibase-infra {verb}"
-    granted = _decide(
-        command, grants=LedgerGrantSource({"ONEX_LEDGER_PATH": str(ledger)})
-    )
+    granted = _decide(command, grants=LedgerGrantSource(rows))
     assert granted.verdict is EnumDevRuntimeMutationVerdict.ALLOW
     assert granted.granted is True
     assert _decide(command).verdict is EnumDevRuntimeMutationVerdict.REFUSE
@@ -487,7 +529,7 @@ def test_refuse_smuggled_dry_run_entrypoint_exits_two(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.delenv("ONEX_LEDGER_PATH", raising=False)
+    monkeypatch.delenv("ONEX_LEDGER_BUS_APPEND_COMMAND", raising=False)
     monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
     monkeypatch.setattr("sys.stdin", io.StringIO(payload))

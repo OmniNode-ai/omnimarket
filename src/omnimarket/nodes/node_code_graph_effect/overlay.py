@@ -20,6 +20,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.handlers.node_overlay_resolved_roots import resolved_overlay_environ
 from omnimarket.models.model_code_graph_lookup import ModelCodeGraphLookupSettings
+from omnimarket.models.model_code_graph_selection_compare import (
+    ModelCodeGraphCompareSettings,
+)
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppendRoute
 
 NODE_NAME = "node_code_graph_effect"
@@ -238,6 +241,8 @@ class ModelCodeGraphOverlay(BaseModel):
     shadow: ModelCodeGraphShadow | None = None
     #: The lookup's retention (how many versions of a repository stay); absent where no lookup is served.
     lookup: ModelCodeGraphLookupSettings | None = None
+    #: The selection comparison's deadlines; absent where no comparison is run.
+    compare: ModelCodeGraphCompareSettings | None = None
     schedule_hosts: tuple[ModelCodeGraphScheduleHost, ...] = ()
     #: Environment the installed unit carries (the append command and the repository root).
     unit_environment: dict[str, str] = Field(default_factory=dict)
