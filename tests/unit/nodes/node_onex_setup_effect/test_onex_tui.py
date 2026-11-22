@@ -497,6 +497,11 @@ async def test_config_finds_server_models_and_saves_the_ticked_ones(
         )
         assert [e.model_id for e in _found(app).entries] == ["llama3.2", "qwen3:8b"]
         _tick(app, "llama3.2", "qwen3:8b")
+        await pilot.press("ctrl+g")
+        await pilot.pause()
+        assert runner.terminal_calls == []
+        assert "Save" in str(app.screen.query_one("#note").render())
+        assert [e.model_id for e in _found(app).ticked] == ["llama3.2", "qwen3:8b"]
         await _press(pilot, app, "save")
         for _ in range(6):
             await pilot.pause()
@@ -645,6 +650,46 @@ async def test_a_long_list_is_searchable_and_ticks_survive_searching() -> None:
         assert "openrouter: vendor/model-07, qwen/qwen3.8-27b" in str(
             screen.query_one("#basket").render()
         )
+
+
+async def test_config_lists_the_providers_own_ids_exactly_and_no_catalogue_only_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC21: the provider's list decides which models exist and their exact ids;
+    a model only models.dev knows is never offered."""
+    from omnimarket.handlers.model_catalog import ModelsDevIndex
+    from omnimarket.handlers.routing.byok_model_listing import list_byok_models
+    from omnimarket.nodes.node_onex_setup_effect import cli_tui
+
+    capture = Path(__file__).parents[3] / "fixtures/openrouter_models_2026_11_20.json"
+    body = json.loads(capture.read_text(encoding="utf-8"))
+    listing = list_byok_models("openrouter", "key", get=lambda **_: body)
+    only_in_catalogue = ("openrouter", "vendor/only-in-models-dev")
+    monkeypatch.setattr(
+        cli_tui,
+        "_default_index",
+        lambda: ModelsDevIndex(
+            models={**_MODELS_DEV, only_in_catalogue: {"name": "Catalogue only"}},
+            fetched_at="2026-11-12T00:00:00+00:00",
+            stale=False,
+            error=None,
+        ),
+    )
+    app = OnexTui(
+        root=_root,
+        runner=_Runner([]),
+        load_status=_status,
+        list_models=lambda _provider, _key: listing,
+    )
+    async with app.run_test(size=(140, 50)) as pilot:
+        await _open_config(pilot, app)
+        app.screen.query_one("#provider").value = "openrouter"
+        await pilot.pause()
+        app.screen.query_one("#key").value = "sk-or-test"
+        await _wait_for_models(pilot)
+        shown = sorted(entry.model_id for entry in _found(app).entries)
+    assert shown == sorted(row["id"] for row in body["data"])
+    assert only_in_catalogue[1] not in shown
 
 
 async def test_a_refused_key_shows_the_provider_message_and_lists_nothing() -> None:
@@ -863,6 +908,85 @@ async def test_model_lists_set_up_models_and_makes_the_choice_first() -> None:
         assert _actions(runner)[-1] == ("models", "first", "--clear")
 
 
+async def test_the_table_says_when_a_provider_list_has_expired(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-23413, operator decision 23413-AC4-SHOWEXPIRED (2026-11-22): once the
+    24-hour provider list has expired the table says so (AC4: a stale catalogue
+    fails visibly), and while it is fresh it says nothing; models.dev still
+    fills the facts after expiry (23413-G10-FALLBACK). The words are the
+    configured ones (model_table.listing_expired, AC27)."""
+    import os
+
+    from textual.widgets import DataTable
+
+    from omnimarket.handlers import model_catalog
+    from omnimarket.handlers.routing.byok_model_listing import (
+        ModelByokListedModel,
+        ModelByokModelListing,
+    )
+    from omnimarket.nodes.node_onex_setup_effect import cli_model_table
+    from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+        tui_design,
+    )
+
+    monkeypatch.setattr(model_catalog, "_onex_home", lambda: tmp_path)
+    configured = tui_design().model_table.listing_expired
+    rows = json.dumps(
+        {"provider": "openrouter", "set_up": True, "models": ["qwen/qwen3.8-27b"]}
+    )
+
+    async def shown_row() -> str:
+        app = _app(_Runner([], by_command={("models", "list"): rows}))
+        async with app.run_test(size=(160, 40)) as pilot:
+            await _type(pilot, "/model")
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.pause()
+            grid = app.screen.query_one("#models").query_one(DataTable)
+            assert grid.row_count == 1
+            return "  ".join(str(cell) for cell in grid.get_row_at(0))
+
+    # No list was ever kept: nothing has expired, so no marker either.
+    never = await shown_row()
+    assert "262K" in never
+    assert configured not in never, never
+
+    model_catalog.remember_provider_listing(
+        ModelByokModelListing(
+            provider="openrouter",
+            outcome="listed",
+            models=(
+                ModelByokListedModel(
+                    id="qwen/qwen3.8-27b", name="Qwen listed", context_tokens=16_000
+                ),
+            ),
+        )
+    )
+    fresh = await shown_row()
+    assert "16K" in fresh  # the provider's own list
+    assert configured not in fresh, fresh
+
+    os.utime(model_catalog._listing_path("openrouter", tmp_path), (0, 0))
+    expired = await shown_row()
+    assert "262K" in expired  # models.dev fills the facts
+    assert configured in expired, (
+        f"the table shows no {configured!r} marker after the provider list "
+        f"expired: {expired}"
+    )
+
+    # The words are read from the configuration, not written into the code.
+    real_table = cli_model_table._table()
+    monkeypatch.setattr(
+        cli_model_table,
+        "_table",
+        lambda: real_table.model_copy(update={"listing_expired": "LIST GONE STALE"}),
+    )
+    reworded = await shown_row()
+    assert "LIST GONE STALE" in reworded, reworded
+    assert configured not in reworded, reworded
+
+
 async def test_model_with_nothing_set_up_points_to_setup() -> None:
     app = _app(_Runner([], by_command={("models", "list"): ""}))
     async with app.run_test() as pilot:
@@ -1023,6 +1147,32 @@ async def test_setup_is_not_a_tui_command_config_is() -> None:
         assert not isinstance(app.screen, SetupScreen)
         assert "no onex command matches '/setup'" in _log_text(app)
         assert not [call for call in runner.calls if call[0] == "setup"]
+
+
+@pytest.mark.parametrize("code", [0, 3])
+async def test_guided_setup_uses_the_cli_terminal_from_the_config_tab(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: int
+) -> None:
+    from textual.widgets import Button
+
+    class WorkspaceRunner(_Runner):
+        def in_terminal(self, argv: tuple[str, ...]) -> int:
+            assert Path.cwd() == tmp_path
+            super().in_terminal(argv)
+            return code
+
+    monkeypatch.chdir(tmp_path)
+    runner = WorkspaceRunner([])
+    app = _app(runner)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await _type(pilot, "/config")
+        await pilot.press("enter", "ctrl+g")
+        await pilot.pause()
+        assert runner.terminal_calls == [("setup",)]
+        assert app.screen.query_one("#guided-setup", Button).display
+        if code:
+            assert "3" in str(app.screen.query_one("#note").render())
+        assert not [call for call in runner.calls if call[:2] == ("models", "add")]
 
 
 async def test_the_banner_sits_in_the_middle_of_a_wide_screen() -> None:

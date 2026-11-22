@@ -84,8 +84,8 @@ async def check_runtime_mount(
         server.attach_manifest(manifest)
         assert server._mount_task is not None
         await server._mount_task
-        assert server._runner is not None
-        port = server._runner.addresses[0][1]
+        assert server._site is not None
+        port = server._site.port
         base = f"http://127.0.0.1:{port}"
         async with aiohttp.ClientSession() as session:
             for route in routes:

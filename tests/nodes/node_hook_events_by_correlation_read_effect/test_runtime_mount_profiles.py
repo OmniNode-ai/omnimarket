@@ -104,8 +104,8 @@ async def test_runtime_mount_serves_the_route_in_the_profile(
         server.attach_manifest(manifest)
         assert server._mount_task is not None
         await server._mount_task
-        assert server._runner is not None
-        port = server._runner.addresses[0][1]
+        assert server._site is not None
+        port = server._site.port
         url = f"http://127.0.0.1:{port}{ROUTE}"
         async with aiohttp.ClientSession() as session:
             async with session.get(url, params={"correlation_id": CID}) as response:

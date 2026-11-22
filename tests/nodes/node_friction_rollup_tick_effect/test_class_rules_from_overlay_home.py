@@ -10,20 +10,18 @@ from typing import Any
 
 import pytest
 
-from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.handler_friction_rollup_tick import (
-    HandlerFrictionRollupTick,
-)
 from omnimarket.nodes.node_friction_rollup_tick_effect.models.model_friction_rollup_tick import (
     ModelFrictionRollupTickRequest,
-)
-from omnimarket.nodes.node_friction_rollup_tick_effect.protocols.protocol_ledger_appender import (
-    InMemoryLedgerAppender,
 )
 from tests.nodes.node_friction_rollup_tick_effect.conftest import (
     CLASS_OVERLAY_ENV,
     OVERLAY_HOME_FILE,
 )
-from tests.nodes.node_friction_rollup_tick_effect.tick_support import FIXTURES
+from tests.nodes.node_friction_rollup_tick_effect.tick_support import (
+    FIXTURES,
+    FixtureLedgerRead,
+    tick_handler,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -36,12 +34,14 @@ RECORDED_ROW_COUNT = 24
 def _window_totals(
     tmp_path: Path, environ: dict[str, str]
 ) -> tuple[int, dict[str, Any], dict[str, Any]]:
-    result = HandlerFrictionRollupTick(
-        appender=InMemoryLedgerAppender(), environ=environ
+    result = tick_handler(
+        RECORDED_ROWS,
+        every_kind=False,
+        environ=environ,
+        source=FixtureLedgerRead([RECORDED_ROWS]),
     ).handle(
         ModelFrictionRollupTickRequest(
             registry_root=str(tmp_path / "registry"),
-            ledger_path=str(RECORDED_ROWS),
             now=NOW,
             dry_run=True,
             state_dir=str(tmp_path / "state"),
