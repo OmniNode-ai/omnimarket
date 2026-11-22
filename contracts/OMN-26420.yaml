@@ -1,0 +1,78 @@
+schema_version: 1.0.0
+title: Omnimarket smart test narrowing runs live at stage 1, with the nightly full suite and every always-run and full-suite trigger kept
+ticket_id: OMN-26420
+summary: >-
+  The test-selection policy advances selection_stage from 0 to 1. The Build selection record step of ci.yml passes a
+  stage 1 entry beside stage 0, both produced by the one detect_test_paths call, so the record's stage gate finds an
+  entry for the policy stage and the executed selection is the narrowed one rather than a selection_unavailable full
+  suite. The tests that pinned stage 0 now pin stage 1. The workflow reads the repository variable
+  ENABLE_SMART_TESTS as before; the nightly full suite, the always-run sets and the full-suite trigger rules are not
+  touched.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26420-stage-one
+  statement: Smart test narrowing runs live, the policy stage is 1 and the workflow feeds that stage.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: selection_stage reads 1 in the policy and the stage-pinning tests pass -- falsifier: `uv run pytest tests/ci -q --no-cov -k selection_stage`; set the policy back to 0 and the updated pin must fail'
+  - id: AC2
+    statement: 'AC2: the nightly full-suite workflow, every always-run set and every full-suite trigger rule are unchanged -- falsifier: `git diff origin/dev -- policy.yaml .github/workflows` shows only the selection_stage line (plus the ruling record the gate declares); any other removed rule fails review'
+  - id: AC3
+    statement: 'AC3: on one open omnimarket pull request the CI ran the narrowed selection and the lane names the shards it skipped -- falsifier: the selection record artifact and CI job list of the pull request show the skipped shards by name; a run of the full matrix fails this criterion'
+  - id: AC4
+    statement: 'AC4: the pull request is created through onex scm pr-create and no gate or check is disabled or widened -- falsifier: onex scm pr-view shows the required checks green on the head and the diff touches no check configuration'
+evidence_requirements:
+- kind: tests
+  description: The stage pins, the record tests and the golden chain.
+  command: uv run --frozen pytest tests/ci/test_ci_selection_record_upload.py tests/nodes/node_test_selection_selector_compute tests/test_golden_chain_test_selection_selector_compute.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26420-ac1-stage-pin
+  description: The policy holds selection_stage 1 and the workflow passes an entry for it; the pin fails when the policy reads 0.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_ci_selection_record_upload.py tests/nodes/node_test_selection_selector_compute/test_protected_surface_set.py tests/nodes/node_test_selection_selector_compute/test_selection_record.py -q --no-cov -k "selection_stage or stage_gate"
+    cwd: .
+- id: dod-omn26420-ac2-trigger-rules-kept
+  description: The adjacency file keeps its full-suite rule, and the matrix is still built from the executed selection only.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_protected_surface_set.py tests/ci/test_ci_selection_record_upload.py -q --no-cov -k "full_suite_rule_stays_in_the_adjacency_file or reads_only_the_executed_selection"
+    cwd: .
+- id: dod-omn26420-ac3-narrowed-at-stage-one
+  description: With the stage 1 entry passed, the executed selection at stage 1 is the narrowed entry and not a selection_unavailable escalation. The live read of a pull request run is in the pull request comment that starts with Lab.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_ci_selection_record_upload.py -q --no-cov -k "feeds_that_stage or flag_states_same_input"
+    cwd: .
+- id: dod-omn26420-ac4-no-check-widened
+  description: The workflow keeps its detect-changes needs and outputs, and the test job keeps its needs.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_ci_selection_record_upload.py -q --no-cov -k "keeps_its_needs_and_outputs"
+    cwd: .
+- id: dod-omn26420-integration-proof
+  description: Run this pull request's own stage pin tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26420 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_ci_selection_record_upload.py -q --no-cov -k "not narrowed_input_matches_the_graph_selector"
+    cwd: .

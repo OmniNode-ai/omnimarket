@@ -34,7 +34,7 @@ path_count_shards:
   - [10, 3]
   - [16, 4]
 path_count_max_shards: 5
-selection_stage: 0
+selection_stage: 1
 full_split_count: 20
 record_retention_days: 14
 graph_compared_stage: 0
