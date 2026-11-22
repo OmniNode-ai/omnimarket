@@ -65,6 +65,10 @@ descriptor:
   timeout_ms: 600000
   runtime_profiles: [effects]
 
+# OMN-26438: on demand by design, so no schedule. The set is frozen once per rollout before the
+# first roster is scored; a schedule would freeze a new set each time the landing branches move,
+# and the freeze reads the canonical clones of the host that runs it. The trigger below is the
+# declared one, and tests/nodes/node_review_replay_set_effect fails when it is removed.
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.review-replay-set-freeze-requested.v1
   external_trigger: >-

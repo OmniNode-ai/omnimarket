@@ -154,6 +154,8 @@ class ModelTuiModelTable(BaseModel):
     sorts: tuple[str, ...] = Field(min_length=1)
     sort_labels: dict[str, str]
     search_placeholder: str
+    #: After a row's provider, once that provider's kept list has expired (AC4).
+    listing_expired: str = Field(min_length=1)
     #: The line above the table: how many shown, the filter and the sort.
     bar: str
     #: Added to the bar where rows can be ticked.
