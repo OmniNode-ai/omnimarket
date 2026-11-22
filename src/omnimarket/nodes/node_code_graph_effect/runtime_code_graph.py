@@ -83,6 +83,10 @@ from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_lookup_routed i
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
     CodeGraphRun,
 )
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_selection_compare import (
+    SelectionCompare,
+    memgraph_reach,
+)
 from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import (
     GraphRules,
     check_added,
@@ -196,6 +200,26 @@ def answer_lookup_from_files(
             )
         )
     return CodeGraphLookup(store, source).handle(command)
+
+
+def build_compare_handler(write: bool) -> SelectionCompare:
+    """The selection comparison as the overlay names its deadlines, its test globs and its appender."""
+    overlay = load_overlay()
+    settings = overlay.compare
+    if settings is None:
+        raise ValueError("the overlay declares no compare block")
+    return SelectionCompare(
+        memgraph_lookup=lambda command: memgraph_reach(
+            lambda: _open_memgraph_store(overlay), command
+        ),
+        file_lookup=answer_lookup_from_files,
+        is_test=GraphRules(roots=overlay.graph_roots).is_test,
+        lookup_deadline_seconds=settings.lookup_deadline_seconds,
+        fallback_deadline_seconds=settings.fallback_deadline_seconds,
+        appender=build_appender(overlay.ledger_append, overlay.publish.lane)
+        if write
+        else None,
+    )
 
 
 def _keep(result: ModelCodeGraphResult) -> None:

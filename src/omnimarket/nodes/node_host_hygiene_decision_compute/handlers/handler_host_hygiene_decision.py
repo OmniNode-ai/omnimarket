@@ -42,6 +42,21 @@ def decide_host_hygiene(
         }
         for cleanup_id in host_facts.cleanup_ids:
             policy = policy_by_id[cleanup_id]
+            if host_facts.held_reason is not None:
+                # A host held by its own capacity guard is left alone: the held
+                # check wins over interval, pressure and unread policy.
+                items.append(
+                    ModelHostHygieneDecisionItem(
+                        host=host_facts.host,
+                        cleanup_id=cleanup_id,
+                        due=False,
+                        reason=EnumHostHygieneReason.HELD,
+                        used_fraction=used_fraction,
+                        reading_age_seconds=age,
+                        held_reason=host_facts.held_reason,
+                    )
+                )
+                continue
             due, reason = _decide_one(
                 policy,
                 fresh=fresh,

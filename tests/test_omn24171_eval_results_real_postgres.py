@@ -351,6 +351,46 @@ async def test_a_judged_delivery_with_no_judge_run_id_writes_no_row_and_reaches_
 
 
 @pytest.mark.integration
+async def test_a_judged_delivery_with_a_tenant_stamp_that_is_no_uuid_writes_no_row_and_reaches_the_dlq() -> (
+    None
+):
+    """A stamp that is no uuid is dead-lettered once and raises nothing; the same event with a uuid still lands."""
+    call = "00000000-0000-0000-0000-00000000c002"
+    async with _migrated_schema() as (db, _admin):
+        writer = EvalResultsProjectionWriter(overlay=overlay(), clock=lambda: at(100))
+        cast(Any, writer)._db = db
+        published: list[tuple[str, dict[str, Any]]] = []
+
+        async def publish(topic: str, value: bytes) -> None:
+            published.append((topic, json.loads(value)))
+
+        writer._publish_fn = publish
+
+        async def deliver_judged(tenant: str) -> dict[str, Any]:
+            return await writer._project(
+                TOPIC_JUDGED,
+                {
+                    **judged_event(call),
+                    "_envelope_timestamp": at(2).isoformat(),
+                    "_tenant_id": tenant,
+                },
+                MessageMeta(partition=0, offset=0, fallback_id="", topic=TOPIC_JUDGED),
+            )
+
+        refused = await deliver_judged("omninode")
+        assert refused["dlq_routed"] == 1
+        assert [r["reason"] for r in refused["refused"]] == ["invalid_event"]
+        assert (await _counts(db))["eval_item_scores"] == 0
+        assert [topic for topic, _ in published] == [
+            "onex.dlq.omnimarket.projection-eval-results-malformed.v1"
+        ]
+
+        landed = await deliver_judged(TENANT)
+        assert landed["dlq_routed"] == 0
+        assert (await _counts(db))["eval_item_scores"] == 1
+
+
+@pytest.mark.integration
 async def test_not_materialized_a_missing_table_is_withheld_then_dead_lettered() -> (
     None
 ):

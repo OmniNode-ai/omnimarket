@@ -89,7 +89,7 @@ inputs:
   timing_line: {type: str, required: false}
   onex_dry_run: {type: str, required: false}
   registry_root: {type: str, required: false}
-  ledger_path: {type: str, required: false}
+  bus_append_command: {type: str, required: false}
   sandbox_marker_exists: {type: bool, required: false}
   detail_dir_override: {type: str, required: false}
   verb: {type: str, required: false}

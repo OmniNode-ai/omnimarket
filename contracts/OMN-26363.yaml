@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26363
+title: "h201 takes lab lanes at a slot cap and swap bar computed from measured cores, memory and swap activity, with the h201 GPU0 model read as a delegation backend"
+summary: "Test-only change in omnimarket for the swap bar: the three paths that admit a lab host to lanes (the memory admission node, the capacity node and the placement's host-swapping refusal) judge swap-in and swap-out activity plus memory available, and a host holding 59 GiB of historic swap at 0 KB/s swap-in with 58 GiB available is admitted while a host over the swap-in bar is refused. The caps and the model reading are the overlays repository's part of the ticket."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26363-swap-activity-bar
+    statement: "The swap admission bar judges swap-in and swap-out activity plus memory available, never swap used."
+    acceptance:
+      - id: AC1
+        statement: "AC1: the swap admission bar judges swap-in and swap-out activity (vmstat si and so over the sample window) plus memory available, never swap used, and a test shows a host holding 59 GiB of historic swap at 0 KB/s swap-in with 58 GiB available is admitted while a host at swap-in over the bar is refused -- falsifier: uv run pytest tests -q -k swap_activity_not_swap_used in the repository that owns the bar, failing on the unfixed code"
+evidence_requirements:
+  - kind: tests
+    description: "The swap_activity_not_swap_used tests pass at the pushed head."
+    command: "uv run pytest tests/nodes/node_host_memory_admission_compute/test_swap_activity_not_swap_used.py -q --no-cov -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26363-ac1
+    description: "AC1: the memory admission node, the capacity node, the host pool alarm and the placement's host-swapping refusal admit 59 GiB of historic swap at 0 KB/s swap-in with 58 GiB available and refuse swap-in over the bar; the unfixed-code condition does not arise because no path judged swap used (the judging code is unchanged), so the red control is a judge that reads swap used, which refuses the same host."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_host_memory_admission_compute/test_swap_activity_not_swap_used.py -q --no-cov -p no:randomly
+        cwd: .

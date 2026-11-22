@@ -8,7 +8,7 @@
 name: node_test_selector_reading_compute
 contract_name: node_test_selector_reading_compute
 node_name: node_test_selector_reading_compute
-contract_version: {major: 0, minor: 1, patch: 0}
+contract_version: {major: 0, minor: 2, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 node_type: compute
 lifecycle: experimental
@@ -28,6 +28,12 @@ handler_routing:
       handler:
         name: HandlerTestSelectorReading
         module: omnimarket.nodes.node_test_selector_reading_compute.handlers.handler_test_selector_reading
+    - operation: attribute_nightly_failures
+      handler:
+        name: HandlerNightlyAttribution
+        module: omnimarket.nodes.node_test_selector_reading_compute.handlers.handler_nightly_attribution
+      input_model: omnimarket.models.test_selector_reading.ModelNightlyAttributionRequest
+      output_model: omnimarket.models.test_selector_reading.ModelNightlyAttribution
 
 handler:
   module: omnimarket.nodes.node_test_selector_reading_compute.handlers.handler_test_selector_reading
@@ -52,12 +58,15 @@ output_model:
 input_subscriptions:
   - topic: "onex.cmd.omnimarket.test-selector-read-requested.v1"
     operation: "test_selector_reading"
+  - topic: "onex.cmd.omnimarket.test-selector-attribute-requested.v1"
+    operation: "attribute_nightly_failures"
 
 terminal_event: onex.evt.omnimarket.test-selector-read.v1
 
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.test-selector-read-requested.v1
+    - onex.cmd.omnimarket.test-selector-attribute-requested.v1
   publish_topics:
     - onex.evt.omnimarket.test-selector-read.v1
 
@@ -65,8 +74,16 @@ event_bus:
 externally_produced_topics:
   - topic: onex.cmd.omnimarket.test-selector-read-requested.v1
     producer: "the floor's reading source, which gathers the repository observations and asks for the reading; not a node contract"
+  - topic: onex.cmd.omnimarket.test-selector-attribute-requested.v1
+    producer: "a caller that holds the night's per-file outcomes and the candidate records, for example the collect effect, which applies the same pure rules in-process; not a node contract"
 externally_consumed_topics:
   - onex.evt.omnimarket.test-selector-read.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-attribute-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-attribute-requested.v1, operation: DESCRIBE}
 
 metadata:
   description: "Test selector activation and shadow-miss reading per repository"
@@ -74,4 +91,4 @@ metadata:
   license: MIT
   created: "2026-11-07"
   tags: [compute, test-selector, reading, pure]
-  related_tickets: ["OMN-22951"]
+  related_tickets: ["OMN-22951", "OMN-26271"]

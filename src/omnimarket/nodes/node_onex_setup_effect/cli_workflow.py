@@ -218,10 +218,6 @@ def run_workflow_cli(
         ) from None
     credentials: dict[str, SecretStr] = dict(prepared_credentials or {})
     if plan.action != "verify":
-        if "delegation" in plan.components and not plan.providers:
-            raise click.ClickException(
-                "Choose provider models before installation using --provider/--model or --plan."
-            )
         if not yes and not interactive:
             raise click.ClickException(
                 "Review the setup destination, selected models and unknown/API billing costs, then repeat with --yes."
@@ -298,6 +294,11 @@ def run_workflow_cli(
         click.echo(journal.model_dump_json())
     else:
         for item in journal.observations:
+            if item.status == "skipped" and item.evidence:
+                click.echo(
+                    f"[skipped] {item.step}: {'; '.join(item.evidence.values())}"
+                )
+                continue
             click.echo(
                 f"[{item.status}] {item.step} ({'changed' if item.changed else 'unchanged'})"
             )
