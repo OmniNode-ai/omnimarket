@@ -9,7 +9,6 @@ input or stdin and are never included in a saved plan.
 
 from __future__ import annotations
 
-import os
 import sys
 from collections.abc import Callable
 from functools import wraps
@@ -248,13 +247,20 @@ def linked_workspace_notice(workspace: Path) -> str | None:
 
     OMN-23413 (operator decision 2026-11-22): a workspace given as a link is
     followed as the user's choice, and setup says which real folder it writes
-    to. None when no link is on the path.
+    to. ``..`` is never collapsed as text: setup resolves links first and then
+    ``..``, so the real folder is ``resolve()``'s. The path itself or any folder
+    above it may be the link, a dangling one included. None when no link is on
+    the path.
     """
-    given = Path(os.path.abspath(workspace.expanduser()))
-    real = given.resolve()
-    if real == given:
+    given = workspace.expanduser()
+    if not given.is_absolute():
+        given = Path.cwd() / given
+    prefixes = (Path(*given.parts[:end]) for end in range(2, len(given.parts) + 1))
+    if not any(prefix.is_symlink() for prefix in prefixes):
         return None
-    return f"Workspace: {given} is a link; setup writes into its real folder {real}."
+    return (
+        f"Workspace: {given} reaches its real folder {given.resolve()} through a link."
+    )
 
 
 @click.command("setup", cls=_SetupCommand)
