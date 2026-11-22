@@ -42,6 +42,8 @@ def test_topics_exactly() -> None:
         "onex.evt.omnimarket.host-install-file-completed.v1",
         "onex.evt.omnimarket.host-install-readback-completed.v1",
         "onex.evt.omnimarket.host-install-state-updated.v1",
+        "onex.cmd.omnimarket.install-requested.v1",
+        "onex.evt.omnimarket.install-request-completed.v1",
     ]
     assert bus["publish_topics"] == [
         "onex.cmd.omnimarket.host-registry-unit-requested.v1",
@@ -108,7 +110,7 @@ def test_seam_step_topic_and_record_topic_are_the_reducers() -> None:
 
 def test_every_routed_model_and_the_handler_resolve() -> None:
     doc = contract("node_host_install_orchestrator")
-    assert len(doc["handler_routing"]["handlers"]) == 5
+    assert len(doc["handler_routing"]["handlers"]) == 7
     for route in doc["handler_routing"]["handlers"]:
         model = route["event_model"]
         assert getattr(importlib.import_module(model["module"]), model["name"])

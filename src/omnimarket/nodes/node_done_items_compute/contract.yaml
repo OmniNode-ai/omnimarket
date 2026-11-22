@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Done Items Compute (OMN-25104)
+#
+# Pure compute: ModelDoneItemsRequest (work-ledger events) -> ModelDoneItemsProjection. A TERMINAL row with an outcome
+# of done makes its tickets done; a merge (STATUS) never does. A ticket done twice keeps its newest done event.
+name: node_done_items_compute
+contract_name: node_done_items_compute
+node_name: node_done_items_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  Done items folded from work-ledger events: one item per ticket with the TERMINAL row that made it done, ordered by
+  ticket, with their count. Merged is not done. No clock read, no state, no I/O.
+
+handler:
+  module: omnimarket.nodes.node_done_items_compute.handlers.handler_done_items
+  class: HandlerDoneItems
+  input_model: omnimarket.models.done_items.ModelDoneItemsRequest
+  output_model: omnimarket.models.done_items.ModelDoneItemsProjection
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: fold_done_items
+      handler:
+        name: HandlerDoneItems
+        module: omnimarket.nodes.node_done_items_compute.handlers.handler_done_items
+      input_model: omnimarket.models.done_items.ModelDoneItemsRequest
+      output_model: omnimarket.models.done_items.ModelDoneItemsProjection
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 2000
+
+input_model:
+  name: ModelDoneItemsRequest
+  module: omnimarket.models.done_items
+  description: The work-ledger events to fold, in any order.
+output_model:
+  name: ModelDoneItemsProjection
+  module: omnimarket.models.done_items
+  description: One done item per ticket, ordered by ticket, with their count.
+
+runtime_dispatch:
+  external_trigger: "Direct Python invocation: the node_projection_done_items writer runs this node's fold,
+    omnimarket.handlers.done_items_fold.fold_done_items, in process once per work-ledger TERMINAL message."
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  transport_type: local
+  ticket: OMN-25104
