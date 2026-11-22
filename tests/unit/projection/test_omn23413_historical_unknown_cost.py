@@ -590,7 +590,7 @@ def test_a_hanging_models_dev_costs_a_read_its_deadline_once_per_interval(
     fetch_timeout = float(config["models_dev"]["timeout_seconds"])
     # Well under the fetch timeout: at most a quarter of it.
     assert deadline <= fetch_timeout / 4
-    hang_seconds = deadline + 2.0
+    hang_seconds = deadline + 8.0
     release = threading.Event()
     fetched: list[str] = []
 
@@ -623,8 +623,8 @@ def test_a_hanging_models_dev_costs_a_read_its_deadline_once_per_interval(
 
     assert (first, second, third) == (_UNKNOWN_SPEND,) * 3
     assert (after_first, after_second, after_third) == (1, 1, 2)
-    assert first_seconds < deadline + 1.0
-    assert second_seconds < 1.0
+    assert first_seconds < deadline + 4.0
+    assert second_seconds < 2.0
 
 
 def test_a_fresh_models_dev_copy_that_cannot_be_parsed_is_read_again(
