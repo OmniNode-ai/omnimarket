@@ -10,12 +10,16 @@ deployment overlay's ``plan_path_contains`` (or ``--plan``).
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import UTC, datetime
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_factory_floor_effect.handlers.handler_factory_floor_effect import (
     HandlerFactoryFloorEffect,
+)
+from omnimarket.nodes.node_factory_floor_effect.handlers.ledger_window_from_projection import (
+    ProjectionRead,
 )
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run import (
     ModelFactoryFloorRunRequest,
@@ -29,6 +33,16 @@ from omnimarket.nodes.node_merged_running_count_effect.runtime_merged_running_co
 from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader_factory import (
     build_cached_source_reader,
 )
+from omnimarket.nodes.node_work_ledger_reader_effect.adapters import (
+    build_point_read,
+)
+from omnimarket.nodes.node_work_ledger_reader_effect.handlers import (
+    HandlerWorkLedgerReader,
+)
+from omnimarket.nodes.node_work_ledger_reader_effect.overlay import load_overlay
+from omnimarket.nodes.node_work_ledger_reader_effect.runtime_work_ledger_reader import (
+    build_sink,
+)
 from omnimarket.protocols.protocol_merged_running_count_reader import (
     ProtocolMergedRunningCountReader,
 )
@@ -37,6 +51,16 @@ from omnimarket.protocols.protocol_merged_running_count_reader import (
 def bind_merged_running_reader() -> ProtocolMergedRunningCountReader:
     """The composition point: the command line is the one place the floor meets the count's local-file reader."""
     return MergedRunningCountReader()
+
+
+def bind_ledger_projection_read() -> ProjectionRead:
+    """The composition point of the projection window read: the work ledger reader node under its own overlay and route."""
+    overlay = load_overlay(os.environ)
+    return HandlerWorkLedgerReader(
+        overlay,
+        build_point_read(overlay.route, os.environ),
+        build_sink(overlay, os.environ),
+    ).handle
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -80,7 +104,9 @@ def main(argv: list[str] | None = None) -> int:
     cache = build_cached_source_reader()
     try:
         result = HandlerFactoryFloorEffect(
-            merged_running=bind_merged_running_reader(), source_cache=cache
+            merged_running=bind_merged_running_reader(),
+            source_cache=cache,
+            ledger_projection_read=bind_ledger_projection_read,
         ).handle(request_from_args(parse_args(argv)))
     except (SourceRefusedError, NodeOverlayError) as exc:
         sys.stderr.write(f"REFUSED factory-floor: {exc}\n")
