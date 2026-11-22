@@ -11,15 +11,10 @@ from pathlib import Path
 
 from omnimarket.handlers.adapter_test_selection_policy_file import load_policy
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_path_resolution import (
-    HandlerTestPathResolution,
-    declared_data_file_changes,
+    resolve_changed_files,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
     HandlerTestSelectionSelector,
-)
-from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
-    ModelPathResolutionRequest,
-    ModelPathResolutionResult,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record import (
     EnumFullSuiteReason,
@@ -28,7 +23,7 @@ from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_sel
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector import (
     ModelSelectorRequest,
 )
-from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
+from scripts.ci.test_selection_loader import load_adjacency_map
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -59,26 +54,8 @@ def resolve_test_paths(
         receives a non-existent test directory.
     """
     config = load_adjacency_map(adjacency_path)
-    result = _resolve_result(changed_files, config, repo_root or REPO_ROOT)
+    result = resolve_changed_files(changed_files, config, repo_root or REPO_ROOT)
     return list(result.selected_paths)
-
-
-def _resolve_result(
-    changed_files: list[str],
-    config: ModelAdjacencyMap,
-    repo_root: Path,
-    base_ref: str | None = None,
-) -> ModelPathResolutionResult:
-    return HandlerTestPathResolution().handle(
-        ModelPathResolutionRequest(
-            changed_files=tuple(changed_files),
-            adjacency=config,
-            repo_root=str(repo_root),
-            data_file_changes=declared_data_file_changes(
-                changed_files, config, str(repo_root), base_ref
-            ),
-        )
-    )
 
 
 def compute_selection(
@@ -134,7 +111,7 @@ def compute_selection(
     if len(changed_modules) >= config.thresholds.modules_changed_for_full_suite:
         return _full_suite(EnumFullSuiteReason.THRESHOLD_MODULES)
 
-    resolved = _resolve_result(changed_files, config, repo_root=root, base_ref=base_ref)
+    resolved = resolve_changed_files(changed_files, config, root, base_ref)
     if resolved.full_suite_reason is not None:
         return _full_suite(resolved.full_suite_reason)
     if not (selected := list(resolved.selected_paths)) and not resolved.data_only:

@@ -989,6 +989,25 @@ class HandlerTestPathResolution:
         )
 
 
+def resolve_changed_files(
+    changed_files: list[str],
+    config: ModelAdjacencyMap,
+    repo_root: Path,
+    base_ref: str | None = None,
+) -> ModelPathResolutionResult:
+    """Resolve a diff to test paths, reading a declared data file's changed keys against ``base_ref``."""
+    return HandlerTestPathResolution().handle(
+        ModelPathResolutionRequest(
+            changed_files=tuple(changed_files),
+            adjacency=config,
+            repo_root=str(repo_root),
+            data_file_changes=declared_data_file_changes(
+                changed_files, config, str(repo_root), base_ref
+            ),
+        )
+    )
+
+
 # The graph's building blocks, public for the selection replay, which writes a frozen snapshot of
 # a tree and reads it back as a stub tree this handler resolves over unchanged.
 NODE_NAME = _NODE_NAME
