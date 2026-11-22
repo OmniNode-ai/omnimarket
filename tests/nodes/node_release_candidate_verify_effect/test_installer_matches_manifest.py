@@ -508,3 +508,37 @@ def test_installer_matches_manifest_still_ignores_a_real_comment(
     script = _before_main(_render(), "echo ok # pip install evil")
     result = _pinned(manifest, script)
     assert result.matches
+
+
+def test_installer_matches_manifest_ends_a_comment_at_its_newline(
+    manifest: ModelReleaseCandidateManifest,
+) -> None:
+    line = "echo a #b\\\npip install evil"
+    script = _before_main(_render(), line)
+    result = _pinned(manifest, script)
+    assert K.INSTALLER_BUILD in _kinds(result)
+    assert not result.matches
+
+
+@pytest.mark.parametrize(
+    ("tail", "matches"),
+    [
+        ("--no-build", True),
+        ("--verbose", False),
+    ],
+)
+def test_installer_matches_manifest_joins_a_command_over_three_lines(
+    manifest: ModelReleaseCandidateManifest,
+    tail: str,
+    matches: bool,
+) -> None:
+    script = _replace(
+        _render(),
+        INSTALL_LINE,
+        '    set -- tool install \\\n        --python "$ONEX_PYTHON" \\\n        '
+        + tail,
+    )
+    result = _pinned(manifest, script)
+    assert result.matches is matches
+    if not matches:
+        assert _kinds(result) == {K.INSTALLER_BUILD}

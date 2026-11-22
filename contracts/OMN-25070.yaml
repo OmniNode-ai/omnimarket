@@ -85,7 +85,8 @@ requirements:
           PIP_NO_BUILD_ISOLATION; or that runs pip, pip3, pipx, uv tool or uv install, uvx, uv tool run,
           or uv add, sync or run without the exact token --no-build (or --only-binary=:all:) in the same
           command, lines joined across backslash continuations and shell comments ignored (a # outside quotes at the
-          start of a word, as the shell reads it; a # inside a word such as a#b, $# or ${#1} is text). The installer rendered from
+          start of a word, as the shell reads it; a # inside a word such as a#b, $# or ${#1} is text; a
+          comment ends at its newline, so a backslash inside it does not continue the line). The installer rendered from
           packages/omninode-onex/installer.json at the candidate version passes, naming PyPI explicitly
           passes, and the installer's own --find-links "$ONEX_INSTALL_FIND_LINKS" test hook passes. This is
           a list of refused spellings, not a shell interpreter: an index or install hidden behind eval,

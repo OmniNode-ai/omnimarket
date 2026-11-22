@@ -75,10 +75,14 @@ def _logical_lines(script: str) -> list[tuple[int, str]]:
     i = 0
     while i < len(lines):
         start = i
-        text = lines[i]
-        while text.endswith("\\") and i + 1 < len(lines):
-            text = text[:-1] + " " + lines[i + 1]
+        # A comment ends at its newline: a backslash inside it does not continue the line.
+        text = _strip_comment(lines[i])
+        continued = text == lines[i] and text.endswith("\\")
+        while continued and i + 1 < len(lines):
             i += 1
+            following = _strip_comment(lines[i])
+            text = text[:-1] + " " + following
+            continued = following == lines[i] and following.endswith("\\")
         i += 1
         stripped = text.strip()
         if not stripped or stripped.startswith("#"):
