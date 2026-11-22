@@ -31,6 +31,9 @@ dod_evidence:
   - check_type: command
     check_value: 'test -z "$(grep -rln ''type: ignore'' tests/nodes/node_gateway_batch_ingest_effect)"'
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_gateway_batch_ingest_effect -q --no-cov -n 0 -p no:randomly -m "not kafka"
+    cwd: .
 - id: dod-omn26340-ac2
   description: 'AC2: the diff against origin/dev touches nothing under .github or .onex_ratchets.'
   source: manual
@@ -39,6 +42,9 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: test -z "$(git diff --name-only origin/dev HEAD -- .github .onex_ratchets)"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_gateway_batch_ingest_effect -q --no-cov -n 0 -p no:randomly -m "not kafka"
     cwd: .
 - id: dod-omn26340-integration-proof
   description: 'Run the gateway batch ingest tests on a lab host at the pushed revision. This local completion proof carries no hosted AC bindings.'
