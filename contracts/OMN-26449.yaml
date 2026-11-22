@@ -1,0 +1,34 @@
+schema_version: 1.0.0
+ticket_id: OMN-26449
+title: "The metering headline counts every tenant's runs: a second tenant's run on the same store is counted in this tenant's headline"
+summary: "The local headline refresh (refresh_metering_after_terminal), refresh_metering_summary and onex metering's staleness check read every tenant's rows, while the savings view and model-routing read only the tenant's own. They now read through node_metering_tenant_records_effect, which matches the tenant as the projection writer records it (its canonical UUID, a non-canonical UUID string, or a slug resolved through tenant_registry_mirror or the closed legacy map); a row with no tenant is nobody's, and a store with no tenant_id column reads every row. The three baselined files do not grow."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26449-tenant-scoped-headline
+  statement: The local metering headline and onex metering's staleness check read only the tenant's own rows, as the savings view and model-routing do.
+  acceptance:
+  - id: AC1
+    statement: "AC1: for one store holding a second tenant's run and a run with no tenant, the metering headline, the savings view and model-routing serve the same unpriced count for the tenant, and a tenant named by slug or by an upper-case UUID reads its own rows -- falsifier: a pytest written before the fix that fails on omnimarket dev unless the three counts agree and the slug and upper-case reads return the tenant's runs."
+  - id: AC2
+    statement: "AC2: another tenant's newer run does not mark this tenant's onex metering row stale -- falsifier: the same pytest's staleness case fails on dev."
+evidence_requirements:
+- kind: tests
+  description: The tenant-scoped headline tests pass at the pushed head.
+  command: uv run pytest tests/unit/projection/test_omn26449_tenant_scoped_headline.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26449-ac1-ac2
+  description: "AC1 and AC2: the whole tenant-scoped headline test file. Its second-tenant, NULL-tenant, slug, upper-case UUID, unresolved slug, staleness and refresh_metering_summary cases fail on omnimarket dev 53eb69ee (the merge-base control) and fail again when the handler's tenant filter, UUID canonicalisation or slug resolution is removed."
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn26449_tenant_scoped_headline.py -q -p no:randomly --no-cov
+    cwd: .
