@@ -42,9 +42,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
+from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
 from omnimarket.handlers.ledger_rows_via_node import (
     MAX_WINDOW_HOURS,
-    LedgerRowsUnreadableError,
     read_ledger_rows_via_node,
 )
 from omnimarket.handlers.model_binding_reader import model_binding

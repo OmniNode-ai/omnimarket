@@ -16,16 +16,14 @@ import sys
 from collections.abc import Callable
 from datetime import datetime, timedelta
 
+from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
+
 ROWS_LOADER_MODULE = "omnimarket.nodes.node_ledger_rows_loader_effect"
 #: The loader refuses a window over 30 days.
 MAX_WINDOW_HOURS = 720
 DEFAULT_TIMEOUT_S = 300.0
 
 ProtocolRunner = Callable[[list[str], float], "subprocess.CompletedProcess[str]"]
-
-
-class LedgerRowsUnreadableError(RuntimeError):
-    """The rows loader did not answer: the caller reads nothing in its place."""
 
 
 def window_hours_covering(start: datetime, now: datetime, margin_hours: int = 1) -> int:

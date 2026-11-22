@@ -21,9 +21,9 @@ from omnimarket.handlers.ledger_append_via_node import (
     append_row_via_bus,
     request_id_for,
 )
+from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
 from omnimarket.handlers.ledger_rows_via_node import (
     MAX_WINDOW_HOURS,
-    LedgerRowsUnreadableError,
     read_ledger_rows_via_node,
 )
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (

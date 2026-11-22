@@ -16,7 +16,7 @@ import pytest
 import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
-from omnimarket.handlers.ledger_rows_via_node import LedgerRowsUnreadableError
+from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
 from omnimarket.nodes.node_patch_apply_dispatch_effect.handlers import (
     handler_patch_apply_dispatch as h,
 )

@@ -10,10 +10,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
 from omnimarket.handlers.ledger_rows_via_node import (
     MAX_WINDOW_HOURS,
     ROWS_LOADER_MODULE,
-    LedgerRowsUnreadableError,
     read_ledger_rows_via_node,
     window_hours_covering,
 )

@@ -13,7 +13,7 @@ import pytest
 import yaml
 
 from omnimarket.handlers import ledger_rows_via_node
-from omnimarket.handlers.ledger_rows_via_node import LedgerRowsUnreadableError
+from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
 from omnimarket.nodes.node_owner_summary_effect.__main__ import main
 from omnimarket.nodes.node_owner_summary_effect.handlers import HandlerOwnerSummary
 from omnimarket.nodes.node_owner_summary_effect.handlers.handler_owner_summary import (

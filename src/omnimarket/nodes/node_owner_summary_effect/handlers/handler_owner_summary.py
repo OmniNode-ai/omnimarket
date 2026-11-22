@@ -28,8 +28,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
+from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
 from omnimarket.handlers.ledger_rows_via_node import (
-    LedgerRowsUnreadableError,
     read_ledger_rows_via_node,
     window_hours_covering,
 )
