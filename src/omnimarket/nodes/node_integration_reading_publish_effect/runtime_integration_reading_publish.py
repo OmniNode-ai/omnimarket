@@ -100,12 +100,15 @@ async def run(
     *,
     producer: str,
     clock: Callable[[], datetime] | None = None,
+    event_publisher: ProtocolEnvelopePublisher | None = None,
 ) -> ModelFloorProjectionPublishResult:
     """One pass with its chain: a start, then a success with the rows published, or a typed failure."""
     chain = _chain(sink, clock)
     chain.start()
     projection = HandlerIntegrationProjection().handle(batch)
-    handler = HandlerIntegrationReadingPublish(publisher=publisher, producer=producer)
+    handler = HandlerIntegrationReadingPublish(
+        publisher=publisher, producer=producer, event_publisher=event_publisher
+    )
     try:
         result = await handler.handle(
             ModelIntegrationPublishCommand(
@@ -159,6 +162,8 @@ def main(argv: list[str] | None = None) -> int:
                 build_publisher(overlay, env, runtime["topic"]),
                 sink,
                 producer=f"{NODE}:{host}",
+                # OMN-25103: the same pass on the event topic node_projection_floor_integration reads.
+                event_publisher=build_publisher(overlay, env, runtime["event_topic"]),
             )
         )
     except Exception as exc:

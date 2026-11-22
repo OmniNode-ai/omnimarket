@@ -72,8 +72,8 @@ async def test_runtime_mount_serves_the_plan_catalog(
         server.attach_manifest(manifest)
         assert server._mount_task is not None
         await server._mount_task
-        assert server._runner is not None
-        port = server._runner.addresses[0][1]
+        assert server._site is not None
+        port = server._site.port
         async with aiohttp.ClientSession() as session:
             async with session.get(f"http://127.0.0.1:{port}/v1/plans") as response:
                 assert response.status == 200

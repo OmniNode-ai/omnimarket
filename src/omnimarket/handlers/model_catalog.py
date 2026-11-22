@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import stat
 import tempfile
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime, timedelta
@@ -266,19 +267,49 @@ def recalled_provider_listing(
 ) -> ModelByokModelListing | None:
     """The kept list for ``provider`` while younger than its age, else None."""
     path = _listing_path(provider, onex_home or _onex_home())
+    settings = catalog_config()["provider_listing"]
+    max_bytes = int(settings["max_bytes"])
+    # Nonblocking, regular files only: the TUI reads this on its event loop.
     try:
-        kept_at = datetime.fromtimestamp(path.stat().st_mtime, UTC)
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
     except OSError:
         return None
+    try:
+        with os.fdopen(fd, "rb") as source:
+            info = os.fstat(source.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > max_bytes:
+                return None
+            kept_at = datetime.fromtimestamp(info.st_mtime, UTC)
+            max_age = timedelta(hours=float(settings["max_age_hours"]))
+            if (now or datetime.now(UTC)) - kept_at >= max_age:
+                return None
+            raw = source.read(max_bytes + 1)
+        if len(raw) > max_bytes:
+            return None
+        return ModelByokModelListing.model_validate_json(raw.decode("utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def provider_listing_expired(
+    provider: str, onex_home: Path | None = None, *, now: datetime | None = None
+) -> bool:
+    """True when a kept list for ``provider`` exists and is older than its age.
+
+    No kept list, or one that is not a regular file, is not an expired list.
+    """
+    path = _listing_path(provider, onex_home or _onex_home())
+    try:
+        info = os.stat(path)
+    except OSError:
+        return False
+    if not stat.S_ISREG(info.st_mode):
+        return False
     max_age = timedelta(
         hours=float(catalog_config()["provider_listing"]["max_age_hours"])
     )
-    if (now or datetime.now(UTC)) - kept_at >= max_age:
-        return None
-    try:
-        return ModelByokModelListing.model_validate_json(path.read_text("utf-8"))
-    except (OSError, ValueError):
-        return None
+    kept_at = datetime.fromtimestamp(info.st_mtime, UTC)
+    return (now or datetime.now(UTC)) - kept_at >= max_age
 
 
 def list_and_remember_models(
@@ -321,7 +352,9 @@ def _positive(value: Any) -> int | None:
     return value if isinstance(value, int) and value > 0 else None
 
 
-def _capabilities(metadata: Mapping[str, Any] | None) -> dict[str, CapabilityState]:
+def _capabilities(
+    metadata: Mapping[str, Any] | None, deployment: Deployment
+) -> dict[str, CapabilityState]:
     found: dict[str, CapabilityState] = {}
     for spec in catalog_config()["capabilities"]:
         label = str(spec["label"])
@@ -338,7 +371,7 @@ def _capabilities(metadata: Mapping[str, Any] | None) -> dict[str, CapabilitySta
                 )
                 if isinstance(inputs, list):
                     state = "yes" if str(spec["input"]) in inputs else "no"
-            elif "cost" in spec:
+            elif "cost" in spec and deployment == "cloud":
                 cost = metadata.get("cost")
                 if (
                     isinstance(cost, dict)
@@ -375,54 +408,75 @@ def catalog_entry(
     metadata = index.models.get((md_provider, model_id)) if md_provider else None
     limit = metadata.get("limit") if metadata else None
     limit = limit if isinstance(limit, dict) else {}
-    cost = metadata.get("cost") if metadata else None
+    cost = metadata.get("cost") if metadata and deployment == "cloud" else None
     cost = cost if isinstance(cost, dict) else {}
     sources: dict[str, str] = {"model": provider_label}
 
-    context = _positive(context_tokens)
-    if context is not None:
-        sources["context"] = provider_label
-    elif (context := _positive(limit.get("context"))) is not None:
-        sources["context"] = "models.dev"
+    def prefer[T](field: str, stated: T | None, supplemental: T | None) -> T | None:
+        if stated is not None:
+            sources[field] = provider_label
+            return stated
+        if supplemental is not None:
+            sources[field] = "models.dev"
+        return supplemental
 
-    price_in = _decimal(input_usd_per_million)
-    price_out = _decimal(output_usd_per_million)
-    if price_in is not None or price_out is not None:
-        sources["price"] = provider_label
-    if deployment == "cloud":
-        fallback_in = _decimal(cost.get("input")) if price_in is None else None
-        fallback_out = _decimal(cost.get("output")) if price_out is None else None
-        if fallback_in is not None or fallback_out is not None:
-            sources["price"] = (
-                f"{provider_label} + models.dev" if "price" in sources else "models.dev"
-            )
-        price_in = price_in if price_in is not None else fallback_in
-        price_out = price_out if price_out is not None else fallback_out
-    merged = _capabilities(metadata)
+    context = prefer(
+        "context", _positive(context_tokens), _positive(limit.get("context"))
+    )
+    max_output = prefer(
+        "max_output", _positive(max_output_tokens), _positive(limit.get("output"))
+    )
+    catalog_name = metadata.get("name") if metadata else None
+    display_name = prefer(
+        "name", name or None, str(catalog_name) if catalog_name else None
+    )
+    price_in = prefer(
+        "input", _decimal(input_usd_per_million), _decimal(cost.get("input"))
+    )
+    price_out = prefer(
+        "output", _decimal(output_usd_per_million), _decimal(cost.get("output"))
+    )
+    price_sources = {sources[k] for k in ("input", "output") if k in sources}
+    if price_sources:
+        sources["price"] = (
+            f"{provider_label} + models.dev"
+            if len(price_sources) > 1
+            else next(iter(price_sources))
+        )
+    cache_read = prefer("cache_read", None, _decimal(cost.get("cache_read")))
+    cache_write = prefer("cache_write", None, _decimal(cost.get("cache_write")))
+    tiered = bool(cost.get("tiers") or cost.get("context_over_200k"))
+    if tiered:
+        sources["pricing"] = "models.dev"
+    merged = _capabilities(metadata, deployment)
     if metadata is not None:
         sources["capabilities"] = "models.dev"
+        sources.update(
+            {
+                f"capability.{label}": "models.dev"
+                for label, state in merged.items()
+                if state != "unknown"
+            }
+        )
     stated = {k: v for k, v in (capabilities or {}).items() if v != "unknown"}
     if stated:
         merged.update(stated)
         sources["capabilities"] = provider_label
+        sources.update({f"capability.{label}": provider_label for label in stated})
     return ModelCatalogEntry(
         provider=provider,
         provider_label=provider_label,
         model_id=model_id,
         server_url=server_url,
-        display_name=name
-        or (
-            str(metadata.get("name")) if metadata and metadata.get("name") else model_id
-        ),
+        display_name=display_name or model_id,
         deployment=deployment,
         context_tokens=context,
-        max_output_tokens=_positive(max_output_tokens)
-        or _positive(limit.get("output")),
+        max_output_tokens=max_output,
         input_usd_per_million=price_in,
         output_usd_per_million=price_out,
-        cache_read_usd_per_million=_decimal(cost.get("cache_read")),
-        cache_write_usd_per_million=_decimal(cost.get("cache_write")),
-        tiered_price=bool(cost.get("tiers") or cost.get("context_over_200k")),
+        cache_read_usd_per_million=cache_read,
+        cache_write_usd_per_million=cache_write,
+        tiered_price=tiered,
         capabilities=merged,
         status=status,
         status_reason=status_reason,
@@ -430,6 +484,18 @@ def catalog_entry(
         metadata_fetched_at=index.fetched_at if metadata is not None else None,
         metadata_stale=index.stale and metadata is not None,
     )
+
+
+def _provider_capabilities(model: ModelByokListedModel) -> dict[str, CapabilityState]:
+    """What the provider's own row lists. Not listing a capability is not a "no"."""
+    stated: dict[str, CapabilityState] = {}
+    for spec in catalog_config()["capabilities"]:
+        if (
+            spec.get("provider_parameter") in model.supported_parameters
+            or spec.get("provider_input") in model.input_modalities
+        ):
+            stated[str(spec["label"])] = "yes"
+    return stated
 
 
 def listed_catalog_entry(
@@ -451,6 +517,7 @@ def listed_catalog_entry(
         max_output_tokens=model.max_output_tokens,
         input_usd_per_million=model.input_usd_per_million,
         output_usd_per_million=model.output_usd_per_million,
+        capabilities=_provider_capabilities(model),
     )
 
 
@@ -511,6 +578,20 @@ def stored_entries(
         provider = str(row.get("provider"))
         last = row.get("last_test")
         on_servers = row.get("local_models")
+        deployment = deployment_of(provider)
+        provider_models: dict[str, ModelByokListedModel] = {}
+        expired = False
+        if (
+            deployment == "cloud"
+            and not on_servers
+            and provider in catalog_config()["provider_ids"]
+        ):
+            listing = recalled_provider_listing(provider)
+            if listing and listing.provider == provider and listing.outcome == "listed":
+                provider_models = {model.id: model for model in listing.models}
+            elif listing is None:
+                # AC4: models.dev fills the facts, and the table says why.
+                expired = provider_listing_expired(provider)
         stored: list[tuple[str, str | None, Any]] = (
             [
                 (str(m["model"]), str(m["base_url"]), m.get("last_test"))
@@ -524,12 +605,23 @@ def stored_entries(
             status, reason = stored_status(
                 model_id, tested if isinstance(tested, dict) else None
             )
+            if model_id in provider_models:
+                entry = listed_catalog_entry(
+                    provider,
+                    provider_models[model_id],
+                    index,
+                    provider_label=label_of(provider, None),
+                )
+                entries.append(
+                    entry.model_copy(update={"status": status, "status_reason": reason})
+                )
+                continue
             said = (servers or {}).get((provider, model_id, url or ""))
             entries.append(
                 catalog_entry(
                     provider,
                     model_id,
-                    deployment=deployment_of(provider),
+                    deployment=deployment,
                     index=index,
                     provider_label=label_of(provider, said.server if said else None),
                     context_tokens=said.context_tokens if said else None,
@@ -537,6 +629,6 @@ def stored_entries(
                     status=status,
                     status_reason=reason,
                     server_url=url,
-                )
+                ).model_copy(update={"provider_list_expired": expired})
             )
     return tuple(entries)

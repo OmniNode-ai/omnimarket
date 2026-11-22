@@ -29,6 +29,7 @@ from omnimarket.nodes.node_handoff_check_effect.models import (
     fmt_ts,
     parse_ts,
 )
+from omnimarket.nodes.node_handoff_check_effect.protocols import ProtocolLedgerRows
 
 __all__ = ["newest_handoff", "reprobe", "resume"]
 
@@ -69,7 +70,9 @@ def reprobe(
 
 
 def resume(
-    request: ModelHandoffCheckRequest, policy: ModelHandoffPolicy, ledger_path: str
+    request: ModelHandoffCheckRequest,
+    policy: ModelHandoffPolicy,
+    ledger_rows: ProtocolLedgerRows,
 ) -> ModelHandoffCheckResult:
     if not request.kb_clone:
         raise ValueError("resume: kb_clone is required (the shared document clone)")
@@ -94,11 +97,7 @@ def resume(
         if request.probes
         else {}
     )
-    ledger = Path(ledger_path)
-    rows = load_rows(
-        ledger,
-        Path(request.archive_dir) if request.archive_dir else ledger.parent / "archive",
-    )
+    rows = load_rows(ledger_rows)
     made = re.search(r"assembled (\S+Z)", body)
     since = parse_ts(made.group(1)) if made else None
     out = [
