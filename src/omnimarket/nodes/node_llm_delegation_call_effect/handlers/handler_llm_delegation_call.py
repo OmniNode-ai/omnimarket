@@ -32,7 +32,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 from uuid import UUID
 
 import httpx
@@ -51,8 +51,8 @@ from omnimarket.events.provider_quota import (
 )
 from omnimarket.handlers import openai_compatible_endpoint as endpoints
 from omnimarket.handlers.model_catalog import (
+    call_read_deadline,
     catalog_config,
-    models_dev_price_per_1m,
     runtime_catalog_entry,
 )
 from omnimarket.handlers.routing.byok_model_discovery import (
@@ -65,7 +65,7 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     ModelByokProviderBackend,
     byok_backend_provider,
     byok_declared_price_per_1m,
-    byok_model_price_per_1m,
+    byok_model_price_with_source,
     resolve_byok_backend_by_endpoint,
     token_limit_field_for_endpoint,
 )
@@ -365,7 +365,35 @@ def _provider_reported_cost(response_json: dict[str, Any]) -> Decimal | None:
     return value if value.is_finite() and value >= 0 else None
 
 
-def _compute_cost(
+class _PricedCost(NamedTuple):
+    actual: Decimal
+    opus_equivalent: Decimal
+    savings: Decimal
+    cost_basis: EnumCostBasis
+    price_source: str | None
+    price_read_at: str | None
+
+
+def _entry_price_read_at(
+    model_entry: ModelCatalogEntry, source: str | None
+) -> str | None:
+    """The read time for the entry's price source: the older of
+    ``provider_listed_at`` (when the source is not exactly ``"models.dev"``)
+    and ``metadata_fetched_at`` (when ``"models.dev"`` is in the source),
+    ignoring ``None``."""
+    if source is None:
+        return None
+    candidates: list[str] = []
+    if source != "models.dev" and model_entry.provider_listed_at is not None:
+        candidates.append(model_entry.provider_listed_at)
+    if "models.dev" in source and model_entry.metadata_fetched_at is not None:
+        candidates.append(model_entry.metadata_fetched_at)
+    if not candidates:
+        return None
+    return min(candidates)
+
+
+def _priced_cost(
     model_id: str,
     tokens_in: int,
     tokens_out: int,
@@ -373,8 +401,10 @@ def _compute_cost(
     endpoint_url: str | None = None,
     provider: str | None = None,
     model_entry: ModelCatalogEntry | None = None,
-) -> tuple[Decimal, Decimal, Decimal, EnumCostBasis]:
-    """Return (actual_cost, opus_equivalent_cost, savings, cost_basis).
+    deadline_seconds: float | None = None,
+) -> _PricedCost:
+    """Return (actual_cost, opus_equivalent_cost, savings, cost_basis,
+    price_source, price_read_at).
 
     A call on a customer's own key (``provider`` is a BYOK backend id) is priced
     by its model only: the catalogue's declared price, else the model
@@ -400,9 +430,19 @@ def _compute_cost(
         # come first; then the combined entry (the provider's kept list over
         # models.dev), so a catalog row with no price never hides a declared one
         # and models.dev alone never outranks the provider's own list.
-        model_price = byok_model_price_per_1m(
-            provider, endpoint_url, model_id, supplemental=model_entry is None
+        priced = byok_model_price_with_source(
+            provider,
+            endpoint_url,
+            model_id,
+            supplemental=model_entry is None,
+            deadline_seconds=deadline_seconds,
         )
+        if priced is not None:
+            model_price, price_source, price_read_at = priced
+        else:
+            model_price = None
+            price_source = None
+            price_read_at = None
         if (
             model_price is None
             and model_entry is not None
@@ -413,17 +453,31 @@ def _compute_cost(
                 model_entry.input_usd_per_million,
                 model_entry.output_usd_per_million,
             )
+            price_source = model_entry.sources.get("price")
+            price_read_at = _entry_price_read_at(model_entry, price_source)
         if model_price is None:
             # OMN-23751: an eval arm on the registered key keeps the arm's model
             # and is booked at the arm's declared price.
             model_price = load_delegation_routing_overlay().eval_arm_price_per_1m(
                 endpoint_url, model_id
             )
+            if model_price is not None:
+                price_source = "delegation_routing_overlay"
+                price_read_at = None
         if model_price is None:
-            return Decimal("0"), Decimal("0"), Decimal("0"), EnumCostBasis.UNKNOWN
+            return _PricedCost(
+                Decimal("0"),
+                Decimal("0"),
+                Decimal("0"),
+                EnumCostBasis.UNKNOWN,
+                None,
+                None,
+            )
         declared_price: tuple[Decimal, Decimal] | None = model_price
     else:
         declared_price = byok_declared_price_per_1m(endpoint_url, model_id)
+        price_source = None
+        price_read_at = None
         if declared_price is None:
             # OMN-23751 / OMN-23756: a paid rung or an eval arm is booked at its own
             # declared price, never at the rate of the ladder tier it ran in.
@@ -461,64 +515,34 @@ def _compute_cost(
         opus_equiv = Decimal("0")
         savings = Decimal("0")
         cost_basis = EnumCostBasis.UNKNOWN
+        price_source = None
+        price_read_at = None
 
-    return actual, opus_equiv, savings, cost_basis
+    return _PricedCost(
+        actual, opus_equiv, savings, cost_basis, price_source, price_read_at
+    )
 
 
-def _price_provenance(
+def _compute_cost(
     model_id: str,
-    endpoint_url: str | None,
-    provider: str | None,
-    model_entry: ModelCatalogEntry | None,
-    cost_basis: EnumCostBasis,
-) -> tuple[str | None, str | None]:
-    """Which source priced a customer-key call, and when it was read (OMN-23413 AC35).
-
-    Mirrors ``_compute_cost``'s order. A price from packaged configuration (the
-    BYOK catalogue, the model registry, an eval arm) has no read time; a price
-    from the provider's kept list or models.dev carries the oldest read time of
-    the sources it used. An unpriced call has neither.
-    """
-    if cost_basis is EnumCostBasis.UNKNOWN:
-        return None, None
-    catalogue_provider = byok_backend_provider(provider)
-    if catalogue_provider is None:
-        return None, None
-    if (
-        byok_model_price_per_1m(
-            provider, endpoint_url, model_id, supplemental=model_entry is None
-        )
-        is not None
-    ):
-        if byok_declared_price_per_1m(endpoint_url, model_id) is not None:
-            return "byok_provider_backends", None
-        if (
-            model_entry is None
-            and models_dev_price_per_1m(catalogue_provider, model_id) is not None
-        ):
-            return "models.dev", None
-        return "model_registry", None
-    if (
-        model_entry is not None
-        and model_entry.input_usd_per_million is not None
-        and model_entry.output_usd_per_million is not None
-    ):
-        source = model_entry.sources.get("price")
-        read_times: list[str] = []
-        if (
-            source is not None
-            and source != "models.dev"
-            and model_entry.provider_listed_at is not None
-        ):
-            read_times.append(model_entry.provider_listed_at)
-        if (
-            source is not None
-            and "models.dev" in source
-            and model_entry.metadata_fetched_at is not None
-        ):
-            read_times.append(model_entry.metadata_fetched_at)
-        return source, min(read_times) if read_times else None
-    return "delegation_routing_overlay", None
+    tokens_in: int,
+    tokens_out: int,
+    model_tier: str = "unknown",
+    endpoint_url: str | None = None,
+    provider: str | None = None,
+    model_entry: ModelCatalogEntry | None = None,
+) -> tuple[Decimal, Decimal, Decimal, EnumCostBasis]:
+    """Return (actual_cost, opus_equivalent_cost, savings, cost_basis); see ``_priced_cost``."""
+    pc = _priced_cost(
+        model_id,
+        tokens_in,
+        tokens_out,
+        model_tier=model_tier,
+        endpoint_url=endpoint_url,
+        provider=provider,
+        model_entry=model_entry,
+    )
+    return pc.actual, pc.opus_equivalent, pc.savings, pc.cost_basis
 
 
 def _cost_usage_source(cost_basis: EnumCostBasis) -> EnumUsageSource:
@@ -1084,6 +1108,7 @@ class HandlerLlmDelegationCall:
 
         secret_source: EnumSecretSource | None = None
         model_entry: ModelCatalogEntry | None = None
+        metadata_seconds = 0.0
         request_left_at: float | None = None
         try:
             # OMN-13861: resolve the backend's API key from ``secret_ref`` and merge
@@ -1097,9 +1122,17 @@ class HandlerLlmDelegationCall:
             provider = byok_backend_provider(request.provider)
             if provider is not None and provider in catalog_config()["provider_ids"]:
                 # What the explorer last read, never a live listing per call.
+                # OMN-23413 AC35: a live models.dev read here is bounded and its
+                # time comes out of the provider call's own timeout.
+                metadata_started = time.monotonic()
                 model_entry = request.local_model_entry(
                     provider
-                ) or runtime_catalog_entry(provider, request.model_id)
+                ) or runtime_catalog_entry(
+                    provider,
+                    request.model_id,
+                    deadline_seconds=call_read_deadline(request.timeout_seconds),
+                )
+                metadata_seconds = time.monotonic() - metadata_started
                 if model_entry.max_output_tokens is not None:
                     token_field = (
                         "max_tokens"
@@ -1196,7 +1229,7 @@ class HandlerLlmDelegationCall:
             response = transport.post_chat_completion(
                 endpoint_url=endpoint_url,
                 payload=payload,
-                timeout_seconds=request.timeout_seconds,
+                timeout_seconds=max(request.timeout_seconds - metadata_seconds, 0.001),
                 extra_headers=outbound_headers,
             )
             latency_ms = response.latency_ms
@@ -1485,7 +1518,14 @@ class HandlerLlmDelegationCall:
         cache_read, cache_write_5m, cache_write_1h = cache_usage_figures(
             response_json.get("usage") or {}
         )
-        actual_cost, opus_cost, savings, cost_basis = _compute_cost(
+        (
+            actual_cost,
+            opus_cost,
+            savings,
+            cost_basis,
+            price_source,
+            price_read_at,
+        ) = _priced_cost(
             request.model_id,
             tokens_in,
             tokens_out,
@@ -1493,9 +1533,7 @@ class HandlerLlmDelegationCall:
             endpoint_url=endpoint_url,
             provider=request.provider,
             model_entry=model_entry,
-        )
-        price_source, price_read_at = _price_provenance(
-            request.model_id, endpoint_url, request.provider, model_entry, cost_basis
+            deadline_seconds=call_read_deadline(request.timeout_seconds),
         )
 
         result = ModelLlmDelegationCallResult(
@@ -1578,7 +1616,14 @@ class HandlerLlmDelegationCall:
             content, request.inline_reasoning_terminator
         )
         # Billed at the cache's own multipliers, not at the plain input price.
-        actual_cost, opus_cost, savings, cost_basis = _compute_cost(
+        (
+            actual_cost,
+            opus_cost,
+            savings,
+            cost_basis,
+            price_source,
+            price_read_at,
+        ) = _priced_cost(
             request.model_id,
             reading.input_price_equivalent_tokens,
             reading.output_tokens,
@@ -1586,9 +1631,7 @@ class HandlerLlmDelegationCall:
             endpoint_url=endpoint_url,
             provider=request.provider,
             model_entry=model_entry,
-        )
-        price_source, price_read_at = _price_provenance(
-            request.model_id, endpoint_url, request.provider, model_entry, cost_basis
+            deadline_seconds=call_read_deadline(request.timeout_seconds),
         )
         cache_read, cache_write_5m, cache_write_1h = cache_usage_figures(
             response_json.get("usage") or {}

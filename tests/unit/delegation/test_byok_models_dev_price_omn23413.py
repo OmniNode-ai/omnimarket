@@ -15,10 +15,13 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -205,9 +208,17 @@ def _keep_expired_copy(tmp_path: Path, document: dict[str, object]) -> None:
 
 
 def _call(
-    monkeypatch: pytest.MonkeyPatch, *, provider: str, model: str
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    provider: str,
+    model: str,
+    timeout_seconds: float = 60.0,
+    endpoint: str = "http://localhost:8000",
+    posts: list[dict[str, object]] | None = None,
 ) -> ModelLlmDelegationCallResult:
-    def post(**_: object) -> transport.ModelTransportResponse:
+    def post(**kwargs: object) -> transport.ModelTransportResponse:
+        if posts is not None:
+            posts.append(dict(kwargs))
         return transport.ModelTransportResponse(
             status_code=200,
             json_body={
@@ -226,13 +237,13 @@ def _call(
             correlation_id="corr-ac35",
             causation_id="caus-ac35",
             model_id=model,
-            endpoint_ref="http://localhost:8000",
+            endpoint_ref=endpoint,
             prompt="Explain a hash map.",
             prompt_hash="ac35",
             task_type="document",
             model_tier="cheap_cloud",
             provider=provider,
-            timeout_seconds=60.0,
+            timeout_seconds=timeout_seconds,
         )
     )
 
@@ -332,3 +343,212 @@ def test_the_providers_own_price_wins_and_is_recorded_with_its_read_time(
     assert result.cost_basis is EnumCostBasis.CLOUD_API_COST
     assert result.price_source == "openrouter"
     assert result.price_read_at == kept_at.isoformat()
+
+
+def test_a_hanging_models_dev_read_is_cut_and_the_call_finishes_within_its_limit(
+    monkeypatch: pytest.MonkeyPatch, live_models_dev: _ModelsDevServer
+) -> None:
+    reads: list[str] = []
+    gate = threading.Event()
+
+    def _blocking_fetch(url: str, timeout: float) -> bytes:
+        reads.append(url)
+        gate.wait(30.0)
+        raise OSError("models.dev unreachable in this test")
+
+    monkeypatch.setattr(model_catalog, "_fetch", _blocking_fetch)
+    posts: list[dict[str, object]] = []
+    started = time.monotonic()
+    try:
+        result = _call(
+            monkeypatch,
+            provider="byok-reflection",
+            model=BEAM,
+            timeout_seconds=5.0,
+            posts=posts,
+        )
+    finally:
+        gate.set()
+    elapsed = time.monotonic() - started
+    assert elapsed < 2.0
+    assert result.success
+    assert result.cost_basis is EnumCostBasis.UNKNOWN
+    assert result.price_source is None
+    assert posts[0]["timeout_seconds"] < 5.0
+    assert len(reads) == 1
+    _call(
+        monkeypatch,
+        provider="byok-reflection",
+        model=BEAM,
+        timeout_seconds=5.0,
+        posts=posts,
+    )
+    assert len(reads) == 1
+
+
+def test_a_failed_models_dev_read_is_not_retried_within_the_configured_interval(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    live_models_dev: _ModelsDevServer,
+) -> None:
+    live_models_dev.document = None
+    _call(monkeypatch, provider="byok-reflection", model=BEAM)
+    _call(monkeypatch, provider="byok-reflection", model=BEAM)
+    assert len(live_models_dev.reads) == 1
+    path = (
+        tmp_path / str(model_catalog.catalog_config()["models_dev"]["cache_file"])
+    ).with_suffix(".failed")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({}), encoding="utf-8")
+    os.utime(path, (0, 0))
+    _call(monkeypatch, provider="byok-reflection", model=BEAM)
+    assert len(live_models_dev.reads) == 2
+
+
+def test_the_model_budget_worker_cuts_a_hanging_read_and_shortens_the_call(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    live_models_dev: _ModelsDevServer,
+) -> None:
+    from omnimarket.handlers.routing import byok_provider_backends
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+        port_local_delegation_dispatch,
+    )
+
+    reads: list[str] = []
+    gate = threading.Event()
+
+    def _blocking_fetch(url: str, timeout: float) -> bytes:
+        reads.append(url)
+        gate.wait(30.0)
+        raise OSError("models.dev unreachable in this test")
+
+    monkeypatch.setattr(model_catalog, "_fetch", _blocking_fetch)
+
+    seen: dict[str, object] = {}
+
+    def _handler(
+        request: ModelLlmDelegationCallRequest,
+    ) -> ModelLlmDelegationCallResult:
+        seen["request"] = request
+        return ModelLlmDelegationCallResult(
+            request_id=request.request_id,
+            success=True,
+        )
+
+    row = byok_provider_backends.resolve_byok_provider_backend("reflection")
+    assert row is not None
+    started = time.monotonic()
+    try:
+        port_local_delegation_dispatch._call_with_model_budget(
+            _handler,
+            row,
+            4096,
+            ModelLlmDelegationCallRequest(
+                request_id="req-ac35",
+                correlation_id="corr-ac35",
+                causation_id="caus-ac35",
+                model_id=BEAM,
+                endpoint_ref="http://localhost:8000",
+                prompt="Explain a hash map.",
+                prompt_hash="ac35",
+                task_type="document",
+                model_tier="cheap_cloud",
+                provider="byok-reflection",
+                timeout_seconds=5.0,
+            ),
+        )
+    finally:
+        gate.set()
+    elapsed = time.monotonic() - started
+    assert elapsed < 2.0
+    assert len(reads) == 1
+    handled = seen["request"]
+    assert isinstance(handled, ModelLlmDelegationCallRequest)
+    assert handled.timeout_seconds < 5.0
+
+
+def test_a_models_dev_price_without_a_combined_entry_records_the_read_time_of_that_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reads: list[str] = []
+
+    def _counting() -> ModelsDevIndex:
+        reads.append("models.dev")
+        return _index(
+            {
+                ("reflection", BEAM): {
+                    "id": BEAM,
+                    "cost": {"input": 0.3, "output": 1.0},
+                }
+            }
+        )
+
+    monkeypatch.setattr(model_catalog, "pricing_models_dev_index", _counting)
+    monkeypatch.setattr(
+        call_handler,
+        "catalog_config",
+        lambda: {**model_catalog.catalog_config(), "provider_ids": {}},
+    )
+    result = _call(monkeypatch, provider="byok-reflection", model=BEAM)
+    assert result.actual_cost_usd == Decimal("1.3")
+    assert result.price_source == "models.dev"
+    assert result.price_read_at == "2026-11-14T03:36:52+00:00"
+    assert len(reads) == 1
+
+
+@pytest.mark.parametrize(
+    ("provider", "model", "endpoint", "source", "cost"),
+    [
+        (
+            "byok-glm-general",
+            "glm-5.3-flash",
+            "https://api.z.ai/api/paas/v4/chat/completions",
+            "byok_provider_backends",
+            None,
+        ),
+        (
+            "byok-openrouter",
+            "qwen/qwen3.8-27b",
+            "http://localhost:8000",
+            "model_registry",
+            Decimal("2.025"),
+        ),
+    ],
+)
+def test_each_packaged_price_source_is_recorded_without_a_read_time(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+    model: str,
+    endpoint: str,
+    source: str,
+    cost: Decimal | None,
+) -> None:
+    result = _call(
+        monkeypatch,
+        provider=provider,
+        model=model,
+        endpoint=endpoint,
+    )
+    assert result.price_source == source
+    assert result.price_read_at is None
+    assert result.cost_basis is not EnumCostBasis.UNKNOWN
+    if cost is not None:
+        assert result.actual_cost_usd == cost
+
+
+def test_an_eval_arm_price_is_recorded_as_the_routing_overlay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        call_handler,
+        "load_delegation_routing_overlay",
+        lambda: SimpleNamespace(
+            eval_arm_price_per_1m=lambda _e, _m: (Decimal("1"), Decimal("2")),
+            declared_price_per_1m=lambda _e, _m: None,
+        ),
+    )
+    result = _call(monkeypatch, provider="byok-reflection", model="arm-model-zzz")
+    assert result.actual_cost_usd == Decimal("3")
+    assert result.price_source == "delegation_routing_overlay"
+    assert result.price_read_at is None

@@ -1162,6 +1162,59 @@ def byok_backend_provider(backend_id: str | None) -> str | None:
     return None
 
 
+def byok_model_price_with_source(
+    backend_id: str | None,
+    endpoint_url: str | None,
+    model_name: str,
+    *,
+    supplemental: bool = True,
+    deadline_seconds: float | None = None,
+) -> tuple[tuple[Decimal, Decimal], str, str | None] | None:
+    """The ``(input, output)`` USD per 1M tokens of a model on a customer's key,
+    with the source and read time of the lookup that priced it (OMN-23413 AC35).
+
+    Returns ``(price, source, read_at)``:
+      - ``(price, "byok_provider_backends", None)`` for the catalogue's declared price
+      - ``(price, "model_registry", None)`` for the model registry's price
+      - ``(price, "models.dev", read_at)`` for models.dev's live price
+
+    ``None`` means the model has no known price: the call is unpriced, never
+    booked at a tier rate. ``supplemental=False`` stops before models.dev, for a
+    caller that holds the provider's combined entry (AC34).
+    """
+    declared = byok_declared_price_per_1m(endpoint_url, model_name)
+    if declared is not None:
+        return (declared, "byok_provider_backends", None)
+    provider = byok_backend_provider(backend_id)
+    if provider is None:
+        return None
+    from omnimarket.models.delegation.llm_cost_routing import (
+        ModelLlmModelRegistryLoader,
+    )
+
+    for profile in ModelLlmModelRegistryLoader().load().models.values():
+        if profile.provider == provider and profile.model_name == model_name:
+            return (
+                (profile.pricing_per_1m_input, profile.pricing_per_1m_output),
+                "model_registry",
+                None,
+            )
+    if not supplemental:
+        return None
+    # OMN-23413 AC35: a model neither the catalogue nor the registry prices is
+    # priced from models.dev, read live (a copy older than its configured age is
+    # read again and never prices a call); still None when it states none.
+    from omnimarket.handlers.model_catalog import models_dev_price_with_read_time
+
+    result = models_dev_price_with_read_time(
+        provider, model_name, deadline_seconds=deadline_seconds
+    )
+    if result is None:
+        return None
+    price, read_at = result
+    return (price, "models.dev", read_at)
+
+
 def byok_model_price_per_1m(
     backend_id: str | None,
     endpoint_url: str | None,
@@ -1177,27 +1230,12 @@ def byok_model_price_per_1m(
     unpriced, never booked at a tier rate. ``supplemental=False`` stops before
     models.dev, for a caller that holds the provider's combined entry (AC34).
     """
-    declared = byok_declared_price_per_1m(endpoint_url, model_name)
-    if declared is not None:
-        return declared
-    provider = byok_backend_provider(backend_id)
-    if provider is None:
-        return None
-    from omnimarket.models.delegation.llm_cost_routing import (
-        ModelLlmModelRegistryLoader,
+    result = byok_model_price_with_source(
+        backend_id, endpoint_url, model_name, supplemental=supplemental
     )
-
-    for profile in ModelLlmModelRegistryLoader().load().models.values():
-        if profile.provider == provider and profile.model_name == model_name:
-            return (profile.pricing_per_1m_input, profile.pricing_per_1m_output)
-    if not supplemental:
+    if result is None:
         return None
-    # OMN-23413 AC35: a model neither the catalogue nor the registry prices is
-    # priced from models.dev, read live (a copy older than its configured age is
-    # read again and never prices a call); still None when it states none.
-    from omnimarket.handlers.model_catalog import models_dev_price_per_1m
-
-    return models_dev_price_per_1m(provider, model_name)
+    return result[0]
 
 
 def byok_limit_counter_key(

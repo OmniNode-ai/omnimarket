@@ -17,6 +17,8 @@ import contextlib
 import json
 import os
 import tempfile
+import threading
+import time
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -241,23 +243,106 @@ def shipped_pricing_index() -> ModelsDevIndex:
     )
 
 
+def call_read_deadline(remaining_seconds: float) -> float:
+    """The total time a call may spend reading models.dev (OMN-23413 AC35).
+
+    A share of the call's remaining time, never more than the configured cap,
+    so optional price metadata cannot spend the provider call's own budget.
+    """
+    settings = catalog_config()["models_dev"]
+    share = float(settings["call_read_budget_share"]) * max(remaining_seconds, 0.0)
+    return max(0.0, min(float(settings["call_read_deadline_seconds"]), share))
+
+
+def _failure_marker(onex_home: Path) -> Path:
+    cache_file = str(catalog_config()["models_dev"]["cache_file"])
+    return (onex_home / cache_file).with_suffix(".failed")
+
+
+def _failed_recently(onex_home: Path, *, now: datetime | None = None) -> bool:
+    """A call's models.dev read failed or ran out of time within the retry interval."""
+    try:
+        failed_at = datetime.fromtimestamp(
+            _failure_marker(onex_home).stat().st_mtime, UTC
+        )
+    except OSError:
+        return False
+    interval = timedelta(
+        seconds=float(
+            catalog_config()["models_dev"]["call_retry_after_failure_seconds"]
+        )
+    )
+    return (now or datetime.now(UTC)) - failed_at < interval
+
+
+def _mark_failed(onex_home: Path) -> None:
+    marker = _failure_marker(onex_home)
+    with contextlib.suppress(OSError):
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
+        os.utime(marker)
+
+
+def _clear_failed(onex_home: Path) -> None:
+    with contextlib.suppress(OSError):
+        _failure_marker(onex_home).unlink(missing_ok=True)
+
+
 def pricing_models_dev_index() -> ModelsDevIndex:
     """The prices a delegation call reads to price a model (OMN-23413 AC35).
 
-    A live read of the models.dev cache, refetched when older than the
-    configured age; a failed refetch keeps the expired copy and marks it
-    stale, which _pricing_index then refuses to price from.
+    models.dev read live: the kept copy while it is younger than its configured
+    age, else read again. A failed read leaves a marker, and no call reads
+    again until the retry interval has passed; until then the call is unpriced
+    (an expired copy never prices a call, see ``_pricing_index``).
     """
-    return load_models_dev(_onex_home())
+    home = _onex_home()
+    kept = kept_models_dev_index(home)
+    if kept.fetched_at is not None:
+        return kept
+    if _failed_recently(home):
+        return ModelsDevIndex(
+            models={},
+            fetched_at=None,
+            stale=False,
+            error="models.dev read failed recently; not read again yet",
+        )
+    index = load_models_dev(home)
+    if index.error is not None:
+        _mark_failed(home)
+    else:
+        _clear_failed(home)
+    return index
 
 
-def _pricing_index() -> ModelsDevIndex:
+def _pricing_index(deadline_seconds: float | None = None) -> ModelsDevIndex:
     """The index a call may price from, or the empty index.
 
     Supplemental metadata cannot prevent a provider call, so a read failure
     is no index and the model stays unpriced. An expired copy (a failed
-    refetch that kept a stale cache) never prices a call.
+    refetch that kept a stale cache) never prices a call. With a deadline the
+    read runs on a daemon thread and is given up when the deadline passes:
+    that counts as a failed read for the retry interval, and the thread may
+    still finish on its own and keep what it read.
     """
+    if deadline_seconds is None:
+        return _read_pricing_index()
+    found: list[ModelsDevIndex] = []
+    reader = threading.Thread(
+        target=lambda: found.append(_read_pricing_index()),
+        name="models-dev-price-read",
+        daemon=True,
+    )
+    started = time.monotonic()
+    reader.start()
+    reader.join(max(deadline_seconds - (time.monotonic() - started), 0.0))
+    if reader.is_alive() or not found:
+        _mark_failed(_onex_home())
+        return EMPTY_INDEX
+    return found[0]
+
+
+def _read_pricing_index() -> ModelsDevIndex:
     try:
         index = pricing_models_dev_index()
     except Exception:  # Any failure reading optional metadata: price unknown.
@@ -335,29 +420,39 @@ def list_and_remember_models(
     return listing
 
 
-def models_dev_price_per_1m(
-    provider: str, model_id: str
-) -> tuple[Decimal, Decimal] | None:
-    """A model's ``(input, output)`` USD per 1M tokens as models.dev lists it, or None.
+def models_dev_price_with_read_time(
+    provider: str, model_id: str, *, deadline_seconds: float | None = None
+) -> tuple[tuple[Decimal, Decimal], str | None] | None:
+    """A model's models.dev ``(input, output)`` USD per 1M and when it was read, or None.
 
     OMN-23413 AC35: the provider's own catalogue and the model registry come
     first; this is read only for a model neither prices, from models.dev read
-    live (``pricing_models_dev_index``). ``provider`` is the ONEX
-    provider id, mapped to models.dev's through ``provider_ids``. None when the
-    provider has no models.dev id, models.dev does not list the model, or the
-    entry states no input or output price.
+    live (``pricing_models_dev_index``). The read time is the ``fetched_at`` of
+    the same index the price came from. ``provider`` is the ONEX provider id,
+    mapped to models.dev's through ``provider_ids``. None when the provider has
+    no models.dev id, models.dev does not list the model, or the entry states
+    no input or output price.
     """
     md_provider = catalog_config()["provider_ids"].get(provider)
     if not md_provider:
         return None
-    metadata = _pricing_index().models.get((str(md_provider), model_id))
+    index = _pricing_index(deadline_seconds)
+    metadata = index.models.get((str(md_provider), model_id))
     cost = metadata.get("cost") if metadata else None
     if not isinstance(cost, dict):
         return None
     price_in, price_out = _decimal(cost.get("input")), _decimal(cost.get("output"))
     if price_in is None or price_out is None:
         return None
-    return price_in, price_out
+    return (price_in, price_out), index.fetched_at
+
+
+def models_dev_price_per_1m(
+    provider: str, model_id: str
+) -> tuple[Decimal, Decimal] | None:
+    """A model's ``(input, output)`` USD per 1M tokens as models.dev lists it, or None."""
+    found = models_dev_price_with_read_time(provider, model_id)
+    return found[0] if found is not None else None
 
 
 def _positive(value: Any) -> int | None:
@@ -498,7 +593,11 @@ def listed_catalog_entry(
 
 
 def runtime_catalog_entry(
-    provider: str, model_id: str, *, live: bool = True
+    provider: str,
+    model_id: str,
+    *,
+    live: bool = True,
+    deadline_seconds: float | None = None,
 ) -> ModelCatalogEntry:
     """One combined entry: the provider list the explorer kept, then models.dev (AC34).
 
@@ -506,9 +605,9 @@ def runtime_catalog_entry(
     beyond the call (OMN-20157). ``live`` reads models.dev as a call prices from
     it (AC35: read again when older than the configured age); ``live=False`` is
     for route resolution outside the call, which reads only a copy still within
-    that age and never fetches.
+    that age and never fetches. ``deadline_seconds`` bounds the live read.
     """
-    index = _pricing_index() if live else kept_models_dev_index()
+    index = _pricing_index(deadline_seconds) if live else kept_models_dev_index()
     result = _recalled_listing(provider)
     if result is not None:
         listing, kept_at = result

@@ -20,6 +20,13 @@ models_dev:
   timeout_seconds: 10
   # The whole catalogue is read at once (6.7 MB on 2026-11-17); larger is refused.
   max_bytes: 33554432
+  # Inside a delegation call (OMN-23413 AC35) the read has a total deadline:
+  # this share of the call's remaining time, never more than the cap. A read
+  # that fails or runs out of time is not tried again by a call for the retry
+  # interval, so a down models.dev costs each call nothing.
+  call_read_deadline_seconds: 3
+  call_read_budget_share: 0.1
+  call_retry_after_failure_seconds: 300
 
 # A price list shipped inside the install (omnimarket#6497). A delegation call
 # no longer prices from it: OMN-23413 AC35 prices a call from models.dev read
