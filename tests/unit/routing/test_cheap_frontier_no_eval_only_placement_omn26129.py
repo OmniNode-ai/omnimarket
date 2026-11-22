@@ -1,18 +1,19 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-26129 AC3: no eval-only model is placed on cheap_frontier by either placement file.
+"""OMN-26129 AC3: no eval-only model is placed on cheap_frontier by any placement route.
 
-A backend reaches the cheap_frontier ladder two ways: bifrost_delegation.yaml declares
-it with tier cheap_frontier, or routing_tiers.yaml lists its backend_id in the
-cheap_frontier entry's models list (the backend itself may be declared in bifrost under
-another tier). Paid DeepSeek and Qwen 3.8 models join this ladder only through the code
-eval (RULING 2026-11-11T12:33:37Z, OMN-23751), so neither route may place one here.
-The models list is empty today, so the planted copies below are what prove the check
-reads it.
+A backend reaches the cheap_frontier ladder three ways: bifrost_delegation.yaml declares
+it with tier cheap_frontier; its placement block names tier cheap_frontier (routing
+mirrors such a backend into that tier, whatever its own tier says); or routing_tiers.yaml
+lists its backend_id in the cheap_frontier entry's models list (the backend itself may
+be declared in bifrost under another tier). Paid DeepSeek and Qwen 3.8 models join this
+ladder only through the code eval (RULING 2026-11-11T12:33:37Z, OMN-23751), so no route
+may place one here. Each route has a planted copy below that proves the check reads it.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +29,9 @@ pytestmark = pytest.mark.unit
 
 TIER = "cheap_frontier"
 ROUTING_TIERS = BIFROST_CONTRACT_PATH.parent / "routing_tiers.yaml"
-EVAL_ONLY_PREFIXES = ("deepseek/", "qwen/qwen3.8")
+# Any DeepSeek model, and Qwen 3.8 in the slug spellings providers use
+# (qwen3.8, qwen-3.8, qwen_3.8), matched on the lower-cased model name.
+EVAL_ONLY = re.compile(r"deepseek|qwen[-_]?3\.8")
 
 
 class PlacementError(ValueError):
@@ -45,6 +48,7 @@ def placed_on_tier(
         backend_id: str(backend["model_name"])
         for backend_id, backend in backends.items()
         if backend.get("tier") == TIER
+        or (backend.get("placement") or {}).get("tier") == TIER
     }
     tiers = yaml.safe_load(routing_tiers_path.read_text(encoding="utf-8"))["tiers"]
     entries = [t for t in tiers if t.get("name") == TIER]
@@ -68,7 +72,7 @@ def eval_only(placed: dict[str, str]) -> dict[str, str]:
     return {
         backend_id: model
         for backend_id, model in placed.items()
-        if model.lower().startswith(EVAL_ONLY_PREFIXES)
+        if EVAL_ONLY.search(model.lower())
     }
 
 
@@ -149,6 +153,39 @@ def test_a_listed_model_without_a_backend_id_fails_closed(tmp_path: Path) -> Non
     )
     with pytest.raises(PlacementError, match="backend_id"):
         placed_on_tier(contract, tiers)
+
+
+def test_a_backend_bifrost_declares_on_the_tier_is_caught(tmp_path: Path) -> None:
+    on_tier = dict(_PAID_ELSEWHERE, tier=TIER)
+    contract, tiers = _planted(tmp_path, models=[], extra_backends=[on_tier])
+    assert set(eval_only(placed_on_tier(contract, tiers))) == {"planted-deepseek"}
+
+
+def test_a_backend_placed_through_its_placement_block_is_caught(tmp_path: Path) -> None:
+    placed_elsewhere = dict(
+        _PAID_ELSEWHERE,
+        placement={"tier": TIER, "max_context_tokens": 64000, "use_for": ["code"]},
+    )
+    contract, tiers = _planted(tmp_path, models=[], extra_backends=[placed_elsewhere])
+    assert set(eval_only(placed_on_tier(contract, tiers))) == {"planted-deepseek"}
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "deepseek-ai/DeepSeek-V4-Flash",
+        "deepseek/deepseek-v4-flash-0731",
+        "qwen/qwen-3.8-coder",
+        "qwen/qwen3.8-instruct",
+        "Qwen/Qwen3.8-Coder",
+    ],
+)
+def test_each_eval_only_spelling_is_caught(model: str) -> None:
+    assert eval_only({"planted": model}) == {"planted": model}
+
+
+def test_a_free_rung_is_not_read_as_eval_only() -> None:
+    assert not eval_only({"rung": "nvidia/nemotron-3.5-super-vl:free"})
 
 
 def test_a_routing_tiers_file_without_the_tier_fails_closed(tmp_path: Path) -> None:
