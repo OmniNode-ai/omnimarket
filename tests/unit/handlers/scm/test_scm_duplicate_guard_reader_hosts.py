@@ -166,25 +166,29 @@ def test_the_guard_reads_its_claims_through_the_reader_node_and_never_the_ledger
     declared = load_ledger_read_config()
     head = [INTERPRETER, "-m", READER_MODULE, "--reader", snapshot_module.LEDGER_READER]
     claim_kinds = [word for kind in declared.claim_kinds for word in ("--kind", kind)]
-    assert sorted(replay.argvs) == sorted(
+    lanes = [
+        word
+        for lane in sorted({"cause-core-0010", LANE})
+        for word in ("--row-lane", lane)
+    ]
+    assert replay.argvs == [
         [
-            [
-                *head,
-                "--query",
-                "rows",
-                "--window-hours",
-                str(snapshot_module.LEDGER_WINDOW_HOURS),
-                *claim_kinds,
-            ],
-            [
-                *head,
-                "--query",
-                "rows",
-                "--window-hours",
-                str(declared.heartbeat_window_hours),
-            ],
-        ]
-    )
+            *head,
+            "--query",
+            "rows",
+            "--window-hours",
+            str(declared.heartbeat_window_hours),
+        ],
+        [
+            *head,
+            "--query",
+            "rows",
+            "--window-hours",
+            str(snapshot_module.LEDGER_WINDOW_HOURS),
+            *claim_kinds,
+            *lanes,
+        ],
+    ]
     assert snapshot_module.LEDGER_READER == "pr-duplicate-guard-claims"
 
 

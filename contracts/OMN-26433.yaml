@@ -2,9 +2,10 @@ schema_version: "1.0.0"
 ticket_id: OMN-26433
 title: "The duplicate guard's claims read answers within a declared bound on lab hosts or falls back to a declared bounded read, so a lab lane's pr-create opens its pull request instead of refusing on a bus session timeout"
 summary: >
-  The guard's claims read is two narrow reads through the ledger reader node (the CLAIM, TERMINAL and RELEASE rows of 168 hours
-  and every row of the last hour), each bounded by a wait declared in the snapshot node contract, with the legacy whole-window
-  read as the declared fallback and an unchecked refusal when neither answers. node_pr_create_refusal_alert_compute names the
+  The guard's claims read is two narrow reads through the ledger reader node (every row of the last hour, which names the live
+  lanes, then the CLAIM, TERMINAL and RELEASE rows of those lanes over 168 hours), each bounded by a wait declared in the snapshot
+  node contract, with the legacy whole-window read as the declared fallback and an unchecked refusal when neither answers. The
+  reader node's rows read gains a lane filter (--row-lane) the query node already honours. node_pr_create_refusal_alert_compute names the
   pr-create refusals in lane STATUS and TERMINAL rows by cause and raises one alert for each new cause. The dev broker's
   slow replies to the work-ledger query (55 to 137 seconds a page on 2026-11-22) are a runtime matter this change does not touch.
 is_seam_ticket: false
@@ -34,7 +35,7 @@ requirements:
 evidence_requirements:
   - kind: tests
     description: "The claims read is bounded by the node contract, falls back, and refuses unchecked when unread"
-    command: "uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_reader_timeout.py tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/unit/handlers/scm/test_scm_duplicate_guard_reader_hosts.py -q"
+    command: "uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_reader_timeout.py tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/unit/handlers/scm/test_scm_duplicate_guard_reader_hosts.py tests/unit/nodes/node_work_ledger_reader_effect/test_reader_rows_lanes_omn26433.py -q"
   - kind: tests
     description: "The recorded refusals of 2026-11-22 raise one alert per cause"
     command: "uv run pytest tests/test_golden_chain_pr_create_refusal_alert.py -q"

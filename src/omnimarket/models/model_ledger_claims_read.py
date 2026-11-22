@@ -12,11 +12,12 @@ __all__ = ["ModelLedgerClaimsReadConfig"]
 class ModelLedgerClaimsReadConfig(BaseModel):
     """What the guard reads through the ledger reader node, and how long each read may wait.
 
-    The primary read is two narrow reads of the same ledger: every row of the last ``heartbeat_window_hours`` (a lane's
-    heartbeat is any of its rows) and the ``claim_kinds`` rows of ``window_hours`` (the rows that open or close a CLAIM).
-    Together they give ``live_claims`` the same answer as every row of ``window_hours`` at a few pages in place of
-    many. The fallback is that whole-window read. Each tier waits at most its own timeout, and together they never
-    wait more than ``total_budget_s``. When neither answers the guard is unchecked.
+    The primary read is two narrow reads of the same ledger, one after the other: every row of the last
+    ``heartbeat_window_hours`` (a lane's heartbeat is any of its rows; they name the live lanes), then the ``claim_kinds`` rows
+    of ``window_hours`` for those lanes (the rows that open or close their CLAIMs). Together they give ``live_claims`` the same
+    answer as every row of ``window_hours`` at two pages in place of dozens. The fallback is that whole-window read. Each read
+    waits at most its tier's timeout, and the two primary reads and the fallback together never wait more than
+    ``total_budget_s``. When neither answers the guard is unchecked.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -33,6 +34,8 @@ class ModelLedgerClaimsReadConfig(BaseModel):
     def _tiers_fit_the_budget(self) -> ModelLedgerClaimsReadConfig:
         if self.heartbeat_window_hours > self.window_hours:
             raise ValueError("the heartbeat window is inside the claims window")
-        if self.primary_timeout_s + self.fallback_timeout_s > self.total_budget_s:
-            raise ValueError("the two tiers' waits must fit total_budget_s")
+        if 2 * self.primary_timeout_s + self.fallback_timeout_s > self.total_budget_s:
+            raise ValueError(
+                "the two primary reads' waits and the fallback's must fit total_budget_s"
+            )
         return self

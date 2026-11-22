@@ -71,6 +71,8 @@ class ModelReaderRequest(BaseModel):
     # case-insensitive substring the row's first line must hold; refused for every other query.
     kinds: tuple[Annotated[str, Field(min_length=1)], ...] = ()
     term: str | None = Field(default=None, min_length=1)
+    # Only a rows read may name lanes: keep the rows of these lanes (the query node's own lane filter).
+    lanes: tuple[Annotated[str, Field(pattern=_LANE)], ...] = ()
 
     @model_validator(mode="after")
     def _window_hours_matches_query(self) -> ModelReaderRequest:
@@ -86,8 +88,10 @@ class ModelReaderRequest(BaseModel):
 
     @model_validator(mode="after")
     def _filters_only_for_rows(self) -> ModelReaderRequest:
-        if self.query is not EnumReaderQuery.ROWS and (self.kinds or self.term):
-            raise ValueError("kinds and term are only for a rows read")
+        if self.query is not EnumReaderQuery.ROWS and (
+            self.kinds or self.term or self.lanes
+        ):
+            raise ValueError("kinds, term and lanes are only for a rows read")
         return self
 
 

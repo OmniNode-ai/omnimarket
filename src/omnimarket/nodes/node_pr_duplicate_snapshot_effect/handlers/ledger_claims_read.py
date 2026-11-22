@@ -3,23 +3,23 @@
 """The duplicate guard's claims read: a bounded primary read, a declared whole-window fallback, never a skip (OMN-26433).
 
 The guard's fold keeps a CLAIM live until a later TERMINAL or RELEASE, while its lane has written any row in the last 0.75
-hours. The rows that fold needs are therefore the CLAIM, TERMINAL and RELEASE rows of the window and every row of the last
-hour; reading every row of 168 hours (84,000 rows) needs many reply pages, and on 2026-11-22 each page of the dev broker took 55 to
-137 seconds, so that read could not answer inside any bound. Both reads go through the ledger reader node and none opens the ledger
-file. A read that fails or times out is ``LedgerReadError``: the fallback is tried, and when it fails too the caller refuses
-unchecked.
+hours. The rows that fold needs are therefore every row of the last hour (they name the live lanes) and the CLAIM, TERMINAL and
+RELEASE rows of those lanes over the window. Reading every row of 168 hours (about 84,000 rows, 84 reply pages) cannot answer when
+each reply page takes the dev broker 55 to 137 seconds (2026-11-22); the one hour read is about 580 rows and the live lanes' claim
+rows are about 200, a page each. Both reads go through the ledger reader node and none opens the ledger file. A read that
+fails or times out is ``LedgerReadError``: the fallback is tried, and when it fails too the caller refuses unchecked.
 """
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 from functools import cache
 from pathlib import Path
 
 import yaml
 
+from omnimarket.handlers.handler_ledger_claims import claim_lane
 from omnimarket.models.model_ledger_claims_read import ModelLedgerClaimsReadConfig
 from omnimarket.protocols.protocol_ledger_rows_reader import (
     LedgerReadError,
@@ -45,22 +45,24 @@ def load_ledger_read_config() -> ModelLedgerClaimsReadConfig:
 def _primary(
     reader: ProtocolLedgerRowsReader, config: ModelLedgerClaimsReadConfig
 ) -> tuple[str, ...]:
-    """The claim rows of the window and the heartbeat rows of its last hours, read at once."""
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        claims = pool.submit(
-            reader.rows,
-            reader=config.reader,
-            window_hours=config.window_hours,
-            kinds=config.claim_kinds,
+    """Every row of the heartbeat hours, then the claim rows of the lanes those rows name."""
+    heartbeat = reader.rows(
+        reader=config.reader, window_hours=config.heartbeat_window_hours
+    )
+    lanes = sorted({lane for row in heartbeat if (lane := claim_lane(row))})
+    if not lanes:
+        # A ledger always has a row in its last hour; an answer with none is not a read of it.
+        raise LedgerReadError(
+            f"the last {config.heartbeat_window_hours} hours held no lane row"
         )
-        heartbeat = pool.submit(
-            reader.rows,
-            reader=config.reader,
-            window_hours=config.heartbeat_window_hours,
-        )
-        claim_rows, heartbeat_rows = claims.result(), heartbeat.result()
+    claims = reader.rows(
+        reader=config.reader,
+        window_hours=config.window_hours,
+        kinds=config.claim_kinds,
+        lanes=lanes,
+    )
     # A recent CLAIM is in both reads; a row listed twice would be a claim counted twice.
-    return tuple(dict.fromkeys((*claim_rows, *heartbeat_rows)))
+    return tuple(dict.fromkeys((*claims, *heartbeat)))
 
 
 def read_claims_text(

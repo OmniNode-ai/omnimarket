@@ -347,22 +347,22 @@ def test_a_live_claim_with_the_same_cause_cell_is_refused_with_its_lane_named(
 def test_the_guard_reads_the_claims_from_the_named_reader_over_its_window(
     world: World, ledger_rows: FakeLedgerRows
 ) -> None:
-    """Two reads, by the guard's own reader name: the rows that open or close a CLAIM over the window, and every row type of the heartbeat hour (OMN-26433)."""
+    """Two reads, by the guard's own reader name: every row of the heartbeat hour, then the rows that open or close a CLAIM over the window for the lanes that hour names (OMN-26433)."""
     world.lane_branch("src/metrics.py", 15)
+    ledger_rows.lines = [_row(5, "CLAIM", LANE, "mine")]
 
     invoke(world.check_args())
 
     declared = load_ledger_read_config()
-    assert sorted(ledger_rows.calls) == sorted(
-        [
-            (
-                snapshot_module.LEDGER_READER,
-                snapshot_module.LEDGER_WINDOW_HOURS,
-                declared.claim_kinds,
-            ),
-            (snapshot_module.LEDGER_READER, declared.heartbeat_window_hours, ()),
-        ]
-    )
+    assert ledger_rows.calls == [
+        (snapshot_module.LEDGER_READER, declared.heartbeat_window_hours, ()),
+        (
+            snapshot_module.LEDGER_READER,
+            snapshot_module.LEDGER_WINDOW_HOURS,
+            declared.claim_kinds,
+        ),
+    ]
+    assert ledger_rows.lanes_asked == [(), (LANE,)]
     assert snapshot_module.LEDGER_WINDOW_HOURS == 168
 
 

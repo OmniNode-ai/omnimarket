@@ -208,7 +208,7 @@ class HandlerWorkLedgerReader:
                     query=request.query.value,
                     lanes=(request.lane,)
                     if request.query is EnumReaderQuery.INBOX and request.lane
-                    else (),
+                    else request.lanes,
                     ticket=request.ticket
                     if request.query is EnumReaderQuery.OPEN_RULINGS
                     else None,

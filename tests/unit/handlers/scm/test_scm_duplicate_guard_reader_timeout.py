@@ -5,12 +5,13 @@
 On 2026-11-22 lab lanes on h053 and h201 were refused ``PR-DUPLICATE-GUARD unchecked``: the ledger reader answered the guard's
 168 hour, every-row-type read with exit 69 ``bus-session-failed-timeouterror``, and a pr-create waited 200 to 300 seconds with no
 output. The seam-deadline probe on h053 measured the work-ledger query's replies at 55 to 137 seconds (deadline 30 seconds), or
-none, for each page. A read that needs many pages cannot answer inside any bound; a read that needs one or two can.
+none, for each request. A read that needs dozens of reply pages cannot answer inside any bound; one that needs a page or two can.
 
-The tests replay the reader subprocess (``subprocess.run``) over a broker whose page latency is the recorded one: a read takes
-pages x latency, and is a timeout when that is more than the wait the guard gave it. The ledger it serves holds 84,000 filler
-rows in the 168 hour window, as the 2026-11-21 records did, so the guard's whole-window read needs many pages and its CLAIM,
-TERMINAL and RELEASE read and its one hour heartbeat read need one each.
+The tests replay the reader subprocess (``subprocess.run``) over a broker whose reply latency is the recorded one: a read takes
+pages x latency, and is a timeout when that is more than the wait the guard gave it. The ledger it serves is the measured one
+(h202, 2026-11-22T04:15Z): 84,000 rows in the 168 hour window, 24,640 of them CLAIM, TERMINAL or RELEASE rows, about 580 rows and
+70 lanes in the last hour, and a page of 1,000 rows (the query node refuses an answer over 917,516 bytes). The guard's whole-window
+read needs 84 pages and its claim-kinds read 25; its one hour read needs one and the claim rows of that hour's lanes need one.
 
 The guard is never weakened: the narrowed reads must give the same live claims as the whole-window read (a lane with an old CLAIM
 and a recent row of any type still holds it), and when no read answers the guard refuses ``unchecked`` and opens nothing.
@@ -33,6 +34,7 @@ from omnimarket.handlers.adapter_work_ledger_rows_reader import (
     INTERPRETER_ENV,
     SubprocessLedgerRowsReader,
 )
+from omnimarket.handlers.handler_ledger_claims import claim_lane
 from omnimarket.handlers.scm import scm_cli
 from omnimarket.handlers.scm.scm_duplicate_guard import EXIT_CLEAR, EXIT_UNCHECKED
 from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers import (
@@ -61,9 +63,13 @@ CONTRACT = (
     Path(snapshot_module.__file__).resolve().parents[1] / "contract.yaml"
 )  # the guard's declared bounds
 INTERPRETER = "/lab/venv/bin/python"
-#: Rows one reply page carries, and the filler rows (STATUS, spread evenly) of the 168 hour window.
-PAGE_ROWS = 5000
-WINDOW_FILLER_ROWS = 84_000
+#: Rows one reply page carries, and the measured rows of the 168 hour window (all types, and the CLAIM, TERMINAL and RELEASE rows).
+PAGE_ROWS = 1000
+WINDOW_ROWS = 84_000
+CLAIM_KIND_ROWS = 24_640
+#: The last hour's rows, in the lanes that wrote them (70 lanes, as measured).
+HOUR_LANES = 70
+HOUR_ROWS = 580
 #: The recorded reply latency of one page, the seam probe's middle answer in seconds.
 SEAM_REPLIES_S = sorted(
     ms / 1000 for ms in RECORDED["seam_probe"]["replies_ms"] if ms is not None
@@ -85,7 +91,8 @@ class Broker:
 
     A read of N matching rows takes ``ceil(N / PAGE_ROWS)`` pages of ``PAGE_LATENCY_S`` each. When that is more than the wait the
     caller passed, the caller's own timeout fires (``subprocess.TimeoutExpired``); otherwise the reader answers with its rows.
-    ``refuse_all`` answers every read with the host's recorded exit 69 instead, ``refuse_kinds`` only a read that names row types.
+    ``refuse_all`` answers every read with the host's recorded exit 69 instead, ``refuse_lanes`` only a read that names lanes
+    (a reader older than the lane filter). ``window_rows`` is the whole window's size, small for a test of the fallback.
     """
 
     def __init__(
@@ -94,14 +101,20 @@ class Broker:
         host: str,
         *,
         refuse_all: bool = False,
-        refuse_kinds: bool = False,
-        filler: int = WINDOW_FILLER_ROWS,
+        refuse_lanes: bool = False,
+        window_rows: int = WINDOW_ROWS,
+        hour_lanes: int = HOUR_LANES,
     ) -> None:
-        self.rows = list(rows)
+        # The last hour's other lanes: HOUR_ROWS STATUS rows spread over hour_lanes lanes.
+        busy = [
+            _row(20, "STATUS", f"busy-{i % hour_lanes:02d}", "working")
+            for i in range(HOUR_ROWS if hour_lanes else 0)
+        ]
+        self.rows = [*rows, *busy]
         self.recorded = record(host)
         self.refuse_all = refuse_all
-        self.refuse_kinds = refuse_kinds
-        self.filler = filler
+        self.refuse_lanes = refuse_lanes
+        self.window_rows = window_rows
         self.argvs: list[list[str]] = []
         self.timeouts: list[float] = []
 
@@ -113,7 +126,8 @@ class Broker:
         self.timeouts.append(timeout)
         hours = int(argv[argv.index("--window-hours") + 1])
         kinds = [argv[i + 1] for i, word in enumerate(argv) if word == "--kind"]
-        if self.refuse_all or (self.refuse_kinds and kinds):
+        lanes = [argv[i + 1] for i, word in enumerate(argv) if word == "--row-lane"]
+        if self.refuse_all or (self.refuse_lanes and lanes):
             return subprocess.CompletedProcess(
                 argv, self.recorded["exit"], "", self.recorded["stderr"]
             )
@@ -123,11 +137,13 @@ class Broker:
             for row in self.rows
             if (now - stamp_of(row)).total_seconds() <= hours * 3600
             and (not kinds or row.split(" | ")[1] in kinds)
+            and (not lanes or claim_lane(row) in lanes)
         ]
-        matched = len(kept) + (
-            int(self.filler * hours / 168) if not kinds or "STATUS" in kinds else 0
-        )
-        pages = max(1, -(-matched // PAGE_ROWS))
+        # The rows of the window that no test row stands for: every other lane's, unless the read names lanes or the hour.
+        elsewhere = 0
+        if not lanes and hours > 1:
+            elsewhere = CLAIM_KIND_ROWS if kinds else self.window_rows
+        pages = max(1, -(-(len(kept) + elsewhere) // PAGE_ROWS))
         if pages * PAGE_LATENCY_S > timeout:
             raise subprocess.TimeoutExpired(argv, timeout)
         return subprocess.CompletedProcess(
@@ -241,20 +257,20 @@ def test_the_narrowed_read_holds_the_same_live_claims_as_the_whole_window(
         _row(180, "STATUS", "cause-core-0010", "last word"),
         _row(5, "CLAIM", LANE, CAUSE, "mine"),
     ]
-    use_broker(monkeypatch, Broker(quiet, "h053", filler=0))
+    use_broker(monkeypatch, Broker(quiet, "h053"))
 
     result = invoke(world.check_args())
 
     assert result.exit_code == EXIT_CLEAR, result.output
 
 
-def test_the_whole_window_read_still_finds_the_claim_when_it_is_the_only_one_that_answers(
+def test_the_whole_window_read_still_finds_the_claim_when_the_lane_scoped_read_is_refused(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The fallback shape: a node that refuses a read naming row types is read whole, and the claim is found."""
+    """The fallback shape: a reader that refuses the lane filter (an older one) is read whole, and the claim is found."""
     broker = use_broker(
         monkeypatch,
-        Broker(other_lane_claim_rows(), "h201", refuse_kinds=True, filler=2000),
+        Broker(other_lane_claim_rows(), "h201", refuse_lanes=True, window_rows=2000),
     )
 
     result = invoke(world.check_args())
@@ -315,8 +331,8 @@ def test_the_bounds_of_the_claims_read_are_declared_in_the_node_contract_and_use
     invoke(world.check_args())
     assert broker.timeouts
     primary = declared["primary_timeout_s"]
-    assert set(broker.timeouts) <= {primary, declared["fallback_timeout_s"]}
-    assert primary + declared["fallback_timeout_s"] <= declared["total_budget_s"]
+    assert broker.timeouts == [primary, primary]
+    assert 2 * primary + declared["fallback_timeout_s"] <= declared["total_budget_s"]
     assert declared["heartbeat_window_hours"] * 3600 >= 0.75 * 3600, (
         "the heartbeat read must cover a CLAIM's live hours"
     )
@@ -332,3 +348,23 @@ def test_the_declared_claim_row_types_hold_every_row_that_opens_or_closes_a_clai
     assert {"CLAIM", "TERMINAL", "RELEASE"} <= set(declared["claim_kinds"])
     assert declared["reader"] == "pr-duplicate-guard-claims"
     assert declared["window_hours"] == 168
+
+
+def test_the_claims_read_names_the_lanes_the_last_hour_holds_and_no_other(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The second read is scoped to the heartbeat hour's lanes: a lane quiet for three hours is not asked for."""
+    rows = [
+        *other_lane_claim_rows(),
+        _row(180, "CLAIM", "quiet-0100", CAUSE, "old"),
+        _row(180, "STATUS", "quiet-0100", "last word"),
+    ]
+    broker = use_broker(monkeypatch, Broker(rows, "h053"))
+
+    invoke(world.check_args())
+
+    claims_argv = broker.argvs[1]
+    named = [claims_argv[i + 1] for i, w in enumerate(claims_argv) if w == "--row-lane"]
+    assert "quiet-0100" not in named
+    assert {"cause-core-0010", LANE} <= set(named)
+    assert len(named) == len(set(named)) == HOUR_LANES + 2

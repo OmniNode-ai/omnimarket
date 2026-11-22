@@ -73,6 +73,12 @@ def main(
         help="a rows read only: a ledger row type to keep (repeat for several)",
     )
     parser.add_argument(
+        "--row-lane",
+        action="append",
+        default=[],
+        help="a rows read only: keep the rows of this lane (repeat for several)",
+    )
+    parser.add_argument(
         "--term",
         help="a rows read only: a case-insensitive text the row's first line holds",
     )
@@ -93,6 +99,7 @@ def main(
             read_parity=args.parity,
             window_hours=args.window_hours,
             kinds=tuple(args.kind),
+            lanes=tuple(args.row_lane),
             term=args.term,
         )
     )
