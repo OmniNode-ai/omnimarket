@@ -98,7 +98,7 @@ def _planted(
 _PAID_ELSEWHERE = {
     "backend_id": "planted-deepseek",
     "provider": "openrouter",
-    "model_name": "deepseek/deepseek-v4-flash-0731",
+    "model_name": "deepseek/deepseek-chat-v9-0731",
     "tier": "cheap_cloud",
     "endpoint_url": "https://openrouter.ai/api/v1/chat/completions",
 }
@@ -116,12 +116,12 @@ def test_a_backend_listed_in_routing_tiers_is_caught(tmp_path: Path) -> None:
     contract, tiers = _planted(
         tmp_path,
         models=[
-            {"id": "deepseek/deepseek-v4-flash-0731", "backend_id": "planted-deepseek"}
+            {"id": "deepseek/deepseek-chat-v9-0731", "backend_id": "planted-deepseek"}
         ],
         extra_backends=[_PAID_ELSEWHERE],
     )
     assert eval_only(placed_on_tier(contract, tiers)) == {
-        "planted-deepseek": "deepseek/deepseek-v4-flash-0731"
+        "planted-deepseek": "deepseek/deepseek-chat-v9-0731"
     }
 
 
@@ -173,8 +173,8 @@ def test_a_backend_placed_through_its_placement_block_is_caught(tmp_path: Path) 
 @pytest.mark.parametrize(
     "model",
     [
-        "deepseek-ai/DeepSeek-V4-Flash",
-        "deepseek/deepseek-v4-flash-0731",
+        "deepseek-ai/DeepSeek-Chat-V9",
+        "deepseek/deepseek-chat-v9-0731",
         "qwen/qwen-3.8-coder",
         "qwen/qwen3.8-instruct",
         "Qwen/Qwen3.8-Coder",
