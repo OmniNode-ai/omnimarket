@@ -1392,6 +1392,8 @@ _CI_TOOLS = (
     "tr",
     "readlink",
     "id",
+    "cut",
+    "tail",
 )
 
 
@@ -1413,7 +1415,10 @@ def _ci_host_target() -> str:
         return "aarch64-unknown-linux-gnu"
     if system == "Darwin" and machine == "arm64":
         return "aarch64-apple-darwin"
-    pytest.skip(f"curl installer journey does not run on {system} {machine}")
+    message = f"curl installer journey does not run on {system} {machine}"
+    if os.environ.get("ONEX_E2E_REQUIRE_COMPLETE") == "1":
+        pytest.fail(message)
+    pytest.skip(message)
 
 
 def _ci_uv_tarball(target: str, cache: Path) -> Path:
@@ -1466,6 +1471,12 @@ def _ci_serve(root: Path) -> tuple[ThreadingHTTPServer, str]:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server, f"http://127.0.0.1:{server.server_address[1]}"
+
+
+def _ci_stop(server: ThreadingHTTPServer) -> None:
+    """Shut down and close the CI HTTP server."""
+    server.shutdown()
+    server.server_close()
 
 
 def _ci_toolbox(directory: Path, uname_stub: str | None = None) -> Path:
@@ -1528,6 +1539,15 @@ def _ci_fixture(
     ):
         if key in os.environ:
             env[key] = os.environ[key]
+    # The stand-in listens on loopback, so a forwarded proxy must not carry it.
+    if any(
+        k in env for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")
+    ):
+        for key in ("NO_PROXY", "no_proxy"):
+            existing = env.get(key, "")
+            env[key] = (
+                f"{existing},127.0.0.1,localhost" if existing else "127.0.0.1,localhost"
+            )
     return env, home, git_log, server, base
 
 
@@ -1580,7 +1600,7 @@ def test_curl_installer_same_release(tmp_path: Path) -> None:
     try:
         result = _ci_curl_bash(env, base)
     finally:
-        server.shutdown()
+        _ci_stop(server)
     assert result.returncode == 0, (
         f"installer failed: stdout={result.stdout!r} stderr={result.stderr!r}"
     )
@@ -1617,6 +1637,10 @@ def test_curl_installer_same_release_refuses_a_changed_uv(tmp_path: Path) -> Non
     """A changed uv tarball must be refused and leave no partial install."""
     target = _ci_host_target()
     tarball = _ci_uv_tarball(target, tmp_path / "cache")
+    assert (
+        hashlib.sha256(tarball.read_bytes()).hexdigest()
+        == _ci_config()["uv_sha256"][target]
+    ), "the unmodified uv tarball must match its pin, or this control proves nothing"
     changed = tmp_path / f"changed-uv-{target}.tar.gz"
     changed.write_bytes(tarball.read_bytes() + b"0")
     script = _ci_render(_ci_config()["version"])
@@ -1624,7 +1648,7 @@ def test_curl_installer_same_release_refuses_a_changed_uv(tmp_path: Path) -> Non
     try:
         result = _ci_curl_bash(env, base, timeout=300)
     finally:
-        server.shutdown()
+        _ci_stop(server)
     assert result.returncode != 0
     assert "does not match its published sha256" in result.stderr
     assert not (home / ".local" / "share" / "omninode" / "uv" / "uv").exists()
@@ -1662,7 +1686,7 @@ def test_curl_installer_same_release_leaves_a_foreign_onex_alone(
     try:
         result = _ci_curl_bash(env, base)
     finally:
-        server.shutdown()
+        _ci_stop(server)
     assert result.returncode != 0
     assert str(foreign) in result.stderr
     assert "pipx uninstall" in result.stderr
@@ -1688,6 +1712,10 @@ def test_curl_installer_same_release_leaves_a_foreign_onex_alone(
         timeout=900,
     )
     assert line.returncode != 0
+    assert "Executable already exists: onex" in line.stderr, (
+        f"the guide's uv line must fail on the foreign onex itself, not on "
+        f"resolution or download; stderr tail: {line.stderr[-2000:]!r}"
+    )
     assert foreign.read_bytes() == before
     assert not git_log.exists()
 
@@ -1708,7 +1736,7 @@ def test_curl_installer_same_release_refuses_windows_naming_wsl(tmp_path: Path) 
     try:
         result = _ci_curl_bash(env, base, timeout=120)
     finally:
-        server.shutdown()
+        _ci_stop(server)
     assert result.returncode != 0
     assert "WSL" in result.stderr
     assert "not supported yet" in result.stderr
