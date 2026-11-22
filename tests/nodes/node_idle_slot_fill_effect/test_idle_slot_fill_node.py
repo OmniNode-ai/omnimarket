@@ -995,13 +995,17 @@ def test_the_overlay_experiment_designs_are_well_formed():
     )
 
 
-def test_default_sources_read_the_session_s_files_and_can_be_turned_off(tmp_path: Path):
-    env = {
+def _session_env(tmp_path: Path, ledger: Path | None = None) -> dict[str, str]:
+    return {
         "ONEX_REGISTRY_ROOT": str(tmp_path),
-        "ONEX_LEDGER_PATH": str(tmp_path / "ledger.md"),
+        "ONEX_LEDGER_PATH": str(ledger or tmp_path / "ledger.md"),
         "HOME": str(tmp_path),
         **ENV,
     }
+
+
+def test_default_sources_read_the_session_s_files_and_can_be_turned_off(tmp_path: Path):
+    env = _session_env(tmp_path)
     src = handler.default_sources(FILL_NOW, env)
     assert (
         src.linear_snapshot
@@ -1073,9 +1077,11 @@ ROWS = [
 def load_grammar(home):
     return None
 
-def load_rows(home, days, as_of, grammar, ledger):
+def load_rows(home, days, as_of, grammar, ledger=None):
     # the real reader compares aware stamps: a naive as_of raises there
     assert as_of.tzinfo is not None
+    # an explicit ledger path is drain_map's file read: the fill asks the bus reader (OMN-20547)
+    assert ledger is None, f"the fill passed {ledger} and read the file"
     return ROWS, []
 
 def open_claims(rows, grammar, horizon):
@@ -1087,7 +1093,7 @@ def open_claims(rows, grammar, horizon):
 def test_the_ledger_reader_names_live_claims_and_unsettled_readbacks(tmp_path: Path):
     (tmp_path / "drain_map.py").write_text(FAKE_DRAIN_MAP)
     claimed, readbacks = handler.ledger_tickets(
-        tmp_path / "ledger.md", tmp_path / "drain_map.py", tmp_path, FILL_NOW
+        tmp_path / "drain_map.py", tmp_path, FILL_NOW
     )
     assert claimed == {"OMN-401", "OMN-17427"}, (
         "a CLAIM whose lane is silent past two hours owns nothing"
@@ -1099,15 +1105,37 @@ def test_the_ledger_reader_names_live_claims_and_unsettled_readbacks(tmp_path: P
     assert "AC3 readback" in readbacks["OMN-403"], reason
 
 
+def test_default_sources_read_the_ledger_through_the_bus_reader_not_the_file(
+    tmp_path: Path,
+):
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text(
+        "2026-10-19T15:40:00Z | CLAIM | lane=file-only | ticket=OMN-999\n"
+    )
+    scripts = tmp_path / "plugin/skills/merge-drain/scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "drain_map.py").write_text(FAKE_DRAIN_MAP)
+    src = handler.default_sources(
+        FILL_NOW,
+        {
+            **_session_env(tmp_path, ledger),
+            "OMNI_PLUGIN_ROOT": str(tmp_path / "plugin"),
+        },
+    )
+    assert src is not None
+    assert src.ledger_tickets is not None
+    claimed, _ = src.ledger_tickets()
+    assert "OMN-999" not in claimed
+    assert claimed == {"OMN-401", "OMN-17427"}
+
+
 def test_a_readback_named_only_by_its_ticket_cell_or_lane_is_read(tmp_path: Path):
     # 2026-10-19 lanes bk-omn-19519 and deleg-omn-11187-1005 named their ticket in ticket= and the lane, not subject=
     (tmp_path / "drain_map.py").write_text(
         FAKE_DRAIN_MAP
         + '\nROWS = [r for r in ROWS if not r.lane.startswith("fill-")]\n'
     )
-    _, readbacks = handler.ledger_tickets(
-        tmp_path / "ledger.md", tmp_path / "drain_map.py", tmp_path, FILL_NOW
-    )
+    _, readbacks = handler.ledger_tickets(tmp_path / "drain_map.py", tmp_path, FILL_NOW)
     assert sorted(readbacks) == ["OMN-403", "OMN-405", "OMN-406"]
 
 
