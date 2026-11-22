@@ -18,6 +18,9 @@ from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_rebuild
 from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_shadow_judge import (
     WorkLedgerShadowJudge,
 )
+from omnimarket.nodes.node_work_ledger_reducer_compute.logic.work_ledger_window_replay import (
+    WorkLedgerWindowReplay,
+)
 from omnimarket.nodes.node_work_ledger_reducer_compute.models.model_work_ledger_reducer import (
     ModelWorkLedgerReducerRequest,
     ModelWorkLedgerReducerResult,
@@ -42,6 +45,11 @@ class HandlerWorkLedgerReducer:
             return ModelWorkLedgerReducerResult(
                 operation=request.operation,
                 rebuild=WorkLedgerRebuild().handle(request.rebuild),
+            )
+        if request.operation == "window_replay" and request.window is not None:
+            return ModelWorkLedgerReducerResult(
+                operation=request.operation,
+                window=WorkLedgerWindowReplay().handle(request.window),
             )
         raise ValueError(
             f"operation {request.operation} has no request"

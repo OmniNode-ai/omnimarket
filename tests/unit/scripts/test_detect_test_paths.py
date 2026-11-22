@@ -930,7 +930,11 @@ def test_without_the_selector_the_heavy_selection_is_two_unplanned_shards(
     )
 
     loose = load_policy().model_copy(
-        update={"target_shard_seconds": 10**9, "max_narrowed_shards": 5}
+        update={
+            "target_shard_seconds": 10**9,
+            "max_narrowed_shards": 5,
+            "narrowed_bound_seconds": 10**9,
+        }
     )
     monkeypatch.setattr(
         sys.modules["scripts.ci.detect_test_paths"],
@@ -996,6 +1000,9 @@ def test_shards_fit_target_heavy_selection_is_the_planned_matrix() -> None:
 def test_split_count_by_duration_mid_weight_gets_more_shards_than_paths() -> None:
     # One mid-weight path, at least three shards. The test is given its own
     # durations record so its claim does not move with the real one.
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_test_files import (
+        SourceTestFilesInMemory,
+    )
     from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
         HandlerTestSelectionSelector,
     )
@@ -1012,9 +1019,11 @@ def test_split_count_by_duration_mid_weight_gets_more_shards_than_paths() -> Non
         def read(self, repo_root: str, durations_path: str) -> dict[str, float] | None:
             return self._durations
 
-    estimate = 3.5 * policy.target_shard_seconds
+    estimate = 2.5 * policy.target_shard_seconds
     durations = {f"tests/unit/nodes/node_x/test_{i}.py": estimate / 7 for i in range(7)}
-    decision = HandlerTestSelectionSelector(_FixedDurations(durations), policy).handle(
+    decision = HandlerTestSelectionSelector(
+        _FixedDurations(durations), policy, SourceTestFilesInMemory(tuple(durations))
+    ).handle(
         ModelSelectorRequest(
             selected_paths=("tests/unit/nodes/",), repo_root=str(REPO_ROOT)
         )
