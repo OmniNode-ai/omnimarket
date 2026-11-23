@@ -11,6 +11,14 @@ summary: >-
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+requirements:
+- id: req-omn26316-unit-alarm
+  statement: The dev tag heartbeat condition in node_lab_alarm optionally reads the deploy agent's systemd user unit (USER scope only) and alarms on a stopped unit.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a loaded user unit whose ActiveState is not active breaches on the persistence bound, a not-found or unreadable unit is INDETERMINATE and never an alarm, and the adapter reads USER scope only -- falsifier: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_deploy_agent_unit.py -q --no-cov -p no:randomly fails on dev (the unit source does not exist) and passes at this head'
+  - id: AC2
+    statement: 'AC2: with no unit block declared every existing dev tag heartbeat behaviour is unchanged -- falsifier: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_dev_tag_heartbeat.py -q --no-cov -p no:randomly passes at this head'
 evidence_requirements:
 - kind: tests
   description: The deploy agent unit tests and the existing dev tag heartbeat tests pass at the pushed head.
@@ -23,6 +31,9 @@ dod_evidence:
 - id: dod-omn26316-unit-alarm-tests
   description: 'The unit-state alarm: an inactive loaded user unit alarms at the persistence bound, a not-found unit is INDETERMINATE and never an alarm, the adapter reads USER scope only, and every existing heartbeat behaviour is unchanged when no unit block is declared.'
   source: manual
+  binds_ac:
+  - AC1
+  - AC2
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_deploy_agent_unit.py tests/nodes/node_lab_alarm/test_lab_alarm_dev_tag_heartbeat.py -q --no-cov -p no:randomly
