@@ -18,6 +18,7 @@ class ModelProjectionQueryRequest(BaseModel):
     topic: str | None = None
     correlation_id: str | None = None
     since: str | None = None
+    window: str | None = None
     limit: int | None = None
     order: str | None = None
     order_by: str | None = None
