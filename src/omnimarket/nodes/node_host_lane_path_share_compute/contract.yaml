@@ -28,6 +28,10 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: "Direct Python invocation (python -m omnimarket.nodes.node_host_lane_path_share_compute < request.json); the rows it prints are appended to the ledger, where node_failure_alarm_router_effect reads class lane-path-share."
+  # A host's lane path sizes are measured by a lane or an operator who then pipes them in: the command below is the whole trigger.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_host_lane_path_share_compute < request.json
+    owner: OmniNode Platform Team
 execution:
   deterministic: true
   side_effects: false
