@@ -13,7 +13,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class EnumPoolSnapshotStatus(StrEnum):
@@ -81,13 +81,23 @@ class ModelPoolHostRow(BaseModel):
     host: str
     declared_slots: int = Field(..., ge=0)
     running_lanes: int = Field(..., ge=0)
-    free_slots: int = Field(..., ge=0)
+    #: Free lane slots; ``None`` when the host's accounts could not be read (``accounts_unread``): an unread host has no figure.
+    free_slots: int | None = Field(..., ge=0)
     accounts_usable: tuple[str, ...]
     accounts_limited: tuple[str, ...]
     away: bool
     away_reason: str | None = None
     refusal: str | None = None
     advertised_at: datetime | None = None
+    #: True when the token pool read for this host failed: the host is unread, not full.
+    accounts_unread: bool = False
+
+    @model_validator(mode="after")
+    def _unread_host_has_no_free_slot_figure(self) -> ModelPoolHostRow:
+        if self.accounts_unread != (self.free_slots is None):
+            msg = "a host row has no free_slots figure exactly when its accounts are unread"
+            raise ValueError(msg)
+        return self
 
 
 class ModelPoolSnapshotRecord(BaseModel):
@@ -99,7 +109,10 @@ class ModelPoolSnapshotRecord(BaseModel):
     read_at: datetime
     max_age_seconds: int = Field(..., ge=1)
     hosts: tuple[ModelPoolHostRow, ...]
+    #: The sum over the hosts whose free slots were read; a host in ``unread_hosts`` adds nothing.
     free_slots_total: int = Field(..., ge=0)
+    #: The hosts whose accounts could not be read, in host order: their free slots are unknown, not zero.
+    unread_hosts: tuple[str, ...] = ()
     snapshot_path: str
     provenance: str
 

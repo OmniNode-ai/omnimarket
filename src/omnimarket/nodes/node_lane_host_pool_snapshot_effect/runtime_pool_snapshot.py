@@ -110,7 +110,10 @@ def run_once(
         "correlation_id": str(request.correlation_id),
         "hosts": len(result.record.hosts) if result.record else 0,
         "free_slots_total": result.record.free_slots_total if result.record else 0,
+        "hosts_unread": len(result.record.unread_hosts) if result.record else 0,
     }
+    if result.record and result.record.unread_hosts:
+        line["unread_hosts"] = list(result.record.unread_hosts)
     if result.status is EnumPoolSnapshotStatus.WRITTEN:
         if chain is not None:
             chain.success(

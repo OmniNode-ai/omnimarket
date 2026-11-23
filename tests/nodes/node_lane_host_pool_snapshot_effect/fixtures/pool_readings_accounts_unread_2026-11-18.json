@@ -1,0 +1,20 @@
+{
+  "recorded": {
+    "pool_json_read_at": "2026-11-18T15:28:54Z",
+    "headroom_read_at": "2026-11-18T15:20:00Z",
+    "last_run": {"status": "written", "hosts": 9, "free_slots_total": 0, "at": "2026-11-18T15:29:24Z"}
+  },
+  "note": "Scrubbed copy of the readings the operator-side snapshot wrote on 2026-11-18: five hosts refused with an accounts-unread reason (token pool command rc=3, empty output) and lane_slots 0. headroom_free is the per-host headroom read at 15:20Z. h201 lane_cap and placed were not recorded; lane_cap 6 and placed 0 are chosen to give its recorded headroom of 6. h202 is a control host whose accounts were read; its headroom was 1. Two of the nine recorded hosts have no recorded reading and are left out.",
+  "readings": [
+    {"host": "h051", "lane_cap": 32, "placed": 1, "headroom_free": 29, "accounts_unread_reason": "token pool command rc=3: "},
+    {"host": "h053", "lane_cap": 24, "placed": 5, "headroom_free": 23, "accounts_unread_reason": "token pool command rc=3: "},
+    {"host": "h101", "lane_cap": 12, "placed": 7, "headroom_free": 5, "accounts_unread_reason": "token pool command rc=3: "},
+    {"host": "h105", "lane_cap": 3, "placed": 0, "headroom_free": 3, "accounts_unread_reason": "token pool command rc=3: "},
+    {"host": "h201", "lane_cap": 6, "placed": 0, "headroom_free": 6, "accounts_unread_reason": "token pool command rc=3: "},
+    {"host": "h202", "lane_cap": 3, "placed": 2, "headroom_free": 1, "accounts_unread_reason": null}
+  ],
+  "away": [
+    {"host": "h106", "reason": "parked"},
+    {"host": "h200", "reason": "out of lane"}
+  ]
+}
