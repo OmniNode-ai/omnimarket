@@ -87,7 +87,10 @@ def test_setup_cli_connection_routes_secret_to_named_owner(
                 plan=plan,
             )
 
-    monkeypatch.setattr(cli, "HandlerSetupWorkflow", Workflow)
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow.HandlerSetupWorkflow",
+        Workflow,
+    )
     monkeypatch.setattr(cli, "user_config_path", lambda: tmp_path / "config.yaml")
     result = CliRunner().invoke(
         cli.setup_command,
@@ -219,7 +222,10 @@ def test_setup_cli_local_stack_selection_is_explicit(tmp_path, monkeypatch):
                 plan=plan,
             )
 
-    monkeypatch.setattr(cli, "HandlerSetupWorkflow", Workflow)
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow.HandlerSetupWorkflow",
+        Workflow,
+    )
     monkeypatch.setattr(cli, "user_config_path", lambda: tmp_path / "config.yaml")
     args = [
         "--workspace",
