@@ -13,7 +13,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-from omnibase_core.cli.cli_work_ledger_render import MD_LEDGER_PATH_ENV
 
 from omnimarket.nodes.node_handoff_check_effect import runtime_handoff_check_cli as cli
 from omnimarket.nodes.node_handoff_check_effect.adapters.bus_ledger_rows import (
@@ -47,6 +46,8 @@ from tests.unit.nodes.node_work_ledger_reader_effect.test_reader_rows_window imp
 )
 
 from .ledger_rows_stub import StubRows
+
+MD_LEDGER_PATH_ENV = "SCRATCH_STAND_IN_ENV"
 
 pytestmark = pytest.mark.unit
 

@@ -8,7 +8,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from omnibase_core.cli.cli_work_ledger_render import MD_LEDGER_PATH_ENV
 
 from omnimarket.nodes.node_create_ticket.handlers.core_ticket_guard import (
     CORE_GUARD_ID,
@@ -18,6 +17,8 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     HandlerCreateTicket,
     guard_finding_codes,
 )
+
+MD_LEDGER_PATH_ENV = "SCRATCH_STAND_IN_ENV"
 
 _GATE = "Gate: C7"
 _CRITERION = (

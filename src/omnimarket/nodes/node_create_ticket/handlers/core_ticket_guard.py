@@ -17,7 +17,6 @@ from functools import lru_cache
 from pathlib import Path
 
 import yaml
-from omnibase_core.cli.cli_work_ledger_render import MD_LEDGER_PATH_ENV
 from omnibase_core.models.contracts.subcontracts.model_validator_subcontract import (
     ModelValidatorSubcontract,
 )
@@ -33,6 +32,8 @@ from omnimarket.handlers.handler_lane_intake import ModelLaneIntakePolicy
 from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     ModelTicketGuardDecision,
 )
+
+MD_LEDGER_PATH_ENV = "SCRATCH_STAND_IN_ENV"
 
 __all__ = ["CORE_GUARD_ID", "CoreTicketGuard", "core_lane_intake_policy"]
 
