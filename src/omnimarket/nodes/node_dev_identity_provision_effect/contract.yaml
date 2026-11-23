@@ -51,6 +51,10 @@ terminal_event: onex.evt.omnimarket.dev-identity-provision-completed.v1
 
 runtime_dispatch:
   external_trigger: true
+  # Provisioning writes a user and a tenant, so it never runs on a timer: a lane runs it once, by hand, on the dev lane.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_dev_identity_provision_effect run --lane dev
+    owner: OmniNode Platform Team
 
 topics:
   command: onex.cmd.omnimarket.dev-identity-provision-requested.v1

@@ -201,6 +201,8 @@ dod_evidence:
 
 metadata:
   transport_type: filesystem
+  # T2 AC9: reviewed native Linux distribution identities, including Ubuntu on WSL 2.
+  native_linux_distributions: [ubuntu]
   # OMN-23413: the loopback host of the processes setup starts (URL authority);
   # read by handlers/setup_contract_values.py.
   loopback_host: "127.0.0.1"

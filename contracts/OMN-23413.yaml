@@ -157,6 +157,11 @@ requirements:
   acceptance:
   - id: AC27
     statement: 'One catalogue, no hard-coded lists. /model, /config and /delegation read the same entries; the providers, capabilities, columns and words come from configuration. /model chooses the first model or Auto.'
+- id: req-omn23413-ac35
+  statement: 'AC35: a call is priced from that combined entry. The provider''s own price is used when it serves one. Otherwise models.dev''s price for that provider and model is used. Otherwise it is unknown as AC28 says. Each run records which source priced it and when that source was read. Both sources are read live. A reused copy is never older than the age set in configuration and never committed. -- falsifier: tests with recorded responses show a Beam call on a Reflection key booked at 0 with cost basis zero_marginal_api_cost and source models.dev, a model absent from both sources left unknown, and a source older than the configured age read again'
+  acceptance:
+  - id: AC35
+    statement: 'AC35: a call is priced from that combined entry. The provider''s own price is used when it serves one. Otherwise models.dev''s price for that provider and model is used. Otherwise it is unknown as AC28 says. Each run records which source priced it and when that source was read. Both sources are read live. A reused copy is never older than the age set in configuration and never committed. -- falsifier: tests with recorded responses show a Beam call on a Reflection key booked at 0 with cost basis zero_marginal_api_cost and source models.dev, a model absent from both sources left unknown, and a source older than the configured age read again'
 - id: req-omn23413-ac33
   statement: Every ordinary prompt goes to delegation first when bit 11 is enabled; documented slash and @claude skips remain native. A quality-passed answer is shown with model and full run ID without native Claude inference. Decline via the fixed CANNOT_ANSWER marker, failure, timeout, quality veto or OFF continues to Claude. Bounded delegated history is deduplicated by run ID and delivered once on the next native turn. onex delegation on/off and the TUI switch add and remove the one prompt hook while preserving Claude settings; subagents stay on Claude (Amendment 14a, 2026-11-17). Real inference and token receipt evidence is required separately from deterministic process controls.
   acceptance:
@@ -297,6 +302,33 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/e2e/test_setup_local_stack.py tests/e2e/test_setup_stack_requirements.py
       tests/e2e/test_setup_tenant_endpoint_registration.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-t2-ac9-platform-preflight
+  description: >-
+    Evidence for delivery-plan T2 AC9 (Linux admission), which is not this
+    contract's AC9. It binds contract criterion AC9 (Complete CLI behavior) only
+    for what its tests show of the preflight command: typed, clean JSON output,
+    and actionable, secret-free failures (a sentinel planted in an unreadable
+    os-release error never reaches the observation). No criterion of this
+    contract states Linux admission, so admission itself is bound to none, and
+    these tests record none of the delivery-unit ownership, prerequisites or
+    AC/TI report that the ticket's AC32 requires. The tests check that the
+    preflight admits an os-release ID the setup contract lists (ubuntu) and
+    refuses unlisted distributions, ID_LIKE clones, other platforms and an
+    unreadable /etc/os-release; that Ubuntu on a WSL 1 kernel is refused with
+    the WSL 2 remedy while native Ubuntu and WSL 2 kernels are admitted; that
+    native Windows gets the Ubuntu under WSL 2 remedy without reading the
+    workspace or its disk, with Unix locking unavailable, and leaves the profile
+    and workspace untouched; and that the installed preflight succeeds on an
+    Ubuntu host.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_linux_preflight.py
+      tests/e2e/test_setup_preflight_cli.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23413-ac8-migration-repair
   description: One versioned journal, nonblocking lock, atomic checkpoints, one-time import, resume and
@@ -483,6 +515,16 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: 'uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/handlers/test_local_model_details.py -q --no-cov -n 0 -p no:randomly -k "config or server or ticked or searchable or key"'
+    cwd: .
+- id: dod-omn23413-ac35-models-dev-price
+  description: 'Proves the pricing half of AC35 for a customer-key call: the provider''s own price wins and is recorded with its read time; otherwise models.dev is read live and prices the call (a Beam call on a Reflection key is booked at 0 as zero_marginal_api_cost, source models.dev, with the read time); a paid models.dev price is booked as cloud cost; a model absent from both sources stays unknown; a copy older than the configured age is read again, and a stale copy whose re-read fails never prices a call. The live read and the age limit are proved for the models.dev copy only, not for the provider listing, which the call reads from the copy the explorer kept. It does not prove AC35''s "never committed" clause as a scan of the repository, and it proves nothing of AC34 (one combined entry for limits, price and the model table) or AC36 (token usage provenance).'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC35
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/delegation/test_byok_models_dev_price_omn23413.py -q'
     cwd: .
 - id: dod-omn23413-ac25-delegation-no-typed-input
   description: '/delegation uses one prompt-hook switch (Amendment 14a), refuses without a model, and preserves Claude settings.'
