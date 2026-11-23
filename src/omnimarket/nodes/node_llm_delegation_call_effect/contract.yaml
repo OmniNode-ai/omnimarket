@@ -543,6 +543,14 @@ provider_quota_reset:
     name: "HandlerProviderQuotaReset"
     module: "omnimarket.handlers.handler_provider_quota_reset"
 
+# House key failover (OMN-19432): one provider key refused moves the call to the next declared key. It is called by
+# HandlerLlmDelegationCall in process, so it is not in handler_routing; the `handler` entry binds it to this node's contract.
+provider_key_failover:
+  handler:
+    name: "ProviderKeyFailover"
+    module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_provider_key_failover"
+  cooldown_seconds: 300
+
 # Credential probe (OMN-21626): one Claude Code call that proves the credential in the host's environment.
 # The credential is CLAUDE_CODE_OAUTH_TOKEN, exported by the caller on the host whose pool holds it; it is
 # never a field of the request or the receipt. The probe handler is reached only by its command line on the host and

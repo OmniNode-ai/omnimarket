@@ -7,10 +7,11 @@ Fakes only, no network. Key values never appear: keys are named by reference.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
+from omnibase_spi.protocols.services import ProtocolSecretStore
 
 from omnimarket.enums.enum_delegation_failure_class import (
     EnumDelegationFailureClass as Failure,
@@ -282,7 +283,7 @@ def test_real_http_fake_provider_401_then_200_names_the_second_key() -> None:
         )
         request = _request(KEY_A).model_copy(update={"endpoint_ref": url})
         store = _KeyedStore({KEY_A: synthetic_a, KEY_B: synthetic_b})
-        with injected_secret_store(store):  # type: ignore[arg-type]
+        with injected_secret_store(cast("ProtocolSecretStore", store)):
             result = handler.call_endpoint(request, url)
     finally:
         server.shutdown()
