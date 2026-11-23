@@ -49,7 +49,10 @@ dependency_ownership:
   registry_root: "Owned by the host timer that invokes the tick; the registry root (OMNI_HOME) of the host."
   env: "ONEX_LEDGER_BUS_READ_COMMAND, ONEX_LANE_DISPATCH_BUS_APPEND, ONEX_LEDGER_HOST_NAME and ONEX_LANE_DISPATCH_PARENT, declared by the unit in the host installer's contract."
 runtime_dispatch:
+  # Every 60 s one host timer tick invokes the typed handler with the host registry root and environment.
   external_trigger: One host timer tick invokes the typed handler with the host registry root and environment.
+  host_unit:
+    unit: lane-dispatch-systemd
 metadata:
   transport_type: local
   description: "Hosted by one timer tick on the dispatcher host, never a shared runtime"
