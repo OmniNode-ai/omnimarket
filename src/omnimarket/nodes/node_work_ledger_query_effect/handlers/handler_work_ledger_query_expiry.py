@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerWorkLedgerQueryExpiry is resolved at boot from handler_routing in contract.yaml, by module path, not by a Python import
 """Drop a work-ledger query whose caller has left, and publish no answer (OMN-26433).
 
 The query node is the one consumer of its command topic. A request whose caller stopped waiting was
