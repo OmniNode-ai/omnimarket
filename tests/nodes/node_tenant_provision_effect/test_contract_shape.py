@@ -85,7 +85,7 @@ def test_broker_grants_follow_the_operator_plane_authority() -> None:
 
 
 def test_identity_tables_are_declared_in_the_six_key_shape() -> None:
-    tables = {t["name"]: t for t in _contract()["db_io"]["db_tables"]}
+    tables = {t["name"]: t for t in _contract()["identity_io"]["db_tables"]}
     assert {n: t["access"] for n, t in tables.items()} == {
         "tenants": "read_insert",
         "tenant_plans": "read_insert",

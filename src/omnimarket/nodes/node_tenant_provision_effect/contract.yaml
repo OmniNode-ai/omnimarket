@@ -117,7 +117,12 @@ secret_dependencies:
   tenant_identity.database.dsn:
     required: true
     description: "The identity database's DSN, asked of the secret store by this logical name (the overlay's database.dsn_secret). The main runtime carries it."
-db_io:
+# Not `db_io`: that key is resolved against the deployment topology, which
+# declares no `omninode_cloud` database, so declaring these tables there fails
+# contract discovery and projection-target resolution for the whole repo. The
+# tables are owned by the identity database; the node reaches it through the
+# `tenant_identity.database.dsn` secret above.
+identity_io:
   db_tables:
     - name: tenants
       database_ref: omninode_cloud
