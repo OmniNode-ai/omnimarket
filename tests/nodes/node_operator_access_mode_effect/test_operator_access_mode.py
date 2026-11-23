@@ -783,7 +783,8 @@ READY_SETTINGS: dict[str, Any] = {
 READY_CONFIG: dict[str, Any] = {"mcpServers": {"linear-server": {}, "github": {}}}
 READY_ENV = {
     "OMNI_HOME": "/workspace/registry",
-    "ONEX_LEDGER_PATH": "/workspace/ledger.md",
+    "ONEX_LEDGER_BUS_APPEND_COMMAND": "/workspace/python -m omnimarket.work_ledger_bus.cli append",
+    "ONEX_LEDGER_HOST_NAME": "h000",
 }
 
 
@@ -816,8 +817,27 @@ def test_each_gap_is_named_in_one_line() -> None:
         "push notifications are off (agentPushNotifEnabled)",
         "no onex plugin enabled",
         "connector linear-server is not configured",
-        "ONEX_LEDGER_PATH is not set",
+        "ONEX_LEDGER_BUS_APPEND_COMMAND is not set",
+        "ONEX_LEDGER_HOST_NAME is not set",
     )
+
+
+def test_a_ledger_file_path_alone_does_not_satisfy_the_remote_setup() -> None:
+    result = HandlerRemoteSetupCheck().handle(
+        ModelRemoteSetupRequest(
+            "",
+            READY_SETTINGS,
+            READY_CONFIG,
+            "",
+            {"OMNI_HOME": "/workspace/registry", "ONEX_LEDGER_PATH": "/x/ledger.md"},
+        )
+    )
+    assert not result.ok
+    assert result.missing == (
+        "ONEX_LEDGER_BUS_APPEND_COMMAND is not set",
+        "ONEX_LEDGER_HOST_NAME is not set",
+    )
+    assert "ONEX_LEDGER_PATH" not in result.line
 
 
 def test_session_start_reports_setup_remote_only(tmp_path: Path) -> None:

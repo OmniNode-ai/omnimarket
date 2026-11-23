@@ -42,9 +42,8 @@ GENERIC_ACTORS = frozenset(
 # Explicit close references (any row class may carry one).
 CLOSE_REF_KEY_RE = re.compile(r"(?:closes|supersedes)[-_]claim=", re.IGNORECASE)
 FULL_TOKEN_RE = re.compile(r"LCT1-\d+-\d+-([0-9a-f]{12})\b")
-LINE_REF_RE = re.compile(
-    r"(?:ROLLING_WORK_LEDGER\.md|\bledger):(\d+)\b|\bLCT1-\d+-(\d+)\b"
-)
+# A line citation: "<NAME>LEDGER.md:<line>" (the ledger file's own name), "ledger:<line>" or an LCT1 token.
+LINE_REF_RE = re.compile(r"(?:[A-Z_]*LEDGER\.md|\bledger):(\d+)\b|\bLCT1-\d+-(\d+)\b")
 LANE_REF_RE = re.compile(r"^\s*lane=([^\s|;,()]+)")
 TS_REF_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z")
 CLAIM_MARK = "| CLAIM |"

@@ -33,7 +33,11 @@ def main(
         scenario_id="R9",
         home_env=load_runtime().home_env,
         build=build
-        or (lambda environment, trigger: build_runner(environment, trigger=trigger)),
+        or (
+            lambda environment, trigger: build_runner(
+                environment, trigger=trigger, check_dev_ready=True
+            )
+        ),
     )
 
 
