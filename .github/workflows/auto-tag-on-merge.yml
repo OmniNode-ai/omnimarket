@@ -59,6 +59,8 @@ jobs:
       }}
     permissions:
       contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       # Condition 1. `persist-credentials: false` is load-bearing, not hygiene:
       # with the default `true`, checkout v7 writes the workflow token into a
@@ -152,3 +154,48 @@ jobs:
 
           echo "Pushed tag ${TAG} as onexbot-occ-writer[bot]"
           echo "release.yml is expected to start from this push, with event=push and no workflow_dispatch"
+
+  # The merged release PR is a release path of its own: it tags here and never ran
+  # release-cut.yml's reopen-dev job, so dev stayed at the published version (the
+  # release-identity gate armed against it) and carried the CHANGELOG.md the cut
+  # added, which the removed-prose test forbids. This job runs the same
+  # `.github/actions/reopen-dev` action that release-cut.yml runs, after the tag
+  # push, so both release paths produce the same bump change. It needs `auto-tag`
+  # to succeed, so a PR that is no release, or a tag that failed to push, reopens
+  # nothing; a rerun is a noop in the bump script.
+  reopen-dev:
+    name: Reopen dev for the next version
+    needs: auto-tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Mint onexbot-occ-writer app token (dev reopen identity)
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      # The App token reaches every push through checkout's `token:` input, the
+      # only shape that survives checkout v7's persisted credential header.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          python-version: '3.12'
+
+      - name: Decide, apply and push the dev reopen
+        uses: ./.github/actions/reopen-dev
+        with:
+          released-version: ${{ needs.auto-tag.outputs.version }}
+          token: ${{ steps.app-token.outputs.token }}
