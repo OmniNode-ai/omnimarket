@@ -2132,6 +2132,48 @@ units:
     required_environment_inputs: [ONEX_HOST_NAME]
     evidence_file: .local/state/omni/host-thermal-hold-report/last-run.json
     state_directory: .onex_state/host-thermal-hold-report
+  # The host thermal guard (OMN-24562): holds a hot host out of lab placement through the declared hold file in its state directory (never a
+  # chmod of a run folder) with a lower release threshold and a minimum hold time, and writes a ledger HOLD row on each hold and a RELEASE row
+  # on each release through the declared ledger bus append command. It replaces the host script onex-h202-thermal-guard. The host's name is
+  # the request's ledger_host_name; its state directory, lane, thresholds and texts are the node overlay's row for it.
+  host-thermal-guard-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-host-thermal-guard
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 90
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_host_thermal_guard_effect.runtime_host_thermal_guard_tick
+    entry_file: src/omnimarket/nodes/node_host_thermal_guard_effect/runtime_host_thermal_guard_tick.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      # The declared ledger publisher of the host's row in the lab_hosts overlay (ledger_bus_python): the dispatch venv.
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/.onex-dispatch-venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/host-thermal-guard/last-run.json
+    state_directory: .onex_state/host-thermal-guard
   claude-pool-rotation-tick:
     platform: launchd
     kind: registry_module_tick
