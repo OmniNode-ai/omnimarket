@@ -63,7 +63,8 @@ from omnimarket.nodes.node_operator_capture_effect.handlers.capture_ports import
     onex_ledger_appender,
 )
 from omnimarket.nodes.node_operator_capture_effect.handlers.ledger_read import (
-    relevant_rows,
+    Reader,
+    prior_rows,
 )
 
 _DRIFT_KINDS = frozenset({EnumUtteranceKind.DECISION, EnumUtteranceKind.PREFERENCE})
@@ -82,10 +83,11 @@ class HandlerCaptureProcess:
         delegate: DelegateRunner | None = None,
         append: LedgerAppender | None = None,
         now: datetime | None = None,
+        reader: Reader = None,
     ) -> None:
         self._delegate = delegate or onex_delegate_runner(None)
         self._append = append or onex_ledger_appender()
-        self._now = now
+        self._now, self._reader = now, reader
 
     def handle(self, request: ModelCaptureProcessRequest) -> ModelCaptureProcessResult:
         root = request.store_dir
@@ -203,10 +205,7 @@ class HandlerCaptureProcess:
         drift: dict[str, ModelRulingDrift] = {}
         if any(i.kind in _DRIFT_KINDS for i in classification.items):
             if not prior_cache:
-                try:
-                    prior_cache.append(relevant_rows(request.ledger_path))
-                except OSError:
-                    prior_cache.append(())
+                prior_cache.append(prior_rows(request.ledger_path, self._reader))
             prior = prior_rulings_from_rows(prior_cache[0])
             for item in classification.items:
                 if item.kind in _DRIFT_KINDS:
