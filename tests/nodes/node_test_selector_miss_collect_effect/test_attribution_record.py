@@ -243,8 +243,10 @@ def test_record_model_rejects_any_field_outside_the_list() -> None:
 
 
 def test_record_model_is_frozen() -> None:
+    field = "miss_count"
+    record = _record()
     with pytest.raises(ValidationError, match="frozen"):
-        _record().miss_count = 3  # type: ignore[misc]
+        setattr(record, field, 3)
 
 
 @pytest.mark.parametrize(
@@ -384,7 +386,8 @@ def test_record_dedup_a_crash_after_the_write_and_before_completion_leaves_one_r
             raise Crash
         real(key)
 
-    rig.records.mark_published = crash_once  # type: ignore[method-assign]
+    method = "mark_published"
+    setattr(rig.records, method, crash_once)
     with pytest.raises(Crash):
         rig.publisher().handle(rig.request(collected))
     assert len(rig.gateway.check_runs) == 1

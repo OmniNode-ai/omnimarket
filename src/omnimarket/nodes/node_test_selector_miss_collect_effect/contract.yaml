@@ -90,7 +90,6 @@ event_bus:
   subscribe_topics: []
   publish_topics:
     - onex.evt.omnimarket.test-selector-collect-completed.v1
-    - onex.evt.omnimarket.test-selector-record-published.v1
 
 runtime_dispatch:
   external_trigger: true

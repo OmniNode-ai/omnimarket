@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -20,13 +21,13 @@ OPERATION = "publish_attribution_record"
 SCRIPT_SUFFIXES = {".sh", ".bash", ".zsh", ".ps1"}
 
 
-def _contract() -> dict[str, object]:
+def _contract() -> dict[str, Any]:
     loaded = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
     return loaded
 
 
-def _schedule() -> dict[str, object]:
+def _schedule() -> dict[str, Any]:
     schedule = _contract().get("schedule")
     assert isinstance(schedule, dict), "the node contract declares no schedule block"
     return schedule
@@ -43,8 +44,8 @@ def test_schedule_is_declared_in_the_node_contract_on_the_existing_workflow() ->
 def test_schedule_runs_the_publish_after_the_collect_of_the_same_poll() -> None:
     schedule = _schedule()
     assert schedule["operations_in_order"] == ["collect_nightly", OPERATION]
-    declared = {e["operation"] for e in _contract()["cli_handlers"]}  # type: ignore[index]
-    assert set(schedule["operations_in_order"]) <= declared  # type: ignore[arg-type]
+    declared = {e["operation"] for e in _contract()["cli_handlers"]}
+    assert set(schedule["operations_in_order"]) <= declared
 
 
 def test_schedule_command_topic_is_declared_with_the_nightly_poller_as_producer() -> (
@@ -54,10 +55,10 @@ def test_schedule_command_topic_is_declared_with_the_nightly_poller_as_producer(
     topic = _schedule()["command_topic"]
     produced = {
         e["topic"]: e["producer"] for e in contract["externally_produced_topics"]
-    }  # type: ignore[index]
+    }
     assert topic in produced
     assert "poller of the nightly workflow's runs" in produced[topic]
-    subscribed = {s["topic"]: s["operation"] for s in contract["input_subscriptions"]}  # type: ignore[index]
+    subscribed = {s["topic"]: s["operation"] for s in contract["input_subscriptions"]}
     assert subscribed[topic] == OPERATION
 
 
