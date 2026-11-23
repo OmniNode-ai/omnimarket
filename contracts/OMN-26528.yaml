@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-26528
+title: _apply_store_steps runs its store steps in one transaction so the unreachable-endpoint test is stable in CI
+summary: The first open of a fresh evidence store commits its tables and its one-time store steps in a few write transactions instead of one commit per step, so the store open no longer grows with the disk sync latency of the runner.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26528-store-steps-one-transaction
+  statement: The pending one-time store steps of a store are applied in one write transaction, with the per-step recheck of steps already recorded kept inside it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a test that opens a fresh evidence store and counts its commits through the SQLite file change counter fails on dev today (56 against a bound of 5) and passes after the fix, with no clock and no mock -- falsifier: `uv run pytest tests/unit/projection/test_fresh_store_open_commits.py -q --no-cov` red on origin/dev, green on the branch'
+  - id: AC2
+    statement: 'AC2: `_apply_store_steps` applies the pending one-time steps of a store in one transaction, and the per-step recheck of steps already recorded still holds, so a store with some steps recorded applies only the missing ones -- falsifier: `uv run pytest tests/unit/projection -q --no-cov -k store_steps` including a partly migrated store case'
+  - id: AC3
+    statement: 'AC3: the unreachable-endpoint test passes under injected fsync latency of 10 ms with the 5.0 s slack unchanged -- falsifier: `strace -f -e trace=fsync -e inject=fsync:delay_enter=10ms uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_cli_hang_omn13597.py -q --no-cov` on a lab host'
+  - id: AC4
+    statement: 'AC4: the pull request against dev has every required check green and the Split 20 job passes -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#<n>` shows the required contexts SUCCESS and `uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator -q --no-cov` passes'
+evidence_requirements:
+- kind: tests
+  description: The fresh store open commit count tests pass at the pushed head.
+  command: uv run pytest tests/unit/projection/test_fresh_store_open_commits.py -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26528-ac1
+  description: 'AC1: the fresh store open commit count test fails on origin/dev (assert 56 <= 5) and passes on the branch (5 commits), counted through the file change counter at header offset 24.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_fresh_store_open_commits.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26528-ac2
+  description: 'AC2: the pending steps commit together and the recheck holds; the partly recorded store case applies only the two missing steps in one commit and a second open commits nothing.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_fresh_store_open_commits.py -q --no-cov -p no:cacheprovider -k store_steps
+    cwd: .
+- id: dod-omn26528-ac3
+  description: 'hosted proxy for AC3: the unreachable-endpoint test passes at the pushed head; the injected fsync latency run needs strace on a lab host and is the unbound integration proof below.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_cli_hang_omn13597.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26528-ac4
+  description: 'hosted proxy for AC4: the delegate skill orchestrator tests pass at the pushed head; the required contexts reading is the PR watcher state read after the push and is not met by this change alone.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26528-integration-proof
+  description: the unreachable-endpoint test runs under injected fsync latency of 10 ms on a lab host at the pushed head; hosted CI cannot inject latency, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26528 --kind test -- strace -f -e trace=fsync -e inject=fsync:delay_enter=10ms uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_cli_hang_omn13597.py -q --no-cov
+    cwd: .
