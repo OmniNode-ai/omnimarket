@@ -37,7 +37,6 @@ from tests.test_omn17426_savings_aggregate_views_per_tenant import (
 
 pytestmark = pytest.mark.integration
 
-UTC = UTC
 WHEN = datetime(2026, 10, 15, 12, tzinfo=UTC)
 
 PRICED = "gpt-4o"
