@@ -11,6 +11,7 @@ from __future__ import annotations
 import itertools
 import json
 import shutil
+import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -268,3 +269,35 @@ def test_the_declared_scan_budget_leaves_room_for_the_docker_reads_inside_the_st
         2 * 60
     )  # df_command and exited_command, each bounded by the overlay's timeout_seconds
     assert budget + docker_reads < schedule.timeout_start_seconds
+
+
+def test_a_docker_command_that_times_out_is_run_once_per_reading_not_once_per_class(
+    tmp_path: Path,
+) -> None:
+    """``docker system df`` feeds three classes: a daemon slower than the timeout cost it three times, 180 s of the 600 s."""
+    paths = make_host(tmp_path)
+    overlay = write_overlay(tmp_path, overlay_document(paths))
+    calls: list[tuple[str, ...]] = []
+
+    def run_docker(command: Sequence[str], timeout: int) -> str:
+        calls.append(tuple(command))
+        raise subprocess.TimeoutExpired(list(command), timeout)
+
+    refs = ProcessReferences(directories=[], blobs=[], commands=[])
+    result = HandlerLabDiskWatermark(
+        usage=lambda _path: Usage(100 * GIB, 50 * GIB, 50 * GIB),
+        now=lambda: NOW,
+        home=tmp_path,
+        classes=HostDiskClassReader(
+            now=NOW.timestamp,
+            process_references=lambda: refs,
+            run_docker=run_docker,
+        ),
+        publisher=InMemoryHostDiskPublisher(),
+        new_id=lambda: "corr-1",
+    ).handle(_request(overlay, None))
+    assert isinstance(result.host_disk, ModelHostDiskRead)
+    docker = [c for c in result.host_disk.classes if c.class_name.startswith("docker")]
+    assert [c.status for c in docker] == ["unread"] * 4
+    assert all("TimeoutExpired" in c.unread_reason for c in docker)
+    assert calls == [("docker", "system", "df")]

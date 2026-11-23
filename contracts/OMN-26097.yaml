@@ -4,7 +4,7 @@
 schema_version: "1.0.0"
 ticket_id: OMN-26097
 title: "The disk watermark scan skips an entry that vanishes mid-scan and ends inside the unit's start timeout"
-summary: "The onex-disk-watermark user unit on h201 failed 93 of 620 runs from 2026-11-20T00:00-05:00 to 2026-11-23: 83 ended by the 600 s start timeout and 10 by exit 3, each a FileNotFoundError on a uv-cache archive-v0 entry or a worktree that another lane removed while the scan walked it (the owner read of a vanished entry raised). A class scan now skips an entry that is gone and counts it in the reading's scan_skipped result, never raising. The class scan walked every file of the 149 GB uv cache each run (median unit run 527 s of the 600 s timeout), so it now takes a budget (scan_budget_percent of timeout_start_seconds, declared in the contract) and keeps the walk of each uv-cache entry, which is content addressed and written once, keyed by inode and change time, so a later run walks only what is new and a scan that spends its budget reads as an unread class with the reason and exits 0."
+summary: "The onex-disk-watermark user unit on h201 failed 93 of 620 runs from 2026-11-20T00:00-05:00 to 2026-11-23: 83 ended by the 600 s start timeout and 10 by exit 3, each a FileNotFoundError on a uv-cache archive-v0 entry or a worktree that another lane removed while the scan walked it (the owner read of a vanished entry raised). A class scan now skips an entry that is gone and counts it in the reading's scan_skipped result, never raising. The class scan walked every file of the 149 GB uv cache each run (median unit run 527 s of the 600 s timeout), so it now takes a budget (scan_budget_percent of timeout_start_seconds, declared in the contract) and keeps the walk of each uv-cache entry, which is content addressed and written once, keyed by inode and change time, so a later run walks only what is new and a scan that spends its budget reads as an unread class with the reason and exits 0. A docker command that fails or times out was run again by each of the classes that read its output (docker system df feeds three, and it timed out at 60 s in the first run read after install), so its failure is now kept and run once per reading."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -15,10 +15,10 @@ requirements:
       - id: AC6
         statement: "AC6: a uv-cache entry or worktree removed between the listing and its read is skipped and counted in scan_skipped, the class stays read, and the unit command exits 0 -- falsifier: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_vanishing_entry_omn26097.py -q --no-cov -k 'vanish or exits_zero'; the tests fail at the merge base with FileNotFoundError from the owner read"
   - id: req-omn26097-wmark-budget
-    statement: "The class scan stops at its budget, keeps the walks of immutable uv-cache entries, and the next run walks only the entries not yet kept."
+    statement: "The class scan stops at its budget, keeps the walks of immutable uv-cache entries, the next run walks only the entries not yet kept, and a failing docker command is run once per reading."
     acceptance:
       - id: AC7
-        statement: "AC7: a scan that spends its budget reads the uv cache as unread with the reason and keeps the walks it made, the next run walks only the other entries, and the declared budget plus the two docker reads is inside the start timeout -- falsifier: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_vanishing_entry_omn26097.py -q --no-cov -k 'budget or walked or kept or declared_scan_budget'"
+        statement: "AC7: a scan that spends its budget reads the uv cache as unread with the reason and keeps the walks it made, the next run walks only the other entries, a docker command that times out is run once per reading and not once per class, and the declared budget plus the two docker reads is inside the start timeout -- falsifier: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_vanishing_entry_omn26097.py -q --no-cov -k 'budget or walked or kept or declared_scan_budget or docker_command'"
 evidence_requirements:
   - kind: tests
     description: "The watermark node's tests pass at the pushed head."
@@ -44,7 +44,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: >-
-          uv run --frozen pytest tests/nodes/node_lab_disk_watermark_effect/test_vanishing_entry_omn26097.py -q --no-cov -n 0 -p no:randomly -k 'budget or walked or kept or declared_scan_budget'
+          uv run --frozen pytest tests/nodes/node_lab_disk_watermark_effect/test_vanishing_entry_omn26097.py -q --no-cov -n 0 -p no:randomly -k 'budget or walked or kept or declared_scan_budget or docker_command'
         cwd: .
   - id: dod-omn26097-wmark-integration-proof
     description: "Local Done gate only, so it binds no criterion here: after the branch is installed on h201 through the declared installer, the unit's newest run finished and its reading is read back from the reading file."

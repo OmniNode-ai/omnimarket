@@ -204,7 +204,7 @@ class HostDiskClassReader:
         self.process_references = process_references
         self.run_docker = run_docker if run_docker is not None else _default_run_docker
         self.monotonic = monotonic
-        self._docker_output: dict[tuple[str, ...], str] = {}
+        self._docker_output: dict[tuple[str, ...], str | BaseException] = {}
         self._skipped: dict[str, int] = {}
         self._deadline: float | None = None
         self._entry_cache_file: Path | None = None
@@ -215,11 +215,21 @@ class HostDiskClassReader:
         return tuple(sorted(self._skipped.items()))
 
     def _docker_text(self, command: Sequence[str], timeout: int) -> str:
-        """One docker command is run once per reading, however many classes read its output."""
+        """One docker command is run once per reading, however many classes read its output, and so is its failure.
+
+        A command that timed out was run again by each class that reads it (three for ``docker system df``), so a
+        daemon that answers in more than the command's timeout cost that timeout three times in one reading.
+        """
         key = tuple(command)
         if key not in self._docker_output:
-            self._docker_output[key] = self.run_docker(command, timeout)
-        return self._docker_output[key]
+            try:
+                self._docker_output[key] = self.run_docker(command, timeout)
+            except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
+                self._docker_output[key] = exc
+        outcome = self._docker_output[key]
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
 
     def read_classes(
         self,
