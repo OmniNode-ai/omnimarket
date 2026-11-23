@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
-import fcntl
+import importlib
 import json
 import os
 import stat
@@ -28,6 +28,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from functools import cache
 from pathlib import Path
+from types import ModuleType
 from typing import Any, NamedTuple
 
 import yaml
@@ -46,6 +47,17 @@ from omnimarket.models.model_catalog_entry import (
     ModelStatus,
 )
 from omnimarket.models.model_local_server_details import ModelLocalServerDetails
+
+
+def _posix_locks() -> ModuleType | None:
+    """The POSIX file-lock module, or None where there is none (Windows)."""
+    try:
+        return importlib.import_module("fcntl")
+    except ImportError:
+        return None
+
+
+fcntl = _posix_locks()
 
 _CONFIG_PATH = Path(__file__).resolve().parents[1] / "configs" / "model_catalog.yaml"
 _PRICE_LIST_DIR = Path(__file__).resolve().parents[1] / "data" / "model_prices"
@@ -350,7 +362,8 @@ def pricing_models_dev_index() -> ModelsDevIndex:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        if fcntl is not None:
+            fcntl.flock(fd, fcntl.LOCK_EX)
     except OSError:
         os.close(fd)
         raise
@@ -379,8 +392,9 @@ def pricing_models_dev_index() -> ModelsDevIndex:
             _clear_failed(home)
         return index
     finally:
-        with contextlib.suppress(OSError):
-            fcntl.flock(fd, fcntl.LOCK_UN)
+        if fcntl is not None:
+            with contextlib.suppress(OSError):
+                fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
 
 
