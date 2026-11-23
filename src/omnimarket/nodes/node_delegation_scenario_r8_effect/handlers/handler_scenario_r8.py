@@ -167,6 +167,7 @@ class HandlerScenarioR8(ReadinessScenarioBase):
         trigger: EnumScenarioTrigger = EnumScenarioTrigger.SCHEDULE,
         clock: Clock = lambda: datetime.now(UTC),
         inputs_path: Path | None = None,
+        check_dev_ready: bool = False,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -181,6 +182,7 @@ class HandlerScenarioR8(ReadinessScenarioBase):
             transport_factory=lambda: ScriptedLegTransport(),
             trigger=trigger,
             clock=clock,
+            check_dev_ready=check_dev_ready,
         )
         self._inputs_path = inputs_path or NODE_DIR / runtime.inputs_relpath
         self._lane_factory = lane_factory
@@ -403,6 +405,7 @@ def build_runner(
     env: Mapping[str, str] | None = None,
     *,
     trigger: EnumScenarioTrigger = EnumScenarioTrigger.SCHEDULE,
+    check_dev_ready: bool = False,
     record: Path | None = None,
     settings_store: ProtocolSettingStore | None = None,
     settings_home: Path | None = None,
@@ -455,4 +458,5 @@ def build_runner(
         terminal_topic=load_terminal_topic(CONTRACT_PATH),
         lane_factory=lane_factory,
         trigger=trigger,
+        check_dev_ready=check_dev_ready,
     )

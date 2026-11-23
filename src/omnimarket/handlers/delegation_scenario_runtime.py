@@ -31,6 +31,10 @@ from omnimarket.nodes.node_reading_writer_effect.protocols import (
 LedgerAppender = Callable[[str], None]
 
 
+class ScenarioLedgerQueuedError(RuntimeError):
+    """The append command durably queued the row for replay."""
+
+
 class ProtocolScenarioEventSink(Protocol):
     def emit(self, topic: str, payload: Mapping[str, object]) -> None: ...
 
@@ -144,9 +148,10 @@ def bus_appender(
     def append(row: str) -> None:
         outcome = appender.append(row, new_id())
         if not outcome.ok:
-            raise RuntimeError(
-                f"the ledger append was {outcome.status}: {outcome.message[:300]}"
-            )
+            message = f"the ledger append was {outcome.status}: {outcome.message[:300]}"
+            if outcome.status == "error" and outcome.message == "receipt-status-queued":
+                raise ScenarioLedgerQueuedError(message)
+            raise RuntimeError(message)
 
     return append
 
