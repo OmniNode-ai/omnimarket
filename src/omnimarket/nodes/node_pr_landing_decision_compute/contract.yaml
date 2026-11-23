@@ -179,6 +179,25 @@ config:
   exhaustion_owner:
     kind: lane
     name: landing-controller
+# OMN-24484: the lease arithmetic (allocation, release, revoke, the discard of a worker result) is
+# node_lease_receipt_reducer's, called in process through the adapter. The kind and the caller name are the
+# reducer overlay's entry for this node; the holder prefix names the worker of a subject (landing identifies a
+# holder only by its lease number, so the holder run of a subject is the prefix and the subject).
+lease_reducer:
+  kind: "landing"
+  caller: "landing-controller"
+  holder_prefix: "worker:"
+  # The reducer reasons that mean the worker's result is no longer wanted (the lease was revoked, replaced,
+  # released or already answered): the decision discards the result. Every other refusal is a configuration or
+  # state error and fails the tick with the typed reason.
+  discard_reasons:
+    - "revoked-epoch"
+    - "stale-epoch"
+    - "unknown-epoch"
+    - "lease-released"
+    - "already-recorded"
+    - "wrong-subject"
+    - "holder-run-mismatch"
 # OMN-22919, rebuild plan 4.1 join J8 (piece 8 to piece 9): the decision reads a lab-bound check run on the exact head
 # and only a check carrying the current attempt's identity counts. The join handler answers piece 9's chain on the
 # floor's emission contract under the correlation id piece 8's chain carries: a typed `upstream_` refusal that never
