@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -89,7 +89,9 @@ def test_submit_published_does_not_overwrite_terminal() -> None:
 async def test_store_applies_single_writable_row() -> None:
     wid = uuid4()
     conn = _Conn([{"workflow_id": wid, "status": "published"}])
-    store = store_postgres.PostgresGatewayTerminalStore(_Pool(conn))  # type: ignore[arg-type]
+    store = store_postgres.PostgresGatewayTerminalStore(
+        cast("store_postgres.GatewayTerminalPostgresPool", _Pool(conn))
+    )
     assert await store.apply_terminal(_update()) == (Store.APPLIED, wid)
     assert len(conn.statements) == 2
 
@@ -106,13 +108,17 @@ async def test_store_decisions_write_nothing(
     lookup: list[dict[str, Any]], expected: Store
 ) -> None:
     conn = _Conn(lookup)
-    store = store_postgres.PostgresGatewayTerminalStore(_Pool(conn))  # type: ignore[arg-type]
+    store = store_postgres.PostgresGatewayTerminalStore(
+        cast("store_postgres.GatewayTerminalPostgresPool", _Pool(conn))
+    )
     assert (await store.apply_terminal(_update()))[0] is expected
     assert len(conn.statements) == 1  # the lookup only
 
 
 async def test_store_raises_when_update_does_not_change_exactly_one_row() -> None:
     conn = _Conn([{"workflow_id": uuid4(), "status": "published"}], applied=0)
-    store = store_postgres.PostgresGatewayTerminalStore(_Pool(conn))  # type: ignore[arg-type]
+    store = store_postgres.PostgresGatewayTerminalStore(
+        cast("store_postgres.GatewayTerminalPostgresPool", _Pool(conn))
+    )
     with pytest.raises(GatewayTerminalStoreError):
         await store.apply_terminal(_update())

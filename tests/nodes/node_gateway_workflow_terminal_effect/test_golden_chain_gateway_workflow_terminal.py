@@ -180,6 +180,27 @@ async def test_malformed_payload_is_dead_lettered(bad: Any) -> None:
     assert dlq.records[0][0] == _DLQ
 
 
+_MALFORMED_DLQ_TOPIC = "onex.dlq.omnimarket.gateway-workflow-terminal-malformed.v1"
+
+
+async def test_malformed_terminal_is_routed_to_the_declared_malformed_dead_letter_topic() -> (
+    None
+):
+    contract = yaml.safe_load((_NODE / "contract.yaml").read_text("utf-8"))
+    handler, store, dlq = _make()
+    result = await handler.handle(_env(correlation_id="not-a-uuid"))
+    assert result.outcome is Outcome.DEAD_LETTERED
+    assert result.dead_letter_reason is Reason.MALFORMED_PAYLOAD
+    assert store.calls == 0
+    assert store.rows[0].status == "published"
+    ((topic, _key, record),) = dlq.records
+    assert topic == _DLQ
+    assert topic == _MALFORMED_DLQ_TOPIC
+    assert topic in contract["event_bus"]["dlq_topics"]
+    assert record["reason"] == Reason.MALFORMED_PAYLOAD.value
+    assert "not-a-uuid" not in repr(record)
+
+
 @pytest.mark.parametrize("model", [_DROP, "", "   ", 5])
 async def test_missing_model_name_is_dead_lettered(model: Any) -> None:
     handler, store, dlq = _make()
@@ -369,8 +390,8 @@ def test_contract_declares_topics_and_dead_letter() -> None:
     declared = set(contract["event_bus"]["subscribe_topics"])
     assert declared == set(_ROUTES)
     assert len(declared) == 2
-    assert _DLQ in contract["dlq_topics"]
-    assert _DLQ in contract["event_bus"]["publish_topics"]
+    assert _DLQ in contract["event_bus"]["dlq_topics"]
+    assert _DLQ not in contract["event_bus"]["publish_topics"]
     table = contract["db_io"]["db_tables"][0]
     assert table["name"] == "gateway_workflows"
     assert table["access"] == "read_write"

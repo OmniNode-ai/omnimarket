@@ -13,12 +13,13 @@ import asyncio
 import os
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote_plus
 from uuid import UUID, uuid4
 
 import asyncpg
 import pytest
+from omnibase_spi.protocols.services import ProtocolSecretStore
 
 from omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.store_postgres import (
     GatewayTerminalPostgresPool,
@@ -88,7 +89,7 @@ async def database() -> AsyncIterator[str]:
     except (
         OSError,
         asyncpg.PostgresError,
-    ) as exc:  # pragma: no cover - infra-dependent
+    ) as exc:
         pytest.skip(f"no reachable Postgres for terminal writer proof: {exc}")
     try:
         await admin.execute(f'CREATE DATABASE "{name}"')
@@ -110,7 +111,7 @@ def _pool(dsn: str) -> GatewayTerminalPostgresPool:
         dsn_secret="unused",
         max_size=4,
         query_timeout_seconds=10.0,
-        secret_store=_FixedSecretStore(dsn),  # type: ignore[arg-type]
+        secret_store=cast(ProtocolSecretStore, _FixedSecretStore(dsn)),
     )
 
 
@@ -297,7 +298,7 @@ async def test_real_postgres_submit_published_does_not_overwrite_terminal(
         dsn_secret="unused",
         max_size=2,
         query_timeout_seconds=10.0,
-        secret_store=_FixedSecretStore(database),  # type: ignore[arg-type]
+        secret_store=cast(ProtocolSecretStore, _FixedSecretStore(database)),
     )
     gateway_store = PostgresWorkflowStore(
         pool=gateway_pool,

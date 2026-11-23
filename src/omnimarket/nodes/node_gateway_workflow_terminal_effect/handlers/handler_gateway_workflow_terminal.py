@@ -81,7 +81,7 @@ def load_contract_routes(
     routes: dict[str, Literal["completed", "failed"]] = {}
     for entry in document["handler_routing"]["handlers"]:
         routes[str(entry["topic"])] = _OPERATION_STATUS[str(entry["operation"])]
-    return routes, str(document["dlq_topics"][0])
+    return routes, str(document["event_bus"]["dlq_topics"][0])
 
 
 def _as_uuid(value: Any) -> UUID:
