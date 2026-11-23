@@ -7,6 +7,7 @@ The adjacency map models live here; ``adapters/adjacency_file.py`` loads the YAM
 
 from __future__ import annotations
 
+from enum import StrEnum
 from fnmatch import fnmatchcase
 from typing import Annotated
 
@@ -15,6 +16,16 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record import (
     EnumFullSuiteReason,
 )
+
+
+class EnumClosurePyprojectRule(StrEnum):
+    """How a ``pyproject.toml`` or ``uv.lock`` change combines with the file-level closure."""
+
+    #: Any change to a declared project or lock file takes the full suite (the closure reads neither).
+    FULL_SUITE = "full_suite"
+    #: The closure runs and the section rule adds its tests to the selection; an escalation of the
+    #: section rule (a key off the allowlist, an unread diff, a lock change beyond the version line) wins.
+    SEEDS = "seeds"
 
 
 class ModelAdjacencyEntry(BaseModel):
@@ -171,6 +182,17 @@ class ModelAdjacencyMap(BaseModel):
 
     A file that opens ``pyproject.toml`` or reads entry-point metadata (``importlib.metadata``,
     ``entry_points(``) makes every test that imports it, transitively, a reader.
+    """
+
+    closure_stage_pyproject_rule: EnumClosurePyprojectRule = (
+        EnumClosurePyprojectRule.FULL_SUITE
+    )
+    """The rule for a project or lock file change at or above the policy's ``file_level_closure_stage``.
+
+    The file-level closure reads no ``pyproject.toml``, so with ``pyproject_section_selection_enabled`` on
+    the file would reach the closure as a file with no source. ``seeds`` (option b of the OMN-26487 choice) runs
+    the closure and unions the section rule's tests, the allowlist ``pyproject_narrowable_keys`` and the
+    lock's version-line rule included; ``full_suite``, the default for an absent entry, escalates the change.
     """
 
     def effective_test_infrastructure_paths(self) -> list[str]:
