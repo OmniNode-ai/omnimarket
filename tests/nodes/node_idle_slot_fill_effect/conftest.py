@@ -11,6 +11,7 @@ import pytest
 from omnimarket.nodes.node_idle_slot_fill_effect.handlers import (
     handler_idle_slot_fill,
     handler_ruling_recovery,
+    ruling_history,
 )
 from tests.helpers.fake_ledger_rows import FakeLedgerRows
 from tests.nodes.node_idle_slot_fill_effect.overlay_fixture import ENV
@@ -22,7 +23,7 @@ def _overlay_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     # The throughput effect now reads ruling history every tick, through the ledger reader node.
     # Older fill scenarios have no ruled work; no scenario spawns the reader or consults a ledger file.
     monkeypatch.setattr(
-        handler_ruling_recovery,
+        ruling_history,
         "SubprocessLedgerRowsReader",
         lambda _environ, **_kw: FakeLedgerRows(),
     )

@@ -18,12 +18,16 @@ from pathlib import Path
 from omnimarket.handlers.adapter_work_ledger_rows_reader import (
     SubprocessLedgerRowsReader,
 )
-from omnimarket.protocols.protocol_ledger_rows_reader import ProtocolLedgerRowsReader
+from omnimarket.protocols.protocol_ledger_rows_reader import (
+    LedgerReadError,
+    ProtocolLedgerRowsReader,
+)
 
 NEEDLES = ("| RULING |", "lane=operator-capture", "closes-ask=")
 #: The overlay's moved reader that answers the capture's window, and the reader node's 30 day bound.
 READER = "operator-capture"
 WINDOW_HOURS = 720
+Reader = ProtocolLedgerRowsReader | None
 
 
 def bus_relevant_rows(
@@ -52,10 +56,34 @@ def relevant_rows(ledger_path: Path, *, archives: bool = True) -> tuple[str, ...
     return tuple(rows)
 
 
+def rows_for(ledger_path: Path | None, reader: Reader = None) -> tuple[str, ...]:
+    """The serve process's own ledger file when it names one, else the reader node's window.
+
+    An unread window raises ``OSError``, as an unreadable file does, so a caller answers unknown, never none.
+    """
+    try:
+        if ledger_path is not None:
+            return relevant_rows(ledger_path)
+        return bus_relevant_rows(reader)
+    except LedgerReadError as exc:
+        raise OSError(str(exc)) from exc
+
+
+def prior_rows(ledger_path: Path | None, reader: Reader = None) -> tuple[str, ...]:
+    """The rows a drift check compares against; unreadable ones leave nothing to compare with."""
+    try:
+        return rows_for(ledger_path, reader)
+    except OSError:
+        return ()
+
+
 __all__ = [
     "NEEDLES",
     "READER",
     "WINDOW_HOURS",
+    "Reader",
     "bus_relevant_rows",
+    "prior_rows",
     "relevant_rows",
+    "rows_for",
 ]

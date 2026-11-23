@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from omnimarket.nodes.node_idle_slot_fill_effect.handlers import (
-    handler_ruling_recovery,
+    ruling_history,
 )
 from omnimarket.nodes.node_idle_slot_fill_effect.handlers.handler_ruling_recovery import (
     HandlerRulingRecovery,
@@ -57,8 +57,8 @@ def test_golden_the_history_comes_from_the_reader_port_with_no_ledger_file(
     result = _handle(tmp_path, reader)
     assert reader.calls == [
         (
-            handler_ruling_recovery.RULING_HISTORY_READER,
-            handler_ruling_recovery.RULING_HISTORY_WINDOW_HOURS,
+            ruling_history.RULING_HISTORY_READER,
+            ruling_history.RULING_HISTORY_WINDOW_HOURS,
             (),
         )
     ]
@@ -87,7 +87,7 @@ def test_the_default_reader_is_the_subprocess_reader_built_from_the_call_env(
         built.append(environ)
         return fake
 
-    monkeypatch.setattr(handler_ruling_recovery, "SubprocessLedgerRowsReader", build)
+    monkeypatch.setattr(ruling_history, "SubprocessLedgerRowsReader", build)
     env = _env(tmp_path)
     result = HandlerRulingRecovery(
         lambda _check: RuntimeError("fixture unread")

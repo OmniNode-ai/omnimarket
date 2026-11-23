@@ -12,34 +12,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from omnimarket.handlers.adapter_work_ledger_rows_reader import (
-    SubprocessLedgerRowsReader,
-)
-from omnimarket.protocols.protocol_ledger_rows_reader import (
-    LedgerReadError,
-    ProtocolLedgerRowsReader,
-)
+from omnimarket.protocols.protocol_ledger_rows_reader import ProtocolLedgerRowsReader
 
 from ..models.model_ruling_recovery import ModelRulingRecoveryResult
 from .ruling_artifacts import local_artifacts
+from .ruling_history import read_ruling_rows
 from .ruling_live_checks import Finding, evaluate_check, packaged_checks, read_check
 from .ruling_owed import owed_findings
-from .ruling_recovery import detect_relaunches, parse_rows
-
-#: The overlay's moved reader that answers the ruling history; the node's 30 day window, as the fixer-hold read.
-RULING_HISTORY_READER = "idle-fill-ruling-recovery"
-RULING_HISTORY_WINDOW_HOURS = 720
-
-
-def read_ruling_rows(reader: ProtocolLedgerRowsReader) -> list[dict[str, str]]:
-    """The ruling history of the ledger reader node's 720 h window; an unread history raises LedgerReadError."""
-    return parse_rows(
-        "\n".join(
-            reader.rows(
-                reader=RULING_HISTORY_READER, window_hours=RULING_HISTORY_WINDOW_HOURS
-            )
-        )
-    )
+from .ruling_recovery import detect_relaunches
 
 
 def _briefs(rows: list[dict[str, str]], roots: list[Path]) -> dict[str, str]:
@@ -136,10 +116,8 @@ class HandlerRulingRecovery:
         rows: list[dict[str, str]] = []
         registry = environ.get("ONEX_REGISTRY_ROOT") or environ.get("OMNI_HOME")
         try:
-            rows = read_ruling_rows(
-                self._ledger_reader or SubprocessLedgerRowsReader(environ)
-            )
-        except (LedgerReadError, ValueError) as exc:
+            rows = read_ruling_rows(environ, self._ledger_reader)
+        except ValueError as exc:
             found.append(
                 (
                     "unknown",

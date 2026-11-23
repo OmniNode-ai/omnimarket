@@ -2,9 +2,8 @@
 # SPDX-License-Identifier: MIT
 """HandlerCaptureDigest: the open-ask digest and the attention push (OMN-20906).
 
-Reads the ledger's capture and closure rows, asks the compute node which asks are open, and
-returns the digest, with the count of prompts still waiting in the local inbox (a non-zero count
-means a capture has not reached the ledger yet).
+Reads the capture and closure rows (the ledger reader node's window), asks the compute node which asks are open, and
+returns the digest with the count of prompts still waiting in the local inbox (non-zero: not yet in the ledger).
 
 With ``push_overdue`` it sends one attention push for the asks waiting longer than a day, at
 most once per ask per day. The push opens with ``DECISION:``, as the attention-only push rule
@@ -25,35 +24,22 @@ from omnimarket.nodes.node_operator_capture_compute.handlers.handler_open_asks i
 )
 from omnimarket.nodes.node_operator_capture_effect.handlers import capture_store
 from omnimarket.nodes.node_operator_capture_effect.handlers.ledger_read import (
-    bus_relevant_rows,
-    relevant_rows,
-)
-from omnimarket.protocols.protocol_ledger_rows_reader import (
-    LedgerReadError,
-    ProtocolLedgerRowsReader,
+    Reader,
+    rows_for,
 )
 
 PushSender = Callable[[str], tuple[bool, str]]
 
 
 class HandlerCaptureDigest:
-    def __init__(
-        self,
-        push: PushSender | None = None,
-        ledger_reader: ProtocolLedgerRowsReader | None = None,
-    ) -> None:
-        self._push = push
-        self._ledger_reader = ledger_reader
+    def __init__(self, push: PushSender | None = None, reader: Reader = None) -> None:
+        self._push, self._reader = push, reader
 
     def handle(self, request: ModelCaptureDigestRequest) -> ModelCaptureDigestResult:
         pending = len(capture_store.pending(request.store_dir))
         try:
-            rows = (
-                relevant_rows(request.ledger_path)
-                if request.ledger_path is not None
-                else bus_relevant_rows(self._ledger_reader)
-            )
-        except (OSError, LedgerReadError) as exc:
+            rows = rows_for(request.ledger_path, self._reader)
+        except OSError as exc:
             return ModelCaptureDigestResult(
                 digest=f"Open operator asks: unknown (the ledger could not be read: {exc}).",
                 open_asks=0,

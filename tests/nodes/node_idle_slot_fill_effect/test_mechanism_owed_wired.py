@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from omnimarket.nodes.node_idle_slot_fill_effect.handlers import (
-    handler_ruling_recovery,
+    ruling_history,
 )
 from omnimarket.nodes.node_idle_slot_fill_effect.handlers.handler_idle_slot_fill import (
     HandlerLabFill,
@@ -40,7 +40,7 @@ def tick(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str, now: str
 ) -> list[tuple[str, str, str, str]]:
     monkeypatch.setattr(
-        handler_ruling_recovery,
+        ruling_history,
         "SubprocessLedgerRowsReader",
         lambda _environ, **_kw: FakeLedgerRows(text.splitlines()),
     )

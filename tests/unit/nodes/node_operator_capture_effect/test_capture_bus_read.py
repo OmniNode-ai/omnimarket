@@ -74,7 +74,7 @@ def test_golden_the_digest_folds_the_asks_of_the_reader_port_with_no_ledger_file
     tmp_path: Path,
 ) -> None:
     reader = FakeLedgerRows([RULING, ASK, NOISE])
-    result = HandlerCaptureDigest(ledger_reader=reader).handle(
+    result = HandlerCaptureDigest(reader=reader).handle(
         ModelCaptureDigestRequest(store_dir=tmp_path / "store", now=NOW)
     )
     assert reader.calls == [(ledger_read.READER, ledger_read.WINDOW_HOURS, ())]
@@ -86,7 +86,7 @@ def test_error_unread_a_refusing_reader_makes_the_digest_unknown_never_zero_asks
     tmp_path: Path,
 ) -> None:
     result = HandlerCaptureDigest(
-        ledger_reader=FakeLedgerRows([ASK], error="reader not moved")
+        reader=FakeLedgerRows([ASK], error="reader not moved")
     ).handle(ModelCaptureDigestRequest(store_dir=tmp_path / "store", now=NOW))
     assert result.digest.startswith("Open operator asks: unknown")
     assert "reader not moved" in result.digest
@@ -115,9 +115,9 @@ def test_golden_the_drift_prior_comes_from_the_reader_port_with_no_ledger_file(
         return True, "ok"
 
     reader = FakeLedgerRows([RULING, NOISE])
-    result = HandlerCaptureProcess(
-        _delegate, append, now=NOW, ledger_reader=reader
-    ).handle(ModelCaptureProcessRequest(store_dir=root))
+    result = HandlerCaptureProcess(_delegate, append, now=NOW, reader=reader).handle(
+        ModelCaptureProcessRequest(store_dir=root)
+    )
     assert reader.calls == [(ledger_read.READER, ledger_read.WINDOW_HOURS, ())]
     assert result.rows_appended == 1
     assert "prior=2026-09-22T20:35:26Z" in rows[0]
