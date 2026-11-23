@@ -49,6 +49,8 @@ pytestmark = pytest.mark.unit
 
 HARNESS_BACKEND = "harness-claude-glm-flash"
 LAB_BACKEND = "lab-qwen"
+HARNESS_COMMAND_TOPIC = "onex.cmd.omnimarket.delegation-harness-execute.v1"
+HARNESS_COMPLETED_TOPIC = "onex.evt.omnimarket.delegation-harness-completed.v1"
 
 
 def _topics() -> tuple[str, str]:
@@ -185,6 +187,7 @@ async def test_harness_pin_is_published_to_the_harness_execute_topic() -> None:
 
     topics = [topic for topic, _ in bus.published]
     assert topics == [command]
+    assert topics == [HARNESS_COMMAND_TOPIC]
     request = ModelHarnessBackendCallRequest.model_validate(
         bus.published[0][1]["payload"]
     )
@@ -288,7 +291,10 @@ def test_the_harness_execute_topic_has_a_declared_producer() -> None:
         .joinpath("contract.yaml")
         .read_text()
     )
-    command, _ = _topics()
+    command, completed = _topics()
+    assert command == HARNESS_COMMAND_TOPIC
+    assert completed == HARNESS_COMPLETED_TOPIC
+    assert HARNESS_COMMAND_TOPIC in producer["event_bus"]["publish_topics"]
     assert command in producer["event_bus"]["publish_topics"]
     assert command in consumer["event_bus"]["subscribe_topics"]
     declared = {
