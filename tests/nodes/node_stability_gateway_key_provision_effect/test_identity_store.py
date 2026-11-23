@@ -13,7 +13,7 @@ import asyncio
 import hashlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
@@ -114,7 +114,7 @@ class _Transaction:
 
 
 def _store(table: _KeyTable) -> TenantIdentityPostgres:
-    return TenantIdentityPostgres(pool=table)  # type: ignore[arg-type]
+    return TenantIdentityPostgres(pool=cast(Any, table))
 
 
 def test_first_insert_creates_and_the_gateway_resolves_the_plaintext_key() -> None:
@@ -128,9 +128,9 @@ def test_first_insert_creates_and_the_gateway_resolves_the_plaintext_key() -> No
         is EnumApiKeyEnsure.CREATED
     )
     identity = PostgresApiKeyTenantIdentity(
-        pool=table,
+        pool=cast(Any, table),
         header="x-api-key",
-        prefix="onxk_",  # type: ignore[arg-type]
+        prefix="onxk_",
     )
     resolved = asyncio.run(identity.resolve({"x-api-key": KEY_VALUE}))
     assert resolved is not None
@@ -144,9 +144,9 @@ def test_failing_control_a_key_stored_under_another_scheme_does_not_resolve() ->
         _store(table).ensure_api_key(tenant_id=TENANT, name="k", key_hash=wrong)
     )
     identity = PostgresApiKeyTenantIdentity(
-        pool=table,
+        pool=cast(Any, table),
         header="x-api-key",
-        prefix="onxk_",  # type: ignore[arg-type]
+        prefix="onxk_",
     )
     assert asyncio.run(identity.resolve({"x-api-key": KEY_VALUE})) is None
 

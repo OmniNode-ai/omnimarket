@@ -23,6 +23,7 @@ from omnimarket.nodes.node_stability_gateway_key_provision_effect.handlers.handl
 from omnimarket.nodes.node_stability_gateway_key_provision_effect.models.model_stability_gateway_key_provision import (
     EnumStabilityKeyOutcome,
     ModelStabilityKeyProvisionCommand,
+    ModelStabilityKeyProvisionResult,
 )
 
 from .fakes import (
@@ -65,7 +66,7 @@ def _build(overlay_lane: str = "stability", contract_path: Path | None = None) -
     return _Rig(handler, generator, settings, identity)
 
 
-def _run(rig: _Rig, lane: str):  # type: ignore[no-untyped-def]
+def _run(rig: _Rig, lane: str) -> ModelStabilityKeyProvisionResult:
     return asyncio.run(rig.handler.handle(ModelStabilityKeyProvisionCommand(lane=lane)))
 
 
