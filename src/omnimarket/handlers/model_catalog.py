@@ -344,7 +344,9 @@ def pricing_models_dev_index() -> ModelsDevIndex:
             error="models.dev read failed recently; not read again yet",
         )
 
-    # Imported here: fcntl is absent on Windows, and setup must still load there.
+    # POSIX file locks are taken only here, on a read that needs the lock, so a
+    # native Windows client importing this module still reaches the setup
+    # preflight's WSL 2 remedy instead of failing on the import.
     import fcntl
 
     lock_path = _read_lock_path(home)
