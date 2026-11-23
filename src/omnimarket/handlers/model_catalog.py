@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import importlib
 import json
 import os
 import stat
@@ -27,15 +28,11 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from functools import cache
 from pathlib import Path
+from types import ModuleType
 from typing import Any, NamedTuple
 
 import yaml
 from pydantic import SecretStr
-
-try:
-    import fcntl
-except ImportError:  # no Unix locks (Windows): the models.dev read goes unlocked
-    fcntl = None  # type: ignore[assignment]
 
 from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.handlers.routing.byok_model_listing import (
@@ -50,6 +47,12 @@ from omnimarket.models.model_catalog_entry import (
     ModelStatus,
 )
 from omnimarket.models.model_local_server_details import ModelLocalServerDetails
+
+fcntl: ModuleType | None
+try:
+    fcntl = importlib.import_module("fcntl")
+except ImportError:  # no Unix locks (Windows): the models.dev read goes unlocked
+    fcntl = None
 
 _CONFIG_PATH = Path(__file__).resolve().parents[1] / "configs" / "model_catalog.yaml"
 _PRICE_LIST_DIR = Path(__file__).resolve().parents[1] / "data" / "model_prices"
