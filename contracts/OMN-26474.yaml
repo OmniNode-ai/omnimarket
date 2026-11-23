@@ -53,7 +53,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: command
-    check_value: "! git grep -n -E 'plaintext|onxk_' -- src/omnimarket/nodes/node_tenant_api_key_effect"
+    check_value: "test -f src/omnimarket/nodes/node_tenant_api_key_effect/contract.yaml && ! git grep -n -E 'plaintext|onxk_' -- src/omnimarket/nodes/node_tenant_api_key_effect"
     cwd: .
 - id: dod-omn26474-ac3-tests
   description: 'AC3: the coverage gate tests of OMN-24005 pass and the node contract adds no use without a declared grant.'
@@ -71,7 +71,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: command
-    check_value: uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref origin/dev
+    check_value: test -f src/omnimarket/nodes/node_tenant_api_key_effect/contract.yaml && uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref origin/dev
     cwd: .
 - id: dod-omn26474-ac4
   description: 'AC4: register dedups by the active-name index and the digest, and the two-connection test shows one insert and one already_registered.'
