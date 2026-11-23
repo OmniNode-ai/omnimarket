@@ -177,12 +177,13 @@ def test_after_a_healthy_finish_the_next_release_waits_for_the_interval_and_heal
     )  # health bound is inside the interval in this policy
 
 
-def test_an_unhealthy_finish_holds_until_the_failed_roll_release_bound(
+def test_an_unhealthy_finish_holds_until_the_failed_roll_release_bound_from_the_roll_start(
     gate: Gate,
 ) -> None:
     held = hold_three(gate)
     gate.clock.advance(WINDOW)
     gate.tick.handle(a_tick(gate))
+    started = gate.clock.now
     gate.hold.handle(command(number=9, age_seconds=WINDOW))
     gate.clock.advance(60)
     finished = gate.clock.now
@@ -199,8 +200,10 @@ def test_an_unhealthy_finish_holds_until_the_failed_roll_release_bound(
     out = gate.tick.handle(a_tick(gate))
     (decision,) = decisions(out)
     assert decision.hold_reason == "previous_roll_not_healthy"
-    assert decision.hold_until == finished + timedelta(seconds=FAILED_RELEASE)
-    gate.clock.now = finished + timedelta(seconds=FAILED_RELEASE)
+    # the failed-roll hold is counted from the roll's start, not from its finish
+    assert decision.hold_until == started + timedelta(seconds=FAILED_RELEASE)
+    assert finished < decision.hold_until
+    gate.clock.now = started + timedelta(seconds=FAILED_RELEASE)
     assert len(released(gate.tick.handle(a_tick(gate)))) == 1
 
 
@@ -356,12 +359,13 @@ def test_a_roll_the_earlier_deadline_code_ended_with_health_unknown_is_abandoned
     assert abandoned.command_correlation_id == last.job_id
 
 
-def test_an_unhealthy_finished_roll_still_waits_the_failed_roll_bound(
+def test_an_unhealthy_finished_roll_still_waits_the_failed_roll_bound_from_its_start(
     gate: Gate,
 ) -> None:
     held = hold_three(gate)
     gate.clock.advance(WINDOW)
     gate.tick.handle(a_tick(gate))
+    started = gate.clock.now
     gate.clock.advance(60)
     gate.completed.handle(
         completed(
@@ -370,7 +374,6 @@ def test_an_unhealthy_finished_roll_still_waits_the_failed_roll_bound(
             status=EnumRedeployStatus.FAILED,
         )
     )
-    finished = gate.clock.now
     gate.hold.handle(command(number=9, age_seconds=WINDOW))
     gate.clock.advance(DEADLINE)
     out = gate.tick.handle(a_tick(gate))
@@ -378,7 +381,7 @@ def test_an_unhealthy_finished_roll_still_waits_the_failed_roll_bound(
     assert gate.store.load().abandoned == ()
     (decision,) = decisions(out)
     assert decision.hold_reason == "previous_roll_not_healthy"
-    assert decision.hold_until == finished + timedelta(seconds=FAILED_RELEASE)
+    assert decision.hold_until == started + timedelta(seconds=FAILED_RELEASE)
 
 
 def test_failing_control_without_the_deadline_the_gate_would_hold_for_ever(

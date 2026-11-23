@@ -143,6 +143,7 @@ _SRC_ROOT = Path(__file__).resolve().parents[3] / "src" / "omnimarket"
 # None check. A new caller turns this red until it is read the same way and listed here.
 _RESOLVE_TIER_COST_CALLERS = {
     ("pricing.py", "recompute_actual_cost_and_savings"),
+    ("models/priced_spend.py", "historical_unpriced_zero"),
     (
         "nodes/node_projection_delegation/handlers/handler_budget_state.py",
         "materialize_budget_state",

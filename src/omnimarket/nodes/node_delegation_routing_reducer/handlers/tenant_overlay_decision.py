@@ -13,6 +13,7 @@ from omnibase_infra.models.errors.model_infra_error_context import (
     ModelInfraErrorContext,
 )
 
+from omnimarket.handlers.routing.customer_key_terminus import is_customer_attributed
 from omnimarket.models.delegation.model_size_band import ModelSizeBand
 from omnimarket.models.delegation.wire.model_routing_decision import (
     ModelRoutingDecision,
@@ -29,7 +30,6 @@ from omnimarket.models.model_tenant_routing_overlay_backend import (
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_dod_resolution import (
     ModelDodResolution,
 )
-from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
 from omnimarket.routing.tenant_overlay_resolver import (
     HOUSE_OVERLAY_COST_TIER,
 )
@@ -122,10 +122,13 @@ def build_tenant_overlay_decision(
         # secret_ref at all. Filing house inference under a customer's
         # bring-your-own-key tier is a reporting defect that surfaces only when
         # somebody reads a bill.
+        # OMN-26365: both representations of the one house identity count
+        # (ADR-0027). A runtime configured with the house tenant carries the
+        # UUID on every request, so the row it reads is stored under the UUID.
         cost_tier=(
-            HOUSE_OVERLAY_COST_TIER
-            if overlay.tenant_id == HOUSE_TENANT_SLUG
-            else "tenant_byok"
+            "tenant_byok"
+            if is_customer_attributed(overlay.tenant_id)
+            else HOUSE_OVERLAY_COST_TIER
         ),
         max_context_tokens=DELEGATION_MAX_TOKENS_HARD_LIMIT,
         timeout_ms=overlay.timeout_ms if overlay.timeout_ms is not None else 30000,

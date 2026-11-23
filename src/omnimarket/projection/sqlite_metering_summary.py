@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Local metering rows: refreshed at the end of a delegation, read as stored.
 
-The SQLite database is one install's evidence store. ``tenant_id`` labels that
-install's projection; the underlying legacy records do not carry tenant ids.
+The SQLite database is one install's evidence store. A tenant's rows are folded
+from its own records only, read through node_metering_tenant_records_effect.
 No arithmetic lives here: every figure comes from the metering node's fold.
 
 Who writes the rows: the end of each mode 1 ``onex delegate``
@@ -30,6 +30,7 @@ from typing import Literal, Protocol
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.nodes.node_metering_tenant_records_effect import read_tenant_records
 from omnimarket.nodes.node_projection_metering_summary import (
     HandlerProjectionMeteringSummary,
     ModelMeteringSummaryFoldRequest,
@@ -41,9 +42,6 @@ from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering
 )
 from omnimarket.pricing import BaselineModelSelection, resolve_baseline_model
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
-from omnimarket.projection.sqlite_metering_reader import (
-    read_metering_records,
-)
 
 _NODE_CONTRACT = (
     Path(__file__).resolve().parents[1]
@@ -73,8 +71,8 @@ def refresh_metering_summary(
     include_fixtures: bool = False,
 ) -> tuple[ModelMeteringSummaryRow, ...]:
     """Refresh every recorded day and all-time, plus explicitly requested days."""
-    records = read_metering_records(
-        db_path=db_path, window_end=now, include_fixtures=include_fixtures
+    records = read_tenant_records(
+        tenant_id, db_path, window_end=now, include_fixtures=include_fixtures
     )
     requested_days = days
     if days is not None:
@@ -235,7 +233,7 @@ def refresh_metering_after_terminal(
         model = baseline_model or resolve_metering_baseline_model().model
         baseline = resolve_baseline(model)
         version = current_pricing_manifest_version(model)
-        records = read_metering_records(db_path=db_path)
+        records = read_tenant_records(tenant_id, db_path)
         newest = max([terminal_at, *(r.occurred_at for r in records)])
         as_of = newest.astimezone(UTC) + _AFTER_NEWEST_RUN
         stored = read_summary_row(db_path, tenant_id, "all", "", model)

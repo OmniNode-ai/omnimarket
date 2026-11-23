@@ -53,7 +53,8 @@ ROOT = Path(__file__).resolve().parents[4]
 NODE_DIR = ROOT / "src/omnimarket/nodes/node_dev_roll_window_gate_effect"
 EXAMPLE_OVERLAY = NODE_DIR / "overlay.example.yaml"
 
-REQUIRED_KEYS = tuple(OVERLAY_DOC)
+# The held-age alarm is optional: an overlay without it runs the gate with the alarm off.
+REQUIRED_KEYS = tuple(k for k in OVERLAY_DOC if k != "held_age_alarm_after_seconds")
 
 
 def write_overlay(root: Path, doc: dict[str, Any] | None = None) -> dict[str, str]:
@@ -215,3 +216,13 @@ def test_the_file_store_choice_without_its_home_variable_refuses(
     policy = ModelDevRollWindowGatePolicy.model_validate(OVERLAY_DOC)
     with pytest.raises(NodeOverlayError):
         store_from_policy(policy, {})
+
+
+def test_an_overlay_without_the_held_age_alarm_loads_with_it_off(
+    tmp_path: Path,
+) -> None:
+    doc = {k: v for k, v in OVERLAY_DOC.items() if k != "held_age_alarm_after_seconds"}
+    assert (
+        load_gate_policy(write_overlay(tmp_path, doc)).held_age_alarm_after_seconds
+        is None
+    )

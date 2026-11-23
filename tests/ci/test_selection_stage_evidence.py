@@ -6,8 +6,10 @@ Reads the real ``policy.yaml``, the receipts under ``config/test_selection_stage
 repository's CODEOWNERS file, and runs the selector node's ``validate_stage_receipt`` operation over them.
 Fixture shapes (valid, short, wrong figure, wrong version, two-stage jump) live in
 ``tests/ci/fixtures/selection_stage/``. The records a receipt is checked against come from a record source,
-never from a file the same change supplies: the source adapter for the published records is not wired yet, so
-a tree whose stage is above 0 fails closed with ``records_unavailable`` until it is.
+never from a file the same change supplies: the tree's own stage is checked through the gateway adapter, which
+reads each night's published record as a check run through the repository gateway node, so a tree whose stage
+is above 0 passes only on records the nightly published and fails closed with ``records_unavailable`` when the
+gateway cannot be read.
 """
 
 from __future__ import annotations
@@ -25,6 +27,16 @@ import yaml
 from omnimarket.handlers.adapter_test_selection_policy_file import (
     POLICY_PATH,
     load_policy,
+)
+from omnimarket.models.model_github_gateway_io import (
+    EnumGithubGatewayOperation,
+    ModelGithubGatewayRequest,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.adapters.gateway_read_in_memory import (
+    GatewayReadInMemory,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_attribution_records_gateway import (
+    SourceAttributionRecordsGateway,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_attribution_records_in_memory import (
     SourceAttributionRecordsInMemory,
@@ -164,12 +176,161 @@ def _base_stage() -> int | None:
 
 
 def test_selection_stage_of_this_tree_has_the_receipts_it_needs() -> None:
-    """The real policy, the real receipts, and the record source as wired today."""
-    stage = load_policy().selection_stage
-    result = _validate(
-        *_tree_receipts(), current=stage, base=_base_stage(), records=None
+    """The real policy, the real receipts, and the gateway adapter as the record source."""
+    policy = load_policy()
+    stage = policy.selection_stage
+    # The real client runs in process with the hosted token, or over the bus on a lab lane; it is built
+    # here and reads nothing at stage 0, where no receipt names a night.
+    handler = HandlerStageReceiptValidation(
+        SourceAttributionRecordsGateway(policy=policy), policy
+    )
+    result = handler.handle(
+        ModelStageReceiptValidationRequest(
+            current_stage=stage, base_stage=_base_stage(), receipts=_tree_receipts()
+        )
     )
     assert result.valid, [v.model_dump() for v in result.violations]
+
+
+# -- the gateway adapter as the record source (AC1, AC4) ----------------------------------
+
+
+def _gateway_with(
+    records: list[ModelPublishedAttributionRecord],
+) -> GatewayReadInMemory:
+    gateway = GatewayReadInMemory()
+    for r in records:
+        gateway.publish(
+            r.tested_head_sha,
+            f"{load_policy().record_check_name_prefix}:{r.nightly_slot_date.isoformat()}",
+            r.model_dump_json(),
+        )
+    return gateway
+
+
+def _validate_through_gateway(
+    gateway: GatewayReadInMemory,
+) -> ModelStageReceiptValidationResult:
+    handler = HandlerStageReceiptValidation(
+        SourceAttributionRecordsGateway(gateway, load_policy()), load_policy()
+    )
+    return handler.handle(
+        ModelStageReceiptValidationRequest(
+            current_stage=1,
+            base_stage=0,
+            receipts=(_baseline(), _receipt("receipt_valid.json")),
+        )
+    )
+
+
+def test_selection_stage_attribution_source_seven_clean_published_records_pass() -> (
+    None
+):
+    """Stage 1, a valid receipt and seven complete clean records published as check runs: the gate passes."""
+    result = _validate_through_gateway(_gateway_with(_records("records_valid.json")))
+    assert result.valid, [v.model_dump() for v in result.violations]
+
+
+def test_selection_stage_attribution_source_one_night_check_run_absent_fails() -> None:
+    result = _validate_through_gateway(
+        _gateway_with(_records("records_valid.json")[:-1])
+    )
+    assert not result.valid
+    assert Code.RECORD_MISSING in _codes(result)
+
+
+def test_selection_stage_attribution_source_unreachable_gateway_fails_closed() -> None:
+    gateway = _gateway_with(_records("records_valid.json"))
+    gateway.unreachable = True
+    result = _validate_through_gateway(gateway)
+    assert _codes(result) == {Code.RECORDS_UNAVAILABLE}
+
+
+def test_selection_stage_attribution_source_reads_nothing_at_stage_zero() -> None:
+    gateway = GatewayReadInMemory()
+    handler = HandlerStageReceiptValidation(
+        SourceAttributionRecordsGateway(gateway, load_policy()), load_policy()
+    )
+    result = handler.handle(
+        ModelStageReceiptValidationRequest(
+            current_stage=0, base_stage=0, receipts=(_baseline(),)
+        )
+    )
+    assert result.valid
+    assert gateway.requests == []
+
+
+# -- AC4: the adapter reads only through the gateway node operation, named in the contract ---
+
+
+SELECTOR_NODE = (
+    REPO_ROOT / "src" / "omnimarket" / "nodes" / "node_test_selection_selector_compute"
+)
+_FORBIDDEN_IN_THE_READ_PATH = (
+    "subprocess",
+    "os.system",
+    "requests",
+    "httpx",
+    "urllib",
+    "aiohttp",
+    "http.client",
+    "socket",
+    "gh api",
+    '"gh"',
+)
+
+
+def test_selection_stage_attribution_source_contract_binding_names_the_handler_route() -> (
+    None
+):
+    contract = yaml.safe_load((SELECTOR_NODE / "contract.yaml").read_text("utf-8"))
+    routes = {
+        entry["operation"]: entry for entry in contract["handler_routing"]["handlers"]
+    }
+    entry = routes["read_attribution_records"]
+    assert entry["handler"] == {
+        "name": "HandlerAttributionRecordRead",
+        "module": "omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_attribution_record_read",
+    }
+    assert entry["input_model"].endswith(".ModelAttributionRecordReadRequest")
+    assert entry["output_model"].endswith(".ModelAttributionRecordReading")
+    description = " ".join(contract["description"].split())
+    assert "commit_check_runs" in description
+    assert "node_github_repo_gateway_effect" in description
+
+
+def test_selection_stage_attribution_source_contract_binding_reads_only_the_gateway_operation() -> (
+    None
+):
+    """No other gateway operation, no process, no network client and no ``gh`` in the files that read the records."""
+    paths = [
+        SELECTOR_NODE / "handlers" / "handler_attribution_record_read.py",
+        SELECTOR_NODE / "adapters" / "source_attribution_records_gateway.py",
+    ]
+    operations = set()
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        for needle in _FORBIDDEN_IN_THE_READ_PATH:
+            assert needle not in text, (path.name, needle)
+        operations |= {
+            name for name in dir(EnumGithubGatewayOperation) if f".{name}" in text
+        }
+    assert operations == {"COMMIT_CHECK_RUNS"}
+
+
+def test_selection_stage_attribution_source_contract_binding_adds_no_script() -> None:
+    for script in (REPO_ROOT / "scripts").rglob("*"):
+        if script.is_file() and script.suffix in {".py", ".sh"}:
+            assert "SourceAttributionRecordsGateway" not in script.read_text(
+                encoding="utf-8", errors="ignore"
+            ), script.name
+
+
+def test_selection_stage_attribution_source_request_asks_for_the_summary() -> None:
+    gateway = _gateway_with(_records("records_valid.json"))
+    _validate_through_gateway(gateway)
+    assert all(isinstance(r, ModelGithubGatewayRequest) for r in gateway.requests)
+    assert {r.include_output for r in gateway.requests} == {True}
 
 
 def test_selection_stage_policy_holds_the_gate_settings() -> None:
