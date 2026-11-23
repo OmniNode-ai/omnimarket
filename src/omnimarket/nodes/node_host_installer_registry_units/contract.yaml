@@ -537,6 +537,74 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/ledger-host-mirror/last-run.json
     state_directory: .onex_state/ledger-host-mirror
+  # The standing lane dispatcher on a lab host (node_lane_dispatch_intake_effect, OMN-26412): every 60 s one tick reads the MSG
+  # rows addressed to labdispatch from the host's ledger mirror and places at most max_placements requested lanes, strictly one
+  # after another, through the lane-brief skill and the remote-lane runner detached, with one STATUS row per placement. The
+  # run limit (580 s) is under the 600 s any one call of the tick may take, and a oneshot service never overlaps itself, so two
+  # ticks never place at once. MSG rows are read and STATUS rows written over the bus (no ledger file is read or written by the tick); the
+  # unit template already sets the registry root and the tool directory that holds claude and uv.
+  lane-dispatch-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-lane-dispatch
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 580
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_lane_dispatch_intake_effect.runtime_lane_dispatch_tick
+    entry_file: src/omnimarket/nodes/node_lane_dispatch_intake_effect/runtime_lane_dispatch_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/omnibase_infra/.venv/bin/onex ledger query --stdin"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      ONEX_LANE_DISPATCH_BUS_APPEND: "{registry_root}/.onex-dispatch-venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      ONEX_LEDGER_HOST_NAME: h202
+      ONEX_LANE_DISPATCH_PARENT: labdispatch
+      ONEX_LANE_DISPATCH_PLUGIN_ROOT: "{marketplace_root}/plugins/omni"
+    evidence_file: .local/state/omni/lane-dispatch/last-run.json
+    state_directory: .onex_state/lane-dispatch
+  # The daily ledger-file census record (node_work_ledger_file_census_effect): once a day and at load one tick runs the
+  # census over the registry root's omnimarket clone with the overlay and ratchet file packaged with the node, prints the daily
+  # record as one typed JSON line and keeps it in the unit's evidence file. The run limit (300 s) is the node's timeout_ms and
+  # is under the 86400 s interval. The tick reads and writes no ledger file.
+  ledger-file-census-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-ledger-file-census
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 86400
+      run_timeout_s: 300
+      run_at_load: true
+      description: once a day and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    probe_argv: ["--probe"]
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_work_ledger_file_census_effect.runtime_file_census_tick
+    entry_file: src/omnimarket/nodes/node_work_ledger_file_census_effect/runtime_file_census_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      ONEX_LEDGER_CENSUS_ROOT: "{registry_root}"
+    evidence_file: .local/state/omni/ledger-file-census/last-run.json
+    state_directory: .onex_state/ledger-file-census
   # The capture silence watch (node_capture_silence_watch_effect): the host ran this node from a /tmp copy of the source
   # until this declaration replaced it. The database address (no password) and the reference of the login's password are request
   # inputs persisted in the unit (OMN-24325); the environment file stays an optional place for overrides and is never required.
@@ -1010,7 +1078,8 @@ units:
     timer_template: templates/onex-registry-module-tick.timer.tmpl
     schedule:
       start_interval: 21600
-      run_timeout_s: 900
+      # Leave the original run budget after the readiness wait of up to 850 s.
+      run_timeout_s: 1800
       run_at_load: true
       description: every 21600 s and at load
     registry_project: omnimarket
@@ -1052,7 +1121,8 @@ units:
     timer_template: templates/onex-registry-module-tick.timer.tmpl
     schedule:
       start_interval: 3600
-      run_timeout_s: 900
+      # Leave the original run budget after the readiness wait of up to 850 s.
+      run_timeout_s: 1800
       run_at_load: true
       description: every 3600 s and at load
     registry_project: omnimarket

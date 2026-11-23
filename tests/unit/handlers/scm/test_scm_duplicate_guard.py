@@ -35,6 +35,9 @@ from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.handler_pr_dupl
     parse_diff,
     read_request,
 )
+from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.ledger_claims_read import (
+    load_ledger_read_config,
+)
 from omnimarket.nodes.node_pr_duplicate_snapshot_effect.ports.protocol_open_pr_facts_source import (
     OpenPrFactsUnreadableError,
 )
@@ -344,21 +347,29 @@ def test_a_live_claim_with_the_same_cause_cell_is_refused_with_its_lane_named(
 def test_the_guard_reads_the_claims_from_the_named_reader_over_its_window(
     world: World, ledger_rows: FakeLedgerRows
 ) -> None:
-    """One read, by the guard's own reader name, of the window the open-CLAIM fold needs, every row type for the heartbeat."""
+    """Two reads, by the guard's own reader name: every row of the heartbeat hour, then the rows that open or close a CLAIM over the window for the lanes that hour names (OMN-26433)."""
     world.lane_branch("src/metrics.py", 15)
+    ledger_rows.lines = [_row(5, "CLAIM", LANE, "mine")]
 
     invoke(world.check_args())
 
+    declared = load_ledger_read_config()
     assert ledger_rows.calls == [
-        (snapshot_module.LEDGER_READER, snapshot_module.LEDGER_WINDOW_HOURS, ())
+        (snapshot_module.LEDGER_READER, declared.heartbeat_window_hours, ()),
+        (
+            snapshot_module.LEDGER_READER,
+            snapshot_module.LEDGER_WINDOW_HOURS,
+            declared.claim_kinds,
+        ),
     ]
+    assert ledger_rows.lanes_asked == [(), (LANE,)]
     assert snapshot_module.LEDGER_WINDOW_HOURS == 168
 
 
 def test_a_later_status_row_keeps_an_older_claim_live(
     world: World, ledger_rows: FakeLedgerRows
 ) -> None:
-    """The lane's heartbeat is any of its rows, so the read must not narrow to CLAIM and TERMINAL rows."""
+    """The lane's heartbeat is any of its rows, so the recent hour is read in every row type, not only CLAIM and TERMINAL rows."""
     world.lane_branch("src/metrics.py", 15)
     ledger_rows.lines = [
         _row(180, "CLAIM", "cause-core-0010", CAUSE, "pr=omnibase_core#2159", "fix"),

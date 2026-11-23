@@ -55,7 +55,12 @@ class SubprocessLedgerRowsReader:
         return words[0]
 
     def rows(
-        self, *, reader: str, window_hours: int, kinds: Sequence[str] = ()
+        self,
+        *,
+        reader: str,
+        window_hours: int,
+        kinds: Sequence[str] = (),
+        lanes: Sequence[str] = (),
     ) -> tuple[str, ...]:
         argv = [
             self._interpreter(),
@@ -70,6 +75,8 @@ class SubprocessLedgerRowsReader:
         ]
         for kind in kinds:
             argv += ["--kind", kind]
+        for lane in lanes:
+            argv += ["--row-lane", lane]
         try:
             done = self._run(
                 argv,
