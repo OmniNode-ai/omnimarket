@@ -39,7 +39,8 @@ def _grants() -> set[tuple[str, str, str]]:
 def test_node_type_placement_and_routing() -> None:
     contract = _contract()
     assert contract["node_type"] == "effect"
-    assert contract["runtime_profiles"] == ["main"]
+    assert contract["runtime_profiles"] == ["effects"]
+    assert contract["descriptor"]["runtime_profiles"] == ["effects"]
     assert "runtime_lanes" not in contract
     routing = contract["handler_routing"]
     assert routing["routing_strategy"] == "topic_match"

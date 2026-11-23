@@ -15,12 +15,10 @@ node_type: effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 lifecycle: experimental
-# runtime_profiles is main, not effects: only the main runtime carries the identity database DSN (the gateway database
-# DSN is merged into omninode-runtime only, not runtime-effects), and a contract following the effects sibling ships a node
-# that cannot resolve its DSN.
-# runtime_lanes is not declared: a lane-scoped contract on a runtime that names no lane is a fail-closed discovery
-# error, and placement is by runtime_profiles alone.
-runtime_profiles: [main]
+# runtime_profiles is effects, like every command-consuming effect node: placement is by runtime_profiles alone, and no
+# runtime_lanes is declared. The node reads its identity database DSN through the logical secret
+# tenant_identity.database.dsn, which the runtime that hosts the effects role resolves from its own deployment overlay.
+runtime_profiles: [effects]
 description: >
   Creates one ownerless tenant with its default plan and one TENANT_CREATED outbox envelope from a bus command, and reads
   one tenant by id or slug. A command id replayed answers the original created payload. A slug owned by another owner, a
@@ -40,6 +38,7 @@ output_model:
 descriptor:
   node_archetype: effect
   purity: impure
+  runtime_profiles: [effects]
   idempotent: true
   side_effects: [database-write]
   timeout_ms: 30000
