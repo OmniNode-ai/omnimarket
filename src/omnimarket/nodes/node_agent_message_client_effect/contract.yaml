@@ -54,6 +54,10 @@ event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
-  external_trigger: "onex agent-message send | read | serve-mcp, which build the handlers in process and print their typed results"
+  external_trigger: true
+  # An agent runs it by hand or through its MCP client; it never runs on a timer.
+  on_demand:
+    command: onex agent-message send | read | serve-mcp, which build the handlers in process and print their typed results
+    owner: OmniNode Platform Team
 metadata:
   transport_type: local

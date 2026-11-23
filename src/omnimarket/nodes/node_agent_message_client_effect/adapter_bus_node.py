@@ -112,7 +112,8 @@ def open_bus_node(
     def thread_main() -> None:
         try:
             asyncio.run(main())
-        except BaseException as exc:  # fallback-ok: surfaced to the caller below
+        except BaseException as exc:
+            # Handed to the calling thread, which raises it after the ready wait.
             errors.append(exc)
             ready.set()
 

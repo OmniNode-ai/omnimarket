@@ -63,7 +63,8 @@ def test_tools_reach_the_same_node_as_the_command_line() -> None:
         server.call_tool(READ_TOOL, {"to": "codex:review", "thread": "t-9"})
     )
     assert node.reads == 2
-    messages = result.structured_content["messages"]  # type: ignore[union-attr]
+    assert result.structured_content is not None
+    messages = result.structured_content["messages"]
     assert [m["text"] for m in messages] == ["hello"]
 
 
