@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from types import ModuleType
 
@@ -442,6 +443,31 @@ def test_disposition_relations_have_owners_and_cross_node_read_access() -> None:
     )
     assert events["owner_declaration"] == "node_projection_delegation"
     assert "node_projection_delegation_disposition" in events["readers"]
+
+
+def test_projection_freshness_alert_effect_tables_list_it_as_reader() -> None:
+    node = "node_projection_freshness_alert_effect"
+    contract = yaml.safe_load(
+        (
+            REPO_ROOT / "src" / "omnimarket" / "nodes" / node / "contract.yaml"
+        ).read_text()
+    )
+    declared = {row["name"] for row in contract["db_io"]["db_tables"]}
+    assert declared
+    checked_in = json.loads(
+        (
+            REPO_ROOT / "docs" / "evidence" / "OMN-15423-relation-inventory.json"
+        ).read_text()
+    )
+    by_name = {
+        row["name"]: row for row in checked_in["relations"] if row["kind"] == "table"
+    }
+    for name in declared:
+        assert node in by_name[name]["readers"], name
+        assert (
+            f"src/omnimarket/nodes/{node}/contract.yaml"
+            in by_name[name]["contract_sources"]
+        ), name
 
 
 def test_runtime_activity_is_not_inferred_from_checked_in_dsn_keys() -> None:
