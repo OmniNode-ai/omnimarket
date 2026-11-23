@@ -2,7 +2,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-26325
 title: The nightly collect effect publishes one public-safe attribution record per night through the repository gateway node, bound to the nightly run, for the hosted stage check to validate
-summary: Adds the public-safe attribution record model, the publish_attribution_record operation on node_test_selector_miss_collect_effect (a keyed record row, then an idempotent check-run write on the tested head commit through the repository gateway), a public-safety guard and a schedule declared in the node contract on the existing nightly poll. Stacked on the collect effect branch; the pull request base is dev only once that branch merges.
+summary: Adds the public-safe attribution record model, the publish_attribution_record operation on node_test_selector_miss_collect_effect (a keyed record row, then an idempotent check-run write on the tested head commit through the repository gateway), a public-safety guard and a schedule declared in the node contract on the existing nightly poll. Built on the collect effect merged in dev; the runtime-scheduled sender already sends the publish command on the topic this node subscribes to.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
