@@ -1,0 +1,119 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-26484"
+title: "An abandoned dev roll is typed in the roll gate's state, its held commands release within one hour of the roll's start, and any held command older than 30 minutes raises an alarm"
+summary: "The dev roll window gate already stores a typed abandoned roll at its completion deadline. It now counts the failed-roll hold from the roll's runtime_started_at, so a roll that ran for an hour before it finished or was given up on no longer holds its commands twice as long, and a held command older than the overlay's held_age_alarm_after_seconds raises one alarm request to the lab alarm delivery naming the roll and the aged held commands."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26484-abandoned-typed"
+    statement: |-
+      A roll whose completion deadline fires is stored in the gate state with abandoned_at and a reason enum.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a roll whose completion deadline fires writes abandoned_at and abandoned_reason into the gate state, not only an event outcome -- falsifier: uv run pytest -k roll_gate_abandoned_typed exits non-zero
+  - id: "req-omn26484-release-from-start"
+    statement: |-
+      The failed-roll hold is counted from the roll's runtime_started_at.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: held commands of an abandoned roll are released no later than failed_roll_release_after_seconds after the roll's runtime_started_at -- falsifier: uv run pytest -k roll_gate_release_from_start exits non-zero
+  - id: "req-omn26484-held-age-alarm"
+    statement: |-
+      A held command older than the overlay's bound raises one alarm naming the roll and the held commands.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: a held command older than 30 minutes writes one alarm row and one MSG naming the roll id and the held commands, and none while all held commands are younger -- falsifier: uv run pytest -k roll_gate_held_age_alarm exits non-zero
+  - id: "req-omn26484-incident-replay"
+    statement: |-
+      A replay of the gate state of 2026-11-22T21:41Z fails on the earlier code and passes on the fix.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: a regression test built from the recorded gate-state.json of 2026-11-22T21:41Z (fixture path in the PR) fails on the broken code and passes on the fix -- falsifier: uv run pytest -k roll_gate_incident_replay exits non-zero
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the focused tests named *roll_gate_abandoned_typed*."
+    command: "uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect -k roll_gate_abandoned_typed -q -n 0 --no-cov"
+  - kind: "tests"
+    description: "AC2: the focused tests named *roll_gate_release_from_start*."
+    command: "uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect -k roll_gate_release_from_start -q -n 0 --no-cov"
+  - kind: "tests"
+    description: "AC3: the focused tests named *roll_gate_held_age_alarm*."
+    command: "uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect -k roll_gate_held_age_alarm -q -n 0 --no-cov"
+  - kind: "tests"
+    description: "AC4: the focused test named *roll_gate_incident_replay*, over tests/unit/nodes/node_dev_roll_window_gate_effect/fixtures/gate_state_2026_11_22T2141Z.json."
+    command: "uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect -k roll_gate_incident_replay -q -n 0 --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26484-ac1-abandoned-typed"
+    description: "AC1: the roll_gate_abandoned_typed tests pass on the branch. They also pass on the base commit, which already stores the typed abandoned roll."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect -k roll_gate_abandoned_typed -q -n 0 --no-cov"
+        cwd: "."
+  - id: "dod-omn26484-ac2-release-from-start"
+    description: "AC2: the roll_gate_release_from_start tests pass on the branch and fail on the base commit."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect -k roll_gate_release_from_start -q -n 0 --no-cov"
+        cwd: "."
+  - id: "dod-omn26484-ac3-held-age-alarm"
+    description: "AC3: the roll_gate_held_age_alarm tests pass on the branch and fail on the base commit."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect -k roll_gate_held_age_alarm -q -n 0 --no-cov"
+        cwd: "."
+  - id: "dod-omn26484-ac4-incident-replay"
+    description: "AC4: the roll_gate_incident_replay test passes on the branch and fails on the base commit. The fixture is a reconstruction (its provenance field says which values are recorded and which are assumed)."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect -k roll_gate_incident_replay -q -n 0 --no-cov"
+        cwd: "."
+  - id: "dod-omn26484-ac5-week-observation"
+    description: >-
+      AC5 is a read of the live gate state over the week to 2026-11-29, so it binds no hosted check. This local
+      read fails when the gate state holds a command older than 3600 seconds that the state does not record as
+      alarmed (the ledger row itself is read by the alarm delivery's own ledger query).
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          python3 -c "import datetime as d, json, os, pathlib, sys;
+          s = json.loads((pathlib.Path(os.environ['ONEX_STATE_DIR']) / 'dev_roll_window_gate' / 'gate-state.json').read_text());
+          now = d.datetime.now(d.UTC);
+          bad = [h['command']['correlation_id'] for h in s['held'] if (now - d.datetime.fromisoformat(h['held_at'])).total_seconds() > 3600 and h['command']['correlation_id'] not in s.get('alarmed_ids', [])];
+          print(bad); sys.exit(1 if bad else 0)"
+        cwd: "."
+  - id: "dod-omn26484-integration-proof"
+    description: >-
+      Run the dev roll window gate node's unit tests and the redeploy effect's hold-arm test on a lab host at
+      the pushed revision. This local completion proof carries no hosted AC bindings.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-26484 --kind test --
+          uv run --frozen pytest
+          tests/unit/nodes/node_dev_roll_window_gate_effect
+          tests/nodes/node_redeploy_deploy_effect/test_dev_roll_hold_arm.py
+          -q -n 0 --no-cov --refuse-skips
+        cwd: "."

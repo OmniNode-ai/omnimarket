@@ -114,6 +114,15 @@ requirements:
           installed content checked against the release manifest, which exists only at release. -- falsifier:
           uv run pytest tests/e2e/test_setup_packaged_journey.py -q -k curl_installer_same_release, on each of
           those runners.
+  - id: req-omn25070-market-proof-scripts
+    statement: The two proof scripts run the core CLI as a module, not the onex launcher.
+    acceptance:
+      - id: AC3
+        statement: >-
+          AC3 (the launcher move), the part these scripts carry: omnibase-core stops declaring onex, so
+          scripts/run_four_node_proof.sh and scripts/run_l1_proof.sh run uv run python -m
+          omnibase_core.cli.cli_commands node with the same arguments and run no onex launcher -- falsifier: uv run
+          pytest tests/ci/test_proof_scripts_run_core_module_omn25070.py, which fails on dev, where both run uv run onex node.
 evidence_requirements:
   - kind: tests
     description: The package tests; the opt-in install check runs with ONEX_TEST_ONEX_WHEEL set.
@@ -151,6 +160,16 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest -q --no-cov tests/ci/test_omninode_onex_package_omn25070.py -k run_by_lane
         cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-pin-carries-setup-fix
+    description: The customer package pins an omnimarket release that carries the onex setup fix (0.4.324 or
+      later), so a customer install runs onex setup without the crash. The bound test fails on the merge base,
+      where the pin is 0.4.322, a release without the fix.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q --no-cov tests/ci/test_omninode_onex_package_omn25070.py -k carries_the_onex_setup_fix
+        cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn25070-installer-integration-proof
     description: The render node and the rendered installer run on a lab host at the pushed head. Hosted CI runs
       the same tests per platform; only the local Done gate runs this unbound check on the lab.
@@ -170,7 +189,7 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: >-
-          sh -c 'd="$(mktemp -d)" && uv build --wheel --out-dir "$d" packages/omninode-onex && ONEX_TEST_ONEX_WHEEL="$(ls "$d"/omninode_onex-*.whl)" ONEX_E2E_REQUIRE_COMPLETE=1 uv run --frozen pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k no_git_install'
+          sh -c 'd="$(mktemp -d)" && uv build --wheel --out-dir "$d" packages/omninode-onex && ONEX_TEST_ONEX_WHEEL="$(ls "$d"/omninode_onex-*.whl)" ONEX_E2E_REQUIRE_COMPLETE=1 uv run pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k no_git_install'
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn25070-one-package-uv-and-pipx
     description: >-
@@ -182,7 +201,7 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: >-
-          sh -c 'd="$(mktemp -d)" && uv build --wheel --out-dir "$d" packages/omninode-onex && ONEX_TEST_ONEX_WHEEL="$(ls "$d"/omninode_onex-*.whl)" ONEX_E2E_REQUIRE_COMPLETE=1 uv run --frozen pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k one_package_uv_and_pipx'
+          sh -c 'd="$(mktemp -d)" && uv build --wheel --out-dir "$d" packages/omninode-onex && ONEX_TEST_ONEX_WHEEL="$(ls "$d"/omninode_onex-*.whl)" ONEX_E2E_REQUIRE_COMPLETE=1 uv run pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k one_package_uv_and_pipx'
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn25070-installer-matches-manifest
     description: >-
@@ -211,5 +230,15 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: >-
-          sh -c 'd="$(mktemp -d)" && uv build --wheel --out-dir "$d" packages/omninode-onex && ONEX_TEST_ONEX_WHEEL="$(ls "$d"/omninode_onex-*.whl)" ONEX_E2E_REQUIRE_COMPLETE=1 uv run --frozen pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k curl_installer_same_release'
+          sh -c 'd="$(mktemp -d)" && uv build --wheel --out-dir "$d" packages/omninode-onex && ONEX_TEST_ONEX_WHEEL="$(ls "$d"/omninode_onex-*.whl)" ONEX_E2E_REQUIRE_COMPLETE=1 uv run pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k curl_installer_same_release'
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-market-proof-scripts
+    description: Both proof scripts run nodes through the core module and run no onex launcher. Fails on dev, where both run uv run onex node.
+    source: manual
+    binds_ac:
+      - AC3
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_proof_scripts_run_core_module_omn25070.py -q --no-cov
         cwd: ${OMNI_HOME}/omnimarket

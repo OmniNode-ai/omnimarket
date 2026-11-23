@@ -34,6 +34,7 @@ GATE_OVERLAY: dict[str, Any] = {
     "healthy_for_seconds": 600,
     "failed_roll_release_after_seconds": 3600,
     "roll_completion_deadline_seconds": 1800,
+    "held_age_alarm_after_seconds": 1800,
     "known_repositories": ["omnimarket", "omnibase_infra"],
     "build_context_repository": "omnibase_infra",
     "fallback_git_ref": "origin/dev",
