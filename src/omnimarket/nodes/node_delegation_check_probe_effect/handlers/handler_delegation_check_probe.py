@@ -102,15 +102,28 @@ class HandlerDelegationCheckProbe:
                 not_measured=f"no local responder served a model with a window; the chain advanced to {resolution.tier} ({tried})",
             )
         assert resolution.served_model is not None
-        observation = self._machine.run_delegation(request.check_id, resolution)
-        if request.check_id == "C13":
-            clauses = grade_c13(
-                observation,
-                responder_base=resolution.base_url,
-                served_model=resolution.served_model,
+        try:
+            observation = self._machine.run_delegation(request.check_id, resolution)
+            if request.check_id == "C13":
+                clauses = grade_c13(
+                    observation,
+                    responder_base=resolution.base_url,
+                    served_model=resolution.served_model,
+                )
+            else:
+                clauses = grade_c14(
+                    observation, self._machine.collect_routing(resolution)
+                )
+        except CollectorAbsentError as exc:
+            # The chain was read live; the run keeps it beside the absent collector.
+            return ModelDelegationCheckReading(
+                **head,
+                preconditions=(
+                    ModelCheckPrecondition(
+                        name=exc.name, present=False, detail=exc.detail
+                    ),
+                ),
             )
-        else:
-            clauses = grade_c14(observation, self._machine.collect_routing(resolution))
         return ModelDelegationCheckReading(**head, clauses=clauses)
 
     def _surface_check(self) -> ModelDelegationCheckReading:

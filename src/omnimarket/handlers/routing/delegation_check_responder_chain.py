@@ -30,7 +30,7 @@ from omnimarket.models.overlay_documents.model_delegation_check_responders_overl
 
 EnumAttemptOutcome = Literal[
     "chosen",
-    "usable-busier",
+    "usable-not-chosen",
     "no-answer",
     "no-model",
     "no-window",
@@ -133,11 +133,11 @@ def resolve_chain(
     """Choose the least busy usable local responder; else advance to the first cloud tier the chain names.
 
     A usable local responder answers, serves a model and declares a window. Among usable local responders the
-    one reporting the fewest requests in flight wins, a responder that reports no load ranks after one that does,
-    and the declared order breaks every tie.
+    one reporting the fewest requests in flight wins, a responder that reports no load counts as idle (its load is
+    unknown, never assumed high), and the declared order breaks every tie.
     """
     attempts: list[ModelResponderAttempt] = []
-    usable: list[tuple[tuple[bool, int, int], ModelResponderReading, int]] = []
+    usable: list[tuple[tuple[int, int], ModelResponderReading, int]] = []
     for index, responder in enumerate(r for r in responders if r.tier == "local"):
         assert responder.base_url is not None
         reading = read(responder.base_url)
@@ -145,7 +145,7 @@ def resolve_chain(
         if outcome == "chosen" and window is not None:
             usable.append(
                 (
-                    (reading.busy is None, reading.busy or 0, index),
+                    (reading.busy or 0, index),
                     reading,
                     window,
                 )
@@ -167,7 +167,9 @@ def resolve_chain(
             a.model_copy(
                 update={
                     "outcome": (
-                        "chosen" if a.base_url == winner.base_url else "usable-busier"
+                        "chosen"
+                        if a.base_url == winner.base_url
+                        else "usable-not-chosen"
                     )
                 }
             )

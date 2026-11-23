@@ -86,12 +86,24 @@ def test_least_busy_local_responder_carries_the_task() -> None:
     )
     assert resolution.base_url == QWEN
     outcomes = {a.base_url: a.outcome for a in resolution.attempts if a.base_url}
-    assert outcomes[INKLING] == "usable-busier"
+    assert outcomes[INKLING] == "usable-not-chosen"
 
 
-def test_a_responder_that_reports_load_outranks_one_that_does_not() -> None:
+def test_a_responder_that_reports_no_load_counts_as_idle_and_keeps_declared_order() -> (
+    None
+):
     resolution = resolve_chain(
         _chain(), _reader({INKLING: VLLM_BODY, QWEN: LLAMACPP_BODY}, busy={QWEN: 3})
+    )
+    assert resolution.base_url == INKLING
+
+
+def test_a_busier_declared_first_responder_loses_to_an_idle_peer_that_reports_load() -> (
+    None
+):
+    resolution = resolve_chain(
+        _chain(),
+        _reader({INKLING: VLLM_BODY, QWEN: LLAMACPP_BODY}, busy={INKLING: 2, QWEN: 0}),
     )
     assert resolution.base_url == QWEN
 

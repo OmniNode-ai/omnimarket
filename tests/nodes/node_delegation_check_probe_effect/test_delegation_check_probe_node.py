@@ -332,6 +332,10 @@ def test_a_machine_with_no_collector_reads_precondition_absent_after_the_chain_r
     assert result.verdict is EnumCheckVerdict.PRECONDITION_ABSENT
     assert result.conclusion == "failure"
     assert pub.events
+    # The chain read live stays on the run beside the absent collector.
+    assert result.chosen_tier == "local"
+    assert result.chosen_responder == INKLING
+    assert result.chain[0].outcome == "chosen"
 
 
 def test_a_probe_that_raises_is_an_error_run_and_still_emitted() -> None:
