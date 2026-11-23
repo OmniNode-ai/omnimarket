@@ -580,11 +580,11 @@ def require_local_access(app: FastAPI, *, token: str, port: int) -> None:
             location = request.url.path
             if remaining:
                 location = location + "?" + urllib.parse.urlencode(remaining)
-            response = RedirectResponse(url=location, status_code=303)
-            response.set_cookie(
+            redirect = RedirectResponse(url=location, status_code=303)
+            redirect.set_cookie(
                 cookie, token, httponly=True, samesite="strict", path="/"
             )
-            return response
+            return redirect
         response = await call_next(request)
         if query_token and _matches(query_token, expected):
             response.set_cookie(
