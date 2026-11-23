@@ -52,11 +52,17 @@ from omnimarket.nodes.node_merged_running_count_effect.sources.source_local_file
     ModelSourceLabels,
     SourceLocalFiles,
 )
+from omnimarket.nodes.node_work_ledger_reader_effect.adapters.rows_read import (
+    LedgerRowsUnreadableError,
+    read_window_rows,
+)
 from omnimarket.protocols.protocol_merged_running_sources import (
     ProtocolMergedRunningSources,
 )
 
 OWN_CONTRACT = Path(__file__).resolve().parent / "contract.yaml"
+# The reader the work ledger reader node's overlay names in moved_readers for this count.
+LEDGER_READER = "merged-running-count"
 
 
 class _LocalContainer:
@@ -118,6 +124,7 @@ def build_sources(
 ) -> SourceLocalFiles:
     rt = yaml.safe_load(OWN_CONTRACT.read_text(encoding="utf-8"))["runtime"]
     home = Path(_required_env(rt["home_env"]))
+    labels = ModelSourceLabels.model_validate(rt["labels"])
     lab_pass, lab_pass_cause = build_lab_pass_source(rt["lab_pass"], os.environ)
     provenance, provenance_cause = build_provenance_source(
         rt["deployed_provenance"], os.environ, home, now
@@ -130,8 +137,10 @@ def build_sources(
         watcher_state=Path(
             os.environ.get(rt["watcher_state_env"]) or home / rt["watcher_relpath"]
         ),
-        ledger=Path(_required_env(rt["ledger_env"])),
-        labels=ModelSourceLabels.model_validate(rt["labels"]),
+        ledger_rows=lambda: read_window_rows(
+            LEDGER_READER, labels.ledger_archive_days * 24
+        ),
+        labels=labels,
         hosts=read_host_table,
         placement_read=home / rt["placement_read_relpath"],
         now=now,
@@ -189,6 +198,11 @@ def main(argv: list[str] | None = None) -> int:
     now = now or datetime.now(UTC)
     container: Any = _LocalContainer(build_sources(now))
     handler = HandlerMergedRunningCountEffect(container)
-    result = handler.handle(ModelMergedRunningCountRunRequest(now=now, config=config))
+    try:
+        result = handler.handle(
+            ModelMergedRunningCountRunRequest(now=now, config=config)
+        )
+    except LedgerRowsUnreadableError as exc:
+        raise SystemExit(f"REFUSED merged-running-count: {exc}") from exc
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
     return 0

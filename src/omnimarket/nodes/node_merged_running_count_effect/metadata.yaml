@@ -19,6 +19,7 @@ dependencies:
   - pyyaml
   - omnibase_core
   - node_merged_running_count_compute
+  - node_work_ledger_reader_effect
 authors: [OmniNode Team]
 license: MIT
 tags: [effect, floor, merges, idle-slots]

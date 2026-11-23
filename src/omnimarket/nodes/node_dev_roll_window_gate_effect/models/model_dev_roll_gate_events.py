@@ -13,6 +13,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from omnimarket.nodes.node_dev_roll_window_gate_effect.models.enum_dev_roll_gate_refusal import (
     EnumDevRollGateRefusal,
 )
+from omnimarket.nodes.node_dev_roll_window_gate_effect.models.enum_dev_roll_gate_roll_outcome import (
+    EnumDevRollGateRollOutcome,
+)
 
 
 def _aware(value: datetime) -> datetime:
@@ -66,12 +69,12 @@ class ModelDevRollGateDecision(BaseModel):
 
 
 class ModelDevRollGateRollRecorded(BaseModel):
-    """The last roll's end was recorded: the agent's completion of the newest released command, or the overlay's deadline passing with none."""
+    """The last roll's end was recorded: the agent's completion of the newest released command, or the gate abandoning it when the overlay's deadline passed with none."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     command_correlation_id: str
-    outcome: Literal["finished_healthy", "finished_unhealthy", "completion_overdue"]
+    outcome: EnumDevRollGateRollOutcome
     observed_at: datetime
 
     _aware_observed = field_validator("observed_at")(_aware)

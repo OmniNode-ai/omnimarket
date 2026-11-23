@@ -983,7 +983,9 @@ def evaluate(
     )
 
     # (3) Test-matrix completeness (dynamic split jobs).
-    matrix_state = _evaluate_test_matrix(latest, require_full_suite=queue_run)
+    # OMN-26446: a dev push whose Detect Changes succeeded ran the Tests shards itself (no queue
+    # run recorded its tree), so its matrix must be the whole full suite; a partial one waits.
+    matrix = _evaluate_test_matrix(latest, require_full_suite=queue_run or dev_push)
 
     # Completeness anchor: every named gate present AND completed.
     gate_missing_or_pending = [
@@ -1008,7 +1010,7 @@ def evaluate(
             skippable_failures,
             sweep_failures,
             gate_missing_or_pending,
-            matrix_state,
+            matrix,
             docs_only=docs_only,
             relaxed=relaxed,
             reuse_skips=reuse_skips,
@@ -1022,7 +1024,7 @@ def evaluate(
     if (
         gate_missing_or_pending
         or sweep_running
-        or matrix_state == "pending"
+        or matrix == "pending"
         or provisional_own_cancellations
     ):
         return EXIT_PENDING, _rep("PENDING")

@@ -155,6 +155,8 @@ class YamlFileBaselineStore:
     def write(self, table: Mapping[str, Mapping[str, int]], header: str) -> None:
         """Lower, never raise: a row is the lower of the table's and the file's, and a file the table lacks is dropped.
 
+        A repository the table does not name was not counted by this run: its rows stay as they are.
+
         A path the file on disk lacks is never added, so a run that read the table before another run
         lowered it cannot raise a row back. The ``ratchet`` table is kept as it is. The file is replaced
         whole, so a write that dies midway leaves the earlier file in place.
@@ -162,7 +164,10 @@ class YamlFileBaselineStore:
         current = self.read()
         merged: dict[str, dict[str, int]] = {}
         for repository, rows in current.items():
-            kept = table.get(repository, {})
+            if repository not in table:
+                merged[repository] = dict(sorted(rows.items()))
+                continue
+            kept = table[repository]
             merged[repository] = {
                 path: min(hits, kept[path])
                 for path, hits in sorted(rows.items())
