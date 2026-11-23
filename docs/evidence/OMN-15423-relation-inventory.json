@@ -8982,6 +8982,7 @@
         "node_host_introspection_announce_effect",
         "node_host_table_keys_ingest_effect",
         "node_lab_disk_watermark_effect",
+        "node_overlay_setting_set_effect",
         "node_overlay_store_load_effect",
         "node_overlay_store_read_effect",
         "node_pr_landing_snapshot_effect",
