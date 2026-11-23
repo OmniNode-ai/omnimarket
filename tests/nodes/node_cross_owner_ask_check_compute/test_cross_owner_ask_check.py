@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: MIT
 """An ask to another owner is refused when the owner's file already holds the object."""
 
+from pathlib import Path
+
 import pytest
+import yaml
 
 from omnimarket.models.cross_owner_ask.enum_cross_owner_ask_verdict import (
     EnumCrossOwnerAskVerdict,
@@ -98,3 +101,28 @@ def test_unread_file_refuses_the_draft(exit_code: int, text: str) -> None:
 
     assert result.verdict is EnumCrossOwnerAskVerdict.UNREADABLE
     assert not result.draft_allowed
+
+
+_CONTRACT = (
+    Path(__file__).resolve().parents[3]
+    / "src/omnimarket/nodes/node_cross_owner_ask_check_compute/contract.yaml"
+)
+_COMPLETED_TOPIC = "onex.evt.omnimarket.cross-owner-ask-check-completed.v1"
+_FAILED_TOPIC = "onex.evt.omnimarket.cross-owner-ask-check-failed.v1"
+
+
+def test_contract_declares_both_terminal_events() -> None:
+    """The node publishes a completed and a failed terminal event, each granted write."""
+    contract = yaml.safe_load(_CONTRACT.read_text())
+    assert contract["runtime_dispatch"]["terminal_events"] == {
+        "success": _COMPLETED_TOPIC,
+        "failure": _FAILED_TOPIC,
+    }
+    assert contract["event_bus"]["publish_topics"] == [_COMPLETED_TOPIC, _FAILED_TOPIC]
+    written = {
+        g["name"]
+        for entry in contract["broker_acl_grants"]
+        for g in entry["grants"]
+        if g["operation"] == "WRITE"
+    }
+    assert written == {_COMPLETED_TOPIC, _FAILED_TOPIC}
