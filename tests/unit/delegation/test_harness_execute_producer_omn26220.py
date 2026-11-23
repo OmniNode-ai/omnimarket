@@ -11,6 +11,7 @@ now publishes the typed harness request for a backend the routing overlay declar
 
 from __future__ import annotations
 
+import inspect
 import json
 from collections.abc import Awaitable, Callable
 from decimal import Decimal
@@ -25,12 +26,24 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delega
     RuntimeDelegationDispatchPort,
     load_runtime_delegation_dispatch_config,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_harness_backend_call import (
+    HandlerHarnessBackendCall,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_harness_delegation import (
+    HandlerHarnessDelegation,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_harness_backend_call import (
     ModelHarnessAttemptRecord,
     ModelHarnessBackendCallRequest,
     ModelHarnessBackendCallResult,
 )
-from tests.unit.delegation.harness_support_omn26219 import load_overlay
+from tests.unit.delegation.harness_support_omn26219 import (
+    AcceptAllGate,
+    ListCostSink,
+    ScriptedRunner,
+    load_overlay,
+    receipt,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -50,10 +63,7 @@ class LoopbackBus:
 
     def __init__(
         self,
-        answer: Callable[
-            [ModelHarnessBackendCallRequest], ModelHarnessBackendCallResult
-        ]
-        | None,
+        answer: Callable[[ModelHarnessBackendCallRequest], Any] | None,
     ) -> None:
         self._answer = answer
         self.published: list[tuple[str, dict[str, Any]]] = []
@@ -74,6 +84,8 @@ class LoopbackBus:
             json.loads(value)["payload"]
         )
         result = self._answer(request)
+        if inspect.isawaitable(result):
+            result = await result
         envelope = {
             "event_type": "omnimarket.delegation-harness-completed",
             "correlation_id": str(request.request_id),
@@ -283,3 +295,25 @@ def test_the_harness_execute_topic_has_a_declared_producer() -> None:
         row["topic"]: row["producer"] for row in consumer["externally_produced_topics"]
     }
     assert "node_delegate_skill_orchestrator" in declared[command]
+
+
+async def test_the_real_harness_handler_answers_the_producers_command() -> None:
+    """The command the producer publishes is consumed by HandlerHarnessDelegation and answered."""
+    sink = ListCostSink()
+    runner = ScriptedRunner([receipt("ok", cost=Decimal("0.0042"))])
+    handler = HandlerHarnessDelegation(
+        call=HandlerHarnessBackendCall(
+            runner=runner, gate=AcceptAllGate(), cost_sink=sink, overlay=load_overlay()
+        )
+    )
+
+    result = await delegate(LoopbackBus(handler.handle), HARNESS_BACKEND)
+
+    assert runner.ran == [HARNESS_BACKEND]
+    assert result["status"] == "completed"
+    assert result["content"] == "ok"
+    assert result["provider"] == HARNESS_BACKEND
+    assert len(sink.records) == 1
+    history = result["escalation_history"]
+    assert isinstance(history, list)
+    assert history[0]["cost_usd"] == pytest.approx(0.0042)
