@@ -57,6 +57,9 @@ descriptor:
   timeout_ms: 600000
 runtime_dispatch:
   subscribe_topic: "onex.cmd.omniintelligence.content-captured.v1"
+  # The work-ledger serve command attaches this node to the content-captured topic; nothing else starts it.
+  callers:
+    - path: src/omnimarket/work_ledger_bus/cli.py
   terminal_events:
     success: "onex.evt.omnimarket.operator-capture-recorded.v1"
 consumed_events:
@@ -80,9 +83,6 @@ env_dependencies:
   ONEX_OPERATOR_PROMOTION_LANE:
     required: false
     description: "The orchestrator lane the operator's words are promoted for on the bus host: a RULING or OPERATOR-CONSENT row under it, or an inbox MSG to it (OMN-19513). Unset: capture rows only."
-  ONEX_LEDGER_PATH:
-    required: false
-    description: "The ledger for the one-shot process and digest commands. The bus host uses the serve process's --ledger."
   ONEX_OPERATOR_CAPTURE_LEDGER_BIN:
     required: false
     description: "The ledger's append command for the one-shot process command (run as '<command> --append <row>'). The bus host uses the serve process's own append runner."
