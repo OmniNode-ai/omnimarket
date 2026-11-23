@@ -618,8 +618,8 @@ providers:
   # missing_credentials); one model, Beam-1.0-501B-A23B, 1,048,576-token context,
   # 131,072 output (models.md). max_tokens is deprecated for
   # max_completion_tokens, and both count reasoning tokens; reasoning is
-  # mandatory and defaults to effort max (reasoning.md), so the budget is twice
-  # the API's own 32,768 default and the timeout the long-call one. No key
+  # mandatory and defaults to effort max (reasoning.md). The model catalogue
+  # supplies the output budget and the timeout is the long-call one. No key
   # prefix, rate limit number or per-token price is published, so none is set.
   # Not yet measured with a key: the measuring host holds none.
   - provider: reflection
@@ -637,7 +637,6 @@ providers:
       - "Beam-1.0-501B-A23B"
     max_retries: 2
     timeout_ms: 300000
-    max_tokens: 65536
     token_limit_field: max_completion_tokens
     limit_model:
       billing: pay_as_you_go

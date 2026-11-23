@@ -5190,6 +5190,7 @@
         "node_local_dashboard_serve_effect",
         "node_measured_model_selection_compute",
         "node_metering_summary_compute",
+        "node_metering_tenant_records_effect",
         "node_plugin_walk_evidence_effect",
         "node_projection_baselines",
         "node_projection_cost_by_repo",
@@ -5199,6 +5200,7 @@
         "node_projection_live_events",
         "node_projection_metering_summary",
         "node_projection_pattern_learning",
+        "node_projection_read_effect",
         "node_projection_registration",
         "node_projection_replay_check_compute",
         "node_projection_routing_decision",
@@ -5891,7 +5893,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_done_items"
+        "node_projection_done_items",
+        "node_projection_freshness_alert_effect"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_done_items/migrations/0000_create_done_items.sql"
@@ -5901,7 +5904,8 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
-        "src/omnimarket/nodes/node_projection_done_items/contract.yaml"
+        "src/omnimarket/nodes/node_projection_done_items/contract.yaml",
+        "src/omnimarket/nodes/node_projection_freshness_alert_effect/contract.yaml"
       ],
       "current_schema": [
         "omninode_internal"
@@ -5937,7 +5941,8 @@
       "producer": "node_projection_done_items",
       "readers": [
         "node_done_items_compute",
-        "node_projection_done_items"
+        "node_projection_done_items",
+        "node_projection_freshness_alert_effect"
       ],
       "target_schema": "omninode_internal",
       "writers": [
@@ -8977,6 +8982,7 @@
         "node_host_introspection_announce_effect",
         "node_host_table_keys_ingest_effect",
         "node_lab_disk_watermark_effect",
+        "node_overlay_main_load_check_effect",
         "node_overlay_store_load_effect",
         "node_overlay_store_read_effect",
         "node_pr_landing_snapshot_effect",
@@ -11065,6 +11071,7 @@
       "producer": "node_projection_tenant_registry",
       "readers": [
         "node_delegate_skill_orchestrator",
+        "node_metering_tenant_records_effect",
         "node_projection_delegation",
         "node_projection_local_environment",
         "node_projection_local_identity",
@@ -11627,6 +11634,7 @@
         "node_context_source_ledger_effect",
         "node_context_source_work_state_effect",
         "node_merge_override_alarm_effect",
+        "node_projection_freshness_alert_effect",
         "node_projection_work_ledger",
         "node_session_context_sources_effect",
         "node_work_ledger_query_effect",
@@ -11648,6 +11656,7 @@
         "src/omnimarket/nodes/node_context_source_ledger_effect/contract.yaml",
         "src/omnimarket/nodes/node_context_source_work_state_effect/contract.yaml",
         "src/omnimarket/nodes/node_merge_override_alarm_effect/contract.yaml",
+        "src/omnimarket/nodes/node_projection_freshness_alert_effect/contract.yaml",
         "src/omnimarket/nodes/node_projection_work_ledger/contract.yaml",
         "src/omnimarket/nodes/node_session_context_sources_effect/contract.yaml",
         "src/omnimarket/nodes/node_work_ledger_query_effect/contract.yaml",
@@ -11700,6 +11709,7 @@
         "node_merge_override_alarm_effect",
         "node_pr_landing_orchestrator",
         "node_pr_lifecycle_orchestrator",
+        "node_projection_freshness_alert_effect",
         "node_session_context_sources_effect",
         "node_work_ledger_emit_effect",
         "node_work_ledger_query_effect",
