@@ -875,6 +875,10 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "post-merge automation (if: pull_request.merged == true) — "
         "structurally cannot gate the merge that already happened."
     ),
+    ("auto-tag-on-merge.yml", "reopen-dev"): (
+        "post-merge automation (needs auto-tag, which runs only on a merged "
+        "release PR) — structurally cannot gate the merge that already happened."
+    ),
     # --- OMN-19554: the report-only contract walker.
     ("contract-walker.yml", "contract-walker"): (
         "self-declared report-only, non-validating job by operator ruling "
