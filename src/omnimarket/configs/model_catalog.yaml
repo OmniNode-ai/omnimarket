@@ -103,3 +103,13 @@ local_servers:
   anthropic_messages:
     path: /v1/messages
     absent_statuses: [404, 405]
+
+# OMN-23413 AC35: a stored run's price read (the projection read behind the
+# local dashboard and onex metering) waits at most deadline_seconds in total for
+# models.dev, and after a failed read does not read it again for
+# retry_after_seconds; until then those runs stay unknown. The failure marker
+# lives under the ONEX home, so a later process honours it too.
+historical_price_read:
+  deadline_seconds: 2
+  retry_after_seconds: 300
+  failed_marker_file: cache/models_dev_historical_read_failed

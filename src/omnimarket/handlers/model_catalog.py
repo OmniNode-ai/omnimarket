@@ -174,6 +174,16 @@ def _onex_home() -> Path:
     return user_config_path().parent
 
 
+def onex_home() -> Path:
+    """The ONEX home folder; looks up ``_onex_home`` at call time."""
+    return _onex_home()
+
+
+def fetch_models_dev(url: str, timeout: float) -> bytes:
+    """models.dev bytes; looks up ``_fetch`` at call time."""
+    return _fetch(url, timeout)
+
+
 @cache
 def _shipped_price_list() -> Mapping[str, Any]:
     """The price list that ships inside the install (``model_price_list.v1.json``)."""
