@@ -25,6 +25,11 @@ LANE_SCOPED_MAIN_OWNED_NODES: dict[str, str] = {
         "lab effects runtimes declare no ONEX_RUNTIME_LANE, so the main runtime "
         "owns it, as node_pr_landing_github_effect."
     ),
+    "node_tenant_provision_effect": (
+        "OMN-26473: the main runtime carries the identity database DSN and the "
+        "effects runtime does not, so the main runtime owns it, as "
+        "node_work_ledger_query_effect."
+    ),
 }
 PENDING_RUNTIME_OWNERSHIP_NODES = {
     "node_build_loop_orchestrator",

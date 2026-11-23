@@ -40,7 +40,7 @@ def test_node_type_placement_and_routing() -> None:
     contract = _contract()
     assert contract["node_type"] == "effect"
     assert contract["runtime_profiles"] == ["main"]
-    assert "runtime_lanes" not in contract
+    assert contract["runtime_lanes"] == ["compose-dev"]
     routing = contract["handler_routing"]
     assert routing["routing_strategy"] == "topic_match"
     assert {(e["topic"], e["handler"]["name"]) for e in routing["handlers"]} == {
