@@ -696,6 +696,28 @@ _PYTHON_FENCE_LANG_TAGS: frozenset[str] = frozenset(
 )
 _YAML_FENCE_LANG_TAGS: frozenset[str] = frozenset({"yaml", "yml"})
 _JSON_FENCE_LANG_TAGS: frozenset[str] = frozenset({"json"})
+_PROMPT_PYTHON_RE = re.compile(r"\bpython3?\b|\bpytest\b|\.py\b", re.IGNORECASE)
+_PROMPT_YAML_RE = re.compile(r"\bya?ml\b", re.IGNORECASE)
+_PROMPT_JSON_RE = re.compile(r"\bjson\b", re.IGNORECASE)
+
+
+def _prompt_requested_artifact_language(task_prompt: str | None) -> str | None:
+    """The artifact language the prompt asks for, when it names exactly one of YAML or JSON.
+
+    OMN-26588. An answer with no fence, or a fence with no language tag, has no
+    declared language of its own, so the prompt supplies it. A prompt that names
+    Python, names both YAML and JSON, or names neither returns ``None`` and the
+    answer keeps the Python parse it always had.
+    """
+    if not task_prompt or _PROMPT_PYTHON_RE.search(task_prompt):
+        return None
+    wants_yaml = _PROMPT_YAML_RE.search(task_prompt) is not None
+    wants_json = _PROMPT_JSON_RE.search(task_prompt) is not None
+    if wants_yaml == wants_json:
+        return None
+    return "yaml" if wants_yaml else "json"
+
+
 _SEARCH_REPLACE_BLOCK_RE = re.compile(
     r"^<<<<<<< SEARCH[ \t]*\r?\n.*?^=======[ \t]*\r?\n.*?^>>>>>>> REPLACE[ \t]*\r?$",
     re.MULTILINE | re.DOTALL,
@@ -882,16 +904,25 @@ def _check_code_artifact_present(
     if _is_json_edit_artifact(stripped) or _is_search_replace_artifact(stripped):
         return None
 
+    requested = _prompt_requested_artifact_language(task_prompt)
     tagged_blocks = _extract_fenced_code_blocks_with_lang(stripped)
     if tagged_blocks and any(
         _block_is_code_artifact(
             body,
-            language=language,
+            language=language or requested or "",
             task_prompt=task_prompt,
         )
         for language, body in tagged_blocks
     ):
         return None
+
+    if requested is not None and not tagged_blocks:
+        # OMN-26588: no fence, so the prompt names the language.
+        if _block_is_code_artifact(
+            stripped, language=requested, task_prompt=task_prompt
+        ):
+            return None
+        return "TASK_MISMATCH: code_generation response contains no code artifact"
 
     try:
         tree = ast.parse(_strip_markdown_code_fence(stripped))
@@ -1248,7 +1279,24 @@ def _check_short_form_adequacy(
     return None
 
 
-def _check_compiles_without_errors(content: str) -> str | None:
+def _parse_as_requested_language(body: str, language: str) -> str | None:
+    """Parse ``body`` as the prompt-requested YAML or JSON (OMN-26588)."""
+    if language == "yaml":
+        try:
+            yaml.safe_load(body)
+        except yaml.YAMLError as exc:
+            return f"MALFORMED: response does not compile as YAML: {exc}"
+        return None
+    try:
+        json.loads(body)
+    except json.JSONDecodeError as exc:
+        return f"MALFORMED: response does not compile as JSON: {exc.msg}"
+    return None
+
+
+def _check_compiles_without_errors(
+    content: str, task_prompt: str | None = None
+) -> str | None:
     """Deterministic: delegated code must parse as its declared artifact language.
 
     OMN-14004: ``code_generation`` is not always a Python ask — a YAML
@@ -1259,14 +1307,21 @@ def _check_compiles_without_errors(content: str) -> str | None:
     common Python case is byte-for-byte the same check as before. Only a block
     that fails to parse under ITS OWN declared language fails the check — a
     correct YAML answer no longer gets rejected for not being valid Python.
+
+    OMN-26588: raw content and an untagged fence declare no language, so the
+    prompt does when it names exactly one of YAML or JSON and no Python
+    (``_prompt_requested_artifact_language``); that parser then reads them.
     """
     if _is_search_replace_artifact(content) or _is_json_edit_artifact(content):
         return None
 
     content = _remove_search_replace_blocks(content)
+    requested = _prompt_requested_artifact_language(task_prompt)
     tagged_blocks = _extract_fenced_code_blocks_with_lang(content)
     if not tagged_blocks:
         candidate = _strip_markdown_code_fence(content)
+        if requested is not None:
+            return _parse_as_requested_language(candidate, requested)
         try:
             ast.parse(candidate)
         except SyntaxError as exc:
@@ -1274,6 +1329,8 @@ def _check_compiles_without_errors(content: str) -> str | None:
         return None
 
     for lang, body in tagged_blocks:
+        if not lang and requested is not None:
+            lang = requested
         if lang in _YAML_FENCE_LANG_TAGS:
             try:
                 yaml.safe_load(body)
@@ -2275,7 +2332,7 @@ def _evaluate_deterministic_checks(
             if not _compiles_without_errors_is_evaluable(content):
                 skipped.append(check)
                 continue
-            reason = _check_compiles_without_errors(content)
+            reason = _check_compiles_without_errors(content, grounding_source)
         elif check == "code_artifact_present":
             reason = _check_code_artifact_present(content, grounding_source)
         elif check == "final_artifact_only":
