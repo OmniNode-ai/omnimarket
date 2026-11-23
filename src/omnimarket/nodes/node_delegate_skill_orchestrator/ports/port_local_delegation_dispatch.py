@@ -197,6 +197,7 @@ from omnimarket.handlers.tenant_mirror_requirement import require_tenant_mirrore
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
     apply_inference_protocol,
+    bound_thinking_budget_to_answer_room,
     resolve_inference_protocol_default_temperature,
 )
 from omnimarket.inference.provider_finish_reason import (
@@ -5418,6 +5419,12 @@ class LocalDelegationDispatchPort:
             provider_request_options, outbound_prompt = _apply_class_sampling(
                 provider_request_options, outbound_prompt, class_sampling
             )
+        # OMN-26588: thinking tokens share the output cap with the answer, so
+        # whichever of the profile and the overlay set a budget, it leaves the
+        # answer room.
+        provider_request_options = bound_thinking_budget_to_answer_room(
+            provider_request_options, max_tokens=effective_max_tokens
+        )
         # OMN-19432: the profile's prescribed temperature is a default for a
         # caller that sent none, never a competing writer of the wire key.
         profile_default_temperature = resolve_inference_protocol_default_temperature(
