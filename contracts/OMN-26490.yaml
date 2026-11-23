@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-26490
+title: A node whose handler reads an overlay is not merged until that node's overlay file is on overlays main, or the pull request carries the merged overlays pull request that adds it
+summary: "Adds the added-nodes and list-missing commands to node_overlay_main_load_check_effect and runs added-nodes in the overlay-main-load CI job: a pull request that adds a node directory requiring an overlay (a contract overlay block, or an overlay.example.yaml) is refused when overlays main holds no overlays/<overlay id>/overlay.yaml and the pull request body names no merged overlays pull request that added it. list-missing computes the same answer for every node in the tree. An overlay present in a host's snapshot of the settings store also satisfies the requirement (the snapshot root is named by --store-snapshot-root); a runner that names none, as the hosted CI job, does not read the store and each refusal says so. The overlays pull request for the nightly sender node and the dev log reading are not part of this change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26490-overlay-exists-on-main
+  statement: A node added in a pull request is refused at merge time when the overlay it requires is not on overlays main, instead of at its first tick on the dev runtime.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a CI check in omnimarket fails a pull request that adds a node whose handler loads an overlay (the overlay loader call or a required_overlay field in the contract) when the overlays repository main holds no overlay.yaml for that node name and the pull request body names no merged overlays pull request that adds it -- falsifier: uv run pytest tests/unit/contracts/test_node_overlay_exists_on_overlays_main.py fails on a fixture of the 6569 node with an empty overlays clone'
+  - id: AC2
+    statement: 'AC2: the check passes on a control fixture whose overlay exists, and on a node that declares overlay optional -- falsifier: uv run pytest on the two control fixtures fails'
+  - id: AC3
+    statement: 'AC3: every node now in omnimarket that requires an overlay and has none on overlays main is listed with its owner, and node_test_selector_nightly_sender_scheduled_effect has its overlay on dev so one schedule line is read in the dev log -- falsifier: grep -c node_test_selector_nightly_sender_scheduled_effect in the dev runtime log after the reload returns 0 schedule lines'
+evidence_requirements:
+- kind: tests
+  description: The check, its controls, the escape hatch, the added-node selection and the commands, at the pushed head.
+  command: uv run --frozen pytest tests/unit/contracts/test_node_overlay_exists_on_overlays_main.py tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26490-ac1
+  description: AC1 proven by the test that replays the sender node with an empty overlays tree and by the command run as CI runs it; neither exists at the merge base.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/contracts/test_node_overlay_exists_on_overlays_main.py tests/unit/nodes/node_overlay_main_load_check_effect/test_overlay_required_cli.py -q --no-cov -p no:cacheprovider -k "empty_overlays_tree or added_node_without_its_overlay or escape_hatch"
+    cwd: .
+- id: dod-omn26490-ac2
+  description: AC2 proven by the controls (the overlay exists, the node declares its overlay optional, the node needs none, and a node already on the base is not judged).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/contracts/test_node_overlay_exists_on_overlays_main.py tests/unit/nodes/node_overlay_main_load_check_effect/test_overlay_required_cli.py -q --no-cov -p no:cacheprovider -k "control or already_on_the_base or added_node_with_its_overlay or store_snapshot"
+    cwd: .
+- id: dod-omn26490-ac3-list
+  description: The first half of AC3 (the list with owners) is computed by the same code the check runs, and the second half (the sender's overlay on dev and one schedule line in the dev log) is not proven here and is named as the remainder in the pull request.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/contracts/test_node_overlay_exists_on_overlays_main.py tests/unit/nodes/node_overlay_main_load_check_effect/test_overlay_required_cli.py -q --no-cov -p no:cacheprovider -k "backlog_is_listed or owner_is_the_contract_owner or list_missing"
+    cwd: .
+- id: dod-omn26490-integration-proof
+  description: The check runs on a lab host at the pushed head through the lab work runner, against the real tree and the real overlays clone listing, and the focused tests pass there.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane overlaygate2-0140 --kind test -- uv run --frozen pytest tests/unit/contracts/test_node_overlay_exists_on_overlays_main.py tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov -p no:cacheprovider
+    cwd: .

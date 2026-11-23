@@ -395,7 +395,7 @@ def test_protected_surface_set_full_suite_rule_stays_in_the_adjacency_file(
     assert "protected_surface_selected_paths" not in text
 
 
-def test_protected_surface_set_stage_stays_zero() -> None:
+def test_protected_surface_set_selection_stage_is_one() -> None:
     policy = (
         REPO_ROOT
         / "src"
@@ -404,7 +404,7 @@ def test_protected_surface_set_stage_stays_zero() -> None:
         / "node_test_selection_selector_compute"
         / "policy.yaml"
     ).read_text(encoding="utf-8")
-    assert "\nselection_stage: 0\n" in policy
+    assert "\nselection_stage: 1\n" in policy
 
 
 # --- the receipt model's own refusals ---------------------------------------------------------------------

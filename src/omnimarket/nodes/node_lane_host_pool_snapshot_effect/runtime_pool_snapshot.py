@@ -90,7 +90,6 @@ def run_once(
             correlation_id=request.correlation_id.hex,
             origin="real",
         )
-        chain.start()
     handler = HandlerPoolSnapshot(
         overlay=overlay,
         advertisement_source=ports.advertisements,
@@ -102,6 +101,10 @@ def run_once(
         clock=now,
     )
     result = handler.handle(request)
+    # The snapshot and its record are written by now; the chain's emissions publish on the bus (the emission mirror), which can stall
+    # for the whole run limit. They follow the write, so a stalled mirror cannot hold the snapshot back past the fill's age bound.
+    if chain is not None:
+        chain.start()
     line: dict[str, object] = {
         "status": result.status.value,
         "correlation_id": str(request.correlation_id),

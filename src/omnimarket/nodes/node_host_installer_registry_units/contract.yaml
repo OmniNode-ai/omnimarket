@@ -1108,7 +1108,9 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     environment_inputs:
       ONEX_HOST_NAME: ledger_host_name
-    required_environment_inputs: [ONEX_HOST_NAME]
+      # The scheduled tick waits for this host row's /ready before it runs (OMN-25878).
+      ONEX_DEV_READINESS_HOST: dev_readiness_host
+    required_environment_inputs: [ONEX_HOST_NAME, ONEX_DEV_READINESS_HOST]
     evidence_file: .local/state/omni/delegation-scenario-r8/last-run.json
     state_directory: .onex_state/delegation-scenario-r8
   # The R9 delegation scenario's tick (OMN-24554): the bus, lane and probe tenant of its control read are R8's overlay document's
@@ -1151,7 +1153,9 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     environment_inputs:
       ONEX_HOST_NAME: ledger_host_name
-    required_environment_inputs: [ONEX_HOST_NAME]
+      # The scheduled tick waits for this host row's /ready before it runs (OMN-25878).
+      ONEX_DEV_READINESS_HOST: dev_readiness_host
+    required_environment_inputs: [ONEX_HOST_NAME, ONEX_DEV_READINESS_HOST]
     evidence_file: .local/state/omni/delegation-scenario-r9/last-run.json
     state_directory: .onex_state/delegation-scenario-r9
   # The delegation scenario alarm's tick (OMN-24874): reads the R8 and R9 last-run records on this host and appends one ledger

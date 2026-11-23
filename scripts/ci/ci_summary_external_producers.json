@@ -350,6 +350,15 @@
     ],
     "push_branches": []
   },
+  "Node Trigger Declaration Check": {
+    "workflow": "contract-validation.yml",
+    "events": [
+      "pull_request",
+      "merge_group",
+      "workflow_dispatch"
+    ],
+    "push_branches": []
+  },
   "Precommit Fail-Loud Gate": {
     "workflow": "precommit-fail-loud-gate.yml",
     "events": [
