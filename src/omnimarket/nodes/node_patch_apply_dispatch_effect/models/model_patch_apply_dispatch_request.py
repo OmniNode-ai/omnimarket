@@ -16,7 +16,6 @@ class ModelPatchApplyDispatchRequest(BaseModel):
     operation: Literal["tick"] = "tick"
     now: datetime
     registry_root: Path
-    ledger_path: Path
     state_dir: Path
     # Registry clone names a patch can belong to (repos.yaml); the clone is read under registry_root.
     repos: tuple[str, ...] = ()

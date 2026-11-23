@@ -19,12 +19,14 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+    load_adjacency_map,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record import (
     EnumFullSuiteReason,
     ModelTestSelection,
 )
 from scripts.ci.detect_test_paths import REPO_ROOT, compute_selection
-from scripts.ci.test_selection_loader import load_adjacency_map
 
 pytestmark = pytest.mark.unit
 

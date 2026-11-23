@@ -23,7 +23,9 @@ POLICY_PATH = (
 
 def load_policy(path: Path = POLICY_PATH) -> ModelSelectorPolicy:
     with path.open() as handle:
-        return ModelSelectorPolicy.model_validate(yaml.safe_load(handle))
+        policy = ModelSelectorPolicy.model_validate(yaml.safe_load(handle))
+    policy.closure_settings()  # a policy file must set the closure keys: a snapshot alone may omit them
+    return policy
 
 
 CONTRACT_PATH = POLICY_PATH.with_name("contract.yaml")
