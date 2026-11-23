@@ -114,10 +114,16 @@ class Rig:
         )
 
     async def tick(self) -> None:
+        """One tick, then as many more as hand the runtime the rest of that tick's events: the publisher gives one per tick (OMN-26501)."""
         await self.send(
             TICK_TOPIC, tick_payload(self.gate.clock.now), "ModelRuntimeTick"
         )
         await self.settle()
+        while self.gate.store.load().outbox:
+            await self.send(
+                TICK_TOPIC, tick_payload(self.gate.clock.now), "ModelRuntimeTick"
+            )
+            await self.settle()
 
 
 async def memory_rig() -> AsyncIterator[Rig]:
@@ -139,7 +145,7 @@ async def redpanda_rig() -> AsyncIterator[Rig]:
         [CONTRACT],
         {
             "HandlerDevRollWindowHold": gate.hold,
-            "HandlerDevRollWindowTick": gate.tick,
+            "HandlerDevRollWindowTickPublish": gate.tick_publish,
             "HandlerDevRollWindowCompleted": gate.completed,
         },
     )
