@@ -14,6 +14,7 @@ from __future__ import annotations
 from pydantic import ValidationError
 
 from omnimarket.handlers.adapter_test_selection_policy_file import load_policy
+from omnimarket.handlers.scm.handler_gateway_read_client import HandlerGatewayReadClient
 from omnimarket.models.model_gateway_node_skew import GatewayReadError
 from omnimarket.models.model_github_gateway_io import (
     MAX_LIST_LIMIT,
@@ -48,9 +49,11 @@ class HandlerAttributionRecordRead:
     """Reads through its injected gateway; the settings come from the policy."""
 
     def __init__(
-        self, gateway: ProtocolGatewayRead, policy: ModelSelectorPolicy | None = None
+        self,
+        gateway: ProtocolGatewayRead | None = None,
+        policy: ModelSelectorPolicy | None = None,
     ) -> None:
-        self._gateway = gateway
+        self._gateway = gateway if gateway is not None else HandlerGatewayReadClient()
         self._policy = policy or load_policy()
 
     def handle(
