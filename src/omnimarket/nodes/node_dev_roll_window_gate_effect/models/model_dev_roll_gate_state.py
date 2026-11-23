@@ -35,7 +35,7 @@ class ModelHeldDevRoll(BaseModel):
 
 
 class ModelDevRollGateState(BaseModel):
-    """Held commands (oldest first), the last released roll, the rolls given up on and the released ids kept."""
+    """Held commands (oldest first), the last released roll, the rolls given up on, the released ids kept and the alarmed ids."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -43,3 +43,5 @@ class ModelDevRollGateState(BaseModel):
     last_roll: ModelDevRollRecord | None = None
     released_ids: tuple[str, ...] = ()
     abandoned: tuple[ModelDevRollGateAbandonedRoll, ...] = ()
+    #: Held command ids a held-age alarm already named; once-only, pruned to the commands still held.
+    alarmed_ids: tuple[str, ...] = ()
